@@ -21,6 +21,7 @@ import time
 
 import pytest
 
+from ralph.mcp.protocol.env import MCP_SNAPSHOT_DIR_ENV
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
@@ -196,28 +197,127 @@ def test_e17_wire_ledger_tamper_detection_across_swaps(tmp_path: pathlib.Path) -
 
 
 # ---------------------------------------------------------------------------
-# E1.7: In-memory repetition tracker continuity across child replacement
+# E1.7: Transport loop-breaker continuity across a real child replacement
 # ---------------------------------------------------------------------------
-def test_e17_transport_repetition_tracker_continuity_across_restart() -> None:
-    """Repetition tracker carried across child swaps trips breaker on cumulative loop count."""
-    tracker = TransportRepetitionTracker(threshold=3, window_seconds=60.0)
 
-    sig = failure_signature(
-        "tools/call", {"path": "missing.txt"}, "FileNotFoundError: no such file"
-    )
-    assert sig is not None
+#: A tool failure caused by the CALLER's own arguments, not by Ralph's
+#: storage. An agent re-issuing this identical call really is looping, so
+#: it is the failure class the transport breaker exists to cap.
+_LOOP_CALLER_ERROR = "Tool 'read_file' failed: unsupported encoding 'utf-77'"
 
-    # Child 1 experiences 2 identical failure signatures
-    assert tracker.observe(sig) is False
-    assert tracker.observe(sig) is False
+#: The single call both children issue: identical method, tool and
+#: arguments, so both failures collapse onto one repetition signature.
+_LOOP_CALL = {"name": "read_file", "arguments": {"path": ".agent/PLAN.md"}}
 
-    # Handover / swap occurs: Child 1 is retired, Child 2 is promoted
-    # The carried tracker retains its state and streak counter
-    # Child 2 experiences the 3rd identical failure signature
-    tripped = tracker.observe(sig)
 
-    # Invariant: Breaker trips on the 3rd identical failure across the swap boundary
-    assert tripped is True
+def _loop_signature() -> str:
+    """Return the repetition key the transport feeds the breaker for ``_LOOP_CALL``."""
+    signature = failure_signature("tools/call", _LOOP_CALL, _LOOP_CALLER_ERROR)
+    assert signature is not None, "a caller-side failure is countable, never exempt"
+    return signature
+
+
+def _parent_owned_snapshot_dir(tmp_path: pathlib.Path) -> pathlib.Path:
+    """Return the directory the parent hands to EVERY child of one bridge run.
+
+    ``lifecycle._spawn_mcp_process`` computes ``snapshot_dir(root,
+    bridge_run_id)`` once per bridge run and hands that SAME path to every
+    spawn through ``RALPH_MCP_SNAPSHOT_DIR``; the per-stage make-before-break
+    pause/resume sentinels live inside it. It is therefore parent-owned
+    state that provably outlives a child replacement.
+    """
+    snap_dir = tmp_path / "mcp-snapshots" / "run-e17-repetition"
+    snap_dir.mkdir(parents=True)
+    return snap_dir
+
+
+def test_e17_transport_loop_breaker_trips_across_child_replacement(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The breaker trips on the 3rd identical failure ACROSS a child swap.
+
+    A make-before-break replacement is two real children: the retiring
+    child is drained and killed, the candidate is promoted in its place.
+    The loop detector must therefore be able to count failures recorded
+    by a process that no longer exists, or every swap silently hands a
+    doomed retry storm a fresh budget of retries.
+
+    ``observe()`` returning ``True`` is the breaker's public verdict --
+    the transport turns exactly that into a 503 ``transport_loop_detected``
+    frame instead of answering the doomed retry.
+    """
+    monkeypatch.setenv(MCP_SNAPSHOT_DIR_ENV, str(_parent_owned_snapshot_dir(tmp_path)))
+    signature = _loop_signature()
+
+    # Child 1 (generation 0) records two identical failures. The breaker
+    # must stay shut: two attempts is not yet a loop.
+    old_child = TransportRepetitionTracker.from_parent_owned_state()
+    assert old_child.observe(signature) is False
+    assert old_child.observe(signature) is False
+
+    # Child 1 is retired and destroyed. Child 2 is a DISTINCT instance,
+    # built through the production resolution path and pointed at the
+    # SAME parent-owned directory the parent handed to child 1.
+    candidate_child = TransportRepetitionTracker.from_parent_owned_state()
+    assert candidate_child is not old_child
+
+    # Child 2 (generation 1) experiences the 3rd identical failure.
+
+    # INVARIANT: 2 failures in child 1 + 1 in child 2 == 3 trips the
+    # breaker, so the agent gets the typed loop-detected frame from the
+    # promoted child instead of yet another silent retry.
+    assert candidate_child.observe(signature) is True
+
+
+def test_e17_transport_loop_breaker_starts_fresh_without_the_parent_owned_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Control: with no parent-owned directory the swap does NOT carry state.
+
+    This is the falsification arm of the continuity contract. It proves the
+    previous test trips because of real cross-child persistence and not
+    because some shared in-process object happened to stay warm, so a
+    regressed seam cannot be hidden by a second trip for the wrong reason.
+    """
+    monkeypatch.delenv(MCP_SNAPSHOT_DIR_ENV, raising=False)
+    signature = _loop_signature()
+
+    old_child = TransportRepetitionTracker.from_parent_owned_state()
+    assert old_child.observe(signature) is False
+    assert old_child.observe(signature) is False
+
+    candidate_child = TransportRepetitionTracker.from_parent_owned_state()
+    assert candidate_child is not old_child
+
+    # INVARIANT: an unconfigured child starts from streak 0, so the very
+    # first attempt it sees is only attempt 1 and the breaker stays shut.
+    assert candidate_child.observe(signature) is False
+
+
+def test_e17_transport_loop_breaker_reset_clears_the_carried_streak(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reset must also clear the streak the NEXT child will inherit.
+
+    Loop detection can fire on a loop the agent has genuinely given up on,
+    and the recovery path clears the streak. That recovery is only real if
+    it survives the swap too: a reset that leaves the carried record on
+    disk would have the promoted child re-adopt the very streak the
+    recovery just discarded.
+    """
+    monkeypatch.setenv(MCP_SNAPSHOT_DIR_ENV, str(_parent_owned_snapshot_dir(tmp_path)))
+    signature = _loop_signature()
+
+    old_child = TransportRepetitionTracker.from_parent_owned_state()
+    assert old_child.observe(signature) is False
+    assert old_child.observe(signature) is False
+    old_child.reset()
+
+    candidate_child = TransportRepetitionTracker.from_parent_owned_state()
+    assert candidate_child is not old_child
+    assert candidate_child.observe(signature) is False
 
 
 # ---------------------------------------------------------------------------

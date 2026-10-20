@@ -2,8 +2,12 @@
 
 This module owns:
 - Parent-owned AF_UNIX socketpair for private candidate preflight.
-- Single-acceptor ordered handover via pause/ack/resume sentinels.
-- Tool-set hash verification to prevent silent tool drift (E1.9).
+- Single-acceptor ordered handover via pause/ack/resume sentinels (FILES,
+  not sockets: the retiring child acknowledges by creating
+  ``<pause>.ack`` next to the pause sentinel).
+- Tool-set hash verification to prevent silent tool drift (E1.9), including
+  the canonical projection both channels hash and the parent-side served
+  ``tools/list`` fetch that seeds the first baseline.
 - Bounded handover and drain deadlines.
 """
 
@@ -15,7 +19,11 @@ import os
 import socket
 import threading
 import time
-from typing import TYPE_CHECKING, cast
+import urllib.request
+from dataclasses import dataclass
+from typing import IO, TYPE_CHECKING, cast
+
+from ralph.mcp.server._http_tools_list import _LIFECYCLE_MAX_RESPONSE_BYTES
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -54,6 +62,125 @@ def compute_tool_set_hash(tools: list[dict[str, object]]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def canonical_tool_entries(raw_tools: object) -> list[dict[str, object]]:
+    """Project any served ``tools`` array onto the canonical drift-hash shape.
+
+    Both sides of the comparison must hash the SAME bytes or drift detection
+    is meaningless:
+
+    * the parent captures its baseline from the shared endpoint's served
+      ``tools/list`` (:func:`served_tool_entries`), and
+    * the candidate is verified over the private readiness channel
+      (:func:`check_candidate_readiness`).
+
+    Each entry collapses to exactly ``{name, description, inputSchema}`` with
+    string name/description and a dict schema. Extra keys a server may add
+    (annotations, titles, vendor hints) are dropped because they are not part
+    of the E1.9 contract; missing fields take the same defaults
+    :func:`_build_tools_list_response` applies, so the projection is
+    idempotent on already-canonical input.
+    """
+    if not isinstance(raw_tools, list):
+        return []
+    result: list[dict[str, object]] = []
+    for item in raw_tools:
+        if not isinstance(item, dict):
+            continue
+        entry = cast("dict[str, object]", item)
+        schema = entry.get("inputSchema", {})
+        result.append(
+            {
+                "name": str(entry.get("name", "")),
+                "description": str(entry.get("description", "")),
+                "inputSchema": schema if isinstance(schema, dict) else {},
+            }
+        )
+    return result
+
+
+def describe_tool_set_diff(
+    expected: list[dict[str, object]] | None,
+    candidate: list[dict[str, object]] | None,
+) -> str:
+    """Describe drift by TOOL NAME so a refusal log names what actually changed.
+
+    Hash equality only says *that* the catalogues differ; an operator reading
+    the WARNING needs to know which tools were added, removed, or re-described.
+    A missing baseline (``None``) is reported explicitly rather than rendered
+    as "everything was added".
+    """
+    if expected is None or candidate is None:
+        return (
+            f"added=<unknown> removed=<unknown> changed=[] baseline_captured={expected is not None}"
+        )
+    expected_map = {str(entry.get("name", "")): entry for entry in expected}
+    candidate_map = {str(entry.get("name", "")): entry for entry in candidate}
+    added = sorted(name for name in candidate_map if name not in expected_map)
+    removed = sorted(name for name in expected_map if name not in candidate_map)
+    changed = sorted(
+        name
+        for name in expected_map.keys() & candidate_map.keys()
+        if expected_map[name] != candidate_map[name]
+    )
+    return f"added={added} removed={removed} changed={changed}"
+
+
+def served_tool_entries(endpoint: str, timeout: float) -> list[dict[str, object]]:
+    """Fetch the SERVED ``tools/list`` over HTTP and canonicalise it for hashing.
+
+    This is the parent-side baseline source. It deliberately reads the wire
+    response rather than a parent-side catalogue snapshot: only the served list
+    is what an agent actually sees, so it is the only sound drift reference.
+
+    Bounded on both axes: the socket/response wait is capped by ``timeout`` and
+    the body read by ``_LIFECYCLE_MAX_RESPONSE_BYTES``, so a wedged or
+    misbehaving child cannot stall or OOM the parent. Both the plain JSON body
+    and the SSE ``data:`` envelope used by the fallback server are accepted.
+
+    Raises:
+        OSError: transport failure or a body that is not a JSON-RPC envelope.
+        ValueError: the response is not decodable as a ``tools/list`` result.
+    """
+    payload: dict[str, object] = {
+        "jsonrpc": "2.0",
+        "method": "tools/list",
+        "id": "1",
+        "params": {},
+    }
+    request = urllib.request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    response = cast(
+        "IO[bytes]",
+        urllib.request.urlopen(request, timeout=timeout),
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    try:
+        raw = response.read(_LIFECYCLE_MAX_RESPONSE_BYTES).decode("utf-8", errors="replace")
+    finally:
+        response.close()
+    if not raw:
+        raise ValueError(f"empty tools/list response from {endpoint}")
+    # The fallback standalone server answers with an SSE frame
+    # ``event: message\\ndata: {json}\\n\\n``; unwrap it when present.
+    data_lines = [line[len("data: ") :] for line in raw.splitlines() if line.startswith("data: ")]
+    try:
+        decoded: object = json.loads(data_lines[0] if data_lines else raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"tools/list response from {endpoint} is not JSON") from exc
+    if not isinstance(decoded, dict):
+        raise ValueError(f"tools/list response from {endpoint} is not a JSON-RPC envelope")
+    result = cast("dict[str, object]", decoded).get("result")
+    if not isinstance(result, dict):
+        raise ValueError(f"tools/list response from {endpoint} has no result object")
+    raw_tools = cast("dict[str, object]", result).get("tools")
+    if not isinstance(raw_tools, list):
+        raise ValueError(f"tools/list response from {endpoint} has no tools array")
+    return canonical_tool_entries(raw_tools)
+
+
 def create_handover_socketpair() -> tuple[socket.socket, socket.socket]:
     """Create a parent/child connected AF_UNIX stream socketpair."""
     parent_sock, child_sock = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -66,32 +193,24 @@ def _build_tools_list_response(mcp_server: object) -> list[dict[str, object]]:
     tools_attr: object = getattr(registry, "tools", None)
     if not isinstance(tools_attr, list):
         return []
-    result: list[dict[str, object]] = []
+    raw: list[dict[str, object]] = []
     for item in tools_attr:
         if isinstance(item, dict):
-            item_map = cast("dict[str, object]", item)
-            name_val = item_map.get("name", "")
-            desc_val = item_map.get("description", "")
-            schema_val = item_map.get("inputSchema", {})
-            result.append(
-                {
-                    "name": str(name_val),
-                    "description": str(desc_val),
-                    "inputSchema": schema_val if isinstance(schema_val, dict) else {},
-                }
-            )
+            raw.append(cast("dict[str, object]", item))
         else:
             name_obj: object = getattr(item, "name", "")
             desc_obj: object = getattr(item, "description", "")
             schema_obj: object = getattr(item, "input_schema", {})
-            result.append(
+            raw.append(
                 {
                     "name": str(name_obj),
                     "description": str(desc_obj),
-                    "inputSchema": schema_obj if isinstance(schema_obj, dict) else {},
+                    "inputSchema": schema_obj,
                 }
             )
-    return result
+    # Same projection the parent hashes its served baseline through, so the two
+    # channels are byte-comparable by construction rather than by convention.
+    return canonical_tool_entries(raw)
 
 
 def _handle_readiness_line(
@@ -211,6 +330,28 @@ def _validate_init_metadata(
     return None
 
 
+@dataclass(frozen=True)
+class CandidateReadiness:
+    """Typed outcome of one private-channel candidate preflight.
+
+    ``detail`` is the legacy human-readable third element (an error string on
+    failure, ``None`` on success). ``tools`` and ``tool_hash`` carry the
+    candidate's CANONICAL served catalogue and its hash on BOTH outcomes, so a
+    caller can retain the validated hash (or render a name-level drift diff)
+    without re-parsing ``detail``.
+    """
+
+    ok: bool
+    failure_stage: str | None = None
+    detail: str | None = None
+    tool_hash: str | None = None
+    tools: tuple[dict[str, object], ...] = ()
+
+
+def _failure(stage: str, detail: str) -> CandidateReadiness:
+    return CandidateReadiness(ok=False, failure_stage=stage, detail=detail)
+
+
 def _verify_init_exchange(
     parent_sock: socket.socket,
     deadline: float,
@@ -251,40 +392,42 @@ def _verify_tools_exchange(
     deadline: float,
     *,
     expected_tool_hash: str | None,
-) -> tuple[bool, str | None, str | None]:
+) -> CandidateReadiness:
     tools_req: dict[str, object] = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
     try:
         parent_sock.sendall(json.dumps(tools_req).encode("utf-8") + b"\n")
         raw_tools = _read_json_response(parent_sock, deadline)
     except (OSError, TimeoutError) as exc:
-        return False, "private_tools_list_timeout", str(exc)
+        return _failure("private_tools_list_timeout", str(exc))
 
     if raw_tools is None or "result" not in raw_tools:
-        return False, "private_tools_list_invalid_response", str(raw_tools)
+        return _failure("private_tools_list_invalid_response", str(raw_tools))
 
     res_raw = raw_tools["result"]
     if not isinstance(res_raw, dict):
-        return False, "private_tools_list_invalid_response", str(res_raw)
+        return _failure("private_tools_list_invalid_response", str(res_raw))
 
-    tools_raw = cast("dict[str, object]", res_raw).get("tools")
-    tools_list: list[dict[str, object]] = []
-    if isinstance(tools_raw, list):
-        tools_list.extend(
-            cast("dict[str, object]", item) for item in tools_raw if isinstance(item, dict)
-        )
-
+    # Canonicalise exactly as the parent's served-endpoint baseline does, so a
+    # candidate hash and a baseline hash are comparable byte-for-byte.
+    tools_list = canonical_tool_entries(cast("dict[str, object]", res_raw).get("tools"))
     candidate_tool_hash = compute_tool_set_hash(tools_list)
+    entries = tuple(tools_list)
 
     if expected_tool_hash is not None and candidate_tool_hash != expected_tool_hash:
-        return (
-            False,
-            "tool_set_drift",
-            f"schema hash mismatch: candidate={candidate_tool_hash} expected={expected_tool_hash}",
+        return CandidateReadiness(
+            ok=False,
+            failure_stage="tool_set_drift",
+            detail=(
+                f"schema hash mismatch: candidate={candidate_tool_hash} "
+                f"expected={expected_tool_hash}"
+            ),
+            tool_hash=candidate_tool_hash,
+            tools=entries,
         )
-    return True, None, candidate_tool_hash
+    return CandidateReadiness(ok=True, tool_hash=candidate_tool_hash, tools=entries)
 
 
-def verify_candidate_readiness(
+def check_candidate_readiness(
     parent_sock: socket.socket,
     *,
     expected_spawn_id: str,
@@ -293,11 +436,12 @@ def verify_candidate_readiness(
     expected_broker_fingerprint: str | None,
     expected_tool_hash: str | None = None,
     timeout: float = _PRIVATE_READINESS_TIMEOUT_S,
-) -> tuple[bool, str | None, str | None]:
-    """Verify the candidate over the private socketpair.
+) -> CandidateReadiness:
+    """Verify the candidate over the private socketpair and return the typed outcome.
 
-    Returns:
-        (success, failure_stage, tool_hash_or_diff)
+    The candidate's canonical served catalogue and its hash are returned on both
+    success and drift so the caller can retain the validated hash or render a
+    name-level drift diff without parsing the human-readable ``detail``.
     """
     deadline = time.monotonic() + timeout
     parent_sock.settimeout(max(0.1, deadline - time.monotonic()))
@@ -311,9 +455,41 @@ def verify_candidate_readiness(
         expected_broker_fingerprint=expected_broker_fingerprint,
     )
     if not init_ok:
-        return False, init_stage, init_err
+        return _failure(
+            init_stage if init_stage is not None else "private_preflight_failed",
+            init_err if init_err is not None else "",
+        )
 
     return _verify_tools_exchange(parent_sock, deadline, expected_tool_hash=expected_tool_hash)
+
+
+def verify_candidate_readiness(
+    parent_sock: socket.socket,
+    *,
+    expected_spawn_id: str,
+    expected_pid: int,
+    expected_session_id: str,
+    expected_broker_fingerprint: str | None,
+    expected_tool_hash: str | None = None,
+    timeout: float = _PRIVATE_READINESS_TIMEOUT_S,
+) -> tuple[bool, str | None, str | None]:
+    """Tuple view of :func:`check_candidate_readiness`.
+
+    Returns ``(success, failure_stage, tool_hash_or_diff)``. Prefer
+    :func:`check_candidate_readiness` where the candidate's catalogue or hash
+    is needed; this wrapper exists for callers that only need the verdict.
+    """
+    result = check_candidate_readiness(
+        parent_sock,
+        expected_spawn_id=expected_spawn_id,
+        expected_pid=expected_pid,
+        expected_session_id=expected_session_id,
+        expected_broker_fingerprint=expected_broker_fingerprint,
+        expected_tool_hash=expected_tool_hash,
+        timeout=timeout,
+    )
+    detail = result.detail if not result.ok else result.tool_hash
+    return result.ok, result.failure_stage, detail
 
 
 def _read_json_response(sock: socket.socket, deadline: float) -> dict[str, object] | None:
@@ -350,7 +526,13 @@ def wait_for_old_child_pause_ack(
     timeout: float = _HANDOVER_ACK_TIMEOUT_S,
     sleep_fn: Callable[[float], object] | None = None,
 ) -> bool:
-    """Wait for the retiring child to acknowledge pause by dropping its socket."""
+    """Wait for the retiring child to acknowledge pause with an ack FILE.
+
+    The acknowledgement is a sentinel file (``<pause>.ack``) created by the old
+    child once it has dropped its accepting FD — NOT a message on the handover
+    socketpair, which carries only the private preflight exchange. Waiting on
+    the socket here would hang until the ack timeout on every healthy handover.
+    """
     ack_path = pause_path.with_name(pause_path.name + ".ack")
     deadline = time.monotonic() + timeout
     sleeper = sleep_fn if sleep_fn is not None else time.sleep
@@ -389,9 +571,14 @@ __all__ = [
     "_HANDOVER_ACK_TIMEOUT_S",
     "_HANDOVER_DRAIN_S",
     "_PRIVATE_READINESS_TIMEOUT_S",
+    "CandidateReadiness",
+    "canonical_tool_entries",
+    "check_candidate_readiness",
     "compute_tool_set_hash",
     "create_handover_socketpair",
+    "describe_tool_set_diff",
     "request_old_child_pause",
+    "served_tool_entries",
     "signal_candidate_resume",
     "start_private_readiness_listener",
     "verify_candidate_readiness",

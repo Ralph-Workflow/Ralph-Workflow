@@ -22,6 +22,7 @@ Pins:
 from __future__ import annotations
 
 import contextlib
+import errno
 import json
 import os
 import signal
@@ -40,12 +41,14 @@ import pytest
 from ralph.mcp.protocol.env import (
     MCP_STAGE_ID_ENV,
 )
+from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server._handover_protocol import (
     compute_tool_set_hash,
     create_handover_socketpair,
     verify_candidate_readiness,
 )
+from ralph.mcp.server._http_tools_list import _http_tools_list_names
 from ralph.mcp.server._mcp_attempt_result import RestartAttemptResult
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._mcp_server_error import McpServerError
@@ -53,6 +56,7 @@ from ralph.mcp.server._snapshots import snapshot_dir
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.server._start_stage_tracker import read_last_stage
 from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
+from ralph.workspace.fs import FsWorkspace
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
@@ -428,38 +432,195 @@ sys.stderr.buffer.flush()
 
 
 def test_c2_failed_candidate_survival_and_single_failure_not_terminal(
-    managed_spawner: Callable[..., ManagedProcess],
     tmp_path: Path,
 ) -> None:
-    """Pins C2: A failed candidate restart attempt does not kill a live old child.
+    """Pins C2: A failed candidate spawn on the production bridge path does not kill a live old child.
 
-    The live old child continues serving, restart_count increments, no untyped crash.
+    Real MCP subprocess is started by ``start_mcp_server`` (parent-owned listening
+    FD, no-op preflight). The bridge's ``_restart_fn`` is patched to raise
+    ``RuntimeError`` so the candidate never reaches a verified-ready state.
+    Asserts the live old child actually answers a real JSON-RPC ``tools/list``
+    request over the shared endpoint, the bridge does not raise
+    ``McpServerError`` (so the agent run is not interrupted), ``restart_count
+    == 1``, and the candidate + its whole process group are reaped (no leak).
     """
-    old_proc = managed_spawner(
-        [sys.executable, "-c", "import time; time.sleep(10)"],
-        label="c2-old-child",
+    session = AgentSession(
+        session_id="session-c2-survival-real",
+        run_id="run-c2-survival-real",
+        drain="development",
+        capabilities={"WorkspaceRead"},
     )
-    old_inner = _make_real_standalone(old_proc, tmp_path, stage_id="old-stage-c2")
+    workspace = FsWorkspace(tmp_path)
 
-    def failing_candidate_spawn() -> StandaloneMcpProcess:
-        raise RuntimeError("simulated candidate spawn failure")
+    real_spawn = lifecycle._default_lifecycle_deps().spawn_process
 
-    bridge = lifecycle.RestartAwareMcpBridge(
-        old_inner,
-        restart_fn=failing_candidate_spawn,
+    def noop_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:
+        del endpoint, required_tools, timeout
+
+    deps = lifecycle._default_lifecycle_deps().__replace__(
+        preflight=noop_preflight, spawn_process=real_spawn
+    )
+    extras = lifecycle.McpServerExtras(
+        restart_policy=McpRestartPolicy(cooldown_seconds=0.0),
+    )
+
+    bridge = lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras)
+
+    try:
+        old_pid = bridge.process.pid
+        assert old_pid > 0
+        assert bridge.process.poll() is None
+
+        endpoint = bridge.endpoint_uri()
+
+        # Before the failed restart: old child already serves tools/list over the
+        # shared endpoint (baseline). This proves the bridge is on a real
+        # production path with a live inheritor child.
+        names_before = _http_tools_list_names(endpoint, timeout=2.0)
+        assert isinstance(names_before, list)
+
+        # Replace restart_fn with a function that simulates a failed candidate
+        # spawn (e.g. the subprocess factory is wedged). The bridge must keep
+        # the live old child serving and not raise McpServerError.
+        def failing_candidate_spawn() -> StandaloneMcpProcess:
+            raise RuntimeError("simulated candidate spawn failure")
+
+        bridge._restart_fn = failing_candidate_spawn
+
+        # Perform restart: candidate spawn raises; bridge keeps old child and
+        # returns False (does NOT raise McpServerError — only BUDGET_EXHAUSTED
+        # raises, per the C2 contract).
+        promoted = bridge._perform_restart(process_exited=False, probe_duration_s=0.5)
+
+        # C2 invariants on the production path:
+        assert promoted is False, "failed candidate spawn must not report promotion"
+        assert bridge.restart_count == 1, "failed attempt counts once toward budget"
+        assert bridge.process.pid == old_pid, "old child PID must remain _inner"
+        assert bridge._inner is not None
+        old_inner_proc = bridge._inner.process
+        assert old_inner_proc.poll() is None, "old child must remain alive"
+
+        # Old child still serves tools/list over the SHARED endpoint (no
+        # candidate promotion, no swap). This is the live-bridge survival proof.
+        names_after = _http_tools_list_names(endpoint, timeout=2.0)
+        assert isinstance(names_after, list)
+        assert names_after == names_before, (
+            "tools/list response must be identical before and after the failed "
+            "restart — the old child was never replaced"
+        )
+
+        # No leaked candidate process: bridge's _inner is the original old
+        # child, and the candidate spawn path raised before any new process was
+        # spawned. No additional processes or process groups are alive beyond
+        # the bridge's child.
+        own_pid = os.getpid()
+        descendants_before = {
+            d.pid for d in psutil.Process(own_pid).children(recursive=True) if d.pid != old_pid
+        }
+        assert descendants_before == set(), (
+            f"failed candidate spawn leaked unrelated child PIDs: {descendants_before}"
+        )
+
+    finally:
+        with contextlib.suppress(Exception):
+            bridge.shutdown()
+
+
+def test_c2_live_old_child_serves_tools_list_during_failed_candidate(
+    tmp_path: Path,
+) -> None:
+    """C2 black-box: the SHARED endpoint serves tools/list while a candidate
+    spawn fails, with no McpServerError escaping the bridge.
+
+    Drives the production ``start_mcp_server`` path. Substitutes ``restart_fn``
+    to raise ``RuntimeError`` so a candidate is never started. Asserts the
+    existing live child answers a real JSON-RPC ``tools/list`` over HTTP and
+    the bridge does not raise ``McpServerError`` (so the supervisor stays
+    non-terminal — the agent run is not interrupted). The candidate is never
+    spawned, so the candidate-process-group-reaped invariant is vacuously
+    satisfied and we verify it with a bounded psutil scan of the test
+    process's children.
+    """
+    session = AgentSession(
+        session_id="session-c2-live-serving",
+        run_id="run-c2-live-serving",
+        drain="development",
+        capabilities={"WorkspaceRead"},
+    )
+    workspace = FsWorkspace(tmp_path)
+
+    real_spawn = lifecycle._default_lifecycle_deps().spawn_process
+
+    def noop_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:
+        del endpoint, required_tools, timeout
+
+    deps = lifecycle._default_lifecycle_deps().__replace__(
+        preflight=noop_preflight, spawn_process=real_spawn
+    )
+    extras = lifecycle.McpServerExtras(
         restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
-        run_id="test-run-c2-survival",
-        sleep_fn=lambda s: None,
     )
 
-    # Perform restart attempt
-    promoted = bridge._perform_restart(process_exited=False, probe_duration_s=0.5)
+    bridge = lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras)
 
-    # Invariant: Attempt failed non-terminally, old child is kept alive and serving
-    assert promoted is False
-    assert bridge.restart_count == 1
-    assert bridge.process.pid == old_proc.pid
-    assert old_proc.poll() is None
+    try:
+        # Snapshot live-state invariants BEFORE the failed restart.
+        endpoint = bridge.endpoint_uri()
+        assert bridge.process.poll() is None
+        live_pid = bridge.process.pid
+
+        # Drive the restart attempt with a wedged restart_fn.
+        attempts = [0]
+
+        def failing_spawn() -> StandaloneMcpProcess:
+            attempts[0] += 1
+            raise RuntimeError("candidate spawn wedged")
+
+        bridge._restart_fn = failing_spawn
+
+        # Two failed attempts must stay non-terminal (budget remains).
+        first = bridge._perform_restart(process_exited=False, probe_duration_s=0.5)
+        assert first is False
+        assert bridge.restart_count == 1
+        assert bridge.process.pid == live_pid
+        assert bridge.process.poll() is None
+
+        second = bridge._perform_restart(process_exited=False, probe_duration_s=0.5)
+        assert second is False
+        assert bridge.restart_count == 2
+        assert bridge.process.pid == live_pid
+        assert bridge.process.poll() is None
+
+        # Old child is STILL the active bridge child and STILL serves HTTP.
+        names = _http_tools_list_names(endpoint, timeout=2.0)
+        assert isinstance(names, list)
+
+        # Foreign bind must fail with EADDRINUSE — the bridge still owns the
+        # listening socket for its full lifetime, so the port is held.
+        port = int(endpoint.split(":")[-1].split("/")[0])
+        foreign = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            with pytest.raises(OSError) as exc_info:
+                foreign.bind(("127.0.0.1", port))
+            assert exc_info.value.errno == errno.EADDRINUSE
+        finally:
+            foreign.close()
+
+        # No candidate was ever spawned (restart_fn raised before the bridge
+        # could invoke the subprocess factory), so the candidate's process
+        # group is vacuously reaped. The old child's process group is the
+        # bridge's only descendant.
+        own_pid = os.getpid()
+        descendants = {d.pid for d in psutil.Process(own_pid).children(recursive=True)}
+        assert live_pid in descendants, "old child must be alive under the bridge"
+        candidate_pids = descendants - {live_pid}
+        assert candidate_pids == set(), f"failed candidate spawned leaked PIDs: {candidate_pids}"
+
+        assert attempts[0] == 2, "restart_fn must have been invoked twice"
+
+    finally:
+        with contextlib.suppress(Exception):
+            bridge.shutdown()
 
 
 def test_c2_budget_exhaustion_with_dead_old_child(

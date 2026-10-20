@@ -10,24 +10,20 @@ from __future__ import annotations
 import collections
 import contextlib
 import dataclasses
+import importlib
 import io
 import logging
 import secrets
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import IO, TYPE_CHECKING, Final, Literal
+from typing import IO, TYPE_CHECKING, Final, Literal, cast
 
 import psutil
 
 import ralph.timeout_defaults as td
-from ralph.mcp.server._runtime_hooks import (
-    register_owner_loss_hook as _runtime_register_owner_loss_hook,
-)
-from ralph.mcp.server._runtime_hooks import (
-    register_shutdown_hook as _runtime_register_shutdown_hook,
-)
 from ralph.mcp.tools._exec_job_output import (
     _append_tail_buffer,
     _format_job_output,
@@ -56,6 +52,52 @@ KillCause = Literal[
     "stalled", "no_progress", "hard_cap", "abandoned", "session_end", "restart_lost"
 ]
 _MAX_UNTERMINATED_LINE_BYTES = 1000
+
+# Module-level lazy initialization of the runtime hook registrars, kept
+# here (after every top-level import) so the import order is preserved
+# while still breaking the ``runtime`` ↔ ``_fallback_http_handler`` ↔
+# ``exec_sse_streaming`` ↔ ``_exec_jobs`` circular-import cycle.
+# A small bounded cache holds the resolved registrars after first lookup
+# so they aren't re-fetched on every registry construction.
+_runtime_hook_cache: dict[str, Callable[[Callable[[], None]], None]] = {}  # bounded-accumulator-ok: cache holds at most 2 entries (owner_loss + shutdown) and is read-once after first hit
+
+
+def _ensure_runtime_hooks() -> tuple[
+    Callable[[Callable[[], None]], None],
+    Callable[[Callable[[], None]], None],
+]:
+    """Lazily import the runtime hook registrars to break the import cycle.
+
+    ``_exec_jobs`` is imported by ``exec_sse_streaming``, which is imported by
+    ``_fallback_http_handler``, which is imported by ``_fallback_standalone_server``,
+    which is imported by ``runtime``. Importing ``runtime`` at module top
+    level races against the reverse chain at module init. The runtime hook
+    registrars are simple list-appending callbacks without side effects on
+    import, so deferring the lookup to first use preserves the public
+    contract while removing the cycle.
+    """
+    cached_owner_loss: Callable[[Callable[[], None]], None] | None = _runtime_hook_cache.get(
+        "owner_loss"
+    )
+    cached_shutdown: Callable[[Callable[[], None]], None] | None = _runtime_hook_cache.get(
+        "shutdown"
+    )
+    if cached_owner_loss is None or cached_shutdown is None:
+        # Lazy attribute access (NOT a top-level ``from ... import ...``
+        # statement) breaks the ``runtime`` ↔ ``_exec_jobs`` cycle. The
+        # top-level ``importlib`` import is safe (it doesn't touch our
+        # cycle), and the ``runtime`` module is fetched through Python's
+        # import machinery after both modules have finished initialising.
+        runtime_mod = importlib.import_module("ralph.mcp.server.runtime")
+        cached_owner_loss = cast(
+            "Callable[[Callable[[], None]], None]", runtime_mod.register_owner_loss_hook
+        )
+        cached_shutdown = cast(
+            "Callable[[Callable[[], None]], None]", runtime_mod.register_shutdown_hook
+        )
+        _runtime_hook_cache["owner_loss"] = cached_owner_loss
+        _runtime_hook_cache["shutdown"] = cached_shutdown
+    return cached_owner_loss, cached_shutdown
 
 
 class _DefaultPsutilModule:
@@ -232,8 +274,9 @@ class ExecJobRegistry:
         ] = []  # bounded-accumulator-ok: registration hooks
 
         if auto_register_runtime_hooks:
-            _runtime_register_shutdown_hook(lambda: self.shutdown_all("session_end"))
-            _runtime_register_owner_loss_hook(lambda: self.shutdown_all("session_end"))
+            _register_shutdown, _register_owner_loss = _ensure_runtime_hooks()
+            _register_shutdown(lambda: self.shutdown_all("session_end"))
+            _register_owner_loss(lambda: self.shutdown_all("session_end"))
 
     def register_owner_loss_hook(self, hook: Callable[[], None]) -> None:
         """Register an owner-loss hook with the registry and runtime."""
@@ -241,7 +284,8 @@ class ExecJobRegistry:
             if hook not in self._owner_loss_hooks:
                 self._owner_loss_hooks.append(hook)
         with contextlib.suppress(Exception):
-            _runtime_register_owner_loss_hook(hook)
+            _register_owner_loss, _ = _ensure_runtime_hooks()
+            _register_owner_loss(hook)
 
     def subscribe_progress(self, sub: ProgressSubscription) -> None:
         """Subscribe a request-scoped sink to progress updates."""

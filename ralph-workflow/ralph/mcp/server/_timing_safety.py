@@ -78,7 +78,6 @@ SERVER_WORST_CASE_MS: int = DISPATCH_CAP_MS + DRAIN_CEILING_MS + KILL_ESCALATION
 #: ``_OPENCODE_MCP_CLIENT_TIMEOUT_HEADROOM_MS``, ``MCP_TOOL_CALL_HEADROOM_MS``).
 TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000
 _TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000
-TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = _TIMING_SAFETY_TRANSPORT_HEADROOM_MS
 
 #: Floor (milliseconds) the timing-safety check verifies every
 #: transport-configured timeout against. Clients Ralph cannot
@@ -86,7 +85,7 @@ TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = _TIMING_SAFETY_TRANSPORT_HEADROOM_MS
 #: constant is the line those rows have to clear only when Ralph
 #: actually writes a timeout for them.
 TIMING_SAFETY_TRANSPORT_FLOOR_MS: int = (
-    EXEC_SOFT_REPLY_BUDGET_MS + _TIMING_SAFETY_TRANSPORT_HEADROOM_MS
+    EXEC_SOFT_REPLY_BUDGET_MS + TIMING_SAFETY_TRANSPORT_HEADROOM_MS
 )
 
 
@@ -151,7 +150,6 @@ __all__ = [
     "SERVER_WORST_CASE_MS",
     "TIMING_SAFETY_TRANSPORT_FLOOR_MS",
     "TIMING_SAFETY_TRANSPORT_HEADROOM_MS",
-    "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS",
     "timing_safety_margin_ms",
     "verify_transport_timeout_safety",
 ]

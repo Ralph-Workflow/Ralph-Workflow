@@ -11,9 +11,11 @@ its full lifetime. Restart is ordered and single-acceptor:
    socketpair). A preflight over the shared endpoint is meaningless
    during the overlap because the old child may answer it.
 3. Tell the old child to stop accepting (the pause file
-   ``MCP_ACCEPT_PAUSE_FILE``). Wait for its acknowledgement, bounded by
-   ``_HANDOVER_ACK_TIMEOUT_S``; on timeout, SIGKILL the old child's group
-   and confirm it is gone before promotion.
+   ``MCP_ACCEPT_PAUSE_FILE``). Wait for its acknowledgement — a FILE
+   sentinel ``<pause>.ack`` created by the old child after it drops its
+   accepting FD, NOT a message on the handover socketpair — bounded by
+   ``_HANDOVER_ACK_TIMEOUT_S``; on timeout, kill the old child and confirm
+   it is gone (``_HANDOVER_KILL_WAIT_S``) before promotion.
 4. Tell the candidate to start accepting (the resume file
    ``MCP_ACCEPT_RESUME_FILE``). At no moment do two children accept.
 5. Promote (_inner swap) under lock, then drain the old child inside
@@ -41,9 +43,22 @@ The deferral counter has both a count ceiling (``_DEFERRAL_COUNT_CEILING``)
 and a wall-time ceiling (``_DEFERRAL_WALL_TIME_CEILING_S``).
 
 Tool-set drift (C1/E1.9): ``_verify_candidate`` verifies tool-set hash
-equality against carried state (``_expected_tool_hash``). Drift is refused
-while the old child is alive; if the old child is dead, drift is promoted
-with a WARNING.
+equality against carried state (``_expected_tool_hash``). The reference is
+real, not a parent-side guess: ``start_mcp_server`` performs ONE bounded
+served ``tools/list`` over the shared endpoint of the FIRST live child —
+before any candidate can overlap — and seeds both the hash and the catalogue
+behind it. After every successful candidate verification the candidate's own
+served catalogue replaces that reference. Drift is refused while the old child
+is alive (the refusal WARNING names the added/removed/changed tools, the
+attempt is counted, and the old child keeps serving); if the old child is dead
+there is nothing left to preserve, so the drifted candidate is promoted with a
+WARNING that names the diff.
+
+Handover stage attribution (C5/DEC-002): every ``McpServerError`` raised from
+the make-before-break path carries ``handover_step`` naming the failing stage
+(``spawn_candidate``, ``verify_candidate``, ``pause_ack``, ``resume_candidate``,
+``promote_candidate``, ``drain_old_child``). The innermost stage wins, so a
+drain failure is not relabelled as a promotion failure on its way out.
 
 Why this design cannot double-serve, double-write, hang, or storm:
 
@@ -112,10 +127,14 @@ from ralph.mcp.protocol.startup import (
 from ralph.mcp.server._handover_protocol import (
     _HANDOVER_ACK_TIMEOUT_S,
     _HANDOVER_DRAIN_S,
+    CandidateReadiness,
+    check_candidate_readiness,
+    compute_tool_set_hash,
     create_handover_socketpair,
+    describe_tool_set_diff,
     request_old_child_pause,
+    served_tool_entries,
     signal_candidate_resume,
-    verify_candidate_readiness,
     wait_for_old_child_pause_ack,
 )
 from ralph.mcp.server._http_tools_list import (
@@ -273,6 +292,48 @@ if not (
 _RESET_WRAPUP_TIMEOUT_S: float = 2.0
 if not _RESET_WRAPUP_TIMEOUT_S > 0:
     raise RuntimeError(f"_RESET_WRAPUP_TIMEOUT_S must be positive (got {_RESET_WRAPUP_TIMEOUT_S})")
+
+# Timeout for the ONE baseline ``tools/list`` the parent performs over the
+# shared endpoint during initial bridge startup. It runs after the first
+# child's preflight already proved the endpoint is serving, so it is a small
+# confirmation read, not a startup wait; the bound keeps a wedged child from
+# stalling bridge construction. The invariant is enforced at import time via
+# `if`/`raise RuntimeError` (NOT `assert`) so it survives `python -O`.
+_INITIAL_TOOL_HASH_TIMEOUT_S: float = 5.0
+_INITIAL_TOOL_HASH_TIMEOUT_MAX_S: float = 30.0
+if not (
+    _INITIAL_TOOL_HASH_TIMEOUT_S > 0
+    and _INITIAL_TOOL_HASH_TIMEOUT_S < _INITIAL_TOOL_HASH_TIMEOUT_MAX_S
+):
+    raise RuntimeError(
+        "_INITIAL_TOOL_HASH_TIMEOUT_S must be in (0,"
+        f" {_INITIAL_TOOL_HASH_TIMEOUT_MAX_S:g}) seconds"
+        f" (got {_INITIAL_TOOL_HASH_TIMEOUT_S})"
+    )
+
+# Make-before-break handover stage names (C5 / DEC-002). Every McpServerError
+# raised from the make-before-break path carries exactly one of these on its
+# ``handover_step`` field so an operator can name the failing handover stage
+# without replaying the full traceback. The stages are ordered as the protocol
+# executes them: spawn -> verify -> pause/ack -> resume -> promote -> drain.
+_HANDOVER_STEP_SPAWN: Final[str] = "spawn_candidate"
+_HANDOVER_STEP_VERIFY: Final[str] = "verify_candidate"
+_HANDOVER_STEP_PAUSE_ACK: Final[str] = "pause_ack"
+_HANDOVER_STEP_RESUME: Final[str] = "resume_candidate"
+_HANDOVER_STEP_PROMOTE: Final[str] = "promote_candidate"
+_HANDOVER_STEP_DRAIN: Final[str] = "drain_old_child"
+
+#: Deadline (seconds) for confirming that an un-acknowledging old child is gone
+#: after its kill is issued. Bounded and import-time-checked for the same reason
+#: as the other handover deadlines: an unbounded confirmation poll would hang
+#: the make-before-break path on a child that ignores SIGKILL.
+_HANDOVER_KILL_WAIT_S: float = 5.0
+_HANDOVER_KILL_WAIT_MAX_S: float = 30.0
+if not (_HANDOVER_KILL_WAIT_S > 0 and _HANDOVER_KILL_WAIT_S <= _HANDOVER_KILL_WAIT_MAX_S):
+    raise RuntimeError(
+        "_HANDOVER_KILL_WAIT_S must be in (0,"
+        f" {_HANDOVER_KILL_WAIT_MAX_S:g}] seconds (got {_HANDOVER_KILL_WAIT_S})"
+    )
 
 #: Probe-overrun slack (seconds). A probe that exceeds its deadline by more
 #: than this is classified as host contention (C3) rather than server death.
@@ -482,6 +543,41 @@ def _is_saturated_dispatch_outcome(exc: Exception | None) -> bool:
     return "saturated_dispatch" in exc_str or "_saturated_dispatch" in exc_str
 
 
+def _stamp_handover_step(exc: BaseException, step: str) -> BaseException:
+    """Record the failing make-before-break stage on an escaping error.
+
+    INNESTEST WINS: a stage only stamps an error that is not already stamped,
+    so an error raised deep inside the handover (e.g. ``drain_old_child``)
+    keeps its own precise stage instead of being relabelled by the outer
+    ``promote_candidate`` guard on the way out.
+
+    Non-:class:`McpServerError` exceptions pass through untouched; they carry
+    no ``handover_step`` field for the supervisor to read.
+    """
+    if isinstance(exc, McpServerError) and exc.handover_step is None:
+        exc.handover_step = step
+    return exc
+
+
+def _child_process_diagnostics(inner: object) -> tuple[int | None, str | None]:
+    """Return ``(child_pid, psutil_status)`` for the live child behind ``inner``.
+
+    Best-effort and fail-closed: a missing pid, a foreign process object, or a
+    pid that already exited all yield ``(pid, None)`` rather than raising, so
+    constructing a diagnostic-bearing error can never fail to report the error
+    it was raised for.
+    """
+    proc: object = getattr(inner, "process", None)
+    raw_pid: object = getattr(proc, "pid", None)
+    if not isinstance(raw_pid, int) or isinstance(raw_pid, bool):
+        return None, None
+    try:
+        status = str(psutil.Process(raw_pid).status())
+    except Exception:
+        return raw_pid, None
+    return raw_pid, status
+
+
 class _RestartFnProtocol(Protocol):
     def __call__(self, *, make_before_break: bool = False) -> StandaloneMcpProcess: ...
 
@@ -517,6 +613,7 @@ class RestartAwareMcpBridge:
         clock_fn: Callable[[], float] | None = None,
         session_id: str | None = None,
         broker_fingerprint: str | None = None,
+        tool_entries_fn: Callable[[str, float], list[dict[str, object]]] | None = None,
     ) -> None:
         self._inner = inner
         self._restart_fn = restart_fn
@@ -544,7 +641,19 @@ class RestartAwareMcpBridge:
         self._clock_fn: Callable[[], float] | None = clock_fn
         self._session_id: str | None = session_id
         self._broker_fingerprint: str | None = broker_fingerprint
+        # E1.9 drift reference for the CURRENT serving child. Seeded once by
+        # ``capture_tool_hash_baseline`` from the served ``tools/list`` of the
+        # first live child, then replaced by the hash each successfully
+        # verified candidate proved. ``_expected_tool_entries`` is the
+        # catalogue behind the hash so a refusal can name the tools that
+        # differ instead of only reporting that two hashes disagree.
         self._expected_tool_hash: str | None = None
+        self._expected_tool_entries: list[dict[str, object]] | None = None
+        # Test seam: the served-tool-list fetcher used to seed the baseline.
+        # Production uses ``served_tool_entries`` (the default ``None``).
+        self._tool_entries_fn: Callable[[str, float], list[dict[str, object]]] | None = (
+            tool_entries_fn
+        )
         self._last_probe_error: Exception | None = None
         self._restart_timestamps: collections.deque[float] = collections.deque(maxlen=64)
         self._last_healthy_at: float = clock_fn() if clock_fn is not None else time.monotonic()
@@ -891,14 +1000,7 @@ class RestartAwareMcpBridge:
         )
         if decision != "ok":
             reason = "probe failed" if not process_exited else "exited"
-            child_pid: int | None = None
-            psutil_status: str | None = None
-            with contextlib.suppress(Exception):
-                proc_obj: object = getattr(self._inner, "process", None)
-                raw_pid: object = getattr(proc_obj, "pid", None)
-                if isinstance(raw_pid, int):
-                    child_pid = raw_pid
-                    psutil_status = str(psutil.Process(child_pid).status())
+            child_pid, psutil_status = _child_process_diagnostics(self._inner)
             raise McpServerError(
                 f"MCP server {reason} and restart budget exhausted "
                 f"(current={self._restart_count}, "
@@ -1001,6 +1103,62 @@ class RestartAwareMcpBridge:
         except TypeError:
             return self._restart_fn()
 
+    def capture_tool_hash_baseline(self) -> None:
+        """Seed the E1.9 drift reference from the SERVED ``tools/list`` of the live child.
+
+        Called once during initial bridge startup, after the first child's
+        preflight has proved the endpoint is serving and BEFORE any candidate
+        can overlap it. Reading the wire response (rather than a parent-side
+        catalogue snapshot) is the whole point: the served list is what an agent
+        actually sees, so it is the only sound drift reference. Both channels
+        canonicalise through
+        :func:`~ralph.mcp.server._handover_protocol.canonical_tool_entries`
+        before hashing, so a baseline captured here is byte-comparable with the
+        hash a candidate proves over the private readiness channel.
+
+        Fails OPEN by design: a transport failure leaves the baseline unset and
+        warns, rather than failing bridge construction. Refusing to build a
+        bridge because a confirmation read raced a restart would turn a
+        degraded-drift-detection condition into a dead run; the WARNING makes
+        the gap visible to the operator and the next successful candidate
+        verification restores the reference.
+        """
+        endpoint = self._inner.endpoint
+        if not isinstance(endpoint, str) or not endpoint:
+            logger.warning("tool-hash baseline skipped: inner endpoint is not a usable string")
+            return
+        fetch = self._tool_entries_fn if self._tool_entries_fn is not None else served_tool_entries
+        try:
+            entries = fetch(endpoint, _INITIAL_TOOL_HASH_TIMEOUT_S)
+        except (OSError, ValueError, TimeoutError) as exc:
+            self._expected_tool_hash = None
+            self._expected_tool_entries = None
+            logger.warning(
+                "tool-hash baseline capture failed for {}; tool-set drift detection is "
+                "degraded until the next successful candidate verification: {}",
+                endpoint,
+                exc,
+            )
+            return
+        if not entries:
+            self._expected_tool_hash = None
+            self._expected_tool_entries = None
+            logger.warning(
+                "tool-hash baseline capture returned an empty served tool list for {}; "
+                "tool-set drift detection is degraded until the next successful candidate "
+                "verification",
+                endpoint,
+            )
+            return
+        self._expected_tool_entries = entries
+        self._expected_tool_hash = compute_tool_set_hash(entries)
+        logger.debug(
+            "tool-hash baseline captured from served tools/list: endpoint={} tools={} hash={}",
+            endpoint,
+            len(entries),
+            self._expected_tool_hash,
+        )
+
     def _verify_candidate_socket(
         self,
         candidate: StandaloneMcpProcess,
@@ -1013,7 +1171,7 @@ class RestartAwareMcpBridge:
         session_id: str = self._session_id or ""
         broker_fp: str | None = self._broker_fingerprint
         try:
-            ok, failure_stage, tool_hash_or_diff = verify_candidate_readiness(
+            result: CandidateReadiness = check_candidate_readiness(
                 parent_sock,
                 expected_spawn_id=stage_id,
                 expected_pid=pid,
@@ -1021,8 +1179,11 @@ class RestartAwareMcpBridge:
                 expected_broker_fingerprint=broker_fp,
                 expected_tool_hash=self._expected_tool_hash,
             )
-            if not ok:
-                if failure_stage == "tool_set_drift":
+            if not result.ok:
+                if result.failure_stage == "tool_set_drift":
+                    diff = describe_tool_set_diff(
+                        self._expected_tool_entries, list(result.tools) or None
+                    )
                     proc_old: object = getattr(self._inner, "process", None)
                     poll_fn: object = getattr(proc_old, "poll", None)
                     old_dead = False
@@ -1030,18 +1191,41 @@ class RestartAwareMcpBridge:
                         poll_result: object = poll_fn()
                         old_dead = poll_result is not None
                     if old_dead:
+                        # Dead-old-child exception: nothing left to preserve, so
+                        # the drifted candidate is promoted — but never silently.
                         logger.warning(
-                            "Tool-set drift detected during candidate verification, but old child is dead; promoting candidate with warning: {}",
-                            tool_hash_or_diff,
+                            "Tool-set drift detected during candidate verification, but old "
+                            "child is dead; promoting candidate with warning: {} | {}",
+                            result.detail,
+                            diff,
                         )
-                        if tool_hash_or_diff and "candidate=" in tool_hash_or_diff:
-                            cand_part = tool_hash_or_diff.split("candidate=")[1].split()[0]
-                            self._expected_tool_hash = cand_part
+                        if result.tool_hash is not None:
+                            self._expected_tool_hash = result.tool_hash
+                            self._expected_tool_entries = list(result.tools)
                         return True
-                logger.warning("Candidate verification failed: stage={}", failure_stage)
+                    # Old child is alive and serving: refuse the promotion, name
+                    # the tools that differ, and keep the old child intact.
+                    logger.warning(
+                        "Candidate verification refused on tool-set drift: stage={} detail={} "
+                        "tool_set_diff={}",
+                        result.failure_stage,
+                        result.detail,
+                        diff,
+                    )
+                    return False
+                logger.warning(
+                    "Candidate verification failed: stage={} detail={}",
+                    result.failure_stage,
+                    result.detail,
+                )
                 return False
-            if tool_hash_or_diff is not None:
-                self._expected_tool_hash = tool_hash_or_diff
+            # Retain the VALIDATED candidate catalogue as the new drift
+            # reference BEFORE the ``finally`` closes the handover channel, so a
+            # later candidate is judged against what the serving child actually
+            # advertises rather than against a stale baseline.
+            if result.tool_hash is not None:
+                self._expected_tool_hash = result.tool_hash
+                self._expected_tool_entries = list(result.tools)
             return True
         except Exception as exc:
             logger.warning("Candidate verification raised exception: {}", exc)
@@ -1073,7 +1257,16 @@ class RestartAwareMcpBridge:
     def _hand_over_accept(
         self, old_inner: StandaloneMcpProcess, candidate: StandaloneMcpProcess
     ) -> None:
-        """Execute single-acceptor pause-ack-resume handover between children."""
+        """Execute single-acceptor pause-ack-resume handover between children.
+
+        Errors escaping either stage carry ``handover_step`` naming the exact
+        stage, so a supervisor report distinguishes "the old child never
+        acknowledged the pause" from "the candidate never got its resume
+        sentinel" — the two have completely different operator responses.
+        On any escape (KeyboardInterrupt, SIGTERM, ordinary failure) the
+        candidate is reaped before the exception propagates, so a hard cancel
+        during the handshake cannot leak the candidate process.
+        """
         if self._workspace_root is not None:
             snap = snapshot_dir(self._workspace_root, self._run_id)
             old_stage_obj: object = getattr(old_inner, "stage_id", None)
@@ -1098,12 +1291,21 @@ class RestartAwareMcpBridge:
             raw_pid: object = getattr(proc, "pid", None)
             pid: int | None = raw_pid if isinstance(raw_pid, int) else None
             if _is_alive_pid(pid):
-                request_old_child_pause(pause_file)
-                ack = wait_for_old_child_pause_ack(
-                    pause_file,
-                    timeout=_HANDOVER_ACK_TIMEOUT_S,
-                    sleep_fn=self._sleep_fn,
-                )
+                try:
+                    request_old_child_pause(pause_file)
+                    ack = wait_for_old_child_pause_ack(
+                        pause_file,
+                        timeout=_HANDOVER_ACK_TIMEOUT_S,
+                        sleep_fn=self._sleep_fn,
+                    )
+                except BaseException as pause_exc:
+                    # On any escape here the candidate is not yet attached
+                    # to bridge state; reap it before propagating so a hard
+                    # cancel cannot leak the process. The reap is idempotent
+                    # against any subsequent ``shutdown`` call.
+                    with contextlib.suppress(Exception):
+                        candidate.shutdown()
+                    raise _stamp_handover_step(pause_exc, _HANDOVER_STEP_PAUSE_ACK) from pause_exc
                 if not ack:
                     logger.warning(
                         "Old child failed to acknowledge pause within {}s; escalating termination",
@@ -1117,16 +1319,21 @@ class RestartAwareMcpBridge:
                         "Callable[[], object] | None", getattr(proc, "poll", None)
                     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
                     if poll_fn is not None and callable(poll_fn):
-                        deadline = time.monotonic() + 5.0
+                        deadline = time.monotonic() + _HANDOVER_KILL_WAIT_S
                         while time.monotonic() < deadline:
                             poll_res: object = poll_fn()
                             if poll_res is not None:
                                 break
                             sleep_fn = self._sleep_fn if self._sleep_fn is not None else time.sleep
                             sleep_fn(0.05)
-            signal_candidate_resume(resume_file)
-            if cand_stage is not None:
-                signal_candidate_resume(snap / "accept.resume")
+            try:
+                signal_candidate_resume(resume_file)
+                if cand_stage is not None:
+                    signal_candidate_resume(snap / "accept.resume")
+            except BaseException as resume_exc:
+                with contextlib.suppress(Exception):
+                    candidate.shutdown()
+                raise _stamp_handover_step(resume_exc, _HANDOVER_STEP_RESUME) from resume_exc
 
     def _drain_old(self, old_inner: StandaloneMcpProcess) -> None:
         """Drain old child in background up to _HANDOVER_DRAIN_S then shut it down."""
@@ -1161,16 +1368,36 @@ class RestartAwareMcpBridge:
     def _promote_and_reap(
         self, candidate: StandaloneMcpProcess, old_inner: StandaloneMcpProcess
     ) -> None:
-        """Promote candidate to _inner under lock and schedule old child drain."""
-        self._inner = candidate
-        self._bridge_generation += 1
-        self._consecutive_probe_failures = 0
-        self._consecutive_probe_failures_deferred = 0
-        self._first_probe_deferred_at = None
-        self._drain_old(old_inner)
+        """Promote candidate to _inner under lock and schedule old child drain.
+
+        The two halves are stamped separately: a failure while swapping the
+        inner is a promotion failure, while a failure while retiring the old
+        child is a drain failure. :func:`_stamp_handover_step` is
+        innermost-wins, so the drain stamp survives the outer promote guard.
+        """
+        try:
+            self._inner = candidate
+            self._bridge_generation += 1
+            self._consecutive_probe_failures = 0
+            self._consecutive_probe_failures_deferred = 0
+            self._first_probe_deferred_at = None
+        except BaseException as promote_exc:
+            raise _stamp_handover_step(promote_exc, _HANDOVER_STEP_PROMOTE) from promote_exc
+        try:
+            self._drain_old(old_inner)
+        except BaseException as drain_exc:
+            raise _stamp_handover_step(drain_exc, _HANDOVER_STEP_DRAIN) from drain_exc
 
     def _run_with_make_before_break(self) -> bool:
-        """Run make-before-break candidate replacement while old child serves."""
+        """Run make-before-break candidate replacement while old child serves.
+
+        Every :class:`McpServerError` raised here names the handover stage that
+        produced it. Spawn and verification failures are non-terminal under the
+        C2 contract (the old child keeps serving and the budget remains), so
+        they are stamped and then logged with their stage; failures from the
+        handover/promotion stages are terminal for this attempt and propagate
+        stamped to the caller.
+        """
         if self._workspace_root is not None:
             snap = snapshot_dir(self._workspace_root, self._run_id)
             (snap / "accept.resume").unlink(missing_ok=True)
@@ -1181,12 +1408,15 @@ class RestartAwareMcpBridge:
         try:
             candidate = self._spawn_candidate()
         except Exception as restart_exc:
+            _stamp_handover_step(restart_exc, _HANDOVER_STEP_SPAWN)
             last_stage, elapsed_s = _restart_error_fields(restart_exc)
             logger.warning(
                 "MCP restart attempt {}/{} candidate spawn failed "
-                "(non-terminal, old child kept): last_stage={} elapsed_s={} error={}",
+                "(non-terminal, old child kept, handover_step={}): "
+                "last_stage={} elapsed_s={} error={}",
                 attempt_index,
                 self._restart_policy.max_restarts,
+                _HANDOVER_STEP_SPAWN,
                 last_stage,
                 elapsed_s,
                 restart_exc,
@@ -1196,12 +1426,17 @@ class RestartAwareMcpBridge:
             self._first_probe_deferred_at = None
             return False
 
-        if not self._verify_candidate(candidate):
+        try:
+            candidate_verified = self._verify_candidate(candidate)
+        except BaseException as verify_exc:
+            raise _stamp_handover_step(verify_exc, _HANDOVER_STEP_VERIFY) from verify_exc
+        if not candidate_verified:
             logger.warning(
                 "MCP restart attempt {}/{} candidate verification failed "
-                "(non-terminal, old child kept)",
+                "(non-terminal, old child kept, handover_step={})",
                 attempt_index,
                 self._restart_policy.max_restarts,
+                _HANDOVER_STEP_VERIFY,
             )
             with contextlib.suppress(Exception):
                 candidate.shutdown()
@@ -1210,8 +1445,19 @@ class RestartAwareMcpBridge:
             self._first_probe_deferred_at = None
             return False
 
-        self._hand_over_accept(old_inner, candidate)
-        self._promote_and_reap(candidate, old_inner)
+        try:
+            self._hand_over_accept(old_inner, candidate)
+            self._promote_and_reap(candidate, old_inner)
+        except BaseException as promote_exc:
+            # The inner stages (pause/ack, resume, drain) already stamped the
+            # error; this guard only labels an unstamped handover failure.
+            # Promote and reap didn't run, so the candidate is not yet attached
+            # to bridge state and would leak. ``shutdown`` is the documented
+            # reap entry and is idempotent against any inner stage that
+            # already started a shutdown.
+            with contextlib.suppress(Exception):
+                candidate.shutdown()
+            raise _stamp_handover_step(promote_exc, _HANDOVER_STEP_PROMOTE) from promote_exc
         logger.info(
             "MCP server restarted via make-before-break on stable endpoint {}; restart_count={}",
             self._inner.endpoint,
@@ -1497,18 +1743,26 @@ class RestartAwareMcpBridge:
             # reset later fails.
             self._bridge_generation += 1
             if self._tool_registry_resets >= _TOOL_REGISTRY_MAX_RESETS:
+                cap_pid, cap_status = _child_process_diagnostics(self._inner)
                 raise McpServerError(
                     "MCP tool-registry-reset exhausted "
                     f"({_TOOL_REGISTRY_MAX_RESETS}) "
                     f"after {self._tool_registry_resets} reset(s)",
                     restart_count=self._restart_count,
+                    restart_reason="tool_registry_reset_exhausted",
+                    child_pid=cap_pid,
+                    psutil_status=cap_status,
                 )
             if self._restart_count >= self._restart_policy.max_restarts:
+                budget_pid, budget_status = _child_process_diagnostics(self._inner)
                 raise McpServerError(
                     "MCP server restart budget exhausted "
                     f"(current={self._restart_count}, "
                     f"max={self._restart_policy.max_restarts})",
                     restart_count=self._restart_count,
+                    restart_reason="probe_failed",
+                    child_pid=budget_pid,
+                    psutil_status=budget_status,
                 )
             # S1: increment FIRST so a raise from _restart_fn is
             # reflected in the counts.
@@ -1563,13 +1817,15 @@ class RestartAwareMcpBridge:
                 try:
                     candidate = self._spawn_candidate()
                 except Exception as restart_exc:
+                    _stamp_handover_step(restart_exc, _HANDOVER_STEP_SPAWN)
                     last_stage, elapsed_s = _restart_error_fields(restart_exc)
                     logger.warning(
                         "MCP tool-registry-reset attempt {}/{} candidate spawn failed "
-                        "(non-terminal, old child kept): last_stage={} "
+                        "(non-terminal, old child kept, handover_step={}): last_stage={} "
                         "elapsed_s={} error={}",
                         attempt_index,
                         _TOOL_REGISTRY_MAX_RESETS,
+                        _HANDOVER_STEP_SPAWN,
                         last_stage,
                         elapsed_s,
                         restart_exc,
@@ -1577,12 +1833,20 @@ class RestartAwareMcpBridge:
                     return
                 try:
                     self._verify_alias_present(candidate)
-                except BaseException:
+                except BaseException as alias_exc:
+                    _stamp_handover_step(alias_exc, _HANDOVER_STEP_VERIFY)
                     with contextlib.suppress(Exception):
                         candidate.shutdown()
                     raise
-                self._hand_over_accept(old_inner, candidate)
-                self._promote_and_reap(candidate, old_inner)
+                try:
+                    self._hand_over_accept(old_inner, candidate)
+                    self._promote_and_reap(candidate, old_inner)
+                except BaseException as promote_exc:
+                    # Same abort-time leak guard as _run_with_make_before_break:
+                    # the candidate is not yet attached to bridge state.
+                    with contextlib.suppress(Exception):
+                        candidate.shutdown()
+                    raise _stamp_handover_step(promote_exc, _HANDOVER_STEP_PROMOTE) from promote_exc
 
     def _verify_alias_present(self, target: StandaloneMcpProcess | None = None) -> None:
         """Verify the canonical mcp alias is present after a respawn.
@@ -1629,9 +1893,13 @@ class RestartAwareMcpBridge:
         except (urllib.error.URLError, OSError, TimeoutError, ValueError) as exc:
             msg = f"mcp alias verify probe failed after respawn: endpoint={endpoint!r} error={exc}"
             logger.error(msg)
+            probe_pid, probe_status = _child_process_diagnostics(active)
             raise McpServerError(
                 msg,
                 restart_count=self._restart_count,
+                restart_reason="alias_verify_probe_failed",
+                child_pid=probe_pid,
+                psutil_status=probe_status,
             ) from exc
         expected_alias = f"mcp__{_ALIAS_VERIFY_SERVER_NAME}__{_ALIAS_VERIFY_TOOL_NAME}"
         if expected_alias in tool_names:
@@ -1642,9 +1910,13 @@ class RestartAwareMcpBridge:
             f"sample_tools={sorted(tool_names)[:5]!r}"
         )
         logger.error(msg)
+        alias_pid, alias_status = _child_process_diagnostics(active)
         raise McpServerError(
             msg,
             restart_count=self._restart_count,
+            restart_reason="alias_missing_after_respawn",
+            child_pid=alias_pid,
+            psutil_status=alias_status,
         )
 
     def reset_session_budget(self) -> None:
@@ -1872,6 +2144,14 @@ def start_mcp_server(
         # The path is persisted on the bridge object so shutdown does not
         # delete it (evidence is retained across shutdown for incident triage).
         bridge._durable_sink_path = _configure_bridge_sink(root, uuid.uuid4().hex[:12])
+        # C1/E1.9 baseline: ONE bounded, real ``tools/list`` over the shared
+        # endpoint of the first (and only) live child. This runs after that
+        # child's preflight proved the endpoint is serving and before any
+        # candidate can overlap it, so the very first make-before-break
+        # replacement has a real drift reference to refuse against. Without it
+        # ``_expected_tool_hash`` stayed ``None`` and tool-set drift was
+        # undetectable on the first replacement.
+        bridge.capture_tool_hash_baseline()
     except BaseException:
         with contextlib.suppress(OSError):
             listening_socket.close()
@@ -1880,7 +2160,14 @@ def start_mcp_server(
 
 
 def _startup_diagnostic_suffix(root: Path, log_offset: int) -> str:
-    """Render the child's own startup output as a suffix for the parent's error."""
+    """Render the child's own startup output as a suffix for the parent's error.
+
+    NEVER returns an empty string. A child that died before writing anything
+    used to leave the parent's error message with a bare log path and no
+    statement of what was missing, which reads as "no diagnostics exist" rather
+    than "the child produced nothing" — two very different incidents. An empty
+    read therefore renders the explicit ``child wrote no log output`` phrase.
+    """
 
     diagnostic = read_mcp_server_log_since(root, log_offset)
     if not diagnostic:
@@ -1951,6 +2238,7 @@ def _await_mcp_startup_or_failure(
         return
 
     returncode = bridge.process.poll()
+    child_pid, psutil_status = _child_process_diagnostics(bridge)
     bridge.shutdown()
     diagnostic = _startup_diagnostic_suffix(root, log_offset)
     last_stage: str | None = _read_start_stage(root, spawn_id=stage_id)
@@ -1965,6 +2253,9 @@ def _await_mcp_startup_or_failure(
             restart_count=0,
             last_stage=last_stage_str,
             elapsed_s=elapsed_s,
+            restart_reason="process_exited",
+            child_pid=child_pid,
+            psutil_status=psutil_status,
         )
         if cause is not None:
             raise err from cause
@@ -1978,6 +2269,9 @@ def _await_mcp_startup_or_failure(
             restart_count=0,
             last_stage=last_stage_str,
             elapsed_s=elapsed_s,
+            restart_reason="startup_deadline_exceeded",
+            child_pid=child_pid,
+            psutil_status=psutil_status,
         )
         if cause is not None:
             raise err from cause
@@ -1988,6 +2282,9 @@ def _await_mcp_startup_or_failure(
         restart_count=0,
         last_stage=last_stage_str,
         elapsed_s=elapsed_s,
+        restart_reason="preflight_failed",
+        child_pid=child_pid,
+        psutil_status=psutil_status,
     ) from preflight_error[0]
 
 

@@ -41,20 +41,38 @@ Both layers share the same intent (cap identical-failure loops) and the
 same stripping vocabulary; the tracker is a small, single-purpose,
 thread-safe dataclass so the production transport can call it from any
 thread without locks other than the embedded one.
+
+**The streak outlives the process (E1.7).** A make-before-break
+replacement retires one MCP child and promotes another in its place, so
+an in-memory counter is the wrong lifetime: every swap would silently
+hand a doomed retry storm a fresh budget of ``THRESHOLD`` attempts and
+the loop would never break. The tracker therefore persists its streak to
+the PARENT-OWNED MCP snapshot directory (``RALPH_MCP_SNAPSHOT_DIR``) --
+the directory the lifecycle computes once per bridge run and hands to
+every spawn, and the directory the per-stage pause/resume handover
+sentinels already live in. A child given that directory reads back what
+the retiring child wrote; a child given nothing stays purely in-memory,
+exactly as before. See :meth:`TransportRepetitionTracker.from_parent_owned_state`.
 """
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import hashlib
 import json
+import os
 import re
 import threading
 import time as _time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import IO, TYPE_CHECKING
+
+from ralph.mcp.protocol.env import MCP_SNAPSHOT_DIR_ENV
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
 #: Time window (seconds) over which ``THRESHOLD`` identical signatures
 #: trip the breaker. Aligns with the agent-recovery layer's window.
@@ -71,6 +89,28 @@ BREAKER_CODE: int = -32001
 
 #: Error message on the breaker JSON-RPC frame.
 BREAKER_MESSAGE: str = "transport_loop_detected"
+
+#: File name of the carried repetition record inside the parent-owned
+#: snapshot directory. A sibling of ``session.json`` and the per-stage
+#: ``accept.pause.*`` / ``accept.resume.*`` handover sentinels.
+REPETITION_STATE_FILENAME: str = "transport-repetition-state.json"
+
+#: Bounded deadline (seconds) for acquiring the cross-process flock that
+#: serialises the carried record's read-modify-write. A retiring child
+#: draining an in-flight request can observe a failure concurrently with
+#: the promoted candidate, so the merge is not lock-free.
+_STATE_LOCK_TIMEOUT_S: float = 0.2
+
+#: Bounded read size (bytes) for the carried record. The record is a
+#: fixed three-field object; a larger file is truncated rather than
+#: loaded, so a corrupt or hostile file cannot grow the tracker's memory.
+_STATE_MAX_BYTES: int = 8192
+
+if not _STATE_LOCK_TIMEOUT_S > 0:
+    raise RuntimeError(f"_STATE_LOCK_TIMEOUT_S must be positive (got {_STATE_LOCK_TIMEOUT_S})")
+
+if not _STATE_MAX_BYTES > 0:
+    raise RuntimeError(f"_STATE_MAX_BYTES must be positive (got {_STATE_MAX_BYTES})")
 
 #: Strip volatile tokens from a failure signature. Mirrors the vocabulary
 #: in :mod:`ralph.pipeline._retry_progress_guard` so the two layers
@@ -186,21 +226,125 @@ def failure_signature(method: str, params: object, failure: BaseException | str)
     return f"{request_fingerprint(method, params)}|{signature}"
 
 
+def repetition_state_path(env: Mapping[str, str] | None = None) -> Path | None:
+    """Return the parent-owned carried-streak file, or None when unconfigured.
+
+    The lifecycle sets ``RALPH_MCP_SNAPSHOT_DIR`` to
+    ``snapshot_dir(workspace_root, bridge_run_id)`` on EVERY spawn of a
+    bridge run -- including every make-before-break candidate -- so the
+    resolved path is identical across a child replacement by
+    construction. The per-stage ``accept.pause.*`` / ``accept.resume.*``
+    handover sentinels already live in that same directory, which is
+    what makes it the parent-owned location rather than a child-local
+    scratch file.
+
+    Returns ``None`` when the parent supplied no snapshot directory (a
+    plain standalone server, or a test that never set the variable). The
+    caller then keeps a purely in-process streak.
+    """
+    source: Mapping[str, str] = os.environ if env is None else env
+    raw = source.get(MCP_SNAPSHOT_DIR_ENV)
+    if not raw:
+        return None
+    return Path(raw) / REPETITION_STATE_FILENAME
+
+
+def _acquire_state_lock(handle: IO[str], timeout: float) -> bool:
+    """Best-effort exclusive flock on ``handle``; False when unavailable.
+
+    Mirrors the wire ledger's append-sidecar policy: contention past the
+    deadline degrades to "do not persist this round" rather than blocking
+    a request thread on a peer that may be draining indefinitely.
+    """
+    deadline = _time.monotonic() + timeout
+    while True:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            if _time.monotonic() >= deadline:
+                return False
+            # filesystem-poll-ok: bounded retry loop for the cross-process state lock
+            _time.sleep(0.01)
+        except OSError:
+            return False
+
+
+def _release_state_lock(handle: IO[str]) -> None:
+    with contextlib.suppress(OSError, ValueError):
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _decode_carried_state(raw: bytes) -> tuple[str, int, float] | None:
+    """Decode a carried record, rejecting anything unexpected.
+
+    Returns ``(signature, streak, seen_wall)`` or ``None``. ``bool`` is an
+    ``int`` subclass in Python, so the streak and timestamp are rejected
+    explicitly when they arrive as booleans: a fabricated record must
+    never be able to trip the breaker.
+    """
+    try:
+        decoded: object = json.loads(raw.decode("utf-8", "replace"))
+    except ValueError:
+        return None
+    if not isinstance(decoded, dict):
+        return None
+    signature = decoded.get("last_signature")
+    streak = decoded.get("streak")
+    seen_wall = decoded.get("last_seen_wall")
+    if not isinstance(signature, str) or not isinstance(streak, int):
+        return None
+    if isinstance(streak, bool) or isinstance(seen_wall, bool):
+        return None
+    if not isinstance(seen_wall, int | float):
+        return None
+    return signature, streak, float(seen_wall)
+
+
 @dataclass
 class TransportRepetitionTracker:
     """Track consecutive identical failure signatures at the transport layer.
 
-    Thread-safe. A new instance is created per process so the counter
+    Thread-safe. One instance is created per child process so the counter
     surface is consistent across the production transport.
+
+    ``state_path`` extends the lifetime past the process. When set, the
+    streak is written to that file after every observation and read back
+    before the next one, so a make-before-break replacement carries the
+    count into the promoted child instead of resetting it. When None the
+    tracker is purely in-memory, the behaviour every existing caller has.
     """
 
     window_seconds: float = WINDOW_SECONDS
     threshold: int = THRESHOLD
+    state_path: Path | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _last_signature: str | None = field(default=None, init=False)
     _last_seen_at: float = field(default=0.0, init=False)
     _streak: int = field(default=0, init=False)
     _clock: Callable[[], float] = field(default=_time.monotonic, repr=False)
+
+    @classmethod
+    def from_parent_owned_state(
+        cls,
+        env: Mapping[str, str] | None = None,
+        *,
+        window_seconds: float = WINDOW_SECONDS,
+        threshold: int = THRESHOLD,
+    ) -> TransportRepetitionTracker:
+        """Build a tracker bound to the parent-owned snapshot directory.
+
+        This is the production construction path: the handler's
+        process-lifetime singleton goes through here, so the streak
+        survives a child replacement whenever the lifecycle handed this
+        child a snapshot directory. ``env`` defaults to the process
+        environment, which is where the parent puts it.
+        """
+        return cls(
+            window_seconds=window_seconds,
+            threshold=threshold,
+            state_path=repetition_state_path(env),
+        )
 
     def observe(self, signature: str) -> bool:
         """Record a failure signature; return True when the breaker trips.
@@ -209,19 +353,116 @@ class TransportRepetitionTracker:
         ``window_seconds`` of the first. The caller writes a 503 +
         ``transport_loop_detected`` frame and short-circuits the response.
         """
-        now = self._clock()
         with self._lock:
-            if (
-                self._last_signature == signature
-                and (now - self._last_seen_at) <= self.window_seconds
-            ):
-                self._streak += 1
-            else:
-                # Different signature OR window expired — reset the streak.
-                self._last_signature = signature
-                self._streak = 1
-            self._last_seen_at = now
-            return self._streak >= self.threshold
+            path = self.state_path
+            if path is None:
+                return self._observe_in_memory(signature)
+            return self._observe_with_carried_state(signature, path)
+
+    def _observe_in_memory(self, signature: str) -> bool:
+        """Advance the streak and report whether the breaker trips."""
+        now = self._clock()
+        if self._last_signature == signature and (now - self._last_seen_at) <= self.window_seconds:
+            self._streak += 1
+        else:
+            # Different signature OR window expired — reset the streak.
+            self._last_signature = signature
+            self._streak = 1
+        self._last_seen_at = now
+        return self._streak >= self.threshold
+
+    def _observe_with_carried_state(self, signature: str, path: Path) -> bool:
+        """Merge the on-disk streak, advance it, and write it back.
+
+        Falls back to the in-memory-only path whenever the carried record
+        cannot be locked or written: the breaker must keep working even
+        when its cross-process channel is unavailable, because a missed
+        persistence write costs one retry of slack while an un-tripped
+        breaker costs an unbounded loop.
+        """
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            handle = path.with_name(path.name + ".lock").open("a", encoding="utf-8")
+        except OSError:
+            return self._observe_in_memory(signature)
+        try:
+            if not _acquire_state_lock(handle, _STATE_LOCK_TIMEOUT_S):
+                return self._observe_in_memory(signature)
+            try:
+                self._adopt_carried_state(path)
+                tripped = self._observe_in_memory(signature)
+                self._write_carried_state(path)
+            finally:
+                _release_state_lock(handle)
+            return tripped
+        finally:
+            with contextlib.suppress(OSError):
+                handle.close()
+
+    def _adopt_carried_state(self, path: Path) -> None:
+        """Merge the previous child's streak into this one.
+
+        A newer record for the same signature only ever raises the streak
+        (a draining sibling child cannot roll back the promoted child's
+        count). A record naming a different signature is adopted only
+        when this process has not observed anything yet, so a fresh
+        request never inherits an unrelated loop.
+        """
+        carried = self._read_carried_state(path)
+        if carried is None:
+            return
+        signature, streak, seen_at = carried
+        if streak <= 0:
+            return
+        if self._streak > 0 and (self._last_signature != signature or self._last_seen_at > seen_at):
+            return
+        self._last_signature = signature
+        self._streak = max(self._streak, streak)
+        self._last_seen_at = max(self._last_seen_at, seen_at)
+
+    def _read_carried_state(self, path: Path) -> tuple[str, int, float] | None:
+        """Read the carried record as ``(signature, streak, local_clock)``.
+
+        The on-disk timestamp is a WALL-clock reading because
+        ``time.monotonic`` is not comparable between processes; it is
+        converted back into this tracker's clock domain here so the
+        window comparison in :meth:`_observe_in_memory` stays
+        clock-agnostic. Any unreadable, truncated or wrong-typed record
+        is treated as absent: a corrupt file must never fabricate a trip.
+        """
+        try:
+            with path.open("rb") as handle:
+                raw = handle.read(_STATE_MAX_BYTES)
+        except OSError:
+            return None
+        record = _decode_carried_state(raw)
+        if record is None:
+            return None
+        signature, streak, seen_wall = record
+        age = max(0.0, _time.time() - seen_wall)
+        return signature, streak, self._clock() - age
+
+    def _write_carried_state(self, path: Path) -> None:
+        """Publish the streak for the next child.
+
+        Written via a temp file plus ``Path.replace`` so a reader in
+        another process never observes a half-written record. Called
+        with the cross-process lock held.
+        """
+        payload = {
+            "last_signature": self._last_signature,
+            "streak": self._streak,
+            "last_seen_wall": _time.time(),
+        }
+        tmp = path.with_name(path.name + ".tmp")
+        try:
+            # filesystem-write-ok: carried-streak record published by tmp-then-replace so a concurrent child never reads a partial object
+            with tmp.open("w", encoding="utf-8") as handle:
+                json.dump(payload, handle, sort_keys=True)
+            tmp.replace(path)
+        except OSError:
+            with contextlib.suppress(OSError):
+                tmp.unlink()
 
     def reset(self) -> None:
         """Clear the streak. Used by tests and by recovery handlers."""
@@ -229,9 +470,17 @@ class TransportRepetitionTracker:
             self._last_signature = None
             self._streak = 0
             self._last_seen_at = 0.0
+            if self.state_path is not None:
+                with contextlib.suppress(OSError):
+                    self.state_path.unlink()
 
     def snapshot(self) -> dict[str, object]:
-        """Return the current state for diagnostics."""
+        """Return the current in-memory state for diagnostics.
+
+        A tracker built by :meth:`from_parent_owned_state` adopts the
+        carried record on its first :meth:`observe`, so this reflects the
+        previous child's streak from then on.
+        """
         with self._lock:
             return {
                 "last_signature": self._last_signature,
@@ -246,11 +495,13 @@ __all__ = [
     "BREAKER_MESSAGE",
     "BREAKER_STATUS",
     "INFRASTRUCTURE_FAULT_MARKERS",
+    "REPETITION_STATE_FILENAME",
     "THRESHOLD",
     "WINDOW_SECONDS",
     "TransportRepetitionTracker",
     "failure_signature",
     "is_infrastructure_fault",
+    "repetition_state_path",
     "request_fingerprint",
     "signature_for",
 ]

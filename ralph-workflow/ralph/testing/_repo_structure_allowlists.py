@@ -206,6 +206,26 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         # whole-module cohesion is the cohesive ``_wait_for_integration_retry``
         # contract surface, not a candidate for extraction.
         "tests/test_run_loop_retry_diagnostic.py",
+        # wt-16 MCP make-before-break acceptance (WU-1/WU-4): the
+        # root-cause real-child suite pins the per-root-cause
+        # invariant (C1 tool-hash equality, C2 budget + live-server
+        # survival, C3 timeout-only deferral + confirm + ceiling,
+        # C5 enriched diagnostics + E2.2 stage-failure parametrize,
+        # E5.1/E5.4 cited-impossibility comments) with one test per
+        # root-cause row. Every test consumes the single
+        # ``managed_spawner`` fixture + the per-bridge constants;
+        # splitting the C1/C2 cases from the C3/C5/cited-impossibility
+        # cases would force both halves to re-import the fixture and
+        # rebuild the per-bridge constants. Grandfathered for the
+        # acceptance proof.
+        "tests/mcp/test_root_cause_real_child_bridge.py",
+        # wt-16 MCP make-before-break acceptance (WU-3a): the
+        # handover-inflight real-child suite pins E1.3-E1.6 (drain
+        # deadline, outcome-unknown, ACK-before-resume, fail-closed
+        # resume timeout, interleaved two-real-children ledger). All
+        # tests share a single helper and the wire-ledger /
+        # artifact-store imports. Grandfathered.
+        "tests/mcp/test_handover_inflight_real_child.py",
     }
 )
 
@@ -397,6 +417,32 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
         # helper just to assert against it.
         (
             "tests/mcp/test_respawn_no_discovery.py",
+            "ralph.mcp.server._http_tools_list",
+            ("_http_tools_list_names",),
+        ),
+        # wt-16 MCP make-before-break acceptance (WU-1/WU-4): the
+        # real-child root-cause suite needs to issue a real JSON-RPC
+        # ``tools/list`` HTTP request against the production bridge
+        # endpoint to assert the served tool-set before AND after a
+        # failed/successful replacement. The production helper that
+        # does exactly that bounded read lives in
+        # ``_http_tools_list.py``; a public re-export would widen the
+        # tool-list API surface the audit tracks. The legacy
+        # ``test_respawn_no_discovery`` precedent just above
+        # allowlists the same private import for the same reason.
+        (
+            "tests/mcp/test_root_cause_real_child_bridge.py",
+            "ralph.mcp.server._http_tools_list",
+            ("_http_tools_list_names",),
+        ),
+        # wt-16 MCP make-before-break acceptance (WU-3a): the
+        # handover-inflight real-child suite (E1.3-E1.6) needs to
+        # pin that the OLD child still answers ``tools/list`` and
+        # that the shared endpoint stays in service during the
+        # drain / fail-closed-resume flows. Same production helper
+        # same allowlist rationale as the two precedents above.
+        (
+            "tests/mcp/test_handover_inflight_real_child.py",
             "ralph.mcp.server._http_tools_list",
             ("_http_tools_list_names",),
         ),

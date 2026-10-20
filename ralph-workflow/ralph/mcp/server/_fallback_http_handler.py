@@ -66,12 +66,20 @@ def _coerce_fallback_server(server: object) -> _FallbackHttpServer:
     return server
 
 
-#: Process-singleton transport-level repetition tracker. The same instance
+#: Process-lifetime transport-level repetition tracker. The same instance
 #: observes every request dispatched on this server so a doomed retry loop
 #: at the transport layer is broken regardless of which request the storm
 #: is currently running. Tests inject a fresh instance via the in-memory
 #: transport's monkeypatch seam.
-_transport_repetition_tracker = TransportRepetitionTracker()
+#:
+#: It is bound to the PARENT-OWNED MCP snapshot directory
+#: (``RALPH_MCP_SNAPSHOT_DIR``) whenever the lifecycle supplied one. The
+#: parent hands every spawn of a bridge run -- including every
+#: make-before-break candidate -- the SAME directory, so the streak the
+#: retiring child wrote is read back by the promoted child and the breaker
+#: cannot be reset by a swap (E1.7). With no such directory the tracker is
+#: purely in-process, exactly as before.
+_transport_repetition_tracker = TransportRepetitionTracker.from_parent_owned_state()
 
 
 class _FallbackHttpHandler(BaseHTTPRequestHandler):
