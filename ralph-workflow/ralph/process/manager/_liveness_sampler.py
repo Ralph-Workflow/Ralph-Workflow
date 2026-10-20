@@ -18,12 +18,23 @@ slow steady drip of work reads as a small positive rate even when each
 2 s sample advances the cumulative counters only slightly. A gap larger
 than ``evidence_window_s`` resets the baseline (returning ``None`` for one
 cycle) per the failure-recovery policy in D3.
+
+Output novelty (``output_novelty``) obeys the SAME evidence-window rule.
+The producer hands over timestamped :class:`OutputEvidence` records, and
+:meth:`TreeSampler.sample` prunes every record older than
+``now - evidence_window_s`` before taking the distinct/total ratio. Without
+that pruning a historic burst of distinct startup lines keeps novelty pinned
+high forever, so a command that has since degenerated into printing one
+line per second reads as permanently novel, ``R6`` (Repetitive) never
+fires, stall pressure never builds, and the job is never killed as
+``stalled``. Records are a caller-owned bounded FIFO; the sampler holds no
+accumulator of its own for them.
 """
 
 from __future__ import annotations
 
 from collections import deque
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 from ralph.process.manager._liveness_assessor import LivenessConfig, LivenessWindow
 
@@ -70,6 +81,22 @@ class _IoCountersObj(Protocol):
 @runtime_checkable
 class _CtxSwitchesObj(Protocol):
     voluntary: int | float
+
+
+class _OutputEvidence(NamedTuple):
+    """One decoded output line plus the instant the reader observed it.
+
+    The timestamp is the producer's own clock reading at the moment the
+    line was appended to the job's bounded output FIFO (the same reading
+    that seeds ``last_output_at``), so novelty can be scoped to the
+    evidence window instead of to the FIFO's whole retention.
+    """
+
+    emitted_at: float
+    line: str
+
+
+OutputEvidence = _OutputEvidence
 
 
 class _PsutilModuleLike(Protocol):
@@ -195,10 +222,25 @@ def _collect_tree(
         return [root], None
 
 
-def _compute_output_novelty(output_lines: Sequence[str]) -> float | None:
-    if len(output_lines) < _MIN_OUTPUT_LINES_FOR_NOVELTY:
+def _compute_output_novelty(
+    samples: Sequence[OutputEvidence],
+    now: float,
+    evidence_window_s: float,
+) -> float | None:
+    """Distinct/total line ratio measured over the evidence window only.
+
+    Records observed before ``now - evidence_window_s`` are dropped first,
+    so novelty describes what the command printed *now* rather than what
+    it printed at any point in the FIFO's retention. The gate is unchanged:
+    fewer than ``_MIN_OUTPUT_LINES_FOR_NOVELTY`` records inside the window
+    leaves novelty unknown (``None``), which the assessor treats as "no
+    repetitiveness evidence" per D5.
+    """
+    cutoff = now - evidence_window_s
+    in_window = [sample.line for sample in samples if sample.emitted_at >= cutoff]
+    if len(in_window) < _MIN_OUTPUT_LINES_FOR_NOVELTY:
         return None
-    return len(set(output_lines)) / float(len(output_lines))
+    return len(set(in_window)) / float(len(in_window))
 
 
 def _windowed_rate(
@@ -282,7 +324,9 @@ class TreeSampler:
     Per-rate signals are aggregated across ``config.evidence_window_s``
     (default ``EXEC_LIVENESS_EVIDENCE_WINDOW_S`` = 30.0 s) rather than the
     last sample interval. ``child_events`` keeps the same windowed
-    semantics as before. An unreadable signal returns ``None`` for one
+    semantics as before, and ``output_novelty`` is measured over the same
+    window from the timestamped ``output_samples`` the producer supplies.
+    An unreadable signal returns ``None`` for one
     cycle and leaves the per-signal windowed history untouched.
     """
 
@@ -416,7 +460,7 @@ class TreeSampler:
         self,
         root_pid: int,
         last_output_at: float | None,
-        output_lines: Sequence[str],
+        output_samples: Sequence[OutputEvidence],
     ) -> LivenessWindow:
         now = float(self._clock())
 
@@ -429,7 +473,9 @@ class TreeSampler:
         else:
             seconds_since_output = None
 
-        output_novelty = _compute_output_novelty(output_lines)
+        output_novelty = _compute_output_novelty(
+            output_samples, now, self._config.evidence_window_s
+        )
 
         try:
             root: _LivenessProc | None = self._psutil_module.Process(root_pid)
@@ -468,6 +514,7 @@ class TreeSampler:
 
 
 __all__ = [
+    "OutputEvidence",
     "PsutilModuleAdapter",
     "PsutilProcessAdapter",
     "TreeSampler",

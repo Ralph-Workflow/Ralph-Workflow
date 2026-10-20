@@ -39,7 +39,12 @@ from ralph.process.manager._liveness_assessor import (
     assess,
     default_liveness_config,
 )
-from ralph.process.manager._liveness_sampler import TreeSampler, _LivenessProc, _PsutilModuleLike
+from ralph.process.manager._liveness_sampler import (
+    OutputEvidence,
+    TreeSampler,
+    _LivenessProc,
+    _PsutilModuleLike,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -102,11 +107,6 @@ def _ensure_runtime_hooks() -> tuple[_HookRegistrar, _HookRegistrar]:
     cached_owner_loss = _runtime_hook_cache.get("owner_loss")
     cached_shutdown = _runtime_hook_cache.get("shutdown")
     if cached_owner_loss is None or cached_shutdown is None:
-        # Lazy attribute access (NOT a top-level ``from ... import ...``
-        # statement) breaks the ``runtime`` ↔ ``_exec_jobs`` cycle. The
-        # top-level ``importlib`` import is safe (it doesn't touch our
-        # cycle), and the ``runtime`` module is fetched through Python's
-        # import machinery after both modules have finished initialising.
         runtime_mod = importlib.import_module("ralph.mcp.server.runtime")
         cached_owner_loss = _hook_registrar(runtime_mod, "register_owner_loss_hook")
         cached_shutdown = _hook_registrar(runtime_mod, "register_shutdown_hook")
@@ -262,7 +262,7 @@ class _ActiveJob:
         self.stderr_tail = bytearray()
         self.total_stderr_bytes = 0
 
-        self.output_lines: collections.deque[str] = collections.deque(maxlen=1000)
+        self.output_lines: collections.deque[OutputEvidence] = collections.deque(maxlen=1000)
         self.stall_integrator = StallIntegrator(theta=liveness_config.stall_theta)
         self.tree_sampler = TreeSampler(psutil_module, clock, liveness_config)
         self.runner_thread: threading.Thread | None = None
@@ -505,13 +505,15 @@ class ExecJobRegistry:
             self._kill_job(job, cause="hard_cap")
             return
 
-        # 4. Sample liveness
+        # 4. Sample liveness. The sampler prunes records older than the evidence
+        # window before computing novelty, so a historic burst of distinct
+        # startup lines can no longer mask a current repetitive-output stall.
         pid = job.handle.pid if job.handle is not None else 0
         with job.lock:
-            lines = list(job.output_lines)
+            samples = list(job.output_lines)
             last_out = job.last_output_at
 
-        window = job.tree_sampler.sample(pid, last_out, lines)
+        window = job.tree_sampler.sample(pid, last_out, samples)
         raw_verdict = assess(window, job.liveness_config)
 
         # 5. Stall check
@@ -582,10 +584,10 @@ class ExecJobRegistry:
                     buffer_line = bytearray(rest)
                     decoded = line_bytes.decode("utf-8", errors="replace").strip()
                     if decoded:
-                        job.output_lines.append(decoded)
+                        job.output_lines.append(OutputEvidence(now, decoded))
                 if len(buffer_line) > _MAX_UNTERMINATED_LINE_BYTES:
                     decoded = buffer_line.decode("utf-8", errors="replace").strip()
-                    job.output_lines.append(decoded)
+                    job.output_lines.append(OutputEvidence(now, decoded))
                     buffer_line = bytearray()
 
     def _watch_job(

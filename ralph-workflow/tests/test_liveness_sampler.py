@@ -12,6 +12,7 @@ from typing import NamedTuple
 
 from ralph.process.manager._liveness_assessor import LivenessConfig
 from ralph.process.manager._liveness_sampler import (
+    OutputEvidence,
     PsutilModuleAdapter,
     PsutilProcessAdapter,
     TreeSampler,
@@ -147,13 +148,18 @@ class _FakeClock:
 FakeClock = _FakeClock
 
 
+def _evidence(lines: Sequence[str], emitted_at: float) -> list[OutputEvidence]:
+    """Stamp ``lines`` as observed at ``emitted_at`` for the sampler seam."""
+    return [OutputEvidence(emitted_at, line) for line in lines]
+
+
 def test_first_sample_signals_none_for_deltas() -> None:
     clock = FakeClock(100.0)
     root = FakeProcess(pid=1001, user_cpu=1.0, system_cpu=0.5, read_bytes=2048, creation_time=95.0)
     psutil_mod = FakePsutilModule({1001: root})
     sampler = TreeSampler(psutil_mod, clock, _make_config())
 
-    window = sampler.sample(1001, last_output_at=98.0, output_lines=[])
+    window = sampler.sample(1001, last_output_at=98.0, output_samples=[])
 
     assert window.seconds_since_output == 2.0
     assert window.cpu_ratio is None
@@ -179,7 +185,7 @@ def test_consecutive_sample_computes_deltas() -> None:
     sampler = TreeSampler(psutil_mod, clock, _make_config())
 
     # Sample 1 at t=100.0
-    sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    sampler.sample(1001, last_output_at=100.0, output_samples=[])
 
     # Advance clock and stats by 2.0s
     clock.advance(2.0)
@@ -188,7 +194,7 @@ def test_consecutive_sample_computes_deltas() -> None:
     root.write_bytes += 2048  # 4096 bytes / 2.0s / 1024 = 2.0 KiB/s
     root.voluntary_ctx += 6  # 6 switches / 2.0s = 3.0 ctx/s
 
-    window = sampler.sample(1001, last_output_at=101.0, output_lines=[])
+    window = sampler.sample(1001, last_output_at=101.0, output_samples=[])
 
     assert window.seconds_since_output == 1.0
     assert window.cpu_ratio is not None
@@ -206,13 +212,13 @@ def test_cpu_ratio_capped_at_one() -> None:
     psutil_mod = FakePsutilModule({1001: root})
     sampler = TreeSampler(psutil_mod, clock, _make_config())
 
-    sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    sampler.sample(1001, last_output_at=100.0, output_samples=[])
 
     # Advance clock by 1.0s, but 4 threads used 4.0s of CPU
     clock.advance(1.0)
     root.user_cpu = 4.0
 
-    window = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    window = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert window.cpu_ratio == 1.0
 
 
@@ -222,11 +228,11 @@ def test_wall_time_delta_non_positive_returns_none() -> None:
     psutil_mod = FakePsutilModule({1001: root})
     sampler = TreeSampler(psutil_mod, clock, _make_config())
 
-    sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    sampler.sample(1001, last_output_at=100.0, output_samples=[])
 
     # Clock does not advance (dt = 0.0)
     root.user_cpu += 0.5
-    window = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    window = sampler.sample(1001, last_output_at=100.0, output_samples=[])
 
     assert window.cpu_ratio is None
     assert window.io_bytes_per_s is None
@@ -241,18 +247,20 @@ def test_output_novelty_gate() -> None:
 
     # 19 lines: below 20-line gate -> None
     lines_19 = [f"line {i}" for i in range(19)]
-    w1 = sampler.sample(1001, last_output_at=100.0, output_lines=lines_19)
+    w1 = sampler.sample(1001, last_output_at=100.0, output_samples=_evidence(lines_19, 100.0))
     assert w1.output_novelty is None
 
     # 20 identical lines: ratio = 1 / 20 = 0.05
     lines_20_dup = ["same line"] * 20
-    w2 = sampler.sample(1001, last_output_at=100.0, output_lines=lines_20_dup)
+    w2 = sampler.sample(1001, last_output_at=100.0, output_samples=_evidence(lines_20_dup, 100.0))
     assert w2.output_novelty is not None
     assert abs(w2.output_novelty - 0.05) < 1e-6
 
     # 20 distinct lines: ratio = 20 / 20 = 1.0
     lines_20_unique = [f"unique {i}" for i in range(20)]
-    w3 = sampler.sample(1001, last_output_at=100.0, output_lines=lines_20_unique)
+    w3 = sampler.sample(
+        1001, last_output_at=100.0, output_samples=_evidence(lines_20_unique, 100.0)
+    )
     assert w3.output_novelty == 1.0
 
 
@@ -263,16 +271,16 @@ def test_seconds_since_output() -> None:
     sampler = TreeSampler(psutil_mod, clock, _make_config())
 
     # None when last_output_at is None
-    w1 = sampler.sample(1001, last_output_at=None, output_lines=[])
+    w1 = sampler.sample(1001, last_output_at=None, output_samples=[])
     assert w1.seconds_since_output is None
 
     # Normal age
-    w2 = sampler.sample(1001, last_output_at=92.5, output_lines=[])
+    w2 = sampler.sample(1001, last_output_at=92.5, output_samples=[])
     assert w2.seconds_since_output is not None
     assert abs(w2.seconds_since_output - 7.5) < 1e-6
 
     # Future timestamp clamped to 0.0
-    w3 = sampler.sample(1001, last_output_at=105.0, output_lines=[])
+    w3 = sampler.sample(1001, last_output_at=105.0, output_samples=[])
     assert w3.seconds_since_output == 0.0
 
 
@@ -285,7 +293,7 @@ def test_child_events_tracked_across_evidence_window() -> None:
     sampler = TreeSampler(psutil_mod, clock, config)
 
     # Initial sample with 1 existing child -> child_events = 1
-    w1 = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    w1 = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert w1.child_events == 1
 
     # At t=102, spawn child2 -> +1 start event -> total 2 events in window
@@ -293,25 +301,25 @@ def test_child_events_tracked_across_evidence_window() -> None:
     child2 = FakeProcess(pid=2002)
     root.child_procs.append(child2)
     psutil_mod.procs[2002] = child2
-    w2 = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    w2 = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert w2.child_events == 2
 
     # At t=104, child1 exits -> +1 exit event -> total 3 events in window
     clock.advance(2.0)
     root.child_procs.remove(child1)
     del psutil_mod.procs[2001]
-    w3 = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    w3 = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert w3.child_events == 3
 
     # At t=112 (12s after t=100), the initial sample (at t=100) has expired (>10s window).
     # Events in window [102..112]: child2 spawn (at t=102) and child1 exit (at t=104) = 2 events
     clock.advance(8.0)
-    w4 = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    w4 = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert w4.child_events == 2
 
     # At t=120, all earlier events have expired (>10s window) -> 0 child events
     clock.advance(8.0)
-    w5 = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    w5 = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert w5.child_events == 0
 
 
@@ -323,7 +331,7 @@ def test_tree_aggregation_across_descendants() -> None:
     psutil_mod = FakePsutilModule({1001: root, 2001: child, 3001: grandchild})
     sampler = TreeSampler(psutil_mod, clock, _make_config())
 
-    sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    sampler.sample(1001, last_output_at=100.0, output_samples=[])
 
     # Advance clock by 1.0s and increase CPU and I/O on root, child, and grandchild
     clock.advance(1.0)
@@ -332,7 +340,7 @@ def test_tree_aggregation_across_descendants() -> None:
     grandchild.user_cpu += 0.3  # total delta cpu = 0.6s / 1.0s = 0.6
     root.read_bytes += 1024  # 1024 bytes / 1.0s / 1024 = 1.0 KiB/s
 
-    window = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    window = sampler.sample(1001, last_output_at=100.0, output_samples=[])
 
     assert window.cpu_ratio is not None
     assert abs(window.cpu_ratio - 0.6) < 1e-6
@@ -346,7 +354,7 @@ def test_fail_closed_individual_signals() -> None:
     psutil_mod = FakePsutilModule({1001: root})
     sampler = TreeSampler(psutil_mod, clock, _make_config())
 
-    sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    sampler.sample(1001, last_output_at=100.0, output_samples=[])
     clock.advance(1.0)
     root.user_cpu += 0.5
     root.read_bytes += 1024
@@ -354,7 +362,7 @@ def test_fail_closed_individual_signals() -> None:
 
     # Case 1: io_counters raises OSError -> io_bytes_per_s is None, CPU and ctx still work
     root.raise_io = True
-    w1 = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    w1 = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert w1.io_bytes_per_s is None
     assert w1.cpu_ratio is not None
     assert abs(w1.cpu_ratio - 0.5) < 1e-6
@@ -366,14 +374,14 @@ def test_fail_closed_individual_signals() -> None:
     root.raise_io = False
     root.read_bytes += 2048
     root.raise_cpu = True
-    w2 = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    w2 = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert w2.cpu_ratio is None
     # Note: io delta computed against its previous successful snapshot
     assert w2.io_bytes_per_s is not None
 
     # Case 3: children reading fails -> child_events is None
     root.raise_children = True
-    w3 = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    w3 = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert w3.child_events is None
 
 
@@ -382,7 +390,11 @@ def test_missing_root_process_yields_none_for_all_tree_signals() -> None:
     psutil_mod = FakePsutilModule({})
     sampler = TreeSampler(psutil_mod, clock, _make_config())
 
-    window = sampler.sample(9999, last_output_at=95.0, output_lines=["line"] * 20)
+    window = sampler.sample(
+        9999,
+        last_output_at=95.0,
+        output_samples=_evidence(["line"] * 20, 95.0),
+    )
 
     assert window.seconds_since_output == 5.0
     assert window.output_novelty == 0.05
@@ -400,11 +412,11 @@ def test_switching_root_pid_resets_history() -> None:
     psutil_mod = FakePsutilModule({1001: p1, 1002: p2})
     sampler = TreeSampler(psutil_mod, clock, _make_config())
 
-    w1 = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    w1 = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert w1.elapsed_s == 50.0
 
     # Switch to PID 1002: resets start time and previous deltas
-    w2 = sampler.sample(1002, last_output_at=100.0, output_lines=[])
+    w2 = sampler.sample(1002, last_output_at=100.0, output_samples=[])
     assert w2.elapsed_s == 20.0
     assert w2.cpu_ratio is None  # first sample for new pid -> None
 
@@ -424,7 +436,7 @@ def test_adapter_classes_wrap_process_and_module() -> None:
     assert len(proc_adapter.children()) == 0
 
     sampler = TreeSampler(wrapped_module, clock, _make_config())
-    w = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    w = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert w.seconds_since_output == 0.0
 
 
@@ -463,14 +475,14 @@ def test_different_stats_shapes() -> None:
     # Note: AltProcess implements _LivenessProc structural protocol
     sampler = TreeSampler(psutil_mod, clock, _make_config())
 
-    sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    sampler.sample(1001, last_output_at=100.0, output_samples=[])
 
     clock.advance(2.0)
     proc.cpu = (2.0, 1.5)  # delta = (2+1.5) - (1+0.5) = 2.0s / 2s = 1.0
     proc.io = (12, 12, 4096, 4096)  # delta = 8192 - 4096 = 4096B / 2s / 1024 = 2.0 KiB/s
     proc.ctx = {"voluntary": 20, "involuntary": 4}  # delta = 8 / 2s = 4.0 ctx/s
 
-    window = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    window = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert window.cpu_ratio == 1.0
     assert window.io_bytes_per_s is not None
     assert abs(window.io_bytes_per_s - 2.0) < 1e-6
@@ -515,7 +527,7 @@ def test_children_recursive_type_error_falls_back_to_bfs() -> None:
     psutil_mod = FakePsutilModule({1001: root, 2001: child, 3001: grandchild})
     sampler = TreeSampler(psutil_mod, clock, _make_config())
 
-    window = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    window = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert window.child_events == 2  # child and grandchild found via BFS
 
 
@@ -525,18 +537,18 @@ def test_long_delay_exceeding_evidence_window_resets_baseline() -> None:
     psutil_mod = FakePsutilModule({1001: root})
     sampler = TreeSampler(psutil_mod, clock, _make_config(evidence_window_s=30.0))
 
-    sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    sampler.sample(1001, last_output_at=100.0, output_samples=[])
 
     # Advance clock by 35.0s (> 30.0s evidence window)
     clock.advance(35.0)
     root.user_cpu += 10.0
-    w1 = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    w1 = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert w1.cpu_ratio is None  # expired window resets baseline
 
     # Next sample at 2.0s later should succeed
     clock.advance(2.0)
     root.user_cpu += 1.0  # 1.0s / 2.0s = 0.5
-    w2 = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    w2 = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert w2.cpu_ratio is not None
     assert abs(w2.cpu_ratio - 0.5) < 1e-6
 
@@ -547,11 +559,11 @@ def test_backwards_clock_returns_none() -> None:
     psutil_mod = FakePsutilModule({1001: root})
     sampler = TreeSampler(psutil_mod, clock, _make_config())
 
-    sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    sampler.sample(1001, last_output_at=100.0, output_samples=[])
 
     # Clock moves backwards
     clock.advance(-5.0)
-    window = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    window = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert window.cpu_ratio is None
     assert window.io_bytes_per_s is None
     assert window.voluntary_ctx_per_s is None
@@ -563,11 +575,11 @@ def test_root_create_time_in_future_falls_back_to_clock() -> None:
     psutil_mod = FakePsutilModule({1001: root})
     sampler = TreeSampler(psutil_mod, clock, _make_config())
 
-    window = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    window = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert window.elapsed_s == 0.0
 
     clock.advance(3.0)
-    window2 = sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    window2 = sampler.sample(1001, last_output_at=100.0, output_samples=[])
     assert window2.elapsed_s == 3.0
 
 
@@ -587,7 +599,7 @@ def test_assessor_integration_with_sampled_window() -> None:
     sampler = TreeSampler(psutil_mod, clock, config)
 
     # First sample
-    sampler.sample(1001, last_output_at=100.0, output_lines=[])
+    sampler.sample(1001, last_output_at=100.0, output_samples=[])
 
     # Advance clock: active output, active CPU, active IO
     clock.advance(2.0)
@@ -595,7 +607,9 @@ def test_assessor_integration_with_sampled_window() -> None:
     root.read_bytes += 200000  # ~97 KiB/s (active)
     output_lines = [f"compiling {i}.o" for i in range(25)]
 
-    window = sampler.sample(1001, last_output_at=102.0, output_lines=output_lines)
+    window = sampler.sample(
+        1001, last_output_at=102.0, output_samples=_evidence(output_lines, 102.0)
+    )
     verdict = assess(window, config)
 
     assert verdict.verdict_kind == "working"
