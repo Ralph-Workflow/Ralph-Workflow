@@ -330,6 +330,26 @@ def test_scenario_08_short_burst_then_idle_stalled_at_window_after_activity() ->
     honored and the empirical kill time is LATER than
     ``burst_duration_s + stall_window_s``.
 
+    Named ramp constants used throughout the derivation below (paired
+    with the architecture reconciliation at
+    ``ralph/mcp/ARCHITECTURE.md`` §3 "Ramp-offset timing"; the same
+    constants govern scenario 13 below):
+
+      * ``ramp_start_s`` = age at which ``OutputRecent`` saturates at
+        1.0 for fresh output, i.e. ``EXEC_OUTPUT_RECENT_MAX_S`` = 10 s.
+      * ``ramp_end_s`` = age at which ``OutputRecent`` saturates at
+        0.0, i.e. ``EXEC_OUTPUT_RECENT_MIN_S`` = 60 s.
+      * ``ramp_half_threshold_age`` = 35 s — age at which the score
+        first falls below ``EXEC_STALL_THETA`` = 0.5 under the linear
+        membership; the per-step delta becomes non-positive until
+        this age.
+      * ``ramp_accrued_pressure`` = 12.5 s — stall pressure
+        accumulated during the ``ages ∈ (35, 60]`` ramp window
+        (trapezoidal integral of ``(age - 35)/25``).
+      * ``ramp_offset`` = ``ramp_half_threshold_age - ramp_start_s``
+        = 25 s — the dead-phase delay between "last output" and
+        "stall pressure first accrues".
+
     Closed-form continuous derivation (relative to ``burst_stop``, the
     last output instant): the ``OutputRecent`` membership ramps 1 -> 0
     over output ages ``[EXEC_OUTPUT_RECENT_MAX_S, EXEC_OUTPUT_RECENT_MIN_S]
@@ -374,10 +394,11 @@ def test_scenario_08_short_burst_then_idle_stalled_at_window_after_activity() ->
     activity" wording (PRODUCT_CRITERIA Part A): the spec wording is
     approximate; the real kill time is LATER because stall pressure
     only begins accruing after ``OutputRecent`` drops below the 0.5
-    threshold — i.e. only after ``35 s`` past the last output (the
-    ``ramp_offset`` of ``ramp_half_threshold_age - RAMP_START_S``,
-    where ``ramp_half_threshold_age = (RAMP_START_S + RAMP_END_S) / 2``
-    when score is linear in output_recent). The closed-form
+    threshold — i.e. only after ``ramp_half_threshold_age`` = 35 s
+    past the last output (the ``ramp_offset`` of
+    ``ramp_half_threshold_age - ramp_start_s`` = 25 s, where
+    ``ramp_half_threshold_age = (ramp_start_s + ramp_end_s) / 2``
+    when the score is linear in ``OutputRecent``). The closed-form
     derivation above is the exact correction.
     """
     burst_duration_s = 30.0
@@ -610,7 +631,23 @@ def test_scenario_13_mid_run_deadlock_all_children_asleep_stalled() -> None:
     child = 0, voluntary = 0) and therefore the same ramp dynamics
     under the default ``OutputRecent`` breakpoints
     (``EXEC_OUTPUT_RECENT_MAX_S = 10.0``, ``EXEC_OUTPUT_RECENT_MIN_S
-    = 60.0``). Closed-form continuous derivation (relative to the
+    = 60.0``). Named ramp constants used throughout the derivation
+    below:
+
+      * ``ramp_end_s`` = age at which ``OutputRecent`` saturates at 0
+        for the dead phase, i.e. ``EXEC_OUTPUT_RECENT_MIN_S`` = 60 s.
+      * ``ramp_half_threshold_age`` = age at which the score first
+        falls below ``EXEC_STALL_THETA`` = 0.5, computed as
+        ``(ramp_end_s - 25) = 35`` s under the linear-ramp membership.
+      * ``ramp_accrued_pressure`` = stall pressure accumulated
+        during the ``ages ∈ (ramp_half_threshold_age, ramp_end_s]``
+        window (the trapezoidal integral of the per-step delta), =
+        12.5 s under the shipped constants.
+      * ``ramp_offset`` = ``ramp_half_threshold_age - ``
+        ``EXEC_OUTPUT_RECENT_MAX_S`` = 35 - 10 = 25 s; the dead-phase
+        delay between "last output" and "stall pressure first accrues".
+
+    Closed-form continuous derivation (relative to the
     last output instant):
 
       * ages  0 -> 35 s: rate = 0  (no pressure accrues — score ≥ 0.5)

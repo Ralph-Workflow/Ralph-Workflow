@@ -144,8 +144,10 @@ REQUIRED_TABLE_URLS = (
     "https://cursor.com/docs/mcp",
     "https://moonshotai.github.io/kimi-code/en/configuration/config-files",
     "https://moonshotai.github.io/kimi-code/en/customization/mcp",
-    "https://docs.nanocollective.org/nanocoder/docs/configuration/mcp-configuration",
-    "https://www.npmjs.com/package/@nanocollective/nanocoder",
+    # The unversioned docs path 404s and the npm web listing is bot-gated;
+    # both were rotated to the URLs that actually serve the cited content.
+    "https://docs.nanocollective.org/nanocoder/docs/v1.31.0/configuration/mcp-configuration/",
+    "https://registry.npmjs.org/@nanocollective/nanocoder",
     "https://github.com/Nano-Collective/nanocoder",
     "https://antigravity.google/docs/mcp/",
 )
@@ -211,7 +213,7 @@ REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
     # Cause 3 — the Pi bridge startup deadline.
     ("ralph/mcp/transport/pi.py", 85, "MCP_STARTUP_TIMEOUT_MS = 10_000"),
     # Cause 5c — child runtime shutdown seam.
-    ("ralph/mcp/server/lifecycle.py", 2757, '"ralph.mcp.server",'),
+    ("ralph/mcp/server/lifecycle.py", 3030, '"ralph.mcp.server",'),
     (
         "ralph/mcp/server/_standalone_mcp_process.py",
         55,

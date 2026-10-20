@@ -53,10 +53,17 @@ from ralph.mcp.protocol.env import (
 )
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
+from ralph.mcp.server._handover_protocol import create_handover_socketpair
 from ralph.mcp.server._lifecycle_deps import LifecycleDeps
 from ralph.mcp.server._process_like import ProcessLike
+from ralph.mcp.upstream.tool_catalog_cache import UpstreamToolCatalogSnapshot
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from socket import socket
+
+    from ralph.mcp.protocol.startup import SessionLike
+    from ralph.mcp.server._spawn_process import SpawnProcess
     from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 
 pytestmark = pytest.mark.timeout_seconds(10)
@@ -366,3 +373,413 @@ def test_genuine_caller_extras_are_inherited_on_both_branches(tmp_path: Path) ->
                 assert env[key] == value, f"genuine caller extra {key} was dropped"
     finally:
         candidate.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# PA-003 failure injection.
+#
+# ``_spawn_mcp_process`` wraps every fallible spawn step in ONE
+# ``except BaseException`` that closes both handover sockets and unlinks the
+# handshake session file. That single cleanup point is only correct while the
+# OUTER function owns every resource it can acquire:
+#
+# * the handshake file is bound to the outer ``session_file`` name BEFORE the
+#   next fallible call, so a later env-assembly failure still finds the path;
+# * the handover socketpair is created in the outer function AFTER that
+#   binding, so a failure once both halves exist still reaches the cleanup.
+#
+# The env-assembly helper ``_build_spawn_env`` therefore owns NOTHING: it
+# returns data and cannot leak a descriptor. Each test below injects one seam
+# failure and asserts the same three properties — the ORIGINAL exception
+# propagates, no FD is left open, and no handshake file survives.
+#
+# Two seams (catalog env materialization and bridge construction) run AFTER the
+# socketpair exists, so a cleanup path that only handled pre-socket failures
+# would leak a descriptor and still pass the pre-socket tests. The success
+# control at the end pins that the open/closed assertions are not vacuous.
+#
+# No real process, no clock, no sleep: real sockets come from the production
+# ``create_handover_socketpair``, which this module only wraps, never replaces.
+# ---------------------------------------------------------------------------
+
+
+class _InjectedFailureError(RuntimeError):
+    """Sentinel so each assertion can prove the ORIGINAL error propagated."""
+
+
+class _SessionFileFactory:
+    """Create a REAL handshake file under ``tmp_path`` and remember its path."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.created = False
+
+    def __call__(self, _root: Path, _session: SessionLike) -> Path:
+        self.path.write_text("{}", encoding="utf-8")
+        self.created = True
+        return self.path
+
+
+class _SpawnRecorder:
+    """Spawn double that records its calls and can inject a failure.
+
+    ``calls`` stays empty when an earlier seam fired first, which is how the
+    tests prove the injected failure was the seam they named and not a later
+    one.
+    """
+
+    def __init__(self, *, fail: bool = False, message: str = "injected spawn failure") -> None:
+        self.calls: list[tuple[int, ...]] = []
+        self._fail = fail
+        self._message = message
+
+    def __call__(
+        self,
+        command: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        *,
+        phase: str | None = None,
+        pass_fds: tuple[int, ...] = (),
+    ) -> ProcessLike:
+        del command, cwd, env, phase
+        self.calls.append(pass_fds)
+        if self._fail:
+            raise _InjectedFailureError(self._message)
+        return _DummyProcess()
+
+
+class _SocketpairRecorder:
+    """Wrap the production socketpair factory so both halves can be inspected."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Bind the REAL production factory BEFORE patching, otherwise
+        # __call__ would recurse into itself. Imported from its defining
+        # module rather than off ``lifecycle``, which does not re-export it.
+        self._real = create_handover_socketpair
+        self.pairs: list[tuple[socket, socket]] = []
+        #: Child-half fd numbers sampled AT CREATION. Sampled later they would
+        #: read ``-1``, because the cleanup path closes the child half before
+        #: the caller ever regains control.
+        self.child_fds: list[int] = []
+        monkeypatch.setattr(lifecycle, "create_handover_socketpair", self)
+
+    def __call__(self) -> tuple[socket, socket]:
+        pair = self._real()
+        self.pairs.append(pair)
+        self.child_fds.append(pair[1].fileno())
+        return pair
+
+    @property
+    def only_pair(self) -> tuple[socket, socket]:
+        assert len(self.pairs) == 1, f"expected exactly one socketpair, got {len(self.pairs)}"
+        return self.pairs[0]
+
+    @staticmethod
+    def assert_closed(pair: tuple[socket, socket], label: str) -> None:
+        """Both halves must report ``fileno() == -1``: a closed socket does.
+
+        ``socket.socket.fileno()`` returns ``-1`` after ``close()`` on every
+        platform, so this proves the descriptor was released without counting
+        ``/proc/self/fd`` (which does not exist off Linux).
+        """
+        parent_sock, child_sock = pair
+        assert parent_sock.fileno() == -1, f"{label}: parent socket FD still open"
+        assert child_sock.fileno() == -1, f"{label}: child socket FD still open"
+
+
+def _failing_subprocess_env(message: str) -> Callable[[Path], dict[str, str]]:
+    def subprocess_env(session_file: Path) -> dict[str, str]:
+        del session_file
+        raise _InjectedFailureError(message)
+
+    return subprocess_env
+
+
+def _working_subprocess_env(session_file: Path) -> dict[str, str]:
+    return {MCP_SESSION_FILE_ENV: str(session_file)}
+
+
+def _injection_deps(
+    *,
+    create_session_file: Callable[[Path, SessionLike], Path],
+    subprocess_env: Callable[[Path], dict[str, str]],
+    spawn_process: SpawnProcess,
+) -> LifecycleDeps:
+    """LifecycleDeps with every process/socket/clock interaction faked."""
+    return LifecycleDeps(
+        create_session_file=create_session_file,
+        subprocess_env=subprocess_env,
+        spawn_process=spawn_process,
+        preflight=lambda _endpoint, _upstream, _timeout: None,
+        preflight_timeout=lambda: timedelta(seconds=5),
+    )
+
+
+def _assert_handshake_removed(factory: _SessionFileFactory, label: str) -> None:
+    assert not factory.path.exists(), (
+        f"{label}: the handshake session file {factory.path} survived the failure; "
+        "the outer ``except BaseException`` must unlink it on every path"
+    )
+
+
+def test_create_session_file_failure_propagates_before_anything_is_created(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The FIRST fallible seam: nothing exists yet, so cleanup must be a no-op.
+
+    ``deps.create_session_file`` is the first statement inside the try. When it
+    raises there is no handshake file to unlink and no socket to close; the
+    only observable contract is that the original error propagates and that the
+    socketpair factory is never reached.
+    """
+    recorder = _SocketpairRecorder(monkeypatch)
+    spawn = _SpawnRecorder()
+    factory = _SessionFileFactory(tmp_path / "session.json")
+
+    def create_session_file(_root: Path, _session: SessionLike) -> Path:
+        raise _InjectedFailureError("injected create_session_file failure")
+
+    deps = _injection_deps(
+        create_session_file=create_session_file,
+        subprocess_env=_working_subprocess_env,
+        spawn_process=spawn,
+    )
+
+    with pytest.raises(_InjectedFailureError, match="injected create_session_file failure"):
+        lifecycle._spawn_mcp_process(
+            tmp_path,
+            _session(),
+            deps,
+            None,
+            None,
+            [],
+            port=9981,
+            make_before_break=True,
+        )
+
+    assert factory.created is False
+    assert factory.path.exists() is False
+    assert recorder.pairs == [], "no socket may be opened before the session file exists"
+    assert spawn.calls == []
+
+
+def test_subprocess_env_failure_unlinks_the_handshake_session_file(tmp_path: Path) -> None:
+    """The handshake file is bound BEFORE the env mapper runs, so it is reclaimable.
+
+    This is the seam that makes cleanup ownership load-bearing. The outer
+    function binds ``session_file`` from ``deps.create_session_file`` and only
+    then calls ``deps.subprocess_env``. Had the env-assembly helper resolved
+    the path itself and returned it on success, the outer name would still hold
+    its pre-try ``None`` here and the single ``except BaseException`` would skip
+    the unlink, leaking one handshake file per failed spawn.
+    """
+    factory = _SessionFileFactory(tmp_path / "session.json")
+    spawn = _SpawnRecorder()
+    deps = _injection_deps(
+        create_session_file=factory,
+        subprocess_env=_failing_subprocess_env("injected subprocess_env failure"),
+        spawn_process=spawn,
+    )
+
+    with pytest.raises(_InjectedFailureError, match="injected subprocess_env failure"):
+        lifecycle._spawn_mcp_process(tmp_path, _session(), deps, None, None, [], port=9982)
+
+    assert factory.created is True, "the failure must land AFTER the handshake file exists"
+    _assert_handshake_removed(factory, "subprocess_env failure")
+    assert spawn.calls == []
+
+
+def test_catalog_env_failure_unlinks_the_handshake_session_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failure inside the extracted env helper still reclaims the handshake file.
+
+    ``_build_spawn_env`` owns no resource, but the file it was handed does. A
+    seam deep in the helper (catalog materialization) must reach the SAME outer
+    cleanup the pre-helper seams use.
+    """
+
+    def boom(_env: dict[str, str], _snapshot: UpstreamToolCatalogSnapshot) -> None:
+        raise _InjectedFailureError("injected catalog env failure")
+
+    monkeypatch.setattr(lifecycle, "apply_tool_catalog_env", boom)
+    factory = _SessionFileFactory(tmp_path / "session.json")
+    spawn = _SpawnRecorder()
+    deps = _injection_deps(
+        create_session_file=factory,
+        subprocess_env=_working_subprocess_env,
+        spawn_process=spawn,
+    )
+
+    with pytest.raises(_InjectedFailureError, match="injected catalog env failure"):
+        lifecycle._spawn_mcp_process(
+            tmp_path,
+            _session(),
+            deps,
+            None,
+            None,
+            [],
+            port=9983,
+            tool_catalog_snapshot=UpstreamToolCatalogSnapshot(present=True, value={}),
+        )
+
+    assert factory.created is True
+    _assert_handshake_removed(factory, "catalog env failure")
+    assert spawn.calls == []
+
+
+def test_socketpair_failure_unlinks_the_handshake_session_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A handover-factory failure owns no socket yet, but still reclaims the file."""
+
+    def boom() -> tuple[socket, socket]:
+        raise _InjectedFailureError("injected socketpair failure")
+
+    monkeypatch.setattr(lifecycle, "create_handover_socketpair", boom)
+    factory = _SessionFileFactory(tmp_path / "session.json")
+    spawn = _SpawnRecorder()
+    deps = _injection_deps(
+        create_session_file=factory,
+        subprocess_env=_working_subprocess_env,
+        spawn_process=spawn,
+    )
+
+    with pytest.raises(_InjectedFailureError, match="injected socketpair failure"):
+        lifecycle._spawn_mcp_process(
+            tmp_path,
+            _session(),
+            deps,
+            None,
+            None,
+            [],
+            port=9984,
+            make_before_break=True,
+        )
+
+    assert factory.created is True
+    _assert_handshake_removed(factory, "socketpair failure")
+    assert spawn.calls == []
+
+
+def test_spawn_failure_closes_both_handover_sockets_and_unlinks_session_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Post-socket seam: BOTH halves must be released, not just the child half.
+
+    On this path the child half has already been handed to ``pass_fds`` and the
+    parent half is still owned by the outer frame. Cleaning up only the child
+    would leak one descriptor per failed make-before-break restart — the exact
+    PA-003 failure mode, invisible to every pre-socket test above.
+    """
+    recorder = _SocketpairRecorder(monkeypatch)
+    factory = _SessionFileFactory(tmp_path / "session.json")
+    spawn = _SpawnRecorder(fail=True, message="injected spawn_process failure")
+    deps = _injection_deps(
+        create_session_file=factory,
+        subprocess_env=_working_subprocess_env,
+        spawn_process=spawn,
+    )
+
+    with pytest.raises(_InjectedFailureError, match="injected spawn_process failure"):
+        lifecycle._spawn_mcp_process(
+            tmp_path,
+            _session(),
+            deps,
+            None,
+            None,
+            [],
+            port=9985,
+            make_before_break=True,
+        )
+
+    assert len(spawn.calls) == 1
+    assert recorder.child_fds[0] in spawn.calls[0], (
+        "the child half must have been handed to the child via pass_fds"
+    )
+    _SocketpairRecorder.assert_closed(recorder.only_pair, "spawn_process failure")
+    _assert_handshake_removed(factory, "spawn_process failure")
+
+
+def test_bridge_construction_failure_closes_both_handover_sockets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The last post-socket seam: a double close must stay harmless.
+
+    By the time ``StandaloneMcpProcess`` is constructed the outer frame has
+    already closed the child half. The cleanup path closes it AGAIN, so this
+    also pins that the second close is suppressed rather than raised.
+    """
+
+    def boom(**_kwargs: object) -> StandaloneMcpProcess:
+        raise _InjectedFailureError("injected bridge construction failure")
+
+    monkeypatch.setattr(lifecycle, "StandaloneMcpProcess", boom)
+    recorder = _SocketpairRecorder(monkeypatch)
+    factory = _SessionFileFactory(tmp_path / "session.json")
+    spawn = _SpawnRecorder()
+    deps = _injection_deps(
+        create_session_file=factory,
+        subprocess_env=_working_subprocess_env,
+        spawn_process=spawn,
+    )
+
+    with pytest.raises(_InjectedFailureError, match="injected bridge construction failure"):
+        lifecycle._spawn_mcp_process(
+            tmp_path,
+            _session(),
+            deps,
+            None,
+            None,
+            [],
+            port=9986,
+            make_before_break=True,
+        )
+
+    _SocketpairRecorder.assert_closed(recorder.only_pair, "bridge construction failure")
+    _assert_handshake_removed(factory, "bridge construction failure")
+
+
+def test_successful_candidate_keeps_parent_socket_open_and_owns_handshake_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Control: the close assertions above are not vacuously true.
+
+    On the success path the child half is closed but the parent half stays open
+    (the bridge owns it for its lifetime) and the handshake file survives. If
+    this test ever saw ``fileno() == -1`` on the parent half, the failure-path
+    assertions would prove nothing.
+    """
+    recorder = _SocketpairRecorder(monkeypatch)
+    factory = _SessionFileFactory(tmp_path / "session.json")
+    spawn = _SpawnRecorder()
+    deps = _injection_deps(
+        create_session_file=factory,
+        subprocess_env=_working_subprocess_env,
+        spawn_process=spawn,
+    )
+
+    bridge = lifecycle._spawn_mcp_process(
+        tmp_path,
+        _session(),
+        deps,
+        None,
+        None,
+        [],
+        port=9987,
+        make_before_break=True,
+    )
+    try:
+        parent_sock, child_sock = recorder.only_pair
+        assert parent_sock.fileno() >= 0, "the bridge keeps the parent half open"
+        assert child_sock.fileno() == -1, "the child half is released after the spawn"
+        assert factory.path.exists(), "a successful spawn must not reclaim its handshake file"
+    finally:
+        bridge.shutdown()

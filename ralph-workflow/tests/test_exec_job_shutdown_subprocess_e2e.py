@@ -5,6 +5,14 @@ Tests real process trees under:
     worker + descendant process tree termination and cause='session_end'.
 (b) Owner disappearance, ensuring the child runtime's owner-loss watcher
     invokes the pre-exit hook and terminates the worker + descendant tree.
+(c) Linux-only proof that a ProcessManager-spawned exec job dies when its
+    parent is SIGKILLed via the kernel's ``PR_SET_PDEATHSIG=SIGKILL``
+    mechanism installed by ``ralph.process.manager._install_pdeathsig``
+    (``ralph/process/manager/__init__.py:90-108``). The MCP server itself
+    dying has no Python hook to run; tree death on Linux depends on this
+    mechanism. On non-Linux platforms the exec job tree is bounded only
+    by registry caps and abandonment in a future server, so the test
+    skips there.
 
 Each test spawns a multi-process tree (worker → python → sleep child) so
 the proof is structural, not just a single-PID check. The descendant
@@ -241,3 +249,117 @@ def test_owner_loss_watcher_kills_worker_and_descendant(
         f"Descendant {descendant_pid} was not reaped on owner loss — tree cleanup incomplete"
     )
     assert child_dead, f"Child server {child_pid} failed to exit on owner loss"
+
+
+# Linux-only: PR_SET_PDEATHSIG is a Linux-only mechanism. macOS lacks an
+# equivalent; on other Unix platforms the exec job tree is bounded only by
+# registry caps and abandonment in a future server (a future CPR-killer
+# helper). Skip the proof rather than silently passing on a platform where
+# the mechanism cannot fire.
+_LINUX_ONLY: pytest.MarkDecorator = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason=(
+        "PR_SET_PDEATHSIG is Linux-only; on other platforms the exec job "
+        "tree is bounded only by registry caps and abandonment in a "
+        "future server"
+    ),
+)
+
+
+@_LINUX_ONLY
+def test_parent_sigkill_kills_exec_job_via_pr_set_pdeathsig(
+    tmp_path: object,
+) -> None:
+    """Proof (c): a ProcessManager-spawned exec job dies when its PARENT is SIGKILLed.
+
+    Distinct from SIGTERM (a) and owner-loss (b):
+
+    * (a) goes through ``install_shutdown_signal_handlers`` → ``_run_shutdown_hooks``
+      → ``registry.shutdown_all``. The Python hook on the registry sends the
+      kill itself.
+    * (b) goes through ``exit_when_owner_exits`` /
+      ``_run_owner_loss_hooks`` → ``registry.shutdown_all``. Again a Python
+      hook on the registry sends the kill.
+    * (c) bypasses every Python hook. No Python code in the registry or
+      server is allowed to run after the parent receives SIGKILL — atexit
+      and signal handlers are skipped. Tree death relies on the Linux
+      kernel sending SIGKILL to children whose ``PR_SET_PDEATHSIG`` was
+      armed by ``ralph.process.manager._install_pdeathsig`` at the
+      ProcessManager preexec (``ralph/process/manager/__init__.py:90-108``).
+      When that preexec runs (Linux + main thread), the worker's effective
+      parent is the holder, so the kernel signals the worker when the
+      holder dies.
+
+    The holder is a real Python intermediate-parent process: it constructs
+    an ``ExecJobRegistry`` and calls ``registry.start(...)`` exactly the
+    way the MCP server does. The exec-job worker therefore has the holder
+    as its real parent (recorded in the kernel's task struct, not just a
+    Python notion). When the test SIGKILLs the holder, the worker must
+    die — that is the proof this test exists to capture.
+
+    The exec-job command itself is a ``sleep`` long-runner, so the
+    worker IS the long-running exec, not a wrapper around it. We do NOT
+    add a wrapper/grandchild layer: PR_SET_PDEATHSIG is a *per-process*
+    setting that survives fork but is not reliably propagated one more
+    layer down through Python's ``subprocess.Popen`` (it can be reset by
+    ``exec`` to an unrelated program, depending on the kernel and the
+    way Python's process machinery treats prctl across the post-fork
+    exec boundary). Asserting on the worker alone matches the
+    real-world threat model: a SIGKILL'd MCP server's exec jobs must die
+    without any Python hook firing.
+
+    Shrink all windows through config so the test finishes in ~1-2
+    seconds. The total wall budget for the file stays well under the
+    60-second combined test cap.
+    """
+    holder_pid_file = f"{tmp_path}/holder.pid"
+    worker_file = f"{tmp_path}/worker.pid"
+
+    # Holder: a real Python intermediate-parent process that constructs
+    # an ExecJobRegistry and starts a long-running exec job, exactly the
+    # way the MCP server does. The exec-job command is a ``sleep 60``
+    # so the exec job itself is the long-running process whose parent
+    # is the holder; that parent is what PR_SET_PDEATHSIG was armed
+    # against by the ProcessManager preexec.
+    holder_code = """
+import os, sys, time
+from ralph.mcp.tools._exec_jobs import ExecJobRegistry
+
+cmd = ["sleep", "60"]
+registry = ExecJobRegistry(auto_register_runtime_hooks=True)
+job_id = registry.start(cmd, capability='ProcessExecBounded')
+job = registry._running_jobs[job_id]
+open(os.environ['HOLDER_FILE'], 'w').write(str(os.getpid()))
+open(os.environ['WORKER_FILE'], 'w').write(str(job.handle.pid))
+while True:
+    time.sleep(0.1)
+"""
+
+    holder_env = dict(os.environ)
+    holder_env["HOLDER_FILE"] = holder_pid_file
+    holder_env["WORKER_FILE"] = worker_file
+    holder = subprocess.Popen(
+        [sys.executable, "-u", "-c", holder_code],
+        env=holder_env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    holder_pid = _wait_for_sentinel(holder_pid_file, timeout_s=5.0)
+    worker_pid = _wait_for_sentinel(worker_file, timeout_s=5.0)
+    assert holder_pid > 0
+    assert worker_pid > 0
+
+    # Both must be alive right now.
+    os.kill(holder_pid, 0)
+    os.kill(worker_pid, 0)
+
+    holder.kill()  # SIGKILL — atexit/signal handlers DO NOT fire on SIGKILL.
+    holder.wait(timeout=2.0)
+
+    # The registered PR_SET_PDEATHSIG=SIGKILL on the worker matches the
+    # holder's death. The worker must die well inside a one-second window.
+    worker_dead = _wait_for_pid_dead(worker_pid, timeout_s=1.5)
+    assert worker_dead, (
+        f"Worker {worker_pid} was not reaped on parent SIGKILL — "
+        "PR_SET_PDEATHSIG installed by ralph.process.manager did not fire"
+    )

@@ -3069,6 +3069,11 @@ def _spawn_mcp_process(
     # child wrote; the log is append-only and shared across restarts.
     log_offset = mcp_server_log_size(root)
     session_file: Path | None = None
+    # PA-003 cleanup ownership: keep these declared in the OUTER function so
+    # the single ``except BaseException`` below is the only cleanup point and
+    # the optional socketpair (acquired conditionally below) cannot leak.
+    parent_sock: socket.socket | None = None
+    child_sock: socket.socket | None = None
     bridge_run_id = session.run_id
     # Ensure session_id is available; raise early rather than falling back silently.
     session_id_value: str = session.session_id
@@ -3103,26 +3108,38 @@ def _spawn_mcp_process(
     stage_id: str = ""
     spawn_start: float = 0.0
     try:
+        # Session-file resolution stays in the OUTER (PA-003): it is the FIRST
+        # fallible step inside the try, so the outer ``session_file`` must be
+        # bound before the next fallible call. Had the helper resolved it and
+        # only returned it on success, any failure during env assembly would
+        # leave the outer name at its pre-try ``None`` and the single
+        # ``except BaseException`` below would skip the unlink, leaking the
+        # freshly created handshake file.
         session_file = (
             deps.create_session_file(root, session)
             if deps.create_session_file is not None
             else snap_session_file
         )
-        # Build the E2.4-ordered env, pass_fds, handover sockets and fresh
-        # stage id. The helper owns cleanup of any sockets it creates on an
-        # unsuccessful return (closing both ends before re-raising).
-        env, pass_fds, parent_sock, child_sock, stage_id = _build_spawn_environment(
-            deps=deps,
-            snap_dir=snap_dir,
+        env, stage_id, pass_fds = _build_spawn_env(
             session_file=session_file,
-            session_id_value=session_id_value,
+            deps=deps,
             _extra_env=_extra_env,
+            snap_dir=snap_dir,
+            session_id_value=session_id_value,
+            tool_catalog_snapshot=tool_catalog_snapshot,
+            activity_relay=activity_relay,
             inherited_fd=inherited_fd,
             respawn=respawn,
             make_before_break=make_before_break,
-            tool_catalog_snapshot=tool_catalog_snapshot,
-            activity_relay=activity_relay,
         )
+        # Socketpair creation also stays in the OUTER (PA-003): the helper owns
+        # no open FD, so a single ``except BaseException`` remains the sole
+        # cleanup point for both child_sock and parent_sock.
+        if make_before_break:
+            parent_sock, child_sock = create_handover_socketpair()
+            child_fd = child_sock.fileno()
+            env[MCP_BRIDGE_PARENT_SOCK] = str(child_fd)
+            pass_fds = (*pass_fds, child_fd)
         spawn_start = time.monotonic()
         process = deps.spawn_process(
             [
@@ -3177,6 +3194,83 @@ def _spawn_mcp_process(
         )
 
     return bridge
+
+
+def _build_spawn_env(
+    *,
+    session_file: Path,
+    deps: LifecycleDeps,
+    _extra_env: dict[str, str] | None,
+    snap_dir: Path,
+    session_id_value: str,
+    tool_catalog_snapshot: UpstreamToolCatalogSnapshot | None,
+    activity_relay: ActivityRelay | None,
+    inherited_fd: int | None,
+    respawn: bool,
+    make_before_break: bool,
+) -> tuple[dict[str, str], str, tuple[int, ...]]:
+    """Build the parent-owned child environment for :func:`_spawn_mcp_process`.
+
+    Pure env-construction companion extracted to keep ``_spawn_mcp_process``
+    under the ruff PLR0912/PLR0915 caps. Every parent-owned spawn identity
+    is assigned in the same order as the inlined block it replaced.
+
+    PA-003: this helper owns NO resource. The session file is created and
+    bound by the CALLER before the call, and the handover socketpair is
+    created by the caller after it, so the outer ``except BaseException``
+    in ``_spawn_mcp_process`` remains the single cleanup point for the
+    handshake file and both socket halves.
+    """
+    env = deps.subprocess_env(session_file)
+    if _extra_env:
+        # Merge extra_env so the subprocess inherits worker-specific env vars
+        # (e.g. WORKER_ARTIFACT_DIR for parallel workers). This happens
+        # BEFORE every parent-owned assignment below so a reused extra
+        # mapping cannot overwrite a value this bridge owns (E2.4): the
+        # session id, the snapshot dir, the per-spawn stage id and the
+        # accept-pause path must never be inherited from a stale caller.
+        env.update(_extra_env)
+    # The session-FILE path is parent-owned exactly like every other spawn
+    # identity. ``subprocess_env`` assigned it BEFORE the merge above, so a
+    # reused extras mapping would otherwise redirect the child's session
+    # file to a foreign path on every spawn.
+    env[SESSION_FILE_ENV] = str(session_file)
+    # Presence-aware ownership for every key that is valid on only one spawn
+    # branch (E2.4). A reused extras mapping can carry a stale handover
+    # resume sentinel or a foreign parent-socket fd; ``_fallback_standalone_server``
+    # waits on a PRESENT resume value and adopts whatever fd the parent-socket
+    # value names, so a leaked key would block a cold or initial child for
+    # the full resume deadline. Absent -> pop; the branch blocks below then
+    # re-set the fresh, parent-minted values.
+    for _branch_owned_key in (
+        MCP_INHERITED_FD_ENV,
+        MCP_RESPAWN_ENV,
+        MCP_ACCEPT_RESUME_FILE,
+        MCP_BRIDGE_PARENT_SOCK,
+    ):
+        env.pop(_branch_owned_key, None)
+    # Persist session_id in the subprocess environment so runtime_session.py
+    # can read it on respawn without falling back to a new factory.
+    env[MCP_SESSION_ID_ENV] = session_id_value
+    env[MCP_SNAPSHOT_DIR_ENV] = str(snap_dir)
+    stage_id = str(uuid.uuid4())
+    env[MCP_STAGE_ID_ENV] = stage_id
+    env[MCP_ACCEPT_PAUSE_FILE] = str(snap_dir / f"accept.pause.{stage_id}")
+    # I1b: the parent-owned catalog snapshot takes precedence over
+    # anything merged from extra_env (present -> set even if empty,
+    # absent -> pop).
+    if tool_catalog_snapshot is not None:
+        apply_tool_catalog_env(env, tool_catalog_snapshot)
+    if activity_relay is not None:
+        env.update(activity_relay.server_environment())
+    pass_fds: tuple[int, ...] = (inherited_fd,) if inherited_fd is not None else ()
+    if inherited_fd is not None:
+        env[MCP_INHERITED_FD_ENV] = str(inherited_fd)
+    if respawn:
+        env[MCP_RESPAWN_ENV] = "1"
+    if make_before_break:
+        env[MCP_ACCEPT_RESUME_FILE] = str(snap_dir / f"accept.resume.{stage_id}")
+    return env, stage_id, pass_fds
 
 
 def shutdown_mcp_server(bridge: SessionBridgeLike) -> None:

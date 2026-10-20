@@ -186,12 +186,33 @@ To prevent client-side MCP timeouts during long-running commands while preservin
 ### 3. Shift in `timeout_ms` Semantics: Stall Window
 Under the job flow architecture, `timeout_ms` no longer represents a rigid absolute ceiling on execution duration. Instead, it defines the **stall window** — the maximum duration of inactivity or unproductivity permitted before the execution is classified as stalled. Legitimate long-running tasks that continuously demonstrate progress can run up to the multi-hour job ceilings (`EXEC_JOB_CEILING_S` = 1 hour default, `EXEC_JOB_CEILING_MAX_S` = 4 hours max).
 
+**Ramp-offset timing (default `OutputRecent` breakpoints).** The literal Sugeno weighted-average `s = Σ wᵢzᵢ / Σ wᵢ` collapses to `s = OutputRecent(o)` in the all-idle dead phase (only R1 with `z=1.0` and R5 with `z=0.0` fire, weights `w₁ = output_recent` and `w₅ = 1 − output_recent`, total weight = 1), so the StallIntegrator `P_{n+1} = max(0, P_n + Δt · (θ − s)/θ)` accrues pressure **only while `s < θ = 0.5`**. With the shipped breakpoints `OutputRecent(o) = 1.0 at o ≤ 10` and `OutputRecent(o) = 0.0 at o ≥ 60` (`EXEC_OUTPUT_RECENT_MAX_S` = 10.0, `EXEC_OUTPUT_RECENT_MIN_S` = 60.0), the score falls below `θ` at `o = 35` seconds past the last output, then ramps from 0.5 to 0.0 over `o ∈ (35, 60]`. The trapezoidal integral of the ramp accrues
+
+```
+ramp_accrued_pressure = ∫[35 → 60] (o − 35) / 25 do = ½ · 25 = 12.5 s
+```
+
+of stall pressure before the score saturates at 0. The empirical all-idle effective kill time (relative to the last output instant) is therefore
+
+```
+t_kill = last_output + ramp_end + (stall_window − ramp_accrued)
+       = last_output + 60    + (stall_window − 12.5)
+       = last_output + (stall_window + 47.5)
+```
+
+evaluated on the coarse 2 s sample grid (`EXEC_LIVENESS_SAMPLE_INTERVAL_S` = 2.0). For the shipped defaults (`stall_window = 90` s), `t_kill = last_output + 137.5 s` continuous, rounded to the nearest coarse-grid tick (one `_DEFAULT_DT` either side). The two scenario-library worked numbers confirm the closed form:
+
+- scenario 8 ("short burst then idle", `tests/test_exec_liveness_scenarios.py:319`) — `burst_stop = 30`, kill at **168 s** (continuous 167.5 s, coarse-within-`dt`)
+- scenario 13 ("mid-run deadlock", `tests/test_exec_liveness_scenarios.py:615`) — `deadlock_at = 120`, kill at **258 s** (continuous 257.5 s, coarse-within-`dt`)
+
+Both within one sample interval of the closed-form `last_output + 137.5 s`. The spec-table wording "killed at `stall_window` after activity stops" is preserved **relative to pressure onset** (the `o = 35 s` instant at which `s < θ` first holds), within one sample interval; it is an approximation, not a literal guarantee, and the closed form above is the exact reconciliation. Acceptance criterion 3 ("idle command killed with cause `stalled` within `stall_window` plus one sample interval") holds for a trace idle from the start (`last_output = 0`); the scenario library asserts the more precise bound `last_output + ramp_end + (stall_window − ramp_accrued) ± dt` for both the burst-then-idle and mid-run deadlock shapes.
+
 ### 4. Fuzzy Liveness Assessment and Stall Pressure Integration
 Rather than relying solely on raw stdout/stderr output timestamps, process health is monitored via a pure, multi-signal fuzzy liveness assessor (`ralph.process.manager._liveness_assessor`):
 - **Telemetry Signals**: Evaluates output recency (`OutputRecent`), CPU utilization ratio (`CpuBusy`), I/O throughput in KiB/s (`IoActive`), child subprocess tree activity (`TreeActive`), output novelty (`NotRepetitive`), and voluntary context switches (`Awake`).
 - **Stall Integrator**: Integrates verdict scores into cumulative stall pressure $P$:
   $$P_{n+1} = \max(0, P_n + \Delta t \cdot \frac{\theta - s}{\theta})$$
-  where $\theta = \text{EXEC\_STALL\_THETA}$ (0.5). A kill is signaled when cumulative stall pressure $P$ exceeds the configured stall window (`stall_window_s`).
+  where $\theta = \text{EXEC\_STALL\_THETA}$ (0.5). Pressure accrues **only while the aggregate score $s < \theta$**; when $s \geq \theta$ the per-step delta is non-positive and the `max(0, …)` clamp drains $P$ toward zero without ever letting it go negative. A kill is signaled when cumulative stall pressure $P$ exceeds the configured stall window (`stall_window_s`). The accrual-direction split is what produces the **ramp-offset reconciliation** described under §3 above: a fully-idle trace kills at `last_output + 60 + (stall_window − 12.5)` rather than at `last_output + stall_window`, because the score sits at `OutputRecent(o) ≥ 0.5` for the first 35 s of the dead phase and contributes no positive pressure until the membership ramps below $\theta$.
 
 ### 5. Bounded Kill Causes
 All job terminations enforce bounded, explicit cause classifications:

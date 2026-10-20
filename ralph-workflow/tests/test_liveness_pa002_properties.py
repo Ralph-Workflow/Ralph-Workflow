@@ -332,6 +332,18 @@ def test_extended_property_high_z_baseline_r1_io_dilution(io_val: float) -> None
 # 18.0 exactly, requiring one additional post-idle step to cross 90.0.
 # This rounding off-by-ulp is intrinsic to the StallIntegrator's
 # non-integer-arithmetic path, not a defect.
+#
+# Deviation disposition: this is the SPEC-INTERNAL score / kill-time
+# non-monotonicity that PA-002 closes. The shipped literal-Sugeno
+# weighted average ``s = Σ wᵢzᵢ / Σ wᵢ`` admits dilution; killing
+# earlier when a working signal is raised on a changing trace is a
+# property of the shipped aggregate, not a bug. The remaining
+# guarantees (bounded ``P``, fail-closed unknowns, baseline-relative
+# score monotonicity, all-idle kill at ``stall_window_s`` ± one
+# interval — see scenario 1 and the §3 ramp-offset reconciliation in
+# ``ralph/mcp/ARCHITECTURE.md``) are stated separately in the
+# accepted-deviations section of
+# ``docs/agents/exec-long-running-root-cause.md``.
 
 
 def _run_changing_io_kill_trace(
