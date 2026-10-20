@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle
 from ralph.mcp.explore.pipeline import ReindexOptions, reindex
 from ralph.mcp.explore.store import ExploreStore
@@ -24,6 +26,9 @@ from ralph.mcp.tools.workspace._write_handlers import handle_edit_file
 
 if TYPE_CHECKING:
     from ralph.mcp.tools.bridge._tool_spec import ToolSpec
+
+
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 class _FakeSession:

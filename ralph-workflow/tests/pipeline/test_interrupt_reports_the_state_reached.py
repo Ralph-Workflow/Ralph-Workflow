@@ -23,6 +23,9 @@ _REACHED_PHASE = "development"
 _CONSUMED = 4321.0
 
 
+pytestmark = pytest.mark.timeout_seconds(15)
+
+
 def test_an_interrupt_checkpoints_the_phase_the_run_reached(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

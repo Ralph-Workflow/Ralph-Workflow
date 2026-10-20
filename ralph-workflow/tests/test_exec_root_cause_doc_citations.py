@@ -217,7 +217,7 @@ REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
     # extraction in commit 56c461b06 (referenced as the ``spawn``-module
     # argv in ``_spawn_mcp_process``). The destination was re-anchored to
     # the working tree when this commit replayed onto ``main``.
-    ("ralph/mcp/server/lifecycle.py", 3148, '"ralph.mcp.server",'),
+    ("ralph/mcp/server/lifecycle.py", 3146, '"ralph.mcp.server",'),
     (
         "ralph/mcp/server/_standalone_mcp_process.py",
         55,

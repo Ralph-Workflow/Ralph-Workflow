@@ -3103,8 +3103,6 @@ def _spawn_mcp_process(
     # the except handler even if the helper fails early.
     env: dict[str, str] | None = None
     pass_fds: tuple[int, ...] = ()
-    parent_sock: socket.socket | None = None
-    child_sock: socket.socket | None = None
     stage_id: str = ""
     spawn_start: float = 0.0
     try:
