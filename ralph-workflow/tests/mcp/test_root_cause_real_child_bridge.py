@@ -875,11 +875,16 @@ def test_c4_file_based_pause_ack_resume_handover_protocol(
     pause_file = snap_dir / "accept.pause.old-c4"
     resume_file = snap_dir / "accept.resume.cand-c4"
 
-    # Old child watches pause_file and creates pause_file.ack
+    # Old child watches pause_file and creates pause_file.ack. It announces
+    # itself with a ready sentinel BEFORE entering the watch loop so the
+    # parent never has to charge interpreter startup to the ack bound.
+    old_ready = tmp_path / "old_child_c4.ready"
     old_script = tmp_path / "old_child_c4.py"
     old_script.write_text(
         """import time, sys, pathlib
 pause_file = pathlib.Path(sys.argv[1])
+ready_file = pathlib.Path(sys.argv[2])
+ready_file.write_text("READY\\n", encoding="utf-8")
 while True:
     if pause_file.exists():
         ack_file = pause_file.with_name(pause_file.name + ".ack")
@@ -893,10 +898,20 @@ while True:
     )
 
     old_proc = managed_spawner(
-        [sys.executable, str(old_script), str(pause_file)],
+        [sys.executable, str(old_script), str(pause_file), str(old_ready)],
         label="c4-old-child",
     )
     old_inner = _make_real_standalone(old_proc, tmp_path, stage_id="old-c4")
+
+    # Startup barrier: ``_HANDOVER_ACK_TIMEOUT_S`` is a PRODUCTION bound the
+    # test must not relax, so the window it measures has to be the protocol
+    # alone, not CPython startup on a cold or oversubscribed host. Same
+    # readiness pattern the in-flight handover test drives before calling
+    # ``_hand_over_accept`` (test_handover_inflight_real_child.py).
+    ready_deadline = time.monotonic() + 5.0
+    while time.monotonic() < ready_deadline and not old_ready.exists():
+        time.sleep(0.02)
+    assert old_ready.exists(), "old child never reached its pause-watch loop"
 
     # Candidate child waits for resume_file
     cand_script = tmp_path / "cand_child_c4.py"
@@ -924,16 +939,19 @@ while True:
         restart_fn=lambda: cand_inner,
         restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
         run_id=run_id,
-        sleep_fn=lambda s: None,
         workspace_root=tmp_path,
     )
 
     bridge._hand_over_accept(old_inner, cand_inner)
 
-    # Invariants: Old child acknowledged pause; resume file created for candidate
+    # Invariants: Old child acknowledged pause; resume file created for candidate.
+    # A missed ack takes the production escalation path (lifecycle kills the old
+    # child), so liveness here is what distinguishes "acknowledged" from
+    # "acknowledged too late to observe".
     ack_file = pause_file.with_name(pause_file.name + ".ack")
     assert ack_file.exists()
     assert resume_file.exists()
+    assert old_proc.poll() is None, "old child was killed: the ack was not observed"
 
 
 # ---------------------------------------------------------------------------

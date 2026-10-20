@@ -20,16 +20,15 @@ Behavioural matrix (each case must pass on the post-fix tree):
   file path is unlinked, open-fd count is unchanged.
 - ``subprocess_env`` failure -> original typed error surfaces, open-fd count is
   unchanged (the session file may or may not yet exist when the helper runs).
-- In-caller fault AFTER ``create_handover_socketpair`` returns. The
-  injection sits on the next statement in ``_spawn_mcp_process`` itself
-  (the ``child_sock.fileno()`` call that runs the instant the caller has a
-  socketpair in hand), so the caller still owns the file descriptors at the
-  moment the fault fires. This proves the caller's cleanup-on-unsuccessful-
-  return contract (PA-002/PA-003): BOTH socket ends must be closed by the
-  single ``except BaseException`` cleanup point before the caller re-raises,
-  and no caller observes a leaked fd. The live env-assembly helper
-  ``_build_spawn_env`` opens no fd and owns no resource at all, so it is
-  never on this path.
+- Post-socketpair fault. The injection sits on the ``child_sock.fileno()``
+  call that ``_spawn_mcp_process`` issues the instant
+  ``create_handover_socketpair`` returns a pair, so the spawn path still owns
+  both file descriptors when the fault fires. This proves the cleanup contract
+  (PA-002/PA-003): BOTH socket ends must be closed before the typed error
+  propagates, and the caller never observes a leaked fd. Every case drives
+  the public ``_spawn_mcp_process`` surface, never the inner
+  ``_build_spawn_env`` env-assembly helper, so the assertions pin the boundary
+  that callers actually observe.
 """
 
 from __future__ import annotations
@@ -206,18 +205,17 @@ def test_subprocess_env_failure_raises_typed_error_with_no_unboundlocal(
 def test_post_socketpair_in_helper_failure_closes_both_socket_ends(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """(c) Fault after the caller's socketpair: BOTH socket ends are closed.
+    """(c) Fault after the socketpair: BOTH socket ends are closed.
 
-    The injection sits on ``socket.socket.fileno`` in ``_spawn_mcp_process``:
-    the caller calls ``create_handover_socketpair`` (which returns a real
-    pair) and then immediately calls ``child_sock.fileno()`` to compute the
-    fd number it hands to the child via env. By wrapping
-    ``socket.socket.fileno`` to raise ON THE FIRST CALL ONLY, we inject a fault
-    AFTER the socketpair exists but BEFORE the process object is built. The
-    single ``except BaseException`` cleanup point — which also owns the
-    session-file unlink — must then close BOTH ends and re-raise the typed
-    error. ``_build_spawn_env`` owns nothing here: it has already returned
-    by the time the socketpair exists.
+    The injection sits on ``socket.socket.fileno``. The test drives the public
+    ``_spawn_mcp_process`` surface, not the inner ``_build_spawn_env``
+    env-assembly helper: ``make_before_break=True`` makes the caller call
+    ``create_handover_socketpair`` (which returns a real pair) and then
+    immediately call ``child_sock.fileno()`` to compute the fd number it will
+    hand to the child via env. By wrapping ``socket.socket.fileno`` to raise ON
+    THE FIRST CALL ONLY, we inject a fault AFTER the socketpair exists but
+    BEFORE the spawn completes. The spawn path must then close BOTH ends and
+    re-raise the typed error.
     """
 
     class _PostSocketpairFaultError(RuntimeError):
