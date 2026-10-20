@@ -247,10 +247,31 @@ def test_deferral_counter_increments_on_overrun_with_contention_signal():
 
 
 # ----------------------------------------------------------------------
-# Test 4: deferral ceiling forces restart even with contention signal
+# Test 4: E6.2 -- probe overrun is contention, and the deferral ceiling is
+# the backstop that stops a genuinely hung server from being deferred forever
 # ----------------------------------------------------------------------
-def test_deferral_ceiling_trips_and_forces_restart():
-    """When the deferral count reaches the ceiling, the next failure forces a restart."""
+def test_e62_probe_overrun_is_contention_and_deferral_ceiling_is_the_backstop():
+    """E6.2 behaviourally: an overrun probe is CONTENTION, never a server verdict.
+
+    Both halves of the catalogue entry are proved here, in one run:
+
+    * **Overrun is contention, not a server failure.** A probe whose elapsed
+      time exceeds ``timeout + _PROBE_DEADLINE_SLACK_S`` is classified with
+      ``overrun=True`` and ``infra_error=False`` -- the bridge records a
+      *timing* verdict, not a *server is broken* verdict -- and, while the child
+      is alive and host contention is signalled, ``check_health_and_restart_if_needed``
+      DEFERS instead of restarting. Without the slack band a slow-but-healthy
+      server would be torn down on a scheduling hiccup.
+
+    * **A genuinely hung server is NOT contention forever.** The simulated
+      child is alive in the kernel (``poll()`` is ``None`` -- the same shape as
+      the SIGSTOPped child of E5.3) but never answers a probe: the hung-server
+      shape, not a transient hiccup. ``_DEFERRAL_COUNT_CEILING`` is therefore
+      the backstop that keeps the slack band from becoming an immortal
+      exemption: once the ceiling is reached the next failure forces a restart
+      even though the contention signal is still fresh and still the child is
+      still "alive".
+    """
     base_deadline = 0.5
     slack = _PROBE_DEADLINE_SLACK_S
     ceiling = _DEFERRAL_COUNT_CEILING
@@ -270,11 +291,29 @@ def test_deferral_ceiling_trips_and_forces_restart():
         clock_fn=clock,
     )
 
-    for _ in range(ceiling):
-        bridge.check_health_and_restart_if_needed()
-    assert bridge._consecutive_probe_failures_deferred == ceiling
-    assert bridge._restart_count == 0
+    # Half 1: the overrun is classified as contention, NOT as a server failure.
+    probe_failed, _pd, infra_error, overrun = bridge._run_health_probe()
+    assert probe_failed is True
+    assert overrun is True, (
+        f"probe elapsed {simulated_latency_s:.2f}s past a {base_deadline}s deadline "
+        f"(+{slack}s slack) must be classified as an overrun"
+    )
+    assert infra_error is False, (
+        "an overrun is a timing/contention verdict, never an infrastructure "
+        f"(server-failure) verdict; got infra_error={infra_error}"
+    )
 
+    # A hung-but-alive child under an overrun probe defers instead of restarting.
+    for _ in range(ceiling):
+        assert bridge.check_health_and_restart_if_needed() is False, (
+            "an overrun probe on an alive child must defer (contention), not restart"
+        )
+    assert bridge._consecutive_probe_failures_deferred == ceiling
+    assert bridge._restart_count == 0, (
+        f"the slack band restarted a hung-but-alive server after {ceiling} overruns; it must defer"
+    )
+
+    # Half 2: the ceiling is the backstop -- contention does not defer forever.
     restarted = bridge.check_health_and_restart_if_needed()
     assert restarted is True, (
         f"expected restart=True when deferral count hits ceiling ({ceiling}), got {restarted}"

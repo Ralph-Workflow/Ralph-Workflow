@@ -3,7 +3,9 @@
 Catalogue coverage:
 - E1.1: Preflight hits wrong child -> private readiness channel verifies spawn_id & pid.
 - E1.2: Two acceptors -> single-acceptor pause-ack protocol, timeout triggers escalation.
-- E1.3: Hung old child -> bounded drain deadline _HANDOVER_DRAIN_S.
+- E1.3: Hung old child -> bounded drain deadline _HANDOVER_DRAIN_S, proven
+        behaviourally against a real wedged child (accepted request never
+        completes, child reaped at the deadline, typed error surfaces).
 - E1.4: In-flight non-idempotent tool calls & deduplication.
 - E1.5: In-flight calls across retirement handled cleanly during drain.
 - E1.6: Interleaved wire ledger appends from two children verify afterwards.
@@ -21,9 +23,12 @@ Catalogue coverage:
 
 from __future__ import annotations
 
+import contextlib
+import http.client
 import json
 import multiprocessing
 import pathlib
+import sys
 import tempfile
 import threading
 import time
@@ -51,6 +56,7 @@ from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._snapshots import read_snapshot, snapshot_dir, write_snapshot
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.server._wire_ledger import append_wire_record, verify_chain
+from ralph.process.manager import SpawnOptions, get_process_manager
 
 pytestmark = [pytest.mark.subprocess_e2e]
 
@@ -214,6 +220,214 @@ def test_e13_drain_deadline_is_bounded() -> None:
     assert _HANDOVER_DRAIN_S <= 5.0
     assert _HANDOVER_ACK_TIMEOUT_S > 0
     assert _HANDOVER_ACK_TIMEOUT_S <= 2.0
+
+
+#: How long the wedged real child holds its ONE accepted request open. Chosen
+#: far beyond any bound the bridge enforces so "the bridge waited for the
+#: request" and "the bridge enforced the drain deadline" are distinguishable
+#: outcomes rather than coincident ones.
+_WEDGED_CHILD_HOLD_S = 30.0
+
+#: Upper bound for the reap, generous over ``_HANDOVER_DRAIN_S`` (drain window
+#: plus the shutdown that follows it) but far below ``_WEDGED_CHILD_HOLD_S``.
+_DRAIN_REAP_BOUND_S = _HANDOVER_DRAIN_S + 2.0
+
+
+def _write_wedged_child_script(tmp_path: pathlib.Path) -> tuple[pathlib.Path, ...]:
+    """Write a REAL child server that wedges itself on its first accepted request.
+
+    The child is a single-threaded :class:`HTTPServer`: once it accepts the
+    request it parks inside the handler for ``_WEDGED_CHILD_HOLD_S`` and can
+    neither finish that request nor accept/ACK anything else. It writes
+    ``serving_file`` only after the request is ACCEPTED, which is how the
+    parent knows the request is genuinely in-flight (not merely queued in the
+    accept backlog) before it starts the drain.
+    """
+    port_file = tmp_path / "e13_wedged_port.txt"
+    serving_file = tmp_path / "e13_wedged_serving.txt"
+    script = tmp_path / "e13_wedged_child.py"
+    script.write_text(
+        "\n".join(
+            [
+                "import time",
+                "from http.server import BaseHTTPRequestHandler, HTTPServer",
+                "from pathlib import Path",
+                f"port_file = Path({str(port_file)!r})",
+                f"serving_file = Path({str(serving_file)!r})",
+                "",
+                "class _WedgeHandler(BaseHTTPRequestHandler):",
+                "    def do_POST(self) -> None:",
+                "        length = int(self.headers.get('Content-Length', '0'))",
+                "        if length:",
+                "            self.rfile.read(length)",
+                "        # ACCEPTED: record the wedge, then never answer in time.",
+                "        serving_file.write_text('wedged', encoding='utf-8')",
+                f"        time.sleep({_WEDGED_CHILD_HOLD_S})",
+                "        body = b'{}'",
+                "        self.send_response(200)",
+                "        self.send_header('Content-Length', str(len(body)))",
+                "        self.end_headers()",
+                "        self.wfile.write(body)",
+                "",
+                "    def log_message(self, format, *args):",
+                "        return",
+                "",
+                "server = HTTPServer(('127.0.0.1', 0), _WedgeHandler)",
+                "port_file.write_text(str(server.server_address[1]), encoding='utf-8')",
+                "server.serve_forever()",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return script, port_file, serving_file
+
+
+def _issue_wedged_inflight_request(
+    port: int, errors: list[Exception], done: threading.Event
+) -> None:
+    """Issue one non-idempotent POST and record the typed error the drain produces."""
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=_WEDGED_CHILD_HOLD_S + 10.0)
+    try:
+        conn.request(
+            "POST",
+            "/mcp",
+            body=b'{"jsonrpc":"2.0","id":1,"method":"tools/call"}',
+            headers={"Content-Type": "application/json"},
+        )
+        _ = conn.getresponse().read()
+    except Exception as exc:
+        errors.append(exc)
+    finally:
+        with contextlib.suppress(Exception):
+            conn.close()
+        done.set()
+
+
+def _wait_for_path(path: pathlib.Path, timeout_s: float = 5.0) -> bool:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if path.exists():
+            return True
+        time.sleep(0.02)
+    return path.exists()
+
+
+@pytest.mark.timeout_seconds(10)
+def test_e13_hung_old_child_reaped_at_drain_deadline(tmp_path: pathlib.Path) -> None:
+    """A wedged old child's already-accepted request never completes; the drain deadline reaps it.
+
+    The catalogue entry for E1.3 requires four things at once, and the constant
+    guard above proves none of them:
+
+    1. requests already accepted by a wedged old child NEVER complete,
+    2. a drain deadline exists and is enforced,
+    3. after it expires the old child is killed and those requests surface as a
+       typed error,
+    4. nothing waits forever.
+
+    This test drives all four against a REAL child process that wedges itself:
+    a single-threaded HTTP server that has already ACCEPTED one non-idempotent
+    ``tools/call`` POST and then parks inside the handler for
+    ``_WEDGED_CHILD_HOLD_S``. The bridge is the real
+    :meth:`RestartAwareMcpBridge._drain_old` path with no injected sleeper, so
+    the only thing bounding the retirement is ``_HANDOVER_DRAIN_S``.
+
+    ``_WEDGED_CHILD_HOLD_S`` (30 s) is deliberately far larger than
+    ``_DRAIN_REAP_BOUND_S`` (drain window + 2 s): a regression that removed the
+    deadline — or waited for the in-flight request instead of killing the child
+    — fails here rather than silently degrading to "eventually".
+    """
+    script, port_file, serving_file = _write_wedged_child_script(tmp_path)
+    child = get_process_manager().spawn(
+        [sys.executable, str(script)],
+        SpawnOptions(cwd=str(tmp_path), label="e13-wedged-old-child"),
+    )
+
+    try:
+        assert _wait_for_path(port_file), "wedged child never reported its bound port"
+        port = int(port_file.read_text(encoding="utf-8").strip())
+
+        inflight_errors: list[Exception] = []
+        inflight_done = threading.Event()
+        worker = threading.Thread(
+            target=_issue_wedged_inflight_request,
+            args=(port, inflight_errors, inflight_done),
+            daemon=True,
+        )
+        worker.start()
+
+        # (1) The child ACCEPTED the request and is now wedged on it: the
+        # serving marker appears only from inside the handler, and the request
+        # has neither completed nor errored at this point.
+        assert _wait_for_path(serving_file), "child never accepted the in-flight request"
+        assert not inflight_done.is_set(), (
+            "accepted request on the wedged child completed; it must never complete"
+        )
+        assert inflight_errors == []
+
+        session_file = tmp_path / "session.json"
+        session_file.write_text("{}", encoding="utf-8")
+        old_inner = StandaloneMcpProcess(
+            endpoint=f"http://127.0.0.1:{port}/mcp",
+            process=child,
+            session_file=session_file,
+            stage_id="stage-e13-wedged",
+        )
+        bridge = lifecycle.RestartAwareMcpBridge(
+            old_inner,
+            restart_fn=lambda: old_inner,
+            restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
+            run_id="run-e13-wedged",
+            workspace_root=tmp_path,
+        )
+        # No injected sleeper: the drain must run on the real clock, so the
+        # only bound on this retirement is the drain deadline itself.
+        assert bridge._sleep_fn is None
+
+        # (2) Drive the REAL drain/retirement path against the wedged child.
+        started = time.monotonic()
+        bridge._drain_old(old_inner)
+        assert old_inner in bridge._draining_inners, "wedged child was not registered as draining"
+
+        deadline = started + _DRAIN_REAP_BOUND_S
+        while time.monotonic() < deadline and child.poll() is None:
+            time.sleep(0.01)
+        elapsed = time.monotonic() - started
+
+        # (3) After the drain deadline expires the old child is killed.
+        assert child.poll() is not None, (
+            f"wedged old child was not reaped within {_DRAIN_REAP_BOUND_S}s "
+            f"(drain deadline {_HANDOVER_DRAIN_S}s was not enforced)"
+        )
+        # The drain window was honoured before the kill, not bypassed.
+        assert elapsed >= _HANDOVER_DRAIN_S * 0.9, (
+            f"child was reaped after {elapsed:.3f}s, before the "
+            f"{_HANDOVER_DRAIN_S}s drain deadline elapsed"
+        )
+        # (4) Nothing waited for the wedged request to finish.
+        assert elapsed < _WEDGED_CHILD_HOLD_S, (
+            f"retirement waited {elapsed:.3f}s for a request the wedged child "
+            f"would hold for {_WEDGED_CHILD_HOLD_S}s"
+        )
+        assert old_inner not in bridge._draining_inners
+
+        # The severed accepted request surfaces as a typed network error at the
+        # ``http.client`` boundary that the agent uses.
+        assert inflight_done.wait(timeout=2.0), "in-flight request never surfaced an outcome"
+        assert len(inflight_errors) == 1, (
+            f"in-flight request on the reaped child must surface exactly one typed error; "
+            f"got {inflight_errors!r}"
+        )
+        assert isinstance(inflight_errors[0], OSError), (
+            f"in-flight severed request must surface a typed OSError-family error; "
+            f"got {type(inflight_errors[0]).__name__}: {inflight_errors[0]!r}"
+        )
+        worker.join(timeout=2.0)
+    finally:
+        with contextlib.suppress(Exception):
+            child.kill()
+        with contextlib.suppress(Exception):
+            child.wait(timeout=2.0)
 
 
 # ---------------------------------------------------------------------------

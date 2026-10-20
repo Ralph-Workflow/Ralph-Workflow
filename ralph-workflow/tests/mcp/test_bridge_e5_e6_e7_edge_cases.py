@@ -196,13 +196,21 @@ def test_e54_zombie_child_reaped_by_poll() -> None:
     try:
         p = psutil.Process(proc.pid)
         deadline = time.monotonic() + 2.0
+        observed_zombie = False
         while time.monotonic() < deadline:
             try:
                 if p.status() == psutil.STATUS_ZOMBIE:
+                    observed_zombie = True
                     break
             except psutil.NoSuchProcess:
                 break
             time.sleep(0.01)
+
+        # 0. The zombie state was ACTUALLY observed. Without this the two
+        #    assertions below would also hold for a still-running child,
+        #    because os.kill(pid, 0) succeeds on a live process too — the
+        #    test would stop proving that a zombie is liveness-indistinguishable.
+        assert observed_zombie, "child must be observed in the OS zombie state before reaping"
 
         # 1. os.kill(pid, 0) succeeds on the zombie child -> NOT a liveness test
         os.kill(proc.pid, 0)
@@ -269,6 +277,15 @@ def test_e61_suspend_resume_clock_jump_trips_wall_time_ceiling() -> None:
 # E6.2: Probe-overrun slack bounds contention classification
 # ---------------------------------------------------------------------------
 def test_e62_probe_slack_bounds_classification() -> None:
+    """Constant guard for E6.2.
+
+    The BEHAVIOURAL proof of E6.2 -- that an overrun past ``timeout + slack`` is
+    classified as contention rather than a server failure, and that the
+    deferral ceiling still forces a restart for a genuinely hung server -- lives
+    in
+    ``tests/mcp/test_probe_overrun_self_measure.py::test_e62_probe_overrun_is_contention_and_deferral_ceiling_is_the_backstop``.
+    These assertions only pin the constant the behavioural test exercises.
+    """
     assert lifecycle._PROBE_DEADLINE_SLACK_S > 0
     assert lifecycle._PROBE_DEADLINE_SLACK_S <= 1.0
 

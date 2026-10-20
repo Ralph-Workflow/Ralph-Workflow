@@ -31,7 +31,8 @@ The make-before-break transition is strictly bounded by named constants:
   pause acknowledgement file (``<pause>.ack``) after writing ``accept.pause``.
 * ``_HANDOVER_KILL_WAIT_S = 1.0``: maximum duration to wait for old child process
   to exit after issuing SIGKILL if pause ack timed out.
-* ``_HANDOVER_DRAIN_S = 2.0``: drain policy deadline constant bounding old child
+* ``_HANDOVER_DRAIN_S = 0.5`` (defined in ``_handover_protocol.py:37``): drain policy
+  deadline constant bounding old child
   drain period during graceful handover.
 
 Drain policy deadline constant:
@@ -47,33 +48,79 @@ Backoff cooldown is enforced unconditionally via ``_cooldown_after_failure()``
 prior to every restart attempt (``McpRestartPolicy.cooldown_seconds``), guaranteeing
 the bridge cannot storm or spin-loop even with a wedged ``restart_fn``.
 
-E1.6 Concurrency arguments across all 7 state stores:
+E1.6 Concurrency arguments across all 8 state stores:
 During make-before-break replacement, candidate and serving children overlap.
-State integrity across both processes is preserved across all 7 state stores:
+State integrity across both processes is preserved across all 8 state stores.
+Each entry below names the module that ACTUALLY performs the write and the
+mechanism that ACTUALLY serialises it. The writer location is load-bearing:
+three of these stores are written from the CHILD process, not from the parent
+bridge, so a note claiming single-writer safety would be false.
 
-1. Wire ledger: Written exclusively by the parent bridge under its lock
-   (``self._lock``) with OS-level advisory file locks (``fcntl.flock``); child
-   processes never append to the wire ledger concurrently.
-2. Session file: Created atomically by the parent prior to spawning the child;
-   child processes read only; cleaned up deterministically by the parent on
-   bridge shutdown.
-3. Durable sink: Protected across all bridge instances by the dedicated
-   ``_DURABLE_SINK_LOCK``; append-only JSONL entries for health events and
-   restart decisions, persisted for post-mortem analysis.
-4. Activity relay: Protected by internal thread synchronization in
-   ``ActivityRelay``; sender threads safely enqueue events; dropped cleanly
-   after bridge shutdown.
-5. Stage files: Each child spawn is assigned a unique stage ID (``MCP_STAGE_ID_ENV``)
-   so status and stage tracking write to isolated stage-specific files
-   (``start.stage.<stage_id>``), preventing inter-generation file clobbering.
-6. Artifact stores: Managed in the workspace filesystem using atomic renames
-   and task-isolated staging directories; children write only to their designated
-   staging locations.
-7. Coordination state: In-memory bridge state transitions occur under
-   ``self._lock`` (reentrant lock); disk-based handshake sentinels
-   (``accept.pause``, ``accept.pause.ack``, ``accept.resume``) under
-   ``.agent/snapshots/<run_id>/`` coordinate single-acceptor ownership
-   deterministically without race conditions.
+1. Wire ledger: written by the CHILD request-dispatch path, NOT by the parent
+   bridge. ``McpServer._dispatch_request`` (``_mcp_server.py:275,283,303``)
+   reaches ``_append_wire_record_best_effort`` -> ``append_wire_record`` for
+   every dispatched JSON-RPC frame, ``_record_wire_ledger_before_dispatch``
+   (``_mcp_server.py:712``) does the same for ``tools/call``, and media
+   capture appends from inside the child (``_media_capture.py:434``). The
+   cross-process mechanism lives entirely in the lock critical section of
+   ``append_wire_record`` (defined at ``_wire_ledger.py:294``; the locked
+   section is ``_wire_ledger.py:345-407``): a sidecar ``<ledger>.lock`` file is
+   opened, an exclusive non-blocking ``fcntl.flock`` is taken with a bounded 0.2 s
+   retry, and the chain head (``_read_last_hmac``) is read UNDER that lock
+   immediately before the append-only JSONL write, then released. The chain
+   head is never cached in memory between appends: a stale head is exactly how
+   the chain forks into two children of one parent. Candidate and serving
+   children append to the same file concurrently; the ledger is correct
+   because of the lock, not because there is only one writer.
+2. Session file: parent-written only. ``_create_session_file``
+   (``lifecycle.py:2934``) creates it atomically via ``tempfile.mkstemp`` in
+   the system temporary directory before the spawn and passes the path through
+   ``MCP_SESSION_FILE_ENV``; ``FileBackedSession``
+   (``runtime_session.py:144``) is a read-only view that performs no writes at
+   all. The parent removes it when the spawn fails
+   (``lifecycle.py:2754``). It does NOT live under
+   ``.agent/snapshots/<run_id>/``, so no stage or generation isolation is
+   needed or provided for it.
+3. Durable sink: isolated by a PER-BRIDGE UNIQUE FILE, not by a cross-process
+   lock. ``configure_bridge_sink`` (``_mcp_health_event.py:284``) assigns each
+   bridge its own ``.agent/mcp-health-events-<bridge_id>.jsonl``
+   (``lifecycle.py:2480``), and only the parent appends
+   (``lifecycle.py:1293`` via ``record_restart_decision``). ``_DURABLE_SINK_LOCK`` is a
+   ``threading.Lock`` (``_mcp_health_event.py:54``): it serialises threads
+   inside the parent process and cannot protect across processes. The
+   cross-instance isolation comes from the unique filename. Entries are
+   append-only JSONL, persisted for post-mortem analysis.
+4. Activity relay: in-memory only, no store. ``ActivityRelay``
+   (``_activity_relay.py:53``) guards its state with a ``threading.Lock``
+   (``_activity_relay.py:80``); sender threads enqueue events and ``close()``
+   drops them after bridge shutdown. Nothing here is shared with the child.
+5. Stage files: written by the CHILD, isolated per spawn. Each spawn gets a
+   fresh ``MCP_STAGE_ID_ENV`` (``lifecycle.py:2692``) and ``stage_file_path``
+   (``_start_stage_tracker.py:70``) scopes the file to that spawn id, so two
+   overlapping children cannot clobber each other's stage file. The record is
+   committed by temp file plus an atomic replace with a directory fsync
+   (``_start_stage_tracker.py:116``); the per-spawn startup-overrun journal is
+   append-mode JSONL (``_start_stage_tracker.py:271``).
+6. Artifact stores: managed in the workspace filesystem under task-isolated
+   staging directories, so a candidate writes only into its own directory and
+   never into the serving child's path.
+7. Coordination state: the handover sentinels are STAGE-SUFFIXED, not fixed
+   names. The parent passes ``accept.pause.<stage_id>``
+   (``lifecycle.py:1595``) and ``accept.resume.<stage_id>``
+   (``lifecycle.py:1604``) through the environment and addresses the same
+   files by ``stage_id`` when it pauses the old child and resumes the
+   candidate (``lifecycle.py:1594-1606``), falling back to the unsuffixed
+   name only when a stage id is unknown. ``<pause>.ack`` is created by the old
+   child after it drops its accepting FD, so a stale ack from a previous
+   generation can never satisfy this one. In-memory bridge transitions occur
+   under ``self._lock`` (reentrant).
+8. Transport-repetition sidecar (E1.7): a persistent advisory-lock sidecar,
+   NOT append-only. ``_transport_repetition_tracker.py:386`` opens a
+   ``<state>.lock`` companion and takes the same bounded non-blocking
+   ``flock`` (``:262``); the carried state is read UNDER the lock and rewritten
+   whole by temp file plus rename (``_write_carried_state``, ``:446``). Because
+   it is a whole-file replace under a lock rather than an append, two writers
+   cannot interleave partial lines into it.
 
 Attempt result classification (C2): ``_attempt_restart_with_candidate``
 returns a typed ``RestartAttemptResult``. Only
@@ -115,9 +162,10 @@ Why this design cannot double-serve, double-write, hang, or storm:
 
 * The parent owns the only listening socket; children accept only on
   an FD they explicitly drop after the pause-file acknowledgement.
-* Only the bridge writes the wire ledger under its lock; the two-child
-  interleave test verifies an interleaved append sequence still
-  validates.
+* Parent and child both append to the wire ledger, and it stays a valid
+  chain because ``append_wire_record`` takes an exclusive ``fcntl.flock``
+  and reads the chain head under that lock; the two-child interleave test
+  verifies an interleaved append sequence still validates.
 * ``_attempt_restart_with_candidate`` is bounded by the rolling
   window from ``McpRestartPolicy``; ``ATTEMPT_FAILED`` does not
   escalate.
@@ -422,6 +470,76 @@ if not (_WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S > 0):
 if not (_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S > 0):
     raise RuntimeError(
         f"_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S must be positive (got {_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S})"
+    )
+
+
+# ---------------------------------------------------------------------------
+# E6.4 arithmetic-dominance proof (not vacuous positivity)
+# ---------------------------------------------------------------------------
+def _e64_bound_dominates(bound: float, components: tuple[float, ...]) -> bool:
+    """Return ``True`` iff ``bound`` is an upper bound over ``components``.
+
+    A positivity check cannot prove an upper bound: the sum of positive
+    durations is positive even when a stage term has been dropped from it,
+    so ``bound > 0`` stays satisfied by a bound that silently omits the
+    drain (or the kill-wait, or the preflight) stage. The proof carried
+    here is the temporal one — ``bound`` must be at least the SUM of every
+    worst-case duration the bound is composed of, and each of those
+    component durations must itself be strictly positive. Drop any term
+    from a bound and ``bound < sum(components)`` no longer holds, so the
+    import-time check below raises instead of silently under-reporting the
+    worst case.
+
+    Implemented with ``if``/``return`` rather than ``assert`` so the
+    property survives ``python -O``.
+    """
+    if not components:
+        return False
+    if not (bound > 0.0):
+        return False
+    total = 0.0
+    for component in components:
+        if not (component > 0.0):
+            return False
+        total += component
+    return bound >= total
+
+
+#: Per-attempt worst-case durations bound (a) is composed of: the
+#: unconditional pre-restart cooldown plus one preflight deadline.
+_E64_BOUND_A_COMPONENTS_S: Final[tuple[float, ...]] = (
+    float(McpRestartPolicy.cooldown_seconds),
+    _PREFLIGHT_DEADLINE_S,
+)
+#: Handover stage durations bound (b) is composed of, in protocol order:
+#: candidate private-channel readiness, old-child pause acknowledgement
+#: (or its kill), the kill confirmation, and the drain window.
+_E64_BOUND_B_COMPONENTS_S: Final[tuple[float, ...]] = (
+    _CANDIDATE_DEADLINE_S,
+    _HANDOVER_ACK_TIMEOUT_S,
+    _HANDOVER_KILL_WAIT_S,
+    _HANDOVER_DRAIN_S,
+)
+_E64_MAX_RESTARTS: Final[int] = int(McpRestartPolicy.max_restarts)
+if not (_E64_MAX_RESTARTS > 0):
+    raise RuntimeError(
+        f"McpRestartPolicy.max_restarts must be positive (got {McpRestartPolicy.max_restarts})"
+    )
+if not _e64_bound_dominates(
+    _WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S / _E64_MAX_RESTARTS,
+    _E64_BOUND_A_COMPONENTS_S,
+):
+    raise RuntimeError(
+        "E6.4 bound (a) is not an upper bound over its stages: per-attempt worst case"
+        f" {_WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S / _E64_MAX_RESTARTS:g}s"
+        f" < sum{_E64_BOUND_A_COMPONENTS_S}={sum(_E64_BOUND_A_COMPONENTS_S):g}s"
+        f" over {_E64_MAX_RESTARTS} attempts"
+    )
+if not _e64_bound_dominates(_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S, _E64_BOUND_B_COMPONENTS_S):
+    raise RuntimeError(
+        "E6.4 bound (b) is not an upper bound over its handover stages:"
+        f" {_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S:g}s"
+        f" < sum{_E64_BOUND_B_COMPONENTS_S}={sum(_E64_BOUND_B_COMPONENTS_S):g}s"
     )
 # E2.3 candidate startup deadline bounds validation
 if not (0 < _CANDIDATE_STARTUP_DEADLINE_S < _PREFLIGHT_DEADLINE_S):

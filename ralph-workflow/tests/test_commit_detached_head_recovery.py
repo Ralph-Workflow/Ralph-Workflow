@@ -66,42 +66,25 @@ def _init_repo_template(tmp_path_factory: pytest.TempPathFactory) -> None:
 
 
 def _make_test_repo(repo_root: Path, feature_branch: str = "feature/work") -> Repo:
+    """Copy the module-scoped template repo into ``repo_root`` and open it.
+
+    Pre-condition: the module-level autouse fixture ``_init_repo_template``
+    above must have populated ``_MODULE_REPO_TEMPLATE``. Pytest guarantees
+    this for every test in this module because ``_init_repo_template`` is
+    declared with ``scope="module", autouse=True``; the assertion below
+    surfaces the dependency as a fail-closed precondition instead of a
+    silent fallback.
+    """
+    assert _MODULE_REPO_TEMPLATE, (
+        "_make_test_repo depends on the autouse module-scoped fixture "
+        "_init_repo_template populating _MODULE_REPO_TEMPLATE; the fixture "
+        "must run before any test in this module calls _make_test_repo."
+    )
     repo_root.mkdir(parents=True, exist_ok=True)
-    if _MODULE_REPO_TEMPLATE:
-        shutil.copytree(_MODULE_REPO_TEMPLATE[0], repo_root, dirs_exist_ok=True)
-        repo = Repo(repo_root)
-        if feature_branch != "feature/work":
-            repo.git.checkout("-B", feature_branch)
-        return repo
-
-    from ralph.git.subprocess_runner import run_git
-
-    run_git(("init",), cwd=repo_root, label="test-repo-init")
+    shutil.copytree(_MODULE_REPO_TEMPLATE[0], repo_root, dirs_exist_ok=True)
     repo = Repo(repo_root)
-    repo.config_writer().set_value("user", "name", "Test Committer").release()
-    repo.config_writer().set_value("user", "email", "test@example.com").release()
-    writer = repo.config_writer()
-    writer.set_value("gc", "auto", "0")
-    writer.set_value("core", "fsync", "none")
-    writer.release()
-    actor = Actor("Test Committer", "test@example.com")
-
-    # Initial commit on main
-    base_file = repo_root / "README.md"
-    base_file.write_text("# Test Repo\n", encoding="utf-8")
-    gitignore_file = repo_root / ".gitignore"
-    gitignore_file.write_text(".agent/\n", encoding="utf-8")
-    repo.index.add(["README.md", ".gitignore"])
-    repo.index.commit("initial commit", author=actor, committer=actor)
-    repo.git.branch("-M", "main")
-
-    # Create feature branch
-    repo.git.checkout("-b", feature_branch)
-    feature_file = repo_root / "feature.txt"
-    feature_file.write_text("feature base\n", encoding="utf-8")
-    repo.index.add(["feature.txt"])
-    repo.index.commit("feature base commit", author=actor, committer=actor)
-
+    if feature_branch != "feature/work":
+        repo.git.checkout("-B", feature_branch)
     return repo
 
 
