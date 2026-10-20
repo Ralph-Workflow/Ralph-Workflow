@@ -532,7 +532,7 @@ The seam for "a parent kill must reach the child's in-memory registry"
 is the child MCP server's shutdown path, not `_session_wrapup.py`.
 
 - `ralph-workflow/ralph/mcp/server/lifecycle.py:2733` and `:2750` invoke
-  `_spawn_mcp_process(...)`, which is defined at `lifecycle.py:2931`
+  `_spawn_mcp_process(...)`, which is defined at `lifecycle.py:3040-3196`
   and runs
 
   ```python
@@ -544,7 +544,7 @@ is the child MCP server's shutdown path, not `_session_wrapup.py`.
   ]
   ```
 
-  (`lifecycle.py:3027-3037`). The MCP server runs as a separate child
+  (`lifecycle.py:3145-3155`). The MCP server runs as a separate child
   process; the parent owns the lifecycle via
   `StandaloneMcpProcess.shutdown` (`_standalone_mcp_process.py:46-72`),
   which calls `self.process.terminate(grace_period_s=SHUTDOWN_TERMINATE_GRACE_S)`

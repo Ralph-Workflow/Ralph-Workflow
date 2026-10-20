@@ -169,6 +169,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/mcp/test_bridge_e3_e4_edge_cases.py",
     "tests/mcp/test_bridge_e5_e6_e7_edge_cases.py",
     # wt-16 make-before-break MCP edge case & integration test suites:
+    "tests/mcp/test_e16_store_interleave_real_children.py",
     "tests/mcp/test_e17_state_continuity.py",
     "tests/mcp/test_e18_old_session_id_accepted.py",
     "tests/mcp/test_e24_fresh_stage_id.py",
@@ -178,12 +179,19 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/mcp/test_e3x_transport_gap_typed_retry.py",
     "tests/mcp/test_e42_two_supervisors_one_replacement.py",
     "tests/mcp/test_e46_parent_sigkill_no_orphans.py",
+    "tests/mcp/test_e64_import_guard_execution.py",
     "tests/mcp/test_e72_footprint_real_child.py",
     "tests/mcp/test_handover_inflight_real_child.py",
     "tests/mcp/test_replacement_shutdown_signals_real_child.py",
     "tests/mcp/test_root_cause_real_child_bridge.py",
     "tests/mcp/test_s1_independent_counters_contract.py",
     "tests/mcp/test_single_acceptor_instrumented.py",
+    # wt-16 WU-Plan: spawn-environment helper extraction regresses the typed-error
+    # boundary for ``_spawn_mcp_process`` so a fault inside the helper before
+    # ``deps.spawn_process`` propagates the typed error (no UnboundLocalError),
+    # leaves the session file removed, and closes both socket ends it owns.
+    # subprocess_e2e because the helper boundary is real-child-coupled.
+    "tests/mcp/test_spawn_early_failure_typed.py",
     # wt-19-fix-long-exec-tasks — exec job flow smokes (real subprocess)
     # Real-process proofs for the liveness assessor + job registry. Both
     # files carry subprocess_e2e + required_auto_integrate_e2e markers.

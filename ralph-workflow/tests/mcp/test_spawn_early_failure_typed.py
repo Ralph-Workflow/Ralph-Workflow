@@ -181,6 +181,15 @@ def test_subprocess_env_failure_raises_typed_error_with_no_unboundlocal(
         )
 
     assert "_EnvMapperFailureError" in type(excinfo.value).__name__
+    # The caller's except handler must unlink the session file on
+    # ``subprocess_env`` failure so the temporary file does not survive
+    # across the boundary.
+    assert not session_file.exists(), (
+        "session file at "
+        f"{session_file} "
+        "was not removed after the subprocess_env fault; the caller must "
+        "unlink it in its except handler before re-raising."
+    )
     if fds_before >= 0:
         assert _count_open_fds() == fds_before
 
@@ -250,6 +259,16 @@ def test_post_socketpair_in_helper_failure_closes_both_socket_ends(
     # Typed error, not UnboundLocalError.
     assert "_PostSocketpairFaultError" in type(excinfo.value).__name__
     assert "UnboundLocalError" not in type(excinfo.value).__name__
+    # The caller's except handler must unlink the session file on
+    # in-helper post-socketpair fault so the temporary file does not
+    # survive across the boundary; the helper itself is only responsible
+    # for the sockets it created.
+    assert not session_file.exists(), (
+        "session file at "
+        f"{session_file} "
+        "was not removed after the post-socketpair fault; the caller must "
+        "unlink it in its except handler before re-raising."
+    )
     # The helper's cleanup path must have closed both socket ends before
     # re-raising, so the test process's open-fd count is unchanged.
     if fds_before >= 0:
