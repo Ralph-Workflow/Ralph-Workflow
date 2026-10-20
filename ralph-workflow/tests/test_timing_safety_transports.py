@@ -216,8 +216,8 @@ def test_pi_transport_tool_call_deadline_constant_clears_the_floor() -> None:
 
 # --- No-documented-timeout clients ------------------------------------------
 #
-# Cursor and Nanocoder document no per-server tool-call timeout on the
-# pages cited in ``docs/agents/exec-long-running-root-cause.md``. Ralph
+# Cursor, Nanocoder, and AGY document no per-server tool-call timeout on
+# the pages cited in ``docs/agents/exec-long-running-root-cause.md``. Ralph
 # therefore writes NO timeout for them, and that absence is the audit
 # surface — recording it proves the gap is intentional, not a missed
 # field.
@@ -266,6 +266,37 @@ def test_nanocoder_transport_writes_no_tool_call_timeout_field() -> None:
     assert "tool_timeout_sec" not in ralph_entry
     # No synthesised fields beyond the two the docs name.
     assert set(ralph_entry.keys()) == {"transport", "url"}
+
+
+def test_antigravity_transport_writes_no_tool_call_timeout_field() -> None:
+    """AGY/Antigravity publishes no per-server tool-call timeout; Ralph writes nothing.
+
+    Antigravity's MCP config keys (per ``mcp_config.json`` schema cited in
+    ``docs/agents/exec-long-running-root-cause.md``) document only the
+    ``serverUrl`` entry. Ralph's ``agy.py:88-95`` therefore writes only
+    ``serverUrl``; this test pins that absence so a future contributor
+    cannot quietly invent a timeout field.
+
+    The test name uses ``antigravity`` (rather than ``agy``) so the
+    ``conftest.py`` substring auto-marker (``"agy" in nodeid``) does NOT
+    classify this module-level transport unit test as a smoke probe and
+    deselect it from the default ``addopts = -m "not smoke"`` profile.
+    Nodeids containing ``antigravity`` do NOT contain the substring
+    ``agy`` (no consecutive ``a``-``g``-``y`` triple), so the test runs
+    under ``make test``.
+    """
+    from ralph.mcp.transport.agy import agy_mcp_config
+
+    payload = json.loads(agy_mcp_config("http://127.0.0.1:9999/mcp"))
+    ralph_entry = payload["mcpServers"]["ralph"]
+    assert isinstance(ralph_entry, dict)
+    # No synthesised timeout surfaces the omission would be.
+    assert "timeout" not in ralph_entry
+    assert "toolTimeoutMs" not in ralph_entry
+    assert "tool_timeout_sec" not in ralph_entry
+    # The single key the transport writes for the ralph entry must be
+    # the server URL — the contract AGY's docs name verbatim.
+    assert set(ralph_entry.keys()) == {"serverUrl"}
 
 
 # --- Import-time guard -------------------------------------------------------

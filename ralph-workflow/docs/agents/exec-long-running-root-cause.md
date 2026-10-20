@@ -604,6 +604,54 @@ work units in this WT.
 | 4 — streamed output does not keep clients alive | SSE notification stream and progress token handling | `ralph/mcp/server/exec_sse_streaming.py` |
 | 5 — request expiry does not imply process death | child runtime shutdown path via `exit_when_owner_exits` and standalone server termination | `ralph/mcp/server/runtime.py` |
 
+## Disposition: the spec's Monotonic property is unsatisfiable
+
+`.agent/PRODUCT_CRITERIA.md` asks, under "Verification: proving it
+works", that raising any "working" signal never lower `s` or speed up a
+kill (property 3, "Monotonic"). The shipped aggregate cannot honour that,
+and this is a disposition rather than an open bug: `s = Σwᵢzᵢ / Σwᵢ` is
+a literal-Sugeno weighted average, so raising a working signal can
+DILUTE a rule that is already firing at a high `z`. With R1 alone firing
+(`z=1.0`) the score is 1.0; raising `io` past the `IoActive` breakpoint
+in the membership table under "Part A: liveness assessor (D2, D3, D4,
+D5)" pulls R2 (`z=0.9`) into the average and the score falls. On a
+changing trace that lower score lets stall pressure cross `stall_window`
+sooner, so a kill can arrive strictly earlier when a working signal is
+raised.
+
+The exact scores and kill times are locked as regressions in
+`tests/test_liveness_assessor.py`,
+`tests/test_liveness_pa002_properties.py` and
+`tests/test_liveness_properties.py`; read those files before
+re-attempting the property. What survives in its place:
+
+- **Baseline-relative score monotonicity** — from an all-idle window
+  (R5 only, `s=0`), raising any single working signal raises `s`. This is
+  the only score-monotone claim the shipped aggregate provably
+  satisfies.
+- **Baseline-relative classification safety** — raising working signals
+  never demotes a working or suspicious verdict. Treat this as the
+  retunability target: it is the property to hold still when a constant
+  moves.
+- **Fail-closed unknowns** — replacing a signal with unknown never delays
+  a kill compared with the same trace at that signal's zero. This is the
+  D5 row of PRODUCT_CRITERIA's "Architecture decisions" table.
+- **Determinism and bounds** — the same window plus config gives the
+  same verdicts, `P` is never negative, and an all-idle trace is killed
+  at `stall_window_s` plus or minus one integration interval.
+
+Retune rule: move only the named liveness constants in
+`ralph/timeout_defaults.py` (`EXEC_LIVENESS_SAMPLE_INTERVAL_S`,
+`EXEC_LIVENESS_EVIDENCE_WINDOW_S`, `EXEC_STALL_THETA`,
+`EXEC_SUSPICIOUS_REPORT_S`, `EXEC_NO_PROGRESS_WINDOW_S`); do not
+reshape rule weights, `z` values, or membership ramps to chase global
+monotonicity, and keep the D2 row (fuzzy liveness scoring) of the same
+"Architecture decisions" table honest. A retune lands only with the
+whole trace library green — `make verify` — and the `z` values quoted
+under "Cause 1 — present-day liveness subsystem (CURRENT)" plus the §3b
+mapping in "Cross-reference: how each cause maps to a §3b fix" are the
+two anchors to re-read afterwards.
+
 ## Appendix: how to verify the doc is still truthful
 
 The five causes are stable as long as the file:line citations in this

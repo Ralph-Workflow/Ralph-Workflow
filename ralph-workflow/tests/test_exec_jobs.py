@@ -542,6 +542,143 @@ def test_trace_2_hard_cap_at_ceiling() -> None:
     assert root_proc._terminated
 
 
+# ---------------------------------------------------------------------------
+# G2 randomized bounded property — every HEALTHY trace ends at the ceiling.
+#
+# PRODUCT_CRITERIA Verification §3 "Bounded": randomized property proof
+# driving the REAL ``ExecJobRegistry.step_job`` through the production
+# hard-cap branch at ``_exec_jobs.py:503-505`` (complementary to the scripted
+# regression above; NOT a replacement).
+#
+# HEALTHY trace (cpu_ratio ~0.5, 128 KiB/s I/O, 20 ctx/s, fresh output) keeps
+# abandonment, stall, suspicion-clock branches unreachable; ceilings stay
+# well below ``EXEC_JOB_ABANDON_S`` and ``EXEC_NO_PROGRESS_WINDOW_S`` so those
+# stay unreachable too.
+#
+# CLEANUP-EVIDENCE SCOPE: root termination + ``ProcessManager`` cleanup
+# invocation only — NOT descendant-tree reaping (the ``_FakeSamplerProc`` and
+# ``TrackingProcessManager.cleanup_orphans`` graphs cannot jointly observe
+# it). Real descendant cleanup is proven by
+# ``tests/test_exec_job_shutdown_subprocess_e2e.py``.
+# ---------------------------------------------------------------------------
+
+
+def test_randomized_hard_cap_terminates_healthily_within_budget_at_real_registry_branch() -> None:
+    """Randomized Bounded property: HEALTHY jobs end at the real hard-cap branch.
+
+    Per case: ``kill_cause == 'hard_cap'``; ``elapsed_s`` lies in
+    ``[ceiling, ceiling + sample_interval]``; mid-trace ``JobSnapshot`` proves
+    the job was still running, classified ``working`` with zero stall pressure;
+    root terminated and ``ProcessManager`` cleanup invoked (root-only scope).
+    """
+    import math
+    import random
+
+    from ralph import timeout_defaults as _td
+
+    # Float tolerance for the fake clock's repeated ``+=``; not a behavioural
+    # margin — a kill one whole sample interval early still fails by a wide gap.
+    timing_eps = 1e-9
+    rng = random.Random(20260920)
+
+    for case_idx in range(8):
+        ceiling_ms = rng.randrange(10_000, 60_001, 500)
+        sample_interval_s = round(rng.uniform(1.0, 2.0), 3)
+        effective_ceiling_s = ceiling_ms / 1000.0
+        max_steps = math.ceil(effective_ceiling_s / sample_interval_s) + 2
+        precondition_step = max_steps // 2
+        case_log: list[str] = [
+            f"case={case_idx} ceiling_ms={ceiling_ms} "
+            f"sample_interval_s={sample_interval_s} max_steps={max_steps}"
+        ]
+
+        # The corpus must stay inside the window where the hard-cap branch is
+        # the only reachable one, or the test would prove nothing.
+        assert sample_interval_s <= _td.EXEC_LIVENESS_SAMPLE_INTERVAL_S, "; ".join(case_log)
+        assert effective_ceiling_s < _td.EXEC_JOB_ABANDON_S, "; ".join(case_log)
+        assert effective_ceiling_s < _td.EXEC_NO_PROGRESS_WINDOW_S, "; ".join(case_log)
+
+        env = _TestEnv()
+        job_id = env.registry.start(
+            ["healthy_thing"],
+            max_runtime_ms=ceiling_ms,
+            capability="ProcessExecBounded",
+        )
+        root_proc = next(iter(env.procs.values()))
+        sampler_proc = env.sampler_procs[root_proc.pid]
+        active_job = env.registry._running_jobs[job_id]
+
+        mid_snapshot: JobSnapshot | None = None
+        killed_at_step = 0
+
+        for step_idx in range(max_steps):
+            env.clock.advance(sample_interval_s)
+            # Healthy signal knobs, rate-matched to the sampling cadence so the
+            # windowed sampler reads cpu_ratio ~0.5, 128 KiB/s and 20 ctx/s.
+            sampler_proc.user_cpu += 0.5 * sample_interval_s
+            sampler_proc.read_bytes += int(128 * 1024 * sample_interval_s)
+            sampler_proc.voluntary_ctx += int(20 * sample_interval_s)
+            active_job.last_output_at = env.clock()
+            # ``wait`` refreshes ``last_wait_time`` so the abandonment branch
+            # cannot fire — this is the real client's poll cadence.
+            pending = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
+            if step_idx == precondition_step and isinstance(pending, JobSnapshot):
+                mid_snapshot = pending
+            env.registry.step_job(job_id, dt=sample_interval_s)
+            if job_id not in env.registry._running_jobs:
+                killed_at_step = step_idx + 1
+                break
+
+        case_log.append(f"killed_at_step={killed_at_step}")
+        assert killed_at_step > 0, (
+            f"healthy job outlived its {ceiling_ms}ms ceiling for {max_steps} samples; "
+            + "; ".join(case_log)
+        )
+
+        result = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
+        assert isinstance(result, JobResult), "; ".join(case_log)
+        case_log.append(
+            f"kill_cause={result.kill_cause} elapsed_s={result.elapsed_s!r} "
+            f"returncode={result.returncode} cancelled={result.cancelled} "
+            f"ceiling_ms={result.ceiling_ms}"
+        )
+
+        assert result.kill_cause == "hard_cap", "; ".join(case_log)
+        assert result.cancelled is False, "; ".join(case_log)
+        assert result.returncode is None, "; ".join(case_log)
+        # The requested ceiling is inside EXEC_JOB_CEILING_MAX_S, so the
+        # production clamp must leave it untouched.
+        assert result.ceiling_ms == ceiling_ms, "; ".join(case_log)
+        assert result.elapsed_s >= effective_ceiling_s - timing_eps, "; ".join(case_log)
+        assert result.elapsed_s <= effective_ceiling_s + sample_interval_s + timing_eps, "; ".join(
+            case_log
+        )
+
+        # HEALTHY PRECONDITION: mid-trace the job was alive, below the ceiling,
+        # and classified working by the real assessor (not simulated here).
+        # ``is not None`` also narrows the saved reference to ``JobSnapshot``.
+        assert mid_snapshot is not None, "; ".join(case_log)
+        mid_verdict = mid_snapshot.verdict
+        assert mid_verdict is not None, "; ".join(case_log)
+        case_log.append(
+            f"mid_elapsed_s={mid_snapshot.elapsed_s!r} "
+            f"kind={mid_verdict.verdict_kind} rule={mid_verdict.strongest_rule} "
+            f"score={mid_verdict.score!r} pressure={mid_verdict.pressure!r} "
+            f"signals={mid_verdict.signals}"
+        )
+
+        assert mid_snapshot.running is True, "; ".join(case_log)
+        assert mid_snapshot.elapsed_s < effective_ceiling_s, "; ".join(case_log)
+        assert mid_verdict.verdict_kind == "working", "; ".join(case_log)
+        assert mid_verdict.suspicious is False, "; ".join(case_log)
+        assert mid_verdict.score > _make_test_config().stall_theta, "; ".join(case_log)
+        assert mid_verdict.pressure == 0.0, "; ".join(case_log)
+
+        # CLEANUP EVIDENCE (root-only scope — NOT descendant tree reaping).
+        assert root_proc._terminated is True, "; ".join(case_log)
+        assert root_proc.pid in env.pm.orphans_cleaned, "; ".join(case_log)
+
+
 def test_trace_3_three_hour_e2e_completing_via_max_runtime() -> None:
     """Trace 3: 3-h e2e with max_runtime_ms runs past 1h without kill and completes."""
     env = _TestEnv()
