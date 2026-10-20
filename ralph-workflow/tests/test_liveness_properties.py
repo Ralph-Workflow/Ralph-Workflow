@@ -3,23 +3,42 @@
 Property families at 50 examples each. Every example is pure arithmetic
 (``assess`` + ``StallIntegrator.step``); no subprocess, no clock.
 
-Properties:
+Properties (PA-002 disposition, post-wt-19):
 
-1. **Kill-relevant monotonicity (PA-002 disposition)** — raising
-   cpu/io/tree/awake membership or in-window novelty never converts a
-   would-not-kill trace into a killed-one-at-or-before-the-same-time,
-   excluding the documented R6/novelty-gate detection transitions (which
-   is the R6 loop detection mechanism).
-2. **Classification monotonicity** — raising working signals never demotes
-   a process from working/suspicious to stalled/unknown.
-3. **Exact-semantics regressions & transitions** — locked counterexample
-   scores: R1+io dilution (1.0 -> 0.95), evidence-window gate transition
-   (0.6 -> 0.2/1.38), and R7->R4 negated-antecedent boundary (0.55 -> 0.575).
-4. **Bounded** — P can never exceed the configured ceiling on any trace.
-5. **Fail closed** — None / unknown signals never delay a kill.
-6. **Deterministic** — same input → same verdict.
-7. **P ≥ 0** always; an all-idle exact-input trace kills at the configured
+1. **Classification safety** — raising working signals never demotes a
+   process from working/suspicious to stalled/unknown (this is a
+   classification-bound property, NOT a score/kill monotonicity claim).
+2. **Exact-semantics regressions & transitions** — the locked
+   counterexample scores (R1+io dilution 1.0 -> 0.95, the
+   evidence-window gate transition 0.6 -> 0.2/1.38, the R7->R4
+   negated-antecedent boundary 0.55 -> 0.575, and the kill-timing
+   non-monotonicity over a CHANGING trace where raising only the I/O
+   rate during the middle working segment makes the kill arrive
+   strictly EARLIER) live in ``test_liveness_pa002_properties.py``.
+3. **Bounded** — P can never exceed the configured ceiling on any trace.
+4. **Fail closed** — None / unknown signals never delay a kill.
+5. **Deterministic** — same input → same verdict.
+6. **P ≥ 0** always; an all-idle exact-input trace kills at the configured
    ``stall_window_s`` ± one interval.
+7. **Bounded-from-baseline classification** — raising any single working
+   signal from an all-idle baseline does not lower the classification
+   (working/suspicious only). This is the only surviving baseline-relative
+   safety property; score and kill-time monotonicity do NOT hold.
+
+The "score / kill-time per-signal monotone" properties previously asserted
+here (test_score_monotone_non_decreasing_with_improved_signals,
+test_kill_relevant_monotonicity and test_monotonic_kill_delay) were
+removed in the PA-002 / wt-19 disposition. The literal Sugeno aggregate
+``s = Σwᵢzᵢ / Σwᵢ`` admits dilution: a new or raised rule can DILUTE an
+already-firing high-z rule, so ``s`` is not globally or per-signal
+monotone and a kill can therefore arrive slightly earlier when a working
+signal is raised during a changing trace. The three counterexamples
+(a) R1+io dilution (b) 30s -> 29s gate transition (c) kill-time earlier
+under middle-segment I/O are locked as exact-semantics regressions in
+``test_liveness_pa002_properties.py``; see the module docstring of
+``ralph.process.manager._liveness_assessor`` for the full disposition
+and the live ``tests/test_liveness_assessor.py`` regressions for the
+isolated scores.
 
 The §3b "Bounded / Termination by ceiling" property family lives in
 ``test_liveness_termination.py``; the helper-surface (SuspicionClock +
@@ -126,119 +145,18 @@ def test_score_bounded_by_unit_interval(window: LivenessWindow) -> None:
     assert 0.0 <= v.score <= 1.0
 
 
-@st.composite
-def _single_signal_raises(draw: st.DrawFn) -> tuple[LivenessWindow, LivenessWindow, str]:
-    """Generate (w1, w2, signal_name) where w2 raises exactly one working signal.
-
-    The "valid interpretation" of PRODUCT_CRITERIA Verification §3
-    "Monotonic" under the literal Sugeno aggregate: raising any single
-    working signal never lowers the score. Raising ALL signals at once is
-    NOT a Sugeno monotone — a rule firing for the first time can bring
-    its own zᵢ into the weighted average, and Sugeno only raises the
-    score when the new rule's zᵢ exceeds the current score. Multi-signal
-    monotonicity holds in the ``max(wᵢ·zᵢ)`` aggregate (which is NOT
-    what PRODUCT_CRITERIA Part A prescribes); the literal Sugeno
-    aggregate is monotone per-signal only.
-    """
-    signal_name = draw(
-        st.sampled_from(
-            [
-                "seconds_since_output",
-                "cpu_ratio",
-                "io_bytes_per_s",
-                "child_events",
-                "output_novelty",
-                "voluntary_ctx_per_s",
-            ]
-        )
-    )
-    base_args = {
-        "seconds_since_output": 60.0,
-        "cpu_ratio": 0.0,
-        "io_bytes_per_s": 0.0,
-        "child_events": 0,
-        "output_novelty": 0.5,
-        "voluntary_ctx_per_s": 0.0,
-        "elapsed_s": 10.0,
-    }
-    w1 = LivenessWindow(**base_args)
-    if signal_name == "seconds_since_output":
-        # "lower is better" for output_recency; raise the signal by
-        # lowering the seconds-since-output value.
-        new_val = draw(st.floats(min_value=0.0, max_value=base_args["seconds_since_output"]))
-        w2 = LivenessWindow(**{**base_args, "seconds_since_output": new_val})
-    elif signal_name == "cpu_ratio":
-        new_val = draw(
-            st.floats(
-                min_value=base_args["cpu_ratio"],
-                max_value=base_args["cpu_ratio"] + 0.5,
-                allow_nan=False,
-            )
-        )
-        w2 = LivenessWindow(**{**base_args, "cpu_ratio": new_val})
-    elif signal_name == "io_bytes_per_s":
-        new_val = draw(
-            st.floats(
-                min_value=base_args["io_bytes_per_s"],
-                max_value=base_args["io_bytes_per_s"] + 100.0,
-                allow_nan=False,
-            )
-        )
-        w2 = LivenessWindow(**{**base_args, "io_bytes_per_s": new_val})
-    elif signal_name == "child_events":
-        new_val = draw(
-            st.integers(
-                min_value=base_args["child_events"],
-                max_value=base_args["child_events"] + 5,
-            )
-        )
-        w2 = LivenessWindow(**{**base_args, "child_events": new_val})
-    elif signal_name == "output_novelty":
-        new_val = draw(
-            st.floats(
-                min_value=base_args["output_novelty"],
-                max_value=1.0,
-                allow_nan=False,
-            )
-        )
-        w2 = LivenessWindow(**{**base_args, "output_novelty": new_val})
-    else:  # voluntary_ctx_per_s
-        new_val = draw(
-            st.floats(
-                min_value=base_args["voluntary_ctx_per_s"],
-                max_value=base_args["voluntary_ctx_per_s"] + 5.0,
-                allow_nan=False,
-            )
-        )
-        w2 = LivenessWindow(**{**base_args, "voluntary_ctx_per_s": new_val})
-    return w1, w2, signal_name
-
-
-@given(triple=_single_signal_raises())
-@settings(
-    max_examples=50,
-    suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large],
-)
-def test_score_monotone_non_decreasing_with_improved_signals(
-    triple: tuple[LivenessWindow, LivenessWindow, str],
-) -> None:
-    """Baseline monotonicity from all-idle baseline.
-
-    From an all-idle baseline (score=0.0), raising any single working signal
-    never lowers the score under the literal Sugeno aggregate.
-    Per PA-002 disposition, global score monotonicity across arbitrary
-    baselines is refuted by counterexamples (R1+io dilution 1.0 -> 0.95 and
-    the 30s -> 29s gate transition 0.6 -> 0.145), resolved by locking those
-    exact semantics and re-scoping to kill-relevant monotonicity below.
-    """
-    w1, w2, signal_name = triple
-    v1 = assess(w1, CFG)
-    v2 = assess(w2, CFG)
-    assert v2.score >= v1.score - 1e-9, (
-        f"All-idle baseline per-signal monotonicity violated: "
-        f"w1.score={v1.score!r}, w2.score={v2.score!r}, "
-        f"raised {signal_name} in w2 lowered the score"
-    )
+# REMOVED in PA-002 / wt-19:
+#   - test_score_monotone_non_decreasing_with_improved_signals
+#     (asserted per-signal score monotonicity, refuted by R1+io 1.0 -> 0.95
+#      and the 30s -> 29s gate transition 0.6 -> 0.145)
+#   - test_kill_relevant_monotonicity
+#     (asserted kill-monotonicity over a SINGLE-WINDOW trace, refuted by
+#      case (c) kill-time non-monotonicity over a CHANGING trace; the
+#      helper exercised exactly one window repeated, so it could not
+#      observe a changing-trace failure)
+#   - test_monotonic_kill_delay
+#     (asserted per-signal kill-monotone from constant-window trace;
+#      same failure mode as the per-signal score property)
 
 
 @given(pair=_window_pairs_improved_working())
@@ -246,396 +164,26 @@ def test_score_monotone_non_decreasing_with_improved_signals(
     max_examples=50,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large],
 )
-def test_monotonic_classification_not_demoted(pair: tuple[LivenessWindow, LivenessWindow]) -> None:
-    """Monotonicity: raising working signals never demotes a working process."""
-    w1, w2 = pair
-    v1 = assess(w1, CFG)
-    v2 = assess(w2, CFG)
-
-    if v1.verdict_kind in {"working", "suspicious"}:
-        assert v2.verdict_kind not in {"stalled", "unknown"}
-
-
-# ---------------------------------------------------------------------------
-# PA-002 Extended properties & Kill-relevant monotonicity
-# ---------------------------------------------------------------------------
-
-
-@st.composite
-def _kill_relevant_signal_raises(draw: st.DrawFn) -> tuple[LivenessWindow, LivenessWindow, str]:
-    """Generate (w1, w2, signal_name) raising a working signal.
-
-    Covers: cpu_ratio, io_bytes_per_s, child_events, voluntary_ctx_per_s,
-    and in-window novelty. Excludes the documented R6 gate transition
-    across the 30s boundary where entering the evidence window with
-    repetitive output correctly detects a loop and accumulates stall pressure.
-    """
-    signal_name = draw(
-        st.sampled_from(
-            ["cpu_ratio", "io_bytes_per_s", "child_events", "voluntary_ctx_per_s", "output_novelty"]
-        )
-    )
-    sso = draw(st.one_of(st.none(), _AGE))
-    cpu = draw(st.one_of(st.none(), _CPU))
-    io = draw(st.one_of(st.none(), _IO))
-    tree = draw(st.one_of(st.none(), _TREE))
-    nov = draw(st.one_of(st.none(), _NOVELTY))
-    awake = draw(st.one_of(st.none(), _AWAKE))
-
-    if signal_name == "cpu_ratio":
-        base_val = cpu or 0.0
-        delta = draw(st.floats(min_value=0.02, max_value=0.5))
-        w1 = LivenessWindow(sso, cpu, io, tree, nov, awake, 10.0)
-        w2 = LivenessWindow(sso, base_val + delta, io, tree, nov, awake, 10.0)
-    elif signal_name == "io_bytes_per_s":
-        base_val = io or 0.0
-        delta = draw(st.floats(min_value=5.0, max_value=100.0))
-        w1 = LivenessWindow(sso, cpu, io, tree, nov, awake, 10.0)
-        w2 = LivenessWindow(sso, cpu, base_val + delta, tree, nov, awake, 10.0)
-    elif signal_name == "child_events":
-        base_val = tree or 0
-        delta = draw(st.integers(min_value=1, max_value=3))
-        w1 = LivenessWindow(sso, cpu, io, tree, nov, awake, 10.0)
-        w2 = LivenessWindow(sso, cpu, io, base_val + delta, nov, awake, 10.0)
-    elif signal_name == "voluntary_ctx_per_s":
-        base_val = awake or 0.0
-        delta = draw(st.floats(min_value=1.0, max_value=5.0))
-        w1 = LivenessWindow(sso, cpu, io, tree, nov, awake, 10.0)
-        w2 = LivenessWindow(sso, cpu, io, tree, nov, base_val + delta, 10.0)
-    else:  # in-window output_novelty
-        # In-window novelty: both windows must have output in evidence window (< 30s)
-        sso_in_window = draw(st.floats(min_value=0.0, max_value=CFG.evidence_window_s - 1.0))
-        base_nov = nov if nov is not None else draw(st.floats(min_value=0.0, max_value=0.8))
-        headroom = max(0.0, 1.0 - base_nov)
-        delta = draw(st.floats(min_value=min(0.02, headroom), max_value=headroom))
-        w1 = LivenessWindow(sso_in_window, cpu, io, tree, base_nov, awake, 10.0)
-        w2 = LivenessWindow(sso_in_window, cpu, io, tree, min(1.0, base_nov + delta), awake, 10.0)
-    return w1, w2, signal_name
-
-
-@given(
-    triple=_kill_relevant_signal_raises(),
-    n_steps=st.integers(min_value=10, max_value=100),
-    dt=st.floats(min_value=0.5, max_value=2.0),
-    stall_window=st.floats(min_value=10.0, max_value=100.0),
-)
-@settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large])
-def test_kill_relevant_monotonicity(
-    triple: tuple[LivenessWindow, LivenessWindow, str],
-    n_steps: int,
-    dt: float,
-    stall_window: float,
-) -> None:
-    """Kill-relevant monotonicity (PA-002 disposition).
-
-    Raising cpu, io, tree, awake membership or in-window novelty never converts
-    a would-not-kill trace into a killed trace, and never speeds up a kill.
-    Excludes the documented R6 gate transition across the 30s boundary.
-    """
-    w1, w2, sig = triple
-
-    def kill_step(win: LivenessWindow) -> int:
-        si = StallIntegrator(theta=CFG.stall_theta)
-        v = assess(win, CFG)
-        for i in range(1, n_steps + 1):
-            si.step(verdict_score=v.score, dt=dt)
-            if si.should_kill(stall_window):
-                return i
-        return -1
-
-    k1 = kill_step(w1)
-    k2 = kill_step(w2)
-
-    if k1 == -1:
-        assert k2 == -1, (
-            f"Kill-relevant monotonicity violated: w1 did not kill, but raising {sig} "
-            f"killed at step {k2}"
-        )
-    elif k2 != -1:
-        assert k2 >= k1, (
-            f"Kill-relevant monotonicity violated: w1 killed at {k1}, but raising {sig} "
-            f"killed earlier at {k2}"
-        )
-
-
-@given(
-    sso_inside=st.floats(min_value=0.0, max_value=CFG.evidence_window_s - 0.1),
-    nov=st.floats(min_value=0.0, max_value=CFG.repetitive_max),
-)
-@settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
-def test_extended_property_evidence_window_gate_transitions(sso_inside: float, nov: float) -> None:
-    """Evidence-window gating transitions: loop detection inside evidence window.
-
-    Inside the evidence window (< 30s) with repetitive output (<= repetitive_max),
-    R6 always fires with z=0.2 and R1 is blocked (0.0).
-    Outside the evidence window (>= 30s), novelty is gate-unknown (D5), so
-    R6 cannot fire.
-    """
-    w_inside = LivenessWindow(
-        seconds_since_output=sso_inside,
-        cpu_ratio=0.0,
-        io_bytes_per_s=0.0,
-        child_events=0,
-        output_novelty=nov,
-        voluntary_ctx_per_s=0.0,
-        elapsed_s=30.0,
-    )
-    v_inside = assess(w_inside, CFG)
-    assert v_inside.strongest_rule == "R6"
-    assert v_inside.score <= 0.2 + 1e-9
-
-
-@given(
-    io_val=st.floats(min_value=CFG.io_kbps_active, max_value=CFG.io_kbps_active + 200.0),
-)
-@settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
-def test_extended_property_high_z_baseline_r1_io_dilution(io_val: float) -> None:
-    """Randomized baseline where high-z rule R1 fires, exhibiting literal-Sugeno dilution.
-
-    R1 fires with z=1.0 alone (score 1.0). Raising io into active range brings
-    in R2 (z=0.9), diluting the score to exactly 0.95. Both are > theta so neither kills.
-    """
-    w_base = LivenessWindow(
-        seconds_since_output=0.0,
-        cpu_ratio=0.0,
-        io_bytes_per_s=0.0,
-        child_events=0,
-        output_novelty=1.0,
-        voluntary_ctx_per_s=0.0,
-        elapsed_s=10.0,
-    )
-    w_raised = LivenessWindow(
-        seconds_since_output=0.0,
-        cpu_ratio=0.0,
-        io_bytes_per_s=io_val,
-        child_events=0,
-        output_novelty=1.0,
-        voluntary_ctx_per_s=0.0,
-        elapsed_s=10.0,
-    )
-    v_base = assess(w_base, CFG)
-    v_raised = assess(w_raised, CFG)
-
-    assert v_base.score == pytest.approx(1.0)
-    assert v_raised.score == pytest.approx(0.95)
-    assert v_raised.score < v_base.score
-    assert v_raised.verdict_kind == "working"
-    assert v_raised.score > CFG.stall_theta
-
-
-@given(
-    cpu_ratio=st.floats(min_value=0.0, max_value=CFG.cpu_busy_max + 0.2),
-)
-@settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
-def test_extended_property_negated_antecedent_cpu_raise_transition(cpu_ratio: float) -> None:
-    """Negated-antecedent transition: raising CPU when awake is active.
-
-    As CPU rises from 0.0 to cpu_busy_max, the assessor transitions from R7 (0.55)
-    to R4 (0.60). Under literal Sugeno, this transition is monotone non-decreasing:
-    0.55 <= score <= 0.60, and at the midpoint cpu_ratio is exactly 0.575.
-    """
-    w = LivenessWindow(
-        seconds_since_output=90.0,
-        cpu_ratio=cpu_ratio,
-        io_bytes_per_s=0.0,
-        child_events=0,
-        output_novelty=None,
-        voluntary_ctx_per_s=CFG.awake_per_s_active,
-        elapsed_s=10.0,
-    )
-    v = assess(w, CFG)
-    assert 0.55 - 1e-9 <= v.score <= 0.60 + 1e-9
-    assert v.verdict_kind == "suspicious"
-
-    cpu_mid = (CFG.cpu_busy_min + CFG.cpu_busy_max) / 2.0
-    if abs(cpu_ratio - cpu_mid) < 1e-6:
-        assert v.score == pytest.approx(0.575)
-
-
-@given(pair=_window_pairs_improved_working())
-@settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large])
-def test_extended_property_multi_signal_classification_safety(
+def test_classification_not_demoted_by_signal_raises(
     pair: tuple[LivenessWindow, LivenessWindow],
 ) -> None:
-    """Multi-signal raises preserve working/suspicious classification and safety."""
+    """Classification safety: raising working signals never demotes
+    a working/suspicious process to stalled/unknown.
+
+    This is a CLASSIFICATION-bound property, NOT a score/kill
+    monotonicity claim. Raising any combination of working signals can
+    lower ``s`` (literal-Sugeno dilution) and can even accelerate a
+    future kill on a *changing* trace (case (c) below), but the
+    classification verdict_kind must never regress from
+    working/suspicious to stalled/unknown. Asserts the only monotone
+    property that actually holds under PA-002 disposition.
+    """
     w1, w2 = pair
     v1 = assess(w1, CFG)
     v2 = assess(w2, CFG)
 
     if v1.verdict_kind in {"working", "suspicious"}:
         assert v2.verdict_kind not in {"stalled", "unknown"}
-
-
-# ---------------------------------------------------------------------------
-# Isolated novelty counterexample (WU-2 / E-MONOTONIC)
-# ---------------------------------------------------------------------------
-#
-# PRODUCT_CRITERIA Verification §3 — "Monotonic": raising any "working"
-# signal never lowers ``s`` or speeds up a kill. The verbatim novelty
-# counterexample reproduced by the analyzer (E-MONOTONIC) was
-#
-#     LivenessWindow(90.0, 0.0, 0.0, 0, novelty, 0.0, 90.0)
-#         → score=0.2, kill_at=150 for novelty=0.1
-#         → score=0.0, kill_at=90  for novelty=0.5
-#
-# which occurred when R6 ("Printing the same line in a loop") fired on
-# a process that had emitted no output in the 30s evidence window.
-# Under canonical D2/D3/D5:
-# When output is stale (seconds_since_output=90s >= evidence_window_s=30s),
-# no output occurred in the evidence window, so output novelty is unknown
-# and repetitive=0. Both novelty=0.1 and novelty=0.5 yield score=0.0 (R5 alone).
-# Raising novelty on silent/idle processes never lowers score or speeds up kill.
-
-
-def test_novelty_monotone_non_decreasing_score() -> None:
-    """E-MONOTONIC isolated counterexample: novelty=0.1 vs novelty=0.5.
-
-    When output is stale (seconds_since_output=90s >= evidence_window_s=30s),
-    no output occurred in the evidence window, so output novelty is unknown
-    and repetitive=0. Both novelty=0.1 and novelty=0.5 yield score=0.0 (R5 alone).
-    Raising novelty on silent/idle processes never lowers score or speeds up kill.
-    """
-    w_low = LivenessWindow(
-        seconds_since_output=90.0,
-        cpu_ratio=0.0,
-        io_bytes_per_s=0.0,
-        child_events=0,
-        output_novelty=0.1,
-        voluntary_ctx_per_s=0.0,
-        elapsed_s=90.0,
-    )
-    w_high = LivenessWindow(
-        seconds_since_output=90.0,
-        cpu_ratio=0.0,
-        io_bytes_per_s=0.0,
-        child_events=0,
-        output_novelty=0.5,
-        voluntary_ctx_per_s=0.0,
-        elapsed_s=90.0,
-    )
-
-    v_low = assess(w_low, CFG)
-    v_high = assess(w_high, CFG)
-
-    # Score never goes DOWN when novelty rises (the property under repair).
-    assert v_high.score >= v_low.score - 1e-9, (
-        f"novelty monotonicity violated: novelty=0.1 score={v_low.score!r} "
-        f"vs novelty=0.5 score={v_high.score!r}; raising novelty lowered "
-        f"the score (E-MONOTONIC counterexample)"
-    )
-
-    # Stall-pressure rate must not INCREASE when novelty rises.
-    p_rate_low = max(0.0, (CFG.stall_theta - v_low.score) / CFG.stall_theta)
-    p_rate_high = max(0.0, (CFG.stall_theta - v_high.score) / CFG.stall_theta)
-    assert p_rate_high <= p_rate_low + 1e-9, (
-        f"novelty monotonicity violated at the pressure-rate layer: "
-        f"p_rate_low={p_rate_low!r}, p_rate_high={p_rate_high!r}; raising "
-        f"novelty accelerated stall-pressure accumulation"
-    )
-
-    # And the kill step lands at exactly ``stall_window_s`` ± one interval
-    # — not accelerated by the novelty raise.
-    stall_window_s = 90.0
-    dt = 2.0
-
-    def kill_step(win: LivenessWindow) -> int:
-        si = StallIntegrator(theta=CFG.stall_theta)
-        for i in range(1, 200):
-            v = assess(win, CFG)
-            si.step(verdict_score=v.score, dt=dt)
-            if si.should_kill(stall_window_s):
-                return i
-        return -1
-
-    k_low = kill_step(w_low)
-    k_high = kill_step(w_high)
-
-    # Both should kill within one interval of ``stall_window_s / dt`` ticks.
-    expected_kills = stall_window_s / dt  # 45 ticks
-    assert abs(k_low - expected_kills) <= 1, (
-        f"novelty=0.1 should kill at {expected_kills} ticks (±1); got {k_low}"
-    )
-    assert abs(k_high - expected_kills) <= 1, (
-        f"novelty=0.5 should kill at {expected_kills} ticks (±1); got {k_high}"
-    )
-
-
-def test_novelty_monotone_when_output_recent() -> None:
-    """When output is recent, raising novelty transitions from R6 (0.2) to R1 (1.0)."""
-    w_rep = LivenessWindow(
-        seconds_since_output=0.0,
-        cpu_ratio=0.0,
-        io_bytes_per_s=0.0,
-        child_events=0,
-        output_novelty=0.05,
-        voluntary_ctx_per_s=0.0,
-        elapsed_s=10.0,
-    )
-    w_novel = LivenessWindow(
-        seconds_since_output=0.0,
-        cpu_ratio=0.0,
-        io_bytes_per_s=0.0,
-        child_events=0,
-        output_novelty=0.5,
-        voluntary_ctx_per_s=0.0,
-        elapsed_s=10.0,
-    )
-
-    v_rep = assess(w_rep, CFG)
-    v_novel = assess(w_novel, CFG)
-
-    assert v_rep.score == pytest.approx(0.2)
-    assert v_rep.strongest_rule == "R6"
-    assert v_novel.score == pytest.approx(1.0)
-    assert v_novel.strongest_rule == "R1"
-    assert v_novel.score >= v_rep.score
-
-
-@given(
-    triple=_single_signal_raises(),
-    n_steps=st.integers(min_value=10, max_value=100),
-    dt=st.floats(min_value=0.5, max_value=2.0),
-    stall_window=st.floats(min_value=10.0, max_value=100.0),
-)
-@settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
-def test_monotonic_kill_delay(
-    triple: tuple[LivenessWindow, LivenessWindow, str],
-    n_steps: int,
-    dt: float,
-    stall_window: float,
-) -> None:
-    """Monotonicity: raising a single working signal never speeds up a kill.
-
-    Per-signal interpretation: the ``_single_signal_raises`` strategy
-    raises exactly one working signal in ``w2``; raising multiple
-    signals simultaneously can introduce a new rule firing with a
-    lower ``z`` and pull the literal Sugeno weighted-average DOWN, which
-    is the canonical (and intentional) Sugeno behavior — not a
-    monotonicity violation under PRODUCT_CRITERIA Part A's score formula.
-    """
-    w1, w2, _signal_name = triple
-
-    def kill_step(win: LivenessWindow) -> int:
-        si = StallIntegrator(theta=CFG.stall_theta)
-        v = assess(win, CFG)
-        for i in range(1, n_steps + 1):
-            si.step(verdict_score=v.score, dt=dt)
-            if si.should_kill(stall_window):
-                return i
-        return -1
-
-    k1 = kill_step(w1)
-    k2 = kill_step(w2)
-
-    # w2 has the single raised signal; it must never kill earlier than w1
-    if k1 > 0 and k2 > 0:
-        assert k2 >= k1
-    elif k1 > 0 and k2 < 0:
-        pass  # w2 prevented the kill entirely (strictly safer)
-    elif k1 < 0 and k2 < 0:
-        pass  # neither killed
-    else:
-        raise AssertionError(f"Monotonicity violated: k1={k1}, k2={k2}")
 
 
 # ---------------------------------------------------------------------------
@@ -934,7 +482,8 @@ def test_output_recent_in_unit_interval(o: float) -> None:
 #
 # The SuspicionClock and step_with_assessment helper tests live in
 # ``test_liveness_helpers.py``. The §3b "Bounded" / termination tests
-# from this file live in ``test_liveness_termination.py``. Splitting
-# these out keeps this file under the 1000-line repo-structure audit
-# cap; both files share the same ``CFG`` constant via
-# ``default_liveness_config()``.
+# from this file live in ``test_liveness_termination.py``. The PA-002
+# exact-semantics / transition properties live in
+# ``test_liveness_pa002_properties.py``. Splitting these out keeps this
+# file under the 1000-line repo-structure audit cap; every split module
+# builds the same ``CFG`` constant via ``default_liveness_config()``.

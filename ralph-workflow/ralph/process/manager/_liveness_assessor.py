@@ -37,52 +37,115 @@ spec table (``min`` for AND, ``max`` for OR, ``1 - x`` for NOT — see
 are the exact table PRODUCT_CRITERIA Part A defines; no rule is
 redefined in this module.
 
-Monotonicity disposition (PA-002 — resolution of spec contradiction):
+----------------------------------------------------------------------
+PA-002 disposition — score / kill-time monotonicity (wt-19)
+----------------------------------------------------------------------
 
 PRODUCT_CRITERIA Verification §3 "Monotonic" (raising any working signal
-never lowers ``s`` or speeds up a kill) is unsatisfiable together with the
-rest of Part A. Three independent counterexamples close every candidate
-aggregate:
+never lowers ``s`` or speeds up a kill) is **NOT** a property of the
+shipped literal-Sugeno weighted average — and as the rest of this
+section argues, it is unsatisfiable together with the rest of Part A
+by ANY aggregate. The aggregate below is therefore kept deliberately
+(D2 verbatim, zero scoring-code change) with this disposition:
 
-1. Weighted average ``Σwᵢzᵢ / Σwᵢ`` (shipped): an R1-fired window scores
-   1.0; raising working signal ``io`` to 64 KiB/s fires R2 (z=0.9), diluting
-   the score to 0.95 (1.0 -> 0.95).
-2. Strongest-product ``maxᵢ wᵢ·zᵢ``: memberships (awake=1, rest 0) score
-   0.55; raising CPU membership to 0.5 gives weights (0,0,0,0.5,0,0,0.5) where
-   R7 deflates through ``NOT CpuBusy`` (0.275) while R4 only reaches
-   0.5·0.6 = 0.30 — score drops from 0.55 to 0.30.
-3. Threshold-strongest-rule ``max{zᵢ : wᵢ ≥ τ}``: improving output recency
-   30 s -> 29 s with novelty 0 flips the evidence-window gate in ``assess``:
-   at 30 s novelty is gate-unknown → ``Repetitive``=0 → R1 fires at 0.6;
-   at 29 s novelty is known-repetitive → R1 is blocked, R6 fires at 1.0 →
-   score drops 0.6 -> 0.2/1.38 ≈ 0.145 under weighted average. This gate
-   transition defeats every aggregate that reads R1/R6 strengths, and R1
-   must be suppressible by repetitiveness for the spec's own "prints the
-   same line every 1 s → stalled" scenario to hold.
+* The shipped aggregate is the literal-Sugeno weighted average
+  ``s = Σwᵢzᵢ / Σwᵢ``. Raising a working signal can DILUTE an
+  already-firing high-z rule: e.g. when R1 alone fires with z=1.0
+  the score is 1.0; raising ``io`` to 64 KiB/s brings R2 (z=0.9) into
+  the weighted average and the score falls to 0.95. ``s`` is therefore
+  not globally monotone under signal raises, and a kill can arrive
+  STRICTLY EARLIER when a working signal is raised during a changing
+  trace (case (c) below locks this).
+* The aggregate IS a literal-Sugeno weighted average and IS monotone
+  NON-DECREASING from the all-idle baseline (R5-only, ``s=0``): raising
+  any single working signal strictly raises the score from there. This
+  is the only score-monotone claim the shipped aggregate provably
+  satisfies.
+* Three independent counterexamples close every candidate aggregate:
+  1. The shipped weighted average ``Σwᵢzᵢ / Σwᵢ``: an R1-fired window
+     scores 1.0; raising working signal ``io`` to 64 KiB/s fires R2
+     (z=0.9), diluting the score to 0.95 (1.0 -> 0.95). Locked exactly
+     in ``tests/test_liveness_assessor.py
+     ::test_regression_pa002_counterexample_1_r1_io_dilution``.
+  2. Strongest-product ``maxᵢ wᵢ·zᵢ``: at awake=1 the memberships are
+     (awake=1, rest 0) and the score is 0.55; raising CPU membership
+     to 0.5 gives weights (0,0,0,0.5,0,0,0.5) where R7 deflates through
+     ``NOT CpuBusy`` (0.275) while R4 only reaches 0.5·0.6 = 0.30 —
+     score drops from 0.55 to 0.30. The strongest-product arithmetic
+     above is analytical (it rejects a candidate aggregate this module
+     does not implement, so no test asserts it); the literal-Sugeno
+     arithmetic for the same transition IS asserted in
+     ``tests/test_liveness_assessor.py
+     ::test_regression_pa002_counterexample_3_cpu_raise_r7_to_r4_boundary``
+     (0.55 -> 0.575).
+  3. The evidence-window gate (``assess``'s ``effective_novelty``): at
+     30 s since last output with novelty 0, novelty is gate-unknown so
+     ``Repetitive``=0 and R1 fires (z=1.0); at 29 s novelty is known
+     and repetitive so R1 is blocked by ``NOT Repetitive=0`` and R6
+     fires (z=0.2) — score collapses ~0.6 -> 0.2/1.38 ≈ 0.145 under
+     weighted average. This gate transition is part of the spec's R1/R6
+     loop-detection design and is NOT a defect; the spec-internal
+     contradiction defeats every aggregate that reads R1/R6 strengths.
+     Locked exactly in ``tests/test_liveness_assessor.py
+     ::test_regression_pa002_counterexample_2_evidence_window_gate_transition``.
+* Case (c) — kill-timing non-monotonicity on a CHANGING trace (the
+  reason this unit exists): a changing trace of 80 s idle / 20 s
+  recent novel output / idle, with default liveness config, dt=1.0,
+  stall_window=90, fires a kill at tick 130 when ``io=0.0`` during the
+  middle segment, and STRICTLY EARLIER (tick 129 under IEEE-754, 128
+  under exact arithmetic) when ``io`` is raised to 64 KiB/s or 65536
+  KiB/s during the middle segment. R2's z=0.9 dilutes R1's z=1.0,
+  score is 0.95 vs 1.0, pressure drains slightly slower (per-step
+  delta -0.9 instead of -1.0), so the pressure total crosses
+  ``stall_window`` sooner in the following idle segment. This does
+  NOT cross the R6/novelty-gate. Locked exactly as a regression by
+  ``tests/test_liveness_properties.py
+  ::test_kill_timing_non_monotone_under_changing_io``.
 
-The contradiction is therefore spec-internal (Part A's R1/R6/D5-gate design
-vs Verification §3 literal score monotonicity), not an implementation defect.
+Guarantees that DO hold and ARE established by the code (verified by
+``tests/test_liveness_assessor.py`` and ``tests/test_liveness_properties.py``):
 
-Resolution (explicit disposition, zero scoring-code change):
-Keep the shipped literal-Sugeno weighted average (D2 verbatim). Re-scope
-the verified guarantees to what carries the safety intent:
+* Determinism / idempotence: same window + same config -> same verdict.
+* ``P >= 0`` clamping at every integration step.
+* Boundedness: pressure cannot exceed ``n_steps * dt`` on any trace.
+* Fail-closed unknown handling (D5): unknown signals never extend a
+  deadline — replacing a finite-zero reading with ``None`` never raises
+  the score or reduces pressure-accumulation rate.
+* All-idle exact-input trace kills at the configured ``stall_window_s``
+  ± one integration interval.
+* R1 / R6 / evidence-gate detection (the spec's "same-line printer ->
+  stalled" scenario): R1 MUST be suppressible by repetitiveness; the
+  evidence-window gate (``effective_novelty``) is the mechanism that
+  makes R6 fire only on output that is actually present in the evidence
+  window. Removing the gate would break loop detection.
+* Classification safety: raising a working signal never demotes
+  ``verdict_kind`` from working/suspicious to stalled/unknown. This is
+  the only monotone property the shipped aggregate guarantees at the
+  classification layer.
+* Baseline-relative monotone score: from an all-idle baseline
+  (R5-only, ``s=0``), raising any single working signal strictly
+  raises ``s``. This is the only score-monotone claim literal Sugeno
+  provably satisfies.
 
-* Exact-semantics regressions in ``tests/test_liveness_assessor.py`` lock
-  the counterexample traces as intentional, documented behavior: R1+io
-  dilution 1.0 -> 0.95; the 30 s -> 29 s gate transition (0.6 -> 0.2/1.38);
-  and the R7 -> R4 CPU-raise boundary (0.55 -> 0.575 under weighted average,
-  proving why literal Sugeno survives the negated antecedent).
-* Kill-relevant monotonicity: raising cpu/io/tree/awake membership or
-  in-window novelty never converts a would-not-kill trace into an earlier
-  kill, excluding the documented R6/novelty-gate detection transitions (that
-  exclusion IS the R6 detection mechanism, not a weakening).
-* Baseline monotonicity: from an all-idle baseline, raising any working
-  signal never lowers the score.
-* Invariants: fail-closed unknown handling (D5), determinism, boundedness,
-  ``P ≥ 0``, and all-idle kill at ``stall_window`` ± one interval.
+PA-002 ADRs honored:
 
-Verified by ``tests/test_liveness_assessor.py`` (regressions) and
-``tests/test_liveness_properties.py`` (kill-relevant and invariant properties).
+* D2 verbatim: the shipped literal-Sugeno weighted average is kept.
+  No executable change to ``_evaluate_rules``, ``_score_from_rule_weights``,
+  any membership function, any rule weight, any rule ``z`` value, any
+  theta, any sampler, any clock, or any ``timeout_ms`` semantics.
+* The contradiction between PRODUCT_CRITERIA Verification §3 "Monotonic"
+  and the spec's own R1/R6/evidence-gate design (cases (a)/(b)/(c)
+  above) is SPEC-INTERNAL and unsatisfiable by any aggregate under
+  fixed rule weights and theta. Operators who require score-monotone
+  behavior must lift the spec-internal contradiction between
+  Verification §3 and Part A's R1/R6/evidence-gate semantics in
+  PRODUCT_CRITERIA itself; this module holds the line on the shipped
+  rules verbatim.
+
+Verified by ``tests/test_liveness_assessor.py`` (regressions locking
+the verbatim counterexample scores and the case-(c) kill times) and
+``tests/test_liveness_properties.py`` (property tests over randomized
+windows and changing traces that assert the surviving guarantees).
 """
 
 from __future__ import annotations

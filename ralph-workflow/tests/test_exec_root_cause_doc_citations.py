@@ -207,7 +207,7 @@ REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
     # Cause 2 — the seam's hard_cap and the registry's job ceiling clamp.
     ("ralph/mcp/tools/exec.py", 634, "hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000"),
     ("ralph/mcp/tools/_exec_jobs.py", 220, "EXEC_JOB_CEILING_MAX_S"),
-    ("ralph/mcp/tools/_exec_jobs.py", 516, "job.ceiling_ms / 1000.0"),
+    ("ralph/mcp/tools/_exec_jobs.py", 504, "job.ceiling_ms / 1000.0"),
     # Cause 3 — the Pi bridge startup deadline.
     ("ralph/mcp/transport/pi.py", 85, "MCP_STARTUP_TIMEOUT_MS = 10_000"),
     # Cause 5c — child runtime shutdown seam.

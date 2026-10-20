@@ -319,23 +319,11 @@ class ExecJobRegistry:
         self._subscriptions: dict[
             str, ProgressSubscription
         ] = {}  # bounded-accumulator-ok: request-scoped
-        self._owner_loss_hooks: list[
-            Callable[[], None]
-        ] = []  # bounded-accumulator-ok: registration hooks
 
         if auto_register_runtime_hooks:
             _register_shutdown, _register_owner_loss = _ensure_runtime_hooks()
             _register_shutdown(lambda: self.shutdown_all("session_end"))
             _register_owner_loss(lambda: self.shutdown_all("session_end"))
-
-    def register_owner_loss_hook(self, hook: Callable[[], None]) -> None:
-        """Register an owner-loss hook with the registry and runtime."""
-        with self._lock:
-            if hook not in self._owner_loss_hooks:
-                self._owner_loss_hooks.append(hook)
-        with contextlib.suppress(Exception):
-            _register_owner_loss, _ = _ensure_runtime_hooks()
-            _register_owner_loss(hook)
 
     def subscribe_progress(self, sub: ProgressSubscription) -> None:
         """Subscribe a request-scoped sink to progress updates."""

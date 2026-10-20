@@ -266,14 +266,14 @@ from sampled liveness.
   the only observable restart contract is the non-retryable
   "unknown or expired job; process was killed or lost in server restart"
   error from `wait()`/`cancel()`
-  (`_exec_jobs.py:718-721`, `:733`, `:775`), which is covered by
+  (`_exec_jobs.py:706-709`, `:726-729`, `:763`), which is covered by
   `tests/test_exec_jobs.py::test_restart_lost_fresh_registry_returns_nonretryable_lost_in_server_restart_error`
   and `tests/test_tool_exec_wait_cancel.py::test_exec_wait_for_restart_lost_job_id_returns_idempotent_nonretryable_error`.
   A short in-request completion lands in the registry as a regular
   `JobResult` and the legacy output shape is preserved end-to-end;
   only jobs that take longer than the soft-reply budget return a
   snapshot with a `job_id` and the "call exec_wait; do not re-run"
-  instruction (`exec.py:826-838`, `_exec_jobs.py:760-767`).
+  instruction (`exec.py:826-838`, `_exec_jobs.py:768-775`).
 
 ## Cause 2 (CONFIRMED) — single 300-second absolute cap
 
@@ -296,7 +296,7 @@ Even after the operator raises `timeout_ms`, the wall clock is capped.
   EXEC_JOB_CEILING_MAX_S)` when the caller set `max_runtime_ms`, else
   `EXEC_JOB_CEILING_S` (`ralph/timeout_defaults.py:563`, 3600 s)) and stores
   it as `job.ceiling_ms`; `step_job` kills with `cause="hard_cap"` at
-  `_exec_jobs.py:496-497` against that single value. `EXEC_JOB_CEILING_MAX_S = 14400.0`
+  `_exec_jobs.py:504-505` against that single value. `EXEC_JOB_CEILING_MAX_S = 14400.0`
   (`ralph/timeout_defaults.py:569`, 4 h) is the outer bound.
 - **Historical (pre-§3b) wording**, quoted here because it is the text that
   used to ship: `ralph-workflow/ralph/mcp/tools/_exec_execution_error.py`
@@ -451,7 +451,7 @@ token. The historical "zero matches" claim no longer holds.
   `job_id` until the worker calls `registry.start(...)`, so the
   subscription is bound afterwards by
   `ralph/mcp/tools/_exec_jobs.attach_progress_subscription`
-  (`_exec_jobs.py:890`), which the exec handler hands the subscription
+  (`_exec_jobs.py:898`), which the exec handler hands the subscription
   to at `ralph/mcp/tools/exec.py:805-820`.
 - `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:241-244` wires
   both mechanisms into the streaming POST: the output-chunk sink at
