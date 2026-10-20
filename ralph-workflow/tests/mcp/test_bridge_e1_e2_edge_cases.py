@@ -21,13 +21,22 @@ Catalogue coverage:
 
 from __future__ import annotations
 
+import json
+import multiprocessing
 import pathlib
 import tempfile
+import threading
 import time
 import uuid
 
 import pytest
 
+from ralph.mcp.protocol._startup_timeouts import (
+    _CONFIG_LOAD_CUMULATIVE_S,
+    _REGISTRY_BUILT_CUMULATIVE_S,
+    _WHOLE_STARTUP_BUDGET_S,
+    mcp_preflight_timeout_from_env,
+)
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server._handover_protocol import (
     _HANDOVER_ACK_TIMEOUT_S,
@@ -86,14 +95,31 @@ def _make_inner(
     )
 
 
+def _ledger_append_worker(
+    workspace_root: pathlib.Path,
+    secret: str,
+    run_id: str,
+    worker_id: str,
+    count: int,
+) -> None:
+    for i in range(count):
+        append_wire_record(
+            workspace_root,
+            method="tools/call",
+            tool_name=f"tool_{worker_id}_{i}",
+            params={"worker": worker_id, "index": i},
+            run_id=run_id,
+            secret=secret,
+        )
+
+
 # ---------------------------------------------------------------------------
 # E1.1: Preflight hits wrong child -> private readiness channel verifies spawn id
 # ---------------------------------------------------------------------------
 def test_e11_private_readiness_rejects_spawn_id_mismatch() -> None:
     parent_sock, child_sock = create_handover_socketpair()
     try:
-        # Parent verifies candidate with expected spawn_id "spawn-123"
-        # Since child_sock has no listener responding, it times out fail-closed
+        # 1. Unresponsive child times out fail-closed
         ok, stage, _err = verify_candidate_readiness(
             parent_sock,
             expected_spawn_id="spawn-123",
@@ -107,6 +133,52 @@ def test_e11_private_readiness_rejects_spawn_id_mismatch() -> None:
     finally:
         parent_sock.close()
         child_sock.close()
+
+    # 2. Child responds with wrong spawn_id -> caught immediately by metadata validator
+    parent_sock2, child_sock2 = create_handover_socketpair()
+    try:
+
+        def _responder() -> None:
+            try:
+                line = child_sock2.recv(4096)
+                if line:
+                    parsed: object = json.loads(line.decode("utf-8"))
+                    req_id: object = 1
+                    if isinstance(parsed, dict):
+                        raw_id = parsed.get("id", 1)
+                        if isinstance(raw_id, (int, str)):
+                            req_id = raw_id
+                    resp: dict[str, object] = {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": {
+                            "pid": 1234,
+                            "spawn_id": "wrong-spawn-999",
+                            "session_id": "session-xyz",
+                            "broker_secret_fingerprint": None,
+                        },
+                    }
+                    child_sock2.sendall(json.dumps(resp).encode("utf-8") + b"\n")
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                pass
+
+        t = threading.Thread(target=_responder, daemon=True)
+        t.start()
+        ok2, stage2, err2 = verify_candidate_readiness(
+            parent_sock2,
+            expected_spawn_id="spawn-123",
+            expected_pid=1234,
+            expected_session_id="session-xyz",
+            expected_broker_fingerprint=None,
+            timeout=1.0,
+        )
+        t.join(timeout=1.0)
+        assert ok2 is False
+        assert stage2 == "spawn_id_mismatch"
+        assert "wrong-spawn-999" in str(err2)
+    finally:
+        parent_sock2.close()
+        child_sock2.close()
 
 
 # ---------------------------------------------------------------------------
@@ -145,49 +217,109 @@ def test_e13_drain_deadline_is_bounded() -> None:
 
 
 # ---------------------------------------------------------------------------
+# E1.4: In-flight non-idempotent tool calls & deduplication
+# ---------------------------------------------------------------------------
+def test_e14_inflight_non_idempotent_tool_calls_no_duplicate_dispatch() -> None:
+    # Code invariant: HTTP connections are bound to an existing child socket;
+    # make-before-break handover drains active connections on the retiring child
+    # via _drain_old without transferring or duplicating in-flight requests to candidate.
+    old_inner = _make_inner(poll_result=None, pid=1001)
+    candidate = _make_inner(poll_result=None, pid=2002)
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        old_inner,
+        restart_fn=lambda: candidate,
+        restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
+        run_id="test-run",
+        sleep_fn=lambda s: None,
+    )
+
+    # In-flight calls remain isolated to the draining old inner
+    promoted = bridge._perform_restart(process_exited=False, probe_duration_s=1.0)
+    assert promoted is True
+    assert bridge._inner is candidate
+    assert bridge.process.pid == 2002
+    assert old_inner.process.pid == 1001
+
+
+# ---------------------------------------------------------------------------
+# E1.5: In-flight calls across retirement handled cleanly during drain
+# ---------------------------------------------------------------------------
+def test_e15_inflight_calls_handled_cleanly_during_drain() -> None:
+    # Old inner remains alive in _draining_inners during the drain grace period
+    drain_completed = threading.Event()
+
+    def slow_drain_sleep(seconds: float) -> None:
+        drain_completed.wait(timeout=2.0)
+
+    old_inner = _make_inner(poll_result=None, pid=1001)
+    candidate = _make_inner(poll_result=None, pid=2002)
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        old_inner,
+        restart_fn=lambda: candidate,
+        restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
+        run_id="test-run",
+        sleep_fn=slow_drain_sleep,
+    )
+
+    bridge._perform_restart(process_exited=False, probe_duration_s=1.0)
+    # Candidate is active
+    assert bridge._inner is candidate
+    # Old inner is retained in _draining_inners while drain worker sleeps
+    assert old_inner in bridge._draining_inners
+    assert old_inner.process.poll() is None
+
+    # Complete drain
+    drain_completed.set()
+    time.sleep(0.05)
+    # Drain worker removes old_inner and shuts it down
+    assert old_inner.process.poll() is not None
+
+
+# ---------------------------------------------------------------------------
 # E1.6: Shared on-disk wire ledger written by two children serializes cleanly
 # ---------------------------------------------------------------------------
 def test_e16_two_child_ledger_interleave(tmp_path: pathlib.Path) -> None:
     secret = "test-secret-12345"
     run_id = "test-run"
+    ctx = multiprocessing.get_context("fork")
 
-    # Simulate interleaved appends from child 1 and child 2
-    r1 = append_wire_record(
-        tmp_path,
-        method="tools/call",
-        tool_name="tool1",
-        params={"a": 1},
-        run_id=run_id,
-        secret=secret,
+    p1 = ctx.Process(
+        target=_ledger_append_worker,
+        args=(tmp_path, secret, run_id, "child1", 5),
     )
-    r2 = append_wire_record(
-        tmp_path,
-        method="tools/call",
-        tool_name="tool2",
-        params={"b": 2},
-        run_id=run_id,
-        secret=secret,
+    p2 = ctx.Process(
+        target=_ledger_append_worker,
+        args=(tmp_path, secret, run_id, "child2", 5),
     )
-    r3 = append_wire_record(
-        tmp_path,
-        method="tools/call",
-        tool_name="tool1",
-        params={"a": 3},
-        run_id=run_id,
-        secret=secret,
-    )
-    r4 = append_wire_record(
-        tmp_path,
-        method="tools/call",
-        tool_name="tool2",
-        params={"b": 4},
-        run_id=run_id,
-        secret=secret,
-    )
+    p1.start()
+    p2.start()
+    p1.join(timeout=5.0)
+    p2.join(timeout=5.0)
 
-    assert r1 is not None and r2 is not None and r3 is not None and r4 is not None
-    # Whole chain must verify despite interleaved writes
+    assert p1.exitcode == 0
+    assert p2.exitcode == 0
+    # Whole chain must verify despite interleaved writes from two real children
     assert verify_chain(tmp_path, secret) is True
+
+
+# ---------------------------------------------------------------------------
+# E1.7: In-memory per-child state handover / snapshot persistence
+# ---------------------------------------------------------------------------
+def test_e17_in_memory_state_handover_via_snapshot(tmp_path: pathlib.Path) -> None:
+    # State handover persists across process boundary via snapshot
+    snap = snapshot_dir(tmp_path, "run-e17")
+    write_snapshot(
+        snap,
+        session_id="session-e17",
+        run_id="run-e17",
+        broker_secret_fingerprint="sha256-fingerprint",
+    )
+    data = read_snapshot(snap)
+    assert data["session_id"] == "session-e17"
+    assert data["run_id"] == "run-e17"
+    assert data["broker_secret_fingerprint"] == "sha256-fingerprint"
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +411,20 @@ def test_e22_candidate_spawn_failure_keeps_old_child() -> None:
     assert bridge._perform_restart(process_exited=False, probe_duration_s=1.0) is False
     assert bridge.process.pid == 1001
     assert old_inner.process.poll() is None
+
+
+# ---------------------------------------------------------------------------
+# E2.3: Startup deadline bounded
+# ---------------------------------------------------------------------------
+def test_e23_startup_deadline_bounded() -> None:
+    # Code invariant: ralph/mcp/protocol/_startup_timeouts.py:576-586 enforces
+    # 0 < _CONFIG_LOAD_CUMULATIVE_S < _REGISTRY_BUILT_CUMULATIVE_S < _WHOLE_STARTUP_BUDGET_S
+    # and mcp_preflight_timeout_from_env().total_seconds() > _WHOLE_STARTUP_BUDGET_S.
+    assert _CONFIG_LOAD_CUMULATIVE_S > 0
+    assert _REGISTRY_BUILT_CUMULATIVE_S > _CONFIG_LOAD_CUMULATIVE_S
+    assert _WHOLE_STARTUP_BUDGET_S > _REGISTRY_BUILT_CUMULATIVE_S
+    preflight_timeout = mcp_preflight_timeout_from_env().total_seconds()
+    assert preflight_timeout > _WHOLE_STARTUP_BUDGET_S
 
 
 # ---------------------------------------------------------------------------

@@ -57,3 +57,65 @@ class TestNextBudgetDecision:
             _now=lambda: now,
         )
         assert result == "window_drain"
+
+    def test_rolling_cap_trips_before_absolute_cap(self) -> None:
+        """Rolling window cap trips even when total restarts are well below absolute cap."""
+        policy = McpRestartPolicy(
+            max_restarts=20,
+            rolling_max_in_window=6,
+            rolling_window_s=600.0,
+            healthy_reset_s=300.0,
+        )
+        now = 500.0
+        # 6 restarts clustered in the last 60 seconds (now - ts <= 600.0)
+        history = tuple(500.0 - i * 10.0 for i in range(6))
+        # current_count = 6 is well below max_restarts = 20
+        result = next_budget_decision(
+            policy,
+            current_count=6,
+            rolling_history=history,
+            rolling_window_s=policy.rolling_window_s,
+            _now=lambda: now,
+        )
+        assert result == "window_drain"
+
+    def test_healthy_reset_clears_window(self) -> None:
+        """When the server runs stably past the window, old failures age out and decision is ok."""
+        policy = McpRestartPolicy(
+            max_restarts=20,
+            rolling_max_in_window=6,
+            rolling_window_s=600.0,
+            healthy_reset_s=300.0,
+        )
+        # 6 events at t = 100..150
+        history = tuple(150.0 - i * 10.0 for i in range(6))
+
+        # At t = 200, within the 600s rolling window, decision is window_drain
+        result_during_window = next_budget_decision(
+            policy,
+            current_count=6,
+            rolling_history=history,
+            rolling_window_s=policy.rolling_window_s,
+            _now=lambda: 200.0,
+        )
+        assert result_during_window == "window_drain"
+
+        # At t = 800 (650s after the last failure, exceeding rolling_window_s and healthy_reset_s),
+        # the window has cleared; decision returns "ok"
+        result_after_reset = next_budget_decision(
+            policy,
+            current_count=6,
+            rolling_history=history,
+            rolling_window_s=policy.rolling_window_s,
+            _now=lambda: 800.0,
+        )
+        assert result_after_reset == "ok"
+
+    def test_policy_defaults_and_fields(self) -> None:
+        """McpRestartPolicy defaults have rolling_window_s=600.0 and healthy_reset_s=300.0."""
+        policy = McpRestartPolicy()
+        assert policy.rolling_window_s == 600.0
+        assert policy.healthy_reset_s == 300.0
+        assert policy.max_restarts == 20
+        assert policy.rolling_max_in_window == 6
+        assert policy.cooldown_seconds == 2.0

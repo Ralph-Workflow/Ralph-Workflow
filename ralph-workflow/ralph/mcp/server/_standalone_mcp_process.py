@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,8 @@ class StandaloneMcpProcess:
     endpoint: str
     process: ProcessLike
     session_file: Path
+    stage_id: str | None = None
+    handover_parent_sock: object | None = None
 
     def start(self) -> None:
         return
@@ -56,6 +59,10 @@ class StandaloneMcpProcess:
                 "standalone MCP server did not reach terminal state before session cleanup",
                 restart_count=0,
             )
+        if self.handover_parent_sock is not None and hasattr(self.handover_parent_sock, "close"):
+            with contextlib.suppress(Exception):
+                self.handover_parent_sock.close()
+            self.handover_parent_sock = None
         self.session_file.unlink(missing_ok=True)
 
 

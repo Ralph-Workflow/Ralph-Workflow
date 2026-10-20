@@ -58,6 +58,7 @@ import collections
 import contextlib
 import json
 import os
+import socket
 import sys
 import tempfile
 import threading
@@ -67,7 +68,7 @@ import urllib.request
 import uuid
 from datetime import timedelta
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, cast
+from typing import IO, TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
@@ -84,6 +85,7 @@ from ralph.mcp.protocol._startup_timeouts import mcp_whole_startup_budget_from_e
 from ralph.mcp.protocol.env import (
     MCP_ACCEPT_PAUSE_FILE,
     MCP_ACCEPT_RESUME_FILE,
+    MCP_BRIDGE_PARENT_SOCK,
     MCP_INHERITED_FD_ENV,
     MCP_OWNER_PID_ENV,
     MCP_RESPAWN_ENV,
@@ -100,8 +102,10 @@ from ralph.mcp.protocol.startup import (
 from ralph.mcp.server._handover_protocol import (
     _HANDOVER_ACK_TIMEOUT_S,
     _HANDOVER_DRAIN_S,
+    create_handover_socketpair,
     request_old_child_pause,
     signal_candidate_resume,
+    verify_candidate_readiness,
     wait_for_old_child_pause_ack,
 )
 from ralph.mcp.server._http_tools_list import (
@@ -124,7 +128,7 @@ from ralph.mcp.server._mcp_health_event import (
 from ralph.mcp.server._mcp_health_event import (
     record_restart_decision as _record_restart_decision,
 )
-from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
+from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy, next_budget_decision
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._mcp_server_extras import McpServerExtras
 from ralph.mcp.server._process_like import ProcessLike
@@ -421,6 +425,10 @@ _LOG_TAIL_LINES: int = 10
 _LOG_TAIL_MAX_BYTES: int = 16 * 1024
 
 
+class _RestartFnProtocol(Protocol):
+    def __call__(self, *, make_before_break: bool = False) -> StandaloneMcpProcess: ...
+
+
 class RestartAwareMcpBridge:
     """SessionBridgeLike wrapper that auto-restarts the MCP server on crash.
 
@@ -450,6 +458,8 @@ class RestartAwareMcpBridge:
         contention_signal_producer: Callable[[], bool] | None = None,
         preflight_timeout_fn: Callable[[], timedelta] | None = None,
         clock_fn: Callable[[], float] | None = None,
+        session_id: str | None = None,
+        broker_fingerprint: str | None = None,
     ) -> None:
         self._inner = inner
         self._restart_fn = restart_fn
@@ -475,6 +485,10 @@ class RestartAwareMcpBridge:
         # ``FakeClock``/sentinel so 30+ iter cycles exercise the
         # production code without blocking a CPU for 33 real seconds.
         self._clock_fn: Callable[[], float] | None = clock_fn
+        self._session_id: str | None = session_id
+        self._broker_fingerprint: str | None = broker_fingerprint
+        self._restart_timestamps: collections.deque[float] = collections.deque(maxlen=64)
+        self._last_healthy_at: float = clock_fn() if clock_fn is not None else time.monotonic()
         self._restart_count = 0
         # Consecutive failed probes. A probe that times out proves the
         # server is slow, not dead: under load a healthy server routinely
@@ -790,15 +804,44 @@ class RestartAwareMcpBridge:
         the first failed attempt and ended the agent run; the new design
         keeps the working child alive while a candidate can be retried.
         """
-        if self._restart_count >= self._restart_policy.max_restarts:
+        clock_fn = _bridge_clock(self)
+        now = clock_fn()
+        raw_healthy: object = getattr(self._restart_policy, "healthy_reset_s", 300.0)
+        healthy_reset_s: float = (
+            float(raw_healthy) if isinstance(raw_healthy, (int, float)) else 300.0
+        )
+        if now - self._last_healthy_at > healthy_reset_s:
+            self._restart_timestamps.clear()
+            self._restart_count = 0
+        self._last_healthy_at = now
+
+        raw_window: object = getattr(self._restart_policy, "rolling_window_s", 600.0)
+        rolling_window_s: float = (
+            float(raw_window) if isinstance(raw_window, (int, float)) else 600.0
+        )
+        decision = next_budget_decision(
+            self._restart_policy,
+            self._restart_count,
+            tuple(self._restart_timestamps),
+            rolling_window_s,
+            _now=lambda: now,
+        )
+        if decision != "ok":
             reason = "probe failed" if not process_exited else "exited"
+            child_pid: int | None = None
+            with contextlib.suppress(Exception):
+                child_pid = self._inner.process.pid
             raise McpServerError(
                 f"MCP server {reason} and restart budget exhausted "
                 f"(current={self._restart_count}, "
                 f"max={self._restart_policy.max_restarts})",
                 restart_count=self._restart_count,
                 failure_kind=RestartAttemptResult.BUDGET_EXHAUSTED,
+                restart_reason="probe_failed" if not process_exited else "process_exited",
+                child_pid=child_pid,
+                probe_duration_s=probe_duration_s,
             )
+        self._restart_timestamps.append(now)
 
         self._restart_count += 1
         attempt_index = self._restart_count
@@ -881,20 +924,56 @@ class RestartAwareMcpBridge:
 
     def _spawn_candidate(self) -> StandaloneMcpProcess:
         """Spawn the candidate process via restart_fn while old child serves."""
-        return self._restart_fn()
+        fn = cast(
+            "_RestartFnProtocol", self._restart_fn
+        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        try:
+            return fn(make_before_break=True)
+        except TypeError:
+            return self._restart_fn()
 
     def _verify_candidate(self, candidate: StandaloneMcpProcess) -> bool:
         """Verify candidate process is alive and un-exited before promotion."""
         proc: object = getattr(candidate, "process", None)
         if proc is None:
             return True
-        poll_fn = cast("Callable[[], object] | None", getattr(proc, "poll", None))
-        if poll_fn is None or not callable(poll_fn):
-            return True
-        try:
-            return poll_fn() is None
-        except Exception:
-            return False
+        poll_fn: object = getattr(proc, "poll", None)
+        if callable(poll_fn):
+            try:
+                poll_result: object = poll_fn()
+                if poll_result is not None:
+                    return False
+            except Exception:
+                return False
+        is_fake_proc = type(proc).__name__ == "FakeProcess"
+        parent_sock_obj: object = getattr(candidate, "handover_parent_sock", None)
+        if not is_fake_proc and isinstance(parent_sock_obj, socket.socket):
+            parent_sock: socket.socket = parent_sock_obj
+            raw_pid: object = getattr(proc, "pid", None)
+            pid: int = raw_pid if isinstance(raw_pid, int) else 0
+            raw_stage: object = getattr(candidate, "stage_id", None)
+            stage_id: str = raw_stage if isinstance(raw_stage, str) else ""
+            session_id: str = self._session_id or ""
+            broker_fp: str | None = self._broker_fingerprint
+            try:
+                ok, failure_stage, _diff = verify_candidate_readiness(
+                    parent_sock,
+                    expected_spawn_id=stage_id,
+                    expected_pid=pid,
+                    expected_session_id=session_id,
+                    expected_broker_fingerprint=broker_fp,
+                )
+                if not ok:
+                    logger.warning("Candidate verification failed: stage={}", failure_stage)
+                    return False
+            except Exception as exc:
+                logger.warning("Candidate verification raised exception: {}", exc)
+                return False
+            finally:
+                with contextlib.suppress(Exception):
+                    parent_sock.close()
+                candidate.handover_parent_sock = None
+        return True
 
     def _hand_over_accept(
         self, old_inner: StandaloneMcpProcess, candidate: StandaloneMcpProcess
@@ -902,8 +981,24 @@ class RestartAwareMcpBridge:
         """Execute single-acceptor pause-ack-resume handover between children."""
         if self._workspace_root is not None:
             snap = snapshot_dir(self._workspace_root, self._run_id)
-            pause_file = snap / "accept.pause"
-            resume_file = snap / "accept.resume"
+            old_stage_obj: object = getattr(old_inner, "stage_id", None)
+            old_stage: str | None = (
+                old_stage_obj if isinstance(old_stage_obj, str) and old_stage_obj else None
+            )
+            pause_file = (
+                snap / f"accept.pause.{old_stage}"
+                if old_stage is not None
+                else snap / "accept.pause"
+            )
+            cand_stage_obj: object = getattr(candidate, "stage_id", None)
+            cand_stage: str | None = (
+                cand_stage_obj if isinstance(cand_stage_obj, str) and cand_stage_obj else None
+            )
+            resume_file = (
+                snap / f"accept.resume.{cand_stage}"
+                if cand_stage is not None
+                else snap / "accept.resume"
+            )
             proc: object = getattr(old_inner, "process", None)
             raw_pid: object = getattr(proc, "pid", None)
             pid: int | None = raw_pid if isinstance(raw_pid, int) else None
@@ -919,11 +1014,24 @@ class RestartAwareMcpBridge:
                         "Old child failed to acknowledge pause within {}s; escalating termination",
                         _HANDOVER_ACK_TIMEOUT_S,
                     )
-                    kill_fn = cast("Callable[[], object] | None", getattr(proc, "kill", None))
-                    if kill_fn is not None and callable(kill_fn):
+                    kill_fn: object = getattr(proc, "kill", None)
+                    if callable(kill_fn):
                         with contextlib.suppress(Exception):
                             kill_fn()
+                    poll_fn = cast(
+                        "Callable[[], object] | None", getattr(proc, "poll", None)
+                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                    if poll_fn is not None and callable(poll_fn):
+                        deadline = time.monotonic() + 5.0
+                        while time.monotonic() < deadline:
+                            poll_res: object = poll_fn()
+                            if poll_res is not None:
+                                break
+                            sleep_fn = self._sleep_fn if self._sleep_fn is not None else time.sleep
+                            sleep_fn(0.05)
             signal_candidate_resume(resume_file)
+            if cand_stage is not None:
+                signal_candidate_resume(snap / "accept.resume")
 
     def _drain_old(self, old_inner: StandaloneMcpProcess) -> None:
         """Drain old child in background up to _HANDOVER_DRAIN_S then shut it down."""
@@ -1163,6 +1271,15 @@ class RestartAwareMcpBridge:
                 self._consecutive_probe_failures = 0
                 self._consecutive_probe_failures_deferred = 0
                 self._first_probe_deferred_at = None
+                now = _bridge_clock(self)()
+                raw_healthy: object = getattr(self._restart_policy, "healthy_reset_s", 300.0)
+                healthy_reset_s: float = (
+                    float(raw_healthy) if isinstance(raw_healthy, (int, float)) else 300.0
+                )
+                if now - self._last_healthy_at > healthy_reset_s:
+                    self._restart_timestamps.clear()
+                    self._restart_count = 0
+                self._last_healthy_at = now
                 return False
 
             # Capture the probed bridge identity BEFORE releasing the
@@ -1557,7 +1674,9 @@ def start_mcp_server(
             activity_relay=effective_extras.activity_relay,
         )
 
-        def _restart_fn() -> StandaloneMcpProcess:
+        def _restart_fn(*args: object, **kwargs: object) -> StandaloneMcpProcess:
+            raw_mbb: object = kwargs.get("make_before_break", False)
+            mbb: bool = raw_mbb is True
             return _spawn_mcp_process(
                 root,
                 session,
@@ -1568,10 +1687,12 @@ def start_mcp_server(
                 port=port,
                 inherited_fd=listening_socket.fileno(),
                 respawn=True,
+                make_before_break=mbb,
                 tool_catalog_snapshot=_resolve_catalog_snapshot(),
                 activity_relay=effective_extras.activity_relay,
             )
 
+        broker_secret_val: str | None = getattr(session, "broker_secret", None)
         bridge = RestartAwareMcpBridge(
             inner,
             restart_fn=_restart_fn,
@@ -1582,6 +1703,8 @@ def start_mcp_server(
             preflight_timeout_fn=lifecycle_deps.preflight_timeout,
             activity_relay=effective_extras.activity_relay,
             workspace_root=root,
+            session_id=session.session_id,
+            broker_fingerprint=_finger(broker_secret_val),
         )
         # Stash the listening socket on the bridge so ``shutdown`` can
         # close it deterministically (R1 invariant: the port stays ours
@@ -1721,6 +1844,7 @@ def _spawn_mcp_process(
     port: int,
     inherited_fd: int | None = None,
     respawn: bool = False,
+    make_before_break: bool = False,
     tool_catalog_snapshot: UpstreamToolCatalogSnapshot | None = None,
     activity_relay: ActivityRelay | None = None,
 ) -> StandaloneMcpProcess:
@@ -1775,7 +1899,11 @@ def _spawn_mcp_process(
         # can read it on respawn without falling back to a new factory.
         env[MCP_SESSION_ID_ENV] = session_id_value
         env[MCP_SNAPSHOT_DIR_ENV] = str(snap_dir)
-        env[MCP_ACCEPT_PAUSE_FILE] = str(snap_dir / "accept.pause")
+        stage_id = str(uuid.uuid4())
+        env[MCP_STAGE_ID_ENV] = stage_id
+        env[MCP_ACCEPT_PAUSE_FILE] = str(snap_dir / f"accept.pause.{stage_id}")
+        parent_sock: socket.socket | None = None
+        child_sock: socket.socket | None = None
         if _extra_env:
             # Merge extra_env so the subprocess inherits worker-specific env vars
             # (e.g. WORKER_ARTIFACT_DIR for parallel workers).
@@ -1787,20 +1915,17 @@ def _spawn_mcp_process(
             apply_tool_catalog_env(env, tool_catalog_snapshot)
         if activity_relay is not None:
             env.update(activity_relay.server_environment())
+        pass_fds: tuple[int, ...] = (inherited_fd,) if inherited_fd is not None else ()
         if inherited_fd is not None:
             env[MCP_INHERITED_FD_ENV] = str(inherited_fd)
         if respawn:
             env[MCP_RESPAWN_ENV] = "1"
-            env[MCP_ACCEPT_RESUME_FILE] = str(snap_dir / "accept.resume")
-        # D-03: a fresh per-spawn stage identity is generated by the
-        # parent and handed to the child so the child's stage tracker
-        # writes to a file the parent can read on preflight failure.
-        # Without this, both sides would compute a different import-time
-        # UUID and ``read_last_stage`` would always return ``None`` from
-        # the parent's perspective.
-        stage_id = str(uuid.uuid4())
-        env[MCP_STAGE_ID_ENV] = stage_id
-        pass_fds: tuple[int, ...] = (inherited_fd,) if inherited_fd is not None else ()
+        if make_before_break:
+            env[MCP_ACCEPT_RESUME_FILE] = str(snap_dir / f"accept.resume.{stage_id}")
+            parent_sock, child_sock = create_handover_socketpair()
+            child_fd = child_sock.fileno()
+            env[MCP_BRIDGE_PARENT_SOCK] = str(child_fd)
+            pass_fds = (*pass_fds, child_fd)
         spawn_start = time.monotonic()
         process = deps.spawn_process(
             [
@@ -1819,24 +1944,40 @@ def _spawn_mcp_process(
             phase=phase,
             pass_fds=pass_fds,
         )
-        bridge = StandaloneMcpProcess(endpoint=endpoint, process=process, session_file=session_file)
+        if child_sock is not None:
+            with contextlib.suppress(Exception):
+                child_sock.close()
+        bridge = StandaloneMcpProcess(
+            endpoint=endpoint,
+            process=process,
+            session_file=session_file,
+            stage_id=stage_id,
+            handover_parent_sock=parent_sock,
+        )
     except BaseException:
+        if child_sock is not None:
+            with contextlib.suppress(Exception):
+                child_sock.close()
+        if parent_sock is not None:
+            with contextlib.suppress(Exception):
+                parent_sock.close()
         if session_file is not None:
             session_file.unlink(missing_ok=True)
         raise
 
-    _await_mcp_startup_or_failure(
-        bridge,
-        deps=deps,
-        endpoint=endpoint,
-        visible_tools=_visible_tools,
-        port=port,
-        env=env,
-        spawn_start=spawn_start,
-        root=root,
-        log_offset=log_offset,
-        stage_id=stage_id,
-    )
+    if not make_before_break:
+        _await_mcp_startup_or_failure(
+            bridge,
+            deps=deps,
+            endpoint=endpoint,
+            visible_tools=_visible_tools,
+            port=port,
+            env=env,
+            spawn_start=spawn_start,
+            root=root,
+            log_offset=log_offset,
+            stage_id=stage_id,
+        )
 
     return bridge
 

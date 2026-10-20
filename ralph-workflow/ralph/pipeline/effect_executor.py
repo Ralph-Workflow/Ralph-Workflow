@@ -45,7 +45,10 @@ from ralph.mcp.artifacts.canonical_submit import _clear_worker_artifacts
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
-from ralph.mcp.server.lifecycle import McpServerError, RestartAwareMcpBridge
+from ralph.mcp.server.lifecycle import (
+    McpServerError,
+    RestartAwareMcpBridge,
+)
 from ralph.phases.required_artifacts import (
     build_required_artifacts,
     build_retry_hint,
@@ -607,6 +610,9 @@ def _invoke_agent_with_recovery(
     raise_resumable_exit: bool = False,
     agent_invocation_error_sink: Callable[[Exception], object] | None = None,
 ) -> PipelineEvent:
+    raw_fresh_bridge: object = getattr(_retry_intent_local, "fresh_bridge_requested", False)
+    if raw_fresh_bridge is True:
+        bridge = None
     own_bridge = bridge is None
     effective_run_id = run_id or str(uuid.uuid4())
     resolved_required_artifact = _resolve_required_artifact(
@@ -744,6 +750,9 @@ def _invoke_agent_with_recovery(
     ) as exc:
         if isinstance(exc, McpServerError):
             terminal_mcp_error = True
+            if own_bridge and bridge is not None:
+                bridge.shutdown()
+            _mark_next_attempt_gets_fresh_bridge(exc)
             logger.warning(
                 "MCP server error (retryable): last_stage={last_stage} elapsed_s={elapsed_s} "
                 "restart_reason={restart_reason} handover_step={handover_step} "
@@ -779,6 +788,9 @@ def _start_bridge(
     pipeline_deps: PipelineDeps,
     run_id: str,
 ) -> RestartAwareMcpBridge:
+    raw_fresh_start: object = getattr(_retry_intent_local, "fresh_bridge_requested", False)
+    if raw_fresh_start is True:
+        _retry_intent_local.fresh_bridge_requested = False
     if not ctx.parallel_worker:
         workspace = FsWorkspace(
             ctx.workspace_scope.root, allowed_roots=ctx.workspace_scope.allowed_roots
@@ -1882,8 +1894,19 @@ write_agent_retry_prompt = _write_agent_retry_prompt
 _retry_intent_local: _threading.local = _threading.local()
 
 
+def _mark_next_attempt_gets_fresh_bridge(exc: Exception | None = None) -> None:
+    """Record that the next agent attempt must obtain a fresh MCP bridge."""
+    del exc
+    _retry_intent_local.fresh_bridge_requested = True
+
+
+mark_next_attempt_gets_fresh_bridge = _mark_next_attempt_gets_fresh_bridge
+
+
 def _set_last_captured_retry_intent(intent: AgentRetryIntent) -> None:
     _retry_intent_local.intent = intent
+    if intent == cleared_agent_retry_intent():
+        _retry_intent_local.fresh_bridge_requested = False
 
 
 def set_last_captured_retry_intent(intent: AgentRetryIntent) -> None:
@@ -1962,6 +1985,7 @@ def pop_last_captured_retry_intent() -> AgentRetryIntent:
 
 __all__ = [
     "AGENT_NOT_FOUND_REASON",
+    "mark_next_attempt_gets_fresh_bridge",
     "pop_last_captured_retry_intent",
     "set_last_captured_retry_intent",
     "stage_files",

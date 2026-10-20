@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -57,6 +58,12 @@ class McpRestartPolicy:
     # Default 6 — with a 60-second window this allows bursty restarts
     # while preventing a sustained restart storm from spinning forever.
     rolling_max_in_window: int = 6
+    # Rolling window duration (seconds) for restart attempt tracking.
+    # Default 600.0 s (10 minutes).
+    rolling_window_s: float = 600.0
+    # Healthy period (seconds) after which rolling failure history resets.
+    # Default 300.0 s (5 minutes).
+    healthy_reset_s: float = 300.0
 
 
 #: Lower bound for the host-contention window. Must be strictly above
@@ -108,6 +115,23 @@ if not _DEFAULT_ROLLING_MAX_IN_WINDOW > 0:
         f"McpRestartPolicy.rolling_max_in_window default must be positive "
         f"(got {_DEFAULT_ROLLING_MAX_IN_WINDOW})"
     )
+_DEFAULT_ROLLING_WINDOW_S: float = McpRestartPolicy.rolling_window_s
+_DEFAULT_HEALTHY_RESET_S: float = McpRestartPolicy.healthy_reset_s
+if not _DEFAULT_ROLLING_WINDOW_S > 0:
+    raise RuntimeError(
+        f"McpRestartPolicy.rolling_window_s default must be positive "
+        f"(got {_DEFAULT_ROLLING_WINDOW_S})"
+    )
+if not _DEFAULT_HEALTHY_RESET_S > 0:
+    raise RuntimeError(
+        f"McpRestartPolicy.healthy_reset_s default must be positive "
+        f"(got {_DEFAULT_HEALTHY_RESET_S})"
+    )
+if not _DEFAULT_ROLLING_WINDOW_S > _DEFAULT_HEALTHY_RESET_S:
+    raise RuntimeError(
+        f"McpRestartPolicy.rolling_window_s default must be > healthy_reset_s "
+        f"(got {_DEFAULT_ROLLING_WINDOW_S} <= {_DEFAULT_HEALTHY_RESET_S})"
+    )
 
 
 def next_budget_decision(
@@ -141,13 +165,17 @@ def next_budget_decision(
         ``"window_drain"`` when the rolling count within ``rolling_window_s``
         reaches ``policy.rolling_max_in_window``; ``"ok"`` when both checks pass.
     """
-    now_fn: Callable[[], float] = _now if _now is not None else lambda: 0.0
+    now_fn: Callable[[], float] = _now if _now is not None else time.monotonic
     now = now_fn()
-    if current_count >= policy.max_restarts:
+    raw_max: object = getattr(policy, "max_restarts", 20)
+    max_restarts: int = int(raw_max) if isinstance(raw_max, (int, float)) else 20
+    if current_count >= max_restarts:
         return "absolute_cap"
-    rolling_count = sum(1 for ts in rolling_history if now - ts <= rolling_window_s)
-    if rolling_count >= policy.rolling_max_in_window:
-        return "window_drain"
+    raw_rolling: object = getattr(policy, "rolling_max_in_window", None)
+    if isinstance(raw_rolling, (int, float)):
+        rolling_count = sum(1 for ts in rolling_history if now - ts <= rolling_window_s)
+        if rolling_count >= raw_rolling:
+            return "window_drain"
     return "ok"
 
 

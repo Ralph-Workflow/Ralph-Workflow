@@ -86,3 +86,36 @@ class TestMcpServerErrorEnriched:
         assert err.failure_kind == "transient"
         # message is in the string
         assert "x" in str(err)
+
+    def test_str_renders_all_populated_fields_semicolon_separated(self) -> None:
+        """__str__ renders all populated fields in a clean semicolon-separated format."""
+        err = McpServerError(
+            "child process died",
+            restart_count=2,
+            last_stage="registry_built",
+            elapsed_s=3.5,
+            restart_reason="preflight_timeout",
+            handover_step="spawn",
+            probe_duration_s=5.1,
+            probe_timeout_s=5.0,
+            child_pid=9999,
+            psutil_status="zombie",
+            startup_diagnostic="bad exit",
+            failure_kind="budget_exhausted",
+        )
+        s = str(err)
+        expected = (
+            "child process died; "
+            "restart_count=2; "
+            "last_stage=registry_built; "
+            "elapsed_s=3.5; "
+            "restart_reason=preflight_timeout; "
+            "handover_step=spawn; "
+            "probe_duration_s=5.1; "
+            "probe_timeout_s=5.0; "
+            "child_pid=9999; "
+            "psutil_status=zombie; "
+            "startup_diagnostic=bad exit; "
+            "failure_kind=budget_exhausted"
+        )
+        assert s == expected

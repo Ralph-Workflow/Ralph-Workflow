@@ -1,12 +1,13 @@
 """WU-T3: Edge cases E5.x (processes & signals), E6.x (time & budgets), E7.x (resources).
 
 Catalogue coverage:
-- E5.1: PID reuse guard checked against Process handle.
+- E5.1: PID reuse guard checked against Process handle and bridge generation.
 - E5.2: Unkillable child (D state) does not block candidate promotion.
 - E5.3: Stopped child (SIGSTOP) trips deferral ceiling and forces replacement.
 - E5.4: Zombie child reaped by poll().
 - E6.1: Suspend/resume clock jumps respect cooldown.
 - E6.2: Probe-overrun slack correctly classifies contention vs server death.
+- E6.3: Flapping (alternating success and failure) resets consecutive failure counter.
 - E6.4: Budget arithmetic constants checked at import time.
 - E7.1: ENOSPC on .agent/: Wire ledger fails closed with WireLedgerIOError.
 - E7.2: Limit exhaustion: candidate spawn failure keeps old child serving.
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import pathlib
 import tempfile
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
@@ -70,6 +72,33 @@ def _make_inner(
 
 
 # ---------------------------------------------------------------------------
+# E5.1: PID reuse guard checked against Process handle and bridge generation
+# ---------------------------------------------------------------------------
+def test_e51_pid_reuse_guard_anchored_to_bridge_generation() -> None:
+    inner = _make_inner(poll_result=None, pid=1001)
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: _make_inner(poll_result=None, pid=1001),  # OS reuses same PID 1001
+        restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
+        run_id="test-run",
+    )
+    initial_gen = bridge._bridge_generation
+
+    # Generation increments on restart / tool-registry-reset
+    bridge._bridge_generation += 1
+
+    # Stale probe from prior generation with same PID is discarded
+    restarted = bridge._handle_failed_probe_under_lock(
+        fresh_b_signal=False,
+        probe_duration_s=1.0,
+        probed_pid=1001,
+        probed_generation=initial_gen,
+    )
+    assert restarted is False
+    assert bridge.restart_count == 0
+
+
+# ---------------------------------------------------------------------------
 # E5.2: Unkillable child (D state) does not block candidate promotion
 # ---------------------------------------------------------------------------
 def test_e52_unkillable_child_does_not_block_promotion() -> None:
@@ -101,6 +130,46 @@ def test_e52_unkillable_child_does_not_block_promotion() -> None:
 
 
 # ---------------------------------------------------------------------------
+# E5.3: Stopped child (SIGSTOP) trips deferral ceiling and forces replacement
+# ---------------------------------------------------------------------------
+def test_e53_stopped_child_trips_deferral_ceiling_and_forces_replacement() -> None:
+    # Stopped child is alive in kernel (poll() is None) but unresponsive
+    stopped_inner = _make_inner(poll_result=None, pid=1001)
+    replacement = _make_inner(poll_result=None, pid=2002)
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        stopped_inner,
+        restart_fn=lambda: replacement,
+        restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
+        run_id="test-run",
+        sleep_fn=lambda s: None,
+    )
+
+    # Accumulate deferrals up to the count ceiling
+    for _ in range(lifecycle._DEFERRAL_COUNT_CEILING):
+        restarted = bridge._handle_failed_probe_under_lock(
+            fresh_b_signal=True,
+            probe_duration_s=1.0,
+            probed_pid=1001,
+            probed_generation=0,
+        )
+        assert restarted is False
+
+    assert bridge._consecutive_probe_failures_deferred == lifecycle._DEFERRAL_COUNT_CEILING
+
+    # Next failure trips the ceiling and forces replacement despite fresh contention signal
+    restarted = bridge._handle_failed_probe_under_lock(
+        fresh_b_signal=True,
+        probe_duration_s=1.0,
+        probed_pid=1001,
+        probed_generation=0,
+    )
+    assert restarted is True
+    assert bridge.process.pid == 2002
+    assert bridge.restart_count == 1
+
+
+# ---------------------------------------------------------------------------
 # E5.4: Zombie child reaped by poll()
 # ---------------------------------------------------------------------------
 def test_e54_zombie_child_reaped_by_poll() -> None:
@@ -110,11 +179,95 @@ def test_e54_zombie_child_reaped_by_poll() -> None:
 
 
 # ---------------------------------------------------------------------------
+# E6.1: Suspend/resume clock jumps respect cooldown and trip wall-time ceiling
+# ---------------------------------------------------------------------------
+def test_e61_suspend_resume_clock_jump_trips_wall_time_ceiling() -> None:
+    current_time = [1000.0]
+
+    def fake_clock() -> float:
+        return current_time[0]
+
+    inner = _make_inner(poll_result=None, pid=1001)
+    replacement = _make_inner(poll_result=None, pid=2002)
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: replacement,
+        restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
+        run_id="test-run",
+        clock_fn=fake_clock,
+        sleep_fn=lambda s: None,
+    )
+
+    # First deferral records start time
+    restarted = bridge._handle_failed_probe_under_lock(
+        fresh_b_signal=True,
+        probe_duration_s=1.0,
+        probed_pid=1001,
+        probed_generation=0,
+    )
+    assert restarted is False
+    assert bridge._consecutive_probe_failures_deferred == 1
+
+    # Host suspends and resumes: clock jumps past wall-time ceiling
+    current_time[0] += lifecycle._DEFERRAL_WALL_TIME_CEILING_S + 10.0
+
+    # Next failure trips wall-time ceiling and forces replacement
+    restarted = bridge._handle_failed_probe_under_lock(
+        fresh_b_signal=True,
+        probe_duration_s=1.0,
+        probed_pid=1001,
+        probed_generation=0,
+    )
+    assert restarted is True
+    assert bridge.process.pid == 2002
+
+
+# ---------------------------------------------------------------------------
 # E6.2: Probe-overrun slack bounds contention classification
 # ---------------------------------------------------------------------------
 def test_e62_probe_slack_bounds_classification() -> None:
     assert lifecycle._PROBE_DEADLINE_SLACK_S > 0
     assert lifecycle._PROBE_DEADLINE_SLACK_S <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# E6.3: Flapping (alternating success and failure) resets failure counter
+# ---------------------------------------------------------------------------
+def test_e63_flapping_server_resets_consecutive_failures() -> None:
+    inner = _make_inner(poll_result=None, pid=1001)
+    probe_results = [True, False, True, False]  # True = fail, False = pass
+
+    def probe_fn(endpoint: str, timeout: timedelta) -> None:
+        failed = probe_results.pop(0)
+        if failed:
+            raise RuntimeError("probe timed out")
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: _make_inner(poll_result=None, pid=2002),
+        restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
+        run_id="test-run",
+        probe_fn=probe_fn,
+        sleep_fn=lambda s: None,
+    )
+
+    # 1st probe fails -> consecutive failures = 1
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge._consecutive_probe_failures == 1
+
+    # 2nd probe passes -> consecutive failures reset to 0
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge._consecutive_probe_failures == 0
+
+    # 3rd probe fails -> consecutive failures = 1
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge._consecutive_probe_failures == 1
+
+    # 4th probe passes -> reset to 0 again
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge._consecutive_probe_failures == 0
+    assert bridge.restart_count == 0
 
 
 # ---------------------------------------------------------------------------
