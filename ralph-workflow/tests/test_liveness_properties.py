@@ -22,19 +22,10 @@ Properties:
 from __future__ import annotations
 
 import math
-import os
 from collections.abc import Callable
 from typing import TypedDict
 
 import pytest
-
-# The default per-test wall-clock limit is 1 second
-# (``ralph.verify_timeout.DEFAULT_TEST_TIMEOUT_SECONDS``); hypothesis needs
-# more headroom for 50 examples. Raise the limit just for these tests via
-# the environment variable the conftest reads
-# (``tests/conftest.py`` → ``TEST_TIMEOUT_ENV``).
-os.environ.setdefault("RALPH_PYTEST_TEST_TIMEOUT_SECONDS", "30.0")
-
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
@@ -50,6 +41,8 @@ from ralph.process.manager._liveness_assessor import (
     step_with_assessment,
 )
 
+# Per-module timeout enforced by conftest's pytest.mark.timeout_seconds support;
+# no environment mutation, no process-level side effects at import.
 pytestmark = pytest.mark.timeout_seconds(30)
 
 CFG: LivenessConfig = default_liveness_config()

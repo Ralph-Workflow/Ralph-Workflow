@@ -22,7 +22,7 @@ Frozen contract: the dataclasses below and the public ``assess`` /
 wire format. Other modules may import them but must not extend them.
 
 ----------------------------------------------------------------------
-Score monotonicity — explicit design resolution (spec deviation)
+Score monotonicity — explicit design resolution (ADR-recorded deviation)
 ----------------------------------------------------------------------
 
 PRODUCT_CRITERIA Verification §3 requires: "raising any 'working' signal
@@ -35,32 +35,45 @@ fire — pulls the weighted average DOWN from ``1.0`` to ``0.95``
 brief E-005). This is a categorical violation of "raising IO lowers the
 score", which the safety-critical kill-curve semantics cannot tolerate.
 
-Resolution: the score aggregate is computed as a per-rule contribution
-``wᵢ·zᵢ`` and the verdict score is the **maximum across the seven rules**:
+A second monotonicity failure surfaces when the aggregate is ``max(wᵢ·zᵢ)``
+instead of ``Σwᵢzᵢ / Σwᵢ``: R6's condition is ``Repetitive AND NOT IoActive``
+and R4's condition is ``CpuBusy AND NOT OutputRecent AND NOT IoActive``.
+Under ``max(wᵢ·zᵢ)``, raising io LOWERS R6's contribution (because
+``NOT IoActive`` decreases) faster than R2's contribution rises
+(z=0.9 vs z=0.2), violating "raising io never lowers s". This is
+reproduced by ``test_score_monotone_non_decreasing_with_improved_signals``
+on an idle+repetitive baseline with io rising from 0 → 5.
 
-    s = max_i ( wᵢ · zᵢ )
+Resolution: the verdict score is the **maximum of per-membership
+contributions**:
 
-which is monotone non-decreasing under any membership increase:
+    s = max( output_recent * (0.2 + 0.8 * (1 - repetitive)),
+              io_active * 0.9, tree_active * 0.9, cpu_busy * 0.6,
+              repetitive * 0.2, awake * 0.55, 0.0 )
 
-* Adding or strengthening a working rule can only raise its contribution
-  ``wᵢ·zᵢ`` (z is fixed and non-negative for every rule except R5),
-  so the max over the seven rules cannot decrease.
-* Raising a NOT-clause inside an existing rule (e.g. making
-  ``NOT OutputRecent`` lower by raising CpuBusy) lowers the working
-  rule's weight, which can lower the max; that is the correct monotonic
-  direction (weakening a working signal lowers score).
+Each working signal contributes monotonically (a larger membership can
+only raise its own contribution) and the max across seven monotone
+branches is itself monotone. The seven rules, their ``z`` outputs, and
+the per-rule firing structure used to identify the strongest rule (and
+therefore the verdict_kind — "working", "suspicious", "stalled",
+"unknown") are preserved as documented in the §3b spec table.
 
-The seven rules, their ``z`` outputs, and the per-rule firing structure
-are preserved as documented in the §3b spec table; only the aggregate
-operator is changed from ``Σwᵢzᵢ / Σwᵢ`` to ``max_i (wᵢ·zᵢ)``. R5's
-contribution ``w₅·z₅`` is identically zero and never wins the max
-unless every other rule's contribution is also zero, which is the
-canonical idle trace (R5 fires alone → score = 0.0 → "stalled").
+This is the SINGLE score function in this module. There is no parallel
+per-signal scorer: ``_score_from_memberships`` is the unique entry
+point consumed by :func:`assess`. The PRODUCT_CRITERIA "Monotonic"
+property is encoded verbatim in
+``tests/test_liveness_properties.py::test_score_monotone_non_decreasing_with_improved_signals``.
 
-This deviation is recorded in this module docstring (above) and is
-asserted in ``tests/test_liveness_properties.py`` by the
-``test_score_monotone_non_decreasing_with_improved_signals`` property
-test, which encodes the PRODUCT_CRITERIA "Monotonic" property verbatim.
+ADR consequence: this deviation is captured as **D11** in the ADR table
+that already enumerates D1..D10 in PRODUCT_CRITERIA.md. A future
+spec revision that requires the literal Sugeno weighted-average MUST
+either accept the monotonicity violation, redefine the rule z-table so
+the weighted average is monotone, or add a per-rule
+``Σwᵢ<0.05``-guard at every step — none of which are reversible without
+re-pinning the §3b wire format. A future spec revision that requires
+literal ``max(wᵢ·zᵢ)`` MUST either accept the R6/R4 monotonicity
+violation or remove the NOT-clauses over working signals from the rule
+conditions.
 """
 
 from __future__ import annotations
@@ -283,16 +296,7 @@ def _evaluate_rules(
 _UNKNOWN_THRESHOLD: float = 0.05
 
 
-def _score_from_weights(weights: tuple[float, ...]) -> float:
-    """Compute ``s = max(w_i * z_i)`` across the seven rules."""
-    best = 0.0
-    for w, z in zip(weights, _RULE_WEIGHTS, strict=True):
-        contrib = w * z
-        best = max(best, contrib)
-    return best
-
-
-def _compute_monotone_score(
+def _score_from_memberships(
     output_recent: float,
     cpu_busy: float,
     io_active: float,
@@ -300,11 +304,53 @@ def _compute_monotone_score(
     repetitive: float,
     awake: float,
 ) -> float:
-    """Compute strictly monotonic score across all working signals.
+    """Aggregate the per-rule z-scores into the verdict score ``s``.
 
-    Every working signal improvement (higher output_recent, lower repetitive,
-    higher cpu_busy, higher io_active, higher tree_active, higher awake)
-    monotonically increases or holds the score.
+    Each rule's per-membership contribution is computed and the verdict
+    score is the maximum across them. This is the SINGLE score function
+    consumed by :func:`assess`. The aggregation deviates from the
+    PRODUCT_CRITERIA "Rules" table in TWO documented places; both are
+    required to preserve the "Monotonic" property verbatim — see the
+    module docstring "Score monotonicity — explicit design resolution
+    (ADR-recorded deviation)" for the full ADR rationale.
+
+    Per-rule mapping:
+
+    * R1: ``output_recent * (0.2 + 0.8 * (1 - repetitive))`` — the output
+      score combines the OutputRecent membership with a NOT-Repetitive
+      damping term. Spec literal is ``min(output_recent, NOT Repetitive)``
+      but that produces a discontinuous contribution that does not survive
+      the max aggregate monotonically (see Deviation #2 below).
+    * R2: ``io_active * 0.9`` — IoActive membership multiplied by R2's z.
+      Spec literal is ``w2 * z2``; for R2 ``w2 = IoActive`` so this is identical.
+    * R3: ``tree_active * 0.9`` — TreeActive membership multiplied by R3's z. Same.
+    * R4: ``cpu_busy * 0.6`` — CpuBusy multiplied by R4's z. Spec literal has
+      ``w4 = min(CpuBusy, NOT OutputRecent, NOT IoActive)``; we use only
+      CpuBusy so R4 stays monotone in cpu. The "suspicious" semantics
+      still fire through the strongest-rule selector.
+    * R5: ``0.0`` — the idle rule never contributes positively; the
+      verdict is flagged ``stalled`` when R5 is the only rule firing.
+    * R6: ``repetitive * 0.2`` — Repetitive membership multiplied by R6's z. Spec
+      literal ``w6 = min(Repetitive, NOT IoActive)`` makes R6's
+      contribution decrease when io rises, which violates monotonicity.
+    * R7: ``awake * 0.55`` — Awake multiplied by R7's z.
+
+    Deviation #1 (already documented above): the literal Sugeno
+    weighted-average ``Σwᵢzᵢ / Σwᵢ`` is replaced by ``max(wᵢ·zᵢ)``;
+    R5/R4/R7 keep their semantics via ``verdict_kind``/``strongest_rule``.
+
+    Deviation #2 (this paragraph): the per-rule ``wᵢ`` gating inside
+    NOT-clauses is replaced with per-membership contributions, so the
+    aggregation is strictly monotone in every working signal. This is
+    REQUIRED because R6 (``Repetitive AND NOT IoActive``) and R4
+    (``CpuBusy AND NOT OutputRecent AND NOT IoActive``) both have
+    NOT-clauses over working signals; under the literal ``max(wᵢ·zᵢ)``
+    aggregation, raising io LOWERS R6's contribution (NOT IoActive
+    decreases faster than R2's contribution rises), which violates
+    PRODUCT_CRITERIA "Monotonic" verbatim. The fix decouples each rule's
+    contribution from NOT-clauses over working signals: R6 becomes
+    Repetitive-only, R4 becomes CpuBusy-only; the strongest-rule
+    selector still tracks which rule fires for the verdict_kind.
     """
     not_repetitive = 1.0 - repetitive
     output_score = output_recent * (0.2 + 0.8 * not_repetitive)
@@ -313,7 +359,9 @@ def _compute_monotone_score(
         io_active * 0.9,
         tree_active * 0.9,
         cpu_busy * 0.6,
+        repetitive * 0.2,
         awake * 0.55,
+        0.0,
     )
 
 
@@ -367,7 +415,7 @@ def assess(window: LivenessWindow, config: LivenessConfig) -> LivenessVerdict:
         weights, strongest_rule = _evaluate_rules(
             output_recent, cpu_busy, io_active, tree_active, repetitive, awake
         )
-        score = _compute_monotone_score(
+        score = _score_from_memberships(
             output_recent, cpu_busy, io_active, tree_active, repetitive, awake
         )
     kind = _kind_from_weights(weights, score, strongest_rule)

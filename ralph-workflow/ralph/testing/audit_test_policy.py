@@ -379,6 +379,15 @@ _SMOKE_NAME_ALLOWLIST: set[str] = {
     # defeating the regression this task exists to add (AGENTS.md
     # "every new check must run under make verify").
     "test_smoke_capability_breaks_when_supported_but_unrendered",
+    # wt-19 WU-4 (DEVELOPMENT_ANALYSIS_DECISION.md round-3 EV-004): the
+    # four real-process liveness smoke tests prove psutil reads the
+    # ``cpu_ratio``/``io_bytes_per_s``/``voluntary_ctx_per_s`` signals
+    # on the CI platform. Each test runs at most ~3 s (config-shrunk
+    # windows) so they fit the 60 s combined budget. They MUST run in
+    # the default suite via the ``required_auto_integrate_e2e`` marker
+    # (U-GATE registry entries), not be excluded by ``-m 'not smoke'``;
+    # PRODUCT_CRITERIA Verification §5 makes them required proof.
+    "test_exec_smoke_subprocess_e2e",
 }
 
 # Path I/O methods that indicate real filesystem access.

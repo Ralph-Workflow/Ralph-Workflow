@@ -193,7 +193,17 @@ class _ActiveJob:
         self.start_time = clock()
         self.last_wait_time = self.start_time
         self.last_sample_time = self.start_time
-        self.last_output_at: float | None = self.start_time
+        # ``last_output_at`` is initialised to ``None`` (no output yet) so the
+        # first sample sees ``seconds_since_output=None`` → OutputRecent=0
+        # → R1/R4/R7 do NOT fire → R5 fires alone → score=0. Initialising to
+        # ``self.start_time`` would credit the command with fresh-output
+        # membership at t=0 and stall pressure would drain for the first
+        # ``output_recent_max_s`` seconds; an idle command from birth would
+        # then be killed at ``stall_window + output_recent_max_s`` instead
+        # of the requested ``stall_window``. The bug is reproduced by
+        # ``tests/test_exec_jobs.py::test_default_idle_kills_at_90s`` (see
+        # WU-3 Wt-19 EV-002 in the analysis).
+        self.last_output_at: float | None = None
         self.suspicious_started_at: float | None = None
 
         self.lock = threading.Lock()
