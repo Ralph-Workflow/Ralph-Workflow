@@ -21,9 +21,24 @@ from ralph.mcp.tools.names import (
     RALPH_MCP_SERVER_NAME,
 )
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
+from ralph.timeout_defaults import EXEC_SOFT_REPLY_BUDGET_MS
 from ralph.workspace.agent_dir_retention import (
     register_temporary_path_owner,
     unregister_temporary_path_owner,
+)
+
+#: Seconds of headroom above ``EXEC_SOFT_REPLY_BUDGET_MS`` when the transport
+#: writes a client-side tool-call deadline. Matches the 30 s headroom the
+#: timing-safety check in ``ralph/mcp/server/_timing_safety.py`` requires.
+_CODEX_TOOL_TIMEOUT_HEADROOM_SECONDS: Final[int] = 30
+
+#: Codex ``mcp_servers.<name>.tool_timeout_sec`` (seconds). Codex honors a
+#: per-server tool-call deadline in this field (see the docs cited in
+#: ``docs/agents/exec-long-running-root-cause.md``); we set it to
+#: soft-budget + headroom so a legitimately long ``tools/call`` round
+#: trip cannot outrun the verified Codex MCP deadline.
+_CODEX_TOOL_TIMEOUT_SEC: Final[int] = int(
+    math.ceil((EXEC_SOFT_REPLY_BUDGET_MS + _CODEX_TOOL_TIMEOUT_HEADROOM_SECONDS * 1000) / 1000.0)
 )
 
 #: Sane upper bound for the in-process Codex-home registry. The deque
@@ -206,7 +221,11 @@ def _merge_codex_config(
                 for name, value in operator_servers.items()
                 if name != RALPH_MCP_SERVER_NAME
             },
-            RALPH_MCP_SERVER_NAME: {"url": endpoint, "enabled": True},
+            RALPH_MCP_SERVER_NAME: {
+                "url": endpoint,
+                "enabled": True,
+                "tool_timeout_sec": _CODEX_TOOL_TIMEOUT_SEC,
+            },
         }
     if master_prompt_file:
         merged["model_instructions_file"] = master_prompt_file

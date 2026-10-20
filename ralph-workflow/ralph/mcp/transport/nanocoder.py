@@ -32,6 +32,17 @@ def build_nanocoder_mcp_config(
 ) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
     """Build a Nanocoder MCP payload with Ralph injected as the managed server.
 
+    No ``tools/call`` timeout field is written here: the Nanocoder package
+    docs (https://www.npmjs.com/package/@nanocollective/nanocoder plus
+    https://github.com/Nano-Collective/nanocoder) document the MCP server
+    keys ``transport``/``url``/``command``/``args``/``env``/``enabled``/
+    ``alwaysAllow`` only; no tool-call timeout is named in the package's
+    README or ``docs/``. Writing a synthetic timeout field would either be
+    silently ignored or hand craft a contract the agent does not honour, so
+    the transport falls back to whatever Nanocoder's internal default is.
+    See ``docs/agents/exec-long-running-root-cause.md`` for the verified
+    citation.
+
     Ralph's own entry is dropped before normalization. ``ralph`` is a reserved
     upstream name and ``normalize_upstream_mcp_servers`` raises on it, so an
     agent payload that already names it -- one written by hand, or copied back

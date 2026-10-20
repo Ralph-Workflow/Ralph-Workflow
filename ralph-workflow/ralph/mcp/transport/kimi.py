@@ -59,12 +59,26 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import cast
+from typing import Final, cast
 
 from ralph.config._agent_overrides import agent_environment_value
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.transport.common import _load_mcpservers_from_paths
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
+from ralph.timeout_defaults import EXEC_SOFT_REPLY_BUDGET_MS
+
+#: Milliseconds of headroom above ``EXEC_SOFT_REPLY_BUDGET_MS`` when the
+#: transport writes a client-side tool-call deadline. Matches the 30 s
+#: headroom the timing-safety check in ``ralph/mcp/server/_timing_safety.py``
+#: requires and the documented ``kimi/codex`` per-server deadline pattern.
+_KIMI_TOOL_TIMEOUT_HEADROOM_MS: Final[int] = 30_000
+
+#: Kimi per-server ``toolTimeoutMs`` override (milliseconds). Kimi Code
+#: honours a per-server tool-call deadline in this field (see
+#: ``docs/agents/exec-long-running-root-cause.md``); we set it to
+#: soft-budget + headroom so a legitimately long ``tools/call`` round
+#: trip cannot outrun the documented 60 s global default.
+_KIMI_TOOL_TIMEOUT_MS: Final[int] = EXEC_SOFT_REPLY_BUDGET_MS + _KIMI_TOOL_TIMEOUT_HEADROOM_MS
 
 
 def _kimi_global_config_path() -> Path:
@@ -102,6 +116,7 @@ def kimi_mcp_config(endpoint: str) -> str:
         "mcpServers": {
             RALPH_MCP_SERVER_NAME: {
                 "url": endpoint,
+                "toolTimeoutMs": _KIMI_TOOL_TIMEOUT_MS,
             }
         }
     }

@@ -178,6 +178,11 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/mcp/test_bridge_e1_e2_edge_cases.py",
     "tests/mcp/test_bridge_e3_e4_edge_cases.py",
     "tests/mcp/test_bridge_e5_e6_e7_edge_cases.py",
+    # wt-19-fix-long-exec-tasks — exec job flow smokes (real subprocess)
+    # Real-process proofs for the liveness assessor + job registry. Both
+    # files carry subprocess_e2e + required_auto_integrate_e2e markers.
+    "tests/test_exec_smoke_subprocess_e2e.py",
+    "tests/test_exec_job_shutdown_subprocess_e2e.py",
 )
 
 

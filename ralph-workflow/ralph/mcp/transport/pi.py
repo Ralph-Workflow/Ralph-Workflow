@@ -1,4 +1,11 @@
-"""Pi-specific MCP transport helpers."""
+"""Pi-specific MCP transport helpers.
+
+Pi's bridge plumbing wires ``pi.registerTool({ execute(_, _, signal) })``
+through to ``fetch(ENDPOINT, { signal })``. Ralph additionally arms a
+bridge-side ``setTimeout(controller.abort, MCP_TOOL_CALL_DEADLINE_MS)`` so
+a Pi that forgets to abort the signal still bounds tools/call at the
+verified soft-budget + headroom.
+"""
 
 from __future__ import annotations
 
@@ -7,12 +14,32 @@ import shutil
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+from typing import Final
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+from ralph.timeout_defaults import EXEC_SOFT_REPLY_BUDGET_MS
 
 PI_MCP_EXTENSION_ENV = "RALPH_PI_MCP_EXTENSION"
 CallableCleanup = Callable[[], None]
+
+#: Milliseconds of headroom above ``EXEC_SOFT_REPLY_BUDGET_MS`` for the
+#: bridge-side ``tools/call`` deadline. Matches the 30 s headroom the
+#: timing-safety check in ``ralph/mcp/server/_timing_safety.py`` requires.
+MCP_TOOL_CALL_HEADROOM_MS: Final[int] = 30_000
+
+#: Bounded deadline (ms) the generated Pi bridge enforces on every
+#: ``tools/call`` round-trip, independent of Pi's own per-tool signal.
+#: Pi propagates an ``AbortSignal`` to the bridge via
+#: ``pi.registerTool({ execute(_toolCallId, params, signal) })``, and the
+#: bridge passes that signal to ``fetch(ENDPOINT, { signal })``. We
+#: additionally start a ``setTimeout`` that aborts after this many ms as
+#: a defensive bound -- the documented rationale lives in
+#: ``docs/agents/exec-long-running-root-cause.md`` (Pi's discovery-time
+#: MCP_STARTUP_TIMEOUT_MS is the only deadline its bridge plumbing had
+#: configured). Sized at soft-budget + headroom so a legitimately long
+#: ``tools/call`` cannot outrun the verified client deadline.
+MCP_TOOL_CALL_DEADLINE_MS: Final[int] = EXEC_SOFT_REPLY_BUDGET_MS + MCP_TOOL_CALL_HEADROOM_MS
 
 
 def pi_mcp_extension_path(workspace_path: Path) -> Path:
@@ -56,6 +83,7 @@ def _render_pi_mcp_extension(endpoint: str) -> str:
 
 const ENDPOINT = {endpoint_literal};
 const MCP_STARTUP_TIMEOUT_MS = 10_000;
+const MCP_TOOL_CALL_DEADLINE_MS = {MCP_TOOL_CALL_DEADLINE_MS};
 const FALLBACK_SCHEMA = {{ type: "object", additionalProperties: true }};
 const TERMINAL_TOOLS = new Set([
   "declare_complete",
@@ -189,6 +217,19 @@ async function mcpRequest(
   return decoded.result;
 }}
 
+function combineSignals(parent: AbortSignal | undefined, own: AbortController): void {{
+  // Defensive deadline: even if Pi never aborts the parent signal, the bridge
+  // will ALWAYS abort tools/call within MCP_TOOL_CALL_DEADLINE_MS. Pi aborts
+  // the parent signal when its own per-tool deadline fires; the two sources
+  // are linked so either one terminating the call aborts the fetch.
+  if (!parent) return;
+  if (parent.aborted) {{
+    own.abort();
+    return;
+  }}
+  parent.addEventListener("abort", () => own.abort(), {{ once: true }});
+}}
+
 async function ensureInitialized(signal?: AbortSignal): Promise<void> {{
   if (initialized) return;
   await mcpRequest("initialize", {{
@@ -256,14 +297,25 @@ export default async function (pi: ExtensionAPI) {{
       parameters: isObject(tool.inputSchema) ? tool.inputSchema : FALLBACK_SCHEMA,
       async execute(_toolCallId, params, signal) {{
         await ensureInitialized(signal);
-        const result = await mcpRequest("tools/call", {{
-          name: tool.name,
-          arguments: isObject(params) ? params : {{}},
-        }}, signal);
-        return {{
-          ...piToolResult(result),
-          terminate: TERMINAL_TOOLS.has(tool.name),
-        }};
+        // Two abort sources: Pi's per-tool timeout signal + the bridge's
+        // own MCP_TOOL_CALL_DEADLINE_MS. Either one aborts the fetch; the
+        // earlier one wins. Without the bridge-side deadline a Pi that
+        // forgot to abort the signal leaves tools/call unbounded.
+        const controller = new AbortController();
+        combineSignals(signal, controller);
+        const deadlineId = setTimeout(() => controller.abort(), MCP_TOOL_CALL_DEADLINE_MS);
+        try {{
+          const result = await mcpRequest("tools/call", {{
+            name: tool.name,
+            arguments: isObject(params) ? params : {{}},
+          }}, controller.signal);
+          return {{
+            ...piToolResult(result),
+            terminate: TERMINAL_TOOLS.has(tool.name),
+          }};
+        }} finally {{
+          clearTimeout(deadlineId);
+        }}
       }},
     }});
   }}
@@ -272,6 +324,8 @@ export default async function (pi: ExtensionAPI) {{
 
 
 __all__ = [
+    "MCP_TOOL_CALL_DEADLINE_MS",
+    "MCP_TOOL_CALL_HEADROOM_MS",
     "PI_MCP_EXTENSION_ENV",
     "pi_mcp_extension_path",
     "write_pi_mcp_extension",

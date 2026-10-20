@@ -455,3 +455,180 @@ if not MCP_DISPATCH_TIMEOUT_SECONDS > EXEC_MAX_TIMEOUT_MS / 1000.0:
         "MCP_DISPATCH_TIMEOUT_SECONDS must exceed the exec timeout ceiling; "
         f"got MCP_DISPATCH_TIMEOUT_SECONDS={MCP_DISPATCH_TIMEOUT_SECONDS!r}"
     )
+
+# ---------------------------------------------------------------------------
+# §3b Exec-job liveness & lifecycle constants
+# ---------------------------------------------------------------------------
+# Single source of truth for the sampler, liveness-assessor, stall
+# integrator, suspicion / no-progress windows, and job-flow / FIFO caps
+# backing the long-running-exec task (§3b). The values are paired with
+# the import-time order checks further below; both must stay in lock-step
+# so a future regression cannot introduce a violation that the order
+# guards fail closed against.
+
+#: §3b Sampler config: how often the background liveness sampler wakes
+#: to capture process-tree / I/O / output evidence (seconds). Must be
+#: strictly less than ``EXEC_JOB_ABANDON_S`` so the sampler gets at
+#: least one cycle before the abandon window fires.
+EXEC_LIVENESS_SAMPLE_INTERVAL_S: float = 2.0
+
+#: §3b Sampler config: maximum age (seconds) at which captured
+#: evidence still counts as fresh for the liveness breakpoints below.
+#: Evidence older than this window is treated as stale.
+EXEC_LIVENESS_EVIDENCE_WINDOW_S: float = 30.0
+
+#: §3b Liveness assessor: ``Output recent`` membership breakpoint
+#: (seconds). ``output_age <= EXEC_OUTPUT_RECENT_MAX_S`` fires the
+#: ``OutputRecent`` membership predicate (recent stdout seen).
+EXEC_OUTPUT_RECENT_MAX_S: float = 10.0
+
+#: §3b Liveness assessor: ``Output recent`` membership breakpoint
+#: (seconds, alternate configuration). Symmetric partner of
+#: ``EXEC_OUTPUT_RECENT_MAX_S``; the assessor routes through whichever
+#: bound the deployment profile selects.
+EXEC_OUTPUT_RECENT_MIN_S: float = 60.0
+
+#: §3b Liveness assessor: CPU-busy membership lower bound. A sampled
+#: CPU fraction ``>= EXEC_CPU_BUSY_MIN`` counts as ``CpuBusy``.
+EXEC_CPU_BUSY_MIN: float = 0.02
+
+#: §3b Liveness assessor: CPU-busy membership upper bound. A sampled
+#: CPU fraction ``<= EXEC_CPU_BUSY_MAX`` still counts as ``CpuBusy``;
+#: above this the assessor classifies as ``ComputeBound`` rather than
+#: ``CpuBusy``.
+EXEC_CPU_BUSY_MAX: float = 0.20
+
+#: §3b Liveness assessor: I/O rate (KB/s) at or below which the
+#: assessor treats the child as I/O-inactive.
+EXEC_IO_KBPS_INACTIVE: float = 4.0
+
+#: §3b Liveness assessor: I/O rate (KB/s) at or above which the
+#: assessor treats the child as I/O-active.
+EXEC_IO_KBPS_ACTIVE: float = 64.0
+
+#: §3b Liveness assessor: tree-activity threshold. A subtree size of
+#: ``t >= EXEC_TREE_ACTIVE_THRESHOLD`` fires the ``TreeActive``
+#: membership predicate.
+EXEC_TREE_ACTIVE_THRESHOLD: int = 1
+
+#: §3b Liveness assessor: repetitive-output upper bound. A
+#: repetitive-line ratio ``<= EXEC_REPETITIVE_MAX`` keeps the child in
+#: ``NotRepetitive``.
+EXEC_REPETITIVE_MAX: float = 0.1
+
+#: §3b Liveness assessor: repetitive-output lower bound (alternate
+#: configuration). A repetitive-line ratio ``>= EXEC_REPETITIVE_MIN``
+#: classifies as ``Repetitive``.
+EXEC_REPETITIVE_MIN: float = 0.5
+
+#: §3b Liveness assessor: awake-events-per-second rate at or below
+#: which the child is treated as not-awake-enough.
+EXEC_AWAKE_PER_S_INACTIVE: float = 0.5
+
+#: §3b Liveness assessor: awake-events-per-second rate at or above
+#: which the child is treated as actively awake.
+EXEC_AWAKE_PER_S_ACTIVE: float = 5.0
+
+#: §3b Stall integrator: theta threshold that separates the
+#: stall-decay branches. A stall score ``>= EXEC_STALL_THETA`` triggers
+#: the higher-decay branch; below it the lower-decay branch applies.
+EXEC_STALL_THETA: float = 0.5
+
+#: §3b Suspicion window (seconds). Cumulative no-progress time
+#: within this window raises the SUSPICIOUS report. Must be strictly
+#: less than ``EXEC_NO_PROGRESS_WINDOW_S`` (the next-window guard
+#: below enforces the order).
+EXEC_SUSPICIOUS_REPORT_S: float = 60.0
+
+#: §3b No-progress window (seconds, 15 minutes). Cumulative
+#: no-progress time within this window fires the no-progress
+#: verdict. Must satisfy
+#: ``EXEC_SUSPICIOUS_REPORT_S < EXEC_NO_PROGRESS_WINDOW_S < EXEC_JOB_CEILING_S``
+#: (the import-time guard below enforces the order).
+EXEC_NO_PROGRESS_WINDOW_S: float = 900.0
+
+#: §3b Job flow: soft-reply budget (milliseconds) used as the FLOOR
+#: for every transport timeout. Defined as the smallest verified
+#: client timeout (60_000 ms) minus a 15-second headroom, so a
+#: legitimately long transport time cannot outrun a verified client
+#: timeout. Re-exported through this module as the single source of
+#: truth for the timing-safety check in U-TRANSPORT. Must be strictly
+#: less than ``EXEC_MAX_TIMEOUT_MS`` so the per-call ceiling always
+#: covers the soft burst.
+EXEC_SOFT_REPLY_BUDGET_MS: int = 45_000
+
+#: §3b Job flow: default per-job ceiling (seconds, 1 hour). The
+#: runtime reaps a job that exceeds this. Must satisfy
+#: ``EXEC_NO_PROGRESS_WINDOW_S < EXEC_JOB_CEILING_S <= EXEC_JOB_CEILING_MAX_S``.
+EXEC_JOB_CEILING_S: float = 3600.0
+
+#: §3b Job flow: hard maximum per-job ceiling (seconds, 4 hours).
+#: Bounded above by ``max_runtime_ms`` so an operator who lifts the
+#: ceiling cannot outrun the dispatch timeout. Must satisfy
+#: ``EXEC_JOB_CEILING_S <= EXEC_JOB_CEILING_MAX_S``.
+EXEC_JOB_CEILING_MAX_S: float = 14400.0
+
+#: §3b Job flow: abandon window (seconds). The runner considers a
+#: job abandoned after this many seconds without progress and
+#: reaps it without waiting for the full job ceiling. The sampler
+#: cadence (``EXEC_LIVENESS_SAMPLE_INTERVAL_S``) must run faster than
+#: this so the sampler gets a chance to fire before the abandon
+#: verdict.
+EXEC_JOB_ABANDON_S: float = 120.0
+
+#: §3b Resource caps: maximum number of simultaneously running
+#: exec jobs. Bounded ``deque(maxlen=EXEC_MAX_RUNNING_JOBS)`` at use
+#: sites so a flood of submissions cannot leak past the cap.
+EXEC_MAX_RUNNING_JOBS: int = 4
+
+#: §3b Resource caps: FIFO depth of the bounded job-result
+#: accumulator. Bounded ``deque(maxlen=EXEC_JOB_RESULT_FIFO)`` at use
+#: sites so a runaway producer cannot leak past the cap; ``maxlen=16``
+#: covers four parallel jobs each carrying up to four partial writes
+#: before the consumer drains.
+EXEC_JOB_RESULT_FIFO: int = 16
+
+#: §3b Owner-loss pre-exit hook budget (seconds, rev-4 PA-003).
+#: When the runner detects an owner-loss signal (the parent that owns
+#: the exec channel has died), it has this much time to run a
+#: pre-exit cleanup hook before the runtime forcibly reaps the job.
+EXEC_OWNER_LOSS_HOOK_BUDGET_S: float = 5.0
+
+# ---------------------------------------------------------------------------
+# §3b Import-time order checks (survive `python -O`)
+# ---------------------------------------------------------------------------
+# Use ``if``/``raise RuntimeError`` (NOT bare ``assert``) so the guards
+# survive ``python -O`` and prevent a future regression from silently
+# emptying the constant set or breaking the sampling window ordering.
+# These run on import, are not stripped by ``-O``, and pin the contract
+# that the runtime and timing-safety layer rely on.
+
+if not (
+    EXEC_SUSPICIOUS_REPORT_S
+    < EXEC_NO_PROGRESS_WINDOW_S
+    < EXEC_JOB_CEILING_S
+    <= EXEC_JOB_CEILING_MAX_S
+):
+    raise RuntimeError(
+        "exec liveness windows must satisfy: "
+        "EXEC_SUSPICIOUS_REPORT_S < EXEC_NO_PROGRESS_WINDOW_S "
+        "< EXEC_JOB_CEILING_S <= EXEC_JOB_CEILING_MAX_S; "
+        f"got suspicion={EXEC_SUSPICIOUS_REPORT_S}, "
+        f"no_progress={EXEC_NO_PROGRESS_WINDOW_S}, "
+        f"ceiling={EXEC_JOB_CEILING_S}, ceiling_max={EXEC_JOB_CEILING_MAX_S}"
+    )
+
+if not EXEC_SOFT_REPLY_BUDGET_MS > 0:
+    raise RuntimeError("EXEC_SOFT_REPLY_BUDGET_MS must be positive")
+
+if not EXEC_LIVENESS_SAMPLE_INTERVAL_S < EXEC_JOB_ABANDON_S:
+    raise RuntimeError(
+        "EXEC_LIVENESS_SAMPLE_INTERVAL_S must be strictly less than EXEC_JOB_ABANDON_S; "
+        f"got sample_interval={EXEC_LIVENESS_SAMPLE_INTERVAL_S}, abandon={EXEC_JOB_ABANDON_S}"
+    )
+
+if not EXEC_SOFT_REPLY_BUDGET_MS < EXEC_MAX_TIMEOUT_MS:
+    raise RuntimeError(
+        "EXEC_SOFT_REPLY_BUDGET_MS must be strictly less than EXEC_MAX_TIMEOUT_MS; "
+        f"got soft_budget={EXEC_SOFT_REPLY_BUDGET_MS}, max_timeout={EXEC_MAX_TIMEOUT_MS}"
+    )

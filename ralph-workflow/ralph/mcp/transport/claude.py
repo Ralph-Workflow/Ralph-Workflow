@@ -13,6 +13,7 @@ from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.transport.common import merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
+from ralph.timeout_defaults import EXEC_SOFT_REPLY_BUDGET_MS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -43,6 +44,27 @@ _MCP_LIST_ENTRY = re.compile(r"^(?P<name>[^:]+): \S")
 _ALIAS_UNSAFE_IN_CLI_NAME = ":"
 
 
+#: Milliseconds of headroom above ``EXEC_SOFT_REPLY_BUDGET_MS`` when the
+#: transport writes a client-side per-server MCP timeout. Matches the 30 s
+#: headroom the timing-safety check in ``ralph/mcp/server/_timing_safety.py``
+#: requires. Claude Code honours a per-server ``timeout`` field (ms) per
+#: https://code.claude.com/docs/en/mcp and the ``MCP_TIMEOUT`` env variant
+#: per https://code.claude.com/docs/en/env-vars. We write the per-server
+#: field explicitly so the value tracks our constant instead of falling
+#: through to the 28 h ``MCP_TOOL_TIMEOUT`` default.
+_CLAUDE_TOOL_TIMEOUT_HEADROOM_MS: Final[int] = 30_000
+
+#: Claude per-server ``timeout`` override (milliseconds). Written into the
+#: ``mcpServers.<name>.timeout`` field by :func:`claude_mcp_config`. Sized
+#: at soft-budget + headroom so a legitimately long ``tools/call`` round
+#: trip cannot outrun the Claude MCP deadline. The CompanionHTTP/SSE
+#: "request timer" the Claude docs name (max(60 s, per-server timeout,
+#: ``MCP_TIMEOUT``)) -- a second, independent timer -- is bounded by the
+#: per-server value we write here, so the overall transport deadline
+#: inherits this number.
+_CLAUDE_TOOL_TIMEOUT_MS: Final[int] = EXEC_SOFT_REPLY_BUDGET_MS + _CLAUDE_TOOL_TIMEOUT_HEADROOM_MS
+
+
 def claude_mcp_config(
     endpoint: str,
     *,
@@ -54,6 +76,7 @@ def claude_mcp_config(
         RALPH_MCP_SERVER_NAME: {
             "type": "http",
             "url": endpoint,
+            "timeout": _CLAUDE_TOOL_TIMEOUT_MS,
         }
     }
     current_config: dict[str, object] = {"mcpServers": dict(ralph_entry)}

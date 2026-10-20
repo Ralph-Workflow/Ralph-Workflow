@@ -45,6 +45,7 @@ from ralph.config.models import AgentConfig
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.transport.kimi import (
+    _KIMI_TOOL_TIMEOUT_MS,
     _kimi_global_config_path,
     kimi_mcp_config,
     load_existing_kimi_upstream_servers,
@@ -444,7 +445,12 @@ class TestKimiTransportHelpers:
 
     def test_kimi_mcp_config_uses_cursor_shape(self) -> None:
         assert json.loads(kimi_mcp_config("http://localhost:1234/mcp")) == {
-            "mcpServers": {RALPH_MCP_SERVER_NAME: {"url": "http://localhost:1234/mcp"}}
+            "mcpServers": {
+                RALPH_MCP_SERVER_NAME: {
+                    "url": "http://localhost:1234/mcp",
+                    "toolTimeoutMs": _KIMI_TOOL_TIMEOUT_MS,
+                }
+            }
         }
 
     def test_global_config_path_honors_kimi_code_home(

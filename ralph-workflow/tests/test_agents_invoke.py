@@ -75,6 +75,7 @@ from ralph.mcp.tools.names import (
     RALPH_MCP_SERVER_NAME,
     claude_tool_name,
 )
+from ralph.mcp.transport.claude import _CLAUDE_TOOL_TIMEOUT_MS
 from ralph.mcp.transport.codex import prepare_codex_home
 from ralph.mcp.transport.opencode import merge_opencode_config_content
 from ralph.mcp.upstream.config import (
@@ -1096,6 +1097,7 @@ def test_build_command_injects_claude_mcp_config_for_remote_endpoint(
     assert must_mapping(servers["ralph"]) == {
         "type": "http",
         "url": "http://127.0.0.1:9999/mcp",
+        "timeout": _CLAUDE_TOOL_TIMEOUT_MS,
     }
     allowed_index = cmd.index("--allowedTools")
     assert cmd[allowed_index + 1] == ",".join(
@@ -1890,6 +1892,7 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
     assert must_mapping(servers["ralph"]) == {
         "type": "http",
         "url": "http://127.0.0.1:9999/mcp",
+        "timeout": _CLAUDE_TOOL_TIMEOUT_MS,
     }
     # ``--strict-mcp-config`` is deliberately gone from this argv: it made
     # Ralph's config the ONLY MCP source Claude read, deleting every server

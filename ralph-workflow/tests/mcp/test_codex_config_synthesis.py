@@ -23,6 +23,7 @@ from loguru import logger
 from ralph.mcp.tools.names import CODEX_NATIVE_FEATURE_OVERRIDES
 from ralph.mcp.transport.codex import (
     CodexConfigError,
+    _CODEX_TOOL_TIMEOUT_SEC,
     _synthesize_codex_config,
     prepare_codex_home,
 )
@@ -295,7 +296,11 @@ def test_any_operator_config_merges_into_a_config_codex_can_load(
     )
     assert parsed["mcp_servers"] == {
         **surviving,
-        "ralph": {"url": _ENDPOINT, "enabled": True},
+        "ralph": {
+            "url": _ENDPOINT,
+            "enabled": True,
+            "tool_timeout_sec": _CODEX_TOOL_TIMEOUT_SEC,
+        },
     }
     assert parsed["model_instructions_file"] == master_prompt
     for key, value in base.items():
@@ -356,7 +361,11 @@ def test_codex_config_regression_stale_ralph_entry_does_not_abort_the_run(
 
     servers = _parse(config_text)["mcp_servers"]
     assert isinstance(servers, dict)
-    assert servers["ralph"] == {"url": _ENDPOINT, "enabled": True}
+    assert servers["ralph"] == {
+        "url": _ENDPOINT,
+        "enabled": True,
+        "tool_timeout_sec": _CODEX_TOOL_TIMEOUT_SEC,
+    }
 
 
 def test_codex_config_regression_stale_ralph_entry_is_dropped_in_unsafe_mode(
@@ -375,7 +384,11 @@ def test_codex_config_regression_stale_ralph_entry_is_dropped_in_unsafe_mode(
 
     servers = _parse(config_text)["mcp_servers"]
     assert isinstance(servers, dict)
-    assert servers["ralph"] == {"url": _ENDPOINT, "enabled": True}
+    assert servers["ralph"] == {
+        "url": _ENDPOINT,
+        "enabled": True,
+        "tool_timeout_sec": _CODEX_TOOL_TIMEOUT_SEC,
+    }
     assert servers["ctx"] == {"command": "ctx-server"}
 
 

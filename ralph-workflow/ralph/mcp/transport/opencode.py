@@ -18,10 +18,19 @@ from ralph.mcp.tools.names import (
 )
 from ralph.mcp.transport.common import merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
-from ralph.timeout_defaults import EXEC_MAX_TIMEOUT_MS
+from ralph.timeout_defaults import EXEC_MAX_TIMEOUT_MS, EXEC_SOFT_REPLY_BUDGET_MS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+#: Milliseconds of headroom above ``EXEC_MAX_TIMEOUT_MS`` (or
+#: ``EXEC_SOFT_REPLY_BUDGET_MS`` as a floor) when the transport writes a
+#: client-side MCP request timeout. Re-derived from the new
+#: ``EXEC_SOFT_REPLY_BUDGET_MS`` floor in ``timeout_defaults.py`` so a
+#: future retune of the floor flows through here. Matches the 30 s
+#: headroom the timing-safety check in
+#: ``ralph/mcp/server/_timing_safety.py`` requires.
+_OPENCODE_MCP_CLIENT_TIMEOUT_HEADROOM_MS: Final[int] = 30_000
 
 #: OpenCode MCP client request timeout (ms). MUST exceed the longest possible
 #: server-side tool execution — otherwise the client gives up with `-32001 Request
@@ -34,7 +43,14 @@ if TYPE_CHECKING:
 #: honors is the global ``experimental.mcp_timeout`` (opencode issues #8701/#8121).
 #: We set BOTH: the experimental key is the one that takes effect; the per-server
 #: field is kept for forward-compat if/when opencode starts honoring it.
-_OPENCODE_MCP_CLIENT_TIMEOUT_MS = EXEC_MAX_TIMEOUT_MS + 30_000
+#:
+#: Re-derived from the new ``EXEC_SOFT_REPLY_BUDGET_MS`` floor via the
+#: ``max(EXEC_MAX_TIMEOUT_MS, EXEC_SOFT_REPLY_BUDGET_MS)`` lower bound, so a
+#: future reduction in the floor cannot silently shrink a working timeout.
+_OPENCODE_MCP_CLIENT_TIMEOUT_MS: Final[int] = (
+    max(EXEC_MAX_TIMEOUT_MS, EXEC_SOFT_REPLY_BUDGET_MS)
+    + _OPENCODE_MCP_CLIENT_TIMEOUT_HEADROOM_MS
+)
 
 #: Config file names OpenCode reads out of its GLOBAL config directory, in the
 #: order it merges them (later wins). ``config.json`` is the pre-rename spelling

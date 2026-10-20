@@ -66,6 +66,16 @@ def _cursor_workspace_config_path(workspace_path: Path) -> Path:
 def cursor_mcp_config(endpoint: str) -> str:
     """Return the Cursor MCP JSON config string pointing to the given endpoint.
 
+    No `tools/call` timeout field is written here: Cursor's MCP config
+    docs (https://cursor.com/docs/mcp) document only stdio fields
+    (``type``/``command``/``args``/``env``/``envFile``) plus remote
+    ``url``/``headers``/``auth``; no tool-call timeout is named on the
+    page. Writing a synthetic timeout field would either be silently
+    ignored or hand craft a contract the agent does not honour, so the
+    transport falls back to whatever Cursor's internal default is. See
+    ``docs/agents/exec-long-running-root-cause.md`` for the verified
+    citation.
+
     Args:
         endpoint: The MCP server HTTP endpoint URL.
 
