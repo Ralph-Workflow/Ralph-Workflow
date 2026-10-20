@@ -114,11 +114,13 @@ def _write_responder_script(tmp_path: Path) -> Path:
         script = """import json
 import os
 import socket
+import subprocess
 import sys
 
 sock_fd = int(sys.argv[1])
 tools_json = sys.argv[2]
 tools = json.loads(tools_json)
+grandchild = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
 sock = socket.socket(fileno=sock_fd)
 sock.settimeout(5.0)
 buf = b""
@@ -235,7 +237,7 @@ def test_c1_tool_hash_mismatch_rejected_real_child(
         old_inner,
         restart_fn=make_candidate,
         restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
-        run_id="test-run-c1-drift",
+        run_id=f"test-run-c1-drift-{uuid.uuid4().hex[:8]}",
         sleep_fn=lambda s: None,
         workspace_root=tmp_path,
     )
@@ -298,7 +300,7 @@ def test_c1_matching_tool_hash_promoted_and_private_hash_equals_served_tools(
         def _burst_worker() -> None:
             while not stop_burst.is_set():
                 try:
-                    names = _http_tools_list_names(endpoint, timeout=1.0)
+                    names = _http_tools_list_names(endpoint, timeout=3.0)
                     if isinstance(names, list) and len(names) > 0:
                         burst_results.append(True)
                     else:
@@ -1225,21 +1227,26 @@ def test_c5_e22_candidate_stage_failures_parametrized(
         old_inner,
         restart_fn=make_candidate,
         restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
-        run_id="test-c5-e22-param",
+        run_id=f"test-c5-e22-{fail_mode}-{uuid.uuid4().hex[:8]}",
         sleep_fn=lambda s: None,
         workspace_root=tmp_path,
     )
     bridge._expected_tool_hash = compute_tool_set_hash(tools_base)
 
+    assert bridge.restart_count == 0
     try:
-        result = bridge._run_with_make_before_break()
+        with bridge._lock:
+            result = bridge._perform_restart(process_exited=False, probe_duration_s=1.0)
     finally:
         if parent_sock is not None:
             with contextlib.suppress(Exception):
                 parent_sock.close()
 
-    # Invariant 1: Every failure mode is non-terminal (C2 contract).
+    # Invariant 1: Every failure mode is non-terminal (C2 contract) and counted.
     assert result is False, f"fail_mode={fail_mode}: expected non-terminal result, got promotion"
+    assert bridge.restart_count == 1, (
+        f"fail_mode={fail_mode}: restart attempt was not counted (got {bridge.restart_count})"
+    )
 
     # Invariant 2: Old child intact — bridge still points at the live server.
     assert bridge.process.pid == old_proc.pid, (

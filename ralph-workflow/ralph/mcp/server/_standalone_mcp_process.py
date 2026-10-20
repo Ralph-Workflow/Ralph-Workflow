@@ -63,6 +63,9 @@ class StandaloneMcpProcess:
             with contextlib.suppress(Exception):
                 self.handover_parent_sock.close()
             self.handover_parent_sock = None
+        if hasattr(self.process, "cleanup_orphans"):
+            with contextlib.suppress(Exception):
+                self.process.cleanup_orphans()
         self.session_file.unlink(missing_ok=True)
 
 

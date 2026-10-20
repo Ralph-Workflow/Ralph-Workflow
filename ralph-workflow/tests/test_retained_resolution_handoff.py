@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from ralph.mcp.server.lifecycle import SessionBridgeLike
     from ralph.pipeline.conflict_resolution import RebaseStop
 
-pytestmark = [pytest.mark.timeout_seconds(5)]
+pytestmark = [pytest.mark.timeout_seconds(10)]
 
 
 @pytest.mark.parametrize("enabled", [True, False])

@@ -42,7 +42,8 @@ from loguru import logger
 
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
-from ralph.mcp.server._http_tools_list import http_tools_list_names
+from ralph.mcp.server._http_tools_list import execute_mcp_http_request, http_tools_list_names
+from ralph.mcp.server._mcp_outcome_unknown_error import McpOutcomeUnknownError
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.workspace.fs import FsWorkspace
@@ -569,26 +570,15 @@ def test_e34_stale_keepalive_after_real_handover(
     Drives the production ``start_mcp_server`` bridge (a real
     subprocess, a real listening socket, a real restart). The
     catalogue contract for E3.4: "stale keep-alive connections retry
-    safely on fresh connection". The deleted typed-retry helper
-    previously enforced this client-side; without it, the boundary the
-    agent actually uses is the raw ``http.client.HTTPConnection``.
-    This test pins the EXTERNAL observable behaviour:
+    safely on fresh connection".
 
     1. Establishes a real HTTP keep-alive socket to the bridge endpoint
-       and issues an idempotent ``tools/list`` request - must succeed.
-    2. SIGKILLs the bridge child (forcing a restart) and waits for the
-       bridge to recover. The bridge owns the parent listening socket
-       across the restart so the agent path is recovered on a fresh
-       connection.
-    3. Asserts the bridge actually swapped (new pid, generation
-       bumped) AND that a FRESH HTTP connection on the SAME endpoint
-       works - the agent path is recovered.
-    4. For the non-idempotent path: SIGKILL the bridge child, then
-       attempt a non-idempotent call on the (now severed) keep-alive
-       socket. The in-flight request must surface a typed
-       network/OSError from the stdlib (NOT a bare string, NOT a
-       silent success).
-    5. Cleanup: shutdown the bridge, no zombie subprocess.
+       and issues an idempotent ``tools/list`` request - must succeed (attempt=1).
+    2. Keeps the connection open while triggering a restart.
+    3. Issues a second idempotent request over the now-stale keep-alive socket:
+       must safely retry EXACTLY ONCE on a fresh connection (attempts=2) and succeed.
+    4. For the non-idempotent path: on a severed keep-alive socket, a non-idempotent
+       mutation must surface McpOutcomeUnknownError (E1.4) and never retry.
     """
     bridge = _build_production_bridge(tmp_path, "run-e34-stale")
     try:
@@ -604,57 +594,33 @@ def test_e34_stale_keepalive_after_real_handover(
         # ---- Baseline: idempotent call on real keep-alive socket ----
         keepalive = http.client.HTTPConnection("127.0.0.1", port, timeout=2.0)
         try:
-            keepalive.request(
-                "POST",
-                "/mcp",
-                body=json.dumps(tools_list_payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+            status, attempts, _ = execute_mcp_http_request(
+                port, tools_list_payload, existing_conn=keepalive, is_idempotent=True
             )
-            resp = keepalive.getresponse()
-            assert resp.status == 200, (
-                f"baseline tools/list on keepalive connection must succeed; "
-                f"got status={resp.status}"
+            assert status == 200
+            assert attempts == 1
+
+            old_pid = bridge.process.pid
+
+            # Force a real restart by killing the bridge child while keepalive is open.
+            bridge.process.kill()
+            _wait_child_dead(bridge.process, timeout_s=3.0)
+            bridge.check_health_and_restart_if_needed()
+
+            assert bridge.process.pid != old_pid
+            assert bridge._bridge_generation >= 1
+
+            # Request on the stale keep-alive connection retries safely once on fresh connection.
+            status_after, attempts_after, _ = execute_mcp_http_request(
+                port, tools_list_payload, existing_conn=keepalive, is_idempotent=True
             )
-            _ = resp.read()
+            assert status_after == 200
+            assert attempts_after == 2
         finally:
             with contextlib.suppress(Exception):
                 keepalive.close()
 
-        old_pid = bridge.process.pid
-
-        # Force a real restart by killing the bridge child.
-        bridge.process.kill()
-        _wait_child_dead(bridge.process, timeout_s=3.0)
-        bridge.check_health_and_restart_if_needed()
-
-        # Bridge generation advanced; new child has a different pid.
-        # If the restart did not happen (e.g. budget exhausted), the
-        # pid is unchanged - we explicitly assert the restart ran.
-        assert bridge.process.pid != old_pid, (
-            f"pid did not advance: expected != {old_pid}, got {bridge.process.pid}"
-        )
-        assert bridge._bridge_generation >= 1
-
-        # The agent path is recovered: a fresh HTTP connection on the same
-        # endpoint succeeds with a well-formed JSON-RPC response.
-        fresh_conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2.0)
-        try:
-            fresh_conn.request(
-                "POST",
-                "/mcp",
-                body=json.dumps(tools_list_payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-            )
-            fresh_resp = fresh_conn.getresponse()
-            assert fresh_resp.status == 200, (
-                f"fresh connection after restart must succeed; got status={fresh_resp.status}"
-            )
-            _ = fresh_resp.read()
-        finally:
-            with contextlib.suppress(Exception):
-                fresh_conn.close()
-
-        # ---- Non-idempotent path: kill child mid-call, observe typed error ----
+        # ---- Non-idempotent path: severed connection must raise McpOutcomeUnknownError ----
         unsafe_payload: dict[str, object] = {
             "jsonrpc": "2.0",
             "id": 99,
@@ -666,40 +632,21 @@ def test_e34_stale_keepalive_after_real_handover(
         }
         unsafe_conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2.0)
         try:
-            # Establish the keepalive socket with the current child.
-            unsafe_conn.request(
-                "POST",
-                "/mcp",
-                body=json.dumps(tools_list_payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+            # Establish the socket with the active child.
+            status_pre, _, _ = execute_mcp_http_request(
+                port, tools_list_payload, existing_conn=unsafe_conn, is_idempotent=True
             )
-            _ = unsafe_conn.getresponse().read()
+            assert status_pre == 200
 
-            # SIGKILL the child to sever the connection mid-flight.
+            # Sever the connection by killing the child.
             bridge.process.kill()
             _wait_child_dead(bridge.process, timeout_s=3.0)
 
-            # Existing boundary: non-idempotent severed mid-flight -> typed OSError.
-            severed_error: Exception | None = None
-            try:
-                unsafe_conn.request(
-                    "POST",
-                    "/mcp",
-                    body=json.dumps(unsafe_payload).encode("utf-8"),
-                    headers={"Content-Type": "application/json"},
+            with pytest.raises(McpOutcomeUnknownError) as exc_info:
+                execute_mcp_http_request(
+                    port, unsafe_payload, existing_conn=unsafe_conn, is_idempotent=False
                 )
-                _ = unsafe_conn.getresponse().read()
-            except Exception as exc:
-                severed_error = exc
-
-            assert severed_error is not None, (
-                "non-idempotent mid-flight severance must surface a typed exception; "
-                "silent success indicates the bridge is silently retrying"
-            )
-            assert isinstance(severed_error, OSError), (
-                f"non-idempotent severed call must surface a typed OSError; "
-                f"got {type(severed_error).__name__}: {severed_error!r}"
-            )
+            assert exc_info.value.tool_name == "ralph_submit_md_artifact"
         finally:
             with contextlib.suppress(Exception):
                 unsafe_conn.close()
@@ -861,6 +808,7 @@ def test_e41_bridge_state_transitions_cleanly_without_dropping_requests(
         # Phase 4: Release slow verify; promotion completes.
         slow_can_finish.set()
         assert promotion_done.wait(timeout=15.0), "make-before-break did not finish"
+        promotion_thread.join(timeout=3.0)
         assert promotion_thread.is_alive() is False
         assert promotion_result and promotion_result[0] is True, f"result={promotion_result!r}"
         assert bridge._bridge_generation == 1, f"generation={bridge._bridge_generation}"

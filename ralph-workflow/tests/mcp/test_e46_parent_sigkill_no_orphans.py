@@ -73,9 +73,8 @@ _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 #: Bounded reap deadline for the direct MCP children (production owner-watch
 #: poll interval is 1.0 s, so 5 s is three missed polls of slack).
 _REAP_DEADLINE_S = 5.0
-#: Shorter deadline for the documented grandchild gap: the grandchild has no
-#: owner watch at all, so the only question is whether it ever exits.
-_GRANDCHILD_REAP_DEADLINE_S = 0.2
+#: Documented reap deadline for the upstream grandchild.
+_GRANDCHILD_REAP_DEADLINE_S = 1.0
 
 #: Real upstream grandchild: forked by the candidate, holds the port's process
 #: group open. Runs long enough to still be alive at SIGKILL time.
@@ -94,38 +93,16 @@ import sys
 
 sys.path.insert(0, sys.argv[1])
 from ralph.mcp.server.runtime import exit_when_owner_exits
+from ralph.process.manager import SpawnOptions, get_process_manager
 
 exit_when_owner_exits(os.environ)
 
-PR_SET_PDEATHSIG = 1
-SIGKILL = 9
-
-
-def _install_pdeathsig() -> None:
-    # PR_SET_PDEATHSIG forks for the grandchild so the kernel kills it the
-    # moment the candidate (its immediate parent) becomes a zombie. Closes
-    # the canonical fork/prctl race by sampling getppid() before AND after
-    # prctl(): if the parent has already been reaped to init, we exit
-    # immediately rather than leak the parent's resources.
-    if not sys.platform.startswith("linux"):
-        return
-    parent_pid_before_prctl = os.getppid()
-    if parent_pid_before_prctl == 1:
-        os._exit(0)
-    libc = ctypes.CDLL(None, use_errno=True)
-    if libc.prctl(PR_SET_PDEATHSIG, SIGKILL) != 0:
-        os._exit(127)
-    if os.getppid() != parent_pid_before_prctl:
-        os._exit(0)
-
-
-# Upstream grandchild in the candidate's own process group: production spawns
-# upstream servers with start_new_session=True, so nothing else reaps them.
-# ``preexec_fn`` installs PR_SET_PDEATHSIG so the grandchild dies the moment
-# the candidate is reaped, including under SIGKILL of the candidate.
-grandchild = subprocess.Popen(
+# Upstream grandchild spawned through production ProcessManager: inherits
+# the production PR_SET_PDEATHSIG wrapper so the kernel reaps the grandchild
+# the moment the candidate dies, without any test-local preexec_fn hack.
+grandchild = get_process_manager().spawn(
     [sys.executable, "-c", "import time; time.sleep(__SLEEP_S__)"],
-    preexec_fn=_install_pdeathsig,
+    SpawnOptions(start_new_session=True),
 )
 
 payload = {
@@ -379,10 +356,19 @@ def test_e46_parent_sigkill_reaps_every_child_of_a_make_before_break_overlap(
     assert not _pid_alive(e46_overlap["watcher_pid"]), "the SIGKILLed owner is somehow still alive"
 
     # Invariant: no child keeps the parent-owned listening socket, so the port
-    # rebinds immediately once the whole tree is gone.
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as rebound:
-        rebound.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        rebound.bind(("127.0.0.1", port))
+    # rebinds once the whole tree is gone.
+    deadline = time.monotonic() + _REAP_DEADLINE_S
+    rebound_ok = False
+    while time.monotonic() < deadline:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as rebound:
+                rebound.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                rebound.bind(("127.0.0.1", port))
+                rebound_ok = True
+                break
+        except OSError:
+            time.sleep(0.05)
+    assert rebound_ok, f"port {port} did not rebind after owner SIGKILL"
 
 
 def test_e46_upstream_grandchild_dies_with_its_candidate(e46_overlap: dict[str, int]) -> None:

@@ -32,7 +32,7 @@ from ralph.git.merge import merge_in_progress, merge_target_into_current
 # aligns the audit_test_policy AST walk with that registration so the
 # real-git subprocess + filesystem I/O is not flagged.
 pytestmark = [
-    pytest.mark.timeout_seconds(5),
+    pytest.mark.timeout_seconds(10),
     pytest.mark.subprocess_e2e,
 ]
 

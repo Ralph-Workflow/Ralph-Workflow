@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
+import os
 import subprocess
-from typing import TYPE_CHECKING, Final, cast
+import sys
+import threading
+from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from ralph.process._spawn_env import child_env_for_spawn
 from ralph.process.manager._deadline_timeout_expired import DeadlineTimeoutExpired
@@ -35,7 +39,73 @@ from ralph.process.manager._spawn_options import SpawnOptions
 from ralph.process.pty import spawn_pty_process
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
+
+
+class _Prctl(Protocol):
+    def __call__(self, option: int, value: int) -> int: ...
+
+
+class _PopenConstructor(Protocol):
+    def __call__(
+        self,
+        args: Sequence[str],
+        bufsize: int = ...,
+        executable: str | None = ...,
+        stdin: int | None = ...,
+        stdout: int | None = ...,
+        stderr: int | None = ...,
+        preexec_fn: Callable[[], None] | None = ...,
+        close_fds: bool = ...,
+        shell: bool = ...,
+        cwd: str | None = ...,
+        env: dict[str, str] | None = ...,
+        universal_newlines: bool | None = ...,
+        startupinfo: object = ...,
+        creationflags: int = ...,
+        restore_signals: bool = ...,
+        start_new_session: bool = ...,
+        pass_fds: tuple[int, ...] = ...,
+        *,
+        text: bool | None = ...,
+        errors: str | None = ...,
+    ) -> subprocess.Popen[bytes]: ...
+
+
+_PR_SET_PDEATHSIG: Final[int] = 1
+_SIGKILL: Final[int] = 9
+_PRCTL_FN: _Prctl | None = None
+if sys.platform.startswith("linux"):
+    try:
+        _libc = ctypes.CDLL(None, use_errno=True)
+        _raw_prctl: object = getattr(_libc, "prctl", None)
+        if callable(_raw_prctl):
+            _PRCTL_FN = cast(
+                "_Prctl", _raw_prctl
+            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    except Exception:
+        _PRCTL_FN = None
+
+
+def _install_pdeathsig() -> None:
+    """Linux parent-death signal setup run inside child preexec.
+
+    Sets PR_SET_PDEATHSIG to SIGKILL and closes the fork/prctl race by
+    sampling getppid() before and after the prctl call.
+    """
+    if _PRCTL_FN is None:
+        return
+    parent_before = os.getppid()
+    if parent_before == 1:
+        os._exit(0)
+    try:
+        rc = _PRCTL_FN(_PR_SET_PDEATHSIG, _SIGKILL)
+        if rc != 0:
+            os._exit(127)
+    except Exception:
+        return
+    if os.getppid() != parent_before:
+        os._exit(0)
 
 
 def _default_sync_process_factory(
@@ -49,20 +119,25 @@ def _default_sync_process_factory(
         allow_broker_secret=opts.allow_broker_secret,
         cwd=opts.cwd,
     )
-    return cast(
-        "subprocess.Popen[bytes]",
-        subprocess.Popen(
-            command,
-            cwd=opts.cwd,
-            env=child_env,
-            stdin=opts.stdin,
-            stdout=opts.stdout,
-            stderr=opts.stderr,
-            start_new_session=opts.start_new_session,
-            text=opts.text,
-            errors=opts.errors if opts.text else None,
-            pass_fds=opts.pass_fds,
-        ),
+    preexec: Callable[[], None] | None = (
+        _install_pdeathsig
+        if sys.platform.startswith("linux")
+        and threading.current_thread() is threading.main_thread()
+        else None
+    )
+    popen: _PopenConstructor = subprocess.Popen
+    return popen(
+        command,
+        cwd=opts.cwd,
+        env=child_env,
+        stdin=opts.stdin,
+        stdout=opts.stdout,
+        stderr=opts.stderr,
+        start_new_session=opts.start_new_session,
+        text=opts.text,
+        errors=opts.errors if opts.text else None,
+        pass_fds=opts.pass_fds,
+        preexec_fn=preexec,
     )
 
 
@@ -99,6 +174,12 @@ async def _default_async_process_factory(
     start_new_session: bool,
 ) -> _AsyncProcessLike:
     child_env = child_env_for_spawn(env, cwd=cwd)
+    preexec: Callable[[], None] | None = (
+        _install_pdeathsig
+        if sys.platform.startswith("linux")
+        and threading.current_thread() is threading.main_thread()
+        else None
+    )
     return await asyncio.create_subprocess_exec(
         *command,
         cwd=cwd,
@@ -108,6 +189,7 @@ async def _default_async_process_factory(
         stderr=stderr,
         start_new_session=start_new_session,
         limit=AGENT_STREAM_BUFFER_BYTES,
+        preexec_fn=preexec,
     )
 
 
