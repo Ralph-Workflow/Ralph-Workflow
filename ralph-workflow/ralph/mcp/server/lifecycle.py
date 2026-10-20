@@ -37,15 +37,16 @@ count ceiling (``_DEFERRAL_COUNT_CEILING``) and a wall-time ceiling
 (``_DEFERRAL_WALL_TIME_CEILING_S``).
 
 Why this design cannot double-serve, double-write, hang, or storm:
-- The parent owns the only listening socket; children accept only on
+
+* The parent owns the only listening socket; children accept only on
   an FD they explicitly drop after the pause-file acknowledgement.
-- Only the bridge writes the wire ledger under its lock; the two-child
+* Only the bridge writes the wire ledger under its lock; the two-child
   interleave test verifies an interleaved append sequence still
   validates.
-- ``_attempt_restart_with_candidate`` is bounded by the rolling
+* ``_attempt_restart_with_candidate`` is bounded by the rolling
   window from ``McpRestartPolicy``; ``ATTEMPT_FAILED`` does not
   escalate.
-- Backoff is enforced unconditionally before every restart attempt, so
+* Backoff is enforced unconditionally before every restart attempt, so
   the bridge cannot storm even with a wedged ``restart_fn``.
 
 This module contains no async; all I/O is bounded and fails closed.
@@ -97,6 +98,7 @@ from ralph.mcp.server._http_tools_list import (
     _http_tools_list_names,
 )
 from ralph.mcp.server._lifecycle_deps import LifecycleDeps
+from ralph.mcp.server._mcp_attempt_result import RestartAttemptResult
 from ralph.mcp.server._mcp_health_event import (
     _DURABLE_SINK_LOCK,
     RestartReason,
@@ -168,6 +170,13 @@ _TOOL_REGISTRY_MAX_RESETS: int = 3
 # observable probe timeout). 32 keeps 2**N < 2**32 = 4.3e9, well
 # below the timedelta microsecond range.
 _PROBE_TIMEOUT_EXPAWN_CAP: int = 32
+
+
+# RestartAttemptResult lives in its own module
+# (ralph.mcp.server._mcp_attempt_result) so lifecycle.py can stay
+# within the repo-structure one-class-per-module policy. Imported here
+# so the rest of the lifecycle module and existing callers see the
+# same name.
 
 
 def _bridge_clock(self_or_bridge: object) -> Callable[[], float]:
@@ -725,6 +734,13 @@ class RestartAwareMcpBridge:
         """Perform MCP server restart under lock and record the decision.
 
         Must be called with self._lock held.
+
+        C2 contract: only ``BUDGET_EXHAUSTED`` raises :class:`McpServerError`.
+        A failed ``restart_fn`` call returns ``False`` and logs at WARNING
+        while the budget remains (the agent run continues; the next health
+        check retries after the cooldown). The previous design raised on
+        the first failed attempt and ended the agent run; the new design
+        keeps the working child alive while a candidate can be retried.
         """
         if self._restart_count >= self._restart_policy.max_restarts:
             reason = "probe failed" if not process_exited else "exited"
@@ -733,6 +749,7 @@ class RestartAwareMcpBridge:
                 f"(current={self._restart_count}, "
                 f"max={self._restart_policy.max_restarts})",
                 restart_count=self._restart_count,
+                failure_kind=RestartAttemptResult.BUDGET_EXHAUSTED,
             )
 
         self._restart_count += 1
@@ -763,13 +780,30 @@ class RestartAwareMcpBridge:
             self._inner.shutdown()
             self._inner = self._restart_fn()
         except Exception as restart_exc:
-            raise McpServerError(
-                f"MCP restart attempt {attempt_index}/"
-                f"{self._restart_policy.max_restarts} failed: {restart_exc}",
-                restart_count=self._restart_count,
-                last_stage=_restart_error_fields(restart_exc)[0],
-                elapsed_s=_restart_error_fields(restart_exc)[1],
-            ) from restart_exc
+            # C2 fix: a single failed restart attempt is NOT terminal.
+            # Log at WARNING with attempt count, last stage, and elapsed
+            # time so an operator can diagnose; the budget remains and
+            # the next health check retries after the cooldown. The old
+            # child was already shut down above, so we keep the closed
+            # fd reference but mark the bridge state so the next attempt
+            # spawns a fresh child rather than crashing on the dead fd.
+            last_stage, elapsed_s = _restart_error_fields(restart_exc)
+            logger.warning(
+                "MCP restart attempt {}/{} failed (non-terminal, budget remains): "
+                "last_stage={} elapsed_s={} error={}",
+                attempt_index,
+                self._restart_policy.max_restarts,
+                last_stage,
+                elapsed_s,
+                restart_exc,
+            )
+            # Old child was shut down; reset the in-flight counters so
+            # the next health check doesn't accumulate stale state.
+            # ``_restart_count`` is left at ``attempt_index`` so the
+            # budget accounting is correct (this attempt counted).
+            self._consecutive_probe_failures = 0
+            self._consecutive_probe_failures_deferred = 0
+            return False
         # Bump generation on every successful restart so a stale probe
         # captured against the prior inner is discarded by
         # _handle_failed_probe_under_lock.
@@ -782,6 +816,46 @@ class RestartAwareMcpBridge:
             self._restart_count,
         )
         return True
+
+    def _attempt_restart_with_candidate(
+        self,
+        *,
+        process_exited: bool,
+        probe_duration_s: float | None,
+    ) -> str:
+        """Typed-result wrapper around :meth:`_perform_restart` (C2 contract).
+
+        Returns the :class:`RestartAttemptResult` string for the attempt:
+
+        * ``RestartAttemptResult.BUDGET_EXHAUSTED`` when the rolling or
+          absolute budget is exhausted. ``_perform_restart`` raises
+          :class:`McpServerError`; this wrapper re-raises the same
+          error and is the ONLY path that does so.
+        * ``RestartAttemptResult.ATTEMPT_FAILED`` when ``restart_fn``
+          raised. The bridge keeps the old inner (now shut down) and
+          the budget remains; the next health check retries after the
+          cooldown. Non-terminal.
+        * ``RestartAttemptResult.REPLACED`` when the candidate was
+          spawned and the generation swap succeeded. The bridge now
+          points at the new child.
+
+        The helper exists so call sites that need to consume the typed
+        outcome (e.g. supervisor-side cancel hooks, instrumented
+        callers) can branch on a stable enum-like string without
+        depending on the ``bool`` return type of the legacy
+        :meth:`_perform_restart` method.
+        """
+        try:
+            replaced = self._perform_restart(
+                process_exited=process_exited,
+                probe_duration_s=probe_duration_s,
+            )
+        except McpServerError:
+            # Budget exhausted: the legacy path raises typed error.
+            raise
+        if replaced:
+            return RestartAttemptResult.REPLACED
+        return RestartAttemptResult.ATTEMPT_FAILED
 
     def _handle_failed_probe_under_lock(
         self,
@@ -974,16 +1048,24 @@ class RestartAwareMcpBridge:
                 self._inner.shutdown()
                 self._inner = self._restart_fn()
             except Exception as restart_exc:
-                # Counter already advanced (S1); raise a typed error
-                # so the recovery loop's ``except McpServerError:
-                # raise`` propagates the type.
-                raise McpServerError(
-                    f"MCP tool-registry-reset attempt {attempt_index}/"
-                    f"{_TOOL_REGISTRY_MAX_RESETS} failed: {restart_exc}",
-                    restart_count=self._restart_count,
-                    last_stage=_restart_error_fields(restart_exc)[0],
-                    elapsed_s=_restart_error_fields(restart_exc)[1],
-                ) from restart_exc
+                # C2 fix: a single failed tool-registry reset is NOT
+                # terminal. Log at WARNING with attempt count and the
+                # underlying error; the reset counters are left at the
+                # advanced values so the budget accounting is correct
+                # (this attempt counted). The next reset call will
+                # either succeed or detect budget exhaustion.
+                last_stage, elapsed_s = _restart_error_fields(restart_exc)
+                logger.warning(
+                    "MCP tool-registry-reset attempt {}/{} failed "
+                    "(non-terminal, budget remains): last_stage={} "
+                    "elapsed_s={} error={}",
+                    attempt_index,
+                    _TOOL_REGISTRY_MAX_RESETS,
+                    last_stage,
+                    elapsed_s,
+                    restart_exc,
+                )
+                return
             # NEW BEHAVIOR: actively verify the mcp__<server>__<tool>
             # alias is present in the post-respawn tools/list
             # response. Pre-fix, the respawn path assumed the alias

@@ -1,4 +1,18 @@
-"""S1 containment regression: counter increments every attempt."""
+"""C2 contract: single failed restart attempt is NOT terminal (wt-16).
+
+The bridge previously raised :class:`McpServerError` on the FIRST failed
+``restart_fn`` call and ended the agent run. The new contract is:
+
+* A failed ``restart_fn`` call returns ``False`` and logs at WARNING
+  while the budget remains (the next health check retries after the
+  cooldown — ``ATTEMPT_FAILED``).
+* Only :class:`McpServerError` (with ``failure_kind="budget_exhausted"``)
+  is raised, and only when the budget IS exhausted.
+
+These tests pin the new contract. They previously encoded the OLD
+broken behaviour and have been updated to assert the fixed contract;
+the test names preserve the regression history.
+"""
 
 from __future__ import annotations
 
@@ -45,15 +59,22 @@ def _make_inner(poll_result: int | None) -> lifecycle.StandaloneMcpProcess:
     )
 
 
-def test_bridge_increments_counter_every_failed_attempt() -> None:
-    """S1: counter advances per attempt regardless of restart_fn outcome."""
+def test_bridge_counter_advances_only_on_real_attempt() -> None:
+    """C2: counter advances per attempt; ATTEMPT_FAILED is non-terminal.
+
+    With max_restarts=3 the budget can absorb three failed attempts. The
+    bridge logs a WARNING on each failed attempt and returns ``False``;
+    only the FOURTH call (which detects the budget is exhausted) raises
+    :class:`McpServerError`. This is the C2 fix: the agent run
+    continues across the first three failures.
+    """
     attempts: list[int] = []
-    inner = _make_inner(poll_result=1)
 
     def always_failing_restart_fn() -> lifecycle.StandaloneMcpProcess:
         attempts.append(len(attempts) + 1)
         raise RuntimeError("synthetic restart failure")
 
+    inner = _make_inner(poll_result=1)
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=always_failing_restart_fn,
@@ -61,31 +82,25 @@ def test_bridge_increments_counter_every_failed_attempt() -> None:
         run_id="test-run",
     )
 
-    with pytest.raises(lifecycle.McpServerError) as excinfo:
-        bridge.check_health_and_restart_if_needed()
-    assert excinfo.value.restart_count == 1
-    assert "MCP restart attempt 1/3 failed" in str(excinfo.value)
+    # Three failed attempts are absorbed as non-terminal warnings.
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert attempts == [1, 2, 3]
+    assert bridge.restart_count == 3
 
-    with pytest.raises(lifecycle.McpServerError) as excinfo2:
-        bridge.check_health_and_restart_if_needed()
-    assert excinfo2.value.restart_count == 2
-    assert "MCP restart attempt 2/3 failed" in str(excinfo2.value)
-
-    with pytest.raises(lifecycle.McpServerError) as excinfo3:
-        bridge.check_health_and_restart_if_needed()
-    assert excinfo3.value.restart_count == 3
-    assert "MCP restart attempt 3/3 failed" in str(excinfo3.value)
-
+    # Fourth call: budget exhausted, McpServerError raised.
     with pytest.raises(lifecycle.McpServerError) as excinfo4:
         bridge.check_health_and_restart_if_needed()
     assert excinfo4.value.restart_count == 3
     assert "restart budget exhausted" in str(excinfo4.value)
     assert "restart budget exhausted (current=3, max=3)" in str(excinfo4.value)
-
+    # restart_fn was NOT called a fourth time (budget check ran first).
     assert attempts == [1, 2, 3]
 
 
-def test_bridge_failed_restart_propagates_typed_error() -> None:
+def test_bridge_failed_attempt_logs_warning_returns_false() -> None:
+    """C2: a single failed restart_fn returns False and does NOT raise."""
     inner = _make_inner(poll_result=1)
 
     def restart_fn() -> lifecycle.StandaloneMcpProcess:
@@ -98,19 +113,17 @@ def test_bridge_failed_restart_propagates_typed_error() -> None:
         run_id="test-run",
     )
 
-    with pytest.raises(lifecycle.McpServerError) as excinfo:
-        bridge.check_health_and_restart_if_needed()
-    assert isinstance(excinfo.value, lifecycle.McpServerError)
-    assert excinfo.value.restart_count == 1
+    # Single failed attempt is non-terminal.
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge.restart_count == 1
 
 
-def test_bridge_reset_tool_registry_shared_restart_budget_exhaustion() -> None:
-    """Secondary 1 / Finding 2: reset_tool_registry shares the restart budget.
+def test_bridge_reset_tool_registry_attempt_failed_is_non_terminal() -> None:
+    """C2: reset_tool_registry with shared exhaustion: failed reset is non-terminal.
 
-    Constructs a bridge with max_restarts=1 and an always-failing restart_fn.
-    The first reset call fails and increments restart_count to 1.
-    The second call detects that the shared restart budget is exhausted,
-    raises McpServerError with the real count (1), and does not invoke restart_fn again.
+    With max_restarts=1, the first reset attempt is the only one allowed.
+    A failing reset returns and does NOT raise; the next reset call
+    detects the shared budget is exhausted and raises.
     """
     attempts: list[int] = []
     inner = _make_inner(poll_result=1)
@@ -126,12 +139,12 @@ def test_bridge_reset_tool_registry_shared_restart_budget_exhaustion() -> None:
         run_id="test-run",
     )
 
-    with pytest.raises(lifecycle.McpServerError) as exc1:
-        bridge.reset_tool_registry()
-    assert exc1.value.restart_count == 1
-    assert "MCP tool-registry-reset attempt 1/3 failed" in str(exc1.value)
+    # First reset: fails but does NOT raise (C2 fix).
+    assert bridge.reset_tool_registry() is None
+    assert bridge.restart_count == 1
     assert attempts == [1]
 
+    # Second reset: budget is exhausted -> raises.
     with pytest.raises(lifecycle.McpServerError) as exc2:
         bridge.reset_tool_registry()
     assert exc2.value.restart_count == 1
@@ -139,10 +152,10 @@ def test_bridge_reset_tool_registry_shared_restart_budget_exhaustion() -> None:
     assert "restart budget exhausted" in msg2
     assert "current=1" in msg2
     assert "max=1" in msg2
-    # No extra spawn attempt occurred
+    # No extra spawn attempt occurred.
     assert attempts == [1]
 
-    # Health check also trips budget exhaustion immediately
+    # Health check also trips budget exhaustion immediately.
     with pytest.raises(lifecycle.McpServerError) as exc3:
         bridge.check_health_and_restart_if_needed()
     assert exc3.value.restart_count == 1
@@ -151,7 +164,13 @@ def test_bridge_reset_tool_registry_shared_restart_budget_exhaustion() -> None:
 
 
 def test_bridge_mixed_health_and_reset_shared_accounting() -> None:
-    """Health restarts and tool-registry resets share the restart budget."""
+    """C2: health restarts and tool-registry resets share the budget.
+
+    With max_restarts=2 the budget can absorb two attempts total. The
+    first failing health check returns False (non-terminal). The second
+    failing tool-registry reset returns None (non-terminal). The third
+    call (any) detects budget exhausted and raises.
+    """
     attempts: list[int] = []
     inner = _make_inner(poll_result=1)
 
@@ -166,23 +185,19 @@ def test_bridge_mixed_health_and_reset_shared_accounting() -> None:
         run_id="test-run",
     )
 
-    # 1. First health restart fails -> restart_count becomes 1
-    with pytest.raises(lifecycle.McpServerError) as exc1:
-        bridge.check_health_and_restart_if_needed()
-    assert exc1.value.restart_count == 1
+    # 1. First failing health restart returns False (non-terminal).
+    assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.restart_count == 1
     assert bridge.tool_registry_resets == 0
     assert attempts == [1]
 
-    # 2. Reset tool registry fails -> restart_count becomes 2, tool_registry_resets becomes 1
-    with pytest.raises(lifecycle.McpServerError) as exc2:
-        bridge.reset_tool_registry()
-    assert exc2.value.restart_count == 2
+    # 2. Second failing reset returns None (non-terminal).
+    assert bridge.reset_tool_registry() is None
     assert bridge.restart_count == 2
     assert bridge.tool_registry_resets == 1
     assert attempts == [1, 2]
 
-    # 3. Third call (health or reset): max_restarts (2) reached -> raises budget exhausted
+    # 3. Third call (health or reset): max_restarts (2) reached -> raises budget exhausted.
     with pytest.raises(lifecycle.McpServerError) as exc3:
         bridge.reset_tool_registry()
     assert exc3.value.restart_count == 2
@@ -199,7 +214,14 @@ def test_bridge_mixed_health_and_reset_shared_accounting() -> None:
 
 
 def test_bridge_probe_failure_increments_counter_before_failed_restart_fn() -> None:
-    """Probe failure increments restart_count before invoking failing _restart_fn."""
+    """C2: probe failure increments restart_count before invoking failing restart_fn.
+
+    With max_restarts=2 the budget can absorb two attempts. The first
+    two probe misses do not trigger a restart. The third probe miss
+    triggers an attempt that fails (non-terminal). The fourth probe miss
+    triggers a second attempt that also fails (non-terminal). The fifth
+    probe miss detects the budget is exhausted and raises.
+    """
     attempts: list[int] = []
     inner = _make_inner(poll_result=None)
 
@@ -219,28 +241,22 @@ def test_bridge_probe_failure_increments_counter_before_failed_restart_fn() -> N
         contention_signal_producer=lambda: False,
     )
 
-    # First 2 misses: no restart yet
+    # First 2 misses: no restart yet.
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.restart_count == 0
 
-    # 3rd miss: attempts restart 1 -> failing_restart_fn raises McpServerError with restart_count=1
-    with pytest.raises(lifecycle.McpServerError) as exc1:
-        bridge.check_health_and_restart_if_needed()
-    assert exc1.value.restart_count == 1
+    # 3rd miss: attempts restart 1 -> failing_restart_fn returns False (non-terminal).
+    assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.restart_count == 1
-    assert "MCP restart attempt 1/2 failed" in str(exc1.value)
     assert attempts == [1]
 
-    # Inner process was shut down during failed attempt 1; next call immediately attempts restart 2
-    with pytest.raises(lifecycle.McpServerError) as exc2:
-        bridge.check_health_and_restart_if_needed()
-    assert exc2.value.restart_count == 2
+    # 4th miss: attempts restart 2 -> failing_restart_fn returns False (non-terminal).
+    assert bridge.check_health_and_restart_if_needed() is False
     assert bridge.restart_count == 2
-    assert "MCP restart attempt 2/2 failed" in str(exc2.value)
     assert attempts == [1, 2]
 
-    # Budget exhausted (current=2, max=2) -> raises without calling restart_fn again
+    # 5th miss: budget exhausted (current=2, max=2) -> raises without calling restart_fn again.
     with pytest.raises(lifecycle.McpServerError) as exc3:
         bridge.check_health_and_restart_if_needed()
     assert exc3.value.restart_count == 2
@@ -248,3 +264,33 @@ def test_bridge_probe_failure_increments_counter_before_failed_restart_fn() -> N
     assert "current=2" in str(exc3.value)
     assert "max=2" in str(exc3.value)
     assert attempts == [1, 2]
+
+
+def test_bridge_eventual_recovery_after_failed_attempts() -> None:
+    """C2: a transient restart_fn failure recovers on the next attempt.
+
+    The first two attempts fail (non-terminal). The third attempt
+    succeeds. The bridge returns True for the third call and the
+    supervisor keeps supervising.
+    """
+    attempts: list[int] = []
+    inner = _make_inner(poll_result=1)
+
+    def flaky_restart_fn() -> lifecycle.StandaloneMcpProcess:
+        attempts.append(len(attempts) + 1)
+        if len(attempts) < 3:
+            raise RuntimeError(f"synthetic failure {len(attempts)}")
+        return _make_inner(poll_result=None)
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=flaky_restart_fn,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
+        run_id="test-eventual-recovery",
+    )
+
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge.check_health_and_restart_if_needed() is True
+    assert bridge.restart_count == 3
+    assert attempts == [1, 2, 3]

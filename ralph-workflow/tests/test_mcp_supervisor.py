@@ -107,6 +107,97 @@ def test_supervisor_detects_crash_and_restarts_bridge() -> None:
     assert restart_recorded == [1]
 
 
+def test_supervisor_keeps_supervising_across_transient_failed_respawn() -> None:
+    """C2 regression: a single transient restart_fn failure does NOT terminate the run.
+
+    The bug from 2026-10-19 (Expeditions-Core): a host stall caused
+    the first probe to over-run; the bridge called ``restart_fn``,
+    which failed because the spawn also stalled; the supervisor
+    classified the typed ``McpServerError`` as budget-exhausted and
+    killed the agent run. The C2 fix changes the contract: a single
+    failed respawn is NON-TERMINAL while the budget remains. The
+    supervisor keeps polling and the agent's MCP calls resume on the
+    next health-check cycle once the host recovers.
+
+    This test pins the supervisor-level behaviour: a transient
+    ``restart_fn`` failure is logged at WARNING; the supervisor
+    does NOT raise; ``on_error`` is NOT called; ``on_restart`` is
+    NOT called for the failed attempt; the supervisor keeps
+    supervising across the failure.
+    """
+    td = pathlib.Path(tempfile.mkdtemp())
+    sf = td / "session.json"
+    sf.write_text("{}", encoding="utf-8")
+
+    restart_attempts: list[int] = []
+
+    def flaky_restart_fn() -> lifecycle.StandaloneMcpProcess:
+        restart_attempts.append(len(restart_attempts) + 1)
+        # The first restart attempt fails (synthetic transient host stall).
+        if len(restart_attempts) == 1:
+            raise RuntimeError("synthetic transient respawn failure")
+        new_sf = td / f"session-{len(restart_attempts)}.json"
+        new_sf.write_text("{}", encoding="utf-8")
+        return lifecycle.StandaloneMcpProcess(
+            endpoint="http://127.0.0.1:9510/mcp",
+            process=FakeProcess(poll_result=None),
+            session_file=new_sf,
+        )
+
+    inner = lifecycle.StandaloneMcpProcess(
+        endpoint="http://127.0.0.1:9510/mcp",
+        process=FakeProcess(poll_result=1),  # process already exited
+        session_file=sf,
+    )
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=flaky_restart_fn,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
+        run_id="test-supervisor-keeps-supervising",
+    )
+
+    restart_recorded: list[int] = []
+    error_recorded: list[lifecycle.McpServerError] = []
+
+    supervisor = McpSupervisor(
+        bridge,
+        on_restart=restart_recorded.append,
+        on_error=error_recorded.append,
+    )
+
+    # First health check: inner.poll() is not None -> restart attempted,
+    # which fails (transient). Under C2 this is NON-TERMINAL; the
+    # supervisor keeps polling. on_error MUST NOT be called.
+    result = supervisor._do_check_once()
+    assert result is False, "C2: a single failed respawn must not report success"
+    # First failed attempt was via _perform_restart's process_exited path;
+    # restart_fn was invoked (and raised), so restart_attempts has one entry.
+    assert restart_attempts == [1]
+    assert error_recorded == [], "C2: a single failed respawn must not call on_error"
+    assert restart_recorded == [], "C2: a failed respawn must not count as a restart"
+    # restart_count advanced to 1 (S1 invariant).
+    assert bridge.restart_count == 1
+
+    # Second health check: dead inner triggers another restart attempt,
+    # which succeeds. on_restart IS called for the successful replacement.
+    result = supervisor._do_check_once()
+    assert result is True, "C2: the second restart attempt succeeds"
+    assert restart_attempts == [1, 2]
+    assert error_recorded == []
+    assert restart_recorded == [2]
+    assert bridge.restart_count == 2
+
+    # No terminal McpServerError was stored on the supervisor (a single
+    # failed respawn is non-terminal under C2). The supervisor's
+    # internal ``_mcp_error`` attribute must remain None; this is the
+    # observable contract that downstream code (the agent's MCP
+    # caller) uses to decide whether the run is recoverable.
+    assert supervisor._mcp_error is None, (
+        "C2: a single failed respawn must not store a terminal McpServerError"
+    )
+
+
 def test_supervisor_raises_mcp_error_when_budget_exhausted() -> None:
     bridge = _make_exhausted_bridge(max_restarts=0)
     supervisor = McpSupervisor(bridge, check_interval=timedelta(milliseconds=20))

@@ -304,6 +304,10 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # slack is classified as contention (C3); sustained overrun ceiling triggers
     # forced replacement.
     "tests/mcp/test_probe_overrun_self_measure.py",
+    # wt-16 WU-Bridge: ATTEMPT_FAILED is non-terminal; only BUDGET_EXHAUSTED
+    # raises McpServerError. The C2 fix pins the new contract so a single
+    # failed restart_fn call does NOT end the agent run.
+    "tests/mcp/test_bridge_attempt_vs_budget.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (

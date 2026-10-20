@@ -129,12 +129,14 @@ def test_saturated_dispatch_propagates_callable_exceptions() -> None:
         _saturated_dispatch.submit(raise_value_error)
 
 
-def test_adversarial_restart_fn_raises_propagates() -> None:
-    """A restart_fn that raises propagates the exception to the caller.
+def test_adversarial_restart_fn_raises_does_not_propagate() -> None:
+    """A restart_fn that raises is logged and absorbed (C2 fix).
 
     The cleanup loop in the bridge is bounded: it makes ONE call to
-    restart_fn and propagates the exception. It does not catch and
-    retry (which would spin without bound).
+    restart_fn and on failure logs at WARNING and returns ``False``
+    (non-terminal). It does not propagate the exception (which would
+    kill the agent run on a single transient failure). Only when the
+    budget is exhausted does the bridge raise :class:`McpServerError`.
     """
     old_inner = _RecordingInner(exit_code=1)  # process exited
 
@@ -144,19 +146,24 @@ def test_adversarial_restart_fn_raises_propagates() -> None:
     bridge = RestartAwareMcpBridge(
         inner=old_inner,
         restart_fn=broken_restart_fn,
-        restart_policy=McpRestartPolicy(max_restarts=1, cooldown_seconds=0.0),
+        restart_policy=McpRestartPolicy(max_restarts=2, cooldown_seconds=0.0),
         run_id="test-run",
     )
-    # S1: the failure is wrapped in a typed `McpServerError` so
-    # the recovery loop can branch on the type and surface the
-    # real `restart_count`. The original `RuntimeError` is chained
-    # via `__cause__` so the underlying message is preserved.
-    with pytest.raises(McpServerError) as excinfo:
-        bridge.check_health_and_restart_if_needed()
-    assert "respawn failed" in str(excinfo.value)
-    assert excinfo.value.restart_count == 1
+    # C2: a single failing restart_fn is non-terminal — the bridge
+    # logs at WARNING and returns ``False``. The agent run continues.
+    assert bridge.check_health_and_restart_if_needed() is False
+    # The first failed attempt advanced the counter (S1 invariant).
+    assert bridge.restart_count == 1
     # The old inner was shut down before the failure
     assert old_inner.shutdown_calls
+    # Second failing attempt — still non-terminal.
+    assert bridge.check_health_and_restart_if_needed() is False
+    assert bridge.restart_count == 2
+    # The third call exhausts the budget (max_restarts=2 reached).
+    with pytest.raises(McpServerError) as excinfo:
+        bridge.check_health_and_restart_if_needed()
+    assert excinfo.value.restart_count == 2
+    assert "restart budget exhausted" in str(excinfo.value)
 
 
 def test_restart_count_caps_at_max_restarts() -> None:

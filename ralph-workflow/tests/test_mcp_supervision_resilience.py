@@ -52,6 +52,11 @@ class FakeProcess:
 
     def terminate(self, grace_period_s: float = 5.0) -> None:
         self.terminated = True
+        # Mark the process dead so the next poll() returns a non-None
+        # exit code; this matches what the real ``ManagedProcess``
+        # behaves like after ``terminate()`` (the OS reaps the process
+        # and ``poll()`` returns the exit status).
+        self._poll_result = 0
 
     def wait(self, timeout: float | None = None) -> int | None:
         return 0
@@ -286,18 +291,30 @@ def test_supervisor_keeps_supervising_after_a_failed_restart() -> None:
     # The probe must fail 3 times (_PROBE_FAILURES_BEFORE_RESTART)
     # before a restart is attempted, so the test calls the health
     # check two times to accumulate the failure count, then
-    # asserts the 3rd call raises the typed McpServerError after
-    # the counter advanced to 1 (S1). The supervisor catches the
-    # error and goes terminal; the test asserts both halves of
-    # the contract.
+    # asserts the 3rd call invokes restart_fn (which fails). Under
+    # the C2 contract, the failing restart returns False (non-terminal)
+    # and the counter advances to 1 (S1 invariant). The supervisor
+    # keeps supervising; the very next one detects the dead inner (from
+    # the failed first restart) and triggers a second restart attempt
+    # which succeeds.
     bridge.check_health_and_restart_if_needed()
     bridge.check_health_and_restart_if_needed()
-    with pytest.raises(lifecycle.McpServerError) as excinfo:
-        bridge.check_health_and_restart_if_needed()
-    assert "MCP restart attempt 1/10 failed" in str(excinfo.value)
-    assert excinfo.value.restart_count == 1
-    # The second restart_fn() invocation is gated by the counter
-    # check: the supervisor does not retry after a typed error.
-    assert not second_restart_reached.is_set(), (
-        "restart_fn must NOT be called a second time after the first attempt raised"
+    # 3rd call: probe fails the third time -> restart attempt -> fails.
+    # Under C2 this returns False (non-terminal) and logs at WARNING.
+    assert bridge.check_health_and_restart_if_needed() is False
+    # Counter advanced (S1 invariant).
+    assert bridge.restart_count == 1
+    # restart_fn was called exactly once (the first attempt failed).
+    assert attempts == [1]
+    # The 4th call sees the dead inner (poll() returns 0), triggers a
+    # second restart attempt (which succeeds per the restart_fn above),
+    # and returns True. This proves the supervisor kept its working
+    # state across the failed attempt and recovered via the next health
+    # check (C2 contract).
+    result = bridge.check_health_and_restart_if_needed()
+    assert result is True, (
+        f"second restart attempt should succeed; restart_count={bridge.restart_count}"
     )
+    # Counter advanced to 2 (one failed, one successful).
+    assert bridge.restart_count == 2
+    assert second_restart_reached.is_set()
