@@ -78,7 +78,7 @@ def test_no_progress_ceiling_fires_with_opencode_strategy_os_descendants_only(
     _reader_release = threading.Event()
 
     def _blocking_stdout() -> Iterator[str]:
-        _reader_release.wait(timeout=5.0)
+        _reader_release.wait(timeout=30.0)
         yield from ()
 
     handle = _FakeManagedHandle(

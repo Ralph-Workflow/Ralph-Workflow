@@ -328,7 +328,7 @@ class McpServer:
                 run_id=self._session.run_id,
                 secret=self._session.broker_secret,
             )
-        except (AttributeError, OSError, TypeError):
+        except (AttributeError, OSError, TypeError, WireLedgerIOError):
             logger.opt(exception=True).debug(
                 "MCP server: wire-ledger append failed (suppressed); {} dispatch proceeds",
                 request.method,
@@ -701,6 +701,35 @@ class McpServer:
         ).hexdigest()
         return delivery_mode, identity.provider, identity.model_id, agent_id, profile_digest
 
+    def _record_wire_ledger_before_dispatch(
+        self, tool_name: str, arguments: dict[str, object]
+    ) -> dict[str, object] | None:
+        """Record tools/call frame in wire ledger, returning an error dict on failure."""
+        try:
+            delivery_mode, provider, model_id, agent_id, capability_profile_digest = (
+                self._wire_ledger_facts(tool_name, arguments)
+            )
+            append_wire_record(
+                self._workspace.root,
+                method="tools/call",
+                tool_name=tool_name,
+                params=arguments,
+                run_id=self._session.run_id,
+                secret=self._session.broker_secret,
+                delivery_mode=delivery_mode,
+                provider=provider,
+                model_id=model_id,
+                agent_id=agent_id,
+                capability_profile_digest=capability_profile_digest,
+            )
+        except WireLedgerIOError as exc:
+            return {"code": -32603, "message": str(exc)}
+        except (AttributeError, TypeError):
+            logger.opt(exception=True).debug(
+                "MCP server: wire-ledger append failed (suppressed); tools/call proceeds"
+            )
+        return None
+
     def _handle_tools_call(
         self, request: JsonRpcRequest, state: ServerState
     ) -> tuple[JsonRpcResponse, ServerState]:
@@ -739,38 +768,12 @@ class McpServer:
 
         # F2 (Evidence Provenance): record this tools/call frame on the wire
         # ledger BEFORE dispatch, so the record exists even if the tool
-        # handler raises. Provenance.WIRE is granted only by a matching
-        # ledger row; append_wire_record() is a no-op (returns None, writes
-        # nothing) when the session carries no broker secret — an unsigned
-        # server cannot produce a WIRE-grade witness (A5). Best-effort: a
-        # session/workspace test double that does not expose the full
-        # McpSession/FsWorkspace surface (several existing McpServer tests
-        # construct one with only the attributes their scenario needs) must
-        # not turn a real tool dispatch into a JSON-RPC error — the ledger is
-        # diagnostic evidence, never a load-bearing part of the dispatch path.
-        try:
-            delivery_mode, provider, model_id, agent_id, capability_profile_digest = (
-                self._wire_ledger_facts(tool_name, dict(arguments_value))
-            )
-            append_wire_record(
-                self._workspace.root,
-                method="tools/call",
-                tool_name=tool_name,
-                params=dict(arguments_value),
-                run_id=self._session.run_id,
-                secret=self._session.broker_secret,
-                delivery_mode=delivery_mode,
-                provider=provider,
-                model_id=model_id,
-                agent_id=agent_id,
-                capability_profile_digest=capability_profile_digest,
-            )
-        except WireLedgerIOError as exc:
-            error = {"code": -32603, "message": str(exc)}
-            return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
-        except (AttributeError, TypeError):
-            logger.opt(exception=True).debug(
-                "MCP server: wire-ledger append failed (suppressed); tools/call proceeds"
+        # handler raises.
+        ledger_err = self._record_wire_ledger_before_dispatch(tool_name, dict(arguments_value))
+        if ledger_err is not None:
+            return (
+                JsonRpcResponse(jsonrpc="2.0", error=ledger_err, msg_id=request.msg_id),
+                state,
             )
 
         try:

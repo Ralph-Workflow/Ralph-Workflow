@@ -4,15 +4,42 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.mcp.protocol.env import MCP_SNAPSHOT_DIR_ENV
+
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Callable
 
 
-def snapshot_dir(workspace_root: Path, bridge_run_id: str) -> Path:
-    """Return <workspace_root>/.agent/tmp/mcp-snapshots/<bridge_run_id>."""
-    snap = workspace_root / ".agent" / "tmp" / "mcp-snapshots" / bridge_run_id
+def snapshot_dir(
+    workspace_root: Path,
+    bridge_run_id: str,
+    *,
+    override_dir: Path | None = None,
+    env_getter: Callable[[str], str | None] | None = None,
+) -> Path:
+    """Return protected snapshot dir outside the watched workspace.
+
+    Protected location under ~/.cache/ralph-workflow/dev/mcp-snapshots/<bridge_run_id>
+    so that workspace cleanup (commit_cleanup, git clean, workspace reset) cannot
+    delete it mid-run (E2.5). When override_dir or env_getter is provided,
+    that explicit location takes precedence (useful for test isolation).
+    """
+    override: str | None = None
+    if override_dir is not None:
+        snap = override_dir / bridge_run_id
+    else:
+        if env_getter is not None:
+            override = env_getter(MCP_SNAPSHOT_DIR_ENV)
+        if override:
+            snap = Path(override) / bridge_run_id
+        else:
+            snap = (
+                Path.home() / ".cache" / "ralph-workflow" / "dev" / "mcp-snapshots" / bridge_run_id
+            )
     snap.mkdir(parents=True, exist_ok=True)
     return snap
 
@@ -22,6 +49,20 @@ def _finger(broker_secret: str | None) -> str | None:
     if not broker_secret:
         return None
     return hashlib.sha256(broker_secret[:8].encode()).hexdigest()
+
+
+def snapshot_inputs(workspace_root: Path, snap_dir: Path) -> None:
+    """Copy critical configuration and inputs into the protected snapshot directory.
+
+    Ensures that candidate spawns retain their inputs even if .agent/tmp or config
+    files in the workspace are modified or removed mid-run (E2.5).
+    """
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    mcp_toml = workspace_root / "mcp.toml"
+    if mcp_toml.is_file():
+        target_toml = snap_dir / "mcp.toml"
+        # filesystem-write-ok: protected snapshot file written outside workspace
+        shutil.copy2(mcp_toml, target_toml)
 
 
 def write_snapshot(
@@ -58,6 +99,15 @@ def read_snapshot(snapshot_dir: Path) -> dict[str, str]:
         raw: object = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             return {}
-        return dict(raw)
+        return {str(k): str(v) for k, v in raw.items() if isinstance(k, str) and isinstance(v, str)}
     except (OSError, ValueError):
         return {}
+
+
+__all__ = [
+    "_finger",
+    "read_snapshot",
+    "snapshot_dir",
+    "snapshot_inputs",
+    "write_snapshot",
+]

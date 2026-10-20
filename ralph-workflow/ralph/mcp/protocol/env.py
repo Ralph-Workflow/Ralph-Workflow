@@ -68,6 +68,14 @@ class McpEnvVar(StrEnum):
     # sentinel file appears, mirroring the ``TEST_PRE_SERVE_GATE`` pattern
     # but at an earlier stage boundary. Production never sets this variable.
     TEST_REGISTRY_BUILD_GATE = "RALPH_MCP_TEST_REGISTRY_BUILD_GATE"
+    # Make-before-break handover control sentinels: pause file path for the
+    # retiring child to drop its listening socket and emit .ack, resume file
+    # path for candidate to begin accepting, parent readiness socket fd,
+    # and protected snapshot directory path.
+    ACCEPT_PAUSE_FILE = "RALPH_MCP_ACCEPT_PAUSE_FILE"
+    ACCEPT_RESUME_FILE = "RALPH_MCP_ACCEPT_RESUME_FILE"
+    BRIDGE_PARENT_SOCK = "RALPH_MCP_BRIDGE_PARENT_SOCK"
+    SNAPSHOT_DIR = "RALPH_MCP_SNAPSHOT_DIR"
 
 
 MCP_ENDPOINT_ENV = McpEnvVar.ENDPOINT
@@ -95,3 +103,7 @@ MCP_RESPAWN_ENV = McpEnvVar.RESPAWN
 MCP_STAGE_ID_ENV = McpEnvVar.STAGE_ID
 MCP_TEST_PRE_SERVE_GATE_ENV = McpEnvVar.TEST_PRE_SERVE_GATE
 MCP_TEST_REGISTRY_BUILD_GATE_ENV = McpEnvVar.TEST_REGISTRY_BUILD_GATE
+MCP_ACCEPT_PAUSE_FILE = McpEnvVar.ACCEPT_PAUSE_FILE
+MCP_ACCEPT_RESUME_FILE = McpEnvVar.ACCEPT_RESUME_FILE
+MCP_BRIDGE_PARENT_SOCK = McpEnvVar.BRIDGE_PARENT_SOCK
+MCP_SNAPSHOT_DIR_ENV = McpEnvVar.SNAPSHOT_DIR

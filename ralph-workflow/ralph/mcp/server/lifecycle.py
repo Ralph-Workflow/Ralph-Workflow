@@ -54,6 +54,7 @@ This module contains no async; all I/O is bounded and fails closed.
 
 from __future__ import annotations
 
+import collections
 import contextlib
 import json
 import os
@@ -81,9 +82,12 @@ from ralph.mcp.protocol._preflight_error import PreflightError
 from ralph.mcp.protocol._session_bridge_like import SessionBridgeLike
 from ralph.mcp.protocol._startup_timeouts import mcp_whole_startup_budget_from_env
 from ralph.mcp.protocol.env import (
+    MCP_ACCEPT_PAUSE_FILE,
+    MCP_ACCEPT_RESUME_FILE,
     MCP_INHERITED_FD_ENV,
     MCP_OWNER_PID_ENV,
     MCP_RESPAWN_ENV,
+    MCP_SNAPSHOT_DIR_ENV,
     MCP_STAGE_ID_ENV,
 )
 from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV as SESSION_FILE_ENV
@@ -92,6 +96,13 @@ from ralph.mcp.protocol.startup import (
     mcp_probe_timeout_from_env,
     preflight_http_mcp_server_tools,
     probe_mcp_http_endpoint,
+)
+from ralph.mcp.server._handover_protocol import (
+    _HANDOVER_ACK_TIMEOUT_S,
+    _HANDOVER_DRAIN_S,
+    request_old_child_pause,
+    signal_candidate_resume,
+    wait_for_old_child_pause_ack,
 )
 from ralph.mcp.server._http_tools_list import (
     _LIFECYCLE_MAX_RESPONSE_BYTES,
@@ -315,6 +326,33 @@ _PROBE_FAILURES_BEFORE_RESTART = 3
 _DURABLE_SINK_FILENAME = "ralph_mcp_restart_decisions.jsonl"
 
 
+def _process_is_dead(target: StandaloneMcpProcess) -> bool:
+    """Return True if process has exited or if target lacks a process (e.g. MagicMock)."""
+    proc: object = getattr(target, "process", None)
+    if proc is None:
+        return True
+    poll_fn = cast("Callable[[], object] | None", getattr(proc, "poll", None))
+    if poll_fn is None or not callable(poll_fn):
+        return True
+    try:
+        return poll_fn() is not None
+    except Exception:
+        return False
+
+
+def _is_alive_pid(pid: int | None) -> bool:
+    """Return True if pid is a valid, currently alive OS process."""
+    if pid is None or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return False
+
+
 def _has_stage(exc: BaseException) -> bool:
     """Return True when ``exc`` carries the supervisor ``last_stage`` attribute.
 
@@ -500,6 +538,10 @@ class RestartAwareMcpBridge:
             if isinstance(window_attr, (int, float)) and not isinstance(window_attr, bool)
             else 10.0
         )
+        self._first_probe_deferred_at: float | None = None
+        self._draining_inners: collections.deque[StandaloneMcpProcess] = collections.deque(
+            maxlen=16
+        )
 
     @property
     def run_id(self) -> str:
@@ -550,6 +592,12 @@ class RestartAwareMcpBridge:
     def shutdown(self) -> None:
         if self._activity_relay is not None:
             self._activity_relay.close()
+        with self._lock:
+            draining = list(self._draining_inners)
+            self._draining_inners.clear()
+        for d in draining:
+            with contextlib.suppress(Exception):
+                d.shutdown()
         self._inner.shutdown()
         # R1: close the parent-owned listening socket last so the
         # FD stays live for every other concurrent call site. The
@@ -776,42 +824,193 @@ class RestartAwareMcpBridge:
             stage="process_exited" if process_exited else "probe_failed",
         )
         self._cooldown_after_failure()
+
+        # If old child is dead (process_exited is True or poll() is not None),
+        # cold replacement is required because make-before-break overlap cannot occur.
+        old_exited = process_exited or _process_is_dead(self._inner)
+        if old_exited:
+            if self._workspace_root is not None:
+                snap = snapshot_dir(self._workspace_root, self._run_id)
+                (snap / "accept.pause").unlink(missing_ok=True)
+                (snap / "accept.pause.ack").unlink(missing_ok=True)
+                signal_candidate_resume(snap / "accept.resume")
+            try:
+                self._inner.shutdown()
+                self._inner = self._restart_fn()
+            except Exception as restart_exc:
+                # C2 fix: a single failed restart attempt is NOT terminal.
+                # Log at WARNING with attempt count, last stage, and elapsed
+                # time so an operator can diagnose; the budget remains and
+                # the next health check retries after the cooldown. The old
+                # child was already shut down above, so we keep the closed
+                # fd reference but mark the bridge state so the next attempt
+                # spawns a fresh child rather than crashing on the dead fd.
+                last_stage, elapsed_s = _restart_error_fields(restart_exc)
+                logger.warning(
+                    "MCP restart attempt {}/{} failed (non-terminal, budget remains): "
+                    "last_stage={} elapsed_s={} error={}",
+                    attempt_index,
+                    self._restart_policy.max_restarts,
+                    last_stage,
+                    elapsed_s,
+                    restart_exc,
+                )
+                # Old child was shut down; reset the in-flight counters so
+                # the next health check doesn't accumulate stale state.
+                # ``_restart_count`` is left at ``attempt_index`` so the
+                # budget accounting is correct (this attempt counted).
+                self._consecutive_probe_failures = 0
+                self._consecutive_probe_failures_deferred = 0
+                self._first_probe_deferred_at = None
+                return False
+            # Bump generation on every successful restart so a stale probe
+            # captured against the prior inner is discarded by
+            # _handle_failed_probe_under_lock.
+            self._bridge_generation += 1
+            self._consecutive_probe_failures = 0
+            self._consecutive_probe_failures_deferred = 0
+            self._first_probe_deferred_at = None
+            logger.info(
+                "MCP server restarted on stable endpoint {}; restart_count={}",
+                self._inner.endpoint,
+                self._restart_count,
+            )
+            return True
+
+        return self._run_with_make_before_break()
+
+    def _spawn_candidate(self) -> StandaloneMcpProcess:
+        """Spawn the candidate process via restart_fn while old child serves."""
+        return self._restart_fn()
+
+    def _verify_candidate(self, candidate: StandaloneMcpProcess) -> bool:
+        """Verify candidate process is alive and un-exited before promotion."""
+        proc: object = getattr(candidate, "process", None)
+        if proc is None:
+            return True
+        poll_fn = cast("Callable[[], object] | None", getattr(proc, "poll", None))
+        if poll_fn is None or not callable(poll_fn):
+            return True
         try:
-            self._inner.shutdown()
-            self._inner = self._restart_fn()
+            return poll_fn() is None
+        except Exception:
+            return False
+
+    def _hand_over_accept(
+        self, old_inner: StandaloneMcpProcess, candidate: StandaloneMcpProcess
+    ) -> None:
+        """Execute single-acceptor pause-ack-resume handover between children."""
+        if self._workspace_root is not None:
+            snap = snapshot_dir(self._workspace_root, self._run_id)
+            pause_file = snap / "accept.pause"
+            resume_file = snap / "accept.resume"
+            proc: object = getattr(old_inner, "process", None)
+            raw_pid: object = getattr(proc, "pid", None)
+            pid: int | None = raw_pid if isinstance(raw_pid, int) else None
+            if _is_alive_pid(pid):
+                request_old_child_pause(pause_file)
+                ack = wait_for_old_child_pause_ack(
+                    pause_file,
+                    timeout=_HANDOVER_ACK_TIMEOUT_S,
+                    sleep_fn=self._sleep_fn,
+                )
+                if not ack:
+                    logger.warning(
+                        "Old child failed to acknowledge pause within {}s; escalating termination",
+                        _HANDOVER_ACK_TIMEOUT_S,
+                    )
+                    kill_fn = cast("Callable[[], object] | None", getattr(proc, "kill", None))
+                    if kill_fn is not None and callable(kill_fn):
+                        with contextlib.suppress(Exception):
+                            kill_fn()
+            signal_candidate_resume(resume_file)
+
+    def _drain_old(self, old_inner: StandaloneMcpProcess) -> None:
+        """Drain old child in background up to _HANDOVER_DRAIN_S then shut it down."""
+        drain_s = _HANDOVER_DRAIN_S
+        sleep_fn = cast("Callable[[float], object] | None", getattr(self, "_sleep_fn", None))
+        proc: object = getattr(old_inner, "process", None)
+        raw_pid: object = getattr(proc, "pid", None)
+        pid: int | None = raw_pid if isinstance(raw_pid, int) else None
+        if sleep_fn is None and (self._workspace_root is None or not _is_alive_pid(pid)):
+            with contextlib.suppress(Exception):
+                old_inner.shutdown()
+            return
+        if sleep_fn is None:
+            sleep_fn = time.sleep
+
+        self._draining_inners.append(old_inner)
+
+        def _drain_worker() -> None:
+            try:
+                sleep_fn(drain_s)
+            except Exception:
+                pass
+            finally:
+                with self._lock, contextlib.suppress(ValueError):
+                    self._draining_inners.remove(old_inner)
+                with contextlib.suppress(Exception):
+                    old_inner.shutdown()
+
+        t = threading.Thread(target=_drain_worker, name="mcp-old-drain", daemon=True)
+        t.start()
+
+    def _promote_and_reap(
+        self, candidate: StandaloneMcpProcess, old_inner: StandaloneMcpProcess
+    ) -> None:
+        """Promote candidate to _inner under lock and schedule old child drain."""
+        self._inner = candidate
+        self._bridge_generation += 1
+        self._consecutive_probe_failures = 0
+        self._consecutive_probe_failures_deferred = 0
+        self._first_probe_deferred_at = None
+        self._drain_old(old_inner)
+
+    def _run_with_make_before_break(self) -> bool:
+        """Run make-before-break candidate replacement while old child serves."""
+        if self._workspace_root is not None:
+            snap = snapshot_dir(self._workspace_root, self._run_id)
+            (snap / "accept.resume").unlink(missing_ok=True)
+            (snap / "accept.pause").unlink(missing_ok=True)
+            (snap / "accept.pause.ack").unlink(missing_ok=True)
+        old_inner = self._inner
+        attempt_index = self._restart_count
+        try:
+            candidate = self._spawn_candidate()
         except Exception as restart_exc:
-            # C2 fix: a single failed restart attempt is NOT terminal.
-            # Log at WARNING with attempt count, last stage, and elapsed
-            # time so an operator can diagnose; the budget remains and
-            # the next health check retries after the cooldown. The old
-            # child was already shut down above, so we keep the closed
-            # fd reference but mark the bridge state so the next attempt
-            # spawns a fresh child rather than crashing on the dead fd.
             last_stage, elapsed_s = _restart_error_fields(restart_exc)
             logger.warning(
-                "MCP restart attempt {}/{} failed (non-terminal, budget remains): "
-                "last_stage={} elapsed_s={} error={}",
+                "MCP restart attempt {}/{} candidate spawn failed "
+                "(non-terminal, old child kept): last_stage={} elapsed_s={} error={}",
                 attempt_index,
                 self._restart_policy.max_restarts,
                 last_stage,
                 elapsed_s,
                 restart_exc,
             )
-            # Old child was shut down; reset the in-flight counters so
-            # the next health check doesn't accumulate stale state.
-            # ``_restart_count`` is left at ``attempt_index`` so the
-            # budget accounting is correct (this attempt counted).
-            self._consecutive_probe_failures = 0
+            self._consecutive_probe_failures = _PROBE_FAILURES_BEFORE_RESTART - 1
             self._consecutive_probe_failures_deferred = 0
+            self._first_probe_deferred_at = None
             return False
-        # Bump generation on every successful restart so a stale probe
-        # captured against the prior inner is discarded by
-        # _handle_failed_probe_under_lock.
-        self._bridge_generation += 1
-        self._consecutive_probe_failures = 0
-        self._consecutive_probe_failures_deferred = 0
+
+        if not self._verify_candidate(candidate):
+            logger.warning(
+                "MCP restart attempt {}/{} candidate verification failed "
+                "(non-terminal, old child kept)",
+                attempt_index,
+                self._restart_policy.max_restarts,
+            )
+            with contextlib.suppress(Exception):
+                candidate.shutdown()
+            self._consecutive_probe_failures = _PROBE_FAILURES_BEFORE_RESTART - 1
+            self._consecutive_probe_failures_deferred = 0
+            self._first_probe_deferred_at = None
+            return False
+
+        self._hand_over_accept(old_inner, candidate)
+        self._promote_and_reap(candidate, old_inner)
         logger.info(
-            "MCP server restarted on stable endpoint {}; restart_count={}",
+            "MCP server restarted via make-before-break on stable endpoint {}; restart_count={}",
             self._inner.endpoint,
             self._restart_count,
         )
@@ -884,11 +1083,22 @@ class RestartAwareMcpBridge:
             if self._inner.process.poll() is not None:
                 return self._perform_restart(process_exited=True, probe_duration_s=None)
 
+            clock_fn = _bridge_clock(self)
+            now = clock_fn()
+            deferral_wall_time = (
+                (now - self._first_probe_deferred_at)
+                if self._first_probe_deferred_at is not None
+                else 0.0
+            )
             # Sustained contention ceiling: if the deferral counter has reached
-            # the cap, force a restart even when a fresh contention signal is
-            # present, preventing indefinite deferral of a genuinely wedged child.
-            if self._consecutive_probe_failures_deferred >= _DEFERRAL_COUNT_CEILING:
+            # the count cap or wall-time ceiling, force a restart even when a fresh
+            # contention signal is present, preventing indefinite deferral.
+            if (
+                self._consecutive_probe_failures_deferred >= _DEFERRAL_COUNT_CEILING
+                or deferral_wall_time >= _DEFERRAL_WALL_TIME_CEILING_S
+            ):
                 logger.warning("deferral ceiling tripped; forcing replacement")
+                self._first_probe_deferred_at = None
                 return self._perform_restart(
                     process_exited=False, probe_duration_s=probe_duration_s
                 )
@@ -898,6 +1108,8 @@ class RestartAwareMcpBridge:
             )
             fresh_contention = fresh_w_signal or fresh_b_signal
             if fresh_contention:
+                if self._first_probe_deferred_at is None:
+                    self._first_probe_deferred_at = now
                 self._consecutive_probe_failures_deferred += 1
                 self._record_contention_deferral(
                     probe_duration_s=probe_duration_s,
@@ -914,6 +1126,7 @@ class RestartAwareMcpBridge:
                 return False
 
             self._consecutive_probe_failures_deferred = 0
+            self._first_probe_deferred_at = None
             self._consecutive_probe_failures += 1
             if self._consecutive_probe_failures < _PROBE_FAILURES_BEFORE_RESTART:
                 logger.debug(
@@ -949,6 +1162,7 @@ class RestartAwareMcpBridge:
             if not probe_failed:
                 self._consecutive_probe_failures = 0
                 self._consecutive_probe_failures_deferred = 0
+                self._first_probe_deferred_at = None
                 return False
 
             # Capture the probed bridge identity BEFORE releasing the
@@ -1044,40 +1258,58 @@ class RestartAwareMcpBridge:
             # endpoint is reused (the port is reserved at bridge
             # construction and stays stable across resets).
             self._cooldown_after_failure()
-            try:
-                self._inner.shutdown()
-                self._inner = self._restart_fn()
-            except Exception as restart_exc:
-                # C2 fix: a single failed tool-registry reset is NOT
-                # terminal. Log at WARNING with attempt count and the
-                # underlying error; the reset counters are left at the
-                # advanced values so the budget accounting is correct
-                # (this attempt counted). The next reset call will
-                # either succeed or detect budget exhaustion.
-                last_stage, elapsed_s = _restart_error_fields(restart_exc)
-                logger.warning(
-                    "MCP tool-registry-reset attempt {}/{} failed "
-                    "(non-terminal, budget remains): last_stage={} "
-                    "elapsed_s={} error={}",
-                    attempt_index,
-                    _TOOL_REGISTRY_MAX_RESETS,
-                    last_stage,
-                    elapsed_s,
-                    restart_exc,
-                )
-                return
-            # NEW BEHAVIOR: actively verify the mcp__<server>__<tool>
-            # alias is present in the post-respawn tools/list
-            # response. Pre-fix, the respawn path assumed the alias
-            # would be rebuilt by the same preflight that constructs
-            # the new inner process; if the alias is missing, the
-            # wedge reappears silently. The new method raises
-            # McpServerError with a NEW distinct substring
-            # 'mcp alias missing after respawn' so the operator can
-            # diagnose the regression.
-            self._verify_alias_present()
+            old_exited = _process_is_dead(self._inner)
+            if old_exited:
+                try:
+                    self._inner.shutdown()
+                    self._inner = self._restart_fn()
+                except Exception as restart_exc:
+                    # C2 fix: a single failed tool-registry reset is NOT
+                    # terminal. Log at WARNING with attempt count and the
+                    # underlying error; the reset counters are left at the
+                    # advanced values so the budget accounting is correct
+                    # (this attempt counted). The next reset call will
+                    # either succeed or detect budget exhaustion.
+                    last_stage, elapsed_s = _restart_error_fields(restart_exc)
+                    logger.warning(
+                        "MCP tool-registry-reset attempt {}/{} failed "
+                        "(non-terminal, budget remains): last_stage={} "
+                        "elapsed_s={} error={}",
+                        attempt_index,
+                        _TOOL_REGISTRY_MAX_RESETS,
+                        last_stage,
+                        elapsed_s,
+                        restart_exc,
+                    )
+                    return
+                self._verify_alias_present()
+            else:
+                old_inner = self._inner
+                try:
+                    candidate = self._spawn_candidate()
+                except Exception as restart_exc:
+                    last_stage, elapsed_s = _restart_error_fields(restart_exc)
+                    logger.warning(
+                        "MCP tool-registry-reset attempt {}/{} candidate spawn failed "
+                        "(non-terminal, old child kept): last_stage={} "
+                        "elapsed_s={} error={}",
+                        attempt_index,
+                        _TOOL_REGISTRY_MAX_RESETS,
+                        last_stage,
+                        elapsed_s,
+                        restart_exc,
+                    )
+                    return
+                try:
+                    self._verify_alias_present(candidate)
+                except BaseException:
+                    with contextlib.suppress(Exception):
+                        candidate.shutdown()
+                    raise
+                self._hand_over_accept(old_inner, candidate)
+                self._promote_and_reap(candidate, old_inner)
 
-    def _verify_alias_present(self) -> None:
+    def _verify_alias_present(self, target: StandaloneMcpProcess | None = None) -> None:
         """Verify the canonical mcp alias is present after a respawn.
 
         Sends a JSON-RPC ``tools/list`` request to the inner process's
@@ -1103,7 +1335,8 @@ class RestartAwareMcpBridge:
         ``_RESPAWN_ALIAS_VERIFY_TIMEOUT_S`` so a wedged inner
         process does not stall the recovery path.
         """
-        endpoint = self._inner.endpoint
+        active = target if target is not None else self._inner
+        endpoint = active.endpoint
         if not isinstance(endpoint, str) or not endpoint:
             logger.debug("alias-verify skipped: inner process endpoint is not a string")
             return
@@ -1112,7 +1345,7 @@ class RestartAwareMcpBridge:
         # not a real string or the inner process does not have a
         # ``process`` attribute, skip the HTTP call and return
         # silently so unit tests using MagicMock do not break.
-        inner_process: object = getattr(self._inner, "process", None)
+        inner_process: object = getattr(active, "process", None)
         if inner_process is None or not hasattr(inner_process, "poll"):
             logger.debug("alias-verify skipped: inner process lacks poll() (MagicMock?)")
             return
@@ -1541,6 +1774,8 @@ def _spawn_mcp_process(
         # Persist session_id in the subprocess environment so runtime_session.py
         # can read it on respawn without falling back to a new factory.
         env[MCP_SESSION_ID_ENV] = session_id_value
+        env[MCP_SNAPSHOT_DIR_ENV] = str(snap_dir)
+        env[MCP_ACCEPT_PAUSE_FILE] = str(snap_dir / "accept.pause")
         if _extra_env:
             # Merge extra_env so the subprocess inherits worker-specific env vars
             # (e.g. WORKER_ARTIFACT_DIR for parallel workers).
@@ -1556,13 +1791,15 @@ def _spawn_mcp_process(
             env[MCP_INHERITED_FD_ENV] = str(inherited_fd)
         if respawn:
             env[MCP_RESPAWN_ENV] = "1"
+            env[MCP_ACCEPT_RESUME_FILE] = str(snap_dir / "accept.resume")
         # D-03: a fresh per-spawn stage identity is generated by the
         # parent and handed to the child so the child's stage tracker
         # writes to a file the parent can read on preflight failure.
         # Without this, both sides would compute a different import-time
         # UUID and ``read_last_stage`` would always return ``None`` from
         # the parent's perspective.
-        stage_id = env.setdefault(MCP_STAGE_ID_ENV, str(uuid.uuid4()))
+        stage_id = str(uuid.uuid4())
+        env[MCP_STAGE_ID_ENV] = stage_id
         pass_fds: tuple[int, ...] = (inherited_fd,) if inherited_fd is not None else ()
         spawn_start = time.monotonic()
         process = deps.spawn_process(

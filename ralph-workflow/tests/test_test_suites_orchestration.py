@@ -173,6 +173,11 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # raises McpServerError. The C2 fix pins the new contract so a single
     # failed restart_fn call does NOT end the agent run.
     "tests/mcp/test_bridge_attempt_vs_budget.py",
+    # wt-16 make-before-break MCP restart resilience test suites:
+    "tests/mcp/test_bridge_make_before_break.py",
+    "tests/mcp/test_bridge_e1_e2_edge_cases.py",
+    "tests/mcp/test_bridge_e3_e4_edge_cases.py",
+    "tests/mcp/test_bridge_e5_e6_e7_edge_cases.py",
 )
 
 

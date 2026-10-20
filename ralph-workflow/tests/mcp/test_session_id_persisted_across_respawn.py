@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ralph.mcp.server._snapshots import (
     read_snapshot,
     snapshot_dir,
@@ -72,17 +74,50 @@ class TestSnapshotPersistence:
         # Verify the same file is being read (not a new one).
         assert (snap_dir / "session.json").exists()
 
-    def test_snapshot_dir_creates_correct_path(self, tmp_path: Path) -> None:
-        """snapshot_dir returns the correct path under .agent/tmp/mcp-snapshots/<run_id>."""
+    def test_snapshot_dir_creates_correct_path(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """snapshot_dir returns protected path outside the workspace (E2.5)."""
+        snap_root = tmp_path / "protected_cache"
+        monkeypatch.setenv("RALPH_MCP_SNAPSHOT_DIR", str(snap_root))
         workspace = tmp_path / "myworkspace"
         workspace.mkdir()
         run_id = "unique-bridge-run-id"
 
-        result = snapshot_dir(workspace, run_id)
+        result = snapshot_dir(workspace, run_id, override_dir=snap_root)
 
-        expected = workspace / ".agent" / "tmp" / "mcp-snapshots" / run_id
+        expected = snap_root / run_id
         assert result == expected
         assert result.exists()
+
+    def test_snapshot_survives_workspace_tmp_deletion(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Snapshot survives deleting <workspace>/.agent/tmp (E2.5)."""
+        snap_root = tmp_path / "protected_cache"
+        monkeypatch.setenv("RALPH_MCP_SNAPSHOT_DIR", str(snap_root))
+        workspace = tmp_path / "myworkspace"
+        workspace_tmp = workspace / ".agent" / "tmp"
+        workspace_tmp.mkdir(parents=True)
+        run_id = "survive-test-run"
+
+        snap_dir = snapshot_dir(workspace, run_id, override_dir=snap_root)
+        write_snapshot(
+            snap_dir,
+            session_id="persisted-across-clean",
+            run_id=run_id,
+            broker_secret_fingerprint=None,
+        )
+
+        # Simulate workspace cleanup deleting .agent/tmp
+        import shutil
+
+        shutil.rmtree(workspace / ".agent")
+
+        # Snapshot still exists and reads correctly
+        assert snap_dir.exists()
+        data = read_snapshot(snap_dir)
+        assert data["session_id"] == "persisted-across-clean"
 
     def test_read_snapshot_returns_empty_dict_when_file_missing(self, tmp_path: Path) -> None:
         """read_snapshot returns {} when session.json does not exist."""

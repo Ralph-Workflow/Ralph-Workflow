@@ -662,6 +662,8 @@ def _invoke_agent_with_recovery(
             )
             return PipelineEvent.AGENT_FAILURE
 
+        terminal_mcp_error = False
+
         def attempt_fn(
             retry_session_id: str | None,
             capture_session_id: Callable[[str], None],
@@ -741,6 +743,7 @@ def _invoke_agent_with_recovery(
         SupervisionInfrastructureError,
     ) as exc:
         if isinstance(exc, McpServerError):
+            terminal_mcp_error = True
             logger.warning(
                 "MCP server error (retryable): last_stage={last_stage} elapsed_s={elapsed_s} "
                 "restart_reason={restart_reason} handover_step={handover_step} "
@@ -767,7 +770,7 @@ def _invoke_agent_with_recovery(
         logger.exception("Unexpected error during agent invocation")
         return PipelineEvent.AGENT_FAILURE
     finally:
-        if own_bridge and bridge is not None:
+        if (own_bridge or terminal_mcp_error) and bridge is not None:
             bridge.shutdown()
 
 
@@ -1923,6 +1926,13 @@ def _handle_terminal_agent_invocation_error(
     agent_invocation_error_sink: Callable[[Exception], object] | None,
 ) -> PipelineEvent:
     _set_pi_context_exhaustion_intent(exc)
+    if isinstance(exc, McpServerError):
+        _set_last_captured_retry_intent(
+            AgentRetryIntent(
+                failure_reason="McpServerError",
+                chain_cap_decision="reset",
+            )
+        )
     origin = exc.failure_origin if isinstance(exc, AgentInvocationError) else "agent"
     issuer = exc.issuer if isinstance(exc, AgentInvocationError) else None
     logger.error("Agent invocation failed: origin={} issuer={} error={}", origin, issuer, exc)

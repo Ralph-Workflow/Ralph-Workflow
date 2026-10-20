@@ -338,19 +338,32 @@ def append_wire_record(
     """
     if secret is None:
         return None
-    ledger_path = _ledger_path(workspace_root, secret)
-    ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = ledger_path.with_name(ledger_path.name + ".lock")
-    # filesystem-write-ok: lock-file sidecar used only to coordinate concurrent appends; the file's contents are never read back, so write_text_if_changed's whole-file replace contract does not fit (it would clobber any in-flight fcntl owner).
-    lock_handle = lock_path.open("w", encoding="utf-8")
     try:
-        try:
-            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except (BlockingIOError, OSError):
-            # Another writer holds the lock; the racing frame never
-            # grades WIRE but we MUST NOT corrupt the chain by writing
-            # without reading the current prior_hmac.
-            return None
+        ledger_path = _ledger_path(workspace_root, secret)
+        ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = ledger_path.with_name(ledger_path.name + ".lock")
+        # filesystem-write-ok: lock-file sidecar used only to coordinate concurrent appends; the file's contents are never read back, so write_text_if_changed's whole-file replace contract does not fit (it would clobber any in-flight fcntl owner).
+        lock_handle = lock_path.open("w", encoding="utf-8")
+    except OSError as e:
+        raise WireLedgerIOError(f"wire_ledger_io_error: failed setup for wire ledger: {e}") from e
+
+    try:
+        deadline = time.monotonic() + 0.2
+        while True:
+            try:
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as e:
+                if time.monotonic() >= deadline:
+                    raise WireLedgerIOError(
+                        f"wire_ledger_io_error: lock contention or lock failure: {e}"
+                    ) from e
+                # filesystem-poll-ok: bounded retry loop for wire ledger flock acquisition
+                time.sleep(0.01)
+            except OSError as e:
+                raise WireLedgerIOError(
+                    f"wire_ledger_io_error: lock contention or lock failure: {e}"
+                ) from e
         prior_hmac = _read_last_hmac(ledger_path)
         timestamp = clock()
         digest = _params_digest(params)

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+import socket as _socket_mod
 import threading
 import time
 from pathlib import Path
@@ -12,10 +14,20 @@ from typing import TYPE_CHECKING, Literal, cast
 from loguru import logger
 
 from ralph.mcp.artifacts._path_file_backend import DEFAULT_FILE_BACKEND
-from ralph.mcp.protocol.env import MCP_TEST_PRE_SERVE_GATE_ENV
+from ralph.mcp.protocol.env import (
+    MCP_ACCEPT_PAUSE_FILE,
+    MCP_ACCEPT_RESUME_FILE,
+    MCP_BRIDGE_PARENT_SOCK,
+    MCP_STAGE_ID_ENV,
+    MCP_TEST_PRE_SERVE_GATE_ENV,
+)
 from ralph.mcp.runtime_executors import shutdown_runtime_executors
 from ralph.mcp.server._fallback_http_handler import _FallbackHttpHandler
 from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
+from ralph.mcp.server._handover_protocol import (
+    start_private_readiness_listener,
+    wait_for_candidate_resume,
+)
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._runtime_constants import (
     DEFAULT_MOUNT_PATH,
@@ -97,6 +109,85 @@ class _FallbackStandaloneServer:
         self._httpd = httpd
         return httpd
 
+    def _setup_handover_readiness(self) -> None:
+        parent_sock_fd_str = self._env_getter(MCP_BRIDGE_PARENT_SOCK, None)
+        if not parent_sock_fd_str:
+            return
+        try:
+            parent_sock_fd = int(parent_sock_fd_str)
+            child_sock = _socket_mod.socket(
+                fileno=parent_sock_fd,
+                family=_socket_mod.AF_UNIX,
+                type=_socket_mod.SOCK_STREAM,
+            )
+            stage_id = self._env_getter(MCP_STAGE_ID_ENV, "") or ""
+            session = self._mcp_server._session
+            session_id_obj: object = getattr(session, "session_id", "")
+            session_id = str(session_id_obj) if session_id_obj is not None else ""
+            raw_secret: object = getattr(session, "broker_secret", None)
+            broker_fp: str | None = None
+            if isinstance(raw_secret, str) and raw_secret:
+                broker_fp = hashlib.sha256(raw_secret[:8].encode()).hexdigest()
+            start_private_readiness_listener(
+                child_sock,
+                self._mcp_server,
+                stage_id=stage_id,
+                session_id=session_id,
+                broker_fingerprint=broker_fp,
+            )
+        except Exception:
+            logger.opt(exception=True).warning("Failed to start private readiness listener")
+
+    def _setup_handover_pause(self, httpd: _FallbackHttpServer, stop_event: Event | None) -> None:
+        pause_file_str = self._env_getter(MCP_ACCEPT_PAUSE_FILE, None)
+        if not pause_file_str:
+            return
+
+        def _pause_watcher() -> None:
+            pause_path = Path(pause_file_str)
+            while not (stop_event is not None and stop_event.is_set()):
+                # filesystem-read-ok: transient handover sentinel file polled to detect pause request
+                if pause_path.exists():
+                    try:
+                        httpd.drop_listening_socket()
+                        ack_path = pause_path.with_name(pause_path.name + ".ack")
+                        # filesystem-write-ok: transient handover sentinel file written once on process retirement
+                        ack_path.write_text("ACK\n", encoding="utf-8")
+                        logger.info("Retiring MCP server acknowledged handover pause")
+                    except Exception:
+                        logger.opt(exception=True).warning("Handover pause acknowledgement failed")
+                    break
+                # filesystem-poll-ok: bounded sleep interval in background pause watcher thread
+                time.sleep(0.05)
+
+        threading.Thread(target=_pause_watcher, daemon=True, name="mcp-pause-watcher").start()
+
+    def _await_handover_resume(
+        self,
+        stop_event: Event | None,
+        on_ready: Callable[[], None] | None,
+        ready_event: Event | None,
+    ) -> None:
+        resume_file_str = self._env_getter(MCP_ACCEPT_RESUME_FILE, None)
+        if not resume_file_str:
+            return
+        if on_ready is not None:
+            on_ready()
+        if ready_event is not None:
+            ready_event.set()
+        resumed = wait_for_candidate_resume(
+            Path(resume_file_str),
+            timeout=30.0,
+            stop_event=stop_event,
+        )
+        if not resumed and (stop_event is None or not stop_event.is_set()):
+            raise McpServerError(
+                "Candidate failed to receive resume signal within deadline",
+                last_stage="resume_timed_out",
+                elapsed_s=30.0,
+                restart_count=0,
+            )
+
     def run(
         self,
         transport: Literal["streamable-http"] = DEFAULT_TRANSPORT,
@@ -165,6 +256,11 @@ class _FallbackStandaloneServer:
             auth=auth_token_set,
             inherited_fd=self._parent_socket is not None,
         )
+        # Make-before-break handover setup
+        self._setup_handover_readiness()
+        self._setup_handover_pause(httpd, stop_event)
+        self._await_handover_resume(stop_event, on_ready, ready_event)
+
         # R4 / R4-banner: signal ready and emit the listening banner
         # ONLY when serving is about to start (before serve_forever
         # blocks). This ensures the banner and the stage file both

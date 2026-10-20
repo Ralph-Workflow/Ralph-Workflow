@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import socket
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Event
@@ -9,7 +11,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from socket import socket
 
     from ralph.mcp.server._fallback_http_handler_probe import _ProbeResult
     from ralph.mcp.server._metrics import McpMetrics
@@ -26,8 +27,9 @@ class _FallbackHttpServer(ThreadingHTTPServer):
         self,
         server_address: tuple[str, int],
         request_handler_class: type[BaseHTTPRequestHandler],
-        parent_socket: socket | None = None,
+        parent_socket: socket.socket | None = None,
     ) -> None:
+        self._dummy_pair: tuple[socket.socket, socket.socket] | None = None
         if parent_socket is not None:
             # Adopt the inherited listening socket WITHOUT re-binding.
             # ``ThreadingHTTPServer.__init__`` normally calls ``bind``
@@ -75,7 +77,7 @@ class _FallbackHttpServer(ThreadingHTTPServer):
 
     def handle_error(
         self,
-        request: socket | tuple[bytes, socket],
+        request: socket.socket | tuple[bytes, socket.socket],
         client_address: tuple[str, int],
     ) -> None:
         error = sys.exc_info()[1]
@@ -83,7 +85,28 @@ class _FallbackHttpServer(ThreadingHTTPServer):
             return
         super().handle_error(request, client_address)
 
+    def drop_listening_socket(self) -> None:
+        """Drop the inherited listening socket during make-before-break handover.
+
+        Replaces self.socket with an idle non-listening socketpair end so
+        serve_forever() does not crash on a closed fd while existing in-flight
+        requests drain to completion.
+        """
+        old_sock = self.socket
+        dummy_r, dummy_w = socket.socketpair()
+        self._dummy_pair = (dummy_r, dummy_w)
+        self.socket = dummy_r
+        if old_sock is not None:
+            with contextlib.suppress(OSError):
+                old_sock.close()
+
     def server_close(self) -> None:
+        dummy_pair = self._dummy_pair
+        if dummy_pair is not None:
+            for s in dummy_pair:
+                with contextlib.suppress(OSError):
+                    s.close()
+            self._dummy_pair = None
         if hasattr(self, "shutdown_event"):
             self.shutdown_event.set()
         super().server_close()
