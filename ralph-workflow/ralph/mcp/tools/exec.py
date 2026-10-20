@@ -841,10 +841,14 @@ def handle_exec_command(
             verdict_dict = serialize_liveness_verdict(res.verdict)
             verdict_str = json.dumps(verdict_dict) if verdict_dict is not None else None
             kill_exc = ExecutionError(
-                f"Failed to execute '{display_cmd}': timed out after {parsed.timeout_ms}ms",
+                f"Failed to execute '{display_cmd}': job {res.job_id} terminated"
+                f" ({res.kill_cause})",
                 timed_out=True,
                 timeout_ms=parsed.timeout_ms,
                 timeout_cause=res.kill_cause,
+                elapsed_ms=int(res.elapsed_s * 1000),
+                ceiling_ms=res.ceiling_ms,
+                job_id=res.job_id,
                 partial_output=str(res.output.get("stdout", ""))
                 or str(res.output.get("stderr", ""))
                 or None,

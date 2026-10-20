@@ -32,6 +32,22 @@ defensible on file:line and URL evidence:
    only — no ``http://`` claims sneaking past the fabrication guard's
    transport rule.
 
+6. Every current-state claim the doc makes about progress-token
+   handling, the exec entry path, and the wall-clock cap matches what
+   the working tree actually does. Two claims were false when this
+   test was written — "there is no progress-token handling" (the code
+   extracts tokens at ``exec_sse_streaming.py:62-89`` and emits
+   ``notifications/progress`` at ``exec_sse_streaming.py:107-126``)
+   and "the inactivity window is the kill rule for short in-request
+   calls" (the production path at ``exec.py:790-819`` starts a
+   registry job unconditionally; ``exec.py:775-788`` is an injected
+   runner seam). The doc now labels that evidence historical; these
+   assertions keep it labelled.
+7. Every backticked ``<file>.py:<line>`` citation in the doc resolves
+   to a line that exists in the working tree, and each citation this
+   unit repaired resolves to a line carrying the exact token the doc
+   claims. Drift is the only way a citation goes stale.
+
 The test does NOT hit the network. It treats the URLs as opaque
 strings and asserts on their shape plus their textual appearance in
 the verified doc sections. A URL whose host 404s is a separate
@@ -43,10 +59,11 @@ masquerading as a URL) at the cheapest possible cost.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 
-from tests.doc_roots import REPOSITORY_ROOT
+from tests.doc_roots import PACKAGE_ROOT, REPOSITORY_ROOT
 
 DOC_PATH = (
     REPOSITORY_ROOT / "ralph-workflow" / "docs" / "agents" / "exec-long-running-root-cause.md"
@@ -335,4 +352,186 @@ class TestRootCauseDocCitations:
             "'Default tool-call timeout' column header. The WU-5 fix "
             "renamed it to 'Verified client default' to enforce the "
             "unknown-vs-implemented separation. Revert the rename."
+        )
+
+
+# Claims that were FALSE against the working tree and must never come
+# back as present-tense assertions. Each maps to the doc line the
+# correction replaced. Only the PRESENT-TENSE forms are listed: the
+# doc deliberately keeps the past-tense restatements ("there was no
+# progress-token handling", "had no daemon-style submit-and-poll") as
+# historical evidence, so a substring test on those would flag the
+# history instead of the falsehood.
+FORBIDDEN_PRESENT_TENSE_CLAIMS: tuple[str, ...] = (
+    "returns zero matches",
+    "There is no progress-token handling",
+    "remains the kill rule for short in-request calls",
+    "has no background mode",
+    "there is no `run_in_background` parameter",
+    "Split the work or run it in the background.",
+)
+
+
+# Citations this unit repaired, as (doc-relative path, line, token the
+# doc claims is on that line). Drift in the source fails here, which is
+# the signal to update the doc rather than to widen the range.
+REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
+    # Cause 4 — progress-token extraction and progress-frame emission.
+    ("ralph/mcp/server/exec_sse_streaming.py", 62, "def extract_progress_token"),
+    ("ralph/mcp/server/exec_sse_streaming.py", 123, '"method": "notifications/progress"'),
+    ("ralph/mcp/server/exec_sse_streaming.py", 231, '"method": "notifications/message"'),
+    # Cause 1 — output-only inactivity window (historical) and its poll loop.
+    ("ralph/process/manager/_managed_process.py", 301, "last_output_at_ref[0] = _time.monotonic()"),
+    ("ralph/process/manager/_managed_process.py", 378, 'timeout_cause = "inactivity"'),
+    # Cause 1 — the production entry path vs the injected-runner seam.
+    ("ralph/mcp/tools/exec.py", 807, "job_id = effective_registry.start("),
+    ("ralph/mcp/tools/exec.py", 817, "wait_ms=EXEC_SOFT_REPLY_BUDGET_MS"),
+    # Cause 2 — the seam's hard_cap and the registry's job ceiling clamp.
+    ("ralph/mcp/tools/exec.py", 634, "hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000"),
+    ("ralph/mcp/tools/_exec_jobs.py", 207, "EXEC_JOB_CEILING_MAX_S"),
+    ("ralph/mcp/tools/_exec_jobs.py", 507, "job.ceiling_ms / 1000.0"),
+    # Cause 3 — the Pi bridge startup deadline.
+    ("ralph/mcp/transport/pi.py", 85, "MCP_STARTUP_TIMEOUT_MS = 10_000"),
+    # Cause 5c — child runtime shutdown seam.
+    ("ralph/mcp/server/lifecycle.py", 2454, '"ralph.mcp.server",'),
+    ("ralph/mcp/server/_standalone_mcp_process.py", 45, "terminate(grace_period_s=5.0)"),
+    ("ralph/mcp/server/_standalone_mcp_process.py", 47, "self.process.wait(timeout=5.0)"),
+    ("ralph/mcp/server/runtime.py", 939, "exit_process(0)"),
+    ("ralph/mcp/server/runtime.py", 984, "exit_when_owner_exits(os.environ)"),
+)
+
+# A backticked ``<path>.py:<line>`` or ``<path>.py:<start>-<end>`` citation.
+CITATION_RE = re.compile(r"`([A-Za-z0-9_./]+\.py):([0-9]+)(?:-([0-9]+))?`")
+
+
+def _package_python_index() -> dict[str, list[Path]]:
+    """Return a basename -> candidate-paths index over the shipped package."""
+    index: dict[str, list[Path]] = {}
+    for path in sorted((PACKAGE_ROOT / "ralph").rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        index.setdefault(path.name, []).append(path)
+    return index
+
+
+def _resolve_citation(cited: str, index: dict[str, list[Path]]) -> Path | None:
+    """Resolve a doc citation to a working-tree path, or None if unresolvable."""
+    direct = PACKAGE_ROOT / cited
+    if direct.is_file():
+        return direct
+    candidates = index.get(Path(cited).name, [])
+    return candidates[0] if len(candidates) == 1 else None
+
+
+class TestDocCurrentStateMatchesWorkingTree:
+    """The doc's present-tense claims must match what the code does today."""
+
+    def test_no_false_present_tense_claims_reintroduced(self) -> None:
+        text = _read_doc()
+        offenders = [claim for claim in FORBIDDEN_PRESENT_TENSE_CLAIMS if claim in text]
+        assert not offenders, (
+            f"root-cause doc reintroduced present-tense claims the working "
+            f"tree contradicts: {offenders!r}. Each was false against the "
+            "current code and was relabelled historical. Keep the historical "
+            "label; do not restore the claim as current behavior."
+        )
+
+    def test_progress_token_handling_is_cited_as_current(self) -> None:
+        text = _read_doc()
+        for required in (
+            "exec_sse_streaming.py:62-89",
+            "exec_sse_streaming.py:107-126",
+            "notifications/progress",
+        ):
+            assert required in text, (
+                f"root-cause doc must cite {required!r} when describing the "
+                "current progress-notification path. The doc previously "
+                "claimed there was NO progress-token handling anywhere under "
+                "ralph/mcp/server/; that was false and is now labelled "
+                "historical with the current behavior cited."
+            )
+
+    def test_historical_evidence_is_labelled_historical(self) -> None:
+        text = _read_doc()
+        for marker in (
+            "## Cause 1 (CONFIRMED) — `inactivity` is output-only (HISTORICAL)",
+            "### Cause 1 — present-day liveness subsystem (CURRENT)",
+            "### Cause 4 — present-day progress-notification path (CURRENT)",
+        ):
+            assert marker in text, (
+                f"root-cause doc must keep the {marker!r} heading. The doc "
+                "separates historical evidence from current behavior; dropping "
+                "the marker re-mixes a superseded rule into a present-tense claim."
+            )
+
+    def test_injected_runner_seam_is_not_the_production_path(self) -> None:
+        text = _read_doc()
+        for required in ("exec.py:790-819", "exec.py:775-788", "injected runner"):
+            assert required in text, (
+                f"root-cause doc must contain {required!r}. The doc previously "
+                "claimed short/normal calls keep output-only inactivity kills. "
+                "That was false: exec.py:790-819 always starts a registry job "
+                "and exec.py:775-788 is only an injected runner seam."
+            )
+
+    def test_exec_wait_and_exec_cancel_named_as_present(self) -> None:
+        text = _read_doc()
+        for required in ("exec_wait", "exec_cancel", "names.py:40-41"):
+            assert required in text, (
+                f"root-cause doc must contain {required!r}. The doc previously "
+                "claimed there was no background mode and no submit-and-poll "
+                "path; exec_wait/exec_cancel are registered tools today "
+                "(ralph/mcp/tools/names.py:40-41)."
+            )
+
+    @pytest.mark.parametrize(
+        ("cited_path", "line_number", "expected_token"),
+        REPAIRED_CITATIONS,
+    )
+    def test_repaired_citation_points_at_named_token(
+        self, cited_path: str, line_number: int, expected_token: str
+    ) -> None:
+        source = PACKAGE_ROOT / cited_path
+        assert source.is_file(), (
+            f"root-cause doc cites {cited_path} but no such file exists in the working tree"
+        )
+        lines = source.read_text(encoding="utf-8").splitlines()
+        assert 1 <= line_number <= len(lines), (
+            f"root-cause doc cites {cited_path}:{line_number} but the file has "
+            f"only {len(lines)} lines; the citation has drifted"
+        )
+        actual = lines[line_number - 1]
+        assert expected_token in actual, (
+            f"root-cause doc cites {cited_path}:{line_number} as carrying "
+            f"{expected_token!r}, but that line reads {actual.strip()!r}. "
+            "Either the source moved or the doc's claim is wrong. Update the "
+            "doc to the real line rather than loosening this assertion."
+        )
+
+    def test_every_backticked_citation_line_exists(self) -> None:
+        index = _package_python_index()
+        assert index, (
+            "the package python index came back empty; the citation drift check "
+            "would silently pass on nothing"
+        )
+        checked = 0
+        raw_matches: list[tuple[str, ...]] = CITATION_RE.findall(_read_doc())
+        matches: list[tuple[str, str, str]] = []
+        for raw in raw_matches:
+            matches.append((raw[0], raw[1], raw[2]))
+        for cited, start, end in matches:
+            resolved = _resolve_citation(cited, index)
+            if resolved is None:
+                continue
+            highest = int(end) if end else int(start)
+            total = len(resolved.read_text(encoding="utf-8").splitlines())
+            assert highest <= total, (
+                f"root-cause doc cites {cited}:{highest} but {resolved} has only "
+                f"{total} lines. The doc's Appendix lists the files to re-read "
+                "when a citation drifts; update the citation."
+            )
+            checked += 1
+        assert checked >= 40, (
+            f"only {checked} doc citations resolved to a working-tree file; the "
+            "citation drift check is not covering the doc's citations"
         )

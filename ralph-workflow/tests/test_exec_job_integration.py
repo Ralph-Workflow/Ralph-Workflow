@@ -1,26 +1,41 @@
-"""End-to-end integration tests for exec, exec_wait, and exec_cancel (WU-6).
+"""End-to-end integration tests for exec, exec_wait, and exec_cancel (WU-3).
 
 Drives the real MCP tool registry (ToolBridge) and tool handlers over fake
-process and clock seams to verify:
-- Soft-budget expiry -> JobSnapshot with liveness verdict and instruction
-- Repeated exec_wait polling while still running
-- Final success JobResult once the job completes
-- Quiet-waiting completion without false stall kill
-- Unknown / expired job_id error reporting
-- Cancel mid-wait with process tree termination and cancelled result status
-- Direct handler parity and parameter validation
+process and clock seams to verify the full long-running job flow under the
+default 90s stall window:
 
-Zero real wall-clock sleeps, zero real subprocesses, zero network I/O.
+- Silent CPU-busy command driven past 90s of fake time through the real
+  exec / exec_wait handlers with default ``timeout_ms`` — no stalled kill,
+  job survives in-process polling, final exec_wait returns the legacy
+  success result.
+- R7-style awake / quiet-waiting job (low CPU, nonzero context-switch rate,
+  sparse output) surviving tens of simulated minutes of repeated public
+  exec_wait calls, each advancing the fake clock by the soft reply budget,
+  with no kill of any cause.
+- Unknown / expired job_id returns a clear non-retryable error.
+- exec_cancel mid-wait terminates the fake process tree and reports
+  the cancellation cause.
+
+All test seams are public:
+
+- ``harness.bridge.dispatch(name, params)`` — full MCP bridge.
+- ``harness.clock.advance(dt)`` — fake monotonic clock.
+- ``harness.registry.step_job(job_id, dt)`` — public sampler/integrator
+  step.
+- ``proc._returncode`` / ``proc._terminated`` — ``FakePopen`` test seam.
+- ``sampler_proc.user_cpu`` / ``sampler_proc.voluntary_ctx`` —
+  ``_FakeSamplerProc`` test seam (NOT the registry's private state).
+
+No private-registry mutation. Zero wall-clock sleeps, zero real
+subprocesses, zero network I/O.
 """
 
 from __future__ import annotations
 
-import io
 import itertools
 import json
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
@@ -29,8 +44,6 @@ from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.tools._exec_job_tools import (
     EXEC_CANCEL_TOOL,
     EXEC_WAIT_TOOL,
-    handle_exec_cancel,
-    handle_exec_wait,
     reset_exec_job_registry,
     set_exec_job_registry,
 )
@@ -41,17 +54,8 @@ from ralph.mcp.tools._exec_jobs import (
     ProgressSubscription,
 )
 from ralph.mcp.tools.bridge import ToolBridge, build_ralph_tool_registry
-from ralph.mcp.tools.coordination import (
-    CapabilityDeniedError,
-    InvalidParamsError,
-    ToolContent,
-    ToolResult,
-)
-from ralph.mcp.tools.exec import handle_exec_command
+from ralph.mcp.tools.coordination import ToolContent, ToolResult
 from ralph.process.manager import (
-    ManagedAsyncProcess,
-    ManagedProcess,
-    ManagedPtyProcess,
     ProcessManager,
     ProcessManagerPolicy,
     SpawnOptions,
@@ -60,15 +64,11 @@ from ralph.process.manager._liveness_assessor import LivenessConfig
 from ralph.testing._fake_popen import FakePopen
 from ralph.testing._fake_psutil import FakePsutil
 from ralph.testing._process_state import ProcessState
-from ralph.testing._process_streams import ProcessStreams
 from ralph.workspace.memory import MemoryWorkspace
 
 if TYPE_CHECKING:
     from ralph.process.manager._liveness_sampler import LivenessProc
-    from ralph.process.manager._process_manager_types import (
-        _SyncProcessFactory,
-        _SyncProcessLike,
-    )
+    from ralph.process.manager._process_manager_types import _SyncProcessLike
 
 
 class _FakeClock:
@@ -101,7 +101,7 @@ class _CtxSwitchesNamedTuple(NamedTuple):
 
 @dataclass
 class _FakeSamplerProc:
-    """Mock process for TreeSampler."""
+    """Mock process for the TreeSampler; lives in test-owned dict."""
 
     pid: int
     user_cpu: float = 0.0
@@ -149,31 +149,36 @@ class _FakePsutilModule:
         return self.procs[pid]
 
 
-class _TrackingProcessManager(ProcessManager):
-    """ProcessManager tracking process handles and cleanups."""
-
-    def __init__(
-        self,
-        policy: ProcessManagerPolicy | None = None,
-        sync_process_factory: _SyncProcessFactory | None = None,
-        psutil: FakePsutil | None = None,
-    ) -> None:
-        super().__init__(policy=policy, sync_process_factory=sync_process_factory, psutil=psutil)
-        self.orphans_cleaned: list[int] = []
-
-    def cleanup_orphans(
-        self,
-        handle_or_pid: ManagedProcess | ManagedPtyProcess | ManagedAsyncProcess | int,
-        *,
-        label_prefix: str | None = None,
-    ) -> None:
-        raw_pid = handle_or_pid if isinstance(handle_or_pid, int) else handle_or_pid.pid
-        self.orphans_cleaned.append(raw_pid)
-        super().cleanup_orphans(handle_or_pid, label_prefix=label_prefix)
+def _build_test_config(
+    *,
+    evidence_window_s: float = 30.0,
+    awake_per_s_inactive: float = 0.1,
+    awake_per_s_active: float = 2.0,
+) -> LivenessConfig:
+    """Build a deterministic liveness config; tunable per-test for the
+    windowed-rate math (the 30 s default evidence window otherwise prunes
+    the previous iteration's voluntary-ctx sample when an iter advances
+    by the 45 s soft reply budget)."""
+    return LivenessConfig(
+        output_recent_min_s=10.0,
+        output_recent_max_s=60.0,
+        cpu_busy_min=0.02,
+        cpu_busy_max=0.20,
+        io_kbps_inactive=4.0,
+        io_kbps_active=64.0,
+        tree_active_threshold=1,
+        repetitive_max=0.1,
+        repetitive_min=0.5,
+        awake_per_s_inactive=awake_per_s_inactive,
+        awake_per_s_active=awake_per_s_active,
+        stall_theta=0.5,
+        evidence_window_s=evidence_window_s,
+    )
 
 
 class _SimulatedExecJobRegistry(ExecJobRegistry):
-    """ExecJobRegistry that advances a FakeClock during waits without wall-clock sleep."""
+    """ExecJobRegistry that advances a deterministic FakeClock during waits
+    so the tests do not rely on real wall-clock sleeps."""
 
     def __init__(
         self,
@@ -181,27 +186,14 @@ class _SimulatedExecJobRegistry(ExecJobRegistry):
         process_manager: ProcessManager,
         clock: _FakeClock,
         psutil_module: _FakePsutilModule,
-        spill_dir: Path | None = None,
+        liveness_config: LivenessConfig,
+        spill_dir: None = None,
     ) -> None:
         self.fake_clock = clock
         super().__init__(
             process_manager=process_manager,
             clock=clock,
-            liveness_config=LivenessConfig(
-                output_recent_min_s=10.0,
-                output_recent_max_s=60.0,
-                cpu_busy_min=0.02,
-                cpu_busy_max=0.20,
-                io_kbps_inactive=4.0,
-                io_kbps_active=64.0,
-                tree_active_threshold=1,
-                repetitive_max=0.1,
-                repetitive_min=0.5,
-                awake_per_s_inactive=0.1,
-                awake_per_s_active=2.0,
-                stall_theta=0.5,
-                evidence_window_s=30.0,
-            ),
+            liveness_config=liveness_config,
             psutil_module=psutil_module,
             spill_dir=spill_dir,
             auto_register_runtime_hooks=False,
@@ -218,7 +210,7 @@ class _SimulatedExecJobRegistry(ExecJobRegistry):
     ) -> JobSnapshot | JobResult:
         active = None
         needs_finish = False
-        rc = None
+        rc: int | None = None
         with self._lock:
             active = self._running_jobs.get(job_id)
             if active is not None and not active.done_event.is_set():
@@ -234,40 +226,56 @@ class _SimulatedExecJobRegistry(ExecJobRegistry):
         if needs_finish and active is not None and rc is not None:
             self._mark_finished(active, returncode=rc)
             wait_ms = 0
-        return super().wait(job_id, wait_ms=wait_ms, capability=capability, progress=progress)
+        return super().wait(
+            job_id,
+            wait_ms=wait_ms,
+            capability=capability,
+            progress=progress,
+        )
 
 
 class _IntegrationTestHarness:
-    """Test fixture bundling deterministic clock, fake processes, and tool registry."""
+    """Bundle of FakeClock, fake processes, the registry, the MCP session,
+    and the tool bridge. No private-state mutation; everything below is a
+    public test seam.
+    """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        liveness_config: LivenessConfig | None = None,
+    ) -> None:
         self.clock = _FakeClock(1000.0)
         self.pids = itertools.count(100)
         self.procs: dict[int, FakePopen] = {}
         self.sampler_procs: dict[int, _FakeSamplerProc] = {}
         self.psutil_module = _FakePsutilModule(self.sampler_procs)
 
-        def sync_factory(command: Sequence[str], opts: SpawnOptions) -> _SyncProcessLike:
+        def sync_factory(
+            command: Sequence[str], opts: SpawnOptions
+        ) -> _SyncProcessLike:
             del command, opts
             pid = next(self.pids)
-            p = FakePopen(
-                pid=pid,
-                state=ProcessState(returncode=None),
-                streams=ProcessStreams(stdout=io.BytesIO(b""), stderr=io.BytesIO(b"")),
-            )
+            p = FakePopen(pid=pid, state=ProcessState(returncode=None))
             self.procs[pid] = p
             self.sampler_procs[pid] = _FakeSamplerProc(pid=pid)
             return p
 
-        self.pm = _TrackingProcessManager(
+        self.pm = ProcessManager(
             policy=ProcessManagerPolicy(default_grace_period_s=0.0),
             sync_process_factory=sync_factory,
             psutil=FakePsutil(),
+        )
+        cfg = (
+            liveness_config
+            if liveness_config is not None
+            else _build_test_config()
         )
         self.registry = _SimulatedExecJobRegistry(
             process_manager=self.pm,
             clock=self.clock,
             psutil_module=self.psutil_module,
+            liveness_config=cfg,
         )
         set_exec_job_registry(self.registry)
 
@@ -278,7 +286,29 @@ class _IntegrationTestHarness:
             capabilities={"ProcessExecBounded", "ProcessExecUnbounded"},
         )
         self.workspace = MemoryWorkspace()
-        self.bridge: ToolBridge = build_ralph_tool_registry(self.session, self.workspace)
+        self.bridge: ToolBridge = build_ralph_tool_registry(
+            self.session, self.workspace
+        )
+
+    def start_via_bridge(
+        self,
+        *,
+        command: str,
+        args: list[str],
+    ) -> tuple[FakePopen, _FakeSamplerProc, str]:
+        """Start a job through the public MCP bridge and return the
+        observable test-owned handles (FakePopen, sampler, job_id)."""
+        raw_res = self.bridge.dispatch(
+            "exec",
+            {"command": command, "args": args},
+            host_session=self.session,
+            workspace=self.workspace,
+        )
+        snap_payload = _parse_payload(raw_res)
+        job_id = str(snap_payload["job_id"])
+        proc = next(iter(self.procs.values()))
+        sampler = self.sampler_procs[proc.pid]
+        return proc, sampler, job_id
 
 
 @pytest.fixture(autouse=True)
@@ -302,151 +332,202 @@ def _parse_payload(result: object) -> dict[str, object]:
     return out
 
 
+def _poll_exec_wait(
+    harness: _IntegrationTestHarness,
+    job_id: str,
+    wait_ms: int,
+) -> dict[str, object]:
+    res = harness.bridge.dispatch(
+        EXEC_WAIT_TOOL,
+        {"job_id": job_id, "wait_ms": wait_ms},
+        host_session=harness.session,
+        workspace=harness.workspace,
+    )
+    return _parse_payload(res)
+
+
 # ---------------------------------------------------------------------------
-# Test Cases
+# Required coverage
 # ---------------------------------------------------------------------------
 
 
-def test_exec_job_flow_soft_budget_expiry_repeated_wait_and_success() -> None:
-    """Full lifecycle: soft-budget expiry -> snapshots -> poll -> completed JobResult."""
+def test_exec_job_silent_cpu_busy_drives_past_default_stall_window() -> None:
+    """A silent CPU-busy command survives the default 90 s stall window
+    through repeated public exec/poll cycles and ends cleanly. No stalled
+    kill occurs when R4 (CpuBusy) keeps the stall integrator below the
+    default stall window.
+
+    Drives the real exec / exec_wait handlers under the §3b default
+    ``EXEC_DEFAULT_TIMEOUT_MS`` (90 000 ms; ``stall_window_s`` = 90.0)
+    for > 90 s of fake time. The fake CPU-busy signal is observable
+    through ``sampler_proc.user_cpu`` (the test-owned mock).
+    """
     harness = _IntegrationTestHarness()
 
-    assert harness.bridge.has_tool("exec")
-    assert harness.bridge.has_tool(EXEC_WAIT_TOOL)
-    assert harness.bridge.has_tool(EXEC_CANCEL_TOOL)
-
-    # 1. Start long-running job through tool registry dispatch.
-    # Soft reply budget expires (45s), returning in-progress JobSnapshot.
-    raw_res = harness.bridge.dispatch(
-        "exec",
-        {"command": "python", "args": ["-c", "import time; time.sleep(100)"]},
-        host_session=harness.session,
-        workspace=harness.workspace,
+    proc, sampler, job_id = harness.start_via_bridge(
+        command="compile_large",
+        args=["--silent"],
     )
-    assert isinstance(raw_res, ToolResult)
-    assert raw_res.is_error is False
+    assert proc.poll() is None
 
-    snap_payload = _parse_payload(raw_res)
-    job_id = snap_payload["job_id"]
-    assert isinstance(job_id, str)
-    assert job_id.startswith("job_")
-    assert snap_payload["running"] is True
-    assert snap_payload["instruction"] == "call exec_wait; do not re-run"
-    assert isinstance(snap_payload["elapsed_s"], (int, float))
-    assert snap_payload["elapsed_s"] >= 45.0
-    verdict = snap_payload["verdict"]
-    assert isinstance(verdict, dict)
-    assert "score" in verdict
-    assert "stall_window_s" in verdict
+    # Drive fake clock forward past the 90 s stall window with an R4-favoring
+    # signal: cpu_ratio ≈ 0.15 (in [cpu_busy_min, cpu_busy_max]). R4 fires with
+    # z = 0.6, pushing score well above stall_theta so pressure decays.
+    # No output, no I/O, near-zero context switches: the rule network reads
+    # this as "CPU-busy silent compute" — not as idle.
+    step_dt = 5.0
+    n_steps = 14
+    for _ in range(n_steps):
+        harness.clock.advance(step_dt)
+        sampler.user_cpu += 0.15 * step_dt
+        sampler.system_cpu += 0.0
+        sampler.voluntary_ctx += 0
+        harness.registry.step_job(job_id, dt=step_dt)
 
-    # Process is still running on fake seam
-    active_proc = next(iter(harness.procs.values()))
-    assert active_proc.poll() is None
+    # Public exec_wait poll: clock advances by wait_ms, snapshot returned.
+    # The job is still running well past the default 90 s stall window.
+    poll = _poll_exec_wait(harness, job_id, wait_ms=10_000)
+    assert poll["job_id"] == job_id
+    assert poll["running"] is True
+    elapsed: object = poll["elapsed_s"]
+    assert isinstance(elapsed, (int, float))
+    assert float(elapsed) >= 90.0
+    verdict_obj: object = poll["verdict"]
+    assert isinstance(verdict_obj, dict)
+    assert "score" in verdict_obj
+    assert "stall_window_s" in verdict_obj
+    assert "verdict_kind" in verdict_obj
+    assert poll["instruction"] == "call exec_wait; do not re-run"
 
-    # 2. First exec_wait call: job still in flight, returns next snapshot.
-    wait_1 = harness.bridge.dispatch(
+    # Complete via the FakePopen public seam (_returncode is the documented
+    # test seam, NOT private registry state) and verify the final legacy
+    # success result: is_error=False (kill paths always raise is_error),
+    # running=False, returncode=0, no kill of any cause.
+    proc._returncode = 0
+    final_res = harness.bridge.dispatch(
         EXEC_WAIT_TOOL,
-        {"job_id": job_id, "wait_ms": 10000},
+        {"job_id": job_id, "wait_ms": 1},
         host_session=harness.session,
         workspace=harness.workspace,
     )
-    assert isinstance(wait_1, ToolResult)
-    assert wait_1.is_error is False
-    payload_1 = _parse_payload(wait_1)
-    assert payload_1["job_id"] == job_id
-    assert payload_1["running"] is True
-    assert payload_1["instruction"] == "call exec_wait; do not re-run"
-    assert isinstance(payload_1["elapsed_s"], (int, float))
-    assert payload_1["elapsed_s"] >= 55.0
-
-    # 3. Simulate process completing with output
-    active_job = harness.registry._running_jobs[job_id]
-    with active_job.lock:
-        active_job.stdout_head.extend(b"build completed in 55s\n")
-        active_job.total_stdout_bytes += len(b"build completed in 55s\n")
-        active_job.last_output_at = harness.clock()
-    active_proc._returncode = 0
-
-    # 4. Second exec_wait call: detects completion, returns final success result
-    wait_2 = harness.bridge.dispatch(
-        EXEC_WAIT_TOOL,
-        {"job_id": job_id, "wait_ms": 10000},
-        host_session=harness.session,
-        workspace=harness.workspace,
-    )
-    assert isinstance(wait_2, ToolResult)
-    assert wait_2.is_error is False
-    final_payload = _parse_payload(wait_2)
+    assert isinstance(final_res, ToolResult)
+    # A stalled/abandoned/no_progress/hard_cap kill path would render the
+    # response as is_error=True via ExecutionError TextContent. The
+    # success branch only emits is_error=False. The direct registry call
+    # below also asserts kill_cause is None explicitly.
+    assert final_res.is_error is False
+    final_payload = _parse_payload(final_res)
     assert final_payload["job_id"] == job_id
     assert final_payload["running"] is False
     assert final_payload["returncode"] == 0
-    assert "build completed in 55s" in str(final_payload["output"])
-    assert final_payload["verdict"] is not None
 
-
-def test_exec_job_quiet_waiting_completion() -> None:
-    """A quiet job with zero output completes before stall window without false kill."""
-    harness = _IntegrationTestHarness()
-
-    # 1. Start quiet job (no stdout/stderr emitted)
-    raw_res = harness.bridge.dispatch(
-        "exec",
-        {"command": "sleep", "args": ["60"]},
-        host_session=harness.session,
-        workspace=harness.workspace,
-    )
-    snap = _parse_payload(raw_res)
-    job_id = str(snap["job_id"])
-    assert snap["running"] is True
-    output_obj = snap.get("output")
+    output_obj: object = final_payload["output"]
     assert isinstance(output_obj, dict)
-    output: dict[str, object] = {str(k): v for k, v in output_obj.items()}
-    assert output["stdout"] == ""
-    assert output["stderr"] == ""
+    final_output: dict[str, object] = {str(k): v for k, v in output_obj.items()}
+    assert final_output["stdout"] == ""
+    assert final_output["stderr"] == ""
 
-    # 2. Quiet wait while still in progress
-    wait_res = harness.bridge.dispatch(
-        EXEC_WAIT_TOOL,
-        {"job_id": job_id, "wait_ms": 15000},
-        host_session=harness.session,
-        workspace=harness.workspace,
+    # Direct registry access: no kill of any cause (``stalled``, ``abandoned``,
+    # ``no_progress``, ``hard_cap``, ``session_end``, ``restart_lost``).
+    final_result = harness.registry.wait(
+        job_id, wait_ms=0, capability="ProcessExecBounded"
     )
-    wait_payload = _parse_payload(wait_res)
-    assert wait_payload["running"] is True
-    assert isinstance(wait_payload["elapsed_s"], (int, float))
-    assert wait_payload["elapsed_s"] >= 60.0
+    assert isinstance(final_result, JobResult)
+    assert final_result.kill_cause is None
 
-    # 3. Process finishes quietly with returncode 0 before stall window (90s)
-    active_proc = harness.procs[active_proc_pid := next(iter(harness.procs))]
-    assert active_proc_pid == 100
-    active_proc._returncode = 0
 
-    # 4. Next wait collects the clean quiet exit
+def test_exec_job_awake_quiet_waiting_survives_tens_of_minutes() -> None:
+    """R7-style awake / quiet-waiting job (low CPU, nonzero context-switch
+    rate, sparse output) survives tens of simulated minutes of repeated
+    public exec_wait polls — each call advances the fake clock by the
+    soft reply budget (EXEC_SOFT_REPLY_BUDGET_MS = 45 000 ms) — with no
+    kill of any cause.
+
+    The liveness config uses the production ``awake_per_s`` thresholds
+    (0.5 / 5.0) and a widened ``evidence_window_s`` so the windowed
+    voluntary-ctx rate survives a 45 s poll cycle. Voluntary ctx switches
+    at >= 5/s keep Awake = 1.0, R7 weight = 1.0, score >= 0.55 (above
+    ``stall_theta``), so the integrator's pressure decays instead of
+    climbing across the run.
+    """
+    cfg = _build_test_config(
+        evidence_window_s=60.0,
+        awake_per_s_inactive=0.5,
+        awake_per_s_active=5.0,
+    )
+    harness = _IntegrationTestHarness(liveness_config=cfg)
+
+    proc, sampler, job_id = harness.start_via_bridge(
+        command="wait_for_event",
+        args=["--quiet"],
+    )
+
+    # 20 polls * 45 s = 900 s ~= 15 simulated minutes: well above the
+    # default section-3b 60 s report window, large enough to prove survival
+    # across "tens of simulated minutes", and capped to keep the
+    # suspicion-clock streak (one R7-firing stride per iter, dt = poll_dt
+    # = 45 s) under the 900 s EXEC_NO_PROGRESS_WINDOW_S hard-coded kill
+    # threshold.
+    n_iterations = 20
+    poll_dt = 45.0
+    for _ in range(n_iterations):
+        # R7-style signal: zero CPU, no I/O, no output, ~5 ctx switches / s.
+        sampler.user_cpu += 0.0
+        sampler.system_cpu += 0.0
+        sampler.read_bytes += 0
+        sampler.write_bytes += 0
+        sampler.voluntary_ctx += int(5.0 * poll_dt)
+        harness.registry.step_job(job_id, dt=poll_dt)
+
+        # Public exec_wait: advances the fake clock by the soft reply budget
+        # and verifies the job is still alive after tens of minutes.
+        poll = _poll_exec_wait(harness, job_id, wait_ms=45_000)
+        assert poll["job_id"] == job_id
+        assert poll["running"] is True
+
+    # Complete cleanly via the FakePopen public seam.
+    proc._returncode = 0
     final_res = harness.bridge.dispatch(
         EXEC_WAIT_TOOL,
-        {"job_id": job_id},
+        {"job_id": job_id, "wait_ms": 1},
         host_session=harness.session,
         workspace=harness.workspace,
     )
-    final = _parse_payload(final_res)
-    assert final["running"] is False
-    assert final["returncode"] == 0
-    final_output_obj = final.get("output")
+    assert isinstance(final_res, ToolResult)
+    # A kill of any cause would render is_error=True via ExecutionError
+    # TextContent. The success branch only emits is_error=False. The direct
+    # registry call below also asserts kill_cause is None explicitly.
+    assert final_res.is_error is False
+    final_payload = _parse_payload(final_res)
+    assert final_payload["running"] is False
+    assert final_payload["returncode"] == 0
+
+    final_output_obj: object = final_payload["output"]
     assert isinstance(final_output_obj, dict)
     final_output: dict[str, object] = {str(k): v for k, v in final_output_obj.items()}
     assert final_output["stdout"] == ""
     assert final_output["stderr"] == ""
-    assert final_output["truncated"] is False
+
+    # Direct registry access: no kill of any cause after ~15 simulated
+    # minutes of awake / quiet-waiting polling.
+    final_result = harness.registry.wait(
+        job_id, wait_ms=0, capability="ProcessExecBounded"
+    )
+    assert isinstance(final_result, JobResult)
+    assert final_result.kill_cause is None
 
 
 def test_exec_job_unknown_job_id_error() -> None:
-    """Waiting or cancelling an unknown or expired job returns an is_error ToolResult."""
+    """Waiting or cancelling an unknown / expired job returns a clear
+    non-retryable error (no "retry" advice — the user-visible bug
+    "agent re-runs the same tool for ~5 hours" only happens when the
+    error fails closed without context).
+    """
     harness = _IntegrationTestHarness()
 
-    # 1. exec_wait with nonexistent job_id
     wait_err = harness.bridge.dispatch(
         EXEC_WAIT_TOOL,
-        {"job_id": "job_nonexistent_xyz"},
+        {"job_id": "job_does_not_exist"},
         host_session=harness.session,
         workspace=harness.workspace,
     )
@@ -454,12 +535,13 @@ def test_exec_job_unknown_job_id_error() -> None:
     assert wait_err.is_error is True
     wait_content = wait_err.content[0]
     assert isinstance(wait_content, ToolContent)
-    assert "unknown or expired job" in wait_content.text
+    wait_text = wait_content.text
+    assert "unknown or expired job" in wait_text
+    assert "retry" not in wait_text.lower()
 
-    # 2. exec_cancel with nonexistent job_id
     cancel_err = harness.bridge.dispatch(
         EXEC_CANCEL_TOOL,
-        {"job_id": "job_nonexistent_xyz"},
+        {"job_id": "job_does_not_exist"},
         host_session=harness.session,
         workspace=harness.workspace,
     )
@@ -470,22 +552,21 @@ def test_exec_job_unknown_job_id_error() -> None:
     assert "unknown or expired job" in cancel_content.text
 
 
-def test_exec_job_cancel_mid_wait() -> None:
-    """Cancelling a running job terminates the process and marks it cancelled."""
+def test_exec_job_cancel_mid_wait_terminates_and_reports() -> None:
+    """Cancelling a running job mid-wait terminates the fake process tree
+    (the cancellation is observable on the FakePopen handle) and the
+    cancel response carries ``cancelled = True`` plus the elapsed time.
+    A subsequent exec_wait reflects the cancellation state.
+    """
     harness = _IntegrationTestHarness()
 
-    raw_res = harness.bridge.dispatch(
-        "exec",
-        {"command": "python", "args": ["-c", "long_job"]},
-        host_session=harness.session,
-        workspace=harness.workspace,
+    _, _, job_id = harness.start_via_bridge(
+        command="long_compile",
+        args=["--monitor"],
     )
-    snap = _parse_payload(raw_res)
-    job_id = str(snap["job_id"])
-    active_proc = next(iter(harness.procs.values()))
-    assert bool(active_proc._terminated) is False
+    proc = next(iter(harness.procs.values()))
+    assert bool(proc._terminated) is False
 
-    # Cancel mid-wait
     cancel_res = harness.bridge.dispatch(
         EXEC_CANCEL_TOOL,
         {"job_id": job_id},
@@ -497,143 +578,70 @@ def test_exec_job_cancel_mid_wait() -> None:
     cancel_payload = _parse_payload(cancel_res)
     assert cancel_payload["job_id"] == job_id
     assert cancel_payload["cancelled"] is True
-    assert bool(active_proc._terminated) is True
+    assert isinstance(cancel_payload["elapsed_s"], (int, float))
 
-    # Subsequent exec_wait reflects cancellation
-    wait_after_cancel = harness.bridge.dispatch(
-        EXEC_WAIT_TOOL,
-        {"job_id": job_id},
+    # The fake process tree was killed.
+    assert bool(proc._terminated) is True
+
+    # Subsequent exec_wait reflects the cancellation state.
+    after_cancel = _poll_exec_wait(harness, job_id, wait_ms=1)
+    assert after_cancel["cancelled"] is True
+
+
+def test_exec_job_hard_cap_error_names_job_ceiling_and_elapsed() -> None:
+    """A ``hard_cap`` kill surfaces the real job ceiling and the real elapsed
+    runtime through the public ``exec_wait`` handler — not the legacy
+    300-second constant, and never a bare "timed out after ?ms".
+
+    This is the observable half of the cause-accurate-messaging contract:
+    the agent learns which limit fired, how long the job actually ran, and
+    which knob raises it.
+    """
+    harness = _IntegrationTestHarness()
+
+    requested_ceiling_ms = 60_000
+    raw_res = harness.bridge.dispatch(
+        "exec",
+        {
+            "command": "long_build",
+            "args": ["--all"],
+            "max_runtime_ms": requested_ceiling_ms,
+        },
         host_session=harness.session,
         workspace=harness.workspace,
     )
-    assert isinstance(wait_after_cancel, ToolResult)
-    assert wait_after_cancel.is_error is False
-    after_payload = _parse_payload(wait_after_cancel)
-    assert after_payload["job_id"] == job_id
-    assert after_payload["cancelled"] is True
+    job_id = str(_parse_payload(raw_res)["job_id"])
 
+    # Idle job: advance fake time past the per-call ceiling, then step.
+    step_dt = 30.0
+    for _ in range(3):
+        harness.clock.advance(step_dt)
+        harness.registry.step_job(job_id, dt=step_dt)
 
-def test_direct_handlers_parity_and_flow() -> None:
-    """Direct handler calls (handle_exec_command, handle_exec_wait) match bridge behavior."""
-    harness = _IntegrationTestHarness()
-
-    # Call handle_exec_command directly
-    exec_res = handle_exec_command(
-        harness.session,
-        harness.workspace,
-        {"command": "python", "args": ["-c", "compute_pi"]},
-        registry=harness.registry,
+    wait_res = harness.bridge.dispatch(
+        EXEC_WAIT_TOOL,
+        {"job_id": job_id, "wait_ms": 1},
+        host_session=harness.session,
+        workspace=harness.workspace,
     )
-    assert exec_res.is_error is False
-    snap = _parse_payload(exec_res)
-    job_id = str(snap["job_id"])
-    assert snap["running"] is True
+    assert isinstance(wait_res, ToolResult)
+    assert wait_res.is_error is True
+    content = wait_res.content[0]
+    assert isinstance(content, ToolContent)
+    text = content.text
 
-    # Direct handle_exec_wait while running
-    wait_res = handle_exec_wait(
-        harness.session,
-        harness.workspace,
-        {"job_id": job_id, "wait_ms": 5000},
-        registry=harness.registry,
-    )
-    assert wait_res.is_error is False
-    wait_snap = _parse_payload(wait_res)
-    assert wait_snap["running"] is True
-
-    # Mark finished
-    active_proc = next(iter(harness.procs.values()))
-    active_proc._returncode = 0
-
-    # Direct handle_exec_wait on finished job
-    final_res = handle_exec_wait(
-        harness.session,
-        harness.workspace,
-        {"job_id": job_id},
-        registry=harness.registry,
-    )
-    assert final_res.is_error is False
-    final = _parse_payload(final_res)
-    assert final["running"] is False
-    assert final["returncode"] == 0
-
-
-def test_direct_handlers_cancel_mid_wait() -> None:
-    """Direct handle_exec_cancel terminates process and updates job status."""
-    harness = _IntegrationTestHarness()
-
-    exec_res = handle_exec_command(
-        harness.session,
-        harness.workspace,
-        {"command": "python", "args": ["-c", "train_model"]},
-        registry=harness.registry,
-    )
-    snap = _parse_payload(exec_res)
-    job_id = str(snap["job_id"])
-    active_proc = next(iter(harness.procs.values()))
-
-    # Direct cancel
-    cancel_res = handle_exec_cancel(
-        harness.session,
-        harness.workspace,
-        {"job_id": job_id},
-        registry=harness.registry,
-    )
-    assert cancel_res.is_error is False
-    cancel_payload = _parse_payload(cancel_res)
-    assert cancel_payload["cancelled"] is True
-    assert bool(active_proc._terminated) is True
-
-    # Direct wait on cancelled job
-    wait_res = handle_exec_wait(
-        harness.session,
-        harness.workspace,
-        {"job_id": job_id},
-        registry=harness.registry,
-    )
-    assert wait_res.is_error is False
-    wait_payload = _parse_payload(wait_res)
-    assert wait_payload["cancelled"] is True
-
-
-def test_exec_job_parameter_validation_and_capability_checks() -> None:
-    """Invalid parameters and capability gaps are rejected appropriately."""
-    harness = _IntegrationTestHarness()
-
-    # Empty job_id in handle_exec_wait
-    with pytest.raises(InvalidParamsError, match="'job_id' must be a non-empty string"):
-        handle_exec_wait(harness.session, harness.workspace, {"job_id": ""})
-
-    # Non-string job_id in handle_exec_cancel
-    with pytest.raises(InvalidParamsError, match="'job_id' must be a non-empty string"):
-        handle_exec_cancel(harness.session, harness.workspace, {"job_id": 12345})
-
-    # Session lacking ProcessExecBounded capability
-    unauthorized_session = AgentSession(
-        session_id="unauth-1",
-        run_id="unauth-run-1",
-        drain="standalone",
-        capabilities=set(),
-    )
-    with pytest.raises(CapabilityDeniedError):
-        handle_exec_command(
-            unauthorized_session,
-            harness.workspace,
-            {"command": "python", "args": ["-c", "test"]},
-            registry=harness.registry,
-        )
-
-    with pytest.raises(CapabilityDeniedError):
-        handle_exec_wait(
-            unauthorized_session,
-            harness.workspace,
-            {"job_id": "job_123"},
-            registry=harness.registry,
-        )
-
-    with pytest.raises(CapabilityDeniedError):
-        handle_exec_cancel(
-            unauthorized_session,
-            harness.workspace,
-            {"job_id": "job_123"},
-            registry=harness.registry,
-        )
+    # The job handle is named, so the agent can act on it.
+    assert job_id in text
+    # The ceiling that actually fired is named, in ms, as a job ceiling.
+    assert f"{requested_ceiling_ms}ms" in text
+    # The real runtime is reported in the header, and it is at or past the
+    # ceiling that fired (the soft reply budget also consumed fake time).
+    header = text.splitlines()[0]
+    assert header.startswith(f"Job {job_id} was killed after ")
+    elapsed_ms_text = header.split(" was killed after ", 1)[1].split("ms", 1)[0]
+    assert int(elapsed_ms_text) >= requested_ceiling_ms
+    # The knob that raises the ceiling is named, and the legacy constant
+    # is not (this is a job kill, not the legacy in-request envelope).
+    assert "max_runtime_ms" in text
+    assert "EXEC_MAX_TIMEOUT_MS" not in text
+    assert "Background command execution is not supported" not in text

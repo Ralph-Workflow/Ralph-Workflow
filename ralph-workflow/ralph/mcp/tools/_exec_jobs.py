@@ -138,6 +138,10 @@ class _JobResult:
     verdict: LivenessVerdict | None
     elapsed_s: float
     cancelled: bool = False
+    #: Effective runtime ceiling in ms (the clamped ``max_runtime_ms``, else
+    #: ``EXEC_JOB_CEILING_S``). Carried so a kill message can name the limit
+    #: that actually fired instead of an unrelated legacy constant.
+    ceiling_ms: int | None = None
 
 
 @dataclass
@@ -195,6 +199,15 @@ class _ActiveJob:
         self.start_time = clock()
         self.last_wait_time = self.start_time
         self.last_sample_time = self.start_time
+        # Effective runtime ceiling (D10): the per-call ``max_runtime_ms``
+        # clamped to ``EXEC_JOB_CEILING_MAX_S``, else the default
+        # ``EXEC_JOB_CEILING_S``. Resolved once here so the kill check and the
+        # kill message can never name two different limits.
+        if max_runtime_ms is not None:
+            ceiling_s = min(max_runtime_ms / 1000.0, td.EXEC_JOB_CEILING_MAX_S)
+        else:
+            ceiling_s = td.EXEC_JOB_CEILING_S
+        self.ceiling_ms = int(ceiling_s * 1000)
         # ``last_output_at`` is initialised to ``None`` (no output yet) so the
         # first sample sees ``seconds_since_output=None`` → OutputRecent=0
         # → R1/R4/R7 do NOT fire → R5 fires alone → score=0. Initialising to
@@ -409,6 +422,7 @@ class ExecJobRegistry:
             verdict=job.latest_verdict,
             elapsed_s=max(0.0, now - job.start_time),
             cancelled=job.cancelled,
+            ceiling_ms=job.ceiling_ms,
         )
 
         with self._lock:
@@ -452,6 +466,7 @@ class ExecJobRegistry:
             verdict=job.latest_verdict,
             elapsed_s=max(0.0, now - job.start_time),
             cancelled=job.cancelled,
+            ceiling_ms=job.ceiling_ms,
         )
 
         with self._lock:
@@ -489,11 +504,7 @@ class ExecJobRegistry:
             return
 
         # 3. Hard cap check
-        if job.max_runtime_ms is not None:
-            ceiling_s = min(job.max_runtime_ms / 1000.0, td.EXEC_JOB_CEILING_MAX_S)
-        else:
-            ceiling_s = td.EXEC_JOB_CEILING_S
-        if now - job.start_time >= ceiling_s:
+        if now - job.start_time >= job.ceiling_ms / 1000.0:
             self._kill_job(job, cause="hard_cap")
             return
 
@@ -756,6 +767,7 @@ class ExecJobRegistry:
                         verdict=active.latest_verdict,
                         elapsed_s=max(0.0, now - active.start_time),
                         cancelled=active.cancelled,
+                        ceiling_ms=active.ceiling_ms,
                     )
                 else:
                     now = self._clock()
@@ -813,6 +825,7 @@ class ExecJobRegistry:
             verdict=active.latest_verdict,
             elapsed_s=max(0.0, now - active.start_time),
             cancelled=True,
+            ceiling_ms=active.ceiling_ms,
         )
 
     def shutdown_all(self, cause: KillCause = "session_end") -> None:

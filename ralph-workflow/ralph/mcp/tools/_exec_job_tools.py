@@ -173,6 +173,11 @@ def handle_exec_wait(
             f"Job {job_id} terminated: {res.kill_cause}",
             timed_out=True,
             timeout_cause=res.kill_cause,
+            # Real measurements, so the message names what actually happened:
+            # how long the job ran and which ceiling was in force.
+            elapsed_ms=int(res.elapsed_s * 1000),
+            ceiling_ms=res.ceiling_ms,
+            job_id=job_id,
             partial_output=str(res.output.get("stdout", ""))
             or str(res.output.get("stderr", ""))
             or None,

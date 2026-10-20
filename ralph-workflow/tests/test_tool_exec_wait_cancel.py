@@ -99,7 +99,7 @@ class TestExecWaitAndCancelHandlers:
             stall_window_s=60.0,
             strongest_rule="",
             suspicious=False,
-            verdict_kind="active",
+            verdict_kind="working",
             signals={"OutputRecent": 0.5},
             elapsed_s=12.5,
         )
@@ -135,7 +135,7 @@ class TestExecWaitAndCancelHandlers:
         verdict_data = data["verdict"]
         assert isinstance(verdict_data, dict)
         assert verdict_data["score"] == 0.2
-        assert verdict_data["verdict_kind"] == "active"
+        assert verdict_data["verdict_kind"] == "working"
         assert reg.waited_calls == [
             {"job_id": "job_active_123", "wait_ms": 30000, "capability": "ProcessExecBounded"}
         ]
@@ -419,3 +419,82 @@ def test_tool_constants() -> None:
     """Tool name constants match canonical tool names."""
     assert EXEC_WAIT_TOOL == "exec_wait"
     assert EXEC_CANCEL_TOOL == "exec_cancel"
+
+
+# ---------------------------------------------------------------------------
+# WU-4: exec_wait restart-loss contract end-to-end
+# ---------------------------------------------------------------------------
+#
+# After an MCP server restart, ``exec_wait`` against an old job_id must
+# return ``is_error=True`` carrying the contractual "lost in server restart"
+# wording. The contract is idempotent (never retryable, never hangs) and
+# the response is plain TEXT, NOT a fabricated JSON JobSnapshot/JobResult
+# payload — the lost job must NEVER come back as a running snapshot.
+
+
+def test_exec_wait_for_restart_lost_job_id_returns_idempotent_nonretryable_error(
+    tmp_path: Path,
+) -> None:
+    """WU-4: After MCP server restart, ``exec_wait`` on an old job_id returns
+    ``is_error=True`` with the 'lost in server restart' wording.
+
+    The response is plain text (NOT a fabricated JSON JobSnapshot/JobResult
+    payload). The contract is idempotent — repeated calls yield the same
+    error; the MCP client must NOT retry on this error.
+    """
+    reg = _MockExecJobRegistry(
+        wait_outcome=ExecJobError(
+            "job_old_server_id",
+            "unknown or expired job; process was killed or lost in server restart",
+        )
+    )
+    session = MockSession({"ProcessExecBounded"})
+    workspace = MockWorkspaceRoot(tmp_path)
+
+    # 1. First call returns is_error=True with the lost-in-server-restart
+    # wording. The content is plain text (NOT a JSON payload — no
+    # fabricated JobResult/JobSnapshot sneaks through).
+    result = handle_exec_wait(
+        session,
+        workspace,
+        {"job_id": "job_old_server_id", "wait_ms": 5000},
+        registry=reg,
+    )
+    assert result.is_error is True
+    content = result.content[0]
+    assert isinstance(content, ToolContent)
+    text = content.text
+    # The lost-in-server-restart wording MUST be present (this is the
+    # contractual signal that the prior server lost the job on restart).
+    assert "lost in server restart" in text, text
+    assert "unknown or expired job" in text
+    # MUST be plain text — ``str(ExecJobError(...))`` produces a free-form
+    # sentence that is not valid JSON.
+    with pytest.raises(ValueError):
+        json.loads(text)
+    assert reg.waited_calls[-1]["job_id"] == "job_old_server_id"
+
+    # 2. Idempotent: a second wait with the same (stale) job_id returns
+    # is_error=True, no fabricated payload, and the same lost-in-server-restart
+    # wording. The contract is non-retryable — the client must back off.
+    result2 = handle_exec_wait(
+        session,
+        workspace,
+        {"job_id": "job_old_server_id", "wait_ms": 0},
+        registry=reg,
+    )
+    assert result2.is_error is True
+    content2 = result2.content[0]
+    assert isinstance(content2, ToolContent)
+    text2 = content2.text
+    assert "lost in server restart" in text2
+    with pytest.raises(ValueError):
+        json.loads(text2)
+
+    # 3. The registry was called exactly twice with the same job_id — proving
+    # every call yields the same observable error (the MCP client must NOT
+    # retry on this error; further retries do not change the outcome).
+    assert [c["job_id"] for c in reg.waited_calls] == [
+        "job_old_server_id",
+        "job_old_server_id",
+    ]
