@@ -383,7 +383,10 @@ def test_e44_bridge_shutdown_releases_listening_socket_and_reaps(tmp_path: Path)
     port = sock.getsockname()[1]
 
     child = subprocess.Popen(
-        [sys.executable, "-c", "import time; time.sleep(5)"],
+        # 1 s sleep is enough: bridge.shutdown() below kills the child
+        # within microseconds, so the 5 s originally hardcoded only padded
+        # wall-clock without exercising any added behavior.
+        [sys.executable, "-c", "import time; time.sleep(1)"],
     )
     session_file = tmp_path / "session_shutdown.json"
     session_file.write_text("{}", encoding="utf-8")

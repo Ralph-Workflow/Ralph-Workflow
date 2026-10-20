@@ -64,8 +64,13 @@ def test_non_mcp_real_child_does_not_inherit_listening_fd(tmp_path: Path) -> Non
 
     pm = get_process_manager()
     # Spawn a non-MCP child process (e.g. agent tool, git, sub-process)
+    # The sleep is bounded because the parent kills the child immediately
+    # after the /proc/<pid>/fd assertion below completes; 1 s is well above
+    # the time the parent spends on _get_process_open_inodes + the assertion
+    # so the child is reliably still alive at inspection. Shorter values
+    # (e.g. 0.5 s) race the assertion on heavily loaded xdist workers.
     child = pm.spawn(
-        [sys.executable, "-c", "import time; time.sleep(3)"],
+        [sys.executable, "-c", "import time; time.sleep(1)"],
         SpawnOptions(cwd=str(tmp_path), label="e33-non-mcp-child"),
     )
 
@@ -112,8 +117,11 @@ def test_pass_fds_explicitly_passes_socket_to_child(tmp_path: Path) -> None:
 
     pm = get_process_manager()
     # Spawn child with pass_fds naming the listening socket fd
+    # 1 s is ample for the parent to enumerate /proc/<pid>/fd; the parent
+    # kills the child immediately after the inode assertion (shorter sleeps
+    # race on xdist-saturated hosts).
     child = pm.spawn(
-        [sys.executable, "-c", "import time; time.sleep(3)"],
+        [sys.executable, "-c", "import time; time.sleep(1)"],
         SpawnOptions(
             cwd=str(tmp_path),
             pass_fds=(listening_fd,),
