@@ -103,6 +103,12 @@ from ralph.mcp.server._runtime_constants import (
     DEFAULT_PORT,
     DEFAULT_TRANSPORT,
 )
+from ralph.mcp.server._runtime_hooks import (
+    _OWNER_LOSS_HOOKS,
+    _SHUTDOWN_HOOKS,
+    register_owner_loss_hook,
+    register_shutdown_hook,
+)
 from ralph.mcp.server._runtime_polling import (
     _poll_registry_build_gate as _base_poll_registry_build_gate,
 )
@@ -869,22 +875,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--host", default=DEFAULT_HOST, help="HTTP bind host")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="HTTP bind port")
     return parser.parse_args(list(argv) if argv is not None else None)
-
-
-_SHUTDOWN_HOOKS: list[Callable[[], None]] = []  # bounded-accumulator-ok: registration hooks only
-_OWNER_LOSS_HOOKS: list[Callable[[], None]] = []  # bounded-accumulator-ok: registration hooks only
-
-
-def register_shutdown_hook(hook: Callable[[], None]) -> None:
-    """Register a callback to run on standalone MCP server shutdown."""
-    if hook not in _SHUTDOWN_HOOKS:
-        _SHUTDOWN_HOOKS.append(hook)
-
-
-def register_owner_loss_hook(hook: Callable[[], None]) -> None:
-    """Register a callback to run before exit when the owner process is lost."""
-    if hook not in _OWNER_LOSS_HOOKS:
-        _OWNER_LOSS_HOOKS.append(hook)
 
 
 def _run_shutdown_hooks() -> None:

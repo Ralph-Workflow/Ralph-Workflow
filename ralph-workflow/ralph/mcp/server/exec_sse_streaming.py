@@ -6,10 +6,17 @@ import contextlib
 import json
 import secrets
 import threading
+from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
 from ralph.mcp.server._metrics import get_default_metrics
 from ralph.mcp.tools._exec_jobs import ExecJobRegistry, ProgressSubscription
+from ralph.mcp.tools._exec_jobs import (
+    get_exec_job_registry as _get_default_registry,
+)
+from ralph.mcp.tools._exec_jobs import (
+    set_exec_job_registry as _set_exec_job_registry,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -25,37 +32,31 @@ if TYPE_CHECKING:
 # race a newer owner's swap and stomp it.
 _SINK_SWAP_LOCK = threading.Lock()
 
-_default_registry_holder: list[object] = [None]
-_DEFAULT_REGISTRY_LOCK = threading.Lock()
+_CURRENT_PROGRESS_SUB: ContextVar[ProgressSubscription | None] = ContextVar(
+    "current_progress_sub", default=None
+)
 
 
-class _WildcardJobId(str):
-    """Wildcard job_id that matches any job string in subscription lookups."""
-
-    def __new__(cls) -> _WildcardJobId:
-        return super().__new__(cls, "*")
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, str)
-
-    def __hash__(self) -> int:
-        return super().__hash__()
+def get_current_progress_subscription() -> ProgressSubscription | None:
+    """Return the request-scoped ProgressSubscription installed for this thread, if any."""
+    return _CURRENT_PROGRESS_SUB.get()
 
 
 def get_default_exec_job_registry() -> ExecJobRegistry:
-    """Return or lazily construct the process-default ExecJobRegistry."""
-    with _DEFAULT_REGISTRY_LOCK:
-        reg = _default_registry_holder[0]
-        if reg is None:
-            reg = ExecJobRegistry()
-            _default_registry_holder[0] = reg
-        return reg
+    """Return the process-local ExecJobRegistry singleton.
+
+    Thin re-export of :func:`ralph.mcp.tools._exec_jobs.get_exec_job_registry`
+    so historical callers that imported this name from ``exec_sse_streaming``
+    continue to resolve to the single child-local registry. The single
+    source of truth lives in :mod:`ralph.mcp.tools._exec_jobs`; this module
+    only inherited the helper before the registry was unified.
+    """
+    return _get_default_registry()
 
 
 def set_default_exec_job_registry(registry: ExecJobRegistry | None) -> None:
-    """Inject or reset the default ExecJobRegistry (used by tests)."""
-    with _DEFAULT_REGISTRY_LOCK:
-        _default_registry_holder[0] = registry
+    """Inject or clear the singleton (test seam). Thin re-export."""
+    _set_exec_job_registry(registry)
 
 
 def extract_progress_token(request: JsonRpcRequest) -> str | int | None:
@@ -127,27 +128,40 @@ def _build_progress_frame(token: str | int, sample: dict[str, object]) -> bytes:
 
 def _install_progress_subscription(
     request: JsonRpcRequest,
-    registry: ExecJobRegistry | None,
+    registry: ExecJobRegistry,
     write_frame: Callable[[bytes], None],
-) -> tuple[ProgressSubscription | None, list[bool]]:
-    """Register request-scoped ProgressSubscription if progressToken is present."""
+) -> tuple[ProgressSubscription | None, list[bool], str | None]:
+    """Register a request-scoped ProgressSubscription bound to an explicit job_id.
+
+    Returns ``(sub, active_flag, explicit_job_id)``:
+    * ``sub`` is the installed :class:`ProgressSubscription` when a token
+      was found and binding was possible, otherwise ``None``.
+    * ``active_flag`` is a single-element list the request thread flips to
+      ``False`` at teardown so a torn-down sink never emits another frame.
+    * ``explicit_job_id`` is non-``None`` only when the request itself
+      carries a ``job_id`` (``exec_wait`` / ``exec_cancel``). For
+      ``exec`` / ``unsafe_exec`` / ``raw_exec`` no ``job_id`` is in the
+      request at install time, so the worker (WU-2) must call
+      :func:`ralph.mcp.tools._exec_jobs.attach_progress_subscription`
+      after ``registry.start(...)`` returns the new ``job_id``.
+
+    The subscription is bound to ``job_id`` EXPLICITLY. There is no
+    wildcard/None-means-any association under concurrency: a subscription
+    whose ``job_id`` does not equal the sampled running job's ``job_id``
+    receives no frames, full stop. Concurrent exec jobs routed through the
+    same transport therefore dispatch progress only to the request that
+    owns their ``job_id``.
+    """
     raw_token = extract_progress_token(request)
-    if raw_token is None or registry is None:
-        return None, [False]
+    if raw_token is None:
+        return None, [False], None
 
-    job_id = extract_job_id(request)
-    sub_job_id: str = job_id if job_id is not None else _WildcardJobId()
+    explicit_job_id = extract_job_id(request)
     active_flag = [True]
-
-    sub_holder: list[ProgressSubscription | None] = [None]
 
     def _write_progress_notification(sample: dict[str, object]) -> None:
         if not active_flag[0]:
             return
-        sub = sub_holder[0]
-        if sub is not None and isinstance(sub.job_id, _WildcardJobId) and "job_id" in sample:
-            sub.job_id = str(sample["job_id"])
-
         frame = _build_progress_frame(raw_token, sample)
         write_frame(frame)
 
@@ -155,11 +169,10 @@ def _install_progress_subscription(
         request_id=f"req_{secrets.token_urlsafe(8)}",
         progress_token=str(raw_token),
         sink=_write_progress_notification,
-        job_id=sub_job_id,
+        job_id=explicit_job_id,
     )
-    sub_holder[0] = sub
     registry.subscribe_progress(sub)
-    return sub, active_flag
+    return sub, active_flag, explicit_job_id
 
 
 def exec_sse_streaming_post(
@@ -180,11 +193,23 @@ def exec_sse_streaming_post(
     thread, so output chunks flow to THIS connection and no other. The entry
     is cleared compare-and-swap on exit.
 
-    When the request carries a progress token (_meta.progressToken or
-    progressToken), registers a request-scoped ProgressSubscription on the
-    ExecJobRegistry and emits notifications/progress frames on each liveness
-    sample. On request completion, disconnect, or error, the subscription is
-    unsubscribed so torn-down sinks never emit to stale tokens.
+    When the request carries a progress token (``_meta.progressToken`` or
+    ``progressToken``), registers a request-scoped
+    :class:`ProgressSubscription` on the shared ``ExecJobRegistry``. Bindings
+    are EXPLICIT:
+
+    * ``exec_wait`` / ``exec_cancel`` requests include ``job_id`` directly,
+      so the subscription is bound at install time.
+    * ``exec`` / ``unsafe_exec`` / ``raw_exec`` requests have no ``job_id``
+      until the worker calls ``registry.start(...)``; this function installs
+      the subscription with ``job_id=None`` (so dispatch never fires
+      prematurely) and the worker calls
+      :func:`ralph.mcp.tools._exec_jobs.attach_progress_subscription` after
+      obtaining the new ``job_id``.
+
+    On request completion, disconnect, or error, the subscription is
+    unsubscribed via ``registry.unsubscribe_progress(sub.request_id)`` so a
+    torn-down sink never emits to a stale token.
 
     Returns the updated ServerState from handle_request (or the original on error).
     """
@@ -211,15 +236,12 @@ def exec_sse_streaming_post(
 
     my_entry = (threading.get_ident(), _write_notification)
 
-    target_registry = registry
-    if target_registry is None:
-        cand = getattr(session, "exec_job_registry", None)
-        if isinstance(cand, ExecJobRegistry):
-            target_registry = cand
-    if target_registry is None:
-        target_registry = get_default_exec_job_registry()
+    target_registry: ExecJobRegistry = registry if registry is not None else _get_default_registry()
 
-    sub, active_flag = _install_progress_subscription(request, target_registry, _locked_write)
+    sub, active_flag, explicit_job_id = _install_progress_subscription(
+        request, target_registry, _locked_write
+    )
+    prog_token = _CURRENT_PROGRESS_SUB.set(sub)
 
     # Everything after the SSE headers runs inside this net: an exception that
     # escapes here kills the request thread AFTER the 200 was sent, so the
@@ -249,8 +271,9 @@ def exec_sse_streaming_post(
         _locked_write(f"event: message\r\ndata: {json.dumps(error_body)}\r\n\r\n".encode())
         get_default_metrics().record_terminal_frame(request.method)
     finally:
+        _CURRENT_PROGRESS_SUB.reset(prog_token)
         active_flag[0] = False
-        if sub is not None and target_registry is not None:
+        if sub is not None:
             with contextlib.suppress(Exception):
                 target_registry.unsubscribe_progress(sub.request_id)
         # Compare-and-swap clear: only clear if this request's entry is still
@@ -263,6 +286,14 @@ def exec_sse_streaming_post(
                 if session.tool_output_sink_entry is my_entry:
                     session.tool_output_sink_entry = None
 
+    # Discard the explicit_job_id binding hint for introspection tools; the
+    # contract is "subscriptions are bound by the WU-2 worker via the public
+    # hook OR by this function when job_id is in the request" — returning it
+    # from the function body keeps the function's tuple shape stable for
+    # future callers (e.g. WU-2 instrumentation) without coupling them to the
+    # subscription internals.
+    del explicit_job_id
+
     return new_state
 
 
@@ -270,6 +301,7 @@ __all__ = [
     "exec_sse_streaming_post",
     "extract_job_id",
     "extract_progress_token",
+    "get_current_progress_subscription",
     "get_default_exec_job_registry",
     "set_default_exec_job_registry",
 ]

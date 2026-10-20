@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import dataclasses
 import io
 import logging
 import secrets
@@ -16,27 +17,28 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass
-from typing import IO, TYPE_CHECKING, Literal
+from typing import IO, TYPE_CHECKING, Final, Literal
 
 import psutil
 
 import ralph.timeout_defaults as td
-from ralph.mcp.server.runtime import (
+from ralph.mcp.server._runtime_hooks import (
     register_owner_loss_hook as _runtime_register_owner_loss_hook,
 )
-from ralph.mcp.server.runtime import (
+from ralph.mcp.server._runtime_hooks import (
     register_shutdown_hook as _runtime_register_shutdown_hook,
 )
-from ralph.mcp.tools._exec_output_spill import (
-    INLINE_OUTPUT_LIMIT_BYTES,
-    build_spill_preview,
-    spill_output,
+from ralph.mcp.tools._exec_job_output import (
+    _append_tail_buffer,
+    _format_job_output,
+    serialize_liveness_verdict,
 )
 from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
 from ralph.process.manager._liveness_assessor import (
     LivenessConfig,
     LivenessVerdict,
     StallIntegrator,
+    SuspicionClock,
     assess,
     default_liveness_config,
 )
@@ -119,61 +121,6 @@ ProgressSubscription = _ProgressSubscription
 ExecJobError = _ExecJobError
 
 
-def _append_tail_buffer(
-    head: bytearray, tail: bytearray, chunk: bytes, max_bytes: int = 65_536
-) -> None:
-    """Retain bounded head and tail buffers of raw bytes."""
-    head_capacity = max(0, max_bytes - len(head))
-    if head_capacity > 0:
-        head.extend(chunk[:head_capacity])
-    tail.extend(chunk)
-    if len(tail) > max_bytes:
-        del tail[:-max_bytes]
-
-
-def _format_job_output(
-    stdout_bytes: bytes,
-    stderr_bytes: bytes,
-    *,
-    total_stdout_len: int,
-    total_stderr_len: int,
-    spill_dir: Path | None = None,
-) -> dict[str, object]:
-    """Format captured job output according to standard exec preview/spill shape."""
-    stdout_text = stdout_bytes.decode("utf-8", errors="replace")
-    stderr_text = stderr_bytes.decode("utf-8", errors="replace")
-    combined_len = total_stdout_len + total_stderr_len
-    truncated = (total_stdout_len > len(stdout_bytes)) or (total_stderr_len > len(stderr_bytes))
-
-    preview_text = ""
-    spill_path: str | None = None
-
-    if combined_len > INLINE_OUTPUT_LIMIT_BYTES or truncated:
-        combined_text = (
-            f"Stdout:\n{stdout_text}\nStderr:\n{stderr_text}" if stderr_text else stdout_text
-        )
-        path = spill_output(combined_text, spill_dir)
-        spill_path = str(path)
-        preview_text = build_spill_preview(combined_text, path, combined_len, truncated=truncated)
-    else:
-        preview_parts: list[str] = []
-        if stdout_text:
-            preview_parts.append(f"Stdout:\n{stdout_text}")
-        if stderr_text:
-            preview_parts.append(f"Stderr:\n{stderr_text}")
-        preview_text = "\n\n".join(preview_parts)
-
-    return {
-        "stdout": stdout_text,
-        "stderr": stderr_text,
-        "stdout_bytes": total_stdout_len,
-        "stderr_bytes": total_stderr_len,
-        "truncated": truncated,
-        "spill_path": spill_path,
-        "preview": preview_text,
-    }
-
-
 class _ActiveJob:
     """Internal state for an actively managed exec job."""
 
@@ -215,7 +162,17 @@ class _ActiveJob:
         self.cancelled = False
         self.kill_cause: KillCause | None = None
         self.returncode: int | None = None
-        self.latest_verdict: LivenessVerdict | None = None
+        self.latest_verdict: LivenessVerdict | None = LivenessVerdict(
+            score=0.0,
+            pressure=0.0,
+            stall_window_s=timeout_ms / 1000.0,
+            strongest_rule="",
+            suspicious=False,
+            verdict_kind="working",
+            signals={},
+            elapsed_s=0.0,
+        )
+        self.suspicion_clock = SuspicionClock(threshold_s=td.EXEC_SUSPICIOUS_REPORT_S)
 
         self.stdout_head = bytearray()
         self.stdout_tail = bytearray()
@@ -229,6 +186,7 @@ class _ActiveJob:
         self.stall_integrator = StallIntegrator(theta=liveness_config.stall_theta)
         self.tree_sampler = TreeSampler(psutil_module, clock, liveness_config)
         self.runner_thread: threading.Thread | None = None
+        self.watcher_thread: threading.Thread | None = None
 
 
 class ExecJobRegistry:
@@ -298,8 +256,24 @@ class ExecJobRegistry:
     def _render_job_output(self, job: _ActiveJob) -> dict[str, object]:
         """Construct a formatted output dictionary for an active or finished job."""
         with job.lock:
-            stdout_bytes = bytes(job.stdout_head if len(job.stdout_tail) == 0 else job.stdout_tail)
-            stderr_bytes = bytes(job.stderr_head if len(job.stderr_tail) == 0 else job.stderr_tail)
+            if len(job.stdout_tail) > 0 and job.total_stdout_bytes > len(job.stdout_head):
+                stdout_bytes = (
+                    bytes(job.stdout_head) + b"\n... [truncated] ...\n" + bytes(job.stdout_tail)
+                )
+            else:
+                stdout_bytes = (
+                    bytes(job.stdout_head) if len(job.stdout_head) > 0 else bytes(job.stdout_tail)
+                )
+
+            if len(job.stderr_tail) > 0 and job.total_stderr_bytes > len(job.stderr_head):
+                stderr_bytes = (
+                    bytes(job.stderr_head) + b"\n... [truncated] ...\n" + bytes(job.stderr_tail)
+                )
+            else:
+                stderr_bytes = (
+                    bytes(job.stderr_head) if len(job.stderr_head) > 0 else bytes(job.stderr_tail)
+                )
+
             total_stdout = job.total_stdout_bytes
             total_stderr = job.total_stderr_bytes
 
@@ -474,25 +448,40 @@ class ExecJobRegistry:
             last_out = job.last_output_at
 
         window = job.tree_sampler.sample(pid, last_out, lines)
-        verdict = assess(window, job.liveness_config)
-        job.latest_verdict = verdict
+        raw_verdict = assess(window, job.liveness_config)
 
         # 5. Stall check
-        job.stall_integrator.step(verdict.score, step_dt)
         stall_window_s = job.timeout_ms / 1000.0
+        new_pressure = job.stall_integrator.step(raw_verdict.score, step_dt)
+
+        # 6. Suspicion clock
+        job.suspicion_clock.step(strongest_rule=raw_verdict.strongest_rule, dt=step_dt)
+
+        verdict = dataclasses.replace(
+            raw_verdict,
+            pressure=new_pressure,
+            stall_window_s=stall_window_s,
+        )
+        job.latest_verdict = verdict
+
+        logger.info(
+            "Exec job %s sample: score=%.2f pressure=%.2f/%.1f rule=%s kind=%s signals=%s",
+            job.job_id,
+            verdict.score,
+            verdict.pressure,
+            verdict.stall_window_s,
+            verdict.strongest_rule,
+            verdict.verdict_kind,
+            verdict.signals,
+        )
+
         if job.stall_integrator.should_kill(stall_window_s):
             self._kill_job(job, cause="stalled")
             return
 
-        # 6. No progress check
-        if verdict.suspicious:
-            if job.suspicious_started_at is None:
-                job.suspicious_started_at = now
-            elif now - job.suspicious_started_at >= td.EXEC_NO_PROGRESS_WINDOW_S:
-                self._kill_job(job, cause="no_progress")
-                return
-        else:
-            job.suspicious_started_at = None
+        if job.suspicion_clock.streak_s >= td.EXEC_NO_PROGRESS_WINDOW_S:
+            self._kill_job(job, cause="no_progress")
+            return
 
         # 7. Progress notifications
         self._dispatch_progress_for_job(job)
@@ -535,6 +524,27 @@ class ExecJobRegistry:
                     job.output_lines.append(decoded)
                     buffer_line = bytearray()
 
+    def _watch_job(
+        self,
+        job: _ActiveJob,
+        handle: ManagedProcess,
+        t_stdout: threading.Thread,
+        t_stderr: threading.Thread,
+    ) -> None:
+        """Watch process exit, join stream reader threads, and mark job finished."""
+        while job.running and not job.done_event.is_set():
+            try:
+                rc = handle.poll()
+            except Exception:
+                rc = None
+            if rc is not None:
+                t_stdout.join(timeout=1.0)
+                t_stderr.join(timeout=1.0)
+                self._mark_finished(job, returncode=rc)
+                break
+            if job.done_event.wait(timeout=0.02):
+                break
+
     def _runner_loop(self, job: _ActiveJob) -> None:
         """Periodic background runner loop for active job."""
         while not job.done_event.wait(timeout=self._sample_interval_s):
@@ -553,17 +563,7 @@ class ExecJobRegistry:
         progress: ProgressSubscription | None = None,
     ) -> str:
         """Spawn and register a long-running exec job."""
-        with self._lock:
-            if len(self._running_jobs) >= td.EXEC_MAX_RUNNING_JOBS:
-                raise ExecJobError(
-                    "", f"Running job limit exceeded (max {td.EXEC_MAX_RUNNING_JOBS})"
-                )
-            job_id = f"job_{secrets.token_urlsafe(12)}"
-
-        if progress is not None:
-            progress.job_id = job_id
-            self.subscribe_progress(progress)
-
+        job_id = f"job_{secrets.token_urlsafe(12)}"
         active = _ActiveJob(
             job_id=job_id,
             command=command,
@@ -576,6 +576,17 @@ class ExecJobRegistry:
             psutil_module=self._psutil_module,
             spill_dir=self._spill_dir,
         )
+
+        with self._lock:
+            if len(self._running_jobs) >= td.EXEC_MAX_RUNNING_JOBS:
+                raise ExecJobError(
+                    "", f"Running job limit exceeded (max {td.EXEC_MAX_RUNNING_JOBS})"
+                )
+            self._running_jobs[job_id] = active
+
+        if progress is not None:
+            progress.job_id = job_id
+            self.subscribe_progress(progress)
 
         try:
             handle = self._pm.spawn(
@@ -590,6 +601,8 @@ class ExecJobRegistry:
             )
             active.handle = handle
         except Exception as exc:
+            with self._lock:
+                self._running_jobs.pop(job_id, None)
             self._teardown_progress_for_job(job_id)
             raise ExecJobError(job_id, f"Failed to spawn job: {exc}") from exc
 
@@ -609,10 +622,16 @@ class ExecJobRegistry:
         t_stdout.start()
         t_stderr.start()
 
-        with self._lock:
-            self._running_jobs[job_id] = active
-
         if self._background_sampler:
+            watcher = threading.Thread(
+                target=self._watch_job,
+                args=(active, handle, t_stdout, t_stderr),
+                name=f"job-watch-{job_id}",
+                daemon=True,
+            )
+            active.watcher_thread = watcher
+            watcher.start()
+
             runner = threading.Thread(
                 target=self._runner_loop,
                 args=(active,),
@@ -753,6 +772,157 @@ class ExecJobRegistry:
             self._pm.shutdown_all_for_label("exec_job:")
 
 
+# ---------------------------------------------------------------------------
+# Process-local singleton + public hooks
+# ---------------------------------------------------------------------------
+#
+# The child MCP server runs one ``ExecJobRegistry`` for its lifetime, shared
+# by every tool handler (``exec`` / ``unsafe_exec`` / ``raw_exec`` /
+# ``exec_wait`` / ``exec_cancel``) and the SSE streaming transport. Two
+# callers previously maintained independent singletons (``_JobRegistryState``
+# in ``_exec_job_tools.py`` and ``_default_registry_holder`` in
+# ``exec_sse_streaming.py``), which meant a token-bearing request started
+# against one registry while ``exec_wait`` queried the other. This module
+# owns the single source of truth.
+#
+# The holder is a single-element list so the slot can be re-pointed without
+# changing identity under the lock; see
+# ``test_resource_lifecycle_bounded_accumulators`` for the pattern.
+
+
+_DEFAULT_REGISTRY_HOLDER: list[ExecJobRegistry | None] = [None]
+_DEFAULT_REGISTRY_LOCK: Final[threading.Lock] = threading.Lock()
+
+
+def get_exec_job_registry(
+    *,
+    process_manager: ProcessManager | None = None,
+    clock: Callable[[], float] | None = None,
+    liveness_config: LivenessConfig | None = None,
+    psutil_module: _PsutilModuleLike | None = None,
+    sample_interval_s: float = td.EXEC_LIVENESS_SAMPLE_INTERVAL_S,
+    spill_dir: Path | None = None,
+) -> ExecJobRegistry:
+    """Return the process-local ``ExecJobRegistry`` singleton.
+
+    Lazy-constructs the registry on first access so an importer that never
+    dispatches an exec request never pays for it. ``process_manager``,
+    ``clock``, ``liveness_config``, ``psutil_module``, ``sample_interval_s``,
+    and ``spill_dir`` are honoured only on the FIRST construction; later
+    calls return the existing instance regardless of the values supplied, so
+    test code that wants a custom registry must call
+    :func:`set_exec_job_registry` first.
+
+    Use :func:`reset_exec_job_registry` (or :func:`set_exec_job_registry`)
+    to swap in a test double or to clear the singleton between tests.
+    """
+    if _DEFAULT_REGISTRY_HOLDER[0] is None:
+        with _DEFAULT_REGISTRY_LOCK:
+            if _DEFAULT_REGISTRY_HOLDER[0] is None:
+                _DEFAULT_REGISTRY_HOLDER[0] = ExecJobRegistry(
+                    process_manager=process_manager,
+                    clock=clock,
+                    liveness_config=liveness_config,
+                    psutil_module=psutil_module,
+                    sample_interval_s=sample_interval_s,
+                    spill_dir=spill_dir,
+                )
+    reg = _DEFAULT_REGISTRY_HOLDER[0]
+    if reg is None:
+        # Defensive: the holder is mutated only under _DEFAULT_REGISTRY_LOCK,
+        # and the double-checked locking above guarantees the slot is filled
+        # before this branch is reachable. If a future edit accidentally
+        # clears the slot from another thread without holding the lock, fail
+        # loudly rather than silently returning None to a caller that typed
+        # the result as ``ExecJobRegistry``.
+        raise RuntimeError("ExecJobRegistry singleton cleared without lock")
+    return reg
+
+
+def set_exec_job_registry(registry: ExecJobRegistry | None) -> None:
+    """Inject or clear the singleton (test seam).
+
+    Pass ``registry=None`` to clear; pass an instance to install it as the
+    singleton. Production callers should not use this — use
+    :func:`get_exec_job_registry` to obtain the lazily constructed default.
+    """
+    with _DEFAULT_REGISTRY_LOCK:
+        _DEFAULT_REGISTRY_HOLDER[0] = registry
+
+
+def reset_exec_job_registry() -> None:
+    """Clear the singleton (test seam).
+
+    Convenience wrapper equivalent to ``set_exec_job_registry(None)``. The
+    next :func:`get_exec_job_registry` call reconstructs with default
+    parameters.
+    """
+    set_exec_job_registry(None)
+
+
+def attach_progress_subscription(
+    registry: ExecJobRegistry,
+    *,
+    request_id: str,
+    progress_token: str | int,
+    sink: Callable[[dict[str, object]], None],
+    job_id: str,
+) -> ProgressSubscription:
+    """Attach a request-scoped progress subscription to a specific running job.
+
+    Public hook for the WU-2 worker (``exec`` / ``unsafe_exec`` /
+    ``raw_exec`` handlers). The flow is:
+
+    1. The SSE streaming path installs a request-scoped subscription on the
+       shared registry as soon as ``_meta.progressToken`` is observed on the
+       request (no ``job_id`` yet, since the job hasn't started).
+    2. The exec handler calls ``registry.start(...)`` to spawn the job and
+       obtain the new ``job_id``.
+    3. The exec handler calls ``attach_progress_subscription`` with the
+       ``job_id`` and a sink that wraps its ``write_frame`` callable. The
+       subscription is now bound to the actual job; subsequent liveness
+       steps emit ``notifications/progress`` frames to the sink.
+
+    Bindings are EXPLICIT: the registry dispatch matches subs by exact
+    ``job_id`` only, so a subscription whose ``job_id`` differs from the
+    sampled job never receives its frames. There is no wildcard/None-means-any
+    fallback under concurrency.
+
+    Args:
+        registry: The shared ``ExecJobRegistry`` (obtain via
+            :func:`get_exec_job_registry`).
+        request_id: Stable identifier for this request. Used as the
+            subscription's key — re-attaching with the same id replaces the
+            prior binding, and ``registry.unsubscribe_progress(request_id)``
+            detaches it cleanly at request completion.
+        progress_token: The token the SSE streaming path extracted from
+            ``_meta.progressToken`` (or ``progressToken``); carried in the
+            ``progressToken`` field of emitted ``notifications/progress``
+            frames verbatim.
+        sink: Callable invoked with a liveness-sample ``dict`` for each
+            ``step_job`` dispatch on the bound job. The sink must be
+            non-blocking or its blocking time will stall the runner thread.
+        job_id: The exact ``job_id`` returned by ``registry.start(...)``.
+            Passing a ``job_id`` that does not match a running job leaves
+            the subscription installed but inert (no frames emit until a
+            job with that id is registered).
+
+    Returns:
+        The registered :class:`ProgressSubscription`. The caller can ignore
+        the return value if it has no further need — request-scoped
+        teardown is driven by ``registry.unsubscribe_progress(request_id)``
+        at the end of the request.
+    """
+    sub = ProgressSubscription(
+        request_id=request_id,
+        progress_token=str(progress_token),
+        sink=sink,
+        job_id=job_id,
+    )
+    registry.subscribe_progress(sub)
+    return sub
+
+
 __all__ = [
     "ExecJobError",
     "ExecJobRegistry",
@@ -760,4 +930,9 @@ __all__ = [
     "JobSnapshot",
     "KillCause",
     "ProgressSubscription",
+    "attach_progress_subscription",
+    "get_exec_job_registry",
+    "reset_exec_job_registry",
+    "serialize_liveness_verdict",
+    "set_exec_job_registry",
 ]

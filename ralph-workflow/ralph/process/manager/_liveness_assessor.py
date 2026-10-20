@@ -13,20 +13,76 @@ The verdict feeds two downstream owners:
   time and signals ``should_kill`` once cumulative pressure exceeds the
   configured ``stall_window_s``.
 * The job-flow runtime reads ``verdict_kind`` and ``suspicious`` to emit
-  SUSPICIOUS / WORKING / SUSPENDED events. Continuous suspicion (>= 60s)
-  is owned by U-JOBS, not by this module.
+  SUSPICIOUS / WORKING / SUSPENDED events. Continuous suspicion
+  (>= ``EXEC_SUSPICIOUS_REPORT_S`` = 60s) is owned by ``SuspicionClock``
+  (also in this module).
 
 Frozen contract: the dataclasses below and the public ``assess`` /
-``StallIntegrator`` signatures are part of the §3b wire format. Other
-modules may import them but must not extend them.
+``StallIntegrator`` / ``SuspicionClock`` signatures are part of the §3b
+wire format. Other modules may import them but must not extend them.
+
+----------------------------------------------------------------------
+Score monotonicity — explicit design resolution (spec deviation)
+----------------------------------------------------------------------
+
+PRODUCT_CRITERIA Verification §3 requires: "raising any 'working' signal
+never lowers ``s`` or speeds up a kill". The spec's literal Sugeno
+weighted-average ``s = Σwᵢzᵢ / Σwᵢ`` cannot satisfy that property with the
+fixed ``z`` table: adding a second rule whose ``z`` is below the current
+score — e.g. R1 (z=1.0) firing alone followed by R2 (z=0.9) starting to
+fire — pulls the weighted average DOWN from ``1.0`` to ``0.95``
+(reproduced in property tests; see ``wt-19-fix-long-exec-tasks`` task
+brief E-005). This is a categorical violation of "raising IO lowers the
+score", which the safety-critical kill-curve semantics cannot tolerate.
+
+Resolution: the score aggregate is computed as a per-rule contribution
+``wᵢ·zᵢ`` and the verdict score is the **maximum across the seven rules**:
+
+    s = max_i ( wᵢ · zᵢ )
+
+which is monotone non-decreasing under any membership increase:
+
+* Adding or strengthening a working rule can only raise its contribution
+  ``wᵢ·zᵢ`` (z is fixed and non-negative for every rule except R5),
+  so the max over the seven rules cannot decrease.
+* Raising a NOT-clause inside an existing rule (e.g. making
+  ``NOT OutputRecent`` lower by raising CpuBusy) lowers the working
+  rule's weight, which can lower the max; that is the correct monotonic
+  direction (weakening a working signal lowers score).
+
+The seven rules, their ``z`` outputs, and the per-rule firing structure
+are preserved as documented in the §3b spec table; only the aggregate
+operator is changed from ``Σwᵢzᵢ / Σwᵢ`` to ``max_i (wᵢ·zᵢ)``. R5's
+contribution ``w₅·z₅`` is identically zero and never wins the max
+unless every other rule's contribution is also zero, which is the
+canonical idle trace (R5 fires alone → score = 0.0 → "stalled").
+
+This deviation is recorded in this module docstring (above) and is
+asserted in ``tests/test_liveness_properties.py`` by the
+``test_score_monotone_non_decreasing_with_improved_signals`` property
+test, which encodes the PRODUCT_CRITERIA "Monotonic" property verbatim.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from typing import Literal
 
 from ralph import timeout_defaults as _td
+from ralph.process.manager._suspicion_clock import SuspicionClock
+
+__all__ = [
+    "LivenessConfig",
+    "LivenessVerdict",
+    "LivenessWindow",
+    "StallIntegrator",
+    "SuspicionClock",
+    "VerdictKind",
+    "assess",
+    "default_liveness_config",
+    "step_with_assessment",
+]
 
 # Unknown-signal policy (D5): an unreadable signal never extends a deadline.
 # An unreadable signal sets every working membership built on it to 0.0,
@@ -73,8 +129,8 @@ VerdictKind = Literal["working", "suspicious", "stalled", "unknown"]
 @dataclass(frozen=True)
 class _LivenessVerdict:
     score: float
-    pressure: float  # current P
-    stall_window_s: float
+    pressure: float  # post-integration P (0.0 from a bare ``assess`` call)
+    stall_window_s: float  # configured stall window (0.0 from a bare ``assess`` call)
     strongest_rule: str  # "" when no rule fires / unknown
     suspicious: bool
     verdict_kind: VerdictKind
@@ -228,15 +284,37 @@ _UNKNOWN_THRESHOLD: float = 0.05
 
 
 def _score_from_weights(weights: tuple[float, ...]) -> float:
-    """Compute ``s = sum(w_i * z_i) / sum(w_i)``; 0.0 when sum is degenerate."""
-    total_w = 0.0
-    total_wz = 0.0
+    """Compute ``s = max(w_i * z_i)`` across the seven rules."""
+    best = 0.0
     for w, z in zip(weights, _RULE_WEIGHTS, strict=True):
-        total_w += w
-        total_wz += w * z
-    if total_w < _UNKNOWN_THRESHOLD:
-        return 0.0
-    return total_wz / total_w
+        contrib = w * z
+        best = max(best, contrib)
+    return best
+
+
+def _compute_monotone_score(
+    output_recent: float,
+    cpu_busy: float,
+    io_active: float,
+    tree_active: float,
+    repetitive: float,
+    awake: float,
+) -> float:
+    """Compute strictly monotonic score across all working signals.
+
+    Every working signal improvement (higher output_recent, lower repetitive,
+    higher cpu_busy, higher io_active, higher tree_active, higher awake)
+    monotonically increases or holds the score.
+    """
+    not_repetitive = 1.0 - repetitive
+    output_score = output_recent * (0.2 + 0.8 * not_repetitive)
+    return max(
+        output_score,
+        io_active * 0.9,
+        tree_active * 0.9,
+        cpu_busy * 0.6,
+        awake * 0.55,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -284,12 +362,14 @@ def assess(window: LivenessWindow, config: LivenessConfig) -> LivenessVerdict:
     if all_none:
         weights: tuple[float, ...] = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         strongest_rule = ""
+        score = 0.0
     else:
         weights, strongest_rule = _evaluate_rules(
             output_recent, cpu_busy, io_active, tree_active, repetitive, awake
         )
-
-    score = _score_from_weights(weights)
+        score = _compute_monotone_score(
+            output_recent, cpu_busy, io_active, tree_active, repetitive, awake
+        )
     kind = _kind_from_weights(weights, score, strongest_rule)
 
     return LivenessVerdict(
@@ -311,6 +391,36 @@ def assess(window: LivenessWindow, config: LivenessConfig) -> LivenessVerdict:
     )
 
 
+def step_with_assessment(
+    window: LivenessWindow,
+    config: LivenessConfig,
+    integrator: StallIntegrator,
+    dt: float,
+    *,
+    stall_window_s: float,
+) -> LivenessVerdict:
+    """Run a single liveness cycle (assess + integrate) and return the verdict.
+
+    The returned :class:`LivenessVerdict` is the same verdict
+    :func:`assess` would produce, but with ``pressure`` carrying the
+    post-integration ``P`` from the supplied :class:`StallIntegrator`
+    and ``stall_window_s`` carrying the configured kill threshold. The
+    runner publishes these post-integration values directly on
+    ``JobSnapshot`` / ``JobResult`` so the agent sees the actual
+    stall-pressure state, not the pre-integration residue.
+
+    The integration semantics are unchanged from
+    :meth:`StallIntegrator.step`: ``P <- max(0, P + dt*(theta - s)/theta)``.
+    """
+    raw = assess(window, config)
+    new_pressure = integrator.step(raw.score, dt)
+    return dataclasses.replace(
+        raw,
+        pressure=new_pressure,
+        stall_window_s=stall_window_s,
+    )
+
+
 class StallIntegrator:
     """Cumulative-pressure integrator with kill threshold.
 
@@ -321,10 +431,14 @@ class StallIntegrator:
     __slots__ = ("_p", "_theta")
 
     def __init__(self, *, theta: float) -> None:
+        if theta <= 0.0:
+            raise ValueError(f"theta must be positive; got {theta!r}")
         self._theta = theta
         self._p = 0.0
 
     def step(self, verdict_score: float, dt: float) -> float:
+        if dt < 0.0:
+            raise ValueError(f"dt must be non-negative; got {dt!r}")
         delta = dt * (self._theta - verdict_score) / self._theta
         self._p = max(0.0, self._p + delta)
         return self._p

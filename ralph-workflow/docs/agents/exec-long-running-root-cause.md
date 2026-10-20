@@ -13,35 +13,93 @@ defensible on file:line or URL evidence.
 
 ## Verified client-timeout table
 
-The table records the client defaults Ralph currently relies on for the
-exec-family tool path, plus the per-server config key the cited page names
-verbatim. "Default tool-call timeout" is the wall clock the client enforces
-on a single MCP `tools/call` round-trip; "Config key" is the documented
-field (or env var) that overrides it. "Source" is the live URL the page
-text was taken from. Where the page does NOT mention a tool-call timeout
-at all, the row falls under "No documented tool-call timeout".
+The table records, per transport, what Ralph actually writes into the
+client config and what the cited client documentation says the *default*
+tool-call ceiling is. Three columns matter; treat them as independent:
 
-| Client | Default tool-call timeout | Config key | Source/citation |
+- **Config key written** — the exact field name Ralph emits. Cites the
+  transport file and line that synthesises the header so the row is
+  verifiable from working tree state. "none written" means Ralph emits no
+  timeout-bearing field; the row is then recorded as a deliberate choice
+  (e.g. the docs page has no field to write), not an oversight.
+- **Verified client default** — the wall clock the cited docs page
+  records for a single MCP `tools/call` round-trip on the unconfigured
+  client. "Verified" requires an explicit line from a URL the agent
+  fetched in the WU-5 verification pass. `UNKNOWN (no docs surface)`
+  means the cited docs page does not name a tool-call timeout at all and
+  we did not find one in the transport source — Ralph cannot size what
+  the docs do not expose. `UNKNOWN (docs say "SDK default 60 s")` means
+  the docs explicitly punt to the MCP SDK's hard-coded default and the
+  value is therefore documentation-dependent, not Ralph-writable.
+- **Source/citation** — the live URL(s) the row's claims were taken
+  from. Every URL in this column was fetched during the WU-5 pass and
+  resolved cleanly. Per-client transport source lines (`transport/X.py:N`)
+  point at the same lines the per-transport section under "Configurations
+  that Ralph currently writes" cites; if those line numbers drift, this
+  doc must update.
+
+The split that this table enforces: a row's "Verified client default"
+column describes the **client**, not Ralph. A row's "Config key written"
+column describes **Ralph's contribution**. A "no docs surface" row is
+NOT Ralph giving up — the rest of this page describes the server-side
+bounded defenses (Cause 1, Cause 2, Cause 5c) that cover those clients
+independently of any client-configurable timeout.
+
+| Client | Config key written | Verified client default | Source/citation |
 | --- | --- | --- | --- |
-| Codex CLI | `mcp_servers.<name>.tool_timeout_sec` is documented on `developers.openai.com/codex/config-file/config-reference`; Ralph synthesizes `tool_timeout_sec` in config synthesis (`ralph/mcp/transport/codex.py:227`) derived from `EXEC_SOFT_REPLY_BUDGET_MS` + headroom | per-server: `tool_timeout_sec` (integer seconds) under `mcp_servers.<name>` | https://developers.openai.com/codex/extend/mcp AND https://developers.openai.com/codex/config-file/config-reference (section titled `mcp_servers.<name>.tool_timeout_sec`) |
-| Claude Code | not advertised as a client-level default; the wall-clock ceiling the docs name for a per-server `timeout` field is the operator's chosen ms (e.g. `"timeout": 600000` for ten minutes per `code.claude.com/docs/en/mcp`); unset values fall through to `MCP_TOOL_TIMEOUT` whose default is "about 28 hours" | per-server: `timeout` (number, ms) in `.mcp.json`/`.claude.json`; env fallback: `MCP_TOOL_TIMEOUT`; concurrent HTTP/SSE "request-timer": `max(60 s, per-server timeout, MCP_TIMEOUT)` — a SECOND, independent timer | https://code.claude.com/docs/en/mcp AND https://code.claude.com/docs/en/env-vars |
-| OpenCode | the per-server `mcp.<server>.timeout` field on `opencode.json` is documented as "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds)" on `opencode.ai/docs/mcp-servers/` — explicitly a TOOL-FETCH deadline, not the tool-call deadline the issue bugs against; on `McpError: MCP error -32001: Request timed out` after long tool calls (~60 s wall), the actual enforcement is the SDK default (~60 s) and the field that takes effect is `experimental.mcp_timeout` (opencode issues #8701 and #8121 close "per-server timeout not respected; experimental.mcp_timeout instead" against the same SDK default) | env or global: `experimental.mcp_timeout`; documented-but-ignored per-server: `mcp.<server>.timeout` (Ralph writes both, the experimental key is the one that wins per `transport/opencode.py:41-44`) | https://opencode.ai/docs/mcp-servers/ AND https://github.com/anomalyco/opencode/issues/8701 AND https://github.com/anomalyco/opencode/issues/8121 |
-| Cursor | the Cursor MCP page at `cursor.com/docs/mcp` documents STDIO fields `type`, `command`, `args`, `env`, `envFile`, plus remote `url`/`headers`/`auth`; no tool-call timeout is mentioned on the page, and `mcp.json` accepts no timeout field | n/a (no per-server tool-call timeout on the docs page) | https://cursor.com/docs/mcp |
-| Kimi Code CLI | global `[mcp] tool_timeout_ms` default is `60000` (60 seconds) per `moonshotai.github.io/kimi-code/en/configuration/config-files` §`mcp`; per-server `toolTimeoutMs` overrides the global; env `KIMI_MCP_TOOL_TIMEOUT_MS` overrides the file | per-server: `toolTimeoutMs` (number, ms) in `mcp.json`; global: `[mcp] tool_timeout_ms` in `config.toml`; env: `KIMI_MCP_TOOL_TIMEOUT_MS` | https://moonshotai.github.io/kimi-code/en/customization/mcp AND https://moonshotai.github.io/kimi-code/en/configuration/config-files (section titled `mcp`) |
-| Nanocoder | no tool-call timeout field documented on the package's README or `docs/` directory; the listed MCP configuration fields on `github.com/Nano-Collective/nanocoder` are `transport`, `url`, `command`, `args`, `env`, `enabled`, `alwaysAllow`. Ralph's `transport/nanocoder.py:45-48` writes `{transport: "http", url: endpoint}` only | n/a (no per-server tool-call timeout documented) | https://www.npmjs.com/package/@nanocollective/nanocoder AND https://github.com/Nano-Collective/nanocoder |
-| Pi | the bridge layer is Ralph-generated TypeScript; the bridge implements a dual-abort mechanism combining Pi's per-tool timeout signal with `MCP_TOOL_CALL_DEADLINE_MS` (`transport/pi.py:300-318`); discovery is gated by `MCP_STARTUP_TIMEOUT_MS = 10_000` (`transport/pi.py:58`) | bridge constant: `MCP_TOOL_CALL_DEADLINE_MS` (derived from `EXEC_SOFT_REPLY_BUDGET_MS` + headroom in `transport/pi.py:42`) | `ralph-workflow/ralph/mcp/transport/pi.py:53-320` |
-| AGY (Google Antigravity) | the Antigravity MCP overview at `antigravity.google/docs/mcp` documents the following MCP server properties: `command`, `args`, `env`, `cwd`, `serverUrl`, `headers`, `authProviderType`, `oauth`, `disabled`, `disabledTools`; no tool-call timeout is named on the page, and AGY's config uses the field name `serverUrl` (legacy `url`/`httpUrl` "aren't supported") | n/a (no per-server tool-call timeout on the docs page) | https://antigravity.google/docs/mcp/ AND https://ralph-workflow/ralph/mcp/transport/agy.py:79-95 (config shape) |
+| Codex CLI | per-server `tool_timeout_sec` (integer seconds) under `mcp_servers.<name>` — written at `ralph/mcp/transport/codex.py:227` | **Verified**: per-server `tool_timeout_sec` "Override the default 60s per-tool timeout for an MCP server" — cited verbatim from the Codex Configuration Reference page | https://developers.openai.com/codex/config-file/config-reference (verified, resolves to https://learn.chatgpt.com/docs/config-file/config-reference; `mcp_servers.<id>.tool_timeout_sec` row) |
+| Claude Code | per-server `timeout` (number, ms) in `.mcp.json`/`.claude.json` — written at `ralph/mcp/transport/claude.py:80`; env fallback `MCP_TOOL_TIMEOUT`; concurrent HTTP/SSE "request-timer" computed as `max(60 s, per-server timeout, MCP_TIMEOUT)` — a SECOND, independent timer | **Verified**: per-server `timeout` is "a hard wall-clock limit per tool call" with values below 1000 ignored, fall-through to `MCP_TOOL_TIMEOUT` whose default is 100 000 000 ms "about 28 hours"; the HTTP/SSE/SSE/claude.ai-connector second per-request timer is the greatest of 60 s, the server's per-server `timeout`, and `MCP_TIMEOUT` (startup env var) | https://code.claude.com/docs/en/mcp (verified) AND https://code.claude.com/docs/en/env-vars (verified — `MCP_TOOL_TIMEOUT` row reads "Timeout in milliseconds for MCP tool execution (default: 100000000, about 28 hours)") |
+| OpenCode | env or global `experimental.mcp_timeout` AND documented-but-ignored per-server `mcp.<server>.timeout` — Ralph writes BOTH at `ralph/mcp/transport/opencode.py:131` and `:148`; the experimental key is the one that wins (issue #8701) | **Verified**: per-server `timeout` is documented as "Timeout in ms for fetching tools from the MCP server. Defaults to 5000 (5 seconds)" — explicitly a TOOL-FETCH deadline, not the tool-call deadline. The actual tool-call enforcement is the MCP SDK's hard-coded default (~60 s). Issue #8701 (closed) confirms: per-server `timeout` is ignored; `experimental.mcp_timeout` is the field the SDK honours | https://opencode.ai/docs/mcp-servers/ (verified) AND https://github.com/anomalyco/opencode/issues/8701 (verified — title "Per-server MCP timeout setting not working; requires experimental.mcp_timeout instead", state=closed) AND https://github.com/anomalyco/opencode/issues/8121 (verified — title "MCP timeout not respected", state=closed) |
+| Cursor | none written — `cursor_mcp_config` emits only `{"url": endpoint}` at `ralph/mcp/transport/cursor.py:87-92`; Cursor's docs page has no tool-call-timeout field to write | **UNKNOWN (no docs surface)**: the Cursor MCP docs page lists STDIO fields `type`/`command`/`args`/`env`/`envFile` and remote `url`/`headers`/`auth` and stops there. No timeout field is named. We could not verify a client default. | https://cursor.com/docs/mcp (verified — no tool-call-timeout field documented) |
+| Kimi Code CLI | per-server `toolTimeoutMs` (number, ms) in `mcp.json` — written at `ralph/mcp/transport/kimi.py:119`; plus the global default `[mcp] tool_timeout_ms` in `config.toml` (out of Ralph's write path) and the env override `KIMI_MCP_TOOL_TIMEOUT_MS` | **Verified**: global `[mcp] tool_timeout_ms` default is 60000 ms (60 seconds). Per-server `toolTimeoutMs` overrides the global; `KIMI_MCP_TOOL_TIMEOUT_MS` overrides the file. Cited verbatim from the Kimi `mcp` table | https://moonshotai.github.io/kimi-code/en/configuration/config-files (verified — `mcp` table, "Global default single tool-call timeout in milliseconds for all MCP servers; a per-server `toolTimeoutMs` in `mcp.json` wins") AND https://moonshotai.github.io/kimi-code/en/customization/mcp (verified — `toolTimeoutMs` per-server field) |
+| Nanocoder | none written for tool-call — `nanocoder` payload at `ralph/mcp/transport/nanocoder.py:56-61` writes `{"transport": "http", "url": endpoint}` plus optional `alwaysAllow`; the package's documented `timeout` is a connection-timeout, not a tool-call-timeout | **UNKNOWN (docs say "SDK default 60 s")**: Nanocoder docs state the per-server `timeout` "Bounds the connection handshake and the initial tool listing; individual tool calls keep the MCP SDK's default timeout (60 seconds)" — the per-tool default is whatever the MCP SDK ships with, not a value Ralph can write | https://docs.nanocollective.org/nanocoder/docs/configuration/mcp-configuration (verified — `timeout` row in Common Fields: "Connection timeout in milliseconds. Bounds the connection handshake and the initial tool listing; individual tool calls keep the MCP SDK's default timeout (60 seconds)") AND https://www.npmjs.com/package/@nanocollective/nanocoder (verified exists — `dist-tags.latest=1.31.0`, repository=https://github.com/Nano-Collective/nanocoder.git) AND https://github.com/Nano-Collective/nanocoder (verified — README references the docs path above) |
+| Pi | bridge constant `MCP_TOOL_CALL_DEADLINE_MS` — written into the generated TypeScript bridge at `ralph/mcp/transport/pi.py:306`; bridge also implements dual-abort with Pi's per-tool signal (`transport/pi.py:300-318`); discovery is gated by `MCP_STARTUP_TIMEOUT_MS = 10_000` (`transport/pi.py:58`) | **UNKNOWN (Ralph-generated bridge, no upstream Pi docs surface for a tool-call deadline)**: Pi's `registerTool({ execute(_, _, signal) })` plumbing passes the per-tool signal through to `fetch(ENDPOINT, { signal })`. Pi's own per-tool deadline is not documented on a public Pi page we could fetch in the WU-5 pass; the bridge-side deadline is the only verified bound | `ralph-workflow/ralph/mcp/transport/pi.py:42-318` (verified — read in working tree) |
+| AGY (Google Antigravity) | none written for tool-call — `agy_mcp_config` writes only `{"serverUrl": endpoint}` at `ralph/mcp/transport/agy.py:88-94`; the cited Antigravity MCP overview names only `command`/`serverUrl` as transport properties and no tool-call-timeout field | **UNKNOWN (no docs surface)**: the Antigravity MCP overview documents the following server-entry properties — `command`, `args`, `env`, `cwd`, `serverUrl`, `headers`, `authProviderType`, `oauth`, `disabled`, `disabledTools` — and stops there. No tool-call timeout field is named. We could not verify a client default. The page lists `serverUrl` (not `url`/`httpUrl`) as the only documented remote transport field; the "legacy `url`/`httpUrl` aren't supported" claim is a paraphrase of the page's silence on those names, not a verbatim quote — Ralph's own normalizer still translates `serverUrl` -> `url` to feed its upstream registry (`ralph/mcp/transport/agy.py:118-119`) | https://antigravity.google/docs/mcp/ (verified — server-entry property list and `serverUrl` as the only documented remote transport field). The doc no longer cites a local-source URL as if it were a public citation: `ralph/mcp/transport/agy.py:88-94` is a working-tree pointer, not a published web document. |
+
+### Unknown client defaults vs bounded implemented defenses
+
+These two categories are NOT the same thing and this page treats them
+separately on purpose:
+
+- **Unknown client default** — a client Ralph cannot size. The table
+  above marks these `UNKNOWN (no docs surface)` or `UNKNOWN (docs say
+  "SDK default 60 s")`. "Unknown" here means "Ralph has no field to
+  write" — it is a documentation fact, not a Ralph defect.
+- **Bounded implemented defense** — a timeout Ralph DOES write, on
+  Ralph's side of the wire, that bounds the failure mode the long
+  exec tool call can produce. The defenses that exist today:
+  - **Server-side soft-reply budget** — `EXEC_SOFT_REPLY_BUDGET_MS`
+    (see `ralph/timeout_defaults.py`) caps how long a single exec call
+    may run before the server returns; the transports above all
+    derive their per-client timeout from this budget + 30 s of
+    headroom (the `_TIMING_SAFETY_TRANSPORT_HEADROOM_MS` constant in
+    `ralph/mcp/server/_timing_safety.py`).
+  - **Server-side hard cap** — `EXEC_MAX_TIMEOUT_MS = 300_000` (5
+    minutes) and `EXEC_JOB_CEILING_S` / `EXEC_JOB_CEILING_MAX_S` cap
+    wall-clock independently of any client default (Cause 2 below).
+  - **Server-side idle window** — the subprocess inactivity window
+    (Cause 1 below) is refreshed only by stdout/stderr; a long
+    CPU-busy exec still dies at `EXEC_DEFAULT_TIMEOUT_MS`.
+  - **Server-side child-runtime shutdown** — the
+    `exit_when_owner_exits` daemon in `ralph/mcp/server/runtime.py`
+    (Cause 5c below) reaps running subprocesses when the parent
+    process dies, closing the "request expiry does not imply process
+    death" gap regardless of what the client default is.
+
+Reading the table: every "Config key written" entry is an IMPLEMENTED
+defense; every "Verified client default" entry is the client docs'
+narrative. Where the "Verified client default" cell reads `UNKNOWN`,
+the server-side bounded defenses above still apply.
 
 ### No documented tool-call timeout
 
-Clients whose public MCP doc page does not name a tool-call timeout AT ALL:
+Clients whose public MCP doc page does not name a tool-call timeout
+AT ALL — every row in the table above that reads `UNKNOWN (no docs
+surface)` falls into this bucket:
 
 - **Cursor**: see `cursor.com/docs/mcp` above; the page documents stdio
   fields plus remote `url`/`headers`/`auth` and stops there. No timeout
   surface for `tools/call`.
-- **Nanocoder**: see `github.com/Nano-Collective/nanocoder` plus the npm
-  README; the package writes `transport`, `url`, `command`, `args`, `env`
-  with no timeout surface.
 - **AGY (Google Antigravity)**: see `antigravity.google/docs/mcp` above;
   the page documents only the SDK surface, no `timeout` field per server.
 
@@ -49,24 +107,45 @@ For these clients, the ceiling on a tool call is whatever the CLI's
 internal transport / connection-read default is, not a value the user
 can raise through configuration that is visible on the cited page.
 
+Note that Nanocoder dropped out of this list: its docs page DOES name a
+`timeout` field, but the page is explicit that it bounds the connection
+handshake and the initial tool listing only — individual tool calls
+keep the MCP SDK's hard-coded default. That is a different failure
+mode (documentation paves a connection-timeout cowpath that looks
+like a tool-call-timeout field on first glance) and is captured in the
+table as `UNKNOWN (docs say "SDK default 60 s")`, not in this section.
+
 ### Configurations that Ralph currently writes
 
 Historically, OpenCode was the only transport synthesizing a client-side
-timeout. Under §3b, Ralph writes client-side tool-call timeouts derived from
-`EXEC_SOFT_REPLY_BUDGET_MS` plus headroom across transports that support it:
+timeout. Under §3b, Ralph writes client-side tool-call timeouts derived
+from `EXEC_SOFT_REPLY_BUDGET_MS` plus headroom across every transport
+whose cited docs page names a tool-call-timeout field. Line numbers
+below were read from the working tree in the WU-5 pass; if they drift,
+the Appendix re-read drift check fires:
 
-- `opencode.py:51,132,149`: writes `timeout: _OPENCODE_MCP_CLIENT_TIMEOUT_MS` and
-  `experimental.mcp_timeout: _OPENCODE_MCP_CLIENT_TIMEOUT_MS`.
-- `claude.py:79`: writes `timeout: _CLAUDE_TOOL_TIMEOUT_MS`.
-- `kimi.py:119`: writes `toolTimeoutMs: _KIMI_TOOL_TIMEOUT_MS`.
-- `codex.py:227`: writes `tool_timeout_sec: _CODEX_TOOL_TIMEOUT_SEC`.
-- `pi.py:306`: writes `MCP_TOOL_CALL_DEADLINE_MS` in the synthesized TypeScript bridge.
+- `opencode.py:131` writes `timeout: _OPENCODE_MCP_CLIENT_TIMEOUT_MS`
+  (the documented-but-ignored per-server field, set for forward-compat).
+- `opencode.py:148` writes
+  `experimental.mcp_timeout: _OPENCODE_MCP_CLIENT_TIMEOUT_MS`
+  (the field the OpenCode SDK actually honours per issue #8701).
+- `claude.py:80` writes `timeout: _CLAUDE_TOOL_TIMEOUT_MS`.
+- `kimi.py:119` writes `toolTimeoutMs: _KIMI_TOOL_TIMEOUT_MS`.
+- `codex.py:227` writes `tool_timeout_sec: _CODEX_TOOL_TIMEOUT_SEC`.
+- `pi.py:306` writes `MCP_TOOL_CALL_DEADLINE_MS` into the synthesized
+  TypeScript bridge; `pi.py:58` defines `MCP_STARTUP_TIMEOUT_MS = 10_000`
+  for the discovery call.
 
-Transports without a documented timeout configuration key (Cursor,
-Nanocoder, AGY) continue to write connection parameters only:
+Transports whose cited docs page does NOT name a tool-call-timeout
+field (Cursor, Nanocoder, AGY) continue to write connection parameters
+only — Ralph cannot size what the docs do not expose, and inventing
+a synthetic field would either be silently ignored or hand-craft a
+contract the agent does not honour:
 
-- `cursor.py:81` writes only `{"url": endpoint}`.
-- `nanocoder.py:45-67` writes only `{"transport": "http", "url": endpoint}`.
+- `cursor.py:87-92` writes only `{"url": endpoint}`.
+- `nanocoder.py:56-61` writes only `{"transport": "http", "url": endpoint}`
+  (plus optional `alwaysAllow`); the package's documented `timeout` is
+  a connection-timeout, not a tool-call-timeout.
 - `agy.py:88-94` writes only `{"serverUrl": endpoint}`.
 
 ## Cause 1 (CONFIRMED) — `inactivity` is output-only
@@ -125,14 +204,18 @@ Even after the operator raises `timeout_ms`, the wall clock is capped.
 
 ## Cause 3 (CONFIRMED) — client timeouts only configured for OpenCode (prior defect)
 
-Prior to §3b, only `ralph-workflow/ralph/mcp/transport/opencode.py:36-37` wrote a
-client-side MCP request timeout. Every other transport wrote only the
-endpoint URL — leaving the connection bound to whatever default the
-client's MCP SDK ships with (usually ~60 s for OpenCode, CoSt, Codex),
-which the OpenCode issue thread shows is the failing signal the operator
-sees as `McpError: -32001 Request timed out`.
+Prior to §3b, only `ralph-workflow/ralph/mcp/transport/opencode.py:131`
+and `:148` wrote a client-side MCP request timeout. Every other
+transport wrote only the endpoint URL — leaving the connection bound to
+whatever default the client's MCP SDK ships with (Codex's 60-s SDK
+default per `learn.chatgpt.com/docs/config-file/config-reference`,
+OpenCode's ~60-s SDK default per issue #8701, the Kimi `mcp` table's
+60-s global `tool_timeout_ms`, the Claude Code `MCP_TOOL_TIMEOUT`
+"about 28 hours" default, etc.), which the OpenCode issue thread shows
+is the failing signal the operator sees as `McpError: -32001 Request
+timed out`.
 
-- `ralph-workflow/ralph/mcp/transport/opencode.py:41-44` carries the
+- `ralph-workflow/ralph/mcp/transport/opencode.py:38-45` carries the
   comment
 
   > "OpenCode IGNORES the documented per-server `mcp.<server>.timeout`
@@ -143,20 +226,30 @@ sees as `McpError: -32001 Request timed out`.
 
 - The non-OpenCode transports historically cited only URL/command/args.
 
-The bug-class this fixes was universal: any operator whose client (Claude,
-Cursor, Kimi CLI, Codex CLI, AGY, Nanocoder, Pi) silently capped MCP
-tool-call latency under whatever that client has hard-coded (or in Kimi's
-case, the documented 60s default) saw the run as a `McpError: -32001`
-during a single legitimately long exec call, with no way to extend it
-from Ralph.
+The bug-class this fixes was universal: any operator whose client
+silently capped MCP tool-call latency under whatever that client had
+hard-coded (or, in the Kimi / Codex cases, under a documented 60-s
+default) saw the run as a `McpError: -32001` during a single
+legitimately long exec call, with no way to extend it from Ralph.
 
-The fix posture per client:
-- Claude: writes `timeout` (`ralph/mcp/transport/claude.py:79`).
+The fix posture per client (line numbers in the working tree as of the
+WU-5 pass):
+- Claude: writes `timeout` (`ralph/mcp/transport/claude.py:80`).
 - Kimi: writes `toolTimeoutMs` (`ralph/mcp/transport/kimi.py:119`).
 - Codex: writes `tool_timeout_sec` (`ralph/mcp/transport/codex.py:227`).
-- Pi: enforces `MCP_TOOL_CALL_DEADLINE_MS` in the generated bridge (`ralph/mcp/transport/pi.py:306`).
-- OpenCode: writes both `timeout` and `experimental.mcp_timeout` (`ralph/mcp/transport/opencode.py:132,149`).
-- Cursor, Nanocoder, AGY: documented as having no public per-server tool-call timeout config.
+- Pi: enforces `MCP_TOOL_CALL_DEADLINE_MS` in the generated bridge
+  (`ralph/mcp/transport/pi.py:306`).
+- OpenCode: writes both `timeout` and `experimental.mcp_timeout`
+  (`ralph/mcp/transport/opencode.py:131` and `:148`).
+- Cursor, AGY: cited docs page names no public per-server tool-call
+  timeout config; Ralph writes only `{"url": endpoint}` /
+  `{"serverUrl": endpoint}`.
+- Nanocoder: the package's docs DO name a `timeout` field, but it is
+  the connection handshake / tool-listing deadline; tool-call
+  enforcement reverts to the MCP SDK's hard-coded default. Ralph
+  therefore writes only `{"transport": "http", "url": endpoint}` — the
+  row reads `UNKNOWN (docs say "SDK default 60 s")` in the verified
+  table.
 
 ## Cause 4 (CONFIRMED) — streamed output does not keep clients alive
 
@@ -326,12 +419,34 @@ stale, and the fastest drift check is a re-read of:
 - `ralph-workflow/ralph/timeout_defaults.py:121-156` (Cause 2 constants)
 - `ralph-workflow/ralph/process/manager/_managed_process.py:280-380`
   (Cause 1 poll loop)
-- `ralph-workflow/ralph/mcp/transport/opencode.py:36-37` (Cause 3)
+- `ralph-workflow/ralph/mcp/transport/opencode.py:131,148` (Cause 3
+  per-server + experimental writes; the comment block at lines 38-45
+  is the issue-thread reference)
+- `ralph-workflow/ralph/mcp/transport/claude.py:80`,
+  `ralph-workflow/ralph/mcp/transport/codex.py:227`,
+  `ralph-workflow/ralph/mcp/transport/kimi.py:119`,
+  `ralph-workflow/ralph/mcp/transport/pi.py:306`
+  (the rest of Cause 3's per-transport writes)
 - `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:56-63` (Cause 4)
 - `ralph-workflow/ralph/mcp/server/_saturated_dispatch.py:161-181`
   (Cause 5b)
 - `ralph-workflow/ralph/mcp/server/runtime.py:867-950` (Cause 5c seam)
+- `ralph-workflow/ralph/mcp/server/_timing_safety.py:79-89`
+  (`_TIMING_SAFETY_TRANSPORT_HEADROOM_MS` and
+  `TIMING_SAFETY_TRANSPORT_FLOOR_MS` — the per-transport floor the
+  §3b fix's written keys must clear)
 
-If any of those lines move, this doc must update before the fix the
-doc references is merged. The §3b fix agents use this doc as a
-target; an out-of-date citation is the same as a missing citation.
+The URL citations in the verified client-timeout table are also
+subject to drift — every URL listed there was fetched live in the
+WU-5 pass and resolved cleanly. Re-running
+`scripts/fabrication_guard.py --level 2
+ralph-workflow/docs/agents/exec-long-running-root-cause.md`
+after this doc is edited is the cheapest way to confirm none of
+them have since 404'd. A row that reads `UNKNOWN` is not a defect;
+it is the doc being honest about what the cited docs page does and
+does not name.
+
+If any of the file:line citations above move, this doc must update
+before the fix the doc references is merged. The §3b fix agents use
+this doc as a target; an out-of-date citation is the same as a
+missing citation.

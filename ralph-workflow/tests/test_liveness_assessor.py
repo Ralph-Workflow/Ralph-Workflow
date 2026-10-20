@@ -303,7 +303,15 @@ def test_assess_r7_waiting_alone() -> None:
 
 
 def test_assess_r1_r2_combo_is_working() -> None:
-    """R1 + R2 both firing (recent + I/O) blends to ~0.95."""
+    """R1 + R2 both firing (recent + I/O): monotone score picks the strongest rule's contribution.
+
+    Per the §3b score-monotonicity design resolution documented in
+    ``_liveness_assessor`` (E-005), the score aggregate is
+    ``max(wᵢ·zᵢ)`` across the seven rules rather than the literal
+    ``Σwᵢzᵢ / Σwᵢ``. R1's contribution ``w₁·z₁ = 1·1 = 1.0`` exceeds R2's
+    ``w₂·z₂ = 1·0.9 = 0.9``, so the combined score is 1.0 (not 0.95).
+    Raising IO from 0 to ``io_kbps_active`` cannot lower the score.
+    """
     win = LivenessWindow(
         seconds_since_output=0.0,
         cpu_ratio=0.0,  # KNOWN-not-busy so R4 doesn't fire on cpu alone
@@ -314,7 +322,7 @@ def test_assess_r1_r2_combo_is_working() -> None:
         elapsed_s=10.0,
     )
     v = assess(win, CFG)
-    assert v.score == pytest.approx((1.0 + 0.9) / 2.0)
+    assert v.score == pytest.approx(1.0)
     assert v.verdict_kind == "working"
 
 

@@ -21,6 +21,8 @@ from ralph.mcp.tools.names import (
 )
 from ralph.timeout_defaults import (
     EXEC_DEFAULT_TIMEOUT_MS,
+    EXEC_JOB_CEILING_MAX_S,
+    EXEC_JOB_CEILING_S,
     EXEC_MAX_TIMEOUT_MS,
     EXEC_SOFT_REPLY_BUDGET_MS,
 )
@@ -52,6 +54,19 @@ def _timeout_ms_property() -> dict[str, object]:
         "type": "number",
         "description": _TIMEOUT_MS_DESCRIPTION,
         "default": EXEC_DEFAULT_TIMEOUT_MS,
+    }
+
+
+def _max_runtime_ms_property() -> dict[str, object]:
+    """Schema for the optional ``max_runtime_ms`` param."""
+    return {
+        "type": "number",
+        "description": (
+            f"Optional absolute job ceiling in milliseconds (default: {int(EXEC_JOB_CEILING_S * 1000)}ms / 1h, "
+            f"clamped up to a hard maximum of {int(EXEC_JOB_CEILING_MAX_S * 1000)}ms / 4h). "
+            "Caps total wall-clock execution time for long-running jobs regardless of activity. "
+            "Pass a larger value (e.g. 10800000 for 3 hours, 14400000 for 4 hours) for full test suites or long builds."
+        ),
     }
 
 
@@ -352,6 +367,7 @@ def git_exec_specs() -> list[ToolSpec]:
                             ),
                         },
                         "timeout_ms": _timeout_ms_property(),
+                        "max_runtime_ms": _max_runtime_ms_property(),
                         "format": {
                             "type": "string",
                             "enum": ["raw", "summary"],
@@ -401,6 +417,7 @@ def git_exec_specs() -> list[ToolSpec]:
                             ),
                         },
                         "timeout_ms": _timeout_ms_property(),
+                        "max_runtime_ms": _max_runtime_ms_property(),
                     },
                     "required": ["command"],
                 },
@@ -436,6 +453,7 @@ def git_exec_specs() -> list[ToolSpec]:
                             ),
                         },
                         "timeout_ms": _timeout_ms_property(),
+                        "max_runtime_ms": _max_runtime_ms_property(),
                     },
                     "required": ["command"],
                 },

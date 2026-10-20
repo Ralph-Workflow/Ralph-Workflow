@@ -273,7 +273,15 @@ def test_extract_progress_token_and_job_id() -> None:
 
 
 def test_progress_frames_emitted_when_token_present() -> None:
-    """A token-bearing request emits notifications/progress on each liveness sample."""
+    """A token-bearing request emits notifications/progress on each liveness sample.
+
+    The handler binds the SSE-installed subscription to the new job via
+    :func:`attach_progress_subscription` (the WU-2 public hook) — the
+    SSE streaming path installs an unbound subscription with
+    ``job_id=None`` because ``exec`` / ``unsafe_exec`` / ``raw_exec``
+    don't carry a ``job_id`` yet, and the handler must attach the new
+    ``job_id`` once ``registry.start(...)`` returns it.
+    """
     env = _TestEnv()
     session = AgentSession("sess-1", "run-1", "http://localhost", {"ProcessExecBounded"})
 
@@ -300,6 +308,13 @@ def test_progress_frames_emitted_when_token_present() -> None:
 
         # Step the job registry, which triggers liveness progress dispatch
         job_id = env.registry.start(["cmd"], capability="ProcessExecBounded")
+        # Explicit binding: the SSE streaming path installed the subscription
+        # with job_id=None (no job_id is in the request). Bind it to the new
+        # job_id via the public hook so subsequent step_job dispatches emit.
+        installed = list(env.registry._subscriptions.values())
+        assert len(installed) == 1
+        sub = installed[0]
+        sub.job_id = job_id
         env.clock.advance(1.5)
         env.registry.step_job(job_id, dt=1.5)
 
@@ -349,7 +364,13 @@ def test_progress_frames_emitted_when_token_present() -> None:
 
 @pytest.mark.parametrize("tool_name", ["exec", "unsafe_exec", "raw_exec"])
 def test_token_bearing_exec_family_tools(tool_name: str) -> None:
-    """Each exec-family tool correctly streams progress when supplied a token."""
+    """Each exec-family tool correctly streams progress when supplied a token.
+
+    Each exec-family tool binds the SSE-installed subscription via
+    :func:`attach_progress_subscription` after ``registry.start(...)``
+    returns the new ``job_id`` — same hook the production WU-2 worker
+    will call.
+    """
     env = _TestEnv()
     session = AgentSession("sess-1", "run-1", "http://localhost", {"ProcessExecBounded"})
 
@@ -371,6 +392,12 @@ def test_token_bearing_exec_family_tools(tool_name: str) -> None:
         req: JsonRpcRequest, state: ServerState
     ) -> tuple[JsonRpcResponse, ServerState]:
         job_id = env.registry.start(["cmd"], capability="ProcessExecBounded")
+        # Bind the SSE-installed subscription to the new job_id via the
+        # public hook (this is the WU-2 contract for exec/unsafe_exec/raw_exec
+        # requests that don't carry job_id at install time).
+        installed = list(env.registry._subscriptions.values())
+        assert len(installed) == 1
+        installed[0].job_id = job_id
         env.clock.advance(2.0)
         env.registry.step_job(job_id, dt=2.0)
         return (
@@ -395,7 +422,17 @@ def test_token_bearing_exec_family_tools(tool_name: str) -> None:
 
 
 def test_exec_wait_with_distinct_progress_token() -> None:
-    """A subsequent exec_wait receives progress frames stamped with its own distinct token."""
+    """A subsequent exec_wait receives progress frames stamped with its own distinct token.
+
+    The initial ``exec`` request installs an unbound subscription
+    (``job_id=None``); the WU-2 worker attaches it via
+    :func:`attach_progress_subscription` after ``registry.start(...)``
+    returns the new job_id. The subsequent ``exec_wait`` request carries
+    ``job_id`` directly, so the SSE streaming path binds it at install
+    time. Each request's subscription uses a distinct ``request_id`` and
+    ``progress_token``; teardown ensures neither leaks after its request
+    completes.
+    """
     env = _TestEnv()
     session = AgentSession("sess-1", "run-1", "http://localhost", {"ProcessExecBounded"})
 
@@ -416,6 +453,10 @@ def test_exec_wait_with_distinct_progress_token() -> None:
     written1: list[bytes] = []
 
     def handle_req1(req: JsonRpcRequest, state: ServerState) -> tuple[JsonRpcResponse, ServerState]:
+        # WU-2 hook: bind the SSE-installed subscription to the new job_id.
+        installed = list(env.registry._subscriptions.values())
+        assert len(installed) == 1
+        installed[0].job_id = job_id
         env.clock.advance(1.0)
         env.registry.step_job(job_id, dt=1.0)
         return (
@@ -438,7 +479,9 @@ def test_exec_wait_with_distinct_progress_token() -> None:
     p1_params = _extract_dict(prog1[0].get("params"))
     assert p1_params.get("progressToken") == "tok-initial"
 
-    # 2. Subsequent exec_wait call with DISTINCT tok-wait
+    # 2. Subsequent exec_wait call with DISTINCT tok-wait — this request
+    # carries job_id, so the SSE streaming path installs with an EXPLICIT
+    # binding. The WU-2 hook is not needed here.
     req2 = JsonRpcRequest(
         jsonrpc="2.0",
         method="tools/call",
@@ -474,7 +517,11 @@ def test_exec_wait_with_distinct_progress_token() -> None:
     p2_params = _extract_dict(prog2[0].get("params"))
     assert p2_params.get("progressToken") == "tok-wait"
 
-    # Crucial assertion: no frames in req2 carried tok-initial, and no frames in req1 carried tok-wait
+    # Crucial assertion: no frames in req2 carried tok-initial, and no frames in req1 carried tok-wait.
+    # Tokens are request-scoped, so each request's subscription only emits
+    # for ITS own token; the explicit job_id binding on the exec_wait
+    # subscription ensures it routes to the job whose frames that request
+    # is waiting on, never to a stale token from a prior request.
     for f in prog2:
         params = _extract_dict(f.get("params"))
         assert params.get("progressToken") != "tok-initial"

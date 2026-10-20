@@ -542,10 +542,10 @@ def test_trace_2_hard_cap_at_ceiling() -> None:
 def test_trace_3_three_hour_e2e_completing_via_max_runtime() -> None:
     """Trace 3: 3-h e2e with max_runtime_ms runs past 1h without kill and completes."""
     env = _TestEnv()
-    # 3 hours = 10_800_000 ms
+    # 4 hours max runtime cap = 14_400_000 ms
     job_id = env.registry.start(
         ["e2e_test"],
-        max_runtime_ms=3 * 3600 * 1000,
+        max_runtime_ms=4 * 3600 * 1000,
         capability="ProcessExecBounded",
     )
     root_proc = next(iter(env.procs.values()))
@@ -563,8 +563,8 @@ def test_trace_3_three_hour_e2e_completing_via_max_runtime() -> None:
     assert isinstance(snap, JobSnapshot)
     assert snap.running
 
-    # Advance to 2.5 hours (9000s = additional 1800s) and finish
-    for _ in range(60):
+    # Advance to 3.0 hours (10,800s = additional 3600s) and finish
+    for _ in range(120):
         env.clock.advance(30.0)
         active_job.last_output_at = env.clock()
         env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")

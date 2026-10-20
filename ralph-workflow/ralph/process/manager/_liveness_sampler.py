@@ -7,6 +7,17 @@ and produces a :class:`LivenessWindow` consumable by
 
 All metrics follow fail-closed error handling: any signal that cannot be read
 on the root process or any child process defaults to ``None`` individually.
+
+Per-rate signals (``cpu_ratio``, ``io_bytes_per_s``, ``voluntary_ctx_per_s``)
+are aggregated over the bounded
+``LivenessConfig.evidence_window_s`` window (default 30 s) rather than
+over the last sample interval. The sampler keeps a per-signal deque of
+``(timestamp, cumulative_total)`` snapshots, prunes entries older than the
+window, and computes ``(current - oldest_in_window) / window_dt`` so a
+slow steady drip of work reads as a small positive rate even when each
+2 s sample advances the cumulative counters only slightly. A gap larger
+than ``evidence_window_s`` resets the baseline (returning ``None`` for one
+cycle) per the failure-recovery policy in D3.
 """
 
 from __future__ import annotations
@@ -23,6 +34,7 @@ _MIN_OUTPUT_LINES_FOR_NOVELTY: int = 20
 _MIN_TUPLE_LEN_TWO: int = 2
 _MIN_TUPLE_LEN_FOUR: int = 4
 _KIBIBYTE: float = 1024.0
+_HISTORY_MAXLEN: int = 256  # bounded-accumulator-ok: 30 s window @ 0.125 s sampler → 240 entries max; 256 leaves headroom
 
 
 @runtime_checkable
@@ -189,8 +201,90 @@ def _compute_output_novelty(output_lines: Sequence[str]) -> float | None:
     return len(set(output_lines)) / float(len(output_lines))
 
 
+def _windowed_rate(
+    history: deque[tuple[float, float]],
+    now: float,
+    current_total: float,
+    evidence_window_s: float,
+    *,
+    cap_to_unit_interval: bool,
+) -> float | None:
+    """Aggregate a per-second rate across the bounded evidence window.
+
+    For every call we (a) prune entries older than ``now - evidence_window_s``,
+    (b) record the current ``(now, current_total)`` snapshot, (c) compute
+    the rate as ``(current_total - oldest_in_window) / window_dt``. The
+    first sample in a window — or any sample following a gap wider than
+    the window — returns ``None`` so the caller can re-baseline without
+    contaminating the rate with stale deltas.
+
+    ``cap_to_unit_interval`` controls the output range: ``True`` clamps the
+    rate to ``[0, 1]`` (used for cpu ratio), ``False`` clamps to ``[0, +inf)``
+    (used for I/O bytes/s and voluntary context switches/s).
+    """
+    cutoff = now - evidence_window_s
+    while history and history[0][0] < cutoff:
+        history.popleft()
+    history.append((now, current_total))
+    min_samples = 2
+    if len(history) < min_samples:
+        return None
+    oldest_ts, oldest_total = history[0]
+    dt = now - oldest_ts
+    if dt <= 0.0:
+        return None
+    delta = max(0.0, current_total - oldest_total)
+    rate = delta / dt
+    if cap_to_unit_interval:
+        return min(1.0, max(0.0, rate))
+    return max(0.0, rate)
+
+
+def _sum_cpu_seconds(procs: list[_LivenessProc]) -> tuple[float | None, bool]:
+    """Return ``(sum_cpu_seconds, success_flag)``.
+
+    ``success_flag=False`` indicates that the cumulative counter could not
+    be read on at least one process; the caller must treat the whole
+    signal as unavailable and not pollute the rate history.
+    """
+    total = 0.0
+    for p in procs:
+        try:
+            total += _extract_cpu_seconds(p.cpu_times())
+        except Exception:
+            return None, False
+    return total, True
+
+
+def _sum_io_bytes(procs: list[_LivenessProc]) -> tuple[float | None, bool]:
+    total = 0.0
+    for p in procs:
+        try:
+            total += _extract_io_bytes(p.io_counters())
+        except Exception:
+            return None, False
+    return total, True
+
+
+def _sum_voluntary_ctx(procs: list[_LivenessProc]) -> tuple[float | None, bool]:
+    total = 0.0
+    for p in procs:
+        try:
+            total += _extract_voluntary_ctx(p.num_ctx_switches())
+        except Exception:
+            return None, False
+    return total, True
+
+
 class TreeSampler:
-    """Samples process tree activity and produces a :class:`LivenessWindow`."""
+    """Samples process tree activity and produces a :class:`LivenessWindow`.
+
+    Per-rate signals are aggregated across ``config.evidence_window_s``
+    (default ``EXEC_LIVENESS_EVIDENCE_WINDOW_S`` = 30.0 s) rather than the
+    last sample interval. ``child_events`` keeps the same windowed
+    semantics as before. An unreadable signal returns ``None`` for one
+    cycle and leaves the per-signal windowed history untouched.
+    """
 
     def __init__(
         self,
@@ -207,21 +301,27 @@ class TreeSampler:
 
         self._prev_child_pids: set[int] | None = None
         self._child_events_history: deque[tuple[float, int]] = deque(
-            maxlen=120
-        )  # bounded-accumulator-ok: FIFO queue capped at 120 window entries
+            maxlen=_HISTORY_MAXLEN
+        )  # bounded-accumulator-ok: FIFO windowed accumulator; 256-entry safety cap
 
-        self._prev_cpu_snapshot: tuple[float, dict[int, float]] | None = None
-        self._prev_io_snapshot: tuple[float, dict[int, float]] | None = None
-        self._prev_ctx_snapshot: tuple[float, dict[int, float]] | None = None
+        self._cpu_history: deque[tuple[float, float]] = deque(
+            maxlen=_HISTORY_MAXLEN
+        )  # bounded-accumulator-ok: 30 s evidence window @ 0.125 s sampler → ≤240 entries; 256 leaves headroom
+        self._io_history: deque[tuple[float, float]] = deque(
+            maxlen=_HISTORY_MAXLEN
+        )  # bounded-accumulator-ok: same windowed FIFO accumulator contract
+        self._ctx_history: deque[tuple[float, float]] = deque(
+            maxlen=_HISTORY_MAXLEN
+        )  # bounded-accumulator-ok: same windowed FIFO accumulator contract
 
     def _reset_tracked_pid_state(self, root_pid: int) -> None:
         self._tracked_root_pid = root_pid
         self._start_time = None
         self._prev_child_pids = None
         self._child_events_history.clear()
-        self._prev_cpu_snapshot = None
-        self._prev_io_snapshot = None
-        self._prev_ctx_snapshot = None
+        self._cpu_history.clear()
+        self._io_history.clear()
+        self._ctx_history.clear()
 
     def _determine_start_time(self, root: _LivenessProc | None, now: float) -> None:
         if self._start_time is not None:
@@ -266,93 +366,51 @@ class TreeSampler:
         procs: list[_LivenessProc],
         now: float,
     ) -> float | None:
-        curr_cpu_by_pid: dict[int, float] = {}
-        for p in procs:
-            try:
-                raw_cpu = p.cpu_times()
-                curr_cpu_by_pid[p.pid] = _extract_cpu_seconds(raw_cpu)
-            except Exception:
-                return None
-
-        if self._prev_cpu_snapshot is None:
-            self._prev_cpu_snapshot = (now, curr_cpu_by_pid)
+        total, ok = _sum_cpu_seconds(procs)
+        if not ok or total is None:
             return None
-
-        prev_time, prev_cpu = self._prev_cpu_snapshot
-        self._prev_cpu_snapshot = (now, curr_cpu_by_pid)
-        dt = now - prev_time
-        if dt <= 0.0 or dt > self._config.evidence_window_s:
-            return None
-
-        delta_cpu = 0.0
-        for pid, curr_c in curr_cpu_by_pid.items():
-            if pid in prev_cpu:
-                delta_cpu += max(0.0, curr_c - prev_cpu[pid])
-            else:
-                delta_cpu += max(0.0, curr_c)
-        return min(1.0, max(0.0, delta_cpu / dt))
+        return _windowed_rate(
+            self._cpu_history,
+            now,
+            total,
+            self._config.evidence_window_s,
+            cap_to_unit_interval=True,
+        )
 
     def _sample_io_bytes_per_s(
         self,
         procs: list[_LivenessProc],
         now: float,
     ) -> float | None:
-        curr_io_by_pid: dict[int, float] = {}
-        for p in procs:
-            try:
-                raw_io = p.io_counters()
-                curr_io_by_pid[p.pid] = _extract_io_bytes(raw_io)
-            except Exception:
-                return None
-
-        if self._prev_io_snapshot is None:
-            self._prev_io_snapshot = (now, curr_io_by_pid)
+        total, ok = _sum_io_bytes(procs)
+        if not ok or total is None:
             return None
-
-        prev_time, prev_io = self._prev_io_snapshot
-        self._prev_io_snapshot = (now, curr_io_by_pid)
-        dt = now - prev_time
-        if dt <= 0.0 or dt > self._config.evidence_window_s:
+        rate = _windowed_rate(
+            self._io_history,
+            now,
+            total,
+            self._config.evidence_window_s,
+            cap_to_unit_interval=False,
+        )
+        if rate is None:
             return None
-
-        delta_io = 0.0
-        for pid, curr_b in curr_io_by_pid.items():
-            if pid in prev_io:
-                delta_io += max(0.0, curr_b - prev_io[pid])
-            else:
-                delta_io += max(0.0, curr_b)
-        return max(0.0, (delta_io / dt) / _KIBIBYTE)
+        return rate / _KIBIBYTE
 
     def _sample_voluntary_ctx(
         self,
         procs: list[_LivenessProc],
         now: float,
     ) -> float | None:
-        curr_ctx_by_pid: dict[int, float] = {}
-        for p in procs:
-            try:
-                raw_ctx = p.num_ctx_switches()
-                curr_ctx_by_pid[p.pid] = _extract_voluntary_ctx(raw_ctx)
-            except Exception:
-                return None
-
-        if self._prev_ctx_snapshot is None:
-            self._prev_ctx_snapshot = (now, curr_ctx_by_pid)
+        total, ok = _sum_voluntary_ctx(procs)
+        if not ok or total is None:
             return None
-
-        prev_time, prev_ctx = self._prev_ctx_snapshot
-        self._prev_ctx_snapshot = (now, curr_ctx_by_pid)
-        dt = now - prev_time
-        if dt <= 0.0 or dt > self._config.evidence_window_s:
-            return None
-
-        delta_ctx = 0.0
-        for pid, curr_sw in curr_ctx_by_pid.items():
-            if pid in prev_ctx:
-                delta_ctx += max(0.0, curr_sw - prev_ctx[pid])
-            else:
-                delta_ctx += max(0.0, curr_sw)
-        return max(0.0, delta_ctx / dt)
+        return _windowed_rate(
+            self._ctx_history,
+            now,
+            total,
+            self._config.evidence_window_s,
+            cap_to_unit_interval=False,
+        )
 
     def sample(
         self,
@@ -383,9 +441,9 @@ class TreeSampler:
 
         if root is None:
             self._prev_child_pids = None
-            self._prev_cpu_snapshot = None
-            self._prev_io_snapshot = None
-            self._prev_ctx_snapshot = None
+            self._cpu_history.clear()
+            self._io_history.clear()
+            self._ctx_history.clear()
             return LivenessWindow(
                 seconds_since_output=seconds_since_output,
                 cpu_ratio=None,

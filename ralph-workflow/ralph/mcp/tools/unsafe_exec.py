@@ -17,13 +17,20 @@ freeze the server.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
+from ralph.mcp.server.exec_sse_streaming import get_current_progress_subscription
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_execution_error import ExecutionError
 from ralph.mcp.tools._exec_job_tools import get_exec_job_registry
-from ralph.mcp.tools._exec_jobs import ExecJobError, ExecJobRegistry, JobSnapshot
+from ralph.mcp.tools._exec_jobs import (
+    ExecJobError,
+    ExecJobRegistry,
+    JobSnapshot,
+    serialize_liveness_verdict,
+)
 from ralph.mcp.tools._exec_output_spill import format_or_spill
 from ralph.mcp.tools._exec_vcs_scanner import (
     _VCS_COMMANDS,
@@ -42,6 +49,7 @@ from ralph.mcp.tools.coordination import (
 from ralph.mcp.tools.exec import (
     _shell_command_segments,
     _workspace_root,
+    parse_exec_max_runtime,
     parse_exec_timeout,
     resolve_spill_dir,
     run_command,
@@ -136,17 +144,22 @@ def handle_unsafe_exec(
             deps.cwd_provider if deps is not None and deps.cwd_provider is not None else Path.cwd
         )
         cwd = _workspace_root(workspace, cwd_provider=cwd_prov)
+        max_runtime_ms = parse_exec_max_runtime(params)
+        current_sub = get_current_progress_subscription()
         try:
             job_id = effective_registry.start(
                 ["sh", "-c", command],
                 cwd=str(cwd),
                 timeout_ms=timeout_ms,
+                max_runtime_ms=max_runtime_ms,
                 capability=PROCESS_EXEC_UNBOUNDED_CAPABILITY,
+                progress=current_sub,
             )
             res = effective_registry.wait(
                 job_id,
                 wait_ms=EXEC_SOFT_REPLY_BUDGET_MS,
                 capability=PROCESS_EXEC_UNBOUNDED_CAPABILITY,
+                progress=current_sub,
             )
         except ExecJobError as exc:
             raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
@@ -154,20 +167,12 @@ def handle_unsafe_exec(
             raise ExecutionError(f"Failed to execute '{command}': {exc}") from exc
 
         if isinstance(res, JobSnapshot):
-            verdict_dict: dict[str, object] | None = None
-            if res.verdict is not None:
-                verdict_dict = {
-                    "score": res.verdict.score,
-                    "pressure": res.verdict.pressure,
-                    "verdict_kind": res.verdict.verdict_kind,
-                    "suspicious": res.verdict.suspicious,
-                }
             snapshot_payload: dict[str, object] = {
                 "job_id": res.job_id,
                 "running": res.running,
                 "elapsed_s": res.elapsed_s,
                 "output": res.output,
-                "verdict": verdict_dict,
+                "verdict": serialize_liveness_verdict(res.verdict),
                 "instruction": "call exec_wait; do not re-run",
             }
             return ToolResult(
@@ -176,6 +181,8 @@ def handle_unsafe_exec(
             )
 
         if res.kill_cause is not None:
+            verdict_dict = serialize_liveness_verdict(res.verdict)
+            verdict_str = json.dumps(verdict_dict) if verdict_dict is not None else None
             kill_exc = ExecutionError(
                 f"Failed to execute '{command}': timed out after {timeout_ms}ms",
                 timed_out=True,
@@ -184,6 +191,7 @@ def handle_unsafe_exec(
                 partial_output=str(res.output.get("stdout", ""))
                 or str(res.output.get("stderr", ""))
                 or None,
+                diagnostics=verdict_str,
             )
             return ToolResult(
                 content=[ToolContent.text_content(str(kill_exc))],

@@ -56,6 +56,7 @@ boundary — everything else is a hard-coded defence-in-depth layer.
 
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import subprocess
@@ -63,10 +64,16 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
+from ralph.mcp.server.exec_sse_streaming import get_current_progress_subscription
 from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
 from ralph.mcp.tools._exec_execution_error import ExecutionError
 from ralph.mcp.tools._exec_job_tools import get_exec_job_registry
-from ralph.mcp.tools._exec_jobs import ExecJobError, ExecJobRegistry, JobSnapshot
+from ralph.mcp.tools._exec_jobs import (
+    ExecJobError,
+    ExecJobRegistry,
+    JobSnapshot,
+    serialize_liveness_verdict,
+)
 from ralph.mcp.tools._exec_output_spill import SPILL_OUTPUT_LIMIT_BYTES, format_or_spill
 from ralph.mcp.tools._exec_params import ExecParams
 from ralph.mcp.tools._exec_run_deps import CwdProvider, ExecRunDeps, build_effective_exec_deps
@@ -103,6 +110,7 @@ from ralph.process.manager._managed_process_output_limit_exceeded_error import (
 )
 from ralph.timeout_defaults import (
     EXEC_DEFAULT_TIMEOUT_MS,
+    EXEC_JOB_CEILING_MAX_S,
     EXEC_MAX_TIMEOUT_MS,
     EXEC_SOFT_REPLY_BUDGET_MS,
 )
@@ -166,10 +174,23 @@ def _reject_nul_params(params: Mapping[str, object]) -> None:
                 raise InvalidParamsError(f"exec rejects an embedded NUL in {name!r}: {item!r}")
 
 
+def parse_exec_max_runtime(params: Mapping[str, object]) -> int | None:
+    """Return the optional clamped max_runtime_ms parameter."""
+    raw = params.get("max_runtime_ms")
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)) and raw > 0:
+        max_ms = int(raw)
+        hard_max_ms = int(EXEC_JOB_CEILING_MAX_S * 1000)
+        return min(max_ms, hard_max_ms)
+    return None
+
+
 def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
     """Parse and validate exec tool parameters."""
     _reject_nul_params(params)
     timeout_ms = parse_exec_timeout(params)
+    max_runtime_ms = parse_exec_max_runtime(params)
 
     # A command/argv STRING carrying an unquoted shell operator is a compound
     # shell command (pipe, redirection, ``&&``/``;`` sequence). Route it through
@@ -185,13 +206,19 @@ def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
             args=first[1],
             timeout_ms=timeout_ms,
             shell_command=shell_source,
+            max_runtime_ms=max_runtime_ms,
         )
 
     command_tokens = _parse_exec_command_tokens(params)
     args = _parse_exec_args(params.get("args"))
     command = command_tokens[0] if command_tokens else ""
     merged_args = [*command_tokens[1:], *args]
-    return ExecParams(command=command, args=merged_args, timeout_ms=timeout_ms)
+    return ExecParams(
+        command=command,
+        args=merged_args,
+        timeout_ms=timeout_ms,
+        max_runtime_ms=max_runtime_ms,
+    )
 
 
 def parse_exec_timeout(params: Mapping[str, object]) -> int:
@@ -775,17 +802,21 @@ def handle_exec_command(
         )
         cwd = _workspace_root(workspace, cwd_provider=cwd_prov)
         full_cmd = [run_argv0, *run_args]
+        current_sub = get_current_progress_subscription()
         try:
             job_id = effective_registry.start(
                 full_cmd,
                 cwd=str(cwd),
                 timeout_ms=parsed.timeout_ms,
+                max_runtime_ms=parsed.max_runtime_ms,
                 capability=PROCESS_EXEC_BOUNDED_CAPABILITY,
+                progress=current_sub,
             )
             res = effective_registry.wait(
                 job_id,
                 wait_ms=EXEC_SOFT_REPLY_BUDGET_MS,
                 capability=PROCESS_EXEC_BOUNDED_CAPABILITY,
+                progress=current_sub,
             )
         except ExecJobError as exc:
             raise ExecutionError(f"Failed to execute '{display_cmd}': {exc}") from exc
@@ -793,20 +824,12 @@ def handle_exec_command(
             raise ExecutionError(f"Failed to execute '{display_cmd}': {exc}") from exc
 
         if isinstance(res, JobSnapshot):
-            verdict_dict: dict[str, object] | None = None
-            if res.verdict is not None:
-                verdict_dict = {
-                    "score": res.verdict.score,
-                    "pressure": res.verdict.pressure,
-                    "verdict_kind": res.verdict.verdict_kind,
-                    "suspicious": res.verdict.suspicious,
-                }
             snapshot_payload: dict[str, object] = {
                 "job_id": res.job_id,
                 "running": res.running,
                 "elapsed_s": res.elapsed_s,
                 "output": res.output,
-                "verdict": verdict_dict,
+                "verdict": serialize_liveness_verdict(res.verdict),
                 "instruction": "call exec_wait; do not re-run",
             }
             return ToolResult(
@@ -815,6 +838,8 @@ def handle_exec_command(
             )
 
         if res.kill_cause is not None:
+            verdict_dict = serialize_liveness_verdict(res.verdict)
+            verdict_str = json.dumps(verdict_dict) if verdict_dict is not None else None
             kill_exc = ExecutionError(
                 f"Failed to execute '{display_cmd}': timed out after {parsed.timeout_ms}ms",
                 timed_out=True,
@@ -823,6 +848,7 @@ def handle_exec_command(
                 partial_output=str(res.output.get("stdout", ""))
                 or str(res.output.get("stderr", ""))
                 or None,
+                diagnostics=verdict_str,
             )
             return ToolResult(
                 content=[ToolContent.text_content(str(kill_exc))],
@@ -894,8 +920,10 @@ __all__ = [
     "find_vcs_usage_in_scripts",
     "format_exec_result",
     "handle_exec_command",
+    "parse_exec_max_runtime",
     "parse_exec_params",
     "parse_exec_timeout",
     "resolve_spill_dir",
     "run_command",
+    "serialize_liveness_verdict",
 ]

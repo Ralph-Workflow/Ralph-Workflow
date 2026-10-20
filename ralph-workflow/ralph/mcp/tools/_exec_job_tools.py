@@ -2,16 +2,28 @@
 
 from __future__ import annotations
 
-import threading
+import json
 from typing import TYPE_CHECKING, Final
 
+import ralph.timeout_defaults as td
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.protocol._mcp_capability import McpCapability
+from ralph.mcp.server.exec_sse_streaming import get_current_progress_subscription
 from ralph.mcp.tools._exec_execution_error import ExecutionError
 from ralph.mcp.tools._exec_jobs import (
     ExecJobError,
     ExecJobRegistry,
     JobSnapshot,
+    serialize_liveness_verdict,
+)
+from ralph.mcp.tools._exec_jobs import (
+    get_exec_job_registry as _get_exec_job_registry_from_jobs,
+)
+from ralph.mcp.tools._exec_jobs import (
+    reset_exec_job_registry as _reset_exec_job_registry_from_jobs,
+)
+from ralph.mcp.tools._exec_jobs import (
+    set_exec_job_registry as _set_exec_job_registry_from_jobs,
 )
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
@@ -35,40 +47,52 @@ PROCESS_EXEC_BOUNDED_CAPABILITY: Final[str] = McpCapability.PROCESS_EXEC_BOUNDED
 PROCESS_EXEC_UNBOUNDED_CAPABILITY: Final[str] = McpCapability.PROCESS_EXEC_UNBOUNDED.value
 
 
-class _JobRegistryState:
-    """Holder for the global ExecJobRegistry instance."""
-
-    instance: ExecJobRegistry | None = None
-
-
-_registry_state = _JobRegistryState()
-_REGISTRY_LOCK: Final[threading.Lock] = threading.Lock()
-
-
 def get_exec_job_registry(
     *,
     process_manager: ProcessManager | None = None,
     clock: Callable[[], float] | None = None,
     spill_dir: Path | None = None,
-    sample_interval_s: float = 0.05,
+    sample_interval_s: float = td.EXEC_LIVENESS_SAMPLE_INTERVAL_S,
 ) -> ExecJobRegistry:
-    """Return the global ExecJobRegistry singleton, creating it if needed."""
-    if _registry_state.instance is None:
-        with _REGISTRY_LOCK:
-            if _registry_state.instance is None:
-                _registry_state.instance = ExecJobRegistry(
-                    process_manager=process_manager,
-                    clock=clock,
-                    spill_dir=spill_dir,
-                    sample_interval_s=sample_interval_s,
-                )
-    return _registry_state.instance
+    """Return the process-local ExecJobRegistry singleton, creating it if needed.
+
+    Thin re-export of :func:`ralph.mcp.tools._exec_jobs.get_exec_job_registry`
+    so existing callers (``exec.py``, ``unsafe_exec.py``, this module's
+    handlers) can keep importing it from ``_exec_job_tools`` without a
+    find/replace. All four functions (``get_exec_job_registry``,
+    ``set_exec_job_registry``, ``reset_exec_job_registry``,
+    ``attach_progress_subscription``) are owned by ``_exec_jobs`` so the
+    child MCP server has exactly one shared registry rather than the two
+    independent singletons that previously existed here and in
+    ``exec_sse_streaming``.
+
+    The ``sample_interval_s`` argument is preserved for backward
+    compatibility; ``_exec_jobs.get_exec_job_registry`` uses
+    ``td.EXEC_LIVENESS_SAMPLE_INTERVAL_S`` directly, so tests that need a
+    custom interval should construct an ``ExecJobRegistry`` and install it
+    via :func:`set_exec_job_registry` rather than passing this kwarg.
+    """
+    del spill_dir, sample_interval_s
+    return _get_exec_job_registry_from_jobs(
+        process_manager=process_manager,
+        clock=clock,
+    )
 
 
-def reset_exec_job_registry(registry: ExecJobRegistry | None = None) -> None:
-    """Reset or replace the global ExecJobRegistry singleton."""
-    with _REGISTRY_LOCK:
-        _registry_state.instance = registry
+def set_exec_job_registry(registry: ExecJobRegistry | None) -> None:
+    """Inject or clear the singleton (test seam). Thin re-export."""
+    _set_exec_job_registry_from_jobs(registry)
+
+
+def reset_exec_job_registry() -> None:
+    """Clear the singleton (test seam). Thin re-export.
+
+    NB: the prior version of this module accepted an optional ``registry``
+    argument to either install a fresh instance or clear the slot. Callers
+    that previously did ``reset_exec_job_registry(my_registry)`` must now
+    use :func:`set_exec_job_registry` explicitly.
+    """
+    _reset_exec_job_registry_from_jobs()
 
 
 def _resolve_session_capability_for_job(
@@ -120,27 +144,20 @@ def handle_exec_wait(
 
     reg = registry if registry is not None else get_exec_job_registry()
     eff_cap = _resolve_session_capability_for_job(session, reg, job_id, "Exec job wait")
+    current_sub = get_current_progress_subscription()
 
     try:
-        res = reg.wait(job_id, wait_ms=wait_ms, capability=eff_cap)
+        res = reg.wait(job_id, wait_ms=wait_ms, capability=eff_cap, progress=current_sub)
     except ExecJobError as exc:
         return ToolResult(content=[ToolContent.text_content(str(exc))], is_error=True)
 
     if isinstance(res, JobSnapshot):
-        verdict_dict: dict[str, object] | None = None
-        if res.verdict is not None:
-            verdict_dict = {
-                "score": res.verdict.score,
-                "pressure": res.verdict.pressure,
-                "verdict_kind": res.verdict.verdict_kind,
-                "suspicious": res.verdict.suspicious,
-            }
         snapshot_payload: dict[str, object] = {
             "job_id": res.job_id,
             "running": res.running,
             "elapsed_s": res.elapsed_s,
             "output": res.output,
-            "verdict": verdict_dict,
+            "verdict": serialize_liveness_verdict(res.verdict),
             "instruction": res.instruction,
         }
         return ToolResult(
@@ -150,6 +167,8 @@ def handle_exec_wait(
 
     # Completed JobResult
     if res.kill_cause is not None:
+        verdict_dict = serialize_liveness_verdict(res.verdict)
+        verdict_str = json.dumps(verdict_dict) if verdict_dict is not None else None
         exec_err = ExecutionError(
             f"Job {job_id} terminated: {res.kill_cause}",
             timed_out=True,
@@ -157,6 +176,7 @@ def handle_exec_wait(
             partial_output=str(res.output.get("stdout", ""))
             or str(res.output.get("stderr", ""))
             or None,
+            diagnostics=verdict_str,
         )
         return ToolResult(content=[ToolContent.text_content(str(exec_err))], is_error=True)
 
@@ -170,22 +190,13 @@ def handle_exec_wait(
         }
         return ToolResult(content=[ToolContent.json_content(cancel_payload)], is_error=False)
 
-    verdict_dict_final: dict[str, object] | None = None
-    if res.verdict is not None:
-        verdict_dict_final = {
-            "score": res.verdict.score,
-            "pressure": res.verdict.pressure,
-            "verdict_kind": res.verdict.verdict_kind,
-            "suspicious": res.verdict.suspicious,
-        }
-
     final_payload: dict[str, object] = {
         "job_id": res.job_id,
         "running": False,
         "returncode": res.returncode,
         "elapsed_s": res.elapsed_s,
         "output": res.output,
-        "verdict": verdict_dict_final,
+        "verdict": serialize_liveness_verdict(res.verdict),
     }
     is_error = res.returncode is not None and res.returncode != 0
     return ToolResult(content=[ToolContent.json_content(final_payload)], is_error=is_error)
