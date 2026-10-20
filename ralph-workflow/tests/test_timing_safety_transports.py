@@ -290,7 +290,7 @@ def test_timing_safety_import_time_invariant_survives_python_minus_o() -> None:
     bottomless safety floor; the import-time check pins the contract.
     """
     original = _TIMING_SAFETY_RELATIVE_PATH.read_text(encoding="utf-8")
-    anchor = "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000"
+    anchor = "TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000"
     if anchor not in original:  # pragma: no cover
         raise AssertionError(
             "timing-safety headroom anchor missing; _timing_safety.py was reformatted."
@@ -307,9 +307,9 @@ def test_timing_safety_import_time_invariant_survives_python_minus_o() -> None:
         from pathlib import Path
 
         path = Path({path!r})
-        marker = "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = -1"
+        marker = "TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = -1"
         patched = path.read_text(encoding="utf-8").replace(
-            "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000",
+            "TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000",
             marker,
             1,
         )
@@ -361,10 +361,64 @@ def test_timing_safety_import_time_invariant_survives_python_minus_o() -> None:
         assert "RuntimeError" in completed.stdout, (
             f"expected RuntimeError text (minus_o={minus_o}); got stdout={completed.stdout!r}"
         )
-        assert "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS" in completed.stdout, (
+        assert "TIMING_SAFETY_TRANSPORT_HEADROOM_MS" in completed.stdout, (
             f"expected the invariant name in stderr (minus_o={minus_o}); "
             f"got stdout={completed.stdout!r}"
         )
+
+
+def test_transport_timeout_import_time_invariant_survives_python_minus_o() -> None:
+    """Each concrete transport timeout below the floor MUST trigger ``RuntimeError`` under ``python -O``."""
+    script = textwrap.dedent(
+        """\
+        import importlib
+        import sys
+
+        transports = [
+            ("ralph.mcp.transport.codex", "_CODEX_TOOL_TIMEOUT_SEC", 10, "codex"),
+            ("ralph.mcp.transport.kimi", "_KIMI_TOOL_TIMEOUT_MS", 10000, "kimi"),
+            ("ralph.mcp.transport.claude", "_CLAUDE_TOOL_TIMEOUT_MS", 10000, "claude"),
+            ("ralph.mcp.transport.opencode", "_OPENCODE_MCP_CLIENT_TIMEOUT_MS", 10000, "opencode"),
+            ("ralph.mcp.transport.pi", "MCP_TOOL_CALL_DEADLINE_MS", 10000, "pi"),
+        ]
+
+        for mod_name, attr, bad_val, name in transports:
+            mod = importlib.import_module(mod_name)
+            orig = getattr(mod, attr)
+            setattr(mod, attr, bad_val)
+            sys.modules.pop("ralph.mcp.server._timing_safety", None)
+            try:
+                importlib.import_module("ralph.mcp.server._timing_safety")
+                print(f"FAILED:{name}")
+                sys.exit(1)
+            except RuntimeError as exc:
+                if f"transport {name} timeout" not in str(exc):
+                    print(f"UNEXPECTED_ERROR:{name}:{exc}")
+                    sys.exit(2)
+            finally:
+                setattr(mod, attr, orig)
+                sys.modules.pop("ralph.mcp.server._timing_safety", None)
+
+        print("ALL_TRANSPORTS_CHECKED")
+        """
+    )
+    for minus_o in (False, True):
+        cmd = [sys.executable]
+        if minus_o:
+            cmd.append("-O")
+        cmd.extend(["-c", script])
+        completed = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        assert completed.returncode == 0, (
+            f"expected exit code 0 (minus_o={minus_o}); "
+            f"got returncode={completed.returncode} stdout={completed.stdout!r} stderr={completed.stderr!r}"
+        )
+        assert "ALL_TRANSPORTS_CHECKED" in completed.stdout
 
 
 # --- Per-transport-public-constant contract -----------------------------------

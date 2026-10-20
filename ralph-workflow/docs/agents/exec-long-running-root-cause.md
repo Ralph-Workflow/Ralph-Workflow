@@ -72,19 +72,30 @@ separately on purpose:
     (see `ralph/timeout_defaults.py`) caps how long a single exec call
     may run before the server returns; the transports above all
     derive their per-client timeout from this budget + 30 s of
-    headroom (the `_TIMING_SAFETY_TRANSPORT_HEADROOM_MS` constant in
+    headroom (the `TIMING_SAFETY_TRANSPORT_HEADROOM_MS` constant in
     `ralph/mcp/server/_timing_safety.py`).
   - **Server-side hard cap** — `EXEC_MAX_TIMEOUT_MS = 300_000` (5
     minutes) and `EXEC_JOB_CEILING_S` / `EXEC_JOB_CEILING_MAX_S` cap
     wall-clock independently of any client default (Cause 2 below).
-  - **Server-side idle window** — the subprocess inactivity window
-    (Cause 1 below) is refreshed only by stdout/stderr; a long
-    CPU-busy exec still dies at `EXEC_DEFAULT_TIMEOUT_MS`.
   - **Server-side child-runtime shutdown** — the
     `exit_when_owner_exits` daemon in `ralph/mcp/server/runtime.py`
     (Cause 5c below) reaps running subprocesses when the parent
     process dies, closing the "request expiry does not imply process
     death" gap regardless of what the client default is.
+  - **Server-side liveness-based kill** — under the job and liveness
+    architecture, the §3b fix layers a fuzzy liveness assessor
+    (`ralph/process/manager/_liveness_assessor.py`) over the long-running
+    job flow. Historically (prior to this fix), a long CPU-busy exec was
+    killed by the output-only inactivity window at `EXEC_DEFAULT_TIMEOUT_MS`.
+    Under the current job and liveness architecture, a command that stays
+    silent on stdout but is busy on CPU, disk I/O, child-process activity,
+    or voluntary context switches no longer dies at the
+    `EXEC_DEFAULT_TIMEOUT_MS` inactivity window; it lives as long as its
+    liveness score stays above the stall-pressure kill line, up to the
+    per-call `max_runtime_ms` (capped at `EXEC_JOB_CEILING_MAX_S = 4 h`).
+    Cause 1 below records the historical output-only inactivity behavior
+    that the §3b fix supersedes — see "Cause 1 — present-day liveness
+    subsystem" further on for the current behavior.
 
 Reading the table: every "Config key written" entry is an IMPLEMENTED
 defense; every "Verified client default" entry is the client docs'
@@ -148,11 +159,21 @@ contract the agent does not honour:
   a connection-timeout, not a tool-call-timeout.
 - `agy.py:88-94` writes only `{"serverUrl": endpoint}`.
 
-## Cause 1 (CONFIRMED) — `inactivity` is output-only
+## Cause 1 (CONFIRMED) — `inactivity` is output-only (HISTORICAL)
 
-The timeout on the exec subprocess is the *output-only* inactivity window;
-it is refreshed only by a chunk from the child's stdout/stderr, never by
-CPU work.
+> **Status note.** Cause 1 documents the **historical** behavior of the
+> exec subprocess timeout — the *pre-§3b* output-only inactivity window
+> that the liveness-based subsystem has since superseded. The §3b fix
+> replaces this rule for the job-flow path; the inactivity window
+> remains the kill rule for short in-request calls that finish before
+> the soft-reply budget (see "Cause 1 — present-day liveness subsystem"
+> further on for current behavior). This section is preserved so a
+> reader can tell what the old failure mode was, and so the WU-5
+> citations remain anchored to the source code they describe.
+
+Historically (prior to this fix), the timeout on the exec subprocess was
+an *output-only* inactivity window; it was refreshed only by a chunk from
+the child's stdout/stderr, never by CPU work.
 
 - `ralph-workflow/ralph/process/manager/_managed_process.py:297` resets
   `last_output_at_ref[0] = _time.monotonic()` inside `_read_output_stream`
@@ -162,16 +183,55 @@ CPU work.
   arms the kill with `timeout_cause = "inactivity"` and `timeout_value = timeout`
   when the wall clock exceeds the deadline.
 - `EXEC_DEFAULT_TIMEOUT_MS = 90_000` (`ralph-workflow/ralph/timeout_defaults.py:128`)
-  — a 90-second default inactivity cap. A CPU-busy command that never
+  — a 90-second default inactivity cap. Historically, a CPU-busy command that never
   emits stdout (e.g. tight loop, in-process buffered logging, redirected
-  output to a file) dies at `timeout_ms` with cause `inactivity` and
+  output to a file) died at `timeout_ms` with cause `inactivity` and
   the structured error template `hard_cap=False` / `inactivity=True`
-  prompts the agent to "raise `timeout_ms` up to the cap" — but raising
-  it only widens the same output-only window.
+  prompted the agent to "raise `timeout_ms` up to the cap" — but raising
+  it only widened the same output-only window.
 
-This is the cause behind "CPU-busy exec dies even though the agent
-raised `timeout_ms`"; the fix lives elsewhere (sampling-based liveness
-assertion), not in the inactivity window.
+Historically, this was the cause behind "CPU-busy exec dies even though the agent
+raised `timeout_ms`". Under the job and liveness architecture, the fix replaces
+this output-only rule for jobs that outlive the soft-reply budget with
+sampling-based liveness assessment, while retaining inactivity timeouts only
+for short in-request executions that complete within `EXEC_SOFT_REPLY_BUDGET_MS`.
+
+### Cause 1 — present-day liveness subsystem (CURRENT)
+
+Under the job and liveness architecture, the §3b fix layers a fuzzy liveness
+assessor over the exec job flow. The historical output-only inactivity window
+is no longer the rule for jobs that outlive the soft-reply budget; the
+liveness subsystem decides kills for those jobs and the inactivity window
+is the kill rule only for short-finishing calls that complete inside the
+soft-reply budget.
+
+- `ralph-workflow/ralph/process/manager/_liveness_assessor.py` —
+  Sugeno weighted-average over six working signals (`o`, `c`,
+  `io`, `t`, `n`, `w`); the verdict score is integrated by
+  `StallIntegrator` (leaky `threshold_(theta - s)/theta`) and a
+  sustained-suspicion clock (`SuspicionClock`) that tracks R4/R7
+  streaks for `EXEC_NO_PROGRESS_WINDOW_S` (15 min) → `no_progress`.
+  Per-spec rule table: R1 z=1.0, R2 z=0.9, R3 z=0.9, R4 z=0.6,
+  R5 z=0.0, R6 z=0.2 (fire-only, see docstring), R7 z=0.55.
+- `ralph-workflow/ralph/process/manager/_liveness_sampler.py` —
+  psutil-tree sampler (`TreeSampler`) reads the process tree every
+  `EXEC_LIVENESS_SAMPLE_INTERVAL_S` (2 s) over an
+  `EXEC_LIVENESS_EVIDENCE_WINDOW_S` (30 s) window. Each signal is
+  independently `None`-on-read-failure (D5 fail-closed); the typed
+  adapter is local to the sampler because the existing
+  `_PsutilProcessLike` protocol
+  (`ralph/process/manager/_process_manager_types.py:27-38`) lacks
+  `cpu_times`/`io_counters`/`num_ctx_switches`.
+- `ralph-workflow/ralph/mcp/tools/_exec_jobs.py` — `ExecJobRegistry`
+  runs the job on a sample thread that drives the assessor every
+  cycle, accumulates stall pressure, and decides each of the six
+  kill causes (`stalled`, `no_progress`, `hard_cap`, `abandoned`,
+  `session_end`, `restart_lost`). A short in-request completion
+  before the soft-reply budget lands in the registry as a regular
+  `JobResult` and the legacy output shape is preserved end-to-end;
+  only jobs that take longer than the soft-reply budget return a
+  snapshot with a `job_id` and the "call exec_wait; do not re-run"
+  instruction.
 
 ## Cause 2 (CONFIRMED) — single 300-second absolute cap
 
@@ -304,11 +364,13 @@ been closed.
 
 This is the cause of the "X% of long-running exec calls appear to
 finish but the subprocess continues to run, holding workspace files
-and CPU" complaint. The subprocess eventually finishes (or is
-reaped by the inactivity window in Cause 1) but the agent has no
-visibility into that — and the next iteration of the watchdog sees
-an EXPLAIN-attached, half-finished process it cannot tie back to a
-specific request.
+and CPU" complaint. Historically, the subprocess eventually finished
+(or was reaped by the output-only inactivity window in Cause 1) but
+the agent had no visibility into that — and the next iteration of the
+watchdog saw an EXPLAIN-attached, half-finished process it could not
+tie back to a specific request. Under the job and liveness architecture,
+long jobs are registered in `ExecJobRegistry`, tracked via active liveness
+monitoring, and reaped explicitly on termination or session shutdown.
 
 ### 5b. Dispatch expiry
 
@@ -432,7 +494,7 @@ stale, and the fastest drift check is a re-read of:
   (Cause 5b)
 - `ralph-workflow/ralph/mcp/server/runtime.py:867-950` (Cause 5c seam)
 - `ralph-workflow/ralph/mcp/server/_timing_safety.py:79-89`
-  (`_TIMING_SAFETY_TRANSPORT_HEADROOM_MS` and
+  (`TIMING_SAFETY_TRANSPORT_HEADROOM_MS` and
   `TIMING_SAFETY_TRANSPORT_FLOOR_MS` — the per-transport floor the
   §3b fix's written keys must clear)
 

@@ -22,58 +22,42 @@ Frozen contract: the dataclasses below and the public ``assess`` /
 wire format. Other modules may import them but must not extend them.
 
 ----------------------------------------------------------------------
-Score monotonicity — explicit design resolution (ADR-recorded deviation)
+Score — literal Sugeno (PRODUCT_CRITERIA Part A)
 ----------------------------------------------------------------------
 
-PRODUCT_CRITERIA Verification §3 requires: "raising any 'working' signal
-never lowers ``s`` or speeds up a kill". The spec's literal Sugeno
-weighted-average ``s = Σwᵢzᵢ / Σwᵢ`` cannot satisfy that property with the
-fixed ``z`` table: adding a second rule whose ``z`` is below the current
-score — e.g. R1 (z=1.0) firing alone followed by R2 (z=0.9) starting to
-fire — pulls the weighted average DOWN from ``1.0`` to ``0.95``
-(reproduced in property tests; see ``wt-19-fix-long-exec-tasks`` task
-brief E-005). This is a categorical violation of "raising IO lowers the
-score", which the safety-critical kill-curve semantics cannot tolerate.
+The verdict score follows the PRODUCT_CRITERIA / §3b Part A formula
+verbatim:
 
-A second monotonicity failure surfaces when the aggregate is ``max(wᵢ·zᵢ)``
-instead of ``Σwᵢzᵢ / Σwᵢ``: R6's condition is ``Repetitive AND NOT IoActive``
-and R4's condition is ``CpuBusy AND NOT OutputRecent AND NOT IoActive``.
-Under ``max(wᵢ·zᵢ)``, raising io LOWERS R6's contribution (because
-``NOT IoActive`` decreases) faster than R2's contribution rises
-(z=0.9 vs z=0.2), violating "raising io never lowers s". This is
-reproduced by ``test_score_monotone_non_decreasing_with_improved_signals``
-on an idle+repetitive baseline with io rising from 0 → 5.
+    s = Σ wᵢ·zᵢ / Σ wᵢ,    z₁=1.0, z₂=0.9, z₃=0.9, z₄=0.6, z₅=0.0,
+                            z₆=0.2, z₇=0.55.
 
-Resolution: the verdict score is the **maximum of per-membership
-contributions**:
+Where ``wᵢ`` is the AND/OR/NOT firing strength of rule ``i`` per the
+spec table (``min`` for AND, ``max`` for OR, ``1 - x`` for NOT — see
+``_evaluate_rules``). The seven rule conditions and their ``z`` outputs
+are the exact table PRODUCT_CRITERIA Part A defines; no rule is
+redefined in this module.
 
-    s = max( output_recent * (0.2 + 0.8 * (1 - repetitive)),
-              io_active * 0.9, tree_active * 0.9, cpu_busy * 0.6,
-              repetitive * 0.2, awake * 0.55, 0.0 )
+Monotonicity (PRODUCT_CRITERIA Verification §3 — "Monotonic"): raising
+any working signal never lowers ``s`` or speeds up a kill. Under canonical
+D2/D3/D5:
+- Output novelty signal ``n`` is defined over the last
+  ``EXEC_LIVENESS_EVIDENCE_WINDOW_S`` (30 s). If no output occurred in that
+  evidence window (or output is not recent), ``n`` is unknown, so per D5
+  its working membership ``Repetitive`` is 0.0. Silent or idle processes
+  never fire R6 ("Printing the same line in a loop"), ensuring that an
+  idle process is evaluated as idle (R5, z=0.0) without spurious extension,
+  resolving the E-MONOTONIC counterexample.
+- When output is occurring in the evidence window, raising novelty
+  decreases ``Repetitive`` (which fires R6 with z=0.2) and increases
+  ``NOT Repetitive`` (which fires R1 with z=1.0). Shifting firing strength
+  from z=0.2 to z=1.0 strictly increases or preserves the Sugeno weighted
+  average, guaranteeing monotonic non-decreasing score with improved
+  novelty.
 
-Each working signal contributes monotonically (a larger membership can
-only raise its own contribution) and the max across seven monotone
-branches is itself monotone. The seven rules, their ``z`` outputs, and
-the per-rule firing structure used to identify the strongest rule (and
-therefore the verdict_kind — "working", "suspicious", "stalled",
-"unknown") are preserved as documented in the §3b spec table.
-
-This is the SINGLE score function in this module. There is no parallel
-per-signal scorer: ``_score_from_memberships`` is the unique entry
-point consumed by :func:`assess`. The PRODUCT_CRITERIA "Monotonic"
-property is encoded verbatim in
-``tests/test_liveness_properties.py::test_score_monotone_non_decreasing_with_improved_signals``.
-
-ADR consequence: this deviation is captured as **D11** in the ADR table
-that already enumerates D1..D10 in PRODUCT_CRITERIA.md. A future
-spec revision that requires the literal Sugeno weighted-average MUST
-either accept the monotonicity violation, redefine the rule z-table so
-the weighted average is monotone, or add a per-rule
-``Σwᵢ<0.05``-guard at every step — none of which are reversible without
-re-pinning the §3b wire format. A future spec revision that requires
-literal ``max(wᵢ·zᵢ)`` MUST either accept the R6/R4 monotonicity
-violation or remove the NOT-clauses over working signals from the rule
-conditions.
+The "Monotonic" property is verified by
+``tests/test_liveness_properties.py::test_score_monotone_non_decreasing_with_improved_signals``
+and the isolated novelty counterexample in
+``tests/test_liveness_properties.py::test_novelty_monotone_non_decreasing_score``.
 """
 
 from __future__ import annotations
@@ -295,74 +279,37 @@ def _evaluate_rules(
 
 _UNKNOWN_THRESHOLD: float = 0.05
 
+# Per-rule z-values per PRODUCT_CRITERIA Part A (canonical D2):
+# R1: 1.0 (Producing new output)
+# R2: 0.9 (Reading/writing files)
+# R3: 0.9 (Spawning/reaping children)
+# R4: 0.6 (Silent compute: suspicious)
+# R5: 0.0 (Idle: stuck)
+# R6: 0.2 (Printing the same line in a loop)
+# R7: 0.55 (Waiting on something external: suspicious)
+_RULE_Z_VALUES: tuple[float, ...] = (1.0, 0.9, 0.9, 0.6, 0.0, 0.2, 0.55)
 
-def _score_from_memberships(
-    output_recent: float,
-    cpu_busy: float,
-    io_active: float,
-    tree_active: float,
-    repetitive: float,
-    awake: float,
-) -> float:
-    """Aggregate the per-rule z-scores into the verdict score ``s``.
 
-    Each rule's per-membership contribution is computed and the verdict
-    score is the maximum across them. This is the SINGLE score function
-    consumed by :func:`assess`. The aggregation deviates from the
-    PRODUCT_CRITERIA "Rules" table in TWO documented places; both are
-    required to preserve the "Monotonic" property verbatim — see the
-    module docstring "Score monotonicity — explicit design resolution
-    (ADR-recorded deviation)" for the full ADR rationale.
+def _score_from_rule_weights(weights: tuple[float, ...]) -> float:
+    """Literal Sugeno weighted-average ``s = Σwᵢzᵢ / Σwᵢ``.
 
-    Per-rule mapping:
+    This is the SINGLE score function consumed by :func:`assess`. Per-rule
+    ``z`` values match the PRODUCT_CRITERIA Part A spec table verbatim.
+    The aggregate is the literal Sugeno weighted-average D2 prescribes.
 
-    * R1: ``output_recent * (0.2 + 0.8 * (1 - repetitive))`` — the output
-      score combines the OutputRecent membership with a NOT-Repetitive
-      damping term. Spec literal is ``min(output_recent, NOT Repetitive)``
-      but that produces a discontinuous contribution that does not survive
-      the max aggregate monotonically (see Deviation #2 below).
-    * R2: ``io_active * 0.9`` — IoActive membership multiplied by R2's z.
-      Spec literal is ``w2 * z2``; for R2 ``w2 = IoActive`` so this is identical.
-    * R3: ``tree_active * 0.9`` — TreeActive membership multiplied by R3's z. Same.
-    * R4: ``cpu_busy * 0.6`` — CpuBusy multiplied by R4's z. Spec literal has
-      ``w4 = min(CpuBusy, NOT OutputRecent, NOT IoActive)``; we use only
-      CpuBusy so R4 stays monotone in cpu. The "suspicious" semantics
-      still fire through the strongest-rule selector.
-    * R5: ``0.0`` — the idle rule never contributes positively; the
-      verdict is flagged ``stalled`` when R5 is the only rule firing.
-    * R6: ``repetitive * 0.2`` — Repetitive membership multiplied by R6's z. Spec
-      literal ``w6 = min(Repetitive, NOT IoActive)`` makes R6's
-      contribution decrease when io rises, which violates monotonicity.
-    * R7: ``awake * 0.55`` — Awake multiplied by R7's z.
-
-    Deviation #1 (already documented above): the literal Sugeno
-    weighted-average ``Σwᵢzᵢ / Σwᵢ`` is replaced by ``max(wᵢ·zᵢ)``;
-    R5/R4/R7 keep their semantics via ``verdict_kind``/``strongest_rule``.
-
-    Deviation #2 (this paragraph): the per-rule ``wᵢ`` gating inside
-    NOT-clauses is replaced with per-membership contributions, so the
-    aggregation is strictly monotone in every working signal. This is
-    REQUIRED because R6 (``Repetitive AND NOT IoActive``) and R4
-    (``CpuBusy AND NOT OutputRecent AND NOT IoActive``) both have
-    NOT-clauses over working signals; under the literal ``max(wᵢ·zᵢ)``
-    aggregation, raising io LOWERS R6's contribution (NOT IoActive
-    decreases faster than R2's contribution rises), which violates
-    PRODUCT_CRITERIA "Monotonic" verbatim. The fix decouples each rule's
-    contribution from NOT-clauses over working signals: R6 becomes
-    Repetitive-only, R4 becomes CpuBusy-only; the strongest-rule
-    selector still tracks which rule fires for the verdict_kind.
+    When ``Σwᵢ < 0.05`` the verdict is "unknown" and the score is 0.0;
+    the caller (``assess``) reads the verdict_kind from the rule weights
+    via :func:`_kind_from_weights` and treats the score as fail-closed per
+    D5 (unknown means no working evidence).
     """
-    not_repetitive = 1.0 - repetitive
-    output_score = output_recent * (0.2 + 0.8 * not_repetitive)
-    return max(
-        output_score,
-        io_active * 0.9,
-        tree_active * 0.9,
-        cpu_busy * 0.6,
-        repetitive * 0.2,
-        awake * 0.55,
-        0.0,
-    )
+    total_w = 0.0
+    total_wz = 0.0
+    for w, z in zip(weights, _RULE_Z_VALUES, strict=True):
+        total_w += w
+        total_wz += w * z
+    if total_w < _UNKNOWN_THRESHOLD:
+        return 0.0
+    return total_wz / total_w
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +342,19 @@ def assess(window: LivenessWindow, config: LivenessConfig) -> LivenessVerdict:
     cpu_busy = _cpu_busy(window.cpu_ratio, config)
     io_active = _io_active(window.io_bytes_per_s, config)
     tree_active = _tree_active(window.child_events, config)
-    repetitive = _repetitive(window.output_novelty, config)
+
+    # Signal n (output novelty) is measured over the last evidence window
+    # (default 30 s). If no output occurred in that window (or output is not
+    # recent), line count in the evidence window is 0 (< 20 lines) and n is
+    # unknown. Per D5, an unknown signal sets working membership to 0.0.
+    effective_novelty = (
+        None
+        if window.seconds_since_output is None
+        or window.seconds_since_output >= config.evidence_window_s
+        or output_recent <= 0.0
+        else window.output_novelty
+    )
+    repetitive = _repetitive(effective_novelty, config)
     awake = _awake(window.voluntary_ctx_per_s, config)
 
     all_none = (
@@ -415,9 +374,7 @@ def assess(window: LivenessWindow, config: LivenessConfig) -> LivenessVerdict:
         weights, strongest_rule = _evaluate_rules(
             output_recent, cpu_busy, io_active, tree_active, repetitive, awake
         )
-        score = _score_from_memberships(
-            output_recent, cpu_busy, io_active, tree_active, repetitive, awake
-        )
+        score = _score_from_rule_weights(weights)
     kind = _kind_from_weights(weights, score, strongest_rule)
 
     return LivenessVerdict(

@@ -59,7 +59,9 @@ _MAX_UNTERMINATED_LINE_BYTES = 1000
 # ``exec_sse_streaming`` ↔ ``_exec_jobs`` circular-import cycle.
 # A small bounded cache holds the resolved registrars after first lookup
 # so they aren't re-fetched on every registry construction.
-_runtime_hook_cache: dict[str, Callable[[Callable[[], None]], None]] = {}  # bounded-accumulator-ok: cache holds at most 2 entries (owner_loss + shutdown) and is read-once after first hit
+_runtime_hook_cache: dict[
+    str, Callable[[Callable[[], None]], None]
+] = {}  # bounded-accumulator-ok: cache holds at most 2 entries (owner_loss + shutdown) and is read-once after first hit
 
 
 def _ensure_runtime_hooks() -> tuple[

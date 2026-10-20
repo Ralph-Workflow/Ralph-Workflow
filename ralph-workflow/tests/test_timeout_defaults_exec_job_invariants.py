@@ -295,7 +295,7 @@ def test_timing_safety_invariants_survive_minus_o() -> None:
     """
     timing_safety_path = Path("ralph/mcp/server/_timing_safety.py")
     original = timing_safety_path.read_text(encoding="utf-8")
-    anchor = "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000"
+    anchor = "TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000"
     if anchor not in original:  # pragma: no cover
         raise AssertionError(
             "timing-safety headroom anchor missing; _timing_safety.py was reformatted."
@@ -312,9 +312,9 @@ def test_timing_safety_invariants_survive_minus_o() -> None:
         from pathlib import Path
 
         path = Path({path!r})
-        marker = "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = -1"
+        marker = "TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = -1"
         patched = path.read_text(encoding="utf-8").replace(
-            "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000",
+            "TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000",
             marker,
             1,
         )
@@ -366,7 +366,7 @@ def test_timing_safety_invariants_survive_minus_o() -> None:
         assert "RuntimeError" in completed.stdout, (
             f"expected RuntimeError text (minus_o={minus_o}); got stdout={completed.stdout!r}"
         )
-        assert "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS" in completed.stdout, (
+        assert "TIMING_SAFETY_TRANSPORT_HEADROOM_MS" in completed.stdout, (
             f"expected the invariant name in stderr (minus_o={minus_o}); "
             f"got stdout={completed.stdout!r}"
         )

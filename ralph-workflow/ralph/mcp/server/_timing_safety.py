@@ -24,6 +24,11 @@ from __future__ import annotations
 import os
 
 from ralph.mcp.protocol.env import MCP_REQUEST_TIMEOUT_MS_ENV
+from ralph.mcp.transport import claude as _claude_transport
+from ralph.mcp.transport import codex as _codex_transport
+from ralph.mcp.transport import kimi as _kimi_transport
+from ralph.mcp.transport import opencode as _opencode_transport
+from ralph.mcp.transport import pi as _pi_transport
 from ralph.timeout_defaults import (
     EXEC_MAX_TIMEOUT_MS,
     EXEC_SOFT_REPLY_BUDGET_MS,
@@ -72,11 +77,11 @@ SERVER_WORST_CASE_MS: int = DISPATCH_CAP_MS + DRAIN_CEILING_MS + KILL_ESCALATION
 #: Kimi ``toolTimeoutMs``, Claude per-server ``timeout``, OpenCode
 #: ``experimental.mcp_timeout``, Pi bridge-side ``tools/call``
 #: deadline) must be at least ``EXEC_SOFT_REPLY_BUDGET_MS +
-#: _TIMING_SAFETY_TRANSPORT_HEADROOM_MS``. Matches the 30 s headroom
+#: TIMING_SAFETY_TRANSPORT_HEADROOM_MS``. Matches the 30 s headroom
 #: the per-transport constants adopt (``_CODEX_TOOL_TIMEOUT_HEADROOM_*``,
 #: ``_KIMI_TOOL_TIMEOUT_HEADROOM_MS``, ``_CLAUDE_TOOL_TIMEOUT_HEADROOM_MS``,
 #: ``_OPENCODE_MCP_CLIENT_TIMEOUT_HEADROOM_MS``, ``MCP_TOOL_CALL_HEADROOM_MS``).
-_TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000
+TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000
 
 #: Floor (milliseconds) the timing-safety check verifies every
 #: transport-configured timeout against. Clients Ralph cannot
@@ -124,15 +129,38 @@ if not (
         "dispatch deadline plus drain and kill exceeds client_request_timeout: "
         f"MCP_DISPATCH_TIMEOUT_SECONDS={MCP_DISPATCH_TIMEOUT_SECONDS}"
     )
-if _TIMING_SAFETY_TRANSPORT_HEADROOM_MS <= 0:
+if TIMING_SAFETY_TRANSPORT_HEADROOM_MS <= 0:
     raise RuntimeError(
-        "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS must be positive; "
-        f"got {_TIMING_SAFETY_TRANSPORT_HEADROOM_MS}"
+        "TIMING_SAFETY_TRANSPORT_HEADROOM_MS must be positive; "
+        f"got {TIMING_SAFETY_TRANSPORT_HEADROOM_MS}"
     )
 if not EXEC_SOFT_REPLY_BUDGET_MS > 0:
     raise RuntimeError(
         f"EXEC_SOFT_REPLY_BUDGET_MS must be positive; got {EXEC_SOFT_REPLY_BUDGET_MS}"
     )
+
+
+# Import-time per-transport invariant (NOT assert) — every concrete
+# transport timeout Ralph writes must clear ``TIMING_SAFETY_TRANSPORT_FLOOR_MS``
+# (``EXEC_SOFT_REPLY_BUDGET_MS + TIMING_SAFETY_TRANSPORT_HEADROOM_MS``).
+# Clients without a documented timeout (Cursor, Nanocoder, AGY) are
+# excluded from this check — Ralph writes no timeout for them and the
+# floor is meaningless against ``None``.
+def _check_transport_timeout(transport_name: str, timeout_ms: int) -> None:
+    if timeout_ms < TIMING_SAFETY_TRANSPORT_FLOOR_MS:
+        raise RuntimeError(
+            f"transport {transport_name} timeout {timeout_ms} ms is below the "
+            f"timing-safety floor {TIMING_SAFETY_TRANSPORT_FLOOR_MS} ms "
+            f"(EXEC_SOFT_REPLY_BUDGET_MS={EXEC_SOFT_REPLY_BUDGET_MS} + "
+            f"TIMING_SAFETY_TRANSPORT_HEADROOM_MS={TIMING_SAFETY_TRANSPORT_HEADROOM_MS})"
+        )
+
+
+_check_transport_timeout("codex", _codex_transport._CODEX_TOOL_TIMEOUT_SEC * 1000)
+_check_transport_timeout("kimi", _kimi_transport._KIMI_TOOL_TIMEOUT_MS)
+_check_transport_timeout("claude", _claude_transport._CLAUDE_TOOL_TIMEOUT_MS)
+_check_transport_timeout("opencode", _opencode_transport._OPENCODE_MCP_CLIENT_TIMEOUT_MS)
+_check_transport_timeout("pi", _pi_transport.MCP_TOOL_CALL_DEADLINE_MS)
 
 
 def timing_safety_margin_ms() -> int:

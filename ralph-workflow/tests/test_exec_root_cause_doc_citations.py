@@ -217,7 +217,7 @@ class TestRootCauseDocCitations:
 
     def test_doc_cites_timing_safety_headroom_constant(self) -> None:
         text = _read_doc()
-        assert "_TIMING_SAFETY_TRANSPORT_HEADROOM_MS" in text, (
+        assert "TIMING_SAFETY_TRANSPORT_HEADROOM_MS" in text, (
             "root-cause doc must cite the 30 s headroom constant from "
             "ralph/mcp/server/_timing_safety.py. Without it the "
             "'EXEC_SOFT_REPLY_BUDGET_MS + headroom' derivation on each "

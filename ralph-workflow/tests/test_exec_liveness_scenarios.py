@@ -279,7 +279,14 @@ def test_scenario_06_dependency_install_io_heavy_completes() -> None:
 
 
 def test_scenario_07_repetitive_loop_stalled_via_r6() -> None:
-    """Scenario 7: repetitive same-line loop -> stalled via R6 (pulls score below theta)."""
+    """Scenario 7: repetitive same-line loop -> stalled via R6.
+
+    The trace prints the same retry line every 1s (novelty ≤ 0.1) and
+    has no I/O. R6 (``Repetitive AND NOT IoActive``) fires with canonical
+    z=0.2 (PRODUCT_CRITERIA Part A / D2).
+    Pressure rate = (0.5 - 0.2) / 0.5 = 0.6 per second.
+    Expected kill at stall_window_s / 0.6 = 90 s / 0.6 = 150 s ± dt.
+    """
     stall_window_s = 90.0
 
     def sample(t: float) -> LivenessWindow:
@@ -294,8 +301,9 @@ def test_scenario_07_repetitive_loop_stalled_via_r6() -> None:
             elapsed_s=t,
         )
 
-    # R6 score = 0.2; delta rate = (0.5 - 0.2) / 0.5 = 0.6 per second
-    # Expected kill at 90.0 / 0.6 = 150.0s ± dt
+    # Score = 0.2 (R6 fires with z=0.2; R1 suppressed by Repetitive=1).
+    # Pressure rate = (0.5 - 0.2) / 0.5 = 0.6 per second.
+    # Expected kill at 90.0 / 0.6 = 150.0 s ± dt.
     expected_kill_time = stall_window_s / 0.6
     res = _run_scenario(sample, total_duration_s=300.0, stall_window_s=stall_window_s)
     assert res.killed is True

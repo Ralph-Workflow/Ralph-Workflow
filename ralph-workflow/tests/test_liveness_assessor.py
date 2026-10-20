@@ -263,11 +263,15 @@ def test_assess_r5_idle_stuck_alone() -> None:
 
 
 def test_assess_r6_repetitive_alone() -> None:
-    """Rule 6 (repetitive) fires when Repetitive=1, others not active → score 0.2.
+    """Rule 6 (repetitive) fires when Repetitive=1, others not active.
 
     To isolate R6 from R5, set seconds_since_output=0 (OutputRecent=1, which
     forces NOT OutputRecent=0 and so disables R5). The tree signal is also
     known-zero so R3 doesn't fire.
+
+    R6 fires with canonical z=0.2 (PRODUCT_CRITERIA Part A / D2).
+    R1 is suppressed by Repetitive=1 (NOT Repetitive=0).
+    With R6 firing alone, Sugeno score is 0.2.
     """
     win = LivenessWindow(
         seconds_since_output=0.0,
@@ -303,14 +307,12 @@ def test_assess_r7_waiting_alone() -> None:
 
 
 def test_assess_r1_r2_combo_is_working() -> None:
-    """R1 + R2 both firing (recent + I/O): monotone score picks the strongest rule's contribution.
+    """R1 + R2 both firing (recent + I/O): literal Sugeno weighted-average.
 
-    Per the §3b score-monotonicity design resolution documented in
-    ``_liveness_assessor`` (E-005), the score aggregate is
-    ``max(wᵢ·zᵢ)`` across the seven rules rather than the literal
-    ``Σwᵢzᵢ / Σwᵢ``. R1's contribution ``w₁·z₁ = 1·1 = 1.0`` exceeds R2's
-    ``w₂·z₂ = 1·0.9 = 0.9``, so the combined score is 1.0 (not 0.95).
-    Raising IO from 0 to ``io_kbps_active`` cannot lower the score.
+    PRODUCT_CRITERIA Part A defines the score as ``s = Σwᵢzᵢ / Σwᵢ``.
+    R1 fires (w₁=1, z₁=1.0) and R2 fires (w₂=1, z₂=0.9); no other rule
+    fires. ``Σw = 2`` and ``Σw·z = 1.0 + 0.9 = 1.9``, so ``s = 0.95``.
+    This is the verbatim weighted-average PRODUCT_CRITERIA Part A prescribes.
     """
     win = LivenessWindow(
         seconds_since_output=0.0,
@@ -322,7 +324,7 @@ def test_assess_r1_r2_combo_is_working() -> None:
         elapsed_s=10.0,
     )
     v = assess(win, CFG)
-    assert v.score == pytest.approx(1.0)
+    assert v.score == pytest.approx(0.95)
     assert v.verdict_kind == "working"
 
 
