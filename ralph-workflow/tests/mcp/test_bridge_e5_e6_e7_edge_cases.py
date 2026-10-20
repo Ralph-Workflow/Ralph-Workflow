@@ -16,14 +16,23 @@ Catalogue coverage:
 
 from __future__ import annotations
 
+import os
 import pathlib
+import subprocess
+import sys
 import tempfile
+import time
 from datetime import timedelta
 from unittest.mock import patch
 
+import psutil
 import pytest
 
 from ralph.mcp.server import lifecycle
+from ralph.mcp.server._handover_protocol import (
+    _HANDOVER_ACK_TIMEOUT_S,
+    _HANDOVER_DRAIN_S,
+)
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.server._wire_ledger import WireLedgerIOError, append_wire_record
@@ -173,9 +182,42 @@ def test_e53_stopped_child_trips_deferral_ceiling_and_forces_replacement() -> No
 # E5.4: Zombie child reaped by poll()
 # ---------------------------------------------------------------------------
 def test_e54_zombie_child_reaped_by_poll() -> None:
-    inner = _make_inner(poll_result=0, pid=1001)
-    # Process has already terminated (zombie); poll() returns returncode
-    assert inner.process.poll() == 0
+    """E5.4: OS zombie child is reaped by poll(), proving os.kill(pid, 0) is not a liveness test.
+
+    A terminated child process remains in the OS process table as a zombie until
+    the parent reaps it (via waitpid/poll). During this zombie state:
+      1. os.kill(pid, 0) succeeds, demonstrating that signal delivery check
+         alone cannot distinguish a living process from a dead unreaped zombie.
+      2. proc.poll() issues waitpid(WNOHANG), reaping the zombie and returning its exit code.
+      3. After poll() reaps the zombie, os.kill(pid, 0) raises ProcessLookupError (ESRCH),
+         confirming the process has been completely removed from the OS table.
+    """
+    proc = subprocess.Popen([sys.executable, "-c", "import sys; sys.exit(0)"])
+    try:
+        p = psutil.Process(proc.pid)
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            try:
+                if p.status() == psutil.STATUS_ZOMBIE:
+                    break
+            except psutil.NoSuchProcess:
+                break
+            time.sleep(0.01)
+
+        # 1. os.kill(pid, 0) succeeds on the zombie child -> NOT a liveness test
+        os.kill(proc.pid, 0)
+
+        # 2. poll() reaps the zombie child and returns its returncode
+        returncode = proc.poll()
+        assert returncode == 0
+
+        # 3. After poll() has reaped it, the PID is gone from the OS table
+        with pytest.raises(ProcessLookupError):
+            os.kill(proc.pid, 0)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +340,27 @@ def test_e64_import_time_invariants_positive() -> None:
     assert lifecycle._DEFERRAL_WALL_TIME_CEILING_S > 0
     assert lifecycle._TOOL_REGISTRY_MAX_RESETS > 0
     assert lifecycle._RESPAWN_ALIAS_VERIFY_TIMEOUT_S > 0
+
+    # Pin both computed bounds (E6.4 + E2.3):
+    # (a) worst-case time to terminal exhaustion with old child dead
+    assert lifecycle._WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S > 0
+    expected_dead_exhaustion = McpRestartPolicy.max_restarts * (
+        McpRestartPolicy.cooldown_seconds + lifecycle._PREFLIGHT_DEADLINE_S
+    )
+    assert expected_dead_exhaustion == lifecycle._WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S
+
+    # (b) candidate delay bound with old child alive (candidate deadline + handover ack + kill wait + drain)
+    assert lifecycle._CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S > 0
+    expected_alive_bound = (
+        lifecycle._CANDIDATE_DEADLINE_S
+        + _HANDOVER_ACK_TIMEOUT_S
+        + lifecycle._HANDOVER_KILL_WAIT_S
+        + _HANDOVER_DRAIN_S
+    )
+    assert expected_alive_bound == lifecycle._CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S
+
+    # E2.3 candidate startup deadline bounds
+    assert 0 < lifecycle._CANDIDATE_STARTUP_DEADLINE_S < lifecycle._PREFLIGHT_DEADLINE_S
 
 
 # ---------------------------------------------------------------------------

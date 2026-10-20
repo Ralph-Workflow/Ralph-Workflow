@@ -337,6 +337,7 @@ def e46_overlap(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, 
                 os.kill(pid, signal.SIGKILL)
 
 
+@pytest.mark.xdist_group("e46_sigkill")
 def test_e46_parent_sigkill_reaps_every_child_of_a_make_before_break_overlap(
     e46_overlap: dict[str, int],
 ) -> None:
@@ -381,6 +382,7 @@ def test_e46_parent_sigkill_reaps_every_child_of_a_make_before_break_overlap(
     assert rebound_ok, f"port {port} did not rebind after owner SIGKILL"
 
 
+@pytest.mark.xdist_group("e46_sigkill")
 def test_e46_upstream_grandchild_dies_with_its_candidate(e46_overlap: dict[str, int]) -> None:
     """E4.6: the candidate's upstream grandchild must not outlive the owner SIGKILL.
 

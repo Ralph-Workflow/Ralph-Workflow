@@ -59,7 +59,11 @@ from ralph.mcp.server._start_stage_tracker import read_last_stage
 from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
 from ralph.workspace.fs import FsWorkspace
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
+pytestmark = [
+    pytest.mark.subprocess_e2e,
+    pytest.mark.timeout_seconds(10),
+    pytest.mark.xdist_group("mcp_root_cause"),
+]
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ module plus the timing-safety public API; no private attribute is read.
 
 from __future__ import annotations
 
+import concurrent.futures
 import importlib
 import json
 import subprocess
@@ -281,14 +282,9 @@ _TIMING_SAFETY_RELATIVE_PATH = (
 )
 
 
-def test_timing_safety_import_time_invariant_survives_python_minus_o() -> None:
-    """A patched non-positive headroom MUST trigger ``RuntimeError`` at import time.
-
-    Runs the test in a subprocess so the import-time ``if/raise`` runs
-    against the patched source. Without the guard a future shrink of
-    the headroom to a negative number would silently re-author a
-    bottomless safety floor; the import-time check pins the contract.
-    """
+@pytest.fixture(scope="module")
+def _timing_safety_subprocess_runs() -> dict[bool, subprocess.CompletedProcess[str]]:
+    """Execute minus_o=(False, True) subprocess verification runs concurrently."""
     original = _TIMING_SAFETY_RELATIVE_PATH.read_text(encoding="utf-8")
     anchor = "TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000"
     if anchor not in original:  # pragma: no cover
@@ -298,6 +294,7 @@ def test_timing_safety_import_time_invariant_survives_python_minus_o() -> None:
 
     script = textwrap.dedent(
         """\
+        import importlib
         import importlib.util
         import io
         import sys
@@ -306,7 +303,8 @@ def test_timing_safety_import_time_invariant_survives_python_minus_o() -> None:
         from contextlib import redirect_stderr
         from pathlib import Path
 
-        path = Path({path!r})
+        # --- Part 1: Headroom invariant check ---
+        path = Path(__PATH__)
         marker = "TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = -1"
         patched = path.read_text(encoding="utf-8").replace(
             "TIMING_SAFETY_TRANSPORT_HEADROOM_MS: int = 30_000",
@@ -328,52 +326,18 @@ def test_timing_safety_import_time_invariant_survives_python_minus_o() -> None:
                 mod = importlib.util.module_from_spec(spec)
                 sys.modules["timing_safety_case"] = mod
                 spec.loader.exec_module(mod)
-            ok = True
-            stderr = err.getvalue()
+            headroom_ok = True
+            headroom_stderr = err.getvalue()
         except Exception:
-            ok = False
-            stderr = err.getvalue() + traceback.format_exc()
+            headroom_ok = False
+            headroom_stderr = err.getvalue() + traceback.format_exc()
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
-        print("OK:" + str(ok))
-        print("STDERR:" + stderr)
-        """
-    )
+        print("HEADROOM_OK:" + str(headroom_ok))
+        print("HEADROOM_STDERR:" + headroom_stderr)
 
-    script_with_paths = script.format(path=str(_TIMING_SAFETY_RELATIVE_PATH))
-    for minus_o in (False, True):
-        cmd = [sys.executable]
-        if minus_o:
-            cmd.append("-O")
-        cmd.extend(["-c", script_with_paths])
-        completed = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=False,
-        )
-        assert "OK:False" in completed.stdout, (
-            f"expected RuntimeError on import (minus_o={minus_o}); "
-            f"got stdout={completed.stdout!r} stderr={completed.stderr!r}"
-        )
-        assert "RuntimeError" in completed.stdout, (
-            f"expected RuntimeError text (minus_o={minus_o}); got stdout={completed.stdout!r}"
-        )
-        assert "TIMING_SAFETY_TRANSPORT_HEADROOM_MS" in completed.stdout, (
-            f"expected the invariant name in stderr (minus_o={minus_o}); "
-            f"got stdout={completed.stdout!r}"
-        )
-
-
-def test_transport_timeout_import_time_invariant_survives_python_minus_o() -> None:
-    """Each concrete transport timeout below the floor MUST trigger ``RuntimeError`` under ``python -O``."""
-    script = textwrap.dedent(
-        """\
-        import importlib
-        import sys
-
+        # --- Part 2: Concrete transport timeouts below floor ---
         transports = [
             ("ralph.mcp.transport.codex", "_CODEX_TOOL_TIMEOUT_SEC", 10, "codex"),
             ("ralph.mcp.transport.kimi", "_KIMI_TOOL_TIMEOUT_MS", 10000, "kimi"),
@@ -401,8 +365,9 @@ def test_transport_timeout_import_time_invariant_survives_python_minus_o() -> No
 
         print("ALL_TRANSPORTS_CHECKED")
         """
-    )
-    for minus_o in (False, True):
+    ).replace("__PATH__", repr(str(_TIMING_SAFETY_RELATIVE_PATH)))
+
+    def _run_subproc(minus_o: bool) -> tuple[bool, subprocess.CompletedProcess[str]]:
         cmd = [sys.executable]
         if minus_o:
             cmd.append("-O")
@@ -414,6 +379,41 @@ def test_transport_timeout_import_time_invariant_survives_python_minus_o() -> No
             timeout=15,
             check=False,
         )
+        return minus_o, completed
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        return dict(executor.map(_run_subproc, (False, True)))
+
+
+def test_timing_safety_import_time_invariant_survives_python_minus_o(
+    _timing_safety_subprocess_runs: dict[bool, subprocess.CompletedProcess[str]],
+) -> None:
+    """A patched non-positive headroom MUST trigger ``RuntimeError`` at import time.
+
+    Runs the test in a subprocess so the import-time ``if/raise`` runs
+    against the patched source. Without the guard a future shrink of
+    the headroom to a negative number would silently re-author a
+    bottomless safety floor; the import-time check pins the contract.
+    """
+    for minus_o, completed in _timing_safety_subprocess_runs.items():
+        assert "HEADROOM_OK:False" in completed.stdout, (
+            f"expected RuntimeError on import (minus_o={minus_o}); "
+            f"got stdout={completed.stdout!r} stderr={completed.stderr!r}"
+        )
+        assert "RuntimeError" in completed.stdout, (
+            f"expected RuntimeError text (minus_o={minus_o}); got stdout={completed.stdout!r}"
+        )
+        assert "TIMING_SAFETY_TRANSPORT_HEADROOM_MS" in completed.stdout, (
+            f"expected the invariant name in stderr (minus_o={minus_o}); "
+            f"got stdout={completed.stdout!r}"
+        )
+
+
+def test_transport_timeout_import_time_invariant_survives_python_minus_o(
+    _timing_safety_subprocess_runs: dict[bool, subprocess.CompletedProcess[str]],
+) -> None:
+    """Each concrete transport timeout below the floor MUST trigger ``RuntimeError`` under ``python -O``."""
+    for minus_o, completed in _timing_safety_subprocess_runs.items():
         assert completed.returncode == 0, (
             f"expected exit code 0 (minus_o={minus_o}); "
             f"got returncode={completed.returncode} stdout={completed.stdout!r} stderr={completed.stderr!r}"

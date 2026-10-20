@@ -19,10 +19,61 @@ its full lifetime. Restart is ordered and single-acceptor:
 4. Tell the candidate to start accepting (the resume file
    ``MCP_ACCEPT_RESUME_FILE``). At no moment do two children accept.
 5. Promote (_inner swap) under lock, then drain the old child inside
-   ``_DRAIN_S``. Connections queued in the kernel backlog are served
-   by the new child.
+   ``_DRAIN_S`` (bounded by ``_HANDOVER_DRAIN_S``). Connections queued in
+   the kernel backlog are served by the new child.
 6. Probation: a candidate death after promotion is counted as
    ``process_exited`` and replaced immediately.
+
+Handover bounds and deadlines:
+The make-before-break transition is strictly bounded by named constants:
+
+* ``_HANDOVER_ACK_TIMEOUT_S = 1.0``: maximum duration to wait for old child's
+  pause acknowledgement file (``<pause>.ack``) after writing ``accept.pause``.
+* ``_HANDOVER_KILL_WAIT_S = 1.0``: maximum duration to wait for old child process
+  to exit after issuing SIGKILL if pause ack timed out.
+* ``_HANDOVER_DRAIN_S = 2.0``: drain policy deadline constant bounding old child
+  drain period during graceful handover.
+
+Drain policy deadline constant:
+``_HANDOVER_DRAIN_S`` governs the drain phase duration where the retiring
+child processes in-flight requests before hard shutdown.
+
+Single-acceptor graceful handover verification:
+Single-acceptor invariant and graceful handover sequencing are verified in
+``tests/mcp/test_single_acceptor_instrumented.py::test_e43_single_acceptor_graceful_handover``.
+
+Backoff enforcement:
+Backoff cooldown is enforced unconditionally via ``_cooldown_after_failure()``
+prior to every restart attempt (``McpRestartPolicy.cooldown_seconds``), guaranteeing
+the bridge cannot storm or spin-loop even with a wedged ``restart_fn``.
+
+E1.6 Concurrency arguments across all 7 state stores:
+During make-before-break replacement, candidate and serving children overlap.
+State integrity across both processes is preserved across all 7 state stores:
+
+1. Wire ledger: Written exclusively by the parent bridge under its lock
+   (``self._lock``) with OS-level advisory file locks (``fcntl.flock``); child
+   processes never append to the wire ledger concurrently.
+2. Session file: Created atomically by the parent prior to spawning the child;
+   child processes read only; cleaned up deterministically by the parent on
+   bridge shutdown.
+3. Durable sink: Protected across all bridge instances by the dedicated
+   ``_DURABLE_SINK_LOCK``; append-only JSONL entries for health events and
+   restart decisions, persisted for post-mortem analysis.
+4. Activity relay: Protected by internal thread synchronization in
+   ``ActivityRelay``; sender threads safely enqueue events; dropped cleanly
+   after bridge shutdown.
+5. Stage files: Each child spawn is assigned a unique stage ID (``MCP_STAGE_ID_ENV``)
+   so status and stage tracking write to isolated stage-specific files
+   (``start.stage.<stage_id>``), preventing inter-generation file clobbering.
+6. Artifact stores: Managed in the workspace filesystem using atomic renames
+   and task-isolated staging directories; children write only to their designated
+   staging locations.
+7. Coordination state: In-memory bridge state transitions occur under
+   ``self._lock`` (reentrant lock); disk-based handshake sentinels
+   (``accept.pause``, ``accept.pause.ack``, ``accept.resume``) under
+   ``.agent/snapshots/<run_id>/`` coordinate single-acceptor ownership
+   deterministically without race conditions.
 
 Attempt result classification (C2): ``_attempt_restart_with_candidate``
 returns a typed ``RestartAttemptResult``. Only
@@ -128,6 +179,7 @@ from ralph.mcp.protocol.startup import (
 from ralph.mcp.server._handover_protocol import (
     _HANDOVER_ACK_TIMEOUT_S,
     _HANDOVER_DRAIN_S,
+    _PRIVATE_READINESS_TIMEOUT_S,
     CandidateReadiness,
     check_candidate_readiness,
     compute_tool_set_hash,
@@ -329,12 +381,53 @@ _HANDOVER_STEP_DRAIN: Final[str] = "drain_old_child"
 #: after its kill is issued. Bounded and import-time-checked for the same reason
 #: as the other handover deadlines: an unbounded confirmation poll would hang
 #: the make-before-break path on a child that ignores SIGKILL.
-_HANDOVER_KILL_WAIT_S: float = 5.0
+_HANDOVER_KILL_WAIT_S: float = 1.0
 _HANDOVER_KILL_WAIT_MAX_S: float = 30.0
 if not (_HANDOVER_KILL_WAIT_S > 0 and _HANDOVER_KILL_WAIT_S <= _HANDOVER_KILL_WAIT_MAX_S):
     raise RuntimeError(
         "_HANDOVER_KILL_WAIT_S must be in (0,"
         f" {_HANDOVER_KILL_WAIT_MAX_S:g}] seconds (got {_HANDOVER_KILL_WAIT_S})"
+    )
+
+# ---------------------------------------------------------------------------
+# Worst-case arithmetic bounds and import-time invariants (E6.4 + E2.3)
+# ---------------------------------------------------------------------------
+#: Candidate private-channel readiness verification deadline.
+_CANDIDATE_DEADLINE_S: Final[float] = _PRIVATE_READINESS_TIMEOUT_S
+#: Candidate whole startup budget from environment.
+_CANDIDATE_STARTUP_DEADLINE_S: Final[float] = mcp_whole_startup_budget_from_env()
+#: Preflight deadline ceiling in seconds.
+_PREFLIGHT_DEADLINE_S: Final[float] = mcp_preflight_timeout_from_env().total_seconds()
+
+#: Bound (a): Worst-case time to terminal exhaustion with old child dead,
+#: computed from restart policy max_restarts, cooldown, and preflight deadline.
+_WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S: Final[float] = McpRestartPolicy.max_restarts * (
+    McpRestartPolicy.cooldown_seconds + _PREFLIGHT_DEADLINE_S
+)
+_WORST_CASE_TIME_TO_TERMINAL_EXHAUSTION_S: Final[float] = (
+    _WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S
+)
+
+#: Bound (b): Candidate delay bound with old child alive, computed as
+#: (candidate deadline + handover ack + kill wait + drain).
+_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S: Final[float] = (
+    _CANDIDATE_DEADLINE_S + _HANDOVER_ACK_TIMEOUT_S + _HANDOVER_KILL_WAIT_S + _HANDOVER_DRAIN_S
+)
+_CANDIDATE_DELAY_BOUND_S: Final[float] = _CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S
+
+if not (_WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S > 0):
+    raise RuntimeError(
+        f"_WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S must be positive (got {_WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S})"
+    )
+if not (_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S > 0):
+    raise RuntimeError(
+        f"_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S must be positive (got {_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S})"
+    )
+# E2.3 candidate startup deadline bounds validation
+if not (0 < _CANDIDATE_STARTUP_DEADLINE_S < _PREFLIGHT_DEADLINE_S):
+    raise RuntimeError(
+        f"E2.3 candidate startup deadline ({_CANDIDATE_STARTUP_DEADLINE_S}s) must be positive "
+        f"and strictly less than preflight deadline ({_PREFLIGHT_DEADLINE_S}s)"
     )
 
 #: Probe-overrun slack (seconds). A probe that exceeds its deadline by more

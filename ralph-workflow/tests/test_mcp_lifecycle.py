@@ -44,6 +44,20 @@ def _default_fake_reserve_listening_socket(
     return "127.0.0.1", bound_port, sock
 
 
+def _fake_served_tools(endpoint: str, timeout_s: float = 1.0) -> list[dict[str, object]]:
+    return [{"name": "read_file"}]
+
+
+@pytest.fixture(autouse=True)
+def _mock_served_tool_entries(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mock served_tool_entries so capture_tool_hash_baseline does not hang on fake processes."""
+    monkeypatch.setattr(
+        lifecycle,
+        "served_tool_entries",
+        _fake_served_tools,
+    )
+
+
 @pytest.fixture(autouse=True)
 def _isolate_contention_signals() -> None:
     """Clear the module-level contention deque before and after each test."""

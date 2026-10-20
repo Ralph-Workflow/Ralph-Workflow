@@ -188,6 +188,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/mcp/test_e3x_transport_gap_typed_retry.py",
     "tests/mcp/test_e42_two_supervisors_one_replacement.py",
     "tests/mcp/test_e46_parent_sigkill_no_orphans.py",
+    "tests/mcp/test_e72_footprint_real_child.py",
     "tests/mcp/test_handover_inflight_real_child.py",
     "tests/mcp/test_replacement_shutdown_signals_real_child.py",
     "tests/mcp/test_root_cause_real_child_bridge.py",

@@ -523,8 +523,8 @@ that the saturation-cap's only job is supposed to prevent.
 The seam for "a parent kill must reach the child's in-memory registry"
 is the child MCP server's shutdown path, not `_session_wrapup.py`.
 
-- `ralph-workflow/ralph/mcp/server/lifecycle.py:2176` and `:2193` invoke
-  `_spawn_mcp_process(...)`, which is defined at `lifecycle.py:2374-2520`
+- `ralph-workflow/ralph/mcp/server/lifecycle.py:2313` and `:2330` invoke
+  `_spawn_mcp_process(...)`, which is defined at `lifecycle.py:2511-2655`
   and runs
 
   ```python
@@ -536,7 +536,7 @@ is the child MCP server's shutdown path, not `_session_wrapup.py`.
   ]
   ```
 
-  (`lifecycle.py:2469-2479`). The MCP server runs as a separate child
+  (`lifecycle.py:2602-2612`). The MCP server runs as a separate child
   process; the parent owns the lifecycle via
   `StandaloneMcpProcess.shutdown` (`_standalone_mcp_process.py:36-66`),
   which calls `self.process.terminate(grace_period_s=5.0)` at line 45
