@@ -9,6 +9,7 @@ re-raised when the context manager exits.
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from datetime import timedelta
@@ -16,6 +17,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.mcp.server._host_contention_signal import record_psi_pressure
 from ralph.mcp.server._mcp_attempt_result import RestartAttemptResult
 from ralph.mcp.server._mcp_health_event import record_host_contention_signal
 from ralph.mcp.server.lifecycle import McpServerError, RestartAwareMcpBridge
@@ -107,6 +109,7 @@ class McpSupervisor:
         terminate_agents: Callable[[str], None] = _terminate_agent_processes,
         _now: Callable[[], float] | None = None,
         _record_tick_lateness: Callable[[float], None] | None = None,
+        _record_psi_pressure: Callable[[], None] | None = None,
     ) -> None:
         self._bridge = bridge
         self._check_interval = check_interval
@@ -116,10 +119,17 @@ class McpSupervisor:
         self._terminate_agents = terminate_agents
         self._now = _now or time.monotonic
         self._record_tick_lateness = _record_tick_lateness or record_supervisor_tick_lateness
+        self._record_psi_pressure = _record_psi_pressure or record_psi_pressure
         self._last_tick_at: float | None = None
         self._mcp_error: McpServerError | None = None
         self._done = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True, name="mcp-supervisor")
+
+    def tick(self) -> bool:
+        """Execute one supervisor tick: record PSI pressure and run health check."""
+        with contextlib.suppress(Exception):
+            self._record_psi_pressure()
+        return self._do_check_once()
 
     def _do_check_once(self) -> bool:
         """Execute one health check. Returns True if a restart occurred.
@@ -194,7 +204,7 @@ class McpSupervisor:
         interval_s = self._check_interval.total_seconds()
         while not self._done.wait(timeout=interval_s):
             try:
-                self._do_check_once()
+                self.tick()
             except McpServerError as exc:
                 # Budget exhausted: terminal by design, and already stored
                 # on _mcp_error for __exit__ to re-raise on the main thread.

@@ -75,7 +75,6 @@ from ralph.mcp.tools.names import (
     RALPH_MCP_SERVER_NAME,
     claude_tool_name,
 )
-from ralph.mcp.transport.claude import CLAUDE_TOOL_TIMEOUT_MS
 from ralph.mcp.transport.codex import prepare_codex_home
 from ralph.mcp.transport.opencode import merge_opencode_config_content
 from ralph.mcp.upstream.config import (
@@ -1097,7 +1096,7 @@ def test_build_command_injects_claude_mcp_config_for_remote_endpoint(
     assert must_mapping(servers["ralph"]) == {
         "type": "http",
         "url": "http://127.0.0.1:9999/mcp",
-        "timeout": CLAUDE_TOOL_TIMEOUT_MS,
+        "timeout": 75_000,
     }
     allowed_index = cmd.index("--allowedTools")
     assert cmd[allowed_index + 1] == ",".join(
@@ -1892,7 +1891,7 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
     assert must_mapping(servers["ralph"]) == {
         "type": "http",
         "url": "http://127.0.0.1:9999/mcp",
-        "timeout": CLAUDE_TOOL_TIMEOUT_MS,
+        "timeout": 75_000,
     }
     # ``--strict-mcp-config`` is deliberately gone from this argv: it made
     # Ralph's config the ONLY MCP source Claude read, deleting every server
@@ -2257,7 +2256,7 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
         "ralph": {
             "type": "http",
             "url": "http://127.0.0.1:9999/mcp",
-            "timeout": CLAUDE_TOOL_TIMEOUT_MS,
+            "timeout": 75000,
         }
     }
     assert load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV]) == (
@@ -2379,7 +2378,7 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
         "ralph": {
             "type": "http",
             "url": "http://127.0.0.1:9999/mcp",
-            "timeout": CLAUDE_TOOL_TIMEOUT_MS,
+            "timeout": 75000,
         }
     }
     assert load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV]) == (
@@ -2504,7 +2503,7 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
         "ralph": {
             "type": "http",
             "url": "http://127.0.0.1:9999/mcp",
-            "timeout": CLAUDE_TOOL_TIMEOUT_MS,
+            "timeout": 75000,
         }
     }
     assert load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV]) == (

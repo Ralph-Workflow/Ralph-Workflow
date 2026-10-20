@@ -315,7 +315,7 @@ def _render_codex_config(merged: dict[str, object], config_path: Path) -> str:
     return config_text
 
 
-def _synthesize_codex_config(
+def synthesize_codex_config(
     base_config: str,
     *,
     source_config: Path,
@@ -334,6 +334,9 @@ def _synthesize_codex_config(
         unsafe_mode=unsafe_mode,
     )
     return _render_codex_config(merged, config_path), upstreams
+
+
+_synthesize_codex_config = synthesize_codex_config
 
 
 def prepare_codex_home_with_upstreams(

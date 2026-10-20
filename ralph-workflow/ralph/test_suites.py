@@ -313,6 +313,21 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/mcp/test_bridge_e1_e2_edge_cases.py",
     "tests/mcp/test_bridge_e3_e4_edge_cases.py",
     "tests/mcp/test_bridge_e5_e6_e7_edge_cases.py",
+    # wt-16 make-before-break MCP edge case & integration test suites:
+    "tests/mcp/test_e17_state_continuity.py",
+    "tests/mcp/test_e18_old_session_id_accepted.py",
+    "tests/mcp/test_e24_fresh_stage_id.py",
+    "tests/mcp/test_e25_candidate_survives_agent_tmp_deletion.py",
+    "tests/mcp/test_e26_broken_workspace_package.py",
+    "tests/mcp/test_e33_listening_fd_real_child.py",
+    "tests/mcp/test_e3x_transport_gap_typed_retry.py",
+    "tests/mcp/test_e42_two_supervisors_one_replacement.py",
+    "tests/mcp/test_e46_parent_sigkill_no_orphans.py",
+    "tests/mcp/test_handover_inflight_real_child.py",
+    "tests/mcp/test_replacement_shutdown_signals_real_child.py",
+    "tests/mcp/test_root_cause_real_child_bridge.py",
+    "tests/mcp/test_s1_independent_counters_contract.py",
+    "tests/mcp/test_single_acceptor_instrumented.py",
     # wt-19-fix-long-exec-tasks — exec job flow smokes (real subprocess)
     # Real-process proofs for the liveness assessor + job registry. Both
     # files carry subprocess_e2e + required_auto_integrate_e2e markers.

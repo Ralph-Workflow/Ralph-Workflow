@@ -214,6 +214,12 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
 # backlog that should shrink as code is refactored.
 _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
     {
+        # wt-16 §3b: ``LivenessConfig``, ``LivenessWindow``,
+        # ``LivenessVerdict``, and ``StallIntegrator`` form the cohesive
+        # §3b pure deterministic liveness assessor contract. Splitting
+        # the dataclasses from the pure rule evaluator and integrator
+        # would scatter the frozen wire format across files.
+        "ralph/process/manager/_liveness_assessor.py",
         # wt-012: ``ScopedCommitStatus`` and ``ScopedCommitResult`` are
         # the typed outcome pair every deterministic chore commit
         # returns; they are colocated with the helper so callers can

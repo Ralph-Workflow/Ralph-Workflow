@@ -162,6 +162,10 @@ _IO_ALLOWLIST: set[str] = {
     # This cannot be tested from the same process because -O is a
     # per-process flag; a subprocess is the only way to test this.
     "test_audit_artifact_submission_canonical_path",
+    # Spawns python -O to verify timing-safety import-time invariants survive -O.
+    # This cannot be tested from the same process because -O is a
+    # per-process flag; a subprocess is the only way to test this.
+    "test_timing_safety_transports",
     # Black-box CLI entry-point verification for the wt-013 skill-mirror
     # freshness audit. The test spawns ``python -m
     # ralph.testing.audit_skill_mirror_freshness`` to prove the audit's

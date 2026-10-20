@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import errno
+import importlib
 import os
 import signal
 import subprocess
@@ -122,6 +123,61 @@ def _is_reaped_invoke_proc(record: ProcessRecord, proc: object) -> bool:
         res: object = poll_fn()
         return res is not None
     return False
+
+
+def _extract_proc_command(proc: object) -> str:
+    """Extract command string from a psutil process via cmdline() or name()."""
+    cmdline_fn: object = getattr(proc, "cmdline", None)
+    if callable(cmdline_fn):
+        with contextlib.suppress(Exception):
+            res: object = cmdline_fn()
+            if isinstance(res, (list, tuple)):
+                return " ".join(str(x) for x in res)
+            if isinstance(res, str) and res:
+                return res
+    name_fn: object = getattr(proc, "name", None)
+    if callable(name_fn):
+        with contextlib.suppress(Exception):
+            res_name: object = name_fn()
+            if isinstance(res_name, str) and res_name:
+                return res_name
+    return ""
+
+
+def _query_proc_status(proc: _PsutilProcessLike, mod: _PsutilModuleLike) -> str:
+    """Query status from a psutil process, mapping exceptions to strings."""
+    try:
+        return str(proc.status())
+    except mod.NoSuchProcess:
+        return "no_such_process"
+    except mod.AccessDenied:
+        return "access_denied"
+    except Exception:
+        return "unknown"
+
+
+def _safe_record_d_state(pid: int) -> None:
+    with contextlib.suppress(Exception):
+        hcs = importlib.import_module("ralph.mcp.server._host_contention_signal")
+        fn: object = getattr(hcs, "record_d_state", None)
+        if callable(fn):
+            fn(pid)
+
+
+def _safe_record_sigkill_survivor(pid: int) -> None:
+    with contextlib.suppress(Exception):
+        hcs = importlib.import_module("ralph.mcp.server._host_contention_signal")
+        fn: object = getattr(hcs, "record_sigkill_survivor", None)
+        if callable(fn):
+            fn(pid)
+
+
+def _safe_record_host_contention_signal(reason: str) -> None:
+    with contextlib.suppress(Exception):
+        mhe = importlib.import_module("ralph.mcp.server._mcp_health_event")
+        fn: object = getattr(mhe, "record_host_contention_signal", None)
+        if callable(fn):
+            fn(reason)
 
 
 class ProcessManager:
@@ -1742,13 +1798,16 @@ class ProcessManager:
             ):
                 return
             self._mark_termination_failed(record, rc)
-            with contextlib.suppress(Exception):
-                from ralph.mcp.server._host_contention_signal import (  # noqa: PLC0415
-                    record_sigkill_survivor,
-                )
-
-                record_sigkill_survivor(record.pid)
-            logger.error("Process {} still alive after kill", record.pid)
+            _safe_record_sigkill_survivor(record.pid)
+            proc_status, proc_cmd = self._get_process_diagnostics(
+                record.pid, record=record, psutil_mod=psutil_mod
+            )
+            logger.error(
+                "Process {} still alive after kill (status={}, command={})",
+                record.pid,
+                proc_status,
+                proc_cmd,
+            )
             raise ProcessTerminationError(
                 record.pid,
                 record.pgid,
@@ -1870,7 +1929,15 @@ class ProcessManager:
                 await self._reap_async_and_mark(record, proc, cause="zombie_after_kill")
                 return
             self._mark_termination_failed(record, rc)
-            logger.error("Process {} still alive after kill", pid)
+            proc_status, proc_cmd = self._get_process_diagnostics(
+                pid, record=record, psutil_mod=psutil_mod
+            )
+            logger.error(
+                "Process {} still alive after kill (status={}, command={})",
+                pid,
+                proc_status,
+                proc_cmd,
+            )
             raise ProcessTerminationError(
                 record.pid,
                 record.pgid,
@@ -1936,7 +2003,15 @@ class ProcessManager:
             ):
                 return
             self._mark_termination_failed(record, rc)
-            logger.error("Process {} still alive after kill", record.pid)
+            proc_status, proc_cmd = self._get_process_diagnostics(
+                record.pid, record=record, psutil_mod=psutil_mod
+            )
+            logger.error(
+                "Process {} still alive after kill (status={}, command={})",
+                record.pid,
+                proc_status,
+                proc_cmd,
+            )
             raise ProcessTerminationError(
                 record.pid, record.pgid, stage="force_kill", reason="still alive"
             )
@@ -2074,6 +2149,40 @@ class ProcessManager:
             logger.debug(f"Process {record.pid} marked KILLED (cause={cause})")
         self._emit(record, prev, ProcessStatus.KILLED)
 
+    def _get_process_diagnostics(
+        self,
+        pid: int,
+        *,
+        record: ProcessRecord | None = None,
+        psutil_mod: _PsutilModuleLike | None = None,
+    ) -> tuple[str, str]:
+        """Safely retrieve (status, command_name) diagnostics for a process.
+
+        Handles NoSuchProcess and AccessDenied gracefully without raising.
+        """
+        mod = psutil_mod if psutil_mod is not None else self._psutil
+        status = "unknown"
+        cmd = " ".join(record.command) if record is not None and record.command else ""
+
+        if mod is not None and pid > 0:
+            try:
+                proc = mod.process_from_pid(pid)
+                status = _query_proc_status(proc, mod)
+                proc_cmd = _extract_proc_command(proc)
+                if proc_cmd:
+                    cmd = proc_cmd
+            except mod.NoSuchProcess:
+                status = "no_such_process"
+            except mod.AccessDenied:
+                status = "access_denied"
+            except Exception:
+                status = "unknown"
+
+        if not cmd:
+            cmd = "unknown"
+
+        return status, cmd
+
     def _mark_termination_failed(
         self,
         record: ProcessRecord,
@@ -2096,13 +2205,21 @@ class ProcessManager:
             self._async_procs.pop(record.pid, None)
             self._descendants.pop(record.pid, None)
             self._record_terminal_state(record)
-        logger.error(f"Process {record.pid} termination failed: {reason}")
+        proc_status, proc_cmd = self._get_process_diagnostics(
+            record.pid, record=record, psutil_mod=self._psutil
+        )
+        logger.error(
+            "Process {} termination failed: {} (status={}, command={})",
+            record.pid,
+            reason,
+            proc_status,
+            proc_cmd,
+        )
         with contextlib.suppress(Exception):
-            from ralph.mcp.server._host_contention_signal import (  # noqa: PLC0415
-                record_d_state,
-            )
-
-            record_d_state(record.pid)
+            _safe_record_d_state(record.pid)
+            _safe_record_sigkill_survivor(record.pid)
+            if proc_status.startswith("D") or proc_status == "disk-sleep":
+                _safe_record_host_contention_signal(f"d_state:{proc_status}")
         self._emit(record, prev, ProcessStatus.FAILED)
 
     def _emit(

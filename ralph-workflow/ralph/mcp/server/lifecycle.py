@@ -32,9 +32,18 @@ non-terminal while the budget remains.
 Probe overrun (C3): ``_run_health_probe`` records its own elapsed
 time. A probe that takes longer than ``probe_timeout +
 _PROBE_DEADLINE_SLACK_S`` is treated as host contention
-(``overrun=True``), not server death. The deferral counter has both a
-count ceiling (``_DEFERRAL_COUNT_CEILING``) and a wall-time ceiling
-(``_DEFERRAL_WALL_TIME_CEILING_S``).
+(``overrun=True``), not server death. Probe failures are classified so
+only timeout-class outcomes are deferrable under contention; connection
+resets, malformed responses, HTTP 5xx, and wrong-spawn-id responses
+are real non-deferrable failures. Before replacing a live child,
+confirm-before-replace runs a second 2x probe with CPU-progress fallback.
+The deferral counter has both a count ceiling (``_DEFERRAL_COUNT_CEILING``)
+and a wall-time ceiling (``_DEFERRAL_WALL_TIME_CEILING_S``).
+
+Tool-set drift (C1/E1.9): ``_verify_candidate`` verifies tool-set hash
+equality against carried state (``_expected_tool_hash``). Drift is refused
+while the old child is alive; if the old child is dead, drift is promoted
+with a WARNING.
 
 Why this design cannot double-serve, double-write, hang, or storm:
 
@@ -68,8 +77,9 @@ import urllib.request
 import uuid
 from datetime import timedelta
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Protocol, cast
+from typing import IO, TYPE_CHECKING, Final, Protocol, cast
 
+import psutil
 from loguru import logger
 
 from ralph.mcp.multimodal.capabilities import (
@@ -267,6 +277,12 @@ if not _RESET_WRAPUP_TIMEOUT_S > 0:
 #: Probe-overrun slack (seconds). A probe that exceeds its deadline by more
 #: than this is classified as host contention (C3) rather than server death.
 _PROBE_DEADLINE_SLACK_S: float = 0.5
+#: Multiplier applied to base probe timeout for confirm-before-replace (C3).
+_CONFIRM_PROBE_MULTIPLIER: int = 2
+#: CPU sample duration in seconds for fallback confirmation (C3).
+_CONFIRM_CPU_SAMPLE_S: float = 0.5
+#: CPU progress threshold in seconds of total (user + sys) CPU time.
+_CPU_PROGRESS_THRESHOLD: Final[float] = 0.001
 #: Hard ceiling on consecutive probe-failure deferrals. When the deferral
 #: counter reaches this the bridge forces a restart regardless of whether
 #: a fresh contention signal is present, preventing indefinite deferral of
@@ -278,11 +294,15 @@ _DEFERRAL_COUNT_CEILING: int = 30
 _DEFERRAL_WALL_TIME_CEILING_S: float = 60.0
 if not (
     _PROBE_DEADLINE_SLACK_S > 0
+    and _CONFIRM_PROBE_MULTIPLIER > 0
+    and _CONFIRM_CPU_SAMPLE_S > 0
     and _DEFERRAL_COUNT_CEILING > 0
     and _DEFERRAL_WALL_TIME_CEILING_S > 0
 ):
     raise RuntimeError(
         f"_PROBE_DEADLINE_SLACK_S={_PROBE_DEADLINE_SLACK_S} "
+        f"_CONFIRM_PROBE_MULTIPLIER={_CONFIRM_PROBE_MULTIPLIER} "
+        f"_CONFIRM_CPU_SAMPLE_S={_CONFIRM_CPU_SAMPLE_S} "
         f"_DEFERRAL_COUNT_CEILING={_DEFERRAL_COUNT_CEILING} "
         f"_DEFERRAL_WALL_TIME_CEILING_S={_DEFERRAL_WALL_TIME_CEILING_S} must all be positive"
     )
@@ -425,6 +445,43 @@ _LOG_TAIL_LINES: int = 10
 _LOG_TAIL_MAX_BYTES: int = 16 * 1024
 
 
+def _is_non_deferrable_probe_failure(exc: Exception | None) -> bool:
+    """Return True if exc represents a definitive, non-deferrable failure."""
+    if exc is None:
+        return False
+    if isinstance(exc, (ConnectionResetError, ConnectionRefusedError, BrokenPipeError)):
+        return True
+    exc_str = str(exc).lower()
+    return (
+        "connection reset" in exc_str
+        or "connection refused" in exc_str
+        or "broken pipe" in exc_str
+        or isinstance(exc, (ValueError, json.JSONDecodeError, UnicodeDecodeError))
+        or any(code in exc_str for code in ("500", "502", "503", "504"))
+        or "malformed" in exc_str
+        or "spawn_id_mismatch" in exc_str
+        or "protocol" in exc_str
+    )
+
+
+def _is_timeout_class_probe_outcome(exc: Exception | None, overrun: bool) -> bool:
+    """Return True if the failure is deferrable under contention.
+
+    Separates non-deferrable probe failures (connection resets, broken pipe,
+    connection refused, malformed JSON/values, HTTP 5xx, spawn_id mismatch)
+    from deferrable probe failures (timeouts, overruns, transient probe errors).
+    Reset-plus-overrun remains non-deferrable.
+    """
+    return not _is_non_deferrable_probe_failure(exc)
+
+
+def _is_saturated_dispatch_outcome(exc: Exception | None) -> bool:
+    if exc is None:
+        return False
+    exc_str = str(exc).lower()
+    return "saturated_dispatch" in exc_str or "_saturated_dispatch" in exc_str
+
+
 class _RestartFnProtocol(Protocol):
     def __call__(self, *, make_before_break: bool = False) -> StandaloneMcpProcess: ...
 
@@ -487,6 +544,8 @@ class RestartAwareMcpBridge:
         self._clock_fn: Callable[[], float] | None = clock_fn
         self._session_id: str | None = session_id
         self._broker_fingerprint: str | None = broker_fingerprint
+        self._expected_tool_hash: str | None = None
+        self._last_probe_error: Exception | None = None
         self._restart_timestamps: collections.deque[float] = collections.deque(maxlen=64)
         self._last_healthy_at: float = clock_fn() if clock_fn is not None else time.monotonic()
         self._restart_count = 0
@@ -738,8 +797,12 @@ class RestartAwareMcpBridge:
         probe_start = clock_fn()
         try:
             self._probe_fn(self._inner.endpoint, probe_timeout)
+            self._last_probe_error = None
             return False, None, False, False
         except Exception as exc:
+            self._last_probe_error = exc
+            if _is_saturated_dispatch_outcome(exc):
+                return False, None, False, False
             elapsed = clock_fn() - probe_start
             overrun = elapsed > probe_timeout.total_seconds() + _PROBE_DEADLINE_SLACK_S
             if (
@@ -829,8 +892,13 @@ class RestartAwareMcpBridge:
         if decision != "ok":
             reason = "probe failed" if not process_exited else "exited"
             child_pid: int | None = None
+            psutil_status: str | None = None
             with contextlib.suppress(Exception):
-                child_pid = self._inner.process.pid
+                proc_obj: object = getattr(self._inner, "process", None)
+                raw_pid: object = getattr(proc_obj, "pid", None)
+                if isinstance(raw_pid, int):
+                    child_pid = raw_pid
+                    psutil_status = str(psutil.Process(child_pid).status())
             raise McpServerError(
                 f"MCP server {reason} and restart budget exhausted "
                 f"(current={self._restart_count}, "
@@ -839,6 +907,7 @@ class RestartAwareMcpBridge:
                 failure_kind=RestartAttemptResult.BUDGET_EXHAUSTED,
                 restart_reason="probe_failed" if not process_exited else "process_exited",
                 child_pid=child_pid,
+                psutil_status=psutil_status,
                 probe_duration_s=probe_duration_s,
             )
         self._restart_timestamps.append(now)
@@ -932,6 +1001,56 @@ class RestartAwareMcpBridge:
         except TypeError:
             return self._restart_fn()
 
+    def _verify_candidate_socket(
+        self,
+        candidate: StandaloneMcpProcess,
+        parent_sock: socket.socket,
+        raw_pid: object,
+    ) -> bool:
+        pid: int = raw_pid if isinstance(raw_pid, int) else 0
+        raw_stage: object = getattr(candidate, "stage_id", None)
+        stage_id: str = raw_stage if isinstance(raw_stage, str) else ""
+        session_id: str = self._session_id or ""
+        broker_fp: str | None = self._broker_fingerprint
+        try:
+            ok, failure_stage, tool_hash_or_diff = verify_candidate_readiness(
+                parent_sock,
+                expected_spawn_id=stage_id,
+                expected_pid=pid,
+                expected_session_id=session_id,
+                expected_broker_fingerprint=broker_fp,
+                expected_tool_hash=self._expected_tool_hash,
+            )
+            if not ok:
+                if failure_stage == "tool_set_drift":
+                    proc_old: object = getattr(self._inner, "process", None)
+                    poll_fn: object = getattr(proc_old, "poll", None)
+                    old_dead = False
+                    if callable(poll_fn):
+                        poll_result: object = poll_fn()
+                        old_dead = poll_result is not None
+                    if old_dead:
+                        logger.warning(
+                            "Tool-set drift detected during candidate verification, but old child is dead; promoting candidate with warning: {}",
+                            tool_hash_or_diff,
+                        )
+                        if tool_hash_or_diff and "candidate=" in tool_hash_or_diff:
+                            cand_part = tool_hash_or_diff.split("candidate=")[1].split()[0]
+                            self._expected_tool_hash = cand_part
+                        return True
+                logger.warning("Candidate verification failed: stage={}", failure_stage)
+                return False
+            if tool_hash_or_diff is not None:
+                self._expected_tool_hash = tool_hash_or_diff
+            return True
+        except Exception as exc:
+            logger.warning("Candidate verification raised exception: {}", exc)
+            return False
+        finally:
+            with contextlib.suppress(Exception):
+                parent_sock.close()
+            candidate.handover_parent_sock = None
+
     def _verify_candidate(self, candidate: StandaloneMcpProcess) -> bool:
         """Verify candidate process is alive and un-exited before promotion."""
         proc: object = getattr(candidate, "process", None)
@@ -945,34 +1064,10 @@ class RestartAwareMcpBridge:
                     return False
             except Exception:
                 return False
-        is_fake_proc = type(proc).__name__ == "FakeProcess"
         parent_sock_obj: object = getattr(candidate, "handover_parent_sock", None)
-        if not is_fake_proc and isinstance(parent_sock_obj, socket.socket):
-            parent_sock: socket.socket = parent_sock_obj
-            raw_pid: object = getattr(proc, "pid", None)
-            pid: int = raw_pid if isinstance(raw_pid, int) else 0
-            raw_stage: object = getattr(candidate, "stage_id", None)
-            stage_id: str = raw_stage if isinstance(raw_stage, str) else ""
-            session_id: str = self._session_id or ""
-            broker_fp: str | None = self._broker_fingerprint
-            try:
-                ok, failure_stage, _diff = verify_candidate_readiness(
-                    parent_sock,
-                    expected_spawn_id=stage_id,
-                    expected_pid=pid,
-                    expected_session_id=session_id,
-                    expected_broker_fingerprint=broker_fp,
-                )
-                if not ok:
-                    logger.warning("Candidate verification failed: stage={}", failure_stage)
-                    return False
-            except Exception as exc:
-                logger.warning("Candidate verification raised exception: {}", exc)
-                return False
-            finally:
-                with contextlib.suppress(Exception):
-                    parent_sock.close()
-                candidate.handover_parent_sock = None
+        proc_pid: object = getattr(proc, "pid", None)
+        if type(proc).__name__ != "FakeProcess" and isinstance(parent_sock_obj, socket.socket):
+            return self._verify_candidate_socket(candidate, parent_sock_obj, proc_pid)
         return True
 
     def _hand_over_accept(
@@ -1164,6 +1259,19 @@ class RestartAwareMcpBridge:
             return RestartAttemptResult.REPLACED
         return RestartAttemptResult.ATTEMPT_FAILED
 
+    def _check_child_cpu_progress(self, pid: int, sample_duration_s: float) -> bool:
+        if pid <= 1:
+            return False
+        try:
+            proc = psutil.Process(pid)
+            c1 = proc.cpu_times()
+            sleep_fn = self._sleep_fn or time.sleep
+            sleep_fn(sample_duration_s)
+            c2 = proc.cpu_times()
+            return ((c2.user - c1.user) + (c2.system - c1.system)) > _CPU_PROGRESS_THRESHOLD
+        except Exception:
+            return False
+
     def _handle_failed_probe_under_lock(
         self,
         *,
@@ -1171,6 +1279,7 @@ class RestartAwareMcpBridge:
         probe_duration_s: float | None,
         probed_pid: int,
         probed_generation: int,
+        deferrable: bool = True,
     ) -> bool:
         """Handle contention and failure accounting after a failed probe under lock.
 
@@ -1211,10 +1320,12 @@ class RestartAwareMcpBridge:
                     process_exited=False, probe_duration_s=probe_duration_s
                 )
 
-            fresh_w_signal = bool(
-                pop_recent_host_contention_signals(self._host_contention_window_seconds)
+            fresh_w_signal = (
+                bool(pop_recent_host_contention_signals(self._host_contention_window_seconds))
+                if deferrable
+                else False
             )
-            fresh_contention = fresh_w_signal or fresh_b_signal
+            fresh_contention = (fresh_w_signal or fresh_b_signal) and deferrable
             if fresh_contention:
                 if self._first_probe_deferred_at is None:
                     self._first_probe_deferred_at = now
@@ -1293,8 +1404,9 @@ class RestartAwareMcpBridge:
 
         # Probe failed: lock is RELEASED before calling producer()
         # A probe overrun is classified as host contention (C3).
+        deferrable = _is_timeout_class_probe_outcome(self._last_probe_error, overrun)
         fresh_b_signal_from_overrun = False
-        if probe_failed and overrun:
+        if probe_failed and overrun and deferrable:
             record_host_contention_signal("probe_overrun")
             fresh_b_signal_from_overrun = True
         producer = self._contention_signal_producer or current_host_is_contended
@@ -1302,13 +1414,59 @@ class RestartAwareMcpBridge:
             fresh_b_signal = bool(producer())
         except Exception:
             fresh_b_signal = False
-        fresh_b_signal = fresh_b_signal or fresh_b_signal_from_overrun
+        fresh_b_signal = (fresh_b_signal or fresh_b_signal_from_overrun) if deferrable else False
+
+        # Confirm-before-replace: before replacing a live child
+        clock_fn = _bridge_clock(self)
+        now = clock_fn()
+        deferral_wall_time = (
+            (now - self._first_probe_deferred_at)
+            if self._first_probe_deferred_at is not None
+            else 0.0
+        )
+        ceiling_tripped = (
+            self._consecutive_probe_failures_deferred >= _DEFERRAL_COUNT_CEILING
+            or deferral_wall_time >= _DEFERRAL_WALL_TIME_CEILING_S
+        )
+        will_trip_restart = not fresh_b_signal and (
+            self._consecutive_probe_failures + 1 >= _PROBE_FAILURES_BEFORE_RESTART
+        )
+        if will_trip_restart and not ceiling_tripped and self._probe_fn is not None:
+            confirm_ok = False
+            base_timeout = (
+                self._probe_timeout_fn()
+                if self._probe_timeout_fn is not None
+                else timedelta(seconds=5)
+            )
+            confirm_timeout = base_timeout * _CONFIRM_PROBE_MULTIPLIER
+            try:
+                self._probe_fn(self._inner.endpoint, confirm_timeout)
+                confirm_ok = True
+            except Exception as confirm_exc:
+                if _is_timeout_class_probe_outcome(confirm_exc, overrun=False):
+                    confirm_ok = self._check_child_cpu_progress(probed_pid, _CONFIRM_CPU_SAMPLE_S)
+            if confirm_ok:
+                with self._lock:
+                    if (
+                        self._bridge_generation == probed_generation
+                        and self._inner.process.pid == probed_pid
+                    ):
+                        if self._first_probe_deferred_at is None:
+                            self._first_probe_deferred_at = now
+                        self._consecutive_probe_failures_deferred += 1
+                        self._record_contention_deferral(
+                            probe_duration_s=probe_duration_s,
+                            deferral_count=self._consecutive_probe_failures_deferred,
+                            stage="probe_deferred_confirm_success",
+                        )
+                        return False
 
         return self._handle_failed_probe_under_lock(
             fresh_b_signal=fresh_b_signal,
             probe_duration_s=probe_duration_s,
             probed_pid=probed_pid,
             probed_generation=probed_generation,
+            deferrable=deferrable,
         )
 
     def reset_tool_registry(self) -> None:
@@ -1726,7 +1884,7 @@ def _startup_diagnostic_suffix(root: Path, log_offset: int) -> str:
 
     diagnostic = read_mcp_server_log_since(root, log_offset)
     if not diagnostic:
-        return ""
+        return f"\nMCP server output ({mcp_server_log_path(root)}):\nchild wrote no log output"
     return f"\nMCP server output ({mcp_server_log_path(root)}):\n{diagnostic}"
 
 

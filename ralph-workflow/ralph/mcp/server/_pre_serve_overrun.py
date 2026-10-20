@@ -29,6 +29,7 @@ re-reading the on-disk stage file.
 from __future__ import annotations
 
 import contextlib
+import errno
 import os
 import sys
 import threading
@@ -178,6 +179,15 @@ def log_and_record_stage(
                 _record_stage(workspace_root, name, timeout_s=write_timeout_s)
             except TypeError:
                 _record_stage(workspace_root, name)
+        except OSError as exc:
+            if exc.errno in (errno.ENOSPC, errno.EROFS, errno.EDQUOT):
+                logger.warning(
+                    "ralph-mcp startup: failed to record stage={stage} due to disk exhaustion: {err}",
+                    stage=name,
+                    err=exc,
+                )
+            else:
+                error.append(exc)
         except BaseException as exc:
             error.append(exc)
 

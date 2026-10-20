@@ -21,8 +21,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from ralph.mcp.server.runtime import McpServer
-
 #: Maximum time (seconds) to wait for the retiring child to acknowledge pause.
 _HANDOVER_ACK_TIMEOUT_S: float = 1.0
 
@@ -63,7 +61,7 @@ def create_handover_socketpair() -> tuple[socket.socket, socket.socket]:
     return parent_sock, child_sock
 
 
-def _build_tools_list_response(mcp_server: McpServer) -> list[dict[str, object]]:
+def _build_tools_list_response(mcp_server: object) -> list[dict[str, object]]:
     registry: object = getattr(mcp_server, "_registry", None)
     tools_attr: object = getattr(registry, "tools", None)
     if not isinstance(tools_attr, list):
@@ -98,7 +96,7 @@ def _build_tools_list_response(mcp_server: McpServer) -> list[dict[str, object]]
 
 def _handle_readiness_line(
     line: bytes,
-    mcp_server: McpServer,
+    mcp_server: object,
     *,
     stage_id: str,
     session_id: str,
@@ -144,7 +142,7 @@ def _handle_readiness_line(
 
 def start_private_readiness_listener(
     child_sock: socket.socket,
-    mcp_server: McpServer,
+    mcp_server: object,
     *,
     stage_id: str,
     session_id: str,
