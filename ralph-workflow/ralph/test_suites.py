@@ -426,6 +426,10 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/mcp/test_bounded_catalog_publish.py": 100,
     "tests/mcp/test_whole_startup_budget_production.py": 90,
     "tests/mcp/test_respawn_no_discovery.py": 80,
+    "tests/mcp/test_e3x_transport_gap_typed_retry.py": 140,
+    "tests/mcp/test_e46_parent_sigkill_no_orphans.py": 50,
+    "tests/mcp/test_handover_inflight_real_child.py": 50,
+    "tests/mcp/test_root_cause_real_child_bridge.py": 45,
     "tests/test_explore_bench_rss_isolation.py": 250,
     # Calibrated from --profile-durations per-file wall-clock on shard 15
     # (weight = round(measured_seconds * 17); band [50, 460] per existing

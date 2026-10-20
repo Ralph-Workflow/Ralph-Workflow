@@ -89,3 +89,6 @@ def _http_tools_list_names(endpoint: str, *, timeout: float) -> list[str]:
         for entry_map in [cast("dict[str, object]", entry)]
         if isinstance(entry, dict) and isinstance(entry_map.get("name"), str)
     ]
+
+
+http_tools_list_names = _http_tools_list_names

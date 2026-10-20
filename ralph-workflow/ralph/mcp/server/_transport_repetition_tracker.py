@@ -382,7 +382,7 @@ class TransportRepetitionTracker:
         """
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            # filesystem-write-ok: append-only fcntl-lock probe
+            # filesystem-write-ok: persistent advisory-lock sidecar serializes cross-process repetition tracker updates
             handle = path.with_name(path.name + ".lock").open("a", encoding="utf-8")
         except OSError:
             return self._observe_in_memory(signature)

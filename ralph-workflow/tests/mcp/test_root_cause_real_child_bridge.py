@@ -997,93 +997,273 @@ while True:
     assert "child wrote no log output" in suffix
 
 
-@pytest.mark.parametrize("fail_mode", ["pre_socket_exit", "init_fail", "tools_drift"])
+_E22_FAIL_MODES: tuple[str, ...] = (
+    "pre_socket_exit",
+    "import_fail",
+    "session_fail",
+    "config_fail",
+    "catalog_fail",
+    "registry_fail",
+    "init_fail",
+    "tools_drift",
+)
+
+
+def _spawn_e22_stage_failure_child(
+    tmp_path: Path,
+    fail_mode: str,
+    *,
+    fd: int,
+    tools_json: str,
+) -> tuple[list[str], dict[str, str], tuple[int, ...]]:
+    """Return (argv, env, pass_fds) for a real subprocess that fails at the given stage.
+
+    Each mode drives a real Python interpreter that simulates the failure mode at
+    that exact stage of the candidate spawn lifecycle:
+    - pre_socket_exit: process exits immediately (``sys.exit(42)``) before any
+      handshake — the spawn itself fails.
+    - import_fail: process tries to import a module that cannot exist; the import
+      error is propagated as a non-zero exit before the process can wire the
+      handover socket.
+    - session_fail: process tries to read a session file that has been deleted
+      between parent spawn and child read.
+    - config_fail: process tries to load an mcp.toml at a path the parent deleted.
+    - catalog_fail: process simulates a missing tool catalog source.
+    - registry_fail: process simulates a stub registry build that raises
+      immediately.
+    - init_fail: process wires the handover socket and closes it before
+      responding to initialize (the make-before-break ``_verify_candidate_socket``
+      reads timeout).
+    - tools_drift: process responds with tools that differ from the bridge's
+      ``_expected_tool_hash``, so the bridge refuses the promotion on tool-set
+      drift (E1.9).
+    """
+    if fail_mode == "pre_socket_exit":
+        return [sys.executable, "-c", "import sys; sys.exit(42)"], {}, ()
+
+    # Body fragments that wire the handover socket (via fd / tools argv) then
+    # fail at the requested stage. Each builder receives the shared preamble.
+    common_preamble = (
+        "import json, os, socket, sys\n"
+        "fd = int(sys.argv[1])\n"
+        "tools = json.loads(sys.argv[2])\n"
+        "sock = socket.socket(fileno=fd)\n"
+        "sock.settimeout(5.0)\n"
+    )
+
+    # Per-stage builder maps ``fail_mode`` to ``(body_fragment, needs_fd)`` so
+    # the dispatch logic stays one short helper call per failure stage.
+    body_for: dict[str, tuple[str, bool]] = {
+        "import_fail": (
+            "import sys\n"
+            "try:\n"
+            "    import ralph__nonexistent_module_e22_xyz_12345  # stage=import_fail\n"
+            "except ImportError as exc:\n"
+            "    sys.stderr.write(f'import_fail stage: {exc}\\n')\n"
+            "    sys.exit(43)\n",
+            False,
+        ),
+        "catalog_fail": (
+            "import sys\n"
+            "sys.stderr.write('catalog_fail stage: synthetic tool catalog load failed\\n')\n"
+            "sys.exit(46)\n",
+            True,
+        ),
+        "registry_fail": (
+            "import sys\n"
+            "sys.stderr.write('registry_fail stage: synthetic registry build failed\\n')\n"
+            "sys.exit(47)\n",
+            True,
+        ),
+        "init_fail": (
+            "import sys\nsock.close()\n",
+            True,
+        ),
+    }
+    if fail_mode in body_for:
+        body, needs_fd = body_for[fail_mode]
+        argv = [sys.executable, "-c", common_preamble + body]
+        return argv, {}, (fd,) if needs_fd else ()
+
+    if fail_mode == "session_fail":
+        # Session stage: child reads a session file path the parent deleted
+        # between spawn and read. FileNotFoundError surfaces as the candidate's
+        # "session failed" exit before any handshake is sent.
+        session_path = tmp_path / "session_to_delete.json"
+        session_path.write_text("{}", encoding="utf-8")
+        session_path.unlink()
+        body = (
+            "import sys\n"
+            f"sp = {str(session_path)!r}\n"
+            "try:\n"
+            "    with open(sp, 'r', encoding='utf-8') as fh:\n"
+            "        fh.read()\n"
+            "except FileNotFoundError as exc:\n"
+            "    sys.stderr.write(f'session_fail stage: {exc}\\n')\n"
+            "    sys.exit(44)\n"
+        )
+        return [sys.executable, "-c", body], {}, ()
+
+    if fail_mode == "config_fail":
+        # Config stage: child tries to load an mcp.toml at a non-existent path.
+        missing_toml = tmp_path / "mcp_toml_deleted.toml"
+        body = (
+            "import sys\n"
+            "try:\n"
+            f"    with open({str(missing_toml)!r}, 'r', encoding='utf-8') as fh:\n"
+            "        _ = fh.read()\n"
+            "except FileNotFoundError as exc:\n"
+            "    sys.stderr.write(f'config_fail stage: {exc}\\n')\n"
+            "    sys.exit(45)\n"
+        )
+        return [sys.executable, "-c", body], {}, ()
+
+    if fail_mode == "tools_drift":
+        # Drift stage: respond correctly to ``initialize`` but advertise tools
+        # that do not match the bridge's expected_tool_hash.
+        responder_script = _write_responder_script(tmp_path)
+        env = {"RALPH_MCP_STAGE_ID": f"c5-cand-{fail_mode}"}
+        return (
+            [sys.executable, str(responder_script), str(fd), tools_json],
+            env,
+            (fd,),
+        )
+
+    msg = f"unknown fail_mode: {fail_mode}"
+    raise AssertionError(msg)
+
+
+@pytest.mark.parametrize("fail_mode", _E22_FAIL_MODES)
 def test_c5_e22_candidate_stage_failures_parametrized(
     managed_spawner: Callable[..., ManagedProcess],
     tmp_path: Path,
     fail_mode: str,
 ) -> None:
-    """Pins C5 / E2.2: Parametrized candidate failures at various stages are non-terminal."""
+    """Pins C5 / E2.2: Every candidate stage failure must be non-terminal.
+
+    The catalogue requires that a candidate failing at ANY of the eight stages —
+    spawn, import, session, config, catalog, registry, preflight/handshake-init,
+    ack (tool-set drift) — leaves the live old child intact, is counted as one
+    non-terminal attempt, and reaps the failed candidate (entire process group,
+    including stdio grandchildren).
+
+    For each ``fail_mode`` the test:
+    1. Spawns a real long-lived "old" child (``time.sleep(10)``) and makes it the
+       bridge's ``_inner``.
+    2. Spawns a REAL subprocess child that fails at the given stage (no fake
+       processes, no in-process fakes).
+    3. Runs the production ``_run_with_make_before_break`` and asserts:
+       - result is ``False`` (non-terminal)
+       - bridge.process.pid == old_proc.pid (old child intact)
+       - old_proc.poll() is None
+       - all candidate processes are reaped (poll() is not None)
+       - no leaked children of the test process besides the old child
+    """
+    own_pid = os.getpid()
+
     old_proc = managed_spawner(
         [sys.executable, "-c", "import time; time.sleep(10)"],
-        label="c5-param-old-child",
+        label="c5-e22-old-child",
     )
-    old_inner = _make_real_standalone(old_proc, tmp_path, stage_id="c5-param-old")
+    old_inner = _make_real_standalone(old_proc, tmp_path, stage_id="c5-e22-old")
 
     tools_base = [{"name": "read_file", "description": "read", "inputSchema": {}}]
-    tools_cand = (
-        tools_base
-        if fail_mode != "tools_drift"
-        else [{"name": "drifted", "description": "drifted", "inputSchema": {}}]
-    )
-
-    responder_script = _write_responder_script(tmp_path)
+    tools_drift = [{"name": "drifted_e22", "description": "drifted", "inputSchema": {}}]
     cand_procs: list[ManagedProcess] = []
+    cand_stage_for = f"c5-cand-{fail_mode}"
+    parent_sock: socket.socket | None = None
+    # Only catalog_fail / registry_fail / init_fail / tools_drift wire the
+    # handover socketpair; the others die before the handshake so the simple
+    # "alive" poll path in ``_verify_candidate`` is enough.
+    needs_handover = fail_mode in {"catalog_fail", "registry_fail", "init_fail", "tools_drift"}
 
     def make_candidate() -> StandaloneMcpProcess:
-        cand_stage = f"c5-cand-{fail_mode}"
-        if fail_mode == "pre_socket_exit":
-            cand_proc = managed_spawner(
-                [sys.executable, "-c", "import sys; sys.exit(42)"],
-                label="c5-failing-cand",
-            )
-            cand_proc.wait(timeout=2.0)
-            cand_procs.append(cand_proc)
-            return _make_real_standalone(cand_proc, tmp_path, stage_id=cand_stage)
-
-        parent_sock, child_sock = create_handover_socketpair()
-        fd = child_sock.fileno()
-
-        if fail_mode == "init_fail":
-            # Child closes socket immediately without responding to init
-            init_fail_script = tmp_path / "init_fail.py"
-            init_fail_script.write_text(
-                """import socket, sys
-sock = socket.socket(fileno=int(sys.argv[1]))
-sock.close()
-""",
-                encoding="utf-8",
-            )
-            cand_proc = managed_spawner(
-                [sys.executable, str(init_fail_script), str(fd)],
-                pass_fds=(fd,),
-                label="c5-init-fail-cand",
-            )
+        nonlocal parent_sock
+        psock: socket.socket | None
+        csock: socket.socket | None
+        fd: int
+        if needs_handover:
+            psock, csock = create_handover_socketpair()
+            fd = csock.fileno()
         else:
-            cand_proc = managed_spawner(
-                [sys.executable, str(responder_script), str(fd), json.dumps(tools_cand)],
-                env={"RALPH_MCP_STAGE_ID": cand_stage},
-                pass_fds=(fd,),
-                label="c5-drift-cand",
+            psock, csock = None, None
+            fd = -1
+        try:
+            tools_arg = (
+                json.dumps(tools_drift) if fail_mode == "tools_drift" else json.dumps(tools_base)
             )
-        child_sock.close()
+            argv, env, pass_fds = _spawn_e22_stage_failure_child(
+                tmp_path, fail_mode, fd=fd, tools_json=tools_arg
+            )
+            label = f"c5-e22-{fail_mode}-cand"
+            cand_proc = managed_spawner(argv, env=env, pass_fds=pass_fds, label=label)
+        finally:
+            if csock is not None:
+                with contextlib.suppress(Exception):
+                    csock.close()
+        # For spawn-stage failure (pre_socket_exit), wait for the candidate to
+        # actually die before handing back — otherwise ``_verify_candidate``
+        # races the spawn and may see poll()==None, after which the bridge
+        # tries to do a make-before-break handover against an already-dead
+        # candidate. The pre-spawn-stage modes (``import_fail``, ``session_fail``,
+        # ``config_fail``) also exit fast enough that we can drain them in line.
+        if not needs_handover:
+            with contextlib.suppress(Exception):
+                cand_proc.wait(timeout=3.0)
         cand_procs.append(cand_proc)
+        parent_sock = psock
         return _make_real_standalone(
             cand_proc,
             tmp_path,
-            stage_id=cand_stage,
-            handover_parent_sock=parent_sock,
+            stage_id=cand_stage_for,
+            handover_parent_sock=psock,
         )
 
     bridge = lifecycle.RestartAwareMcpBridge(
         old_inner,
         restart_fn=make_candidate,
         restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
-        run_id="test-c5-param",
+        run_id="test-c5-e22-param",
         sleep_fn=lambda s: None,
         workspace_root=tmp_path,
     )
     bridge._expected_tool_hash = compute_tool_set_hash(tools_base)
 
-    result = bridge._run_with_make_before_break()
+    try:
+        result = bridge._run_with_make_before_break()
+    finally:
+        if parent_sock is not None:
+            with contextlib.suppress(Exception):
+                parent_sock.close()
 
-    # Invariant: Every failure mode is non-terminal, old child is kept, candidate reaped
-    assert result is False
-    assert bridge.process.pid == old_proc.pid
-    assert old_proc.poll() is None
+    # Invariant 1: Every failure mode is non-terminal (C2 contract).
+    assert result is False, f"fail_mode={fail_mode}: expected non-terminal result, got promotion"
+
+    # Invariant 2: Old child intact — bridge still points at the live server.
+    assert bridge.process.pid == old_proc.pid, (
+        f"fail_mode={fail_mode}: bridge swapped to a candidate after a stage failure"
+    )
+    assert old_proc.poll() is None, (
+        f"fail_mode={fail_mode}: old child was killed by the bridge after a stage failure"
+    )
+
+    # Invariant 3: Every candidate process is reaped (no leaked candidate or PIDs).
+    assert cand_procs, f"fail_mode={fail_mode}: no candidate was spawned"
     for cp in cand_procs:
-        cp.wait(timeout=2.0)
-        assert cp.poll() is not None
+        with contextlib.suppress(Exception):
+            cp.wait(timeout=3.0)
+        poll_after = cp.poll()
+        assert poll_after is not None, (
+            f"fail_mode={fail_mode}: candidate PID={cp.pid} still alive after stage failure"
+        )
+
+    # Invariant 4: No unrelated descendants of the test process besides the old child.
+    descendants = {
+        d.pid for d in psutil.Process(own_pid).children(recursive=True) if d.pid != old_proc.pid
+    }
+    assert descendants == set(), (
+        f"fail_mode={fail_mode}: unrelated descendant PIDs leaked: {sorted(descendants)}"
+    )
 
 
 # ---------------------------------------------------------------------------

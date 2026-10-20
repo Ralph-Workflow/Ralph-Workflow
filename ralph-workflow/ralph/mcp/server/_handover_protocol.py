@@ -392,6 +392,7 @@ def _verify_tools_exchange(
     deadline: float,
     *,
     expected_tool_hash: str | None,
+    expected_tool_hash_required: bool = False,
 ) -> CandidateReadiness:
     tools_req: dict[str, object] = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
     try:
@@ -413,6 +414,23 @@ def _verify_tools_exchange(
     candidate_tool_hash = compute_tool_set_hash(tools_list)
     entries = tuple(tools_list)
 
+    # C1/E1.9 fail-closed gate: when the bridge never captured a baseline
+    # (capture timed out / returned empty / errored) it has no drift reference.
+    # Without this gate the comparison below would be silently skipped and any
+    # candidate — drifted or not — would replace the living child. The bridge
+    # now reports ``baseline_unavailable`` so the caller can apply the only
+    # legal escape (dead-old-child promotion).
+    if expected_tool_hash_required and expected_tool_hash is None:
+        return CandidateReadiness(
+            ok=False,
+            failure_stage="baseline_unavailable",
+            detail=(
+                "no baseline tool-set hash was captured before candidate verification; "
+                "refusing to promote a candidate without a drift reference"
+            ),
+            tool_hash=candidate_tool_hash,
+            tools=entries,
+        )
     if expected_tool_hash is not None and candidate_tool_hash != expected_tool_hash:
         return CandidateReadiness(
             ok=False,
@@ -435,6 +453,7 @@ def check_candidate_readiness(
     expected_session_id: str,
     expected_broker_fingerprint: str | None,
     expected_tool_hash: str | None = None,
+    expected_tool_hash_required: bool = False,
     timeout: float = _PRIVATE_READINESS_TIMEOUT_S,
 ) -> CandidateReadiness:
     """Verify the candidate over the private socketpair and return the typed outcome.
@@ -442,6 +461,12 @@ def check_candidate_readiness(
     The candidate's canonical served catalogue and its hash are returned on both
     success and drift so the caller can retain the validated hash or render a
     name-level drift diff without parsing the human-readable ``detail``.
+
+    ``expected_tool_hash_required`` is the C1/E1.9 fail-closed switch: when
+    ``True`` and ``expected_tool_hash`` is ``None``, the tools exchange refuses
+    with ``failure_stage="baseline_unavailable"``. The caller (the bridge)
+    consults the old child's liveness and either refuses the promotion or
+    applies the only legal escape (the dead-old-child exception).
     """
     deadline = time.monotonic() + timeout
     parent_sock.settimeout(max(0.1, deadline - time.monotonic()))
@@ -460,7 +485,12 @@ def check_candidate_readiness(
             init_err if init_err is not None else "",
         )
 
-    return _verify_tools_exchange(parent_sock, deadline, expected_tool_hash=expected_tool_hash)
+    return _verify_tools_exchange(
+        parent_sock,
+        deadline,
+        expected_tool_hash=expected_tool_hash,
+        expected_tool_hash_required=expected_tool_hash_required,
+    )
 
 
 def verify_candidate_readiness(

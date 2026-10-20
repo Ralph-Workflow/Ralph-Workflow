@@ -564,22 +564,92 @@ def test_capture_tool_hash_baseline_stores_served_hash(tmp_path: pathlib.Path) -
     ]
 
 
-def test_baseline_capture_failure_degrades_to_no_baseline_with_warning(
+def test_baseline_capture_failure_blocks_candidate_promotion_when_old_child_alive(
     tmp_path: pathlib.Path,
 ) -> None:
-    """A failed baseline capture degrades to 'no baseline' and warns, never crashes."""
+    """Failed baseline capture must FAIL CLOSED: refuse drifted candidates while old child lives.
+
+    The historical behaviour degraded a baseline capture failure to 'no baseline' and
+    skipped hash comparison, so a drifted candidate could replace a living child
+    without any drift check. The fix records the capture failure on the bridge and
+    forces the next candidate verification to refuse promotion unless the old child
+    is already dead (the only legal exception path).
+    """
 
     def _boom(endpoint: str, timeout: float) -> list[dict[str, object]]:
         raise TimeoutError(f"tools/list unavailable at {endpoint}")
 
     bridge = _bridge_with_old_child(tmp_path, old_pid=1001, tool_entries_fn=_boom)
+    old_inner_id_before = id(bridge._inner)
+    old_inner_pid_before = bridge._inner.process.pid
 
     with _captured_logs() as records:
         bridge.capture_tool_hash_baseline()
 
     assert bridge._expected_tool_hash is None
     assert bridge._expected_tool_entries is None
+    assert bridge._baseline_capture_failed is True
     assert any("tool-hash baseline" in record for record in records)
+
+    candidate, _worker = _handover_candidate(
+        tmp_path,
+        tools=TOOLS_DRIFTED,
+        pid=2002,
+        stage_id="cand-fail-closed",
+        label="failclosed",
+    )
+
+    with _captured_logs() as refuse_records:
+        ok = bridge._verify_candidate_socket(candidate, candidate.handover_parent_sock, 2002)
+
+    assert ok is False
+    assert any(
+        "baseline unavailable" in record.lower() or "tool-hash baseline" in record.lower()
+        for record in refuse_records
+    )
+    assert id(bridge._inner) == old_inner_id_before
+    assert bridge._inner.process.pid == old_inner_pid_before
+    assert bridge._restart_count == 0
+
+
+def test_baseline_unavailable_promotes_candidate_when_old_child_dead(
+    tmp_path: pathlib.Path,
+) -> None:
+    """When baseline is unavailable AND the old child is already dead, the dead-child escape still fires."""
+
+    def _boom(endpoint: str, timeout: float) -> list[dict[str, object]]:
+        raise TimeoutError(f"tools/list unavailable at {endpoint}")
+
+    bridge = _bridge_with_old_child(
+        tmp_path,
+        old_pid=1001,
+        tool_entries_fn=_boom,
+    )
+    bridge._inner = _make_inner(poll_result=1, pid=1001)
+
+    bridge.capture_tool_hash_baseline()
+
+    assert bridge._baseline_capture_failed is True
+
+    candidate, _worker = _handover_candidate(
+        tmp_path,
+        tools=TOOLS_DRIFTED,
+        pid=2003,
+        stage_id="cand-dead-escape",
+        label="deadescape",
+    )
+
+    with _captured_logs() as promote_records:
+        ok = bridge._verify_candidate_socket(candidate, candidate.handover_parent_sock, 2003)
+
+    assert ok is True
+    assert any(
+        "dead-child escape" in record.lower()
+        or ("old child is dead" in record.lower() and "promoting" in record.lower())
+        or ("baseline" in record.lower() and "dead" in record.lower())
+        for record in promote_records
+    )
+    assert bridge._baseline_capture_failed is False
 
 
 def test_start_mcp_server_seeds_baseline_from_served_endpoint(tmp_path: pathlib.Path) -> None:

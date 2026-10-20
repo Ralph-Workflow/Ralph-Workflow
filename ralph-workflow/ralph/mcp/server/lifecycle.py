@@ -649,6 +649,16 @@ class RestartAwareMcpBridge:
         # differ instead of only reporting that two hashes disagree.
         self._expected_tool_hash: str | None = None
         self._expected_tool_entries: list[dict[str, object]] | None = None
+        # C1/E1.9 fail-closed gate: ``True`` while the bridge has no usable
+        # baseline (the initial capture failed or was never performed).
+        # ``_verify_candidate_socket`` reads this to force
+        # ``expected_tool_hash_required=True`` so a drifted candidate cannot
+        # replace a living child without a drift reference. Cleared to
+        # ``False`` the moment a verified candidate (or a fresh successful
+        # capture) provides a real hash. The dead-old-child escape still
+        # allows promotion even while this flag is ``True`` — see
+        # ``_verify_candidate_socket``.
+        self._baseline_capture_failed: bool = False
         # Test seam: the served-tool-list fetcher used to seed the baseline.
         # Production uses ``served_tool_entries`` (the default ``None``).
         self._tool_entries_fn: Callable[[str, float], list[dict[str, object]]] | None = (
@@ -1116,15 +1126,19 @@ class RestartAwareMcpBridge:
         before hashing, so a baseline captured here is byte-comparable with the
         hash a candidate proves over the private readiness channel.
 
-        Fails OPEN by design: a transport failure leaves the baseline unset and
-        warns, rather than failing bridge construction. Refusing to build a
-        bridge because a confirmation read raced a restart would turn a
-        degraded-drift-detection condition into a dead run; the WARNING makes
-        the gap visible to the operator and the next successful candidate
-        verification restores the reference.
+        Fails CLOSED: a transport failure leaves the baseline unset AND flips
+        ``self._baseline_capture_failed`` to ``True`` so the next candidate
+        verification must refuse promotion unless the old child is already
+        dead (the only legal escape). Refusing to start the bridge because a
+        confirmation read raced a restart would still fail bridge construction;
+        the WARNING plus fail-closed gate keep the bridge usable while making
+        drift-invisible promotions structurally impossible.
         """
         endpoint = self._inner.endpoint
         if not isinstance(endpoint, str) or not endpoint:
+            self._expected_tool_hash = None
+            self._expected_tool_entries = None
+            self._baseline_capture_failed = True
             logger.warning("tool-hash baseline skipped: inner endpoint is not a usable string")
             return
         fetch = self._tool_entries_fn if self._tool_entries_fn is not None else served_tool_entries
@@ -1133,9 +1147,10 @@ class RestartAwareMcpBridge:
         except (OSError, ValueError, TimeoutError) as exc:
             self._expected_tool_hash = None
             self._expected_tool_entries = None
+            self._baseline_capture_failed = True
             logger.warning(
                 "tool-hash baseline capture failed for {}; tool-set drift detection is "
-                "degraded until the next successful candidate verification: {}",
+                "refusing candidates until a baseline can be recovered: {}",
                 endpoint,
                 exc,
             )
@@ -1143,15 +1158,17 @@ class RestartAwareMcpBridge:
         if not entries:
             self._expected_tool_hash = None
             self._expected_tool_entries = None
+            self._baseline_capture_failed = True
             logger.warning(
                 "tool-hash baseline capture returned an empty served tool list for {}; "
-                "tool-set drift detection is degraded until the next successful candidate "
-                "verification",
+                "tool-set drift detection is refusing candidates until a baseline can be "
+                "recovered",
                 endpoint,
             )
             return
         self._expected_tool_entries = entries
         self._expected_tool_hash = compute_tool_set_hash(entries)
+        self._baseline_capture_failed = False
         logger.debug(
             "tool-hash baseline captured from served tools/list: endpoint={} tools={} hash={}",
             endpoint,
@@ -1170,6 +1187,7 @@ class RestartAwareMcpBridge:
         stage_id: str = raw_stage if isinstance(raw_stage, str) else ""
         session_id: str = self._session_id or ""
         broker_fp: str | None = self._broker_fingerprint
+        verified = False
         try:
             result: CandidateReadiness = check_candidate_readiness(
                 parent_sock,
@@ -1178,18 +1196,25 @@ class RestartAwareMcpBridge:
                 expected_session_id=session_id,
                 expected_broker_fingerprint=broker_fp,
                 expected_tool_hash=self._expected_tool_hash,
+                expected_tool_hash_required=self._baseline_capture_failed,
             )
-            if not result.ok:
+            if result.ok:
+                # Retain the VALIDATED candidate catalogue as the new drift
+                # reference BEFORE the ``finally`` closes the handover channel,
+                # so a later candidate is judged against what the serving child
+                # actually advertises rather than against a stale baseline.
+                if result.tool_hash is not None:
+                    self._absorb_verified_tool_set(result)
+                verified = True
+            else:
+                # Probe the old child's liveness once so both refusal /
+                # dead-old-child-escape branches share the same view of
+                # "old_dead".
+                old_dead = self._is_old_child_dead()
                 if result.failure_stage == "tool_set_drift":
                     diff = describe_tool_set_diff(
                         self._expected_tool_entries, list(result.tools) or None
                     )
-                    proc_old: object = getattr(self._inner, "process", None)
-                    poll_fn: object = getattr(proc_old, "poll", None)
-                    old_dead = False
-                    if callable(poll_fn):
-                        poll_result: object = poll_fn()
-                        old_dead = poll_result is not None
                     if old_dead:
                         # Dead-old-child exception: nothing left to preserve, so
                         # the drifted candidate is promoted — but never silently.
@@ -1200,40 +1225,80 @@ class RestartAwareMcpBridge:
                             diff,
                         )
                         if result.tool_hash is not None:
-                            self._expected_tool_hash = result.tool_hash
-                            self._expected_tool_entries = list(result.tools)
-                        return True
-                    # Old child is alive and serving: refuse the promotion, name
-                    # the tools that differ, and keep the old child intact.
+                            self._absorb_verified_tool_set(result)
+                        verified = True
+                    else:
+                        # Old child is alive and serving: refuse the promotion,
+                        # name the tools that differ, and keep the old child intact.
+                        logger.warning(
+                            "Candidate verification refused on tool-set drift: stage={} "
+                            "detail={} tool_set_diff={}",
+                            result.failure_stage,
+                            result.detail,
+                            diff,
+                        )
+                elif result.failure_stage == "baseline_unavailable":
+                    # C1/E1.9 fail-closed gate: there is no drift reference at
+                    # all. Refuse unless the old child is already dead (the
+                    # only legal escape — there is nothing left to preserve).
+                    if old_dead:
+                        logger.warning(
+                            "Tool-hash baseline unavailable and old child is dead. "
+                            "Promoting candidate with warning (dead-child escape): "
+                            "{}",
+                            result.detail,
+                        )
+                        if result.tool_hash is not None:
+                            self._absorb_verified_tool_set(result)
+                        verified = True
+                    else:
+                        # Old child is alive and serving: refuse the promotion —
+                        # there is no drift reference, so we cannot prove safety.
+                        logger.warning(
+                            "Candidate verification refused: tool-hash baseline unavailable "
+                            "(no drift reference) and old child is alive. Keeping old "
+                            "child. detail={}",
+                            result.detail,
+                        )
+                else:
                     logger.warning(
-                        "Candidate verification refused on tool-set drift: stage={} detail={} "
-                        "tool_set_diff={}",
+                        "Candidate verification failed: stage={} detail={}",
                         result.failure_stage,
                         result.detail,
-                        diff,
                     )
-                    return False
-                logger.warning(
-                    "Candidate verification failed: stage={} detail={}",
-                    result.failure_stage,
-                    result.detail,
-                )
-                return False
-            # Retain the VALIDATED candidate catalogue as the new drift
-            # reference BEFORE the ``finally`` closes the handover channel, so a
-            # later candidate is judged against what the serving child actually
-            # advertises rather than against a stale baseline.
-            if result.tool_hash is not None:
-                self._expected_tool_hash = result.tool_hash
-                self._expected_tool_entries = list(result.tools)
-            return True
         except Exception as exc:
             logger.warning("Candidate verification raised exception: {}", exc)
-            return False
         finally:
             with contextlib.suppress(Exception):
                 parent_sock.close()
             candidate.handover_parent_sock = None
+        return verified
+
+    def _is_old_child_dead(self) -> bool:
+        """Return True if the bridge's currently-serving child has exited.
+
+        A ``None`` poll means the child is still running. Any non-None return
+        (including ``0`` for a clean exit and any negative sentinel for a
+        signal) counts as dead — the only legal escape from drift refusal.
+        """
+        proc_old: object = getattr(self._inner, "process", None)
+        poll_fn: object = getattr(proc_old, "poll", None)
+        if not callable(poll_fn):
+            return False
+        poll_result: object = poll_fn()
+        return poll_result is not None
+
+    def _absorb_verified_tool_set(self, result: CandidateReadiness) -> None:
+        """Adopt the validated candidate's tool set as the next drift reference.
+
+        Called after a successful verification OR after a dead-old-child
+        exception promotion. Stores the hash and catalogue, and clears the
+        fail-closed gate (``_baseline_capture_failed``) because the reference
+        is now demonstrably live.
+        """
+        self._expected_tool_hash = result.tool_hash
+        self._expected_tool_entries = list(result.tools)
+        self._baseline_capture_failed = False
 
     def _verify_candidate(self, candidate: StandaloneMcpProcess) -> bool:
         """Verify candidate process is alive and un-exited before promotion."""
