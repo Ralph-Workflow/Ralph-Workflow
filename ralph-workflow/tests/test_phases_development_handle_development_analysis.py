@@ -5,12 +5,16 @@ from __future__ import annotations
 import tempfile
 from functools import lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.phases.analysis import handle_generic_analysis_phase
 from ralph.pipeline.effects import Effect, InvokeAgentEffect
 from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent
 from ralph.policy.loader import load_policy
+
+if TYPE_CHECKING:
+    from ralph.policy.models import PolicyBundle
 
 
 def _decision_markdown(status: str) -> str:
@@ -30,15 +34,15 @@ def _decision_markdown(status: str) -> str:
 
 
 @lru_cache(maxsize=1)
-def _default_policy_bundle() -> object:
+def _default_policy_bundle() -> PolicyBundle:
     with tempfile.TemporaryDirectory() as tmp:
         return load_policy(Path(tmp) / ".agent")
 
 
 class TestHandleDevelopmentAnalysis:
     def _default_pipeline_policy(self) -> object:
-        with tempfile.TemporaryDirectory() as tmp:
-            return load_policy(Path(tmp) / ".agent").pipeline
+        bundle: PolicyBundle = _default_policy_bundle()
+        return bundle.pipeline
 
     def _make_context(self) -> MagicMock:
         ctx = MagicMock()

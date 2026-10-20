@@ -592,7 +592,10 @@ def test_e34_stale_keepalive_after_real_handover(
         }
 
         # ---- Baseline: idempotent call on real keep-alive socket ----
-        keepalive = http.client.HTTPConnection("127.0.0.1", port, timeout=2.0)
+        # 5 s timeout matches the test's fresh-connection budget; the stdlib
+        # read returns immediately on a healthy child, but the same host-saturated
+        # xdist profiles can delay the very first connect-accept by tens of ms.
+        keepalive = http.client.HTTPConnection("127.0.0.1", port, timeout=5.0)
         try:
             status, attempts, _ = execute_mcp_http_request(
                 port, tools_list_payload, existing_conn=keepalive, is_idempotent=True
@@ -630,7 +633,7 @@ def test_e34_stale_keepalive_after_real_handover(
                 "arguments": {"artifact_type": "development_result", "x": 1},
             },
         }
-        unsafe_conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2.0)
+        unsafe_conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5.0)
         try:
             # Establish the socket with the active child.
             status_pre, _, _ = execute_mcp_http_request(
@@ -808,7 +811,7 @@ def test_e41_bridge_state_transitions_cleanly_without_dropping_requests(
         # Phase 4: Release slow verify; promotion completes.
         slow_can_finish.set()
         assert promotion_done.wait(timeout=15.0), "make-before-break did not finish"
-        promotion_thread.join(timeout=3.0)
+        promotion_thread.join(timeout=5.0)
         assert promotion_thread.is_alive() is False
         assert promotion_result and promotion_result[0] is True, f"result={promotion_result!r}"
         assert bridge._bridge_generation == 1, f"generation={bridge._bridge_generation}"

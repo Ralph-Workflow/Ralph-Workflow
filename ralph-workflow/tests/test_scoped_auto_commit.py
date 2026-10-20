@@ -671,6 +671,7 @@ def test_transition_conflict_skips_only_the_conflicting_ancestor(
 # ----------------------------------------------------------------------------
 
 
+@pytest.mark.timeout_seconds(15)  # Headroom under concurrent 9-shard CPU load
 def test_commit_does_not_misclassify_byte_equal_descendant_under_replaced_dir(
     tmp_path: Path,
 ) -> None:

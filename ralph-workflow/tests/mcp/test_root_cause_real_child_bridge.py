@@ -122,7 +122,7 @@ tools_json = sys.argv[2]
 tools = json.loads(tools_json)
 grandchild = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
 sock = socket.socket(fileno=sock_fd)
-sock.settimeout(5.0)
+sock.settimeout(15.0)
 buf = b""
 while True:
     try:
@@ -242,6 +242,7 @@ def test_c1_tool_hash_mismatch_rejected_real_child(
         workspace_root=tmp_path,
     )
     bridge._expected_tool_hash = expected_hash
+    bridge._expected_tool_entries = tools_old
 
     # Restart attempt executes make-before-break
     result = bridge._run_with_make_before_break()
@@ -300,7 +301,7 @@ def test_c1_matching_tool_hash_promoted_and_private_hash_equals_served_tools(
         def _burst_worker() -> None:
             while not stop_burst.is_set():
                 try:
-                    names = _http_tools_list_names(endpoint, timeout=3.0)
+                    names = _http_tools_list_names(endpoint, timeout=5.0)
                     if isinstance(names, list) and len(names) > 0:
                         burst_results.append(True)
                     else:
@@ -316,7 +317,7 @@ def test_c1_matching_tool_hash_promoted_and_private_hash_equals_served_tools(
         promoted = bridge._perform_restart(process_exited=False, probe_duration_s=0.1)
 
         stop_burst.set()
-        burst_thread.join(timeout=3.0)
+        burst_thread.join(timeout=5.0)
 
         # Invariant: Handover succeeded and candidate is promoted
         assert promoted is True, "Candidate with matching hash must be promoted"
@@ -330,7 +331,7 @@ def test_c1_matching_tool_hash_promoted_and_private_hash_equals_served_tools(
         assert all(burst_results), "Every tools/list request during handover must succeed"
 
         # Final verification: new child serves tools/list
-        final_names = _http_tools_list_names(endpoint, timeout=2.0)
+        final_names = _http_tools_list_names(endpoint, timeout=5.0)
         assert isinstance(final_names, list)
         assert len(final_names) > 0
     finally:

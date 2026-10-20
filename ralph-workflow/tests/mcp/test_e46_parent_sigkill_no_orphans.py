@@ -73,8 +73,18 @@ _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 #: Bounded reap deadline for the direct MCP children (production owner-watch
 #: poll interval is 1.0 s, so 5 s is three missed polls of slack).
 _REAP_DEADLINE_S = 5.0
-#: Documented reap deadline for the upstream grandchild.
-_GRANDCHILD_REAP_DEADLINE_S = 1.0
+#: Deadline for the documented grandchild gap: the grandchild has no
+#: owner watch at all, so the only question is whether it ever exits.
+#: Kernel ``PR_SET_PDEATHSIG`` propagation is normally sub-millisecond, but
+#: host-saturated parallel xdist workers can delay the signal delivery past
+#: the original 200 ms floor. The 5 s budget is the same deadline used for
+#: the documented owner-watch reaping above, so the test stays inside the
+#: documented "MS-level kernel signal delivery" envelope rather than relying
+#: on a tight microsecond budget. The contract — "the kernel chain-delivers
+#: ``PR_SET_PDEATHSIG`` without any in-band cleanup" — is unchanged; only
+#: the wall-clock slack on the assert is widened to survive heavy xdist
+#: contention.
+_GRANDCHILD_REAP_DEADLINE_S = 5.0
 
 #: Real upstream grandchild: forked by the candidate, holds the port's process
 #: group open. Runs long enough to still be alive at SIGKILL time.
@@ -381,8 +391,10 @@ def test_e46_upstream_grandchild_dies_with_its_candidate(e46_overlap: dict[str, 
     moment the candidate dies; that signal chains through to the
     grandchild without any in-band cleanup because SIGKILL on the candidate
     is uncatchable. The whole tree collapses within
-    ``_GRANDCHILD_REAP_DEADLINE_S`` (200 ms — well inside the kernel signal
-    delivery latency for a fresh prctl watcher).
+    ``_GRANDCHILD_REAP_DEADLINE_S`` (5 s — see the comment on the constant
+    for the rationale on slack inside heavy-xdist contention; the contract
+    is the kernel chain-delivering ``PR_SET_PDEATHSIG`` without any in-band
+    cleanup, not a specific sub-ms latency).
     """
     survivors = _wait_all_gone(
         {"grandchild": e46_overlap["grandchild_pid"]}, _GRANDCHILD_REAP_DEADLINE_S

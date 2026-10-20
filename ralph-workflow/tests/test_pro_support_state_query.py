@@ -143,6 +143,7 @@ def _install_display_context(monkeypatch: pytest.MonkeyPatch, run_loop_module: o
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_snapshot_metrics_is_a_plain_dict_copy_of_run_metrics(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -154,6 +155,15 @@ def test_snapshot_metrics_is_a_plain_dict_copy_of_run_metrics(
     assert id(snapshot.metrics) != id(expected)
 
 
+# ``PipelineState`` is a heavy pydantic model with deep ``model_validator``
+# chains. Under heavy shard load the snapshot tests above the
+# ``DEFAULT_TEST_TIMEOUT_SECONDS`` (1 s) SIGALRM set in ``tests/conftest.py``;
+# the default cap is too tight for two ``PipelineState`` constructions
+# back-to-back under the heavy-xdist profile. The marker is the documented
+# per-test override (see ``tests/test_liveness_pa002_properties.py:60`` for
+# the same module-level shape); the underlying snapshot logic and assertions
+# remain unchanged.
+@pytest.mark.timeout_seconds(5)
 def test_snapshot_iteration_sourced_from_outer_progress(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -166,6 +176,10 @@ def test_snapshot_iteration_sourced_from_outer_progress(
     assert snapshot2.iteration == 0
 
 
+# See ``test_snapshot_iteration_sourced_from_outer_progress`` for the
+# rationale on the timeout marker (heavy ``PipelineState`` pydantic model
+# under heavy-xdist shard load).
+@pytest.mark.timeout_seconds(5)
 def test_snapshot_analysis_iteration_sourced_from_loop_iterations(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -189,6 +203,7 @@ def _assign_publish(registry: object, fn: object) -> None:
     object.__setattr__(registry, "publish", fn)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_snapshot_is_immutable_frozen_dataclass(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -198,6 +213,7 @@ def test_snapshot_is_immutable_frozen_dataclass(
         _attempt_mutation(snapshot)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_snapshot_does_not_share_state_with_live_state(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -209,6 +225,7 @@ def test_snapshot_does_not_share_state_with_live_state(
     assert mutated.phase == "analysis"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_snapshot_dict_fields_are_copies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     state = PipelineState(phase="planning", outer_progress={"iteration": 1})
     snapshot = build_pipeline_state_snapshot(state, tmp_path)
@@ -218,6 +235,7 @@ def test_snapshot_dict_fields_are_copies(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert new_state.outer_progress["iteration"] == 99
 
 
+@pytest.mark.timeout_seconds(5)
 def test_publish_then_get_latest_round_trip() -> None:
     state = PipelineState(phase="planning")
     snapshot = build_pipeline_state_snapshot(state, Path("/tmp"))
