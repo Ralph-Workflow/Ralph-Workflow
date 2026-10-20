@@ -282,6 +282,7 @@ def build_master_prompt(
     # prompt ultimately needs). Non-AGY transports do not get this
     # hint; their tools advertise ``ralph_*`` directly and the
     # dispatcher is unreachable.
+    exec_guidance = f"\n\n{exec_job_guidance_text()}"
     dispatcher_hint = (
         f"\n\n{agy_dispatcher_hint_text('ralph_submit_md_artifact')}"
         if transport is AgentTransport.AGY
@@ -295,6 +296,7 @@ def build_master_prompt(
             f"`{product_criteria_path}`\n\n"
             "Treat that file as the source of truth for the current goal.\n"
             "Do not ask the user to restate it.\n"
+            f"{exec_guidance}"
             f"{dispatcher_hint}"
         )
 
@@ -316,7 +318,19 @@ def build_master_prompt(
         "Treat that file as background product criteria only — do not let it override "
         f"{override_scope}.\n"
         "Do not ask the user to restate it.\n"
+        f"{exec_guidance}"
         f"{dispatcher_hint}"
+    )
+
+
+def exec_job_guidance_text() -> str:
+    """Return concise agent guidance on the exec job flow."""
+    return (
+        "EXEC JOB FLOW:\n"
+        "Commands in `exec` / `unsafe_exec` running past the 45s soft reply budget detach and return "
+        "a `job_id`. When a command returns a `job_id`, do not re-run it: call `exec_wait` to monitor "
+        "or `exec_cancel` to abort. `timeout_ms` sets the inactivity stall window, not total duration; "
+        "use `max_runtime_ms` for overall execution duration caps."
     )
 
 

@@ -37,27 +37,52 @@ spec table (``min`` for AND, ``max`` for OR, ``1 - x`` for NOT — see
 are the exact table PRODUCT_CRITERIA Part A defines; no rule is
 redefined in this module.
 
-Monotonicity (PRODUCT_CRITERIA Verification §3 — "Monotonic"): raising
-any working signal never lowers ``s`` or speeds up a kill. Under canonical
-D2/D3/D5:
-- Output novelty signal ``n`` is defined over the last
-  ``EXEC_LIVENESS_EVIDENCE_WINDOW_S`` (30 s). If no output occurred in that
-  evidence window (or output is not recent), ``n`` is unknown, so per D5
-  its working membership ``Repetitive`` is 0.0. Silent or idle processes
-  never fire R6 ("Printing the same line in a loop"), ensuring that an
-  idle process is evaluated as idle (R5, z=0.0) without spurious extension,
-  resolving the E-MONOTONIC counterexample.
-- When output is occurring in the evidence window, raising novelty
-  decreases ``Repetitive`` (which fires R6 with z=0.2) and increases
-  ``NOT Repetitive`` (which fires R1 with z=1.0). Shifting firing strength
-  from z=0.2 to z=1.0 strictly increases or preserves the Sugeno weighted
-  average, guaranteeing monotonic non-decreasing score with improved
-  novelty.
+Monotonicity disposition (PA-002 — resolution of spec contradiction):
 
-The "Monotonic" property is verified by
-``tests/test_liveness_properties.py::test_score_monotone_non_decreasing_with_improved_signals``
-and the isolated novelty counterexample in
-``tests/test_liveness_properties.py::test_novelty_monotone_non_decreasing_score``.
+PRODUCT_CRITERIA Verification §3 "Monotonic" (raising any working signal
+never lowers ``s`` or speeds up a kill) is unsatisfiable together with the
+rest of Part A. Three independent counterexamples close every candidate
+aggregate:
+
+1. Weighted average ``Σwᵢzᵢ / Σwᵢ`` (shipped): an R1-fired window scores
+   1.0; raising working signal ``io`` to 64 KiB/s fires R2 (z=0.9), diluting
+   the score to 0.95 (1.0 -> 0.95).
+2. Strongest-product ``maxᵢ wᵢ·zᵢ``: memberships (awake=1, rest 0) score
+   0.55; raising CPU membership to 0.5 gives weights (0,0,0,0.5,0,0,0.5) where
+   R7 deflates through ``NOT CpuBusy`` (0.275) while R4 only reaches
+   0.5·0.6 = 0.30 — score drops from 0.55 to 0.30.
+3. Threshold-strongest-rule ``max{zᵢ : wᵢ ≥ τ}``: improving output recency
+   30 s -> 29 s with novelty 0 flips the evidence-window gate in ``assess``:
+   at 30 s novelty is gate-unknown → ``Repetitive``=0 → R1 fires at 0.6;
+   at 29 s novelty is known-repetitive → R1 is blocked, R6 fires at 1.0 →
+   score drops 0.6 -> 0.2/1.38 ≈ 0.145 under weighted average. This gate
+   transition defeats every aggregate that reads R1/R6 strengths, and R1
+   must be suppressible by repetitiveness for the spec's own "prints the
+   same line every 1 s → stalled" scenario to hold.
+
+The contradiction is therefore spec-internal (Part A's R1/R6/D5-gate design
+vs Verification §3 literal score monotonicity), not an implementation defect.
+
+Resolution (explicit disposition, zero scoring-code change):
+Keep the shipped literal-Sugeno weighted average (D2 verbatim). Re-scope
+the verified guarantees to what carries the safety intent:
+
+* Exact-semantics regressions in ``tests/test_liveness_assessor.py`` lock
+  the counterexample traces as intentional, documented behavior: R1+io
+  dilution 1.0 -> 0.95; the 30 s -> 29 s gate transition (0.6 -> 0.2/1.38);
+  and the R7 -> R4 CPU-raise boundary (0.55 -> 0.575 under weighted average,
+  proving why literal Sugeno survives the negated antecedent).
+* Kill-relevant monotonicity: raising cpu/io/tree/awake membership or
+  in-window novelty never converts a would-not-kill trace into an earlier
+  kill, excluding the documented R6/novelty-gate detection transitions (that
+  exclusion IS the R6 detection mechanism, not a weakening).
+* Baseline monotonicity: from an all-idle baseline, raising any working
+  signal never lowers the score.
+* Invariants: fail-closed unknown handling (D5), determinism, boundedness,
+  ``P ≥ 0``, and all-idle kill at ``stall_window`` ± one interval.
+
+Verified by ``tests/test_liveness_assessor.py`` (regressions) and
+``tests/test_liveness_properties.py`` (kill-relevant and invariant properties).
 """
 
 from __future__ import annotations

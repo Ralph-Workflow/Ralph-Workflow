@@ -328,6 +328,138 @@ def test_assess_r1_r2_combo_is_working() -> None:
     assert v.verdict_kind == "working"
 
 
+# ---------------------------------------------------------------------------
+# PA-002 exact-semantics regressions (counterexample traces locked)
+# ---------------------------------------------------------------------------
+
+
+def test_regression_pa002_counterexample_1_r1_io_dilution() -> None:
+    """PA-002 Counterexample 1: literal-Sugeno weighted average dilution.
+
+    An R1-fired window scores 1.0; raising working signal ``io`` to active
+    (64 KiB/s) fires R2 (z₂=0.9), diluting the score to 0.95 (1.0 -> 0.95).
+    This proves that global multi-signal and per-signal monotonicity do not
+    hold unconditionally under the shipped weighted average, locking the
+    exact scores as intentional, documented behavior.
+    """
+    win_base = LivenessWindow(
+        seconds_since_output=0.0,
+        cpu_ratio=0.0,
+        io_bytes_per_s=0.0,
+        child_events=0,
+        output_novelty=1.0,
+        voluntary_ctx_per_s=0.0,
+        elapsed_s=10.0,
+    )
+    v_base = assess(win_base, CFG)
+    assert v_base.score == pytest.approx(1.0)
+    assert v_base.strongest_rule == "R1"
+    assert v_base.verdict_kind == "working"
+
+    win_raised = LivenessWindow(
+        seconds_since_output=0.0,
+        cpu_ratio=0.0,
+        io_bytes_per_s=CFG.io_kbps_active,
+        child_events=0,
+        output_novelty=1.0,
+        voluntary_ctx_per_s=0.0,
+        elapsed_s=10.0,
+    )
+    v_raised = assess(win_raised, CFG)
+    assert v_raised.score == pytest.approx(0.95)
+    assert v_raised.strongest_rule == "R1"
+    assert v_raised.verdict_kind == "working"
+    assert v_raised.score < v_base.score
+
+
+def test_regression_pa002_counterexample_2_evidence_window_gate_transition() -> None:
+    """PA-002 Counterexample 2: evidence-window gate transition (30s -> 29s).
+
+    Improving output recency 30s -> 29s with repetitive output (novelty 0.0)
+    crosses the evidence-window gate (``evidence_window_s = 30.0``):
+    - At 30s: output is at/outside the window; novelty is gate-unknown (None),
+      so ``Repetitive``=0.0. R1 fires on recency (0.6, z=1.0) and R5 fires (0.4,
+      z=0.0). Score = 0.6 / 1.0 = 0.6.
+    - At 29s: output is inside the window; novelty is evaluated as repetitive,
+      so ``Repetitive``=1.0. R1 is blocked (0.0), R6 fires (1.0, z=0.2), and
+      R5 fires (0.38, z=0.0). Score = 0.2 / 1.38 ≈ 0.1449.
+
+    Improving recency drops the score 0.6 -> 0.145 because entering the
+    evidence window activates R6 loop detection. This is the spec-internal
+    contradiction that defeats every candidate aggregate.
+    """
+    win_30 = LivenessWindow(
+        seconds_since_output=30.0,
+        cpu_ratio=0.0,
+        io_bytes_per_s=0.0,
+        child_events=0,
+        output_novelty=0.0,
+        voluntary_ctx_per_s=0.0,
+        elapsed_s=30.0,
+    )
+    v_30 = assess(win_30, CFG)
+    assert v_30.score == pytest.approx(0.6)
+    assert v_30.strongest_rule == "R1"
+
+    win_29 = LivenessWindow(
+        seconds_since_output=29.0,
+        cpu_ratio=0.0,
+        io_bytes_per_s=0.0,
+        child_events=0,
+        output_novelty=0.0,
+        voluntary_ctx_per_s=0.0,
+        elapsed_s=30.0,
+    )
+    v_29 = assess(win_29, CFG)
+    assert v_29.score == pytest.approx(0.2 / 1.38)
+    assert v_29.strongest_rule == "R6"
+    assert v_29.score < v_30.score
+
+
+def test_regression_pa002_counterexample_3_cpu_raise_r7_to_r4_boundary() -> None:
+    """PA-002 Counterexample 3: R7 -> R4 CPU-raise boundary under literal Sugeno.
+
+    At base (awake=1.0, cpu=0.0), R7 fires alone with z=0.55 -> score = 0.55.
+    Raising CPU membership to 0.5 activates R4 (w4=0.5, z=0.6) and deflates
+    R7 via ``NOT CpuBusy`` (w7=0.5, z=0.55).
+    - Under literal-Sugeno weighted average:
+      Score = (0.5 * 0.6 + 0.5 * 0.55) / (0.5 + 0.5) = 0.575.
+      The score is monotone non-decreasing (0.55 -> 0.575).
+    - Under strongest-product (max_i w_i * z_i):
+      Score would drop from 0.55 to max(0.5*0.6, 0.5*0.55) = 0.30.
+
+    This locks why the shipped literal-Sugeno aggregate survives the
+    negated-antecedent transition that rules out strongest-product.
+    """
+    win_r7 = LivenessWindow(
+        seconds_since_output=90.0,
+        cpu_ratio=0.0,
+        io_bytes_per_s=0.0,
+        child_events=0,
+        output_novelty=None,
+        voluntary_ctx_per_s=CFG.awake_per_s_active,
+        elapsed_s=10.0,
+    )
+    v_r7 = assess(win_r7, CFG)
+    assert v_r7.score == pytest.approx(0.55)
+    assert v_r7.strongest_rule == "R7"
+
+    cpu_mid = (CFG.cpu_busy_min + CFG.cpu_busy_max) / 2.0
+    win_cpu = LivenessWindow(
+        seconds_since_output=90.0,
+        cpu_ratio=cpu_mid,
+        io_bytes_per_s=0.0,
+        child_events=0,
+        output_novelty=None,
+        voluntary_ctx_per_s=CFG.awake_per_s_active,
+        elapsed_s=10.0,
+    )
+    v_cpu = assess(win_cpu, CFG)
+    assert v_cpu.score == pytest.approx(0.575)
+    assert v_cpu.strongest_rule == "R7"
+    assert v_cpu.score >= v_r7.score
+
+
 def test_assess_signals_dict_round_trips_window() -> None:
     """Verdict.signals carries every raw window field including unknowns."""
     win = LivenessWindow(

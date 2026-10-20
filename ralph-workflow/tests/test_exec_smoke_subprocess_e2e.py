@@ -93,8 +93,8 @@ def test_smoke_real_sleep_killed_as_stalled() -> None:
 def test_smoke_silent_python_cpu_loop_runs_past_stall_window() -> None:
     """2. Silent Python CPU loop runs past the stall window as suspicious (R4).
 
-    A 5 s CPU loop is started with a 600 ms stall window. The CPU loop
-    must still be running after 1.5 s of real wall-clock time (>= 2.5x the
+    A CPU loop is started with a 250 ms stall window. The CPU loop
+    must still be running after 0.6 s of real wall-clock time (>= 2x the
     stall window) and the latest verdict must report R4 (silent compute,
     "suspicious"). This is a black-box proof that the cpu_ratio signal kept
     the process alive — the loop has no output, no I/O, no children.
@@ -105,14 +105,14 @@ def test_smoke_silent_python_cpu_loop_runs_past_stall_window() -> None:
         auto_register_runtime_hooks=False,
     )
 
-    script = "import time\nend = time.time() + 5\nwhile time.time() < end:\n    x = 1 + 1\n"
+    script = "import time\nend = time.time() + 2\nwhile time.time() < end:\n    x = 1 + 1\n"
     cmd = [sys.executable, "-c", script]
-    job_id = reg.start(cmd, timeout_ms=600, capability="ProcessExecBounded")
+    job_id = reg.start(cmd, timeout_ms=250, capability="ProcessExecBounded")
 
     try:
-        # Wait 1.5 s of real wall-clock — > 2x the stall window — so the
+        # Wait 0.6 s of real wall-clock — > 2x the stall window — so the
         # test cannot pass via early termination or a brief snapshot.
-        time.sleep(1.5)
+        time.sleep(0.6)
         snapshot = reg.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
         assert isinstance(snapshot, JobSnapshot)
         assert snapshot.running is True, "CPU loop was killed despite R4 evidence"
@@ -134,11 +134,11 @@ def test_smoke_silent_python_cpu_loop_runs_past_stall_window() -> None:
 def test_smoke_silent_python_file_writer_runs_past_stall_window_then_completes() -> None:
     """3. Silent Python file-writer runs past the stall window and completes (R2).
 
-    The file-writer script loops 60 times writing 256 KiB then sleeping
-    0.05 s — total wall-clock ≈ 3.0 s (≫ 500 ms stall window). Without
+    The file-writer script loops 20 times writing 256 KiB then sleeping
+    0.04 s — total wall-clock ≈ 0.8 s (≫ 250 ms stall window). Without
     the I/O signal it would be killed as stalled. The test verifies:
 
-    * the process ran past 1.1 s (>= 2x the stall window) and was still
+    * the process ran past 0.6 s (>= 2x the stall window) and was still
       alive mid-flight,
     * the process completed with returncode=0,
     * no kill fired.
@@ -153,22 +153,22 @@ def test_smoke_silent_python_file_writer_runs_past_stall_window_then_completes()
         script = (
             f"import time\n"
             f"with open({tf.name!r}, 'wb') as f:\n"
-            f"    for i in range(60):\n"
+            f"    for i in range(20):\n"
             f"        f.write(b'x' * (256 * 1024))\n"
             f"        f.flush()\n"
-            f"        time.sleep(0.05)\n"
+            f"        time.sleep(0.04)\n"
         )
         cmd = [sys.executable, "-c", script]
-        job_id = reg.start(cmd, timeout_ms=500, capability="ProcessExecBounded")
+        job_id = reg.start(cmd, timeout_ms=250, capability="ProcessExecBounded")
 
-        # Wait 1.1 s — twice the stall window — so the process is still
+        # Wait 0.6 s — twice the stall window — so the process is still
         # in its loop. Snapshot must show it alive past the deadline.
-        time.sleep(1.1)
+        time.sleep(0.6)
         mid = reg.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
         assert isinstance(mid, JobSnapshot)
         assert mid.running is True, "file-writer was killed despite R2 evidence"
 
-        result = reg.wait(job_id, wait_ms=4000, capability="ProcessExecBounded")
+        result = reg.wait(job_id, wait_ms=3000, capability="ProcessExecBounded")
         assert isinstance(result, JobResult)
         assert result.returncode == 0
         assert result.kill_cause is None

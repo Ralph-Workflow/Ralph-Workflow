@@ -424,12 +424,15 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_audit_opts_key_drift.py": 140,
     "tests/test_auto_integrate_acceptance_scenarios_e2e.py": 200,
     "tests/mcp/test_bounded_catalog_publish.py": 100,
-    "tests/mcp/test_whole_startup_budget_production.py": 90,
-    "tests/mcp/test_respawn_no_discovery.py": 80,
+    "tests/mcp/test_whole_startup_budget_production.py": 160,
+    "tests/mcp/test_respawn_no_discovery.py": 130,
     "tests/mcp/test_e3x_transport_gap_typed_retry.py": 140,
-    "tests/mcp/test_e46_parent_sigkill_no_orphans.py": 50,
+    "tests/mcp/test_e46_parent_sigkill_no_orphans.py": 140,
     "tests/mcp/test_handover_inflight_real_child.py": 50,
     "tests/mcp/test_root_cause_real_child_bridge.py": 45,
+    "tests/mcp/test_mcp_endpoint_never_refuses.py": 68,
+    "tests/test_exec_smoke_subprocess_e2e.py": 45,
+    "tests/test_exec_job_shutdown_subprocess_e2e.py": 58,
     "tests/test_explore_bench_rss_isolation.py": 250,
     # Calibrated from --profile-durations per-file wall-clock on shard 15
     # (weight = round(measured_seconds * 17); band [50, 460] per existing
