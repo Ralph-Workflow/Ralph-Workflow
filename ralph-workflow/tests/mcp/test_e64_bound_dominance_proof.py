@@ -1,25 +1,32 @@
-"""WU-2 / E6.4: arithmetic-dominance proof for the two required restart bounds.
+"""WU-3 / E6.4: arithmetic-dominance proof for the two restart bounds.
 
 E6.4 requires BOTH bounds to be *proven*, not merely present:
 
-(i) worst-case time to terminal exhaustion with the OLD CHILD DEAD
-    (``_WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S``), and
+(i)  worst-case time to terminal exhaustion with the OLD CHILD DEAD
+     (``_WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S``), and
 (ii) the delay a candidate can impose on the agent with the OLD CHILD ALIVE
-    (``_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S``).
+     (``_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S``).
 
-A bare ``value > 0`` check is vacuous for that purpose: every sum of positive
-terms is positive, so positivity can never distinguish "this is an upper bound
-over its stages" from "someone dropped a term". This module pins the
-DOMINANCE property instead — each bound must be at least the sum of every
-worst-case duration it is composed of — and it pins the computed values
-against numbers recomputed here by hand rather than by re-evaluating the
-module's own expression.
+A bare ``value > 0`` check is vacuous for that purpose: every sum of
+positive terms is positive, so positivity cannot distinguish "this is
+an upper bound over its stages" from "someone dropped a term". This
+module pins the DOMINANCE property instead — each bound must be at
+least the sum of every worst-case duration it is composed of — and it
+pins the computed values against numbers recomputed here by hand
+rather than by re-evaluating the module's own expression.
+
+The import-time invariant is enforced by ``if/raise RuntimeError`` (NOT
+``assert``) so the guard survives ``python -O``. WU-3 added a separate
+behavioural proof of that property in
+``tests/mcp/test_e64_import_guard_execution.py`` (a real subprocess
+that imports the lifecycle module, computes an invalid bound, and
+exercises the ``raise RuntimeError`` path under both normal Python and
+``python -O``); the older source-substring / AST-only tests that
+predated WU-3 are removed from this file because they cannot fail on
+a behavioural regression.
 """
 
 from __future__ import annotations
-
-import ast
-import inspect
 
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server._handover_protocol import (
@@ -152,20 +159,3 @@ def test_e64_bounds_match_independently_recomputed_numbers() -> None:
     # The aliases are the same numbers, not two drifting copies.
     assert lifecycle._WORST_CASE_TIME_TO_TERMINAL_EXHAUSTION_S == _E64_BOUND_A_PINNED_S
     assert lifecycle._CANDIDATE_DELAY_BOUND_S == _E64_BOUND_B_PINNED_S
-
-
-def test_e64_dominance_is_enforced_by_if_raise_not_assert() -> None:
-    """A bare ``assert`` would be stripped by ``python -O``; require ``raise RuntimeError``."""
-    source = inspect.getsource(lifecycle)
-    assert "def _e64_bound_dominates(" in source
-    assert "raise RuntimeError" in source
-    # The dominance predicate itself must not be implemented with ``assert``.
-    # Parsed as an AST so a docstring mentioning the word cannot mask a
-    # real assert statement (and vice versa).
-    predicate_tree = ast.parse(inspect.getsource(lifecycle._e64_bound_dominates))
-    assert not [node for node in ast.walk(predicate_tree) if isinstance(node, ast.Assert)], (
-        "the import-time dominance proof must not use assert (stripped by python -O)"
-    )
-    assert any(isinstance(node, ast.Return) for node in ast.walk(predicate_tree)), (
-        "the predicate must return explicit booleans"
-    )
