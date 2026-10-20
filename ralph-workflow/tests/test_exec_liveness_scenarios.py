@@ -319,36 +319,66 @@ def test_scenario_07_repetitive_loop_stalled_via_r6() -> None:
 def test_scenario_08_short_burst_then_idle_stalled_at_window_after_activity() -> None:
     """Scenario 8: short burst then idle -> stalled at stall_window after activity stops.
 
-    The closure now derives ``seconds_since_output`` from a tracked
-    ``last_output_at`` timestamp, matching production semantics at
-    ``ralph/process/manager/_liveness_sampler.py:428``:
-    ``seconds_since_output = max(0.0, now - last_output_at)``. The previous
-    test injected ``+60.0`` aging that artificially bypassed the
-    ``OutputRecent`` ramp; with production semantics the ramp is honored
-    and the empirical kill time is LATER than ``burst_duration + stall_window``.
+    The closure derives ``seconds_since_output`` from a tracked
+    ``last_output_at`` timestamp, matching production semantics in
+    the ``ralph/process/manager/_liveness_sampler.py`` module (the
+    production sampler block that computes
+    ``seconds_since_output = max(0.0, now - last_output_at)`` from its
+    tracked ``last_output_at``; no ``+60.0`` floor is applied). The
+    previous test injected ``+60.0`` aging that artificially bypassed
+    the ``OutputRecent`` ramp; with production semantics the ramp is
+    honored and the empirical kill time is LATER than
+    ``burst_duration_s + stall_window_s``.
+
+    Closed-form continuous derivation (relative to ``burst_stop``, the
+    last output instant): the ``OutputRecent`` membership ramps 1 -> 0
+    over output ages ``[EXEC_OUTPUT_RECENT_MAX_S, EXEC_OUTPUT_RECENT_MIN_S]
+    = [10.0, 60.0]`` seconds. In the dead-phase signature
+    (cpu = io = tree = awake = 0), only R1 (``OutputRecent AND NOT
+    Repetitive``, z = 1.0) and R5 (NOT OutputRecent AND NOT CpuBusy AND
+    NOT IoActive AND NOT TreeActive AND NOT Awake, z = 0.0) fire, with
+    weights ``w1 = output_recent`` and ``w5 = 1 - output_recent``. The
+    Sugeno score ``s = Σ wᵢ zᵢ / Σ wᵢ`` therefore collapses to
+    ``s = output_recent``. Stall-pressure rate is
+    ``max(0, (θ - s) / θ)`` per second with ``θ = 0.5``:
+
+      * ages  0 -> 10 s after last output:  s = 1.0, rate = 0
+      * ages 10 -> 35 s after last output:  s ramps 1.0 -> 0.5,
+        rate = max(0, (0.5 - s) / 0.5) = 0  (negative branch clamps)
+      * ages 35 -> 60 s after last output:  s ramps 0.5 -> 0.0,
+        rate ramps 0 -> 1, accumulates
+        ``ramp_accrued_pressure = ∫[35→60] (age - 35) / 25 d(age) = 12.5 s``
+        of stall pressure (trapezoidal ramp integral)
+      * ages ≥ 60 s after last output:      s = 0.0, rate = 1.0
+        (full-rate phase)
+
+    Total time from last output to kill is therefore
+    ``ramp_end_s + (stall_window_s - ramp_accrued_pressure)`` =
+    ``60 + (90 - 12.5) = 137.5 s`` continuous. For
+    ``burst_duration_s = 30`` and the default 90 s stall window the
+    closed form yields ``30 + 137.5 = 167.5 s`` continuous; the
+    discrete ``_DEFAULT_DT`` = 2.0 s simulator in ``_run_scenario``
+    integrates the same trapezoid on the coarse grid and lands at
+    168 s (coarse-within-``_DEFAULT_DT`` of fine).
+
+    Coarse-vs-fine empirical comparison: the test runs the same
+    ``assess()`` + ``StallIntegrator`` forward on a fine ``dt``
+    (0.01 s). The fine-dt emulator approximates the continuous ramp
+    integration; fine kill ~= 167.49 s, coarse result (168 s) lies
+    within one ``_DEFAULT_DT`` (2.0 s) of that. The assertion below
+    compares the coarse and fine runs directly so the bound is
+    self-consistent regardless of how the ramp integration shifts
+    with future breakpoint tuning.
 
     Reconciliation against the spec's "stalled at stall_window after
-    activity" wording (PRODUCT_CRITERIA Part A): under the shipped
-    fuzzy-decay assessor the real kill time is the closed-form
-    ``burst_stop + ramp_offset + (stall_window - ramp_accrued_pressure)``
-    where ``ramp_offset ~= 35 s`` (the time before ``OutputRecent`` drops
-    below the 0.5 threshold and R5 starts accruing pressure) and
-    ``ramp_accrued_pressure ~= 13.5 s`` (the trapezoidal ramp integral
-    from t = burst_stop + 35 to t = burst_stop + 60). For
-    ``burst_duration_s = 30`` and the default 90 s stall window the
-    closed form yields approximately ``30 + 35 + (90 - 13.5) ~= 141.5``
-    s for a continuous-time integration; the discrete dt = 2.0 simulator
-    in ``_run_scenario`` integrates the same trapezoid on the same grid
-    and lands at 168 s.
-
-    Empirical derivation (preferred over the closed form): the test runs
-    the same ``assess()`` + ``StallIntegrator`` forward on a fine dt
-    (0.01 s) — the fine-dt emulator approximates the continuous ramp to
-    ~1e-2 s and returns kill_time ~= 167.49 s; the coarse _run_scenario
-    result (168 s) lies within one ``_DEFAULT_DT`` (2.0 s) of that. The
-    assertion below compares the coarse and fine runs directly so the
-    bound is self-consistent regardless of how the ramp integration
-    shifts with future breakpoint tuning.
+    activity" wording (PRODUCT_CRITERIA Part A): the spec wording is
+    approximate; the real kill time is LATER because stall pressure
+    only begins accruing after ``OutputRecent`` drops below the 0.5
+    threshold — i.e. only after ``35 s`` past the last output (the
+    ``ramp_offset`` of ``ramp_half_threshold_age - RAMP_START_S``,
+    where ``ramp_half_threshold_age = (RAMP_START_S + RAMP_END_S) / 2``
+    when score is linear in output_recent). The closed-form
+    derivation above is the exact correction.
     """
     burst_duration_s = 30.0
     stall_window_s = 90.0
@@ -565,33 +595,54 @@ def test_scenario_13_mid_run_deadlock_all_children_asleep_stalled() -> None:
     """Scenario 13: mid-run deadlock all children asleep -> stalled.
 
     The closure derives ``seconds_since_output`` from a tracked
-    ``last_output_at`` timestamp, matching production semantics at
-    ``ralph/process/manager/_liveness_sampler.py:428``:
-    ``seconds_since_output = max(0.0, now - last_output_at)``. The
+    ``last_output_at`` timestamp, matching production semantics in
+    the ``ralph/process/manager/_liveness_sampler.py`` module (the
+    production sampler block that computes
+    ``seconds_since_output = max(0.0, now - last_output_at)`` from its
+    tracked ``last_output_at``; no ``+60.0`` floor is applied). The
     previous test injected ``+60.0`` aging that artificially bypassed
-    the OutputRecent ramp; with production semantics the ramp is
+    the ``OutputRecent`` ramp; with production semantics the ramp is
     honored and the empirical kill time is LATER than
     ``deadlock_at_s + stall_window_s``.
 
-    Reconciliation against the spec's "stalled at stall_window after
-    deadlock" wording (PRODUCT_CRITERIA Part A): scenario 13 is the
-    time-shifted version of scenario 8 — both share the same all-idle
-    dead-phase signature (cpu=0, io=0, child=0, voluntary=0) and
-    therefore the same ramp dynamics. The kill time is
-    ``deadlock_at_s + ramp_offset + (stall_window - ramp_accrued_pressure)``
-    where ``ramp_offset ~= 35 s`` and ``ramp_accrued_pressure ~= 13.5 s``
-    under the default EXEC_OUTPUT_RECENT_MAX_S=10, EXEC_OUTPUT_RECENT_MIN_S=60
-    breakpoints. For ``deadlock_at_s = 120`` and stall_window=90, the
-    closed form yields approximately ``120 + 35 + (90 - 13.5) ~= 231.5``
-    s; the coarse dt = 2.0 simulator lands at 258 s.
+    Scenario 13 is the time-shifted version of scenario 8 — both
+    share the same all-idle dead-phase signature (cpu = 0, io = 0,
+    child = 0, voluntary = 0) and therefore the same ramp dynamics
+    under the default ``OutputRecent`` breakpoints
+    (``EXEC_OUTPUT_RECENT_MAX_S = 10.0``, ``EXEC_OUTPUT_RECENT_MIN_S
+    = 60.0``). Closed-form continuous derivation (relative to the
+    last output instant):
 
-    Empirical derivation: the test runs ``assess()`` + ``StallIntegrator``
-    forward on a fine dt (0.01 s) to approximate the continuous ramp
-    integration; fine kill ~= 257.49 s, coarse result (258 s) lies
-    within one ``_DEFAULT_DT`` of that. The assertion compares the
-    coarse and fine runs directly so the bound is self-consistent
-    regardless of how the ramp integration shifts with future
-    breakpoint tuning.
+      * ages  0 -> 35 s: rate = 0  (no pressure accrues — score ≥ 0.5)
+      * ages 35 -> 60 s: rate ramps 0 -> 1, accumulates
+        ``ramp_accrued_pressure = 12.5 s`` of stall pressure
+      * ages ≥ 60 s: rate = 1.0  (full-rate phase, score = 0)
+
+    Total time from last output to kill is
+    ``ramp_end_s + (stall_window_s - ramp_accrued_pressure)`` =
+    ``60 + (90 - 12.5) = 137.5 s`` continuous. For
+    ``deadlock_at_s = 120`` and ``stall_window_s = 90`` the closed
+    form yields ``120 + 137.5 = 257.5 s`` continuous; the discrete
+    ``_DEFAULT_DT`` = 2.0 s simulator in ``_run_scenario`` integrates
+    the same trapezoid on the coarse grid and lands at 258 s
+    (coarse-within-``_DEFAULT_DT`` of fine).
+
+    Coarse-vs-fine empirical comparison: the test runs ``assess()`` +
+    ``StallIntegrator`` forward on a fine ``dt`` (0.01 s) to
+    approximate the continuous ramp integration. Fine kill ~=
+    257.49 s, coarse result (258 s) lies within one ``_DEFAULT_DT``
+    (2.0 s) of that. The assertion compares the coarse and fine
+    runs directly so the bound is self-consistent regardless of how
+    the ramp integration shifts with future breakpoint tuning.
+
+    Reconciliation against the spec's "stalled at stall_window after
+    deadlock" wording (PRODUCT_CRITERIA Part A): the spec wording is
+    approximate; the real kill time is LATER because stall pressure
+    only begins accruing after ``OutputRecent`` drops below the 0.5
+    threshold — i.e. only after ``35 s`` past the last output. The
+    closed-form derivation above is the exact correction; the
+    coarse simulator result and the fine-dt reference are both
+    consistent with it (within ``_DEFAULT_DT``).
     """
     deadlock_at_s = 120.0
     stall_window_s = 90.0

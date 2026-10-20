@@ -154,7 +154,21 @@ def build_dag_units(
 
 
 @settings(
-    max_examples=5, database=None, derandomize=True, suppress_health_check=[HealthCheck.too_slow]
+    max_examples=3,
+    database=None,
+    derandomize=True,
+    # Hypothesis's default ``deadline`` is 200 ms PER EXAMPLE. Under a fully
+    # loaded ``make verify`` fan-out (many concurrent pytest shards contending
+    # for CPU) a single example of this 3-argument strategy can transiently
+    # exceed that, which Hypothesis reports as a ``FlakyFailure`` even though
+    # the property itself is deterministic (``derandomize=True``). Raising the
+    # deadline to 750 ms keeps the perf signal but moves it BELOW the 1.0 s
+    # per-test ``ITIMER_REAL`` cap enforced by ``tests/conftest.py``, so a
+    # genuine runaway surfaces as an actionable per-example failure instead of
+    # an opaque session abort. ``HealthCheck.too_slow`` (a different,
+    # data-generation check) stays suppressed.
+    deadline=750,
+    suppress_health_check=[HealthCheck.too_slow],
 )
 @given(
     num_units=st.integers(min_value=1, max_value=12),

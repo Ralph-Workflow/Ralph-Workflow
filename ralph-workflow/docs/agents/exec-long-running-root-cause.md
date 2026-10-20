@@ -626,9 +626,17 @@ The exact scores and kill times are locked as regressions in
 re-attempting the property. What survives in its place:
 
 - **Baseline-relative score monotonicity** — from an all-idle window
-  (R5 only, `s=0`), raising any single working signal raises `s`. This is
-  the only score-monotone claim the shipped aggregate provably
-  satisfies.
+  (R5 only, `s=0`), raising any single working signal NON-DECREASES `s`;
+  the score never drops below the all-idle zero. A STRICT increase is
+  NOT guaranteed: it needs the raised signal to fire a rule that was
+  not already firing. Raising `output_novelty` on a silent process
+  leaves `s` at 0, and a sub-breakpoint raise such as `cpu_ratio` to
+  0.01 does the same. Because 0 is the floor of the weighted average,
+  only a newly firing rule can move `s` upward; dilution needs a rule
+  whose `z` sits BELOW the current score, which a zero baseline cannot
+  supply. The actually-proved guarantee is therefore the weaker
+  non-decrease. This is the only baseline-relative score-monotone claim
+  the shipped aggregate provably satisfies.
 - **Baseline-relative classification safety** — raising working signals
   never demotes a working or suspicious verdict. Treat this as the
   retunability target: it is the property to hold still when a constant
