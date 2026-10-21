@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ralph.git.git_command_queue import WorktreeLease
+
 class GitHelpers:
     real_git: Path | None
     wrapper_dir: Path | None
     wrapper_repo_root: Path | None
+    worktree_lease: WorktreeLease | None
 
     def __init__(self) -> None: ...
 

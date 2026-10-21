@@ -27,8 +27,10 @@ from ralph.pipeline.auto_integrate_context import record_refresh, record_when_st
 from ralph.pipeline.auto_integrate_outcome import record_skip as _record_skip
 from ralph.pipeline.auto_integrate_refresh import refresh_target as _refresh_target
 from ralph.pipeline.auto_integrate_remote_sync import (
+    REMOTE_ALREADY_CURRENT,
     REMOTE_PULL_FAILED,
     REMOTE_REMOTE_UNREACHABLE,
+    RemoteSyncStatus,
     pull_and_reconcile_target,
     remote_sync_enabled,
 )
@@ -109,9 +111,9 @@ def boundary_freshness_outcome(
     # * transient failure (``REMOTE_REMOTE_UNREACHABLE`` /
     #   ``REMOTE_PULL_FAILED``) -- propagate ``pending`` so the
     #   next seam retries it (AC-8 defence-in-depth).
-    # * already current (``"already current"``) -- overwrite the
-    #   reconciler's prose with the silent-skip record; no push is
-    #   owed.
+    # * already current (``REMOTE_ALREADY_CURRENT``) -- overwrite
+    #   the reconciler's prose with the silent-skip record; no push
+    #   is owed.
     # * divergence -- propagate ``pending`` so the next seam
     #   observes the reintegration outcome.
     # The only ``None``-returning branch above is the HEAD-vs-target
@@ -124,12 +126,15 @@ def boundary_freshness_outcome(
         rebase_stop_resolver=rebase_stop_resolver,
     )
     last_remote_sync_now = pending.last_remote_sync
-    already_current = last_remote_sync_now == "already current" or not remote_sync_enabled(config)
+    already_current = (
+        last_remote_sync_now in {REMOTE_ALREADY_CURRENT, RemoteSyncStatus.ALREADY_CURRENT.value}
+        or not remote_sync_enabled(config)
+    )
     is_transient_failure = last_remote_sync_now in {
         REMOTE_PULL_FAILED,
         REMOTE_REMOTE_UNREACHABLE,
-        "pull failed",
-        "origin unreachable",
+        RemoteSyncStatus.PULL_FAILED.value,
+        RemoteSyncStatus.REMOTE_UNREACHABLE.value,
     }
     if is_transient_failure:
         # Transient failure (unreachable remote): preserve the

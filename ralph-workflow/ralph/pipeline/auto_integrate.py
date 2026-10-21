@@ -98,6 +98,8 @@ from ralph.pipeline.auto_integrate_remote_sync import (
 )
 from ralph.pipeline.auto_integrate_resolution_state import (
     CONFLICT_RESOLUTION_STRATEGIES,
+    contained_land,
+    containment_release,
     preserve_unresolved_resolution_state,
 )
 from ralph.pipeline.auto_integrate_terminal import (
@@ -148,6 +150,10 @@ def auto_integrate_after_commit(
         from ralph.pipeline.integration_resolution import retained_integration_reason
 
         root = Path(workspace_scope.root)
+        target = resolve_integration_target(config, root) if (root / ".git").exists() else None
+        # Git is ground truth: release a contained integration before any
+        # blocking decision, so a retained record cannot outlive its work.
+        state = containment_release(root, target, state)
         # A non-git workspace has no integration target to probe; the
         # context resolver intentionally propagates repo errors for real
         # repos, so exclude this no-op case before it can raise.
@@ -164,7 +170,6 @@ def auto_integrate_after_commit(
                     attempts=config.conflict_resolution.max_consecutive_resolver_attempts,
                 )
 
-        target = resolve_integration_target(config, root) if (root / ".git").exists() else None
         identity = observe_conflict_identity(root, target or "") if target else ConflictIdentity()
         resolver_attempts = config.conflict_resolution.max_consecutive_resolver_attempts
         allowed = (
@@ -643,6 +648,12 @@ def _integrate_once_owned(
 ) -> tuple[RebaseState | None, bool]:
     """Run one rebase-or-merge integration and report whether a landing race merits retry."""
     post_attempt_verify(root, expected_head_sha=None, owns_resolution=False)
+    # Idempotent land: the target already holds every feature commit, so
+    # nothing needs rebasing, merging or moving. Report the same success a
+    # first landing reports and release every latch the record was holding.
+    contained = contained_land(root, target)
+    if contained is not None:
+        return contained, False
     pre_feature_sha = get_head_sha(root)
     pre_target_sha = branch_sha(root, target)
     retained = read_record(root)

@@ -72,12 +72,13 @@ from ralph.git._lock_recovery import (
 from ralph.git._lock_recovery import (
     _sleep_fn as _base_sleep_fn,
 )
-from ralph.git.commit_result import CommitCreationResult
+from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
 from ralph.git.errors import GitOperationError
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 
 _PORCELAIN_STATUS_PREFIX_LEN = 3
+_REFLOG_DEST_PARTS = 2
 _RALPH_WORKFLOW_COAUTHOR_TRAILER = "Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
 
 
@@ -357,6 +358,10 @@ def list_changed_paths(repo_root: Path | str) -> list[str]:
         repo: Repo | None = None
         try:
             repo = Repo(repo_root)
+            # D2 queue-routing insertion point (operations.py:list_changed_paths fallback, line ~361).
+            # Unit D2 wraps this ``repo.git.status`` call in a queue; keep the
+            # status-output parsing ABOVE the queue so the fallback path is a
+            # genuine I/O wrapper, not a parallel-rerun conflict.
             status_lines = cast(
                 "str", repo.git.status("--porcelain")
             ).splitlines()  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
@@ -456,6 +461,11 @@ def stage_all(repo_root: Path | str) -> None:
         repo = Repo(repo_root)
 
         def _stage() -> None:
+            # D2 queue-routing insertion point (operations.py:stage_all, line ~463).
+            # Unit D2 wraps this ``repo.git.add`` call in a queue. The staging
+            # closure owns index mutation; the queue must NEVER permit two
+            # parallel ``stage_all`` invocations against the same repo because
+            # Git's index is not safe for concurrent writers.
             _ = cast(
                 "str", repo.git.add(A=True)
             )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
@@ -482,6 +492,10 @@ def stage_files(repo_root: Path | str, files: list[str]) -> None:
         repo = Repo(repo_root)
 
         def _stage() -> None:
+            # D2 queue-routing insertion point (operations.py:stage_files, line ~489).
+            # Unit D2 wraps this ``repo.git.add --all -- <paths>`` call in a
+            # queue. As with ``stage_all``, parallel staging against the
+            # same repo must be serialised behind the queue.
             _ = cast(
                 "str", repo.git.add("--all", "--", *files)
             )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
@@ -492,6 +506,214 @@ def stage_files(repo_root: Path | str, files: list[str]) -> None:
         raise GitOperationError("stage_files", str(exc)) from exc
     finally:
         _close_repo(repo)
+
+
+def _current_head_sha(repo_root: Path) -> str | None:
+    """Return the SHA at HEAD or ``None`` if HEAD cannot be resolved."""
+    result = run_git(
+        ("rev-parse", "--verify", "HEAD"),
+        cwd=repo_root,
+        label="git-rev-parse-head",
+    )
+    if result.returncode != 0:
+        return None
+    head_sha = result.stdout.strip()
+    return head_sha or None
+
+
+def _resolve_detached_head_reattach_branch(repo_root: Path) -> str | None:
+    """Find a branch name to safely reattach a detached HEAD to.
+
+    Resolves the same way the commit reattach fallback does (reflog,
+    worktree metadata, branches whose tip equals HEAD). The
+    authoritative resolver lives in
+    :mod:`ralph.pipeline.commit_executor`; this helper provides the
+    operations-layer fallback so :func:`create_commit` can reattach
+    a detached HEAD discovered inside the seam itself, without taking
+    a dependency on the pipeline module.
+
+    Search order:
+
+    1. ``git for-each-ref --points-at=HEAD refs/heads/`` -- returns any
+       branch whose tip equals HEAD. This is the exact-tip match that
+       ``git symbolic-ref HEAD refs/heads/<branch>`` cannot clobber.
+    2. The raw ``.git/HEAD`` file when it still contains
+       ``ref: refs/heads/<branch>`` (the residual written back by
+       ``git checkout <branch>`` prior to the detach).
+    3. The reflog's most recent ``checkout: moving from ...`` /
+       ``switch branch to ...`` destination.
+
+    Returns ``None`` when no safe branch can be resolved.
+    """
+    head_sha = _current_head_sha(repo_root)
+    if not head_sha:
+        return None
+
+    points_at_result = run_git(
+        (
+            "for-each-ref",
+            f"--points-at={head_sha}",
+            "refs/heads/",
+            "--format=%(refname:short)",
+        ),
+        cwd=repo_root,
+        label="git-for-each-ref-points-at-head",
+    )
+    if points_at_result.returncode == 0:
+        for line in points_at_result.stdout.splitlines():
+            branch = line.strip()
+            if branch:
+                return branch
+
+    head_file = Path(repo_root) / ".git" / "HEAD"
+    if head_file.is_file():
+        try:
+            content = head_file.read_text(encoding="utf-8").strip()
+        except OSError:
+            content = ""
+        if content.startswith("ref: refs/heads/"):
+            candidate = content.removeprefix("ref: refs/heads/").strip()
+            if candidate:
+                return candidate
+
+    reflog_result = run_git(
+        ("reflog", "-n", "50", "--format=%gs"),
+        cwd=repo_root,
+        label="git-reflog-detached-head-reattach",
+    )
+    if reflog_result.returncode != 0:
+        return None
+    for line in reflog_result.stdout.splitlines():
+        for marker in ("switch branch to ", "checkout: moving from "):
+            idx = line.find(marker)
+            if idx == -1:
+                continue
+            rest = line[idx + len(marker):]
+            parts = rest.split(" to ", 1)
+            if len(parts) == _REFLOG_DEST_PARTS:
+                dest = parts[1].strip()
+                if dest:
+                    return dest
+    return None
+
+
+def _head_tree_sha(repo_root: Path, head_sha: str) -> str | None:
+    """Return the tree SHA at ``head_sha``, or ``None`` if not resolvable."""
+    result = run_git(
+        ("rev-parse", "--verify", f"{head_sha}^{{tree}}"),
+        cwd=repo_root,
+        label="git-rev-parse-head-tree",
+    )
+    if result.returncode != 0:
+        return None
+    tree_sha = result.stdout.strip()
+    return tree_sha or None
+
+
+def _tree_matches_head(repo_root: Path, current_head_sha: str, candidate_tree: str) -> bool:
+    """True iff HEAD's tree already equals the candidate tree (content committed)."""
+    if not current_head_sha:
+        return False
+    head_tree = _head_tree_sha(repo_root, current_head_sha)
+    return head_tree is not None and head_tree == candidate_tree
+
+
+def _reattach_or_resolve_ref_name(repo_root: Path) -> str:
+    """Resolve the ref name to commit onto, reattaching a detached HEAD first.
+
+    Detached HEAD at the seam (AC8) is repaired here -- not failed: the
+    feature branch is resolved from branches pointing at HEAD, the
+    ``.git/HEAD`` residual, or the reflog, then ``HEAD`` is reattached
+    atomically so the commit lands on the feature branch instead of
+    orphaning the work.
+    """
+    ref_result = run_git(
+        ("symbolic-ref", "--quiet", "HEAD"),
+        cwd=repo_root,
+        label="git-symbolic-ref-head",
+    )
+    if ref_result.returncode == 0 and ref_result.stdout.strip():
+        return ref_result.stdout.strip()
+    reattached_ref = _resolve_detached_head_reattach_branch(repo_root)
+    if not reattached_ref:
+        raise GitOperationError(
+            "create_commit",
+            "HEAD is detached and no feature branch to commit onto",
+        )
+    atomic_ref = run_git(
+        ("update-ref", "-m", "ralph reattach detached HEAD", "HEAD", reattached_ref),
+        cwd=repo_root,
+        label="git-update-ref-head-reattach",
+        options=GitRunOptions(env={"GIT_REFLOG_ACTION": "ralph create_commit"}),
+    )
+    if atomic_ref.returncode != 0:
+        detail = atomic_ref.stderr.strip() or "git update-ref HEAD reattach failed"
+        raise GitOperationError("create_commit", detail)
+    logger.info("Reattached detached HEAD to branch '{}'", reattached_ref)
+    return reattached_ref
+
+
+def _run_prepare_commit_hooks(repo_root: Path, repo_git_dir: str, message_path: Path) -> str:
+    """Run pre-commit hooks over ``message_path`` and return the final message."""
+    hook_env = {"GIT_REFLOG_ACTION": "ralph create_commit"}
+    hooks_dir = Path(repo_git_dir) / "hooks"
+    _run_commit_hooks(repo_root, hooks_dir, message_path, hook_env)
+    # filesystem-read-ok: Git hooks mutate this owned temporary commit-message file in place
+    return message_path.read_text(encoding="utf-8")
+
+
+def _candidate_commit_tree(repo_root: Path) -> str:
+    """Write the index as a tree object and return its SHA."""
+    tree_result = run_git(("write-tree",), cwd=repo_root, label="git-write-tree")
+    if tree_result.returncode != 0:
+        raise GitOperationError("create_commit", tree_result.stderr.strip())
+    return tree_result.stdout.strip()
+
+
+def _cas_publish_or_detect_advance(
+    repo_root: Path,
+    ref_name: str,
+    candidate_sha: str,
+    expected_head: str,
+    hooks_dir: Path | None,
+    hook_env: dict[str, str],
+) -> CommitCreationResult:
+    """CAS-publish ``candidate_sha`` onto ``ref_name``; detect concurrent advance.
+
+    On a CAS failure the current HEAD is re-read: when it moved past
+    ``expected_head`` the commit was created concurrently (or Ralph
+    already advanced the branch) and the result is idempotent
+    ``ALREADY_ADVANCED`` rather than an error -- preventing a duplicate
+    commit and a commit/cleanup loop on re-dispatch.
+    """
+    update_ref = run_git(
+        ("update-ref", ref_name, candidate_sha, expected_head),
+        cwd=repo_root,
+        label="git-update-ref-cas",
+        options=GitRunOptions(env={"GIT_REFLOG_ACTION": "ralph create_commit"}),
+    )
+    if update_ref.returncode != 0:
+        current_head = get_head_sha(repo_root)
+        if current_head != expected_head:
+            return CommitCreationResult.already_advanced(current_head)
+        detail = update_ref.stderr.strip() or "git update-ref failed without diagnostics"
+        raise GitOperationError("create_commit", detail)
+    if hooks_dir is not None:
+        post_commit = hooks_dir / "post-commit"
+        if post_commit.exists():
+            post_result = run_git(
+                ("hook", "run", "post-commit"),
+                cwd=repo_root,
+                label="git-hook-post-commit",
+                options=GitRunOptions(env=hook_env),
+            )
+            if post_result.returncode != 0:
+                logger.warning(
+                    "post-commit hook failed after commit {}: {}",
+                    candidate_sha[:8],
+                    post_result.stderr.strip() or "no diagnostics",
+                )
+    return CommitCreationResult.created(candidate_sha)
 
 
 def create_commit(
@@ -521,8 +743,13 @@ def create_commit(
     try:
         repo = Repo(repo_root)
         message = _append_ralph_workflow_coauthor_trailer(message)
-        if hasattr(repo, "head") and repo.head.commit.hexsha != expected_head:
-            return CommitCreationResult.already_advanced(repo.head.commit.hexsha)
+        # D2 queue-routing insertion point (operations.py:create_commit head).
+        # The detached-HEAD reattach and tree-based idempotency short-circuits
+        # intentionally live BELOW this marker; if unit D2 wraps any of the
+        # git invocations below in a queue, keep the reattach helper and the
+        # write-tree / rev-parse calls outside the queue so the seam's
+        # idempotency invariants are preserved.
+        current_head_sha = repo.head.commit.hexsha if hasattr(repo, "head") else ""
         if not hasattr(repo, "git_dir"):
             author_name, author_email = _resolve_commit_identity(repo, author_name, author_email)
             actor = Actor(author_name, author_email)
@@ -533,34 +760,37 @@ def create_commit(
             return CommitCreationResult.created(commit.hexsha)
         author_name, author_email = _resolve_commit_identity(repo, author_name, author_email)
 
-        ref_result = run_git(
-            ("symbolic-ref", "--quiet", "HEAD"),
-            cwd=Path(repo_root),
-            label="git-symbolic-ref-head",
-        )
-        if ref_result.returncode != 0 or not ref_result.stdout.strip():
-            raise GitOperationError("create_commit", "HEAD is detached")
-        ref_name = ref_result.stdout.strip()
+        ref_name = _reattach_or_resolve_ref_name(Path(repo_root))
 
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as message_file:
             message_file.write(message)
             message_path = Path(message_file.name)
         try:
-            hook_env = {"GIT_REFLOG_ACTION": "ralph create_commit"}
-            hooks_dir = Path(repo.git_dir) / "hooks"
-            _run_commit_hooks(Path(repo_root), hooks_dir, message_path, hook_env)
-            # filesystem-read-ok: Git hooks mutate this owned temporary commit-message file in place
-            message = message_path.read_text(encoding="utf-8")
+            message = _run_prepare_commit_hooks(
+                Path(repo_root), str(repo.git_dir), message_path
+            )
         finally:
             message_path.unlink(  # filesystem-write-ok: transient hook message scratch
                 missing_ok=True
             )
 
-        tree_result = run_git(("write-tree",), cwd=Path(repo_root), label="git-write-tree")
-        if tree_result.returncode != 0:
-            raise GitOperationError("create_commit", tree_result.stderr.strip())
+        candidate_tree_sha = _candidate_commit_tree(Path(repo_root))
+
+        # Idempotency short-circuit (AC11): a commit "already exists" iff the
+        # content is already in place -- HEAD's tree equals the tree we are
+        # about to commit. Matching by tree content (not by SHA) covers both
+        # re-dispatch after an interrupt (HEAD still == expected_head) and a
+        # commit Ralph rewrote or moved (rebase / cherry-pick / amend changed
+        # the SHAs without changing the tree). A SHA-only match must NEVER
+        # short-circuit on its own: after a detached-HEAD reattach the
+        # reattached branch tip equals the pre-stage ``expected_head`` while
+        # the index still holds pending changes -- short-circuiting there
+        # dropped the work and routed the phase to ``failed_terminal``.
+        if _tree_matches_head(Path(repo_root), current_head_sha, candidate_tree_sha):
+            return CommitCreationResult.already_advanced(current_head_sha)
+
         commit_result = run_git(
-            ("commit-tree", tree_result.stdout.strip(), "-p", expected_head),
+            ("commit-tree", candidate_tree_sha, "-p", expected_head),
             cwd=Path(repo_root),
             label="git-commit-tree",
             options=GitRunOptions(
@@ -577,38 +807,21 @@ def create_commit(
         if commit_result.returncode != 0:
             raise GitOperationError("create_commit", commit_result.stderr.strip())
         candidate_sha = commit_result.stdout.strip()
-        update_ref = run_git(
-            ("update-ref", ref_name, candidate_sha, expected_head),
-            cwd=Path(repo_root),
-            label="git-update-ref-cas",
-            options=GitRunOptions(env={"GIT_REFLOG_ACTION": "ralph create_commit"}),
+        result = _cas_publish_or_detect_advance(
+            Path(repo_root),
+            ref_name,
+            candidate_sha,
+            expected_head,
+            Path(repo.git_dir) / "hooks",
+            {"GIT_REFLOG_ACTION": "ralph create_commit"},
         )
-        if update_ref.returncode != 0:
-            current_head = get_head_sha(repo_root)
-            if current_head != expected_head:
-                return CommitCreationResult.already_advanced(current_head)
-            detail = update_ref.stderr.strip() or "git update-ref failed without diagnostics"
-            raise GitOperationError("create_commit", detail)
-        post_commit = hooks_dir / "post-commit"
-        if post_commit.exists():
-            post_result = run_git(
-                ("hook", "run", "post-commit"),
-                cwd=Path(repo_root),
-                label="git-hook-post-commit",
-                options=GitRunOptions(env=hook_env),
+        if result.status is CommitCreationStatus.CREATED:
+            logger.info(
+                "Created commit {}: {}",
+                candidate_sha[:8],
+                message.splitlines()[0] if message else "(no message)",
             )
-            if post_result.returncode != 0:
-                logger.warning(
-                    "post-commit hook failed after commit {}: {}",
-                    candidate_sha[:8],
-                    post_result.stderr.strip() or "no diagnostics",
-                )
-        logger.info(
-            "Created commit {}: {}",
-            candidate_sha[:8],
-            message.splitlines()[0] if message else "(no message)",
-        )
-        return CommitCreationResult.created(candidate_sha)
+        return result
     except Exception as exc:
         raise GitOperationError("create_commit", str(exc)) from exc
     finally:
@@ -634,6 +847,42 @@ def push(
     try:
         repo = Repo(repo_root)
         active_branch = branch or repo.active_branch.name
+        # Publish idempotency (AC11): skip the push when the local SHA equals
+        # the remote-tracking SHA. A re-dispatch, an interrupted run, or a
+        # repeated fan-out must not re-issue a non-fast-forward push.
+        local_sha_result = run_git(
+            ("rev-parse", "--verify", active_branch),
+            cwd=Path(repo_root),
+            label="git-rev-parse-local-branch",
+        )
+        local_sha = (
+            local_sha_result.stdout.strip()
+            if local_sha_result.returncode == 0
+            else ""
+        )
+        remote_tracking_ref = f"refs/remotes/{remote}/{active_branch}"
+        remote_sha_result = run_git(
+            ("rev-parse", "--verify", remote_tracking_ref),
+            cwd=Path(repo_root),
+            label="git-rev-parse-remote-tracking",
+        )
+        remote_sha = (
+            remote_sha_result.stdout.strip()
+            if remote_sha_result.returncode == 0
+            else ""
+        )
+        if local_sha and remote_sha and local_sha == remote_sha:
+            logger.info(
+                "Push of {} to {}/{} skipped: local sha matches remote-tracking sha",
+                active_branch,
+                remote,
+                active_branch,
+            )
+            return
+        # D2 queue-routing insertion point (operations.py:push). Unit D2 wraps
+        # the push call in a queue; keep the already-pushed short-circuit
+        # above the queue insertion so a re-dispatch that finds the local and
+        # remote-tracking SHAs already in sync never re-issues a push.
         repo.remote(remote).push(active_branch)
         logger.info("Pushed {} to {}/{}", active_branch, remote, active_branch)
     except Exception as exc:

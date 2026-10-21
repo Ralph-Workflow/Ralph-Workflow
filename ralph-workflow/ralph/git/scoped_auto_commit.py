@@ -64,6 +64,7 @@ from ralph.git._index_snapshots import (
     _snapshot_pre_staged_index,
 )
 from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
+from ralph.git.git_command_queue import route_git_method
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 
 if TYPE_CHECKING:
@@ -216,7 +217,7 @@ def _read_head_blob_sha(repo: Repo, path: str) -> str | None:
     "absent at HEAD" (wt-012 DA-006/DA-011).
     """
     try:
-        raw: object = repo.git.ls_files("--stage", "--", path)
+        raw: object = route_git_method(repo, "ls_files", ("--stage", "--", path))
     except GitCommandError:
         return _HEAD_PROBE_FAILED
     if not isinstance(raw, str):
@@ -432,7 +433,7 @@ def _classify_untracked_target(repo: Repo, rel_path: str) -> TargetCommitClass |
     site as ``not_repo`` (skip silently).
     """
     try:
-        repo.git.ls_files("--error-unmatch", "--", rel_path)
+        route_git_method(repo, "ls_files", ("--error-unmatch", "--", rel_path))
         return "tracked"
     except GitCommandError as exc:
         if exc.status != 1:
@@ -445,7 +446,7 @@ def _classify_untracked_target(repo: Repo, rel_path: str) -> TargetCommitClass |
     try:
         # ``--quiet`` suppresses output; the exit status carries the
         # answer (0 = ignored, 1 = not ignored, 128 = error).
-        repo.git.check_ignore("--quiet", rel_path)
+        route_git_method(repo, "check_ignore", ("--quiet", rel_path))
         return "untracked_ignored"
     except GitCommandError as exc:
         if exc.status == 1:
@@ -647,7 +648,10 @@ def commit_deterministic_writes(
             # Unstage EVERY pre-staged path so the chore commit cannot
             # capture unrelated pre-staged entries.
             if pre_staged_paths:
-                _ = cast("None", repo.git.reset("HEAD", "--", *pre_staged_paths))
+                _ = cast(
+                    "None",
+                    route_git_method(repo, "reset", ("HEAD", "--", *pre_staged_paths)),
+                )
 
             try:
                 # Compare each in-scope path's HEAD blob hash against the
@@ -722,7 +726,7 @@ def _scoped_commit_failure(
     # Commit failed: rollback the stage, restore the
     # pre-staged snapshot, return FAILED.
     try:
-        _ = cast("None", repo.git.reset("HEAD", "--", *all_dirty))
+        _ = cast("None", route_git_method(repo, "reset", ("HEAD", "--", *all_dirty)))
     except (OSError, GitCommandError) as reset_exc:  # pragma: no cover
         logger.debug(
             "commit_scoped_updates: failed-attempt unstage failed (non-fatal): {}",
@@ -798,7 +802,10 @@ def commit_scoped_updates(
             pre_staged_paths = _capture_staged_paths(repo)
             pre_staged_blobs = _snapshot_pre_staged_index(repo, pre_staged_paths)
             if pre_staged_paths:
-                _ = cast("None", repo.git.reset("HEAD", "--", *pre_staged_paths))
+                _ = cast(
+                    "None",
+                    route_git_method(repo, "reset", ("HEAD", "--", *pre_staged_paths)),
+                )
             try:
                 stage_fn(repo_root_path, all_dirty)
                 message = f"{subject}\n\n{body_builder(all_dirty)}"
@@ -814,7 +821,10 @@ def commit_scoped_updates(
                 # pre-staged snapshot -- otherwise the failure leaves the
                 # deterministic paths half-staged for a later agent commit.
                 try:
-                    _ = cast("None", repo.git.reset("HEAD", "--", *all_dirty))
+                    _ = cast(
+                        "None",
+                        route_git_method(repo, "reset", ("HEAD", "--", *all_dirty)),
+                    )
                 except (OSError, GitCommandError, ValueError) as reset_exc:  # pragma: no cover
                     logger.warning(
                         "commit_scoped_updates: failed-attempt unstage failed "

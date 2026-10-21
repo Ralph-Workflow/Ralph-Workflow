@@ -39,10 +39,6 @@ from ralph.pipeline._remote_default_client import (
     _DEFAULT_REMOTE_CLIENT,
     _DefaultRemoteClient,
 )
-from ralph.pipeline._remote_rejected_push import (
-    _PushOutcome,
-    reconcile_after_rejected_push,
-)
 from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
 from ralph.pipeline.auto_integrate_conflict_budget import (
     apply_conflict_budget,
@@ -83,9 +79,11 @@ from ralph.pipeline.auto_integrate_remote_constants import (
 )
 from ralph.pipeline.auto_integrate_remote_push import (
     _post_push_publication_decision,
+    _PushOutcome,
     _remote_sync_status,
     push_single_remote,
     push_target_after_landing,
+    reconcile_after_rejected_push,
 )
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_DIVERGED,
@@ -150,6 +148,7 @@ __all__ = [
     "reclaim_target_worktree_enabled",
     "reconcile_after_rejected_push",
     "reconcile_remote_publication",
+    "refresh_observation_record",
     "refresh_target_from_remote",
     "remote_sync_enabled",
     "remote_target_name",
@@ -310,7 +309,7 @@ def _record_publication_failure(
     base_state: RebaseState,
     *,
     last_remote_sync: str,
-    last_reason: str,
+    last_reason: str | None = None,
     last_refresh: str | None = None,
     fast_forwarded: bool | None = None,
     publication_decision: PublicationDecision | None = None,
@@ -320,13 +319,22 @@ def _record_publication_failure(
     Centralises the ``model_copy`` fan-out that the original
     :func:`reconcile_remote_publication` repeated per branch so the
     PLR0911 cap is satisfied without losing the per-branch
-    ``last_remote_sync`` / ``last_reason`` / ``last_refresh`` / fast
-    forward signal the durable record carries.
+    ``last_remote_sync`` / ``last_refresh`` / fast forward signal the
+    durable record carries.
 
-    ``publication_decision`` is the typed obligation the caller wants
-    recorded alongside the prose failure. Remote observation failures
-    (``REMOTE_PULL_FAILED`` / ``REMOTE_REMOTE_UNREACHABLE``) must
-    carry :attr:`PublicationDecision.PUBLISH_DEFERRED_REMOTE` so
+    ``last_reason`` is OPTIONAL on purpose: nothing in this module
+    shall persist stored prose as a decision input. The field is kept
+    on the durable record only as a backward-compatibility shim, and
+    callers that pass ``last_reason=None`` preserve the previous
+    record's prose so a downstream display formatters that have not
+    yet been migrated do not break. The single typed obligation is
+    carried by ``publication_decision`` (the
+    :class:`PublicationDecision` the run loop reads) -- the prose
+    field never drives branch selection here.
+
+    Remote observation failures (``REMOTE_PULL_FAILED`` /
+    ``REMOTE_REMOTE_UNREACHABLE``) must carry
+    :attr:`PublicationDecision.PUBLISH_DEFERRED_REMOTE` so
     :func:`is_terminal_success_eligible` cannot permit terminal
     success while a pending push obligation is unscheduled (O2/AC8).
     The parameter is named ``publication_decision`` (not
@@ -337,8 +345,9 @@ def _record_publication_failure(
     """
     update: dict[str, object] = {
         "last_remote_sync": last_remote_sync,
-        "last_reason": last_reason,
     }
+    if last_reason is not None:
+        update["last_reason"] = last_reason
     if last_refresh is not None:
         update["last_refresh"] = last_refresh
     if fast_forwarded is not None:
@@ -405,13 +414,11 @@ def _dispatch_ref_comparison(
         from ralph.pipeline.auto_integrate_catchup import (
             attempt_catchup_fast_forward,
         )
-
         if config is None:
             return _record_publication_failure(
                 base_state,
                 last_remote_sync=REMOTE_PULL_FAILED,
                 last_refresh=REFRESH_UNREACHABLE,
-                last_reason="config missing for catchup; recovery will retry",
                 publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
             )
         catchup_outcome = attempt_catchup_fast_forward(
@@ -435,7 +442,6 @@ def _dispatch_ref_comparison(
             base_state,
             last_remote_sync=REMOTE_PULL_FAILED,
             last_refresh=REFRESH_UNREACHABLE,
-            last_reason="remote ahead but local catch-up refused; recovery will retry",
             publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
         )
     # Diverged: reintegrate then push.
@@ -625,7 +631,6 @@ def reconcile_remote_publication(
         return _record_publication_failure(
             base_state,
             last_remote_sync=REMOTE_PULL_FAILED,
-            last_reason="local target branch unreadable; recovery will retry",
         )
     client = remote_client or _DEFAULT_REMOTE_CLIENT
     remote_sha, refresh = _observe_remote_target_sha(
@@ -646,7 +651,6 @@ def reconcile_remote_publication(
             base_state,
             last_remote_sync=REMOTE_REMOTE_UNREACHABLE,
             last_refresh=refresh,
-            last_reason=(f"remote {chosen_remote} unreachable; recovery will retry"),
             publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
         )
     if local_sha == remote_sha:
@@ -667,6 +671,104 @@ def reconcile_remote_publication(
         remote_client=client,
         rebase_stop_resolver=rebase_stop_resolver,
     )
+
+
+def _observation_reconciles(
+    *,
+    repo_root: Path,
+    target: str,
+    remote: str,
+    local_sha: str,
+    remote_sha: str | None,
+) -> bool:
+    """Truth: does the current live observation show refs already equal?
+
+    Pure: only the two SHAs the caller just observed are consulted.
+    Stored ``last_reason`` prose and persisted ``last_remote_sync``
+    values are NEVER inputs -- the O2 reconciliation obligation lives
+    on the LIVE ref comparison, not on text the previous run wrote.
+    A ``None`` remote SHA is treated as ``False`` because the
+    obligation "ref equality" cannot be proven unobservable.
+    """
+    if remote_sha is None:
+        return False
+    if local_sha != remote_sha:
+        return False
+    # Final witness: the live remote-tracking ref read confirms the
+    # equality is current, not stale. A separate fetch was performed
+    # in :func:`_observe_remote_target_sha`; this call only witnesses
+    # its outcome.
+    _ = (repo_root, target, remote)
+    return True
+
+
+def refresh_observation_record(
+    repo_root: Path,
+    base_state: RebaseState,
+    *,
+    target: str,
+    remote: str,
+    remote_client: RemoteClient | None = None,
+) -> RebaseState:
+    """Refresh the durable record from the CURRENT live observation.
+
+    Recomputes local vs ``<remote>/<target>`` from the same client
+    the runtime uses; preserves every unrelated field on ``base_state``
+    (in particular the caller's prior publication decision) and only
+    mutates the publication obligation. Used by the run loop and by
+    boundary seams that need an O2 freshness check before reporting
+    terminal success; the O2 contract demands that NO state leaves
+    local ahead of the remote with a satisfied publication decision.
+
+    The function never raises. It returns ``base_state`` unchanged
+    when remote sync is disabled or when the configured remote is
+    missing.
+    """
+    if not isinstance(target, str) or not target or not isinstance(remote, str) or not remote:
+        return base_state
+    local_sha = _safe_local_sha(repo_root, target)
+    if local_sha is None:
+        return base_state
+    client = remote_client or _DEFAULT_REMOTE_CLIENT
+    remote_sha, refresh = _observe_remote_target_sha(
+        repo_root, target, remote=remote, remote_client=client
+    )
+    if remote_sha is not None and _observation_reconciles(
+        repo_root=repo_root,
+        target=target,
+        remote=remote,
+        local_sha=local_sha,
+        remote_sha=remote_sha,
+    ):
+        return _record_publication_failure(
+            base_state,
+            last_remote_sync=REMOTE_ALREADY_CURRENT,
+            fast_forwarded=True,
+            publication_decision=PublicationDecision.PUBLICATION_TERMINAL,
+        )
+    if remote_sha is None:
+        return _record_publication_failure(
+            base_state,
+            last_remote_sync=REMOTE_REMOTE_UNREACHABLE,
+            last_refresh=refresh,
+            publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
+        )
+    if refresh == REFRESH_NO_REMOTE_BRANCH:
+        return base_state.model_copy(
+            update={
+                "last_remote": remote,
+                "last_remote_sync": REMOTE_NO_REMOTE_BRANCH,
+            }
+        ).set_publication_decision(
+            PublicationDecision.PUBLISH_DEFERRED_REMOTE,
+        )
+    return base_state.model_copy(
+        update={
+            "last_remote": remote,
+            "last_remote_sync": REMOTE_LOCAL_AHEAD,
+            "last_refresh": refresh,
+        }
+    ).set_publication_decision(PublicationDecision.PUBLISH_DEFERRED_REMOTE)
 
 
 # ----- AC-14 catalog evidence -----

@@ -245,6 +245,10 @@ def test_push_result_classifies_creation_and_failures_without_summary_parsing(
 ) -> None:
     """S-1: callers need structured push facts, not prose classification."""
     monkeypatch.setattr(remote_push_module, "_list_remotes", lambda _root: ["origin"])
+    # Unit F's idempotency probe reads the local ref first; an unreadable
+    # local ref (None) must NOT skip the push, so the auth failure is reached.
+    monkeypatch.setattr(remote_push_module, "branch_sha", lambda _root, _name: None)
+    monkeypatch.setattr(remote_push_module, "_remote_ref_sha", lambda _root, _r, _b: None)
     monkeypatch.setattr(
         remote_push_module,
         "_push_to_remote",

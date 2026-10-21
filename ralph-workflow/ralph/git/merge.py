@@ -24,7 +24,12 @@ Public functions (every primitive has a docstring):
   the current branch; aborts cleanly on conflict and reports
   ``MergeResult(outcome='conflict', ...)``; ``keep_conflicts=True``
   leaves a conflicted merge in progress for resolution.
-* ``unmerged_paths`` — lists paths still carrying conflict markers.
+* ``unmerged_paths`` — lists paths still carrying conflict markers; a
+  failed query reports :data:`UNMERGED_PATH_QUERY_FAILED`, a marker and
+  never a path.
+* ``observe_unmerged_paths`` — three-valued unmerged-path probe: the paths
+  git named, or UNKNOWN when the query itself failed, so a repository
+  that cannot be read is never reported as conflicted.
 * ``stage_paths`` — ``git add -- <paths>``; Ralph stages a resolved
   conflict itself so resolution never depends on the resolving
   agent's git access.
@@ -226,6 +231,24 @@ MERGE_STATE_UNKNOWN = "unknown"
 WORKTREE_FOUND = "found"
 WORKTREE_NOT_CHECKED_OUT = "not_checked_out"
 WORKTREE_QUERY_FAILED = "query_failed"
+
+#: Marker :func:`unmerged_paths` reports when the git query itself failed.
+#: It is a marker, never a path: :func:`observe_unmerged_paths` is the
+#: three-valued form, and its UNKNOWN verdict carries no path at all.
+UNMERGED_PATH_QUERY_FAILED = "<unmerged-path-query-failed>"
+
+
+@dataclass(frozen=True)
+class UnmergedPathsObservation:
+    """Three-valued unmerged-path probe result.
+
+    ``query_ok`` is True only when git gave a definite answer -- including
+    a definitive empty set. False means the repository could not be asked,
+    so ``paths`` is empty and no conflict may be inferred from it.
+    """
+
+    paths: tuple[str, ...] = ()
+    query_ok: bool = True
 
 
 @dataclass(frozen=True)
@@ -456,25 +479,52 @@ def unmerged_paths(repo_root: Path | str) -> list[str]:
     Wraps ``git diff --name-only --diff-filter=U``. An empty list
     means every conflict has been resolved and staged; the in-progress
     merge is then safe to commit via :func:`commit_merge_in_progress`.
-    A failed git invocation reports a sentinel non-empty list so a
-    broken repository is never mistaken for "fully resolved".
+
+    A failed git invocation reports :data:`UNMERGED_PATH_QUERY_FAILED` so a
+    broken repository is never mistaken for "fully resolved". Callers that
+    must not treat a failure as evidence either way ask
+    :func:`observe_unmerged_paths`, whose UNKNOWN verdict carries no path.
+    """
+    observed = observe_unmerged_paths(repo_root)
+    if not observed.query_ok:
+        return [UNMERGED_PATH_QUERY_FAILED]
+    return list(observed.paths)
+
+
+def observe_unmerged_paths(repo_root: Path | str) -> UnmergedPathsObservation:
+    """Return the unmerged paths, or UNKNOWN when the query itself failed.
+
+    ``git diff --name-only --diff-filter=U`` is the only authoritative
+    answer to "which paths still conflict", so a repository that cannot be
+    asked has no answer -- not "no conflicts". Reporting the sentinel as a
+    path handed a broken repository to the resolver as a real conflict to
+    repair; this observation keeps the failure out of the path set and
+    names it in ``query_ok`` instead.
+
+    ``-z`` because git QUOTES a path with non-ASCII, a backslash, a
+    quote or a control character when it is not asked for NUL
+    separation: ``"\\303\\251.txt"`` cannot be opened, so every content
+    gate that later reads these paths reported "no markers" for a file
+    it never saw -- and conflict markers were committed under a line
+    asserting the stop was marker-free. NUL separation is the only
+    encoding git never mangles.
     """
     repo_root_path = Path(repo_root)
-    # ``-z`` because git QUOTES a path with non-ASCII, a backslash, a
-    # quote or a control character when it is not asked for NUL
-    # separation: `"\303\251.txt"` cannot be opened, so every content
-    # gate that later reads these paths reported "no markers" for a file
-    # it never saw -- and conflict markers were committed under a line
-    # asserting the stop was marker-free. NUL separation is the only
-    # encoding git never mangles.
-    result = run_git(
-        ("diff", "--name-only", "--diff-filter=U", "-z"),
-        cwd=repo_root_path,
-        label="git-unmerged-paths",
-    )
+    try:
+        result = run_git(
+            ("diff", "--name-only", "--diff-filter=U", "-z"),
+            cwd=repo_root_path,
+            label="git-unmerged-paths",
+        )
+    except Exception as exc:
+        logger.debug("git: unmerged-path query failed in {}: {}", repo_root_path, exc)
+        return UnmergedPathsObservation(query_ok=False)
     if result.returncode != 0:
-        return ["<unmerged-path-query-failed>"]
-    return [entry for entry in result.stdout.split("\0") if entry]
+        return UnmergedPathsObservation(query_ok=False)
+    return UnmergedPathsObservation(
+        tuple(entry for entry in result.stdout.split("\0") if entry),
+        query_ok=True,
+    )
 
 
 def conflict_stage_entries(
@@ -763,10 +813,12 @@ __all__ = [
     "MERGE_STATE_IN_PROGRESS",
     "MERGE_STATE_NONE",
     "MERGE_STATE_UNKNOWN",
+    "UNMERGED_PATH_QUERY_FAILED",
     "WORKTREE_FOUND",
     "WORKTREE_NOT_CHECKED_OUT",
     "WORKTREE_QUERY_FAILED",
     "MergeResult",
+    "UnmergedPathsObservation",
     "abort_merge",
     "branch_exists",
     "branch_sha",
@@ -777,6 +829,7 @@ __all__ = [
     "merge_in_progress",
     "merge_state",
     "merge_target_into_current",
+    "observe_unmerged_paths",
     "paths_with_conflict_markers",
     "reset_keep",
     "stage_paths",

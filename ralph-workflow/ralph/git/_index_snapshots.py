@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
+from ralph.git.git_command_queue import route_git_method
+
 if TYPE_CHECKING:
     from git import Repo
 
@@ -50,7 +52,7 @@ def _snapshot_pre_staged_index(repo: Repo, paths: list[str]) -> dict[str, str | 
     snapshots: dict[str, str | None] = {}
     if not paths:
         return snapshots
-    ls_files_raw: object = repo.git.ls_files("--stage", "--", *paths)
+    ls_files_raw: object = route_git_method(repo, "ls_files", ("--stage", "--", *paths))
     if not isinstance(ls_files_raw, str):
         return snapshots
     indexed: set[str] = set()
@@ -83,24 +85,27 @@ def _restore_pre_staged_index(repo: Repo, snapshots: dict[str, str | None]) -> N
     """
     for path, entry in snapshots.items():
         if entry == _STAGED_DELETION_SENTINEL:
-            _ = cast("None", repo.git.update_index("--force-remove", path))
+            _ = cast(
+                "None",
+                route_git_method(repo, "update_index", ("--force-remove", path)),
+            )
             continue
         if entry is None:
             continue
         mode, blob_sha = entry.split(",", 1)
         _ = cast(
             "None",
-            repo.git.update_index(
-                "--add",
-                "--cacheinfo",
-                f"{mode},{blob_sha},{path}",
+            route_git_method(
+                repo,
+                "update_index",
+                ("--add", "--cacheinfo", f"{mode},{blob_sha},{path}"),
             ),
         )
 
 
 def _capture_staged_paths(repo: Repo) -> list[str]:
     """Return the list of pre-staged paths (``git diff --cached --name-only``)."""
-    diff_output: object = repo.git.diff("--cached", "--name-only")
+    diff_output: object = route_git_method(repo, "diff", ("--cached", "--name-only"))
     if not isinstance(diff_output, str):
         return []
     return [path for path in diff_output.splitlines() if path]

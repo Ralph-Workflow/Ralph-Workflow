@@ -32,6 +32,7 @@ from ralph.pipeline._auto_integrate_record_restamp import (
     _parse_raw_evidence_pairs,
     parse_lease,
 )
+from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_transition import (
     ACCEPT_REPAIR_EDITS,
     BUMP_DIAGNOSTIC_ATTEMPT,
@@ -58,6 +59,9 @@ from ralph.pydantic_compat import RalphBaseModel
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
+
+    from ralph.pipeline.auto_integrate_resolution_state import ContainmentVerdict
+    from ralph.pipeline.rebase_state import RebaseState
 
 
 AUTO_INTEGRATE_RECORD_FILENAME = "auto_integrate_in_progress.json"
@@ -845,6 +849,72 @@ def clear_record(
         return
 
 
+def clear_record_on_containment(
+    workspace_root: Path,
+    verdict: ContainmentVerdict,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> bool:
+    """Unlink the durable record, but only for a containment-proven release.
+
+    Returns:
+        ``True`` once the record is gone -- including the already-absent
+        case, which keeps the release idempotent -- and ``False`` when the
+        verdict did not prove containment.
+    """
+    if not verdict.contained:
+        return False
+    clear_record(workspace_root, backend=backend)
+    return True
+
+
+def apply_containment_release(
+    state: RebaseState,
+    root: Path | None,
+    verdict: ContainmentVerdict,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> RebaseState:
+    """Clear the durable record and every latch ``verdict`` proves stale.
+
+    Fail-closed: a record that cannot be unlinked -- unreadable evidence,
+    lock contention, or an operator-intervention hold -- keeps its latches.
+    Releasing in-memory state while a blocking record survives on disk is a
+    lie the very next dispatch would act on.
+    """
+    if not verdict.contained:
+        return state
+    if root is not None:
+        try:
+            clear_record_on_containment(root, verdict, backend=backend)
+        except RuntimeError as exc:
+            logger.warning("auto_integrate: containment release withheld: {}", exc)
+            return state
+    # Conflict-strategy fields belong to their typed setters: the whole
+    # block resets when it is stale or never started, and only the
+    # exhaustion flag pair resets when the operator's strategy history
+    # must survive. The non-strategy fields reset through one literal-Dict
+    # ``model_copy``; they are not in the audit's DECISION_FIELDS set.
+    strategy = (
+        state.clear_conflict_strategy()
+        if state.resolution_exhausted or state.conflict_strategy_index == 0
+        else state.clear_resolution_exhausted()
+    )
+    cleared = strategy.model_copy(
+        update={
+            "last_outcome": None
+            if state.last_outcome is RebaseOutcomeKind.CONFLICT
+            else state.last_outcome,
+            "unresolved_integration_carried": False,
+            "integration_retry_attempt": 0,
+            "legacy_checkpoint_blocked": False,
+        }
+    )
+    if cleared.recovery_record_retained:
+        return cleared.clear_recovery_record_retained()
+    return cleared
+
+
 __all__ = [
     "ACCEPT_REPAIR_EDITS",
     "AUTO_INTEGRATE_RECORD_FILENAME",
@@ -872,7 +942,9 @@ __all__ = [
     "RecordUnreadableError",
     "RecordUnreadableReason",
     "Transition",
+    "apply_containment_release",
     "clear_record",
+    "clear_record_on_containment",
     "parse_lease",
     "parse_record_payload",
     "read_record",

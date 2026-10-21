@@ -12,6 +12,7 @@ from ralph.git import scoped_auto_commit as _scoped
 from ralph.git._index_snapshots import _restore_pre_staged_index
 from ralph.git._transition_guard import drop_transition_conflicts
 from ralph.git.commit_result import CommitCreationStatus
+from ralph.git.git_command_queue import route_git_method
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -217,7 +218,7 @@ def _commit_selected_paths(
     try:
         stage_fn(repo_root_path, stageable)
     except (OSError, GitCommandError):
-        _ = cast("None", repo.git.reset("HEAD", "--", *stageable))
+        _ = cast("None", route_git_method(repo, "reset", ("HEAD", "--", *stageable)))
         raise
     try:
         if body_builder is not None:
@@ -239,7 +240,7 @@ def _commit_selected_paths(
             # staged index.
             _ = cast(
                 "None",
-                repo.git.reset("HEAD", "--", *stageable),
+                route_git_method(repo, "reset", ("HEAD", "--", *stageable)),
             )
             _restore_pre_staged_index(repo, pre_staged_snapshots)
             error_message: str | None
@@ -266,7 +267,7 @@ def _commit_selected_paths(
         try:
             _ = cast(
                 "None",
-                repo.git.reset("HEAD", "--", *stageable),
+                route_git_method(repo, "reset", ("HEAD", "--", *stageable)),
             )
         except (OSError, GitCommandError) as reset_exc:  # pragma: no cover
             # wt-012 DA-006: a failed rollback reset can leave

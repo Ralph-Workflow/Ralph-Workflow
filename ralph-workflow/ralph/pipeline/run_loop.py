@@ -2650,6 +2650,39 @@ def _effective_conflict_cap(ctx: _LoopContext) -> int:
     return max(1, resolver_attempt_limit(ctx.config))
 
 
+def _render_current_observation_detail(rebase: RebaseState) -> str:
+    """Render an alarm detail phrase from the CURRENT typed observation.
+
+    Single source for the alarm detail emitted by
+    :func:`_wait_for_integration_retry`. The phrase is derived from
+    the LIVE :attr:`RebaseState.last_publication_decision` (a typed
+    value owned by :class:`PublicationDecision`) and never replays
+    the persisted :attr:`RebaseState.last_reason` prose. That is the
+    O2 fix: a stale ``"remote unreachable"`` string persisted by an
+    earlier seam cannot leak into the next seam's alarm when the live
+    observation has since moved on. The fallback phrase names the
+    publication obligation in a verb, not a remote name, so a
+    configured ``tacos`` never reports as ``origin``.
+
+    The helpers' branches are deliberately closed on
+    :class:`PublicationDecision` values -- not prose strings -- so
+    the function is single-decision-driven and never parses the
+    :attr:`RebaseState.last_reason` field.
+    """
+    from ralph.pipeline._publication_state_machine import PublicationDecision
+
+    decision = rebase.last_publication_decision
+    if decision == PublicationDecision.PUBLISH_DEFERRED_REMOTE.value:
+        return "configured remote currently unreachable"
+    if decision == PublicationDecision.PUBLISH_DEFERRED_FRESHNESS.value:
+        return "freshness deferral pending"
+    if decision == PublicationDecision.PUBLICATION_PENDING.value:
+        return "publication pending"
+    if decision == PublicationDecision.PUBLISH_NOW.value:
+        return "publication scheduled; recovery will retry"
+    return "target synchronization remains unproven"
+
+
 def _wait_for_integration_retry(
     state: PipelineState,
     ctx: _LoopContext,
@@ -2657,7 +2690,7 @@ def _wait_for_integration_retry(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> PipelineState:
     rebase = state.rebase
-    detail = rebase.last_reason or "target synchronization remains unproven"
+    detail = _render_current_observation_detail(rebase)
     alarm = f"CRITICAL: integration has not landed; recovery will retry: {detail}"
     logger.critical("{}", alarm)
     with suppress(Exception):
@@ -3809,7 +3842,16 @@ def _report_pending_remote_publication(state: PipelineState, ctx: _LoopContext) 
     from ralph.pipeline.auto_integrate_remote_sync import remote_target_name
 
     remote = remote_target_name(ctx.config)
-    reason = state.rebase.last_reason or state.rebase.last_push or pending_status
+    # The report must reflect the CURRENT observation, never stored prose:
+    # a stale ``last_reason`` persisted by an earlier seam (e.g. an
+    # unreachable-then-recovering remote) must not be replayed as the
+    # final state's explanation. Derive the detail from the typed
+    # publication decision instead.
+    reason = (
+        _render_current_observation_detail(state.rebase)
+        or state.rebase.last_push
+        or pending_status
+    )
     return state.copy_with(
         rebase=state.rebase.model_copy(
             update={

@@ -1,4 +1,4 @@
-"""Preserve durable unresolved integration evidence at optional integration seams.
+"""Release durable unresolved integration evidence at optional integration seams.
 
 Preserving that evidence and REFUSING TO RETRY are two different things,
 and conflating them deadlocks the run. The integration seam is not
@@ -16,20 +16,30 @@ The split this module encodes:
 * ORDINARY dispatch stays fail-closed on the verdict. Untouched.
 * The integration seam always runs, and its OUTCOME is filtered through
   :func:`preserve_unresolved_resolution_state`, so a seam that did not
-  land cannot launder a recorded conflict into a "skip". Only a real
-  landing clears the evidence -- which is the invariant the early return
-  was reaching for, without the deadlock it brought with it.
+  land cannot launder a recorded conflict into a "skip".
+* ONE verdict -- :func:`evaluate_integration_containment` -- decides
+  whether the feature's commits are already inside the target, and
+  :func:`ralph.pipeline.auto_integrate_record.apply_containment_release`
+  is the only writer that clears the record and its latches. Git is the
+  ground truth: a durable record carries intent and history, so a record
+  claiming "unresolved" may never outrank a live
+  ``merge-base --is-ancestor`` answer.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.pipeline._integration_action import RebaseOutcomeKind
+from ralph.pipeline.auto_integrate_record import apply_containment_release
 from ralph.pipeline.integration_resolution import persisted_integration_resolution_verdict
+from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
-    from ralph.pipeline.rebase_state import RebaseState
+    from pathlib import Path
 
 CONFLICT_RESOLUTION_STRATEGIES = (
     "rebase_resolver",
@@ -40,49 +50,154 @@ CONFLICT_RESOLUTION_STRATEGIES = (
 
 __all__ = [
     "CONFLICT_RESOLUTION_STRATEGIES",
+    "ContainmentVerdict",
+    "contained_land",
+    "containment_release",
+    "evaluate_integration_containment",
     "preserve_unresolved_resolution_state",
     "reconcile_stale_unresolved_state",
     "retains_unresolved_resolution_state",
 ]
 
 
-def reconcile_stale_unresolved_state(state: RebaseState) -> RebaseState:
-    """Clear persisted conflict evidence after a clean live inspection.
+@dataclass(frozen=True, slots=True)
+class ContainmentVerdict:
+    """Read-only answer: does ``<target>`` already hold every feature commit?
 
-    Call this only when :func:`inspect_integration_resolution` returned
-    ``RESOLVED``. The persisted predicate identifies precisely the fields whose
-    stale values used to re-latch the next integration seam.
+    Attributes:
+        contained: Whether no feature commit sits beyond the target.
+        target: The integration target branch the verdict was asked about.
+        feature_sha: The feature tip the verdict tested.
+        target_sha: The observed target SHA, or ``None`` when unreadable.
+        evidence: Which source answered, for the operator log.
     """
-    if (
-        persisted_integration_resolution_verdict(state) is None
-        and not state.integration_retry_attempt
-    ):
-        return state
-    clear_strategy = state.resolution_exhausted or state.conflict_strategy_index == 0
-    # Conflict-strategy fields are owned by typed setters:
-    # ``clear_conflict_strategy`` resets all four when the strategy
-    # block is stale or never started; ``clear_resolution_exhausted``
-    # resets just the exhaustion flag pair while preserving the
-    # operator's strategy history. Non-strategy fields are reset
-    # through a single literal-Dict ``model_copy`` (they are not in
-    # the audit's DECISION_FIELDS set).
-    if clear_strategy:
-        cleared_strategy = state.clear_conflict_strategy()
-    else:
-        cleared_strategy = state.clear_resolution_exhausted()
-    cleared = cleared_strategy.model_copy(
-        update={
-            "last_outcome": None
-            if state.last_outcome == RebaseOutcomeKind.CONFLICT
-            else state.last_outcome,
-            "unresolved_integration_carried": False,
-            "integration_retry_attempt": 0,
-            "legacy_checkpoint_blocked": False,
-        }
+
+    contained: bool
+    target: str | None
+    feature_sha: str | None
+    target_sha: str | None
+    evidence: str
+
+    @property
+    def reason(self) -> str:
+        """Operator-facing sentence naming the verdict and its evidence."""
+        answer = "contains" if self.contained else "does not contain"
+        return f"'{self.target}' {answer} feature tip {self.feature_sha} ({self.evidence})"
+
+
+def evaluate_integration_containment(
+    root: Path | None,
+    target: str | None,
+    *,
+    feature_sha: str | None = None,
+    proven: bool = False,
+) -> ContainmentVerdict:
+    """Return the single containment verdict for ``root`` and ``target``.
+
+    Args:
+        root: The repository to ask, or ``None`` when the caller has none.
+        target: The integration target branch name.
+        feature_sha: The feature tip to test; ``root``'s HEAD when omitted.
+        proven: The caller already holds direct proof the work landed -- a
+            fast-forward that returned, or a live inspection that came back
+            clean. It counts only while no repository is named: once git
+            can answer, git decides and ``proven`` cannot overrule it.
+
+    An unanswerable question is never containment. An unreadable
+    repository or an unknown branch keeps every latch, because releasing
+    on a guess discards unfinished work while holding it discards nothing.
+    """
+    target_name = target or ""
+    if root is None or not target_name:
+        return ContainmentVerdict(
+            proven,
+            target_name,
+            feature_sha,
+            None,
+            "caller proved the work already landed" if proven else "no repository named",
+        )
+    from ralph.git.merge import MERGE_STATE_IN_PROGRESS, branch_sha, merge_state
+    from ralph.git.merge_obstructions import ancestry_state
+    from ralph.git.operations import get_head_sha
+    from ralph.git.rebase.rebase import rebase_in_progress
+
+    try:
+        # A paused rebase or merge detaches HEAD onto target-side commits,
+        # so HEAD is no longer the feature tip and an ancestry answer about
+        # it proves nothing about the branch being integrated. Fail closed:
+        # recovery owns the seam until the operation finishes.
+        if rebase_in_progress(root) or merge_state(root) == MERGE_STATE_IN_PROGRESS:
+            return ContainmentVerdict(
+                False, target_name, feature_sha, None, "integration operation in flight"
+            )
+        head = feature_sha or get_head_sha(root)
+        target_sha = branch_sha(root, target_name)
+        answer = ancestry_state(root, head, target_sha or target_name)
+    except Exception as exc:
+        logger.warning("auto_integrate: containment query on '{}' failed: {}", target_name, exc)
+        return ContainmentVerdict(
+            False, target_name, feature_sha, None, f"git could not answer ancestry: {exc}"
+        )
+    return ContainmentVerdict(
+        answer is True,
+        target_name,
+        head,
+        target_sha,
+        "git merge-base --is-ancestor" if answer is not None else "git could not answer ancestry",
     )
-    if cleared.recovery_record_retained:
-        return cleared.clear_recovery_record_retained()
-    return cleared
+
+
+def containment_release(
+    root: Path | None,
+    target: str | None,
+    state: RebaseState,
+    *,
+    proven: bool = False,
+) -> RebaseState:
+    """Return ``state`` with every containment-proven latch cleared."""
+    return apply_containment_release(
+        state, root, evaluate_integration_containment(root, target, proven=proven)
+    )
+
+
+def contained_land(root: Path, target: str) -> RebaseState | None:
+    """Return the no-op success for an already-contained land, else ``None``.
+
+    Landing is idempotent: once every feature commit is inside the target
+    there is nothing to rebase, merge, or move, so the second land must be
+    a success that changes nothing. ``None`` means "not contained" and the
+    caller must land for real.
+    """
+    verdict = evaluate_integration_containment(root, target)
+    if not verdict.contained:
+        return None
+    logger.info("auto_integrate: {}", verdict.reason)
+    return apply_containment_release(
+        RebaseState(
+            last_outcome=RebaseOutcomeKind.FAST_FORWARDED,
+            last_target=target,
+            fast_forwarded=True,
+        ),
+        root,
+        verdict,
+    )
+
+
+def reconcile_stale_unresolved_state(
+    state: RebaseState,
+    *,
+    root: Path | None = None,
+    target: str | None = None,
+) -> RebaseState:
+    """Release stale conflict evidence through the single containment verdict.
+
+    A caller that can name a repository hands it to the verdict, which then
+    asks git and may therefore retain evidence the caller once cleared
+    blindly. A caller without one is stating that its live
+    ``inspect_integration_resolution`` inspection came back clean; that
+    inspection IS the proof the verdict consumes.
+    """
+    return containment_release(root, target, state, proven=True)
 
 
 def retains_unresolved_resolution_state(state: RebaseState) -> bool:
@@ -101,7 +216,8 @@ def preserve_unresolved_resolution_state(
     three honest endings:
 
     * it LANDED (``fast_forwarded``), so the conflict is genuinely gone,
-      the outcome stands as written, and the latch is released;
+      the outcome stands as written, and every latch is released through
+      the containment verdict;
     * it recorded a conflict of its own, so the outcome already carries
       the evidence; or
     * it did neither -- a skip (dirty worktree, target unmoved, detached
@@ -130,11 +246,10 @@ def preserve_unresolved_resolution_state(
     if outcome is None:
         return prior if retains_unresolved_resolution_state(prior) else None
     if outcome.fast_forwarded:
-        return (
-            outcome.model_copy(update={"integration_retry_attempt": 0})
-            if outcome.integration_retry_attempt
-            else outcome
-        )
+        # A landed fast-forward moved the target onto the feature tip, so
+        # the conflict really is gone: the verdict releases every latch,
+        # not just the retry counter.
+        return containment_release(None, outcome.last_target, outcome, proven=True)
     if not retains_unresolved_resolution_state(prior):
         return outcome
 

@@ -3,9 +3,20 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from git import GitCommandError, Repo
 
+from ralph.git.git_command_queue import (
+    WorktreeLease,
+    WorktreeLeaseHolder,
+    begin_agent_lease,
+    route_git_method,
+    try_acquire_lease,
+)
+from ralph.git.git_command_queue import (
+    end_agent_lease as _end_worktree_lease,
+)
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
@@ -49,37 +60,45 @@ class GitHelpers:
             populates it; :func:`end_agent_phase` asserts the value
             matches the repo being torn down so a mismatched call fails
             fast instead of editing the wrong repository's ``.git``.
+        worktree_lease: The :class:`~ralph.git.git_command_queue.WorktreeLease`
+            acquired by :func:`start_agent_phase`. ``None`` before the
+            phase starts. :func:`end_agent_phase` releases the lease and
+            resets the attribute to ``None`` so a follow-up start can
+            re-acquire it.
 
     Lifecycle:
         1. Construct (or reuse) a :class:`GitHelpers`. Optional — the
            phase helpers create one for you.
         2. Call :func:`start_agent_phase(repo_root, helpers)`; it sets
-           ``wrapper_repo_root`` and ``wrapper_dir`` and writes the
-           marker / HEAD OID / hooks-path snapshot.
+           ``wrapper_repo_root``, ``wrapper_dir``, and ``worktree_lease``
+           and writes the marker / HEAD OID / hooks-path snapshot.
         3. Run the agent phase (commit/push attempts are blocked by the
-           marker file the hook scripts check).
+           marker file the hook scripts check; background mutators see
+           ``is_lease_held`` and skip).
         4. Call :func:`end_agent_phase(repo_root, helpers)`; it restores
            ``core.hooksPath``, deletes the marker / snapshot / track
-           files, and leaves ``wrapper_dir`` populated only until the next
-           start/end cycle.
+           files, releases the lease, and leaves ``wrapper_dir`` populated
+           only until the next start/end cycle.
 
     Invariants:
         - The class is a plain data carrier with no locking; threads that
           enable protections concurrently must serialize around the
           instance externally.
-        - All attributes are intentionally typed ``Path | None`` because
-          none of them carry meaning outside of a paired
+        - All attributes are intentionally typed ``Path | WorktreeLease |
+          None`` because none of them carry meaning outside of a paired
           ``start_agent_phase`` / ``end_agent_phase`` cycle.
     """
 
     real_git: Path | None
     wrapper_dir: Path | None
     wrapper_repo_root: Path | None
+    worktree_lease: WorktreeLease | None
 
     def __init__(self) -> None:
         self.real_git = None
         self.wrapper_dir = None
         self.wrapper_repo_root = None
+        self.worktree_lease = None
 
 
 def start_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) -> None:
@@ -127,6 +146,11 @@ def start_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) 
             lock). Each subprocess is bounded by
             ``GIT_SUBPROCESS_TIMEOUT_SECONDS`` so a stuck lock cannot
             hang an agent-phase setup.
+        WorktreeLeaseUnavailable: Another agent phase holds the lease
+            for this repository; concurrent phases would race the
+            ``core.hooksPath`` config and the marker files. The holder
+            who won the race owns the worktree until they call
+            :func:`end_agent_phase`.
 
     See also:
         :func:`end_agent_phase` rolls back the protections this
@@ -134,9 +158,14 @@ def start_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) 
         whether ``HEAD`` advanced during a protected phase.
     """
 
-    repo = Repo(repo_root)
     helpers = helpers or GitHelpers()
     helpers.wrapper_repo_root = Path(repo_root)
+    lease = begin_agent_lease(
+        repo_root,
+        holder=WorktreeLeaseHolder(name="agent-phase"),
+    )
+    helpers.worktree_lease = lease
+    repo = Repo(repo_root)
     try:
         ralph_dir = _ensure_ralph_dir(repo)
         helpers.wrapper_dir = ralph_dir
@@ -198,9 +227,17 @@ def end_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) ->
         whether ``HEAD`` advanced during a protected phase, which this
         function neither inspects nor clears.
     """
-    repo = Repo(repo_root)
     helpers = helpers or GitHelpers()
     helpers.wrapper_repo_root = Path(repo_root)
+    lease = helpers.worktree_lease
+    if lease is None:
+        # Caller-separated GitHelpers (or an end without a matching
+        # tracked start): reclaim OUR OWN prior phase's leftover lock
+        # rather than stealing a live sibling phase's lease. try_acquire
+        # returns None when another live holder owns it — in that case
+        # the holder owns teardown and we must not touch the lease.
+        lease = try_acquire_lease(repo_root, holder=WorktreeLeaseHolder(name="agent-phase"))
+    repo = Repo(repo_root)
     try:
         ralph_dir = _ralph_dir_from_repo(repo)
         _restore_hooks_path(repo, ralph_dir)
@@ -209,6 +246,9 @@ def end_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) ->
         _remove_track_file(ralph_dir)
     finally:
         repo.close()
+        if lease is not None:
+            _end_worktree_lease(lease)
+        helpers.worktree_lease = None
 
 
 def detect_unauthorized_commit(repo_root: Path | str) -> bool:
@@ -313,15 +353,24 @@ def _capture_head_oid(repo: Repo, ralph_dir: Path) -> None:
 def _set_hooks_path(repo: Repo, ralph_dir: Path) -> None:
     hooks_dir = ralph_dir / HOOKS_DIR_NAME
     hooks_dir.mkdir(parents=True, exist_ok=True)
-    repo.git.config(
-        "--local", "core.hooksPath", str(hooks_dir), kill_after_timeout=_GIT_OP_TIMEOUT_SECONDS
+    route_git_method(
+        repo,
+        "config",
+        ("--local", "core.hooksPath", str(hooks_dir)),
+        {"kill_after_timeout": _GIT_OP_TIMEOUT_SECONDS},
     )
 
 
 def _read_hooks_path(repo: Repo) -> str | None:
     try:
-        value = repo.git.config(
-            "--local", "--get", "core.hooksPath", kill_after_timeout=_GIT_OP_TIMEOUT_SECONDS
+        value = cast(  # cast-policy: seam: structural boundary (git config read; CLI returns plain text)
+            "str",
+            route_git_method(
+                repo,
+                "config",
+                ("--local", "--get", "core.hooksPath"),
+                {"kill_after_timeout": _GIT_OP_TIMEOUT_SECONDS},
+            ),
         )
     except GitCommandError as exc:
         if exc.status == 1:
@@ -358,8 +407,11 @@ def _restore_hooks_path(repo: Repo, ralph_dir: Path) -> None:
     if lines[0] == "missing":
         _unset_hooks_path(repo)
     elif lines[0] == "value" and len(lines) > 1:
-        repo.git.config(
-            "--local", "core.hooksPath", lines[1], kill_after_timeout=_GIT_OP_TIMEOUT_SECONDS
+        route_git_method(
+            repo,
+            "config",
+            ("--local", "core.hooksPath", lines[1]),
+            {"kill_after_timeout": _GIT_OP_TIMEOUT_SECONDS},
         )
 
     state_path.unlink()
@@ -368,8 +420,11 @@ def _restore_hooks_path(repo: Repo, ralph_dir: Path) -> None:
 def _unset_hooks_path(repo: Repo) -> None:
     missing_key_status = 5
     try:
-        repo.git.config(
-            "--local", "--unset-all", "core.hooksPath", kill_after_timeout=_GIT_OP_TIMEOUT_SECONDS
+        route_git_method(
+            repo,
+            "config",
+            ("--local", "--unset-all", "core.hooksPath"),
+            {"kill_after_timeout": _GIT_OP_TIMEOUT_SECONDS},
         )
     except GitCommandError as exc:
         if exc.status == missing_key_status:

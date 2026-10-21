@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.git.merge import branch_sha
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 
 if TYPE_CHECKING:
@@ -16,6 +17,12 @@ if TYPE_CHECKING:
 
 #: Wall-clock ceiling for each remote push attempt.
 PUSH_TIMEOUT_SECONDS = 30.0
+
+#: Wall-clock ceiling for the pre-push remote ref query.
+REF_QUERY_TIMEOUT_SECONDS = 10.0
+
+#: ``PushResult.detail`` marker for the skipped-push no-op publication.
+UP_TO_DATE_DETAIL = "remote ref already equals the local branch tip"
 
 
 PushStatus = StrEnum(
@@ -51,6 +58,8 @@ class PushResult:
     def summary(self) -> str:
         """Human-facing compatibility text derived from facts, never parsed."""
         if self.status is PushStatus.PUSHED:
+            if self.detail == UP_TO_DATE_DETAIL:
+                return f"{self.branch} already published to {self.remote}"
             return f"pushed {self.branch} to {self.remote}"
         if self.status is PushStatus.CREATED:
             return f"created {self.remote}/{self.branch}"
@@ -98,6 +107,41 @@ def _classify_failure(detail: str) -> PushStatus:
     return PushStatus.UNREACHABLE
 
 
+def _remote_ref_sha(repo_root: Path, remote: str, branch: str) -> str | None:
+    """Return the remote's ``refs/heads/<branch>`` SHA, or ``None`` when unreadable.
+
+    An unreadable remote and a remote that simply has no such branch are
+    both ``None`` on purpose: neither proves the remote already matches,
+    so neither may skip the push.
+    """
+    try:
+        result = run_git(
+            ("ls-remote", "--", remote, f"refs/heads/{branch}"),
+            cwd=repo_root,
+            label=f"git-ls-remote-{remote}",
+            options=GitRunOptions(timeout=REF_QUERY_TIMEOUT_SECONDS),
+        )
+    except Exception as exc:
+        logger.debug("auto_integrate_push: `git ls-remote` could not be launched: {}", exc)
+        return None
+    if result.returncode != 0:
+        return None
+    wanted = f"refs/heads/{branch}"
+    for raw in result.stdout.splitlines():
+        sha, _tab, ref = raw.partition("\t")
+        if ref.strip() == wanted:
+            return sha.strip() or None
+    return None
+
+
+def _publishable_locally(repo_root: Path, remote: str, branch: str) -> bool:
+    """Whether publication is a no-op because both refs already name one commit."""
+    local_sha = branch_sha(repo_root, branch)
+    if local_sha is None:
+        return False
+    return local_sha == _remote_ref_sha(repo_root, remote, branch)
+
+
 def _push_to_remote(
     repo_root: Path, remote: str, branch: str, *, timeout_seconds: float = PUSH_TIMEOUT_SECONDS
 ) -> tuple[bool, str]:
@@ -121,11 +165,22 @@ def push_branch_to_single_remote(
     remote: str,
     timeout_seconds: float = PUSH_TIMEOUT_SECONDS,
 ) -> PushResult:
-    """Push exactly ``refs/heads/<branch>`` to one remote without raising."""
+    """Push exactly ``refs/heads/<branch>`` to one remote without raising.
+
+    Publication is idempotent: when the local and remote refs already name
+    the same commit the push is skipped and the result still reports
+    success, because the postcondition callers assert -- the remote holds
+    the requested target branch -- already holds.
+    """
     if not isinstance(remote, str) or not remote.strip() or remote not in _list_remotes(repo_root):
         return PushResult(
             PushStatus.MISSING_REMOTE, remote if isinstance(remote, str) else "", branch
         )
+    if _publishable_locally(repo_root, remote, branch):
+        logger.debug(
+            "auto_integrate_push: '{}' already published to '{}'; push skipped", branch, remote
+        )
+        return PushResult(PushStatus.PUSHED, remote, branch, UP_TO_DATE_DETAIL)
     ok, detail = _push_to_remote(repo_root, remote, branch, timeout_seconds=timeout_seconds)
     if ok:
         status = PushStatus.CREATED if "[new branch]" in detail.lower() else PushStatus.PUSHED
@@ -135,4 +190,11 @@ def push_branch_to_single_remote(
     return PushResult(_classify_failure(detail), remote, branch, detail)
 
 
-__all__ = ["PUSH_TIMEOUT_SECONDS", "PushResult", "PushStatus", "push_branch_to_single_remote"]
+__all__ = [
+    "PUSH_TIMEOUT_SECONDS",
+    "REF_QUERY_TIMEOUT_SECONDS",
+    "UP_TO_DATE_DETAIL",
+    "PushResult",
+    "PushStatus",
+    "push_branch_to_single_remote",
+]

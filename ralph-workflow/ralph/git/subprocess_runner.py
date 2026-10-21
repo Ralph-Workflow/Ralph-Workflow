@@ -148,8 +148,38 @@ def run_git(
     When ``options.phase`` is provided the process label becomes
     ``phase:<phase>:git:<label>`` so process_phase_scope can terminate it.
 
+    Every call is routed through the per-common-dir
+    :class:`~ralph.git.git_command_queue.GitCommandQueue` so subprocess-path
+    git invocations serialize against every GitPython adapter call that goes
+    through :func:`route_git_method`, and a run of consecutive
+    ``subprocess.TimeoutExpired`` outcomes raises the queue's shared
+    consecutive-timeout health counter (read via
+    ``get_queue_for_repo(...).health_factor()``) that all callers back off
+    on. The ``GIT_SUBPROCESS_TIMEOUT_SECONDS`` ceiling remains the hard
+    per-command wall; the queue adds no additional wait.
+
     Raises subprocess.TimeoutExpired if timeout is exceeded.
     Raises subprocess.CalledProcessError if options.check is True and returncode != 0.
+    """
+    from ralph.git.git_command_queue import (  # noqa: PLC0415
+        route_run_git,  # reason: lazy import breaks runner<->queue cycle
+    )
+
+    return route_run_git(args, cwd=cwd, label=label, options=options)
+
+
+def _spawn_git(
+    args: Sequence[str],
+    *,
+    cwd: Path | None,
+    label: str,
+    options: GitRunOptions | None = None,
+) -> GitRunResult:
+    """Raw git spawn; called only by :func:`route_run_git` under the queue lock.
+
+    Kept separate from :func:`run_git` so every caller — including internal
+    ones — provably passes through the queue (the public symbol is the only
+    spawn entry point).
     """
     effective_options = options or GitRunOptions()
     phase = effective_options.phase
@@ -266,7 +296,6 @@ def run_git(
 
 
 __all__ = ["GitRunOptions", "run_git"]
-
 
 # ----- AC-14 catalog evidence -----
 # This file is the authoritative source for the catalog entries listed

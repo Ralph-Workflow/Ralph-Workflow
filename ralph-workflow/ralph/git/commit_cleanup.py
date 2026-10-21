@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, cast
 from git import InvalidGitRepositoryError, Repo
 from loguru import logger
 
+from ralph.git.git_command_queue import route_git_method
 from ralph.git.operations import _atomic_append_text, stage_all
 from ralph.skills._agent_paths import _SKILL_ROOT_PREFIXES
 
@@ -81,7 +82,7 @@ def delete_file_from_repo(repo_root: Path | str, relative_path: str) -> None:
                 entry_path == relative_path for entry_path, _stage in repo.index.entries
             )
             if tracked_in_index:
-                repo.git.rm("-f", "--cached", "--", relative_path)
+                route_git_method(repo, "rm", ("-f", "--cached", "--", relative_path))
         finally:
             repo.close()
 
@@ -125,8 +126,9 @@ def add_to_git_exclude(repo_root: Path | str, patterns: list[str]) -> None:
         ]
         if sensitive_patterns:
             tracked_output = cast(
-                "str", repo.git.ls_files("--cached", "-z")
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                "str",
+                route_git_method(repo, "ls_files", ("--cached", "-z")),
+            )  # cast-policy: seam: structural boundary (git null-separated output; CLI returns plain text)
             tracked: list[str] = [path for path in tracked_output.split("\0") if path]
             tracked_secrets: list[str] = [
                 path
@@ -137,7 +139,7 @@ def add_to_git_exclude(repo_root: Path | str, patterns: list[str]) -> None:
                 )
             ]
             if tracked_secrets:
-                repo.git.rm("-f", "--cached", "--", *tracked_secrets)
+                route_git_method(repo, "rm", ("-f", "--cached", "--", *tracked_secrets))
                 logger.debug(
                     "Untracked {} recognized secret file(s) while retaining working-tree copies",
                     len(tracked_secrets),
@@ -271,7 +273,7 @@ def untrack_engine_internal_files(
             if not is_internal_path(entry_path_str):
                 continue
             try:
-                repo.git.rm("--cached", "--", entry_path_str)
+                route_git_method(repo, "rm", ("--cached", "--", entry_path_str))
                 untracked.append(entry_path_str)
                 logger.debug(
                     "Pre-emptively untracked tracked engine-internal file: {}",

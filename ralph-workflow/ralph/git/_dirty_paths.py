@@ -24,6 +24,8 @@ from typing import cast
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 from loguru import logger
 
+from ralph.git.git_command_queue import route_git_method
+
 # ``git status --porcelain`` lines start with a 2-char status code followed
 # by a single space -- so a valid line has at least 4 characters of prefix
 # before the path body begins. Lines shorter than this are noise.
@@ -40,10 +42,21 @@ def _list_dirty_paths(repo: Repo, scope: str) -> list[str]:
 
     ``--untracked-files=all`` is required so nested untracked files are
     reported individually rather than collapsed to the parent directory.
+
+    The ``repo.git.status`` call is dispatched through
+    :func:`route_git_method` so every dirty-path probe acquires the
+    shared per-repository :class:`GitCommandQueue` lock — successive
+    ``commit_scoped_updates`` probes cannot interleave with a sibling
+    chore writer that is staging the same scope.
     """
     raw = cast(
-        "str", repo.git.status("--porcelain", "--untracked-files=all", "--", scope)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        "str",
+        route_git_method(
+            repo,
+            "status",
+            ("--porcelain", "--untracked-files=all", "--", scope),
+        ),
+    )  # cast-policy: seam: structural boundary (git stdout probe; CLI returns plain text)
     dirty: list[str] = []
     for line in raw.splitlines():
         if len(line) < _GIT_PORCELAIN_PREFIX_LEN:
@@ -67,7 +80,11 @@ def list_dirty_paths(repo_root: Path | str) -> frozenset[str]:
     """
     try:
         repo = Repo(Path(repo_root), search_parent_directories=False)
-        raw: object = repo.git.status("--porcelain", "--untracked-files=all")
+        raw: object = route_git_method(
+            repo,
+            "status",
+            ("--porcelain", "--untracked-files=all"),
+        )
     except (InvalidGitRepositoryError, GitCommandError, OSError) as exc:
         logger.debug("could not snapshot the working tree ({}); assuming clean", exc)
         return frozenset()
@@ -98,7 +115,11 @@ def snapshot_dirty_paths_strict(repo_root: Path | str) -> frozenset[str] | None:
     """
     try:
         repo = Repo(Path(repo_root), search_parent_directories=False)
-        raw: object = repo.git.status("--porcelain", "--untracked-files=all")
+        raw: object = route_git_method(
+            repo,
+            "status",
+            ("--porcelain", "--untracked-files=all"),
+        )
     except (InvalidGitRepositoryError, GitCommandError, OSError) as exc:
         logger.debug("could not snapshot the working tree strictly ({}); reporting None", exc)
         return None

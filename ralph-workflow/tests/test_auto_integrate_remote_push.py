@@ -139,7 +139,7 @@ def test_push_hook_exception_preserves_local_landing(monkeypatch: pytest.MonkeyP
     result = push_target_after_landing(_config(enabled=True), Path("/repo"), "release", record)
     assert result.fast_forwarded is True
     assert result.last_publication_decision == "publish_deferred_remote"
-    assert result.last_remote_sync == "origin unreachable"
+    assert result.last_remote_sync == "remote unreachable"
     assert result.last_push_status == "unreachable"
     assert "remote unavailable" in (result.last_reason or "")
 

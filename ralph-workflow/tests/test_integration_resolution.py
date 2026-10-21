@@ -17,7 +17,9 @@ from ralph.pipeline.integration_resolution import (
     EXHAUSTED,
     RECOVERABLE,
     RESOLVED,
+    IntegrationState,
     TreeReadinessAssessment,
+    UnknownKind,
     assert_non_resolution_dispatch_allowed,
     assess_tree_readiness,
     inspect_integration_resolution,
@@ -116,8 +118,13 @@ def test_in_progress_integration_blocks_even_with_clean_porcelain(
     assert any(expected_reason in reason for reason in verdict.reasons)
 
 
-def test_unreadable_porcelain_still_fails_closed(tmp_path: Path) -> None:
-    """An inspection that cannot run remains unsafe."""
+def test_unreadable_porcelain_is_unknown_not_blocking(tmp_path: Path) -> None:
+    """An inspection that cannot run is UNKNOWN, never a blocking reason.
+
+    Treating a timed-out or unreadable probe as evidence of a conflict is
+    what deadlocked runs: the recovery executor the verdict named had no
+    conflict to repair and no way to prove the repository was repaired.
+    """
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -126,8 +133,13 @@ def test_unreadable_porcelain_still_fails_closed(tmp_path: Path) -> None:
         merge_status=lambda _: MERGE_STATE_NONE,
     )
 
-    assert verdict.status is RECOVERABLE
-    assert not verdict.dispatch_allowed
+    assert verdict.integration_state is IntegrationState.UNKNOWN
+    assert verdict.status is RESOLVED
+    assert verdict.dispatch_allowed
+    assert verdict.reasons == ()
+    assert verdict.recovery_executor is None
+    assert verdict.blocking_reasons == ()
+    assert verdict.unknown_kinds == (UnknownKind.PORCELAIN_UNREADABLE,)
 
 
 def test_clean_live_inspection_reconciles_stale_resolution_evidence(tmp_path: Path) -> None:
@@ -325,7 +337,7 @@ def test_live_git_evidence_blocks_stale_resolved_state(
     assert reason in verdict.reasons
 
 
-def test_unreadable_git_inspection_fails_closed(tmp_path: Path) -> None:
+def test_unreadable_git_inspection_is_unknown(tmp_path: Path) -> None:
     verdict = inspect_integration_resolution(
         tmp_path,
         RebaseState(),
@@ -334,7 +346,9 @@ def test_unreadable_git_inspection_fails_closed(tmp_path: Path) -> None:
         merge_status=lambda _: MERGE_STATE_NONE,
     )
 
-    assert verdict.status is RECOVERABLE
+    assert verdict.integration_state is IntegrationState.UNKNOWN
+    assert verdict.status is RESOLVED
+    assert verdict.integration_ready is False
 
 
 def test_exhaustion_is_terminal_while_the_conflict_is_still_there(tmp_path: Path) -> None:

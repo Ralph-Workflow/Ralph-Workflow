@@ -223,6 +223,7 @@ _SEAM_ALLOWLIST: frozenset[tuple[str, str]] = frozenset(
         ("controller", "dict[str, int]"),
         ("ddgs", "Callable[[], _DdgsTextClient] | None"),
         ("dirty_paths", "ExploreStoreLike | None"),
+        ("dirty_paths", "str"),
         ("dispatcher", "Iterable[int]"),
         ("dispatcher", "SignalGetter"),
         ("dispatcher", "SignalSetter"),
@@ -265,6 +266,7 @@ _SEAM_ALLOWLIST: frozenset[tuple[str, str]] = frozenset(
         ("fan_out", "str | None"),
         ("fan_out", "type[ParallelDisplay]"),
         ("gemini", "JsonDict"),
+        ("git_command_queue", "Repo"),
         ("git_read", "Path | str | None"),
         ("git_read", "_ReadablePipe"),
         ("git_read", "_SpawnedProcessLike"),
@@ -353,6 +355,7 @@ _SEAM_ALLOWLIST: frozenset[tuple[str, str]] = frozenset(
         ("verify_timeout", "list[str]"),
         ("development_result", "tuple[str, ...]"),
         ("subscriber", "int | float"),
+        ("wrapper", "str"),
     }
 )
 

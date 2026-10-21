@@ -35,6 +35,7 @@ import typing
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -148,9 +149,27 @@ _VERBOSE_THRESHOLD = 2
 _SKIP_PREFIX = "skip:"
 _MAX_METADATA_PARTS = 5
 _MISSING_COMMIT_ARTIFACT_REASON = "agent completed without writing a commit_message artifact"
+_NO_COMMIT_MESSAGE_REASON = "commit-message agent chain produced no message and no skip response"
 _MAX_COMMIT_PARSED_OUTPUT_LINES = 128
 _MAX_COMMIT_RAW_OUTPUT_LINES = 256
 _COMMIT_RUN_ID = "commit-plumbing"
+
+
+class CommitAgentOutcome(Enum):
+    """Single-source outcome category returned by :func:`run_commit_plumbing`.
+
+    The plumbing module is the only owner of which category a result
+    falls into. Callers use :attr:`CommitAgentResult.outcome` to render
+    the result without inferring failure from a missing ``message``
+    string -- the contract was previously ambiguous when a recoverable
+    retry failure produced both a ``message`` and ``failure_details``,
+    and a chain that yielded nothing left the CLI unable to tell apart
+    "completed" from "silent failure".
+    """
+
+    COMPLETED = "completed"
+    SKIPPED = "skipped"
+    FAILED = "failed"
 
 
 @dataclass(frozen=True)
@@ -161,6 +180,12 @@ class CommitAgentResult:
     exit code derivation. The new ``output`` field exposes the captured
     agent lines so the CLI can render transcript content when
     ``verbose`` is enabled.
+
+    The ``outcome`` field is the SINGLE authoritative completion
+    category (AC8). It is set by :func:`run_commit_plumbing` and never
+    left implicit -- the absence of a ``message`` is no longer the
+    only signal of failure, and the CLI must check ``outcome`` to
+    avoid displaying a failed commit as a completed one.
     """
 
     message: str = ""
@@ -169,6 +194,19 @@ class CommitAgentResult:
     session_id: str | None = None
     last_error: Exception | None = None
     output: list[str] = field(default_factory=list)
+    outcome: CommitAgentOutcome = CommitAgentOutcome.FAILED
+
+    @property
+    def failed(self) -> bool:
+        """True iff the commit phase did not produce a usable commit message.
+
+        Matches the legacy contract that distinguishes success from
+        failure by the presence of a message (a skip and a successful
+        message are both ``not failed``).
+        """
+        if self.skipped:
+            return False
+        return not bool(self.message.strip())
 
 
 def _commit_required_artifact() -> RequiredArtifact:
@@ -325,7 +363,10 @@ def run_commit_plumbing(
         display_context,
     )
     if not integration_verdict.dispatch_allowed:
-        return CommitAgentResult(failure_details=[commit_integration_blocker(integration_verdict)])
+        return CommitAgentResult(
+            failure_details=[commit_integration_blocker(integration_verdict)],
+            outcome=CommitAgentOutcome.FAILED,
+        )
 
     template_dirs = (repo_root / ".agent" / "prompts" / "commit", *default_template_dirs(repo_root))
     template_registry = TemplateRegistry(template_dirs=template_dirs)
@@ -390,6 +431,7 @@ def run_commit_plumbing(
                 return CommitAgentResult(
                     failure_details=[commit_integration_blocker(blocked.verdict)],
                     last_error=blocked,
+                    outcome=CommitAgentOutcome.FAILED,
                 )
             failure_details.extend(result.failure_details)
             last_session_id = result.session_id or last_session_id
@@ -402,6 +444,7 @@ def run_commit_plumbing(
                     session_id=last_session_id,
                     last_error=last_error,
                     output=list(output_lines),
+                    outcome=CommitAgentOutcome.SKIPPED,
                 )
             if result.message:
                 return CommitAgentResult(
@@ -410,13 +453,25 @@ def run_commit_plumbing(
                     session_id=last_session_id,
                     last_error=last_error,
                     output=list(output_lines),
+                    outcome=CommitAgentOutcome.COMPLETED,
                 )
 
+    # AC8: a chain that completes every agent without yielding a message
+    # MUST NOT silently render as completed. Surface the gap with an
+    # explicit outcome=FAILED plus a non-empty failure_details entry so
+    # the CLI's "Failed to generate commit message" path has something
+    # concrete to print. The previous contract only inferred failure
+    # from ``not result.message``; a fully blank attempt today could
+    # masquerade as success in status-bar surfaces if the consumer
+    # forgot to check that field.
+    if not failure_details:
+        failure_details.append(_NO_COMMIT_MESSAGE_REASON)
     return CommitAgentResult(
         failure_details=failure_details,
         session_id=last_session_id,
         last_error=last_error,
         output=list(output_lines),
+        outcome=CommitAgentOutcome.FAILED,
     )
 
 
@@ -573,10 +628,13 @@ def _generate_commit_message_with_agent(
                 )
             failure_details.append(summary_retry.failure_detail)
 
+    if not failure_details:
+        failure_details.append(_NO_COMMIT_MESSAGE_REASON)
     return CommitAgentResult(
         failure_details=failure_details,
         session_id=last_session_id,
         last_error=last_error,
+        outcome=CommitAgentOutcome.FAILED,
     )
 
 
@@ -964,12 +1022,26 @@ def _finalize_commit_attempt(
             failure_details=failure_details,
             session_id=session_id,
             last_error=last_error,
+            outcome=CommitAgentOutcome.SKIPPED,
         )
+    if attempt.message:
+        return CommitAgentResult(
+            message=attempt.message,
+            failure_details=failure_details,
+            session_id=session_id,
+            last_error=last_error,
+            outcome=CommitAgentOutcome.COMPLETED,
+        )
+    # Attempt produced neither a message nor a skip response. Surface
+    # the failure explicitly so the chain orchestrator can stamp the
+    # result with outcome=FAILED.
     return CommitAgentResult(
-        message=attempt.message,
-        failure_details=failure_details,
+        failure_details=[*failure_details, attempt.failure_detail]
+        if attempt.failure_detail
+        else failure_details,
         session_id=session_id,
         last_error=last_error,
+        outcome=CommitAgentOutcome.FAILED,
     )
 
 

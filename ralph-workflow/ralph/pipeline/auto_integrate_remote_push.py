@@ -24,6 +24,8 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git import remote_push as _remote_push_module
+from ralph.git.merge import branch_sha
+from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._publication_state_machine import (
     PublicationDecision,
@@ -32,6 +34,7 @@ from ralph.pipeline._publication_state_machine import (
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_DIVERGED,
     REFRESH_NO_REMOTE,
+    REFRESH_ORIGIN_AHEAD,
     REFRESH_UNREACHABLE,
 )
 from ralph.pipeline.rebase_state import RebaseState
@@ -64,6 +67,11 @@ def _default_remote_client() -> _DefaultRemoteClient:
 
 
 __all__ = [
+    "_PushOutcome",
+    "_align_target_with_remote",
+    "_attempt_reconcile_and_push",
+    "_probe_refresh_outcome",
+    "_reconcile_in_progress_rebase",
     "_remote_push_module",
     "push_single_remote",
     "push_target_after_landing",
@@ -76,6 +84,33 @@ _MAX_REMOTE_SYNC_ATTEMPTS = 3
 
 
 # ----- Push hook --------------------------------------------------------
+
+
+def _safe_target_sha(repo_root: Path, target: str) -> str | None:
+    """Read the local target SHA, mapping failures to ``None`` (never raises)."""
+    try:
+        return branch_sha(repo_root, target)
+    except Exception:
+        return None
+
+
+def _observe_remote_tracking_sha(
+    repo_root: Path,
+    target: str,
+    *,
+    remote: str,
+    remote_client: RemoteClient | None = None,
+) -> str | None:
+    """Observe the remote-tracking ref SHA without raising.
+
+    ``None`` means UNKNOWN (unobservable remote): the caller must NOT
+    treat it as proof the push can be skipped.
+    """
+    client = remote_client or _default_remote_client()
+    try:
+        return client.observe_remote_sha(repo_root, target, remote=remote)
+    except Exception:
+        return None
 
 
 def push_single_remote(
@@ -173,6 +208,23 @@ def push_target_after_landing(
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
 
     import ralph.pipeline.auto_integrate_remote_sync as _remote_sync
+
+    # Publish idempotency (O2/AC10): when the live local target ref and the
+    # observed remote-tracking ref already name the same commit, the
+    # postcondition "the remote holds the target" already holds, so the push
+    # subprocess is skipped and the record reports terminal publication.
+    local_sha = _safe_target_sha(repo_root, target)
+    observed_remote_sha = _observe_remote_tracking_sha(
+        repo_root, target, remote=chosen_remote, remote_client=remote_client
+    )
+    if local_sha is not None and observed_remote_sha is not None and local_sha == observed_remote_sha:
+        return _remote_sync._record_publication_failure(
+            record,
+            last_remote_sync=_remote_sync.REMOTE_ALREADY_CURRENT,
+            last_reason="local and remote already converge; push skipped",
+            fast_forwarded=True,
+            publication_decision=PublicationDecision.PUBLICATION_TERMINAL,
+        )
 
     push_fn = _remote_sync.push_single_remote
     push_record = (
@@ -388,36 +440,90 @@ def _probe_refresh_outcome(refresh: str, remote: str, target: str) -> _PushOutco
     return None
 
 
-def _attempt_reconcile_and_push(
-    *,
+def _reconcile_in_progress_rebase(
+    repo_root: Path,
+    target: str,
+    config: UnifiedConfig | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+) -> _PushOutcome | None:
+    """Resolve an in-progress rebase that blocks the push, when one is active.
+
+    Returns ``None`` when nothing further has to happen (rebase cleared
+    cleanly OR was not active when this function ran). Returns a
+    push outcome that should abort this attempt otherwise.
+    """
+    if rebase_stop_resolver is not None:
+        from ralph.pipeline.conflict_resolution import (
+            resolution_session_from_config,
+            resolve_rebase_in_progress,
+        )
+
+        session = resolution_session_from_config(config) if config is not None else None
+        resolved = (
+            resolve_rebase_in_progress(repo_root, target, rebase_stop_resolver, session=session)
+            if session is not None
+            else resolve_rebase_in_progress(repo_root, target, rebase_stop_resolver)
+        )
+        if not resolved:
+            return _PushOutcome(
+                success=False,
+                summary=f"rebase in progress on {target} could not be resolved",
+                pushed=False,
+            )
+        return None
+    from ralph.pipeline.conflict_resolution.abort import (
+        abort_rebase_discarding_progress,
+    )
+
+    abort_rebase_discarding_progress(repo_root)
+    return _PushOutcome(
+        success=False,
+        summary=f"rebase in progress on {target} cleanly aborted without resolver",
+        pushed=False,
+        status=_remote_push_module.PushStatus.NON_FAST_FORWARD,
+    )
+
+
+def _align_target_with_remote(
     repo_root: Path,
     target: str,
     remote: str,
+    refresh: str,
     config: UnifiedConfig | None,
-    reintegrate: Callable[[], bool] | None,
     rebase_stop_resolver: RebaseStopResolver | None,
-    record: RebaseState | None = None,
     remote_client: RemoteClient | None = None,
-) -> _PushOutcome:
-    """Run a single fetch -> rebase-target-onto-remote -> push cycle."""
-    from ralph.pipeline.auto_integrate_remote_sync import (
-        FETCH_TIMEOUT_SECONDS,
-        reclaim_target_worktree_enabled,
-    )
+) -> _PushOutcome | None:
+    """Align the local ref with the remote observation before attempting push.
 
-    client = remote_client or _default_remote_client()
-    refresh = client.refresh_target(
-        repo_root,
-        target,
-        timeout_seconds=FETCH_TIMEOUT_SECONDS,
-        remote=remote,
-    )
-    refresh_outcome = _probe_refresh_outcome(refresh, remote, target)
-    if refresh_outcome is not None:
-        return refresh_outcome
+    Returns ``None`` when no alignment is needed. Returns a failed
+    push outcome the caller should surface when alignment cannot
+    proceed.
 
-    if refresh == REFRESH_DIVERGED:
+    Three branches:
+
+    * in-progress rebase -- delegate to the configured conflict
+      resolver (or cleanly abort when no resolver is configured).
+    * diverged -- call :func:`reconcile_target_onto_remote` from the
+      remote-sync module so the target history lands on top of the
+      fetched remote SHA.
+    * remote ahead -- call :func:`attempt_catchup_fast_forward` so the
+      local target ref catches up before the next push attempt.
+    """
+    rebase_ongoing = False
+    try:
+        rebase_ongoing = rebase_in_progress(repo_root)
+    except Exception:
+        rebase_ongoing = False
+
+    if rebase_ongoing:
+        ongoing_outcome = _reconcile_in_progress_rebase(
+            repo_root, target, config, rebase_stop_resolver
+        )
+        if ongoing_outcome is not None:
+            return ongoing_outcome
+    elif refresh == REFRESH_DIVERGED:
         from ralph.pipeline.auto_integrate_remote_reconcile import reconcile_target_onto_remote
+        from ralph.pipeline.auto_integrate_remote_sync import reclaim_target_worktree_enabled
 
         reconciliation = reconcile_target_onto_remote(
             repo_root,
@@ -438,6 +544,65 @@ def _attempt_reconcile_and_push(
                     else None
                 ),
             )
+    elif refresh == REFRESH_ORIGIN_AHEAD:
+        from ralph.pipeline.auto_integrate_catchup import attempt_catchup_fast_forward
+
+        catchup_res = attempt_catchup_fast_forward(
+            config,
+            repo_root,
+            target=target,
+            remote=remote,
+            remote_client=remote_client,
+        )
+        if catchup_res != "fast-forwarded":
+            return _PushOutcome(
+                success=False,
+                summary="remote ahead but catch-up could not advance local target",
+                pushed=False,
+                status=_remote_push_module.PushStatus.NON_FAST_FORWARD,
+            )
+    return None
+
+
+def _attempt_reconcile_and_push(
+    *,
+    repo_root: Path,
+    target: str,
+    remote: str,
+    config: UnifiedConfig | None,
+    reintegrate: Callable[[], bool] | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+    record: RebaseState | None = None,
+    remote_client: RemoteClient | None = None,
+) -> _PushOutcome:
+    """Run a single fetch -> rebase-target-onto-remote -> push cycle."""
+    from ralph.pipeline.auto_integrate_remote_sync import (
+        FETCH_TIMEOUT_SECONDS,
+        push_single_remote,
+    )
+
+    client = remote_client or _default_remote_client()
+    refresh = client.refresh_target(
+        repo_root,
+        target,
+        timeout_seconds=FETCH_TIMEOUT_SECONDS,
+        remote=remote,
+    )
+    refresh_outcome = _probe_refresh_outcome(refresh, remote, target)
+    if refresh_outcome is not None:
+        return refresh_outcome
+
+    align_outcome = _align_target_with_remote(
+        repo_root=repo_root,
+        target=target,
+        remote=remote,
+        refresh=refresh,
+        config=config,
+        rebase_stop_resolver=rebase_stop_resolver,
+        remote_client=remote_client,
+    )
+    if align_outcome is not None:
+        return align_outcome
     if reintegrate is not None and not reintegrate():
         return _PushOutcome(
             success=False,
@@ -449,10 +614,7 @@ def _attempt_reconcile_and_push(
         if record is not None
         else RebaseState(fast_forwarded=True, freshness_verdict="verified")
     )
-    import ralph.pipeline.auto_integrate_remote_sync as _remote_sync
-
-    push_fn = _remote_sync.push_single_remote
-    typed_result, _ = push_fn(
+    typed_result, _ = push_single_remote(
         repo_root,
         target,
         remote=remote,

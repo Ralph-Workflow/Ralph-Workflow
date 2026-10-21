@@ -28,7 +28,7 @@ class RemoteSyncStatus(StrEnum):
     NO_REMOTE_BRANCH = "no remote branch"
     LOCAL_AHEAD = "local ahead"
     ALREADY_CURRENT = "already current"
-    REMOTE_UNREACHABLE = "origin unreachable"
+    REMOTE_UNREACHABLE = "remote unreachable"
     AUTH_FAILED = "auth failed"
     REJECTED_BY_HOOK = "rejected by remote hook"
     NON_FAST_FORWARD = "non-fast-forward"
