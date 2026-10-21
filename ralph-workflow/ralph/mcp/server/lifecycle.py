@@ -3304,6 +3304,8 @@ def _spawn_process(
                 pass_fds=pass_fds,
                 allow_activity_relay_controls=True,
                 allow_broker_secret=True,
+                # The server's owner watch requires the owner as its parent.
+                require_direct_parent=True,
             ),
         )
     finally:

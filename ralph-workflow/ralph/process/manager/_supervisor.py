@@ -36,8 +36,11 @@ the supervisor's own single-threaded interpreter:
 1. ``PR_SET_PDEATHSIG=SIGTERM`` is armed against the supervisor's own parent
    (the MCP server holder). When the holder dies -- whatever signal it died
    from, including SIGKILL -- the kernel delivers SIGTERM to the supervisor.
-2. A SIGTERM handler is installed that ``killpg``s the supervisor's own PG
-   with SIGKILL and exits. The supervisor is spawned with
+2. A SIGTERM handler is installed. Once the holder is gone it ``killpg``s
+   the supervisor's own PG with SIGKILL and exits; while the holder is alive
+   it forwards the signal to the PG instead, so a deliberate terminate keeps
+   the holder's grace period and the holder owns escalation. The
+   supervisor is spawned with
    ``start_new_session=True`` so it leads its own PG, and the worker is
    ``fork``ed AFTER that point so the worker's PG ID == supervisor's PID. Any
    descendants the worker spawns (e.g. ``sh -c 'sleep 600 & sleep 600'``)
@@ -54,9 +57,10 @@ Public surface
 --------------
 
 * ``run(argv: list[str]) -> int`` -- the only callable the supervisor exposes.
-  The factory invokes it as ``python -u -c
-  "from ralph.process.manager._supervisor import run;
-   sys.exit(run(sys.argv[1:]))" <command...>``.
+  The factory invokes this file as a script, ``python -I -u <path to
+  _supervisor.py> <command...>``: isolated mode keeps the child's ``cwd`` and
+  ``PYTHONPATH`` off ``sys.path``, which is safe because the module is
+  stdlib-only.
 * No module-level side effects on import (no ``atexit``, no signal handlers).
 """
 
@@ -67,7 +71,11 @@ import ctypes
 import os
 import signal
 import sys
-from typing import NoReturn, Protocol, cast
+from typing import TYPE_CHECKING, NoReturn, Protocol, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from types import FrameType
 
 # Linux prctl(2) numbers, not exposed by the stdlib.
 _PR_SET_PDEATHSIG: int = 1
@@ -131,8 +139,7 @@ def _set_pdeathsig(signal_number: int) -> bool:
 def _kill_tree_and_exit() -> NoReturn:
     """SIGKILL the entire PG this supervisor leads, then exit immediately.
 
-    Called from the SIGTERM handler AND from the cleanup branch after a
-    successful child wait (defense-in-depth). The PG includes the worker
+    Called from the termination handler once the holder is gone. The PG includes the worker
     and every descendant the worker spawned, because the worker inherited
     our PG ID at ``fork`` time (``start_new_session=True`` was applied to
     the supervisor, not the worker, so the worker does not get a fresh PG).
@@ -145,9 +152,36 @@ def _kill_tree_and_exit() -> NoReturn:
     os._exit(0)
 
 
-def _on_sigterm(signum: int, frame: object) -> None:
-    del signum, frame
-    _kill_tree_and_exit()
+def _forward_to_group(signum: int) -> None:
+    """Re-send ``signum`` to the worker's PG without re-entering this handler."""
+    handler = signal.getsignal(signum)
+    signal.signal(signum, signal.SIG_IGN)
+    try:
+        with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+            os.killpg(os.getpid(), signum)
+    finally:
+        signal.signal(signum, handler)
+
+
+def _termination_handler(holder_pid: int) -> Callable[[int, FrameType | None], None]:
+    """Build the SIGTERM/SIGINT/SIGHUP handler for a supervisor owned by ``holder_pid``.
+
+    A signal that arrives after the holder died (PR_SET_PDEATHSIG, or we were
+    reparented) means nobody is left to escalate, so the whole PG is
+    SIGKILLed. While the holder is alive the signal is a deliberate
+    termination: it is forwarded to the worker's PG and the supervisor keeps
+    waiting, so the worker gets the holder's grace period and the holder
+    escalates to SIGKILL itself (the worker's own PDEATHSIG then follows the
+    supervisor down).
+    """
+
+    def handle(signum: int, frame: FrameType | None) -> None:
+        del frame
+        if os.getppid() != holder_pid:
+            _kill_tree_and_exit()
+        _forward_to_group(signum)
+
+    return handle
 
 
 def run(argv: list[str]) -> int:
@@ -171,9 +205,10 @@ def run(argv: list[str]) -> int:
     # land on the default handler and terminate only the supervisor; the
     # worker would then be orphaned. Keeping the order "sigaction first,
     # then prctl" closes that race.
-    signal.signal(signal.SIGTERM, _on_sigterm)
-    signal.signal(signal.SIGINT, _on_sigterm)
-    signal.signal(signal.SIGHUP, _on_sigterm)
+    on_termination = _termination_handler(os.getppid())
+    signal.signal(signal.SIGTERM, on_termination)
+    signal.signal(signal.SIGINT, on_termination)
+    signal.signal(signal.SIGHUP, on_termination)
 
     if not _set_pdeathsig(_SIGTERM):
         # Linux-only code path called the supervisor; if prctl cannot arm
@@ -186,7 +221,7 @@ def run(argv: list[str]) -> int:
         # CHILD -- becomes the worker.
         # Reset inherited signal disposition back to SIG_DFL before exec so
         # the worker program does not see a stale handler pointing at our
-        # _on_sigterm (which references ``os._exit`` -- meaningless in the
+        # termination handler (which references ``os._exit`` -- meaningless in the
         # exec'd program). ``os.execvp`` resets handlers too, but resetting
         # explicitly also closes the race if SIGTERM lands between fork
         # and exec.

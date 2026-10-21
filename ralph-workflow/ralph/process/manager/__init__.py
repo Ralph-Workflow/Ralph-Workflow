@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import ctypes
+import errno
 import os
+import shutil
 import subprocess
 import sys
 import threading
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from ralph.process._spawn_env import child_env_for_spawn
@@ -39,7 +42,7 @@ from ralph.process.manager._spawn_options import SpawnOptions
 from ralph.process.pty import spawn_pty_process
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 
 class _Prctl(Protocol):
@@ -73,6 +76,7 @@ class _PopenConstructor(Protocol):
 
 
 _PR_SET_PDEATHSIG: Final[int] = 1
+_SUPERVISOR_SCRIPT: Final[Path] = Path(__file__).with_name("_supervisor.py")
 _SIGKILL: Final[int] = 9
 _PRCTL_FN: _Prctl | None = None
 if sys.platform.startswith("linux"):
@@ -111,23 +115,39 @@ def _install_pdeathsig() -> None:
 def _supervisor_invocation(command: Sequence[str]) -> list[str]:
     """Build the ``argv`` that runs the supervisor with ``command``.
 
-    Invoked as ``python -u -c <inline-import>`` so the supervisor body
-    runs in the same interpreter we'd otherwise pay to start anyway, and
-    the worker command gets pushed into ``sys.argv[1:]`` so the supervisor's
-    ``run(argv)`` sees it cleanly. ``-u`` (unbuffered stdout/stderr) keeps
-    the holder's pipe readable in tests that poll the supervisor's stdout.
+    The supervisor is stdlib-only, so it runs as a script under ``-I``
+    (isolated mode): neither the child's ``cwd`` nor ``PYTHONPATH`` is put on
+    ``sys.path``. A ``python -c "from ralph... import run"`` invocation
+    imported whatever ``ralph`` package sat in the child's working directory,
+    so an exec job inside another ralph-workflow checkout ran (or failed to
+    find) that checkout's supervisor. Isolation applies only to the
+    supervisor interpreter; the worker still receives the full ``env``.
+    ``-u`` (unbuffered stdout/stderr) keeps the holder's pipe readable in
+    tests that poll the supervisor's stdout. The worker command lands in
+    ``sys.argv[1:]`` so the supervisor's ``run(argv)`` sees it cleanly.
     """
     return [
         sys.executable,
+        "-I",
         "-u",
-        "-c",
-        (
-            "import sys;"
-            " from ralph.process.manager._supervisor import run;"
-            " sys.exit(run(sys.argv[1:]))"
-        ),
+        str(_SUPERVISOR_SCRIPT),
         *[os.fsdecode(a) for a in command],
     ]
+
+
+def _require_executable(command: Sequence[str], opts: SpawnOptions, env: Mapping[str, str]) -> None:
+    """Raise ``FileNotFoundError`` like ``Popen`` would for a missing executable.
+
+    The supervisor execs the worker after ``Popen`` has already returned, so
+    an unresolvable command would otherwise surface as a silent exit 127
+    instead of the ``OSError`` every unsupervised spawn raises.
+    """
+    program = os.fsdecode(command[0])
+    # ``which`` checks a path-qualified program (resolved against the child's
+    # cwd, as exec would) directly, and searches the child's PATH otherwise.
+    target = str(Path(opts.cwd or ".", program)) if os.sep in program else program
+    if shutil.which(target, path=env.get("PATH", os.defpath)) is None:
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), program)
 
 
 def _default_sync_process_factory(
@@ -143,7 +163,7 @@ def _default_sync_process_factory(
     )
     on_linux = sys.platform.startswith("linux")
     on_main_thread = threading.current_thread() is threading.main_thread()
-    if on_linux and not on_main_thread:
+    if on_linux and not on_main_thread and not opts.require_direct_parent:
         # Off-main-thread spawn (the production HTTP dispatch path: see
         # ``ralph/mcp/server/_saturated_dispatch.py:155-173`` -> the exec
         # tool's registry.start). Popen with NO ``preexec_fn`` is safe from
@@ -154,6 +174,7 @@ def _default_sync_process_factory(
         # the supervisor at the head of a fresh PG, and the worker inherits
         # that PG at fork time -- covering the documented gap that PR_SET_PDEATHSIG
         # doesn't survive a sigkill + grandchild hop on the legacy path.
+        _require_executable(command, opts, child_env)
         popen: _PopenConstructor = subprocess.Popen
         return popen(
             _supervisor_invocation(command),
@@ -167,9 +188,7 @@ def _default_sync_process_factory(
             errors=opts.errors if opts.text else None,
             pass_fds=opts.pass_fds,
         )
-    preexec: Callable[[], None] | None = (
-        _install_pdeathsig if on_linux and on_main_thread else None
-    )
+    preexec: Callable[[], None] | None = _install_pdeathsig if on_linux and on_main_thread else None
     popen_ctor: _PopenConstructor = subprocess.Popen
     return popen_ctor(
         command,

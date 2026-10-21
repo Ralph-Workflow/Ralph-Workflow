@@ -25,10 +25,19 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+from ralph.executor import ProcessExecutionError, ProcessResult, run_process
+from ralph.executor.process import ProcessRunOptions
+from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 pytestmark = [
     pytest.mark.subprocess_e2e,
@@ -464,8 +473,8 @@ def test_worker_thread_sigkill_kills_exec_job_tree_and_its_descendant(
         "    '-c',\n"
         "    (\n"
         "        'import os, subprocess, time\\n'\n"
-        "        'p = subprocess.Popen([\"sleep\", \"600\"])\\n'\n"
-        "        'open(os.environ[\"DESCENDANT_FILE\"], \"w\").write(str(p.pid))\\n'\n"
+        '        \'p = subprocess.Popen(["sleep", "600"])\\n\'\n'
+        '        \'open(os.environ["DESCENDANT_FILE"], "w").write(str(p.pid))\\n\'\n'
         "        'while True:\\n'\n"
         "        '    time.sleep(60)\\n'\n"
         "    ),\n"
@@ -551,8 +560,7 @@ def test_worker_thread_sigkill_kills_exec_job_tree_and_its_descendant(
         # psutil, not the supervisor itself -- otherwise the production
         # boundary is broken.
         assert supervisor_pid != worker_pid, (
-            f'supervisor_pid ({supervisor_pid}) must not collide with worker_pid '
-            f'({worker_pid})'
+            f"supervisor_pid ({supervisor_pid}) must not collide with worker_pid ({worker_pid})"
         )
 
         # Sanity: every participant must be a live process before we
@@ -607,3 +615,101 @@ def test_worker_thread_sigkill_kills_exec_job_tree_and_its_descendant(
                 continue
             with __import__("contextlib").suppress(ProcessLookupError, OSError):
                 os.kill(pid, 9)
+
+
+def _on_worker_thread(action: Callable[[], object]) -> object:
+    """Run ``action`` on a non-main thread, where the supervisor path applies."""
+    outcome: dict[str, object] = {}
+
+    def run() -> None:
+        try:
+            outcome["value"] = action()
+        except Exception as error:
+            outcome["error"] = error
+
+    worker = threading.Thread(target=run, name="supervised-spawn")
+    worker.start()
+    worker.join(timeout=10.0)
+    error = outcome.get("error")
+    if isinstance(error, Exception):
+        raise error
+    return outcome["value"]
+
+
+@_LINUX_ONLY
+def test_supervised_spawn_does_not_import_ralph_from_the_child_cwd(tmp_path: Path) -> None:
+    """An exec job whose cwd holds a ``ralph`` package must still run normally."""
+    shadow = tmp_path / "ralph"
+    shadow.mkdir()
+    (shadow / "__init__.py").write_text('raise SystemExit("shadowed")\n', encoding="utf-8")
+
+    result = _on_worker_thread(
+        lambda: run_process("/bin/echo", ("hi",), options=ProcessRunOptions(cwd=tmp_path))
+    )
+
+    assert isinstance(result, ProcessResult)
+    assert (result.returncode, result.stdout, result.stderr) == (0, "hi\n", "")
+
+
+@_LINUX_ONLY
+def test_supervised_spawn_of_a_missing_executable_raises() -> None:
+    with pytest.raises(ProcessExecutionError, match="No such file"):
+        _on_worker_thread(lambda: run_process("/nonexistent/ralph-missing-binary"))
+
+
+def _reported_parent_pid(options: SpawnOptions) -> int:
+    command = [sys.executable, "-c", "import os; print(os.getppid())"]
+    handle = _on_worker_thread(lambda: get_process_manager().spawn(command, options))
+    assert isinstance(handle, ManagedProcess)
+    stdout, _ = handle.communicate(timeout=10.0)
+    assert isinstance(stdout, bytes)
+    return int(stdout)
+
+
+@_LINUX_ONLY
+def test_child_requiring_a_direct_parent_sees_its_spawner() -> None:
+    """The MCP server's owner watch compares ``getppid()`` with its owner."""
+    options = SpawnOptions(stdout=subprocess.PIPE, require_direct_parent=True)
+
+    assert _reported_parent_pid(options) == os.getpid()
+
+
+@_LINUX_ONLY
+def test_supervised_child_is_not_a_direct_child_of_its_spawner() -> None:
+    assert _reported_parent_pid(SpawnOptions(stdout=subprocess.PIPE)) != os.getpid()
+
+
+_GRACEFUL_WORKER = """
+import pathlib, signal, sys, time
+def stop(*_):
+    time.sleep(0.3)
+    pathlib.Path(sys.argv[1]).write_text("graceful")
+    sys.exit(0)
+signal.signal(signal.SIGTERM, stop)
+pathlib.Path(sys.argv[2]).write_text("ready")
+time.sleep(30)
+"""
+
+
+@_LINUX_ONLY
+def test_terminating_a_supervised_job_keeps_the_worker_grace_period(tmp_path: Path) -> None:
+    """A deliberate terminate must not be upgraded to an immediate tree SIGKILL."""
+    graceful = tmp_path / "graceful"
+    ready = tmp_path / "ready"
+    command = [sys.executable, "-c", _GRACEFUL_WORKER, str(graceful), str(ready)]
+    options = SpawnOptions(stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    handle = _on_worker_thread(lambda: get_process_manager().spawn(command, options))
+    assert isinstance(handle, ManagedProcess)
+    _wait_for_sentinel_text(ready)
+
+    handle.terminate(grace_period_s=5.0)
+
+    assert graceful.read_text(encoding="utf-8") == "graceful"
+
+
+def _wait_for_sentinel_text(path: Path, timeout_s: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout_s
+    while not path.exists():
+        if time.monotonic() > deadline:
+            raise AssertionError(f"{path} never written within {timeout_s}s")
+        time.sleep(0.02)

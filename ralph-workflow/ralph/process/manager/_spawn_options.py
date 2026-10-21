@@ -50,3 +50,9 @@ class SpawnOptions:
     # Reserved for the parent-owned standalone MCP bootstrap only.
     allow_broker_secret: bool = False
     pass_fds: tuple[int, ...] = ()
+    # The child must stay the spawner's direct child. Off the main thread on
+    # Linux the sync factory otherwise interposes the exec-job supervisor, so
+    # the child's ``getppid()`` names the supervisor. A child whose own
+    # containment verifies its parent (the MCP server's RALPH_MCP_OWNER_PID
+    # watch) would see a foreign owner and exit at startup.
+    require_direct_parent: bool = False
