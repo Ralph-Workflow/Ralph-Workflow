@@ -115,23 +115,29 @@ def _install_pdeathsig() -> None:
 def _supervisor_invocation(command: Sequence[str]) -> list[str]:
     """Build the ``argv`` that runs the supervisor with ``command``.
 
-    The supervisor is stdlib-only, so it runs as a script under ``-I``
-    (isolated mode): neither the child's ``cwd`` nor ``PYTHONPATH`` is put on
-    ``sys.path``. A ``python -c "from ralph... import run"`` invocation
-    imported whatever ``ralph`` package sat in the child's working directory,
-    so an exec job inside another ralph-workflow checkout ran (or failed to
-    find) that checkout's supervisor. Isolation applies only to the
-    supervisor interpreter; the worker still receives the full ``env``.
-    ``-u`` (unbuffered stdout/stderr) keeps the holder's pipe readable in
-    tests that poll the supervisor's stdout. The worker command lands in
-    ``sys.argv[1:]`` so the supervisor's ``run(argv)`` sees it cleanly.
+    The supervisor is stdlib-only, so it runs as a SCRIPT under ``-I``
+    (isolated mode): neither the job's ``cwd`` nor the launcher's
+    ``PYTHONPATH`` is put on ``sys.path``. ``-I`` implies ``-E``, so a
+    ``python -c "from ralph...import main"`` invocation could only resolve
+    ``ralph`` from that interpreter's site-packages -- false for every
+    checkout that merely exports ``PYTHONPATH`` (this project's own
+    ``Makefile`` does exactly that) or runs against the source tree. The
+    supervisor then died of ``ModuleNotFoundError`` before it ever forked,
+    leaving ``ProcessRecord.pid`` naming a corpse and the job tree wholly
+    uncontained. As a script it imports nothing but the stdlib, and
+    ``sys.path[0]`` is its OWN directory -- never the job's cwd -- so an
+    exec job that ships its own ``ralph`` package still cannot shadow it.
+    Isolation applies only to the supervisor interpreter; the worker still
+    receives the full ``env``. ``-u`` (unbuffered stdout/stderr) keeps the
+    holder's pipe readable in tests that poll the supervisor's stdout. The
+    worker command lands in ``sys.argv[1:]`` so the supervisor's
+    ``run(argv)`` sees it cleanly.
     """
     return [
         sys.executable,
         "-I",
         "-u",
-        "-c",
-        ("import sys; from ralph.process.manager._supervisor import main; sys.exit(main())"),
+        os.fsdecode(_SUPERVISOR_SCRIPT),
         *[os.fsdecode(a) for a in command],
     ]
 
@@ -164,8 +170,7 @@ def _default_sync_process_factory(
     )
     on_linux = sys.platform.startswith("linux")
     on_main_thread = threading.current_thread() is threading.main_thread()
-    is_exec_job = opts.label is not None and opts.label.startswith("exec_job:")
-    if on_linux and not on_main_thread and is_exec_job:
+    if on_linux and not on_main_thread and not opts.require_direct_parent:
         # Off-main-thread spawn (the production HTTP dispatch path: see
         # ``ralph/mcp/server/_saturated_dispatch.py:155-173`` -> the exec
         # tool's registry.start). Popen with NO ``preexec_fn`` is safe from
@@ -176,6 +181,17 @@ def _default_sync_process_factory(
         # the supervisor at the head of a fresh PG, and the worker inherits
         # that PG at fork time -- covering the documented gap that PR_SET_PDEATHSIG
         # doesn't survive a sigkill + grandchild hop on the legacy path.
+        #
+        # The predicate keys on the THREAD, never on the label: every
+        # off-main-thread Linux spawn needs tree containment, and an
+        # ``exec_job:``-only gate silently left every other off-main-thread
+        # caller (agent invoke, upstream stdio, git probes, the exec tool's
+        # bounded path) unprotected while contradicting
+        # ``SpawnOptions.require_direct_parent``'s documented contract --
+        # which is exactly the opt-out this branch honours, so a child whose
+        # own containment compares ``getppid()`` with its owner (the MCP
+        # server's RALPH_MCP_OWNER_PID watch) stays the spawner's DIRECT
+        # child instead of naming a supervisor it never spawned.
         _require_executable(command, opts, child_env)
         popen: _PopenConstructor = subprocess.Popen
         return popen(

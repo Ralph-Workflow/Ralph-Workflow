@@ -446,6 +446,17 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.mcp.server._http_tools_list",
             ("_http_tools_list_names",),
         ),
+        # wt-19 MCP make-before-break acceptance: the real-child bridge
+        # suite pins the served tool-set before and after a failed and
+        # a successful child replacement, and the drain path asserts the
+        # OLD child still answers ``tools/list``. It needs the same
+        # production bounded reader for the same reason as the three
+        # precedents above.
+        (
+            "tests/mcp/test_bridge_make_before_break.py",
+            "ralph.mcp.server._http_tools_list",
+            ("_http_tools_list_names",),
+        ),
         (
             "tests/integration/test_process_zombie_cleanup.py",
             "ralph.process.manager",

@@ -27,6 +27,10 @@ spawns the supervisor in place of the real exec job when (and only when):
   Linux-only ``PR_SET_PDEATHSIG`` plus ``killpg`` for PG-wide delivery.
 * the spawn call is OFF the main thread -- the on-main-thread path keeps
   using the legacy ``preexec_fn`` ``_install_pdeathsig``.
+* the spawn did NOT set ``SpawnOptions.require_direct_parent`` -- a child that
+  verifies its own parent (``getppid()`` against an owner it was told to
+  expect) must stay the spawner's direct child, and a supervisor in between
+  would make it report a stranger.
 
 The supervisor is intentionally small and stdlib-only so that
 ``subprocess.Popen`` (no ``preexec_fn``, safe from a worker thread) can spawn
@@ -56,11 +60,20 @@ supervisor inherits its (possibly piped) stdin/stdout/stderr from the
 Public surface
 --------------
 
-* ``run(argv: list[str]) -> int`` -- the only callable the supervisor exposes.
-  The factory invokes this file as a script, ``python -I -u <path to
-  _supervisor.py> <command...>``: isolated mode keeps the child's ``cwd`` and
-  ``PYTHONPATH`` off ``sys.path``, which is safe because the module is
-  stdlib-only.
+* ``run(argv: list[str]) -> int`` -- the callable that supervises; returns the
+  worker's exit status.
+* ``main() -> int`` -- the CLI entry point the factory reaches, so the module
+  stays importable by the in-repo sweep that proves every spawn-capable entry
+  point sanitizes its environment before doing work.
+* The factory invokes this file as a script, ``python -I -u <path to
+  _supervisor.py> <command...>``: isolated mode keeps the job's ``cwd`` and
+  the launcher's ``PYTHONPATH`` off ``sys.path``, which is safe -- and runnable
+  at all -- precisely because the module imports nothing but the stdlib. A
+  ``python -c "from ralph...import main"`` form cannot make that promise: ``-I``
+  implies ``-E``, so ``ralph`` would have to be installed into that
+  interpreter's site-packages rather than merely reachable through
+  ``PYTHONPATH`` or the source tree, and a checkout that is not installed made
+  the supervisor die of ``ModuleNotFoundError`` before it forked anything.
 * No module-level side effects on import (no ``atexit``, no signal handlers).
 """
 
@@ -71,18 +84,41 @@ import ctypes
 import os
 import signal
 import sys
-from typing import TYPE_CHECKING, NoReturn, Protocol, cast
+from typing import TYPE_CHECKING, Final, NoReturn, Protocol, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from types import FrameType
 
-from ralph.process._spawn_env import sanitize_process_environment
-
 # Linux prctl(2) numbers, not exposed by the stdlib.
-_PR_SET_PDEATHSIG: int = 1
-_SIGTERM: int = 15
-_SIGKILL: int = 9
+_PR_SET_PDEATHSIG: Final[int] = 1
+_SIGTERM: Final[int] = 15
+_SIGKILL: Final[int] = 9
+# Copied from ``ralph.process._spawn_env.MALLOC_DEBUG_NOISE_VARS``. This
+# module runs under ``python -I``, which drops both the launcher's
+# ``PYTHONPATH`` and the job's ``cwd`` from ``sys.path``, so it cannot import
+# ANY ``ralph`` module -- not even the one defining that tuple -- in any
+# interpreter that was not pip-installed into. Duplicating these two names is
+# what keeps the module stdlib-only, and stdlib-only is what makes it runnable
+# at all; the canonical scrubber keeps the richer contract for every in-tree
+# entry point.
+_MALLOC_DEBUG_NOISE_VARS: Final[tuple[str, ...]] = (
+    "MallocStackLogging",
+    "MallocStackLoggingNoCompact",
+)
+
+
+def sanitize_process_environment() -> tuple[str, ...]:
+    """Strip inherited malloc-debug toggles before this process launches the worker.
+
+    Mirrors ``ralph.process._spawn_env.sanitize_process_environment`` for the
+    one variable pair that must be gone before ``execvp``. The duplication is
+    deliberate and one-directional: that module may grow dependencies, this
+    one may not acquire any.
+    """
+    return tuple(
+        name for name in _MALLOC_DEBUG_NOISE_VARS if os.environ.pop(name, None) is not None
+    )
 
 
 class _Prctl(Protocol):

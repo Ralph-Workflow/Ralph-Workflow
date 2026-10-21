@@ -390,16 +390,25 @@ def test_scenario_08_short_burst_then_idle_stalled_at_window_after_activity() ->
     self-consistent regardless of how the ramp integration shifts
     with future breakpoint tuning.
 
-    Reconciliation against the spec's "stalled at stall_window after
-    activity" wording (PRODUCT_CRITERIA Part A): the spec wording is
-    approximate; the real kill time is LATER because stall pressure
-    only begins accruing after ``OutputRecent`` drops below the 0.5
-    threshold — i.e. only after ``ramp_half_threshold_age`` = 35 s
-    past the last output (the ``ramp_offset`` of
-    ``ramp_half_threshold_age - ramp_start_s`` = 25 s, where
-    ``ramp_half_threshold_age = (ramp_start_s + ramp_end_s) / 2``
-    when the score is linear in ``OutputRecent``). The closed-form
-    derivation above is the exact correction.
+    Reconciliation against criterion C3 / the spec-table wording
+    "``stalled`` at ``stall_window`` after activity stops": the shipped
+    kill time is NOT within that tolerance, and PROOF 1 in
+    ``ralph/process/manager/_liveness_assessor.py`` shows it CANNOT be
+    by any aggregate or any theta. Reading the criterion's own anchor
+    ("activity stops" = the last output byte at ``t = 30``), the closed
+    form above gives ``30 + 137.5 = 167.5 s`` continuous (168 s on the
+    coarse grid) against the criterion's ``30 + 90 + 2 = 122 s``
+    tolerance — 45.5 s late. Even measured from the most charitable
+    anchor (pressure onset at ``o = 35``) it is ``90 + 12.5 = 102.5 s``,
+    still 10.5 s late. The floor is
+    ``last_output + EXEC_OUTPUT_RECENT_MAX_S + stall_window``
+    (``ramp_start_s`` is exactly ``EXEC_OUTPUT_RECENT_MAX_S``) =
+    ``30 + 100 = 130 s``, asserted below, so 8 s of the 45.5 s
+    deviation is already unreachable in principle and the remaining
+    37.5 s comes from the mandated linear ramp: ``25`` s of extra flat
+    top (``ramp_start_s`` = 10 up to ``ramp_half_threshold_age`` = 35)
+    plus the ``12.5`` s ramp penalty. Criterion C3 IS met literally for
+    the never-output shape (scenario 1 above).
     """
     burst_duration_s = 30.0
     stall_window_s = 90.0
@@ -450,6 +459,24 @@ def test_scenario_08_short_burst_then_idle_stalled_at_window_after_activity() ->
     assert res.kill_cause == "stalled"
     assert abs(res.kill_time_s - expected_kill) <= _DEFAULT_DT
     assert res.kill_time_s == 168.0
+
+    # PROOF 1 floor, locked executably: for ``age <=
+    # EXEC_OUTPUT_RECENT_MAX_S`` the score saturates at ``z1 = 1.0 >
+    # theta`` so pressure cannot rise, and afterwards it rises at most at
+    # 1 s/s. No aggregate and no theta can kill earlier than
+    # ``last_output + EXEC_OUTPUT_RECENT_MAX_S + stall_window``. Asserted
+    # as a LOWER bound, so it can only ever tighten the deviation, never
+    # hide it.
+    proof1_floor_s = burst_duration_s + CFG.output_recent_min_s + stall_window_s
+    assert fine_res.kill_time_s >= proof1_floor_s - 0.05, (
+        f"PROOF 1 floor violated: kill at {fine_res.kill_time_s!r} is earlier "
+        f"than last_output + EXEC_OUTPUT_RECENT_MAX_S + stall_window = {proof1_floor_s!r}"
+    )
+    # ... and that floor is already OUTSIDE the criterion's tolerance,
+    # which is what makes the deviation provable rather than a tuning miss.
+    criterion_deadline_s = burst_duration_s + stall_window_s + _DEFAULT_DT
+    assert proof1_floor_s > criterion_deadline_s
+    assert res.kill_time_s > criterion_deadline_s
 
 
 # ---------------------------------------------------------------------------
@@ -674,14 +701,23 @@ def test_scenario_13_mid_run_deadlock_all_children_asleep_stalled() -> None:
     runs directly so the bound is self-consistent regardless of how
     the ramp integration shifts with future breakpoint tuning.
 
-    Reconciliation against the spec's "stalled at stall_window after
-    deadlock" wording (PRODUCT_CRITERIA Part A): the spec wording is
-    approximate; the real kill time is LATER because stall pressure
-    only begins accruing after ``OutputRecent`` drops below the 0.5
-    threshold — i.e. only after ``35 s`` past the last output. The
-    closed-form derivation above is the exact correction; the
-    coarse simulator result and the fine-dt reference are both
-    consistent with it (within ``_DEFAULT_DT``).
+    Reconciliation against criterion C3 / the spec-table wording
+    "``stalled`` at ``stall_window`` after the deadlock": the shipped
+    kill time is NOT within that tolerance, and PROOF 1 in
+    ``ralph/process/manager/_liveness_assessor.py`` shows it CANNOT be
+    by any aggregate or any theta. Reading the criterion's own anchor
+    ("after the deadlock" = the last output byte at ``t = 120``), the
+    closed form gives ``120 + 137.5 = 257.5 s`` continuous (258 s on
+    the coarse grid) against the criterion's ``120 + 90 + 2 = 212 s``
+    tolerance — 45.5 s late, the same offset as scenario 8 because both
+    traces share the all-idle dead-phase signature. The proven floor
+    ``last_output + EXEC_OUTPUT_RECENT_MAX_S + stall_window`` =
+    ``120 + 100 = 220 s`` is asserted below and already sits 8 s past
+    the criterion deadline, so 8 s of the deviation is unreachable in
+    principle and the remaining 37.5 s is the mandated linear ramp
+    (``25`` s of extra flat top plus the ``12.5`` s ramp penalty).
+    Criterion C3 IS met literally for the never-output shape
+    (scenario 1).
     """
     deadlock_at_s = 120.0
     stall_window_s = 90.0
@@ -731,3 +767,16 @@ def test_scenario_13_mid_run_deadlock_all_children_asleep_stalled() -> None:
     assert res.kill_cause == "stalled"
     assert abs(res.kill_time_s - expected_kill) <= _DEFAULT_DT
     assert res.kill_time_s == 258.0
+
+    # PROOF 1 floor, locked executably (see scenario 8 for the argument):
+    # ``t_kill >= last_output + EXEC_OUTPUT_RECENT_MAX_S + stall_window``
+    # for any aggregate and any theta, and that floor is itself already
+    # past the criterion's ``stall_window + 1 interval`` deadline.
+    proof1_floor_s = deadlock_at_s + CFG.output_recent_min_s + stall_window_s
+    assert fine_res.kill_time_s >= proof1_floor_s - 0.05, (
+        f"PROOF 1 floor violated: kill at {fine_res.kill_time_s!r} is earlier "
+        f"than last_output + EXEC_OUTPUT_RECENT_MAX_S + stall_window = {proof1_floor_s!r}"
+    )
+    criterion_deadline_s = deadlock_at_s + stall_window_s + _DEFAULT_DT
+    assert proof1_floor_s > criterion_deadline_s
+    assert res.kill_time_s > criterion_deadline_s

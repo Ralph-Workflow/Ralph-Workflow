@@ -480,12 +480,35 @@ EXEC_LIVENESS_EVIDENCE_WINDOW_S: float = 30.0
 #: §3b Liveness assessor: ``Output recent`` membership breakpoint
 #: (seconds). ``output_age <= EXEC_OUTPUT_RECENT_MAX_S`` fires the
 #: ``OutputRecent`` membership predicate (recent stdout seen).
+#:
+#: This breakpoint is the single scalar that PROOF 1 in
+#: ``ralph/process/manager/_liveness_assessor.py`` turns into the
+#: proven burst-then-idle kill-time floor
+#: ``t_kill >= last_output + EXEC_OUTPUT_RECENT_MAX_S + stall_window``:
+#: for ``age <= EXEC_OUTPUT_RECENT_MAX_S`` the score saturates at
+#: ``z1 = 1.0 > theta``, so stall pressure cannot rise at all, and
+#: pressure then grows at most at 1 s/s. Lowering it shortens that
+#: floor but re-creates cause #1 of the feature (a suite that prints
+#: every few seconds with no CPU/IO/tree/awake would be killed as
+#: idle), so it is a spec-mandated tuning value, not a free
+#: performance knob. Locked by
+#: ``tests/test_liveness_pa002_properties.py
+#: ::test_burst_then_idle_kill_never_beats_proof1_floor``.
 EXEC_OUTPUT_RECENT_MAX_S: float = 10.0
 
 #: §3b Liveness assessor: ``Output recent`` membership breakpoint
 #: (seconds, alternate configuration). Symmetric partner of
 #: ``EXEC_OUTPUT_RECENT_MAX_S``; the assessor routes through whichever
 #: bound the deployment profile selects.
+#:
+#: With the shipped pair (10.0, 60.0) the all-idle dead-phase score is
+#: exactly ``s(age) = (60 - age) / 50`` on ``age in (10, 60]``, so the
+#: score first falls below ``EXEC_STALL_THETA = 0.5`` at ``age = 35``
+#: and the remaining ramp integrates ``(60 - 35)^2 / (2 * 50) = 12.5``
+#: of stall pressure before it saturates at 0. That 12.5 s plus the
+#: 35 s flat top is the whole of the
+#: ``last_output + stall_window + 47.5`` closed form locked by
+#: ``tests/test_exec_liveness_scenarios.py`` scenarios 8 and 13.
 EXEC_OUTPUT_RECENT_MIN_S: float = 60.0
 
 #: §3b Liveness assessor: CPU-busy membership lower bound. A sampled
@@ -532,6 +555,16 @@ EXEC_AWAKE_PER_S_ACTIVE: float = 5.0
 #: §3b Stall integrator: theta threshold that separates the
 #: stall-decay branches. A stall score ``>= EXEC_STALL_THETA`` triggers
 #: the higher-decay branch; below it the lower-decay branch applies.
+#:
+#: D3 fixes the integrator at ``P <- max(0, P + dt * (theta - s) /
+#: theta)``. Because every rule ``z`` lies in ``[0, 1]``, ``s >= 0`` and
+#: so the per-step accrual rate ``(theta - s) / theta <= 1`` for EVERY
+#: ``theta > 0``: pressure can never grow faster than 1 s/s, at any
+#: theta. That unit-rate bound is what makes the burst-then-idle kill
+#: floor of PROOF 1 in
+#: ``ralph/process/manager/_liveness_assessor.py`` theta-independent,
+#: and it is swept in ``tests/test_liveness_pa002_properties.py
+#: ::test_proof1_floor_holds_for_every_theta``.
 EXEC_STALL_THETA: float = 0.5
 
 #: §3b Suspicion window (seconds). Cumulative no-progress time

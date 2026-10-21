@@ -38,101 +38,167 @@ are the exact table PRODUCT_CRITERIA Part A defines; no rule is
 redefined in this module.
 
 ----------------------------------------------------------------------
-PA-002 disposition — score / kill-time monotonicity (wt-19)
+PA-002 disposition — C3 kill timing and §3 Monotonicity (wt-19 / WU-2)
 ----------------------------------------------------------------------
 
-PRODUCT_CRITERIA Verification §3 "Monotonic" (raising any working signal
-never lowers ``s`` or speeds up a kill) is **NOT** a property of the
-shipped literal-Sugeno weighted average — and as the rest of this
-section argues, it is unsatisfiable together with the rest of Part A
-by ANY aggregate. The aggregate below is therefore kept deliberately
-(D2 verbatim, zero scoring-code change) with this disposition:
+Two PRODUCT_CRITERIA clauses collide with the settled D2 rule table and
+the D3 integrator, and WU-2 proved BOTH collisions unsatisfiable rather
+than absorbing them:
 
-* The shipped aggregate is the literal-Sugeno weighted average
-  ``s = Σwᵢzᵢ / Σwᵢ``. Raising a working signal can DILUTE an
-  already-firing high-z rule: e.g. when R1 alone fires with z=1.0
-  the score is 1.0; raising ``io`` to 64 KiB/s brings R2 (z=0.9) into
-  the weighted average and the score falls to 0.95. ``s`` is therefore
-  not globally monotone under signal raises, and a kill can arrive
-  STRICTLY EARLIER when a working signal is raised during a changing
-  trace (case (c) below locks this).
-* The aggregate IS a literal-Sugeno weighted average and IS monotone
-  NON-DECREASING from the all-idle baseline (R5-only, ``s=0``): raising
-  any single working signal strictly raises the score from there. This
-  is the only score-monotone claim the shipped aggregate provably
-  satisfies.
-* Three independent counterexamples close every candidate aggregate:
-  1. The shipped weighted average ``Σwᵢzᵢ / Σwᵢ``: an R1-fired window
-     scores 1.0; raising working signal ``io`` to 64 KiB/s fires R2
-     (z=0.9), diluting the score to 0.95 (1.0 -> 0.95). Locked exactly
-     in ``tests/test_liveness_assessor.py
-     ::test_regression_pa002_counterexample_1_r1_io_dilution``.
-  2. Strongest-product ``maxᵢ wᵢ·zᵢ``: at awake=1 the memberships are
-     (awake=1, rest 0) and the score is 0.55; raising CPU membership
-     to 0.5 gives weights (0,0,0,0.5,0,0,0.5) where R7 deflates through
-     ``NOT CpuBusy`` (0.275) while R4 only reaches 0.5·0.6 = 0.30 —
-     score drops from 0.55 to 0.30. The strongest-product arithmetic
-     above is analytical (it rejects a candidate aggregate this module
-     does not implement, so no test asserts it); the literal-Sugeno
-     arithmetic for the same transition IS asserted in
-     ``tests/test_liveness_assessor.py
-     ::test_regression_pa002_counterexample_3_cpu_raise_r7_to_r4_boundary``
-     (0.55 -> 0.575).
-  3. The evidence-window gate (``assess``'s ``effective_novelty``): at
-     30 s since last output with novelty 0, novelty is gate-unknown so
-     ``Repetitive``=0 and R1 fires (z=1.0); at 29 s novelty is known
-     and repetitive so R1 is blocked by ``NOT Repetitive=0`` and R6
-     fires (z=0.2) — score collapses ~0.6 -> 0.2/1.38 ≈ 0.145 under
-     weighted average. This gate transition is part of the spec's R1/R6
-     loop-detection design and is NOT a defect; the spec-internal
-     contradiction defeats every aggregate that reads R1/R6 strengths.
-     Locked exactly in ``tests/test_liveness_assessor.py
-     ::test_regression_pa002_counterexample_2_evidence_window_gate_transition``.
-* Case (c) — kill-timing non-monotonicity on a CHANGING trace (the
-  reason this unit exists): a changing trace of 80 s idle / 20 s
-  recent novel output / idle, with default liveness config, dt=1.0,
-  stall_window=90, fires a kill at tick 130 when ``io=0.0`` during the
-  middle segment, and STRICTLY EARLIER (tick 129 under IEEE-754, 128
-  under exact arithmetic) when ``io`` is raised to 64 KiB/s or 65536
-  KiB/s during the middle segment. R2's z=0.9 dilutes R1's z=1.0,
-  score is 0.95 vs 1.0, pressure drains slightly slower (per-step
-  delta -0.9 instead of -1.0), so the pressure total crosses
-  ``stall_window`` sooner in the following idle segment. This does
-  NOT cross the R6/novelty-gate. Locked exactly as a DEVIATION
-  CONTRACT by ``tests/test_liveness_pa002_properties.py
-  ::test_kill_timing_non_monotone_under_changing_io``.
+* **C3 / scenario-8 timing.** "``stalled`` at ``stall_window`` after
+  activity stops" is unreachable by ANY aggregate and ANY ``theta``
+  under the mandated ``OutputRecent`` breakpoints. Proven floor:
+  ``t_kill >= last_output + EXEC_OUTPUT_RECENT_MAX_S + stall_window``.
+* **Verification §3 Monotonic.** "Raising any working signal never
+  lowers ``s`` or speeds up a kill" is unreachable by the D2 zero-order
+  Sugeno weighted average.
 
-  **The precise mathematical reason (WU-D).** Hold every signal but
-  ``io`` at the working-window values (o=0.5 -> OutputRecent=1.0;
-  n=1.0 -> Repetitive=0.0; c=t=w=0). Then ``w1`` (R1, z=1.0) is
-  CONSTANT at 1.0 — nothing is suppressed — and the only varying
-  weight is ``w2 = IoActive = a``. Hence
+The scoring and integration code below is therefore kept VERBATIM
+(D2 + D3, zero executable change), and the deviations are carried by an
+executable contract rather than by prose. The proofs follow; the locked
+regressions live in ``tests/test_liveness_pa002_properties.py``.
+----------------------------------------------------------------------
+PROOF 1 — the C3 / scenario-8 kill-timing floor
+----------------------------------------------------------------------
 
-      s(a) = (1.0*1.0 + a*0.9) / (1.0 + a),
-      ds/da = [0.9(1+a) - (1 + 0.9a)] / (1+a)^2 = -0.1/(1+a)^2 < 0
+Fix the burst-then-idle trace of scenario 8 / scenario 13. After the
+burst the samples read ``c = io = t = w = 0`` and ``n`` unknown. Under
+the D2 rule table the ONLY rules with non-zero weight are R1 with
+``w1 = OutputRecent(o)`` and R5 with ``w5 = 1 - OutputRecent(o)``: every
+other rule needs a working membership that is 0 on this trace, and
+``w1 + w5 == 1`` exactly. So ``s(o) = A(OutputRecent(o), 1 -
+OutputRecent(o))`` for whatever aggregate ``A`` D2 prescribes, and:
 
-  for EVERY ``a`` in ``[0, 1]``. The dilution therefore holds at every
-  interior point of the IoActive ramp, not merely at a breakpoint:
-  no monotone reparameterization of any membership ramp removes it,
-  and only ``z2 >= z1`` or gating R2 on ``NOT R1`` would, both of which
-  contradict the literal rule table. The decisive, AGGREGATE-
-  INDEPENDENT refutation is counterexample 3 above: the novel-gate pair
-  pins ``s`` at exactly 0.6 (o=30) and 0.2/1.38 (o=29) on windows that
-  differ only in ``o``, so no aggregate whatsoever can be monotone in
-  ``o`` and satisfy those two locked expectations. The contradiction is
-  SPEC-INTERNAL and unsatisfiable jointly with D2/D3.
+  P1.1  ``OutputRecent(o) = 1`` for every ``o <=
+        EXEC_OUTPUT_RECENT_MAX_S`` (10 s), so ``w1`` is already
+        saturated at 1 and ``s(o) = z1 = 1.0 > theta = 0.5`` throughout
+        ``o <= 10``. (Single-rule behaviour ``s = zi`` is the zero-order
+        Sugeno normalisation D2 invokes; here it pins ``s(0) = 1.0``.)
+  P1.2  By (D3) the per-step delta ``dt * (theta - s) / theta`` is
+        non-positive whenever ``s >= theta``. With P1.1 that makes ``P``
+        non-increasing on ``[0, 10]``. The burst samples themselves
+        score ``1.0 > theta``, so ``P`` is driven down and held at 0 by
+        the ``max(0, ...)`` clamp; hence ``P(10) = 0``.
+  P1.3  Every ``zi`` lies in ``[0, 1]``, so ``s >= 0`` and
+        ``(theta - s) / theta <= 1`` for EVERY ``theta > 0``: pressure
+        grows at most at unit rate.
+  P1.4  P1.2 + P1.3 give ``P(o) <= o - EXEC_OUTPUT_RECENT_MAX_S`` for
+        ``o >= EXEC_OUTPUT_RECENT_MAX_S``, so ``P >= stall_window``
+        first holds at
+        ``o >= EXEC_OUTPUT_RECENT_MAX_S + stall_window``.
+
+The floor is aggregate-independent (it uses only the Sugeno single-rule
+normalisation and ``s >= 0``) and theta-independent (P1.3 holds for
+every ``theta > 0``). At the shipped defaults it is ``10 + 90 = 100 s``,
+which already exceeds the criterion's tolerance ``stall_window + 1
+interval = 92 s`` by 8 s, so the criterion is unreachable even by the
+most favourable admissible aggregate.
+
+The SHIPPED value is worse than that floor because the mandated ramp is
+linear. With ``s(o) = OutputRecent(o) = (60 - o) / 50`` on ``o in
+(10, 60]`` the score first falls below ``theta`` at ``o = 35`` and then
+accrues at rate ``(o - 35) / 25`` up to ``o = 60``, integrating
+``ramp_accrued = 12.5 s`` of pressure. Hence the exact closed form
+
+    t_kill = last_output + 60 + (stall_window - 12.5)
+           = last_output + stall_window + 47.5
+           = last_output + 137.5 s   (stall_window = 90)
+
+which is 45.5 s late against the criterion's own anchor ("activity
+stops" = the last output byte) and still 12.5 s late against the most
+charitable anchor (pressure onset at ``o = 35``). Both exceed the
++-2 s tolerance, so no reading of the anchor rescues the criterion.
+
+The ONLY candidate change that reaches the tolerance is to collapse the
+mandated breakpoints: ``OutputRecent: 1 at o <= 10`` to ``1 at o <=
+0`` AND ``0 at o >= 60`` to ``0 at o >= 2``. It was measured and
+rejected: it lands the kill at 91.5 s, but it also re-creates cause #1
+of the whole feature, because a test suite printing one line every 5 s
+with no CPU / I/O / tree / awake is then killed at ~150 s instead of
+running to completion. It trades C3 against C2 ("A command that is
+working should not time out easily"), so it is not available.
+
+D2 and D3 therefore stay verbatim and C3 for the burst-then-idle shape
+is carried as an accepted, machine-locked deviation. C3 IS met literally
+for the never-output shape: production starts with
+``last_output_at = None``, so ``_output_recent(None) = 0``, ``s = 0``
+from the first sample, and the kill lands at ``stall_window +- dt``.
+
+----------------------------------------------------------------------
+PROOF 2 — Verification §3 Monotonic is unsatisfiable under D2
+----------------------------------------------------------------------
+
+**M1 (additive dilution — the shipped aggregate).** On a window with
+fresh NON-repetitive output (``OutputRecent = 1``, ``Repetitive = 0``),
+R1 alone fires with ``z1 = 1.0``; raising ``io`` into the active ramp
+admits R2 with ``z2 = 0.9 < z1 = max_i zi``. Holding every other signal
+at its working-window value makes ``w1 = 1`` CONSTANT, so
+
+    s(a) = (1.0 + 0.9a) / (1 + a),
+    ds/da = [0.9(1 + a) - (1 + 0.9a)] / (1 + a)^2 = -0.1 / (1 + a)^2 < 0
+
+for EVERY ``a`` in ``[0, 1]``. The drop therefore holds at every interior
+point of the ``IoActive`` ramp, not merely at a breakpoint: no monotone
+reparameterisation of any membership ramp removes it. Only ``z2 >= z1``
+or gating R2 on ``NOT R1`` would, and both contradict the literal table.
+Locked exactly in ``tests/test_liveness_assessor.py
+::test_regression_pa002_counterexample_1_r1_io_dilution`` (1.0 -> 0.95).
+
+**M2 (evidence-window gate — aggregate-independent).** On a process
+printing one repeated line, ``assess``'s ``effective_novelty`` gate
+gives ``o = 30`` -> ``n`` unknown -> ``Repetitive = 0`` -> ``w = (0.6,
+0, 0, 0, 0.4, 0, 0)`` -> ``s = 0.6``; and ``o = 29`` -> ``n`` known and
+repetitive -> ``w1 = 0``, ``w6 = 1``, ``w5 = 0.38`` ->
+``s = 0.2 / 1.38``. ``o: 30 -> 29`` RAISES the output-recency working
+signal, yet ``s`` falls. ``s(29) <= max(z6, z5) = 0.2`` holds for EVERY
+aggregate bounded by ``max_i zi``, while ``s(30) = 0.6`` holds for EVERY
+normalised aggregate because ``w1 + w5 = 1``. The only aggregates that
+dodge M2 must score a fresh, novel, printing process at ``<= 0.2``,
+which kills it and so violates C2 and trace-library scenarios 4 / 9 /
+11. Locked exactly in ``tests/test_liveness_assessor.py
+::test_regression_pa002_counterexample_2_evidence_window_gate_transition``.
+
+**M3 (kill timing follows from M1).** A lower ``s`` during a working
+segment drains ``P`` less, so the post-idle crossing of ``stall_window``
+lands EARLIER: raising a working signal speeds up the kill. Measured on
+an 80 s idle / 20 s recent-novel-output / idle trace with the default
+liveness config, ``dt = 1.0``, ``stall_window = 90``: kill at tick 130
+with ``io = 0.0`` and at tick 129 with ``io`` raised to 64 or 65536
+KiB/s. Locked as a DEVIATION CONTRACT by
+``tests/test_liveness_pa002_properties.py
+::test_kill_timing_non_monotone_under_changing_io``.
+
+M1 also refutes the only alternative aggregate family that IS monotone
+at that transition, the strongest product ``max_i w_i * zi``: at the
+R7 -> R4 CPU boundary the memberships give ``awake = 1`` -> score 0.55,
+and raising CPU membership to 0.5 gives weights
+``(0,0,0,0.5,0,0,0.5)`` where R7 deflates through ``NOT CpuBusy`` while
+R4 only reaches ``0.5 * 0.6 = 0.30``, so the score drops 0.55 -> 0.30.
+(The shipped weighted-average arithmetic for that same transition is
+monotone and is locked at 0.55 -> 0.575 in
+``tests/test_liveness_assessor.py
+::test_regression_pa002_counterexample_3_cpu_raise_r7_to_r4_boundary``.)
+
+So the contradictions are SPEC-INTERNAL: Verification §3 "Monotonic"
+versus Part A's own R1/R2/R6 table and evidence-gate design, and C3's
+scenario-8 anchor versus Part A's own ``OutputRecent`` breakpoints.
+Lifting either requires editing PRODUCT_CRITERIA, not this code.
 
 Guarantees that DO hold and ARE established by the code (verified by
-``tests/test_liveness_assessor.py`` and ``tests/test_liveness_properties.py``):
+``tests/test_liveness_assessor.py``, ``tests/test_liveness_properties.py``
+and ``tests/test_liveness_pa002_properties.py``):
 
 * Determinism / idempotence: same window + same config -> same verdict.
 * ``P >= 0`` clamping at every integration step.
-* Boundedness: pressure cannot exceed ``n_steps * dt`` on any trace.
+* Boundedness: pressure cannot exceed ``n_steps * dt`` on any trace, and
+  every job stays bounded by the job ceiling.
 * Fail-closed unknown handling (D5): unknown signals never extend a
   deadline — replacing a finite-zero reading with ``None`` never raises
   the score or reduces pressure-accumulation rate.
-* All-idle exact-input trace kills at the configured ``stall_window_s``
-  ± one integration interval.
+* All-idle never-output trace kills at the configured ``stall_window_s``
+  ± one integration interval (C3, literal shape). The
+  burst-then-idle shape kills at ``last_output + stall_window + 47.5``,
+  which is the locked deviation documented under PROOF 1.
 * R1 / R6 / evidence-gate detection (the spec's "same-line printer ->
   stalled" scenario): R1 MUST be suppressible by repetitiveness; the
   evidence-window gate (``effective_novelty``) is the mechanism that
@@ -142,30 +208,39 @@ Guarantees that DO hold and ARE established by the code (verified by
   ``verdict_kind`` from working/suspicious to stalled/unknown. This is
   the only monotone property the shipped aggregate guarantees at the
   classification layer.
-* Baseline-relative monotone score: from an all-idle baseline
-  (R5-only, ``s=0``), raising any single working signal strictly
-  raises ``s``. This is the only score-monotone claim literal Sugeno
-  provably satisfies.
+* Baseline-relative score monotonicity: from an all-idle baseline
+  (R5-only, ``s = 0``), raising any single working signal never lowers
+  ``s``, and strictly raises it whenever the raised signal pushes an
+  idle-fired rule to positive weight.
 
-PA-002 ADRs honored:
+ADRs honored:
 
-* D2 verbatim: the shipped literal-Sugeno weighted average is kept.
-  No executable change to ``_evaluate_rules``, ``_score_from_rule_weights``,
-  any membership function, any rule weight, any rule ``z`` value, any
-  theta, any sampler, any clock, or any ``timeout_ms`` semantics.
-* The contradiction between PRODUCT_CRITERIA Verification §3 "Monotonic"
-  and the spec's own R1/R6/evidence-gate design (cases (a)/(b)/(c)
-  above) is SPEC-INTERNAL and unsatisfiable by any aggregate under
-  fixed rule weights and theta. Operators who require score-monotone
-  behavior must lift the spec-internal contradiction between
-  Verification §3 and Part A's R1/R6/evidence-gate semantics in
-  PRODUCT_CRITERIA itself; this module holds the line on the shipped
-  rules verbatim.
+* D2 verbatim: the shipped literal-Sugeno weighted average is kept. No
+  executable change to ``_evaluate_rules``,
+  ``_score_from_rule_weights``, any membership function, any rule weight,
+  any rule ``z`` value, any theta, any sampler, any clock, or any
+  ``timeout_ms`` semantics.
+* The verdict payload shape (``score``, ``pressure``, ``stall_window_s``,
+  ``strongest_rule``, ``suspicious``, ``verdict_kind``, ``signals``,
+  ``elapsed_s``) is unchanged; errors and snapshots consumed by
+  ``_exec_job_output`` and the job runtime keep their contract.
+
+Both remaining PRODUCT_CRITERIA contradictions (PROOF 1 and PROOF 2) are
+SPEC-INTERNAL and unsatisfiable by any aggregate under the fixed rule
+table, fixed ``z`` values and fixed membership breakpoints. An operator
+who needs score-monotone behaviour, or a scenario-8 kill anchored on the
+last output byte, must lift the corresponding contradiction in
+PRODUCT_CRITERIA itself; this module holds the line on the shipped rules
+verbatim.
 
 Verified by ``tests/test_liveness_assessor.py`` (regressions locking
-the verbatim counterexample scores and the case-(c) kill times) and
+the verbatim counterexample scores and the case-(c) kill times),
+``tests/test_exec_liveness_scenarios.py`` (the 13 trace-library
+scenarios, including the PROOF-1 closed form for scenarios 8 and 13),
 ``tests/test_liveness_properties.py`` (property tests over randomized
-windows and changing traces that assert the surviving guarantees).
+windows) and ``tests/test_liveness_pa002_properties.py`` (the
+executable PROOF-1 floor, the PROOF-1 theta sweep and the locked
+case-(c) kill times).
 """
 
 from __future__ import annotations

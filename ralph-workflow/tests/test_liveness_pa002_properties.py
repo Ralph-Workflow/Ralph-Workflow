@@ -28,6 +28,15 @@ DEVIATION CONTRACT rather than asserted away:
     130 s becomes 129 s when only the middle working segment's I/O
     rises (``test_kill_timing_non_monotone_under_changing_io``)
 
+WU-2 additionally proved a SECOND spec-internal collision, about kill
+TIMING rather than the score: criterion 3 / trace-library scenario 8
+("``stalled`` at ``stall_window`` after activity stops") is unreachable
+for every aggregate and every theta under the mandated ``OutputRecent``
+breakpoints, with proven floor ``t_kill >= last_output +
+EXEC_OUTPUT_RECENT_MAX_S + stall_window``. Locked executably by the three
+``PROOF 1`` tests at the end of this module; full proofs are PROOF 1 and
+PROOF 2 in the module docstring of ``ralph.process.manager._liveness_assessor``.
+
 The "AUTHORITATIVE DEVIATION CONTRACT" block further down carries the
 proof that this is SPEC-INTERNAL rather than an implementation defect: the
 membership ramps are exonerated (the drop holds at every interior ramp
@@ -53,10 +62,13 @@ future change to the rule weights or z-values live here. The §3b
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from ralph import timeout_defaults as _td
 from ralph.process.manager._liveness_assessor import (
     LivenessConfig,
     LivenessWindow,
@@ -733,6 +745,201 @@ def test_novelty_monotone_when_output_recent() -> None:
     assert v_novel.score == pytest.approx(1.0)
     assert v_novel.strongest_rule == "R1"
     assert v_novel.score >= v_rep.score
+
+
+# ---------------------------------------------------------------------------
+# WU-2 — executable PROOF 1: the C3 / scenario-8 kill-time floor
+# ---------------------------------------------------------------------------
+#
+# Criterion 3 / scenario 8 ask for ``stalled`` within ``stall_window + 1``
+# sample interval of the LAST OUTPUT BYTE after a burst. PROOF 1 in
+# ``ralph/process/manager/_liveness_assessor.py`` shows that is
+# unsatisfiable under the mandated ``OutputRecent`` breakpoints, for
+# EVERY aggregate and EVERY theta:
+#
+#   * for ``age <= EXEC_OUTPUT_RECENT_MAX_S`` the membership saturates at
+#     1, so R1 alone fires with ``z1 = 1.0 > theta``, the D3 delta
+#     ``dt * (theta - s) / theta`` is non-positive, and ``P`` cannot
+#     rise at all (the burst's own samples leave ``P`` clamped at 0);
+#   * every ``z`` lies in ``[0, 1]``, so ``s >= 0`` and the accrual rate
+#     ``(theta - s) / theta <= 1`` for every ``theta > 0``;
+#   * hence ``t_kill >= last_output + EXEC_OUTPUT_RECENT_MAX_S +
+#     stall_window``.
+#
+# The three tests below make that proof executable: the bound itself,
+# that the bound already sits OUTSIDE the criterion's tolerance (so the
+# deviation is provable rather than a tuning miss), that it is
+# theta-independent (so no D3 retune is an escape), and that the one
+# retune which does reach the criterion trades it against criterion 2.
+
+
+def _run_burst_then_idle_offset(
+    config: LivenessConfig,
+    *,
+    burst_duration_s: float,
+    stall_window_s: float,
+    dt: float,
+) -> tuple[float, float]:
+    """Run a burst-then-all-idle trace; return ``(kill_time_s, last_output_s)``.
+
+    Deterministic pure arithmetic — ``assess`` + ``StallIntegrator`` only,
+    no clock, no I/O. Mirrors the burst signature of scenarios 8 and 13
+    (fresh novel output, moderate CPU / I/O / awake) followed by the
+    all-idle dead phase (everything zero, novelty unknown).
+    """
+    si = StallIntegrator(theta=config.stall_theta)
+    t = 0.0
+    last_output_s = 0.0
+    while t < burst_duration_s:
+        t += dt
+        last_output_s = t
+        si.step(
+            verdict_score=assess(
+                LivenessWindow(0.0, 0.2, 10.0, 0, 1.0, 1.0, t), config
+            ).score,
+            dt=dt,
+        )
+    while True:
+        t += dt
+        si.step(
+            verdict_score=assess(
+                LivenessWindow(t - last_output_s, 0.0, 0.0, 0, None, 0.0, t), config
+            ).score,
+            dt=dt,
+        )
+        if si.should_kill(stall_window_s):
+            return t, last_output_s
+
+
+def test_burst_then_idle_kill_never_beats_proof1_floor() -> None:
+    """PROOF 1, locked executably: the burst-then-idle kill can never land
+    earlier than ``last_output + EXEC_OUTPUT_RECENT_MAX_S + stall_window``,
+    and that floor already sits outside the criterion's
+    ``stall_window + 1 interval`` tolerance.
+
+    Parametrised over the stall window and the burst length so the
+    contract tracks the configured numbers rather than one magic pair. The
+    assertions are a LOWER bound on the kill offset plus a strict
+    inequality against the criterion deadline, so they can only ever
+    tighten the shipped deviation, never conceal it. Nothing is weakened:
+    the exact closed form at the shipped defaults
+    (``burst_duration_s + 137.5``) is asserted separately by
+    ``tests/test_exec_liveness_scenarios.py`` scenarios 8 and 13.
+    """
+    dt = 0.01
+    for burst_duration_s, stall_window_s in (
+        (10.0, 30.0),
+        (30.0, 60.0),
+        (30.0, 90.0),
+        (120.0, 90.0),
+        (5.0, 300.0),
+    ):
+        floor_offset_s = CFG.output_recent_min_s + stall_window_s
+        kill_time_s, last_output_s = _run_burst_then_idle_offset(
+            CFG,
+            burst_duration_s=burst_duration_s,
+            stall_window_s=stall_window_s,
+            dt=dt,
+        )
+        offset_s = kill_time_s - last_output_s
+        assert offset_s >= floor_offset_s - dt - 0.05, (
+            f"PROOF 1 floor violated: burst={burst_duration_s}, "
+            f"stall_window={stall_window_s} killed {offset_s!r} s after the last "
+            f"output, below the proven floor "
+            f"EXEC_OUTPUT_RECENT_MAX_S + stall_window = {floor_offset_s!r}"
+        )
+        # The floor is itself past the criterion's deadline, so the
+        # literal C3 timing is unreachable rather than merely unmet.
+        assert floor_offset_s > stall_window_s + dt
+
+
+def test_proof1_floor_holds_for_every_theta() -> None:
+    """PROOF 1's theta-independence claim, checked.
+
+    Because every rule ``z`` lies in ``[0, 1]``, ``s >= 0`` and the D3
+    accrual rate ``(theta - s) / theta <= 1`` for EVERY ``theta > 0``. So
+    no retune of ``EXEC_STALL_THETA`` — including ``theta = 1.0``, the
+    largest admissible value — can pull the burst-then-idle kill inside
+    ``stall_window + 1 interval``. This is the step that makes "just raise
+    theta" a dead end, and it is asserted rather than argued in prose.
+    """
+    burst_duration_s = 30.0
+    stall_window_s = 90.0
+    dt = 0.05
+    floor_offset_s = CFG.output_recent_min_s + stall_window_s
+    for theta in (0.1, 0.25, 0.5, 0.75, 1.0):
+        config = dataclasses.replace(CFG, stall_theta=theta)
+        kill_time_s, last_output_s = _run_burst_then_idle_offset(
+            config,
+            burst_duration_s=burst_duration_s,
+            stall_window_s=stall_window_s,
+            dt=dt,
+        )
+        offset_s = kill_time_s - last_output_s
+        assert offset_s >= floor_offset_s - dt - 0.05, (
+            f"PROOF 1 floor violated at theta={theta}: killed {offset_s!r} s "
+            f"after the last output, below {floor_offset_s!r}"
+        )
+        assert offset_s > stall_window_s + dt, (
+            f"theta={theta} reached the literal C3 deadline, so PROOF 1's "
+            f"theta-independence claim is wrong and must be re-proved"
+        )
+
+
+def test_collapsed_output_recent_breakpoints_would_break_c2() -> None:
+    """The rejected candidate, kept as a measured counterfactual.
+
+    Collapsing the mandated ``OutputRecent`` breakpoints to ``1 at o <=
+    0`` / ``0 at o >= 2`` is the ONLY change that lands the burst-then-idle
+    kill inside criterion 3. It is refused because it re-creates cause #1
+    of the whole feature: a suite that prints one line every 5 s with no
+    CPU / I/O / tree / awake evidence is killed as idle instead of running
+    to completion. Pinning the refusal here means a future attempt to
+    "fix" C3 by retuning the breakpoints trips this test instead of
+    quietly regressing criterion 2.
+    """
+    collapsed = dataclasses.replace(CFG, output_recent_min_s=0.0, output_recent_max_s=2.0)
+    # Evaluate at the production sample interval so "one sample interval"
+    # means what it means in the shipped runtime, not a synthetic grid.
+    dt = _td.EXEC_LIVENESS_SAMPLE_INTERVAL_S
+    horizon_s = 1200.0
+
+    # (1) It does reach the literal criterion-3 deadline: the kill lands
+    #     exactly at ``stall_window`` after the last output byte.
+    kill_time_s, last_output_s = _run_burst_then_idle_offset(
+        collapsed, burst_duration_s=30.0, stall_window_s=90.0, dt=dt
+    )
+    assert kill_time_s - last_output_s <= 90.0 + dt
+
+    def _chatty_survival(config: LivenessConfig) -> float | None:
+        """Kill time for a suite printing one line every 5 s, else ``None``."""
+        si = StallIntegrator(theta=config.stall_theta)
+        t = 0.0
+        while t < horizon_s:
+            t += dt
+            si.step(
+                verdict_score=assess(
+                    LivenessWindow(t % 5.0, 0.0, 0.0, 0, 1.0, 0.0, t), config
+                ).score,
+                dt=dt,
+            )
+            if si.should_kill(90.0):
+                return t
+        return None
+
+    # (2) ... but it kills that merely-chatty working process at ~218 s...
+    killed_at_s = _chatty_survival(collapsed)
+    assert killed_at_s is not None, (
+        "the collapsed breakpoints no longer kill the chatty suite; the "
+        "trade-off that refuses this candidate must be re-measured"
+    )
+    assert 90.0 < killed_at_s < horizon_s
+
+    # (3) ... whereas the shipped breakpoints let it run the whole 20 min.
+    assert _chatty_survival(CFG) is None, (
+        "the shipped OutputRecent breakpoints must let a suite printing one "
+        "line every 5 s survive 20 minutes (criterion 2)"
+    )
 
 
 # REMOVED in PA-002 / wt-19:
