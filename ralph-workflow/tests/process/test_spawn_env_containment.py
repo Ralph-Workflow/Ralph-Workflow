@@ -36,6 +36,9 @@ _GUARD_ALLOWLIST: dict[str, str] = {
         "inside the current process (no subprocess spawn), so the guard "
         "is safe to keep."
     ),
+    "ralph/process/manager/_supervisor.py": (
+        "internal stdlib-only supervisor subprocess entry point; does not import process spawn seam"
+    ),
     **dict.fromkeys(
         (
             "ralph/testing/audit_activity_aware_watchdog.py",
