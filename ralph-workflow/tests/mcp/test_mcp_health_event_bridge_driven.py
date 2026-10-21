@@ -14,6 +14,8 @@ import pathlib
 import tempfile
 from datetime import timedelta
 
+import pytest
+
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server._mcp_health_event import (
     configure_bridge_sink,
@@ -42,7 +44,13 @@ class _FakeProcess:
         return 0
 
     def kill(self) -> None:
-        return None
+        self._poll_result = -9
+
+
+@pytest.fixture(autouse=True)
+def _short_handover_ack_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fake old child never writes a pause ack; don't burn the real 1 s ack window."""
+    monkeypatch.setattr(lifecycle, "_HANDOVER_ACK_TIMEOUT_S", 0.1)
 
 
 def _make_inner(poll_result: int | None = None, pid: int = 9999) -> lifecycle.StandaloneMcpProcess:

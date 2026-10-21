@@ -33,12 +33,20 @@ import fcntl
 import hashlib
 import hmac
 import json
+import os
+import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.server._wire_ledger_capture import WireLedgerCapture
+from ralph.mcp.server._wire_ledger_index import (
+    GENESIS_HMAC,
+    WireLedgerIndex,
+    parse_ledger_line,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -71,7 +79,20 @@ __all__ = [
 #: untouched by this module.
 WIRE_LEDGER_RELPATH = Path(".agent/tmp/mcp-wire-ledger.jsonl")
 
-_GENESIS_HMAC = "0" * 64
+_GENESIS_HMAC = GENESIS_HMAC
+
+#: Bytes read per step when scanning the ledger backwards for its chain
+#: head. One row is a few hundred bytes, so one chunk almost always holds it.
+_TAIL_CHUNK_BYTES = 64 * 1024
+
+#: Verified views kept per process, keyed by (ledger path, secret
+#: fingerprint). A run touches one or two ledgers; the cap only bounds
+#: processes (test suites) that verify many short-lived ledgers.
+_MAX_CACHED_INDEXES = 32
+_INDEXES_LOCK = threading.Lock()
+_INDEXES: OrderedDict[tuple[str, str], WireLedgerIndex] = (
+    OrderedDict()
+)  # bounded-accumulator-ok: LRU-capped at _MAX_CACHED_INDEXES
 
 
 def _ledger_path(workspace_root: Path, secret: str | None) -> Path:
@@ -284,11 +305,34 @@ def render_capture_table_markdown(
 
 
 def _read_last_hmac(ledger_path: Path) -> str:
-    rows = _iter_ledger_rows(ledger_path)
-    if not rows:
+    """Return the chain head: the ``hmac`` of the ledger's last parseable row.
+
+    Scans backwards from the end of the file so an append costs O(1) in
+    the ledger's length. It runs under the append lock, and a full read
+    there made every frame of a long run slower than the last until
+    appends overran the 0.2 s lock deadline.
+    """
+    try:
+        # filesystem-read-ok: backwards tail scan of the MCP wire ledger under its append lock; FileBackend has no offset-read API
+        with ledger_path.open("rb") as handle:
+            end = handle.seek(0, os.SEEK_END)
+            carry = b""
+            while end > 0:
+                start = max(0, end - _TAIL_CHUNK_BYTES)
+                handle.seek(start)
+                lines = (handle.read(end - start) + carry).split(b"\n")
+                end = start
+                # Unless the scan reached the start of the file, the first
+                # piece may be the tail of a line that began further back.
+                carry = lines.pop(0) if end > 0 else b""
+                for line in reversed(lines):
+                    row = parse_ledger_line(line)
+                    if row is not None:
+                        stored = row.get("hmac")
+                        return stored if isinstance(stored, str) else _GENESIS_HMAC
+    except OSError:
         return _GENESIS_HMAC
-    stored = rows[-1].get("hmac")
-    return stored if isinstance(stored, str) else _GENESIS_HMAC
+    return _GENESIS_HMAC
 
 
 def append_wire_record(
@@ -418,68 +462,72 @@ def verify_chain(workspace_root: Path, secret: str) -> bool:
     ``hmac``, or whose own ``hmac`` does not match ``secret``, fails the
     whole chain — a forged or unchained row is never accepted piecemeal.
 
+    Verification is incremental (:class:`WireLedgerIndex`): each appended
+    row is HMAC-checked once per process, and a rewrite of the verified
+    prefix forces a full re-verify.
+    """
+    intact, _calls = _ledger_index(workspace_root, secret).snapshot()
+    return intact
+
+
+def _ledger_index(workspace_root: Path, secret: str) -> WireLedgerIndex:
+    ledger_path = _ledger_path(workspace_root, secret)
+    key = (str(ledger_path), hashlib.sha256(secret.encode()).hexdigest())
+    with _INDEXES_LOCK:
+        index = _INDEXES.get(key)
+        if index is None:
+            index = WireLedgerIndex(
+                ledger_path, lambda row, prior: _expected_row_hmac(secret, row, prior)
+            )
+            _INDEXES[key] = index
+            while len(_INDEXES) > _MAX_CACHED_INDEXES:
+                _INDEXES.popitem(last=False)
+        else:
+            _INDEXES.move_to_end(key)
+        return index
+
+
+def _expected_row_hmac(secret: str, row: dict[str, object], prior: str) -> str | None:
+    """Recompute the HMAC ``row`` was sealed with, or ``None`` if it is malformed.
+
     S-6 (criterion 17): the four optional S-6 fields are read from the
     row (defaulting to ``None`` when absent -- a pre-S-6 row shape)
     and forwarded to :func:`_record_hmac` so the recomputed HMAC
     matches the bytes the appender signed. A pre-S-6 row therefore
     still verifies under the post-S-6 verifier.
     """
-    ledger_path = _ledger_path(workspace_root, secret)
-    rows = _iter_ledger_rows(ledger_path)
-    prior = _GENESIS_HMAC
-    for row in rows:
-        if row.get("prior_hmac") != prior:
-            return False
-        method = row.get("method")
-        params_digest = row.get("params_digest")
-        run_id = row.get("run_id")
-        timestamp = row.get("timestamp")
-        tool_name = row.get("tool_name")
-        stored_hmac = row.get("hmac")
-        if not (
-            isinstance(method, str)
-            and isinstance(params_digest, str)
-            and isinstance(run_id, str)
-            and isinstance(timestamp, int | float)
-            and isinstance(stored_hmac, str)
-            and (tool_name is None or isinstance(tool_name, str))
-        ):
-            return False
-        # S-6: forward the optional fields (defaulting to None for
-        # pre-S-6 rows that don't carry them) so the recomputed HMAC
-        # matches the bytes the appender signed.
-        delivery_mode_raw = row.get("delivery_mode")
-        provider_raw = row.get("provider")
-        model_id_raw = row.get("model_id")
-        agent_id_raw = row.get("agent_id")
-        capability_profile_digest_raw = row.get("capability_profile_digest")
-        delivery_mode = delivery_mode_raw if isinstance(delivery_mode_raw, str) else None
-        provider = provider_raw if isinstance(provider_raw, str) else None
-        model_id = model_id_raw if isinstance(model_id_raw, str) else None
-        agent_id = agent_id_raw if isinstance(agent_id_raw, str) else None
-        capability_profile_digest = (
-            capability_profile_digest_raw
-            if isinstance(capability_profile_digest_raw, str)
-            else None
-        )
-        expected = _record_hmac(
-            secret,
-            method=method,
-            tool_name=tool_name,
-            params_digest=params_digest,
-            run_id=run_id,
-            timestamp=timestamp,
-            prior_hmac=prior,
-            delivery_mode=delivery_mode,
-            provider=provider,
-            model_id=model_id,
-            agent_id=agent_id,
-            capability_profile_digest=capability_profile_digest,
-        )
-        if not hmac.compare_digest(stored_hmac, expected):
-            return False
-        prior = stored_hmac
-    return True
+    method = row.get("method")
+    params_digest = row.get("params_digest")
+    run_id = row.get("run_id")
+    timestamp = row.get("timestamp")
+    tool_name = row.get("tool_name")
+    if not (
+        isinstance(method, str)
+        and isinstance(params_digest, str)
+        and isinstance(run_id, str)
+        and isinstance(timestamp, int | float)
+        and (tool_name is None or isinstance(tool_name, str))
+    ):
+        return None
+    return _record_hmac(
+        secret,
+        method=method,
+        tool_name=tool_name,
+        params_digest=params_digest,
+        run_id=run_id,
+        timestamp=timestamp,
+        prior_hmac=prior,
+        delivery_mode=_optional_str(row, "delivery_mode"),
+        provider=_optional_str(row, "provider"),
+        model_id=_optional_str(row, "model_id"),
+        agent_id=_optional_str(row, "agent_id"),
+        capability_profile_digest=_optional_str(row, "capability_profile_digest"),
+    )
+
+
+def _optional_str(row: dict[str, object], key: str) -> str | None:
+    value = row.get(key)
+    return value if isinstance(value, str) else None
 
 
 def wire_evidence_for(
@@ -512,11 +560,11 @@ def wire_evidence_for(
     """
     if secret is None:
         return False
-    if not verify_chain(workspace_root, secret):
+    intact, calls = _ledger_index(workspace_root, secret).snapshot()
+    if not intact:
         return False
-    ledger_path = _ledger_path(workspace_root, secret)
-    for row in _iter_ledger_rows(ledger_path):
-        if row.get("run_id") != run_id or row.get("method") != "tools/call":
+    for row in calls:
+        if row.get("run_id") != run_id:
             continue
         if params_digest is not None:
             row_digest = row.get("params_digest")
