@@ -18,6 +18,7 @@ from ralph.mcp.protocol.env import (
     MCP_ACCEPT_PAUSE_FILE,
     MCP_ACCEPT_RESUME_FILE,
     MCP_BRIDGE_PARENT_SOCK,
+    MCP_EFFECTIVE_CONFIG_FINGERPRINT,
     MCP_STAGE_ID_ENV,
     MCP_TEST_PRE_SERVE_GATE_ENV,
 )
@@ -128,12 +129,24 @@ class _FallbackStandaloneServer:
             broker_fp: str | None = None
             if isinstance(raw_secret, str) and raw_secret:
                 broker_fp = hashlib.sha256(raw_secret[:8].encode()).hexdigest()
+            # C1 step 2: echo the parent-bound configuration-snapshot digest
+            # the parent placed in this child's spawn env. The parent compares
+            # it against its own baseline and refuses a candidate whose
+            # configuration diverged, keeping the old child serving. A child
+            # spawned without the env (older parent, non-bridge spawn) reports
+            # ``None`` and the parent's fail-closed comparison rejects it
+            # whenever a baseline exists.
+            raw_cfg_fp: object = self._env_getter(MCP_EFFECTIVE_CONFIG_FINGERPRINT, None)
+            config_fp: str | None = (
+                raw_cfg_fp if isinstance(raw_cfg_fp, str) and raw_cfg_fp else None
+            )
             start_private_readiness_listener(
                 child_sock,
                 self._mcp_server,
                 stage_id=stage_id,
                 session_id=session_id,
                 broker_fingerprint=broker_fp,
+                effective_config_fingerprint=config_fp,
             )
         except Exception:
             logger.opt(exception=True).warning("Failed to start private readiness listener")

@@ -270,6 +270,15 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # wt-16 WU-R2-ENVELOPE: whole-startup budget envelope — child blocked at
     # registry_built surfaces typed McpServerError with last_stage and elapsed_s
     "tests/mcp/test_runtime_blocked_registry_built_surfaces_typed_error.py",
+    # wt-16 WU-B follow-up: C1 step 2 effective-config fingerprint is
+    # computed by the parent before the first spawn, persisted in the
+    # snapshot, and matched by the candidate on the private readiness
+    # channel. Mismatch refuses promotion while the old child is alive;
+    # dead-old-child escapes promote with a warning. Tests are fake-based
+    # and exercised under the default ``make test`` profile so the C1
+    # step 2 contract cannot rot silently. In-budget on the 60s combined
+    # verify budget (5 tests, ~0.5s wall).
+    "tests/mcp/test_effective_config_fingerprint.py",
     # wt-16 (WU-B follow-up): both files shell out to real git in tmp_path
     # repos and now carry the ``subprocess_e2e`` module marker (enforced by
     # the process-audit AST exemption), so they MUST be registered here to

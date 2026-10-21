@@ -253,6 +253,7 @@ def _handle_readiness_line(
     stage_id: str,
     session_id: str,
     broker_fingerprint: str | None,
+    effective_config_fingerprint: str | None,
 ) -> bytes:
     try:
         raw_req: object = json.loads(line.decode("utf-8"))
@@ -274,6 +275,7 @@ def _handle_readiness_line(
                 "spawn_id": stage_id,
                 "session_id": session_id,
                 "broker_secret_fingerprint": broker_fingerprint,
+                "effective_config_fingerprint": effective_config_fingerprint,
             },
         }
     elif method == "tools/list":
@@ -299,8 +301,17 @@ def start_private_readiness_listener(
     stage_id: str,
     session_id: str,
     broker_fingerprint: str | None,
+    effective_config_fingerprint: str | None = None,
 ) -> threading.Thread:
-    """Start a background daemon thread that handles private preflight over child_sock."""
+    """Start a background daemon thread that handles private preflight over child_sock.
+
+    ``effective_config_fingerprint`` is the C1 step 2 configuration-snapshot
+    digest the parent bound into this child's spawn environment. It defaults to
+    ``None`` so every pre-existing call site (and any caller on an older
+    handshake) keeps working; when a parent baseline exists, the parent's
+    comparison in :func:`_validate_init_metadata` is fail-closed, so a missing
+    or divergent value refuses promotion instead of silently passing.
+    """
 
     def _worker() -> None:
         try:
@@ -326,6 +337,7 @@ def start_private_readiness_listener(
                             stage_id=stage_id,
                             session_id=session_id,
                             broker_fingerprint=broker_fingerprint,
+                            effective_config_fingerprint=effective_config_fingerprint,
                         )
                         if reply:
                             child_sock.sendall(reply)
@@ -344,6 +356,7 @@ def _validate_init_metadata(
     expected_spawn_id: str,
     expected_session_id: str,
     expected_broker_fingerprint: str | None,
+    expected_effective_config_fingerprint: str | None,
 ) -> tuple[str, str] | None:
     pid_val = res.get("pid")
     if pid_val != expected_pid:
@@ -359,6 +372,20 @@ def _validate_init_metadata(
         return (
             "broker_fingerprint_mismatch",
             f"got {fp_val} expected {expected_broker_fingerprint}",
+        )
+    cfg_fp_val = res.get("effective_config_fingerprint")
+    # ``None`` capture means the parent had no fingerprint baseline. The
+    # candidate is allowed to echo ``None`` (e.g. older build, no toml)
+    # because refusing such a candidate would force every older build off
+    # the bridge. ``None`` vs a real fingerprint is the only mismatch
+    # counted below.
+    if (
+        expected_effective_config_fingerprint is not None
+        and cfg_fp_val != expected_effective_config_fingerprint
+    ):
+        return (
+            "effective_config_fingerprint_mismatch",
+            f"got {cfg_fp_val} expected {expected_effective_config_fingerprint}",
         )
     return None
 
@@ -393,6 +420,7 @@ def _verify_init_exchange(
     expected_spawn_id: str,
     expected_session_id: str,
     expected_broker_fingerprint: str | None,
+    expected_effective_config_fingerprint: str | None,
 ) -> tuple[bool, str | None, str | None]:
     init_req: dict[str, object] = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
     try:
@@ -414,6 +442,7 @@ def _verify_init_exchange(
         expected_spawn_id=expected_spawn_id,
         expected_session_id=expected_session_id,
         expected_broker_fingerprint=expected_broker_fingerprint,
+        expected_effective_config_fingerprint=expected_effective_config_fingerprint,
     )
     if meta_err is not None:
         return False, meta_err[0], meta_err[1]
@@ -485,6 +514,7 @@ def check_candidate_readiness(
     expected_pid: int,
     expected_session_id: str,
     expected_broker_fingerprint: str | None,
+    expected_effective_config_fingerprint: str | None = None,
     expected_tool_hash: str | None = None,
     expected_tool_hash_required: bool = False,
     timeout: float = _PRIVATE_READINESS_TIMEOUT_S,
@@ -511,6 +541,7 @@ def check_candidate_readiness(
         expected_spawn_id=expected_spawn_id,
         expected_session_id=expected_session_id,
         expected_broker_fingerprint=expected_broker_fingerprint,
+        expected_effective_config_fingerprint=expected_effective_config_fingerprint,
     )
     if not init_ok:
         return _failure(
@@ -533,6 +564,7 @@ def verify_candidate_readiness(
     expected_pid: int,
     expected_session_id: str,
     expected_broker_fingerprint: str | None,
+    expected_effective_config_fingerprint: str | None = None,
     expected_tool_hash: str | None = None,
     timeout: float = _PRIVATE_READINESS_TIMEOUT_S,
 ) -> tuple[bool, str | None, str | None]:
@@ -548,6 +580,7 @@ def verify_candidate_readiness(
         expected_pid=expected_pid,
         expected_session_id=expected_session_id,
         expected_broker_fingerprint=expected_broker_fingerprint,
+        expected_effective_config_fingerprint=expected_effective_config_fingerprint,
         expected_tool_hash=expected_tool_hash,
         timeout=timeout,
     )

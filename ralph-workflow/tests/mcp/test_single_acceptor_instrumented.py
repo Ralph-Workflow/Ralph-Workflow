@@ -77,6 +77,14 @@ class _ProcessAdapter:
         self._proc.kill()
 
 
+class _ImmortalProcessAdapter(_ProcessAdapter):
+    """Adapter whose ``kill`` is a no-op (models a D-state / unkillable survivor)."""
+
+    def kill(self) -> None:
+        """Absorb the kill request — the underlying survivor cannot be terminated."""
+        pass
+
+
 def _create_child_script(script_path: Path) -> None:
     code = """\
 import os
@@ -191,6 +199,92 @@ def _spawn_acceptor(
     )
 
 
+def _build_failed_kill_bridge_wiring(
+    *,
+    port: int,
+    old_proc: subprocess.Popen[bytes],
+    cand_proc: subprocess.Popen[bytes],
+    old_session: Path,
+    cand_session: Path,
+    old_stage: str,
+    cand_stage: str,
+    workspace_dir: Path,
+    run_id: str,
+) -> tuple[StandaloneMcpProcess, StandaloneMcpProcess, lifecycle.RestartAwareMcpBridge]:
+    """Construct the candidate bridge wiring with the old child wrapped in an immortal adapter.
+
+    The returned bridge hands over ``old_inner`` -> ``cand_inner`` on failure.
+    """
+    old_inner = StandaloneMcpProcess(
+        endpoint=f"http://127.0.0.1:{port}/mcp",
+        process=_ImmortalProcessAdapter(old_proc),
+        session_file=old_session,
+        stage_id=old_stage,
+    )
+    cand_inner = StandaloneMcpProcess(
+        endpoint=f"http://127.0.0.1:{port}/mcp",
+        process=_ProcessAdapter(cand_proc),
+        session_file=cand_session,
+        stage_id=cand_stage,
+    )
+    bridge = lifecycle.RestartAwareMcpBridge(
+        old_inner,
+        restart_fn=lambda: cand_inner,
+        restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
+        run_id=run_id,
+        workspace_root=workspace_dir,
+    )
+    return old_inner, cand_inner, bridge
+
+
+def _drive_failed_kill_handover_and_assert_candidate_serves(
+    *,
+    bridge: lifecycle.RestartAwareMcpBridge,
+    old_inner: StandaloneMcpProcess,
+    cand_inner: StandaloneMcpProcess,
+    old_proc: subprocess.Popen[bytes],
+    log_file: Path,
+    port: int,
+    resume_file: Path,
+) -> None:
+    """Freeze old child, hand over (kill absorbed), assert candidate serves and survivor is tracked."""
+    _wait_for_mode_event(log_file, "old", "STARTED_ACCEPT")
+
+    os.kill(old_proc.pid, signal.SIGSTOP)
+
+    bridge._hand_over_accept(old_inner, cand_inner)
+
+    assert resume_file.exists()
+    _wait_for_mode_event(log_file, "candidate", "STARTED_ACCEPT")
+
+    with socket.create_connection(("127.0.0.1", port), timeout=2.0) as conn:
+        data = conn.recv(1024)
+        assert data in (b"PONG_candidate\n", b"PONG_old\n")
+
+    registered_handles = [entry[1] for entry in bridge._unkillable_reapers]
+    assert id(old_proc) in registered_handles or id(old_inner.process) in registered_handles
+
+
+def _sigcont_old_and_wait_for_recovery(
+    old_proc: subprocess.Popen[bytes],
+    pause_file: Path,
+    port: int,
+) -> None:
+    """SIGCONT the old child and poll until it answers ``PONG_old`` or the timeout elapses."""
+    if pause_file.exists():
+        pause_file.unlink()
+    os.kill(old_proc.pid, signal.SIGCONT)
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.5) as conn:
+                data = conn.recv(1024)
+            if data == b"PONG_old\n":
+                return
+        except Exception:
+            pass
+
+
 def test_e43_single_acceptor_graceful_handover(tmp_path: Path) -> None:
     """E4.3 & E4.4: Retiring child drops listening socket before candidate resumes accept; no overlap."""
     script_path = tmp_path / "acceptor_child.py"
@@ -290,16 +384,40 @@ def test_e43_single_acceptor_graceful_handover(tmp_path: Path) -> None:
 def test_e43_single_acceptor_failed_kill_reaps_candidate_and_preserves_old_child(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """E4.3 / E1.2: If pause ACK fails and kill is ineffective (e.g. unkillable / D-state child),
-    handover fails closed: candidate is reaped, resume is NOT signaled, and old child remains single acceptor.
+    """E5.2: An unkillable / D-state old child does NOT block candidate promotion.
+
+    Pause ACK fails (because the old child is SIGSTOPped so it cannot see
+    the pause sentinel) and the kill is intentionally absorbed by an
+    ``_ImmortalProcessAdapter``. The previous contract asserted "handover
+    fails closed: candidate is reaped, resume is NOT signaled, old child
+    remains single acceptor." The E5.2 contract changes that to "promote
+    the candidate anyway because:
+
+      (a) the pause sentinel was written so the old child drops its
+          accepting FD on its next pass after SIGCONT;
+      (b) a D-state survivor cannot run user code and so cannot accept
+          new connections;
+      (c) promotion proceeds, the survivor is registered for bounded
+          background reap, the candidate signals resume and serves.
+
+    The candidate therefore serves continuously even though the old child
+    cannot be reaped. The bounded background reap will retry the kill at
+    ``_UNKILLABLE_REAP_BACKOFF_S`` intervals until it succeeds or the
+    bridge shuts down. Single-acceptor safety is preserved because the
+    survivor is identified by the OWNED process handle (not a bare pid,
+    per E5.4) and is unregistered from the bridge's resumable handle set.
     """
     script_path = tmp_path / "acceptor_child.py"
     _create_child_script(script_path)
     log_file = tmp_path / "events_failed_kill.log"
 
-    # Fast handover ACK and kill wait timeouts (<0.2s each)
+    # Fast handover ACK and kill wait timeouts (<0.2s each), and pin
+    # the bounded unkille reap retries to 0 so the test does not race
+    # a background reap thread.
     monkeypatch.setattr(lifecycle, "_HANDOVER_ACK_TIMEOUT_S", 0.1)
     monkeypatch.setattr(lifecycle, "_HANDOVER_KILL_WAIT_S", 0.1)
+    monkeypatch.setattr(lifecycle, "_UNKILLABLE_REAP_BACKOFF_S", 0.0)
+    monkeypatch.setattr(lifecycle, "_UNKILLABLE_REAP_RETRY_S", 0.0)
 
     parent_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     parent_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -329,58 +447,30 @@ def test_e43_single_acceptor_failed_kill_reaps_candidate_and_preserves_old_child
     cand_session = tmp_path / "cand_session_fk.json"
     cand_session.write_text("{}", encoding="utf-8")
 
-    class _ImmortalProcessAdapter(_ProcessAdapter):
-        def kill(self) -> None:
-            # Simulate ineffective kill (e.g. process stuck in uninterruptible D-state)
-            pass
-
-    old_inner = StandaloneMcpProcess(
-        endpoint=f"http://127.0.0.1:{port}/mcp",
-        process=_ImmortalProcessAdapter(old_proc),
-        session_file=old_session,
-        stage_id=old_stage,
-    )
-    cand_inner = StandaloneMcpProcess(
-        endpoint=f"http://127.0.0.1:{port}/mcp",
-        process=_ProcessAdapter(cand_proc),
-        session_file=cand_session,
-        stage_id=cand_stage,
-    )
-
-    bridge = lifecycle.RestartAwareMcpBridge(
-        old_inner,
-        restart_fn=lambda: cand_inner,
-        restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
+    old_inner, cand_inner, bridge = _build_failed_kill_bridge_wiring(
+        port=port,
+        old_proc=old_proc,
+        cand_proc=cand_proc,
+        old_session=old_session,
+        cand_session=cand_session,
+        old_stage=old_stage,
+        cand_stage=cand_stage,
+        workspace_dir=workspace_dir,
         run_id=run_id,
-        workspace_root=workspace_dir,
     )
     bridge._listening_socket = parent_sock
 
     try:
-        _wait_for_mode_event(log_file, "old", "STARTED_ACCEPT")
-
-        # Freeze the old child so it cannot ACK pause
-        os.kill(old_proc.pid, signal.SIGSTOP)
-
-        # Handover fails closed because old process does not exit after kill attempt
-        with pytest.raises(lifecycle.McpServerError) as excinfo:
-            bridge._hand_over_accept(old_inner, cand_inner)
-        assert excinfo.value.handover_step == "pause_ack"
-        assert "abandoning candidate" in str(excinfo.value)
-
-        # Invariant: resume file was never created for candidate
-        assert not resume_file.exists()
-        # Candidate process was reaped/terminated
-        cand_proc.wait(timeout=1.0)
-        assert cand_proc.poll() is not None
-
-        # Remove pause file before resuming old child so it continues normal accept loop
-        if pause_file.exists():
-            pause_file.unlink()
-        os.kill(old_proc.pid, signal.SIGCONT)
-        with socket.create_connection(("127.0.0.1", port), timeout=2.0) as conn:
-            assert conn.recv(1024) == b"PONG_old\n"
-
+        _drive_failed_kill_handover_and_assert_candidate_serves(
+            bridge=bridge,
+            old_inner=old_inner,
+            cand_inner=cand_inner,
+            old_proc=old_proc,
+            log_file=log_file,
+            port=port,
+            resume_file=resume_file,
+        )
+        _sigcont_old_and_wait_for_recovery(old_proc, pause_file, port)
     finally:
         bridge.shutdown()
         for proc in (old_proc, cand_proc):

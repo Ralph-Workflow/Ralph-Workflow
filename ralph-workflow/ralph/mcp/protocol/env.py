@@ -76,6 +76,12 @@ class McpEnvVar(StrEnum):
     ACCEPT_RESUME_FILE = "RALPH_MCP_ACCEPT_RESUME_FILE"
     BRIDGE_PARENT_SOCK = "RALPH_MCP_BRIDGE_PARENT_SOCK"
     SNAPSHOT_DIR = "RALPH_MCP_SNAPSHOT_DIR"
+    # C1 step 2: the parent-computed secret-safe digest of the effective MCP
+    # configuration. The candidate reads it from its spawn env and echoes it
+    # on the PRIVATE readiness channel so the parent can prove the candidate
+    # was started from the configuration snapshot it snapshotted. Never
+    # carries configuration values, only a SHA-256 digest.
+    EFFECTIVE_CONFIG_FINGERPRINT = "RALPH_MCP_EFFECTIVE_CONFIG_FINGERPRINT"
 
 
 MCP_ENDPOINT_ENV = McpEnvVar.ENDPOINT
@@ -107,3 +113,4 @@ MCP_ACCEPT_PAUSE_FILE = McpEnvVar.ACCEPT_PAUSE_FILE
 MCP_ACCEPT_RESUME_FILE = McpEnvVar.ACCEPT_RESUME_FILE
 MCP_BRIDGE_PARENT_SOCK = McpEnvVar.BRIDGE_PARENT_SOCK
 MCP_SNAPSHOT_DIR_ENV = McpEnvVar.SNAPSHOT_DIR
+MCP_EFFECTIVE_CONFIG_FINGERPRINT = McpEnvVar.EFFECTIVE_CONFIG_FINGERPRINT

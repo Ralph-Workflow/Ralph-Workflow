@@ -234,6 +234,7 @@ from ralph.mcp.protocol.env import (
     MCP_ACCEPT_PAUSE_FILE,
     MCP_ACCEPT_RESUME_FILE,
     MCP_BRIDGE_PARENT_SOCK,
+    MCP_EFFECTIVE_CONFIG_FINGERPRINT,
     MCP_INHERITED_FD_ENV,
     MCP_OWNER_PID_ENV,
     MCP_RESPAWN_ENV,
@@ -294,6 +295,7 @@ from ralph.mcp.server._server_log import (
 )
 from ralph.mcp.server._snapshots import (
     _finger,
+    compute_effective_config_fingerprint,
     snapshot_dir,
     write_snapshot,
 )
@@ -475,6 +477,26 @@ if not (_HANDOVER_KILL_WAIT_S > 0 and _HANDOVER_KILL_WAIT_S <= _HANDOVER_KILL_WA
         "_HANDOVER_KILL_WAIT_S must be in (0,"
         f" {_HANDOVER_KILL_WAIT_MAX_S:g}] seconds (got {_HANDOVER_KILL_WAIT_S})"
     )
+
+# E5.2 unkillable-survivor reaper. A survivor that refused SIGKILL inside the
+# bounded pause-kill window (e.g. D-state pinned to uninterruptible I/O) is
+# registered for deferred reap at this interval. The interval is import-time
+# bounded; the registry is FIFO-capped on the bridge instance so a long stream
+# of survivors cannot grow the bridge's footprint.
+_UNKILLABLE_REAP_BACKOFF_S: float = 0.5
+_UNKILLABLE_REAP_BACKOFF_MAX_S: float = 30.0
+_UNKILLABLE_REAP_RETRY_S: float = 1.0
+if not (
+    _UNKILLABLE_REAP_BACKOFF_S > 0
+    and _UNKILLABLE_REAP_BACKOFF_S <= _UNKILLABLE_REAP_BACKOFF_MAX_S
+    and _UNKILLABLE_REAP_RETRY_S > 0
+):
+    raise RuntimeError(
+        f"_UNKILLABLE_REAP_BACKOFF_S={_UNKILLABLE_REAP_BACKOFF_S} and "
+        f"_UNKILLABLE_REAP_RETRY_S={_UNKILLABLE_REAP_RETRY_S} must be positive "
+        f"and bounded by {_UNKILLABLE_REAP_BACKOFF_MAX_S:g}s"
+    )
+
 
 # ---------------------------------------------------------------------------
 # Worst-case arithmetic bounds and import-time invariants (E6.4 + E2.3)
@@ -707,7 +729,17 @@ def _process_is_dead(target: StandaloneMcpProcess) -> bool:
 
 
 def _is_alive_pid(pid: int | None) -> bool:
-    """Return True if pid is a valid, currently alive OS process."""
+    """Return True if pid is a valid, currently alive OS process.
+
+    E5.4 / E5.2 mandate identity-safe liveness on the HOLDER (Popen/pidfd
+    handle), never a bare ``os.kill(pid, 0)`` — the latter cannot
+    distinguish a still-alive D-state process from a yet-unreaped zombie
+    and is sensitive to PID recycling. New callers MUST prefer
+    :func:`_is_alive_process`; the pid-only form is retained for narrow
+    migration sites where a process handle is not yet in scope and is
+    paired at the call site with a process-identity check before any
+    termination or handover decision.
+    """
     if pid is None or pid <= 0:
         return False
     try:
@@ -716,6 +748,27 @@ def _is_alive_pid(pid: int | None) -> bool:
     except ProcessLookupError:
         return False
     except OSError:
+        return False
+
+
+def _is_alive_process(proc: object) -> bool:
+    """Canonical E5.4 liveness check using the ``Popen`` handle's ``poll()``.
+
+    Returns ``True`` iff ``proc.poll() is None``: the process is still
+    running (including a D-state process holding uninterruptible I/O),
+    and the result is anchored to the handle we own rather than a bare
+    pid that the kernel may have recycled. ``poll()`` itself reaps a
+    zombie and returns its exit code, so this function naturally returns
+    ``False`` for zombies the moment they are reaped. Failing-closed on
+    an unusable ``proc`` (no ``poll`` callable) protects against
+    ``MagicMock`` and other incomplete test doubles leaking through.
+    """
+    poll_fn = cast("Callable[[], object] | None", getattr(proc, "poll", None))
+    if poll_fn is None or not callable(poll_fn):
+        return False
+    try:
+        return poll_fn() is None
+    except Exception:
         return False
 
 
@@ -905,6 +958,7 @@ class RestartAwareMcpBridge:
         clock_fn: Callable[[], float] | None = None,
         session_id: str | None = None,
         broker_fingerprint: str | None = None,
+        effective_config_fingerprint: str | None = None,
         tool_entries_fn: Callable[[str, float], list[dict[str, object]]] | None = None,
     ) -> None:
         self._inner = inner
@@ -933,6 +987,11 @@ class RestartAwareMcpBridge:
         self._clock_fn: Callable[[], float] | None = clock_fn
         self._session_id: str | None = session_id
         self._broker_fingerprint: str | None = broker_fingerprint
+        # C1 step 2: secret-safe ``effective_config_fingerprint`` of the
+        # merged McpConfig captured before the first spawn. ``None`` means
+        # the parent had no fingerprint baseline (no tomllib, empty layers).
+        # A non-None baseline is REQUIRED for promotion when one exists.
+        self._effective_config_fingerprint: str | None = effective_config_fingerprint
         # E1.9 drift reference for the CURRENT serving child. Seeded once by
         # ``capture_tool_hash_baseline`` from the served ``tools/list`` of the
         # first live child, then replaced by the hash each successfully
@@ -1042,6 +1101,20 @@ class RestartAwareMcpBridge:
             threading.Thread
         ] = []  # bounded-accumulator-ok: drain workers capped at maxlen 16 matching draining_inners and joined at shutdown
         self._is_shutting_down: bool = False
+        # E5.2: bounded reaper pool for unkillable / D-state survivors. A
+        # survivor that refuses both SIGTERM and SIGKILL inside the bounded
+        # pause-kill window is registered here; each entry is reaped at most
+        # ``_UNKILLABLE_REAP_BACKOFF_S`` seconds later and the registry is
+        # capped at ``_MAX_UNKILLABLE_REAPERS`` (FIFO truncation) so a long
+        # stream of D-state processes cannot grow the accumulator without
+        # bound. The truncation is safe because the bridge shutdown path
+        # unconditionally walks this list once more before returning.
+        self._unkillable_reapers: collections.deque[tuple[object, int]] = collections.deque(
+            maxlen=8
+        )
+        self._unkillable_reap_threads: list[
+            threading.Thread
+        ] = []  # bounded-accumulator-ok: reapers capped at maxlen 8 matching _unkillable_reapers and joined at shutdown
 
     @property
     def run_id(self) -> str:
@@ -1100,6 +1173,10 @@ class RestartAwareMcpBridge:
             self._draining_inners.clear()
             drain_threads = list(self._drain_threads)
             self._drain_threads.clear()
+            unkillable_threads = list(self._unkillable_reap_threads)
+            self._unkillable_reap_threads.clear()
+            unkillable_reapers = list(self._unkillable_reapers)
+            self._unkillable_reapers.clear()
         if cand is not None:
             with contextlib.suppress(Exception):
                 cand.shutdown()
@@ -1107,6 +1184,20 @@ class RestartAwareMcpBridge:
             with contextlib.suppress(Exception):
                 d.shutdown()
         for t in drain_threads:
+            with contextlib.suppress(Exception):
+                if t is not threading.current_thread():
+                    t.join(timeout=1.0)
+        for entry in unkillable_reapers:
+            proc, _ = entry
+            kill_fn = cast("Callable[[], object] | None", getattr(proc, "kill", None))
+            if callable(kill_fn):
+                with contextlib.suppress(Exception):
+                    kill_fn()
+            wait_fn = cast("Callable[[float], object] | None", getattr(proc, "wait", None))
+            if callable(wait_fn):
+                with contextlib.suppress(Exception):
+                    wait_fn(2.0)
+        for t in unkillable_threads:
             with contextlib.suppress(Exception):
                 if t is not threading.current_thread():
                     t.join(timeout=1.0)
@@ -1550,6 +1641,62 @@ class RestartAwareMcpBridge:
             self._expected_tool_hash,
         )
 
+    def _apply_baseline_unavailable(self, result: CandidateReadiness, old_dead: bool) -> bool:
+        """Decide promotion when no tool-hash drift reference exists (C1/E1.9).
+
+        With no baseline there is nothing to compare a candidate's served tool
+        set against, so the gate is fail-closed: promotion is refused while the
+        old child still serves. The single escape is the old child already
+        being dead, where there is nothing left to preserve and the candidate
+        is promoted with a WARNING so the agent keeps running.
+        """
+        if old_dead:
+            logger.warning(
+                "Tool-hash baseline unavailable and old child is dead. "
+                "Promoting candidate with warning (dead-child escape): "
+                "{}",
+                result.detail,
+            )
+            if result.tool_hash is not None:
+                self._absorb_verified_tool_set(result)
+            return True
+        # Old child is alive and serving: refuse the promotion — there is no
+        # drift reference, so we cannot prove safety.
+        logger.warning(
+            "Candidate verification refused: tool-hash baseline unavailable "
+            "(no drift reference) and old child is alive. Keeping old "
+            "child. detail={}",
+            result.detail,
+        )
+        return False
+
+    def _apply_config_fingerprint_mismatch(
+        self, result: CandidateReadiness, old_dead: bool
+    ) -> bool:
+        """Decide promotion for an effective-config fingerprint mismatch.
+
+        C1 step 2: the candidate's effective MCP configuration diverged from
+        the parent's snapshot, so it may have been started with a stale
+        catalog, a partially-merged ``mcp.toml``, or a different env override
+        layer. This is a fail-closed refusal while the old child still serves;
+        the single escape is the old child already being dead, where the
+        drifted candidate is promoted with a WARNING so the agent keeps
+        running. Only the digest is logged — never configuration values.
+        """
+        if old_dead:
+            logger.warning(
+                "Effective-config fingerprint mismatch but old child is "
+                "dead; promoting candidate with warning (dead-child "
+                "escape): {}",
+                result.detail,
+            )
+            return True
+        logger.warning(
+            "Candidate verification refused on effective-config fingerprint mismatch: detail={}",
+            result.detail,
+        )
+        return False
+
     def _verify_candidate_socket(
         self,
         candidate: StandaloneMcpProcess,
@@ -1561,6 +1708,7 @@ class RestartAwareMcpBridge:
         stage_id: str = raw_stage if isinstance(raw_stage, str) else ""
         session_id: str = self._session_id or ""
         broker_fp: str | None = self._broker_fingerprint
+        cfg_fp: str | None = self._effective_config_fingerprint
         verified = False
         try:
             result: CandidateReadiness = check_candidate_readiness(
@@ -1569,6 +1717,7 @@ class RestartAwareMcpBridge:
                 expected_pid=pid,
                 expected_session_id=session_id,
                 expected_broker_fingerprint=broker_fp,
+                expected_effective_config_fingerprint=cfg_fp,
                 expected_tool_hash=self._expected_tool_hash,
                 expected_tool_hash_required=self._baseline_capture_failed,
             )
@@ -1615,25 +1764,9 @@ class RestartAwareMcpBridge:
                     # C1/E1.9 fail-closed gate: there is no drift reference at
                     # all. Refuse unless the old child is already dead (the
                     # only legal escape — there is nothing left to preserve).
-                    if old_dead:
-                        logger.warning(
-                            "Tool-hash baseline unavailable and old child is dead. "
-                            "Promoting candidate with warning (dead-child escape): "
-                            "{}",
-                            result.detail,
-                        )
-                        if result.tool_hash is not None:
-                            self._absorb_verified_tool_set(result)
-                        verified = True
-                    else:
-                        # Old child is alive and serving: refuse the promotion —
-                        # there is no drift reference, so we cannot prove safety.
-                        logger.warning(
-                            "Candidate verification refused: tool-hash baseline unavailable "
-                            "(no drift reference) and old child is alive. Keeping old "
-                            "child. detail={}",
-                            result.detail,
-                        )
+                    verified = self._apply_baseline_unavailable(result, old_dead)
+                elif result.failure_stage == "effective_config_fingerprint_mismatch":
+                    verified = self._apply_config_fingerprint_mismatch(result, old_dead)
                 else:
                     logger.warning(
                         "Candidate verification failed: stage={} detail={}",
@@ -1705,6 +1838,15 @@ class RestartAwareMcpBridge:
         On any escape (KeyboardInterrupt, SIGTERM, ordinary failure) the
         candidate is reaped before the exception propagates, so a hard cancel
         during the handshake cannot leak the candidate process.
+
+        E5.2 (D-state / unkillable survivor): if the pause ack times out
+        AND a kill+wait cannot confirm the old child gone (D-state),
+        the candidate is NOT abandoned — single-acceptor safety is
+        preserved because (a) the pause sentinel was written, so a still-
+        serving old child drops its accepting FD on its next pass; (b) a
+        D-state survivor cannot run user code and so cannot accept new
+        connections; (c) the surviving handle is scheduled for bounded
+        background reap so bridge shutdown stays idempotent.
         """
         if self._workspace_root is not None:
             snap = snapshot_dir(self._workspace_root, self._run_id)
@@ -1727,9 +1869,10 @@ class RestartAwareMcpBridge:
                 else snap / "accept.resume"
             )
             proc: object = getattr(old_inner, "process", None)
-            raw_pid: object = getattr(proc, "pid", None)
-            pid: int | None = raw_pid if isinstance(raw_pid, int) else None
-            if _is_alive_pid(pid):
+            # E5.4: identity-safe liveness on the OWNED Popen handle so a
+            # PID-recycled replacement cannot fool us into treating a fresh
+            # process as the bridge's old child.
+            if _is_alive_process(proc):
                 try:
                     request_old_child_pause(pause_file)
                     ack = wait_for_old_child_pause_ack(
@@ -1754,9 +1897,14 @@ class RestartAwareMcpBridge:
                     if callable(kill_fn):
                         with contextlib.suppress(Exception):
                             kill_fn()
+                    # Bound the SIGKILL observation window so a SIGKILL'd
+                    # SIGSTOPped child has time for the kernel to advance
+                    # from "kill signal sent" to "process reaped by poll()".
+                    # The bounded wait is import-time-checked via
+                    # ``_HANDOVER_KILL_WAIT_S``.
                     poll_fn = cast(
                         "Callable[[], object] | None", getattr(proc, "poll", None)
-                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol confinee)
                     old_exited = False
                     if poll_fn is not None and callable(poll_fn):
                         deadline = time.monotonic() + _HANDOVER_KILL_WAIT_S
@@ -1767,18 +1915,24 @@ class RestartAwareMcpBridge:
                                 break
                             sleep_fn = self._sleep_fn if self._sleep_fn is not None else time.sleep
                             sleep_fn(0.05)
-                    elif not _is_alive_pid(pid):
-                        old_exited = True
+                    else:
+                        old_exited = not _is_alive_process(proc)
 
                     if not old_exited:
-                        with contextlib.suppress(Exception):
-                            candidate.shutdown()
-                        raise McpServerError(
-                            "Old child failed to acknowledge pause and could not be confirmed stopped; "
-                            "abandoning candidate to guarantee single-acceptor safety",
-                            restart_count=self._restart_count,
-                            handover_step=_HANDOVER_STEP_PAUSE_ACK,
+                        # E5.2: an unkillable / D-state survivor must NOT
+                        # block promotion. The pause sentinel was written,
+                        # so a still-serving old child drops its accepting
+                        # FD on its next pass; a D-state survivor cannot
+                        # run user code and so cannot accept. Promotion
+                        # proceeds; bounded background reap re-attempts
+                        # shutdown at bridge teardown.
+                        logger.warning(
+                            "Old child survived SIGKILL after pause ack timeout; "
+                            "promoting candidate (D-state/nonkillable survivor, "
+                            "single-acceptor safety preserved via pause sentinel); "
+                            "deferring reap to bridge shutdown"
                         )
+                        self._schedule_unkillable_reap(proc)
             try:
                 signal_candidate_resume(resume_file)
                 if cand_stage is not None:
@@ -1793,9 +1947,7 @@ class RestartAwareMcpBridge:
         drain_s = _HANDOVER_DRAIN_S
         sleep_fn = cast("Callable[[float], object] | None", getattr(self, "_sleep_fn", None))
         proc: object = getattr(old_inner, "process", None)
-        raw_pid: object = getattr(proc, "pid", None)
-        pid: int | None = raw_pid if isinstance(raw_pid, int) else None
-        if sleep_fn is None and (self._workspace_root is None or not _is_alive_pid(pid)):
+        if sleep_fn is None and (self._workspace_root is None or not _is_alive_process(proc)):
             with contextlib.suppress(Exception):
                 old_inner.shutdown()
             return
@@ -1882,6 +2034,59 @@ class RestartAwareMcpBridge:
         """Release the candidate slot so the next initiator can claim it."""
         with self._lock:
             self._candidate_in_flight = False
+
+    def _schedule_unkillable_reap(self, proc: object) -> None:
+        """Spawn a bounded background reap for an unkillable / D-state survivor.
+
+        The survivor is a ``Popen`` handle we already own (the bridge acquired
+        it via spawn), so identity-safe liveness (``proc.poll()`` / kernel wait)
+        is anchored to the handle itself rather than a bare pid (E5.4). The
+        thread takes one final ``proc.terminate()`` / ``proc.kill()`` /
+        ``proc.wait()`` cycle after the backoff so the bridge shutdown path
+        always sees a clean exit. The entry is FIFO-tracked on the bridge
+        ``_unkillable_reapers`` deque (capped at 8) and reaped threads are
+        joined at bridge shutdown.
+        """
+        handle_id = id(proc)
+        with self._lock:
+            self._unkillable_reapers.append((proc, handle_id))
+
+        def _reap_worker() -> None:
+            try:
+                time.sleep(_UNKILLABLE_REAP_BACKOFF_S)
+                terminate_fn = cast("Callable[[], object] | None", getattr(proc, "terminate", None))
+                if callable(terminate_fn):
+                    with contextlib.suppress(Exception):
+                        terminate_fn()
+                deadline = time.monotonic() + _UNKILLABLE_REAP_RETRY_S
+                poll_fn = cast("Callable[[], object] | None", getattr(proc, "poll", None))
+                while time.monotonic() < deadline:
+                    if poll_fn is not None and callable(poll_fn):
+                        with contextlib.suppress(Exception):
+                            if poll_fn() is not None:
+                                return
+                    time.sleep(0.05)
+                kill_fn = cast("Callable[[], object] | None", getattr(proc, "kill", None))
+                if callable(kill_fn):
+                    with contextlib.suppress(Exception):
+                        kill_fn()
+                wait_fn = cast("Callable[[float], object] | None", getattr(proc, "wait", None))
+                if callable(wait_fn):
+                    with contextlib.suppress(Exception):
+                        wait_fn(2.0)
+            finally:
+                with self._lock, contextlib.suppress(ValueError):
+                    for entry in list(self._unkillable_reapers):
+                        if entry[1] == handle_id:
+                            self._unkillable_reapers.remove(entry)
+                            break
+
+        t = threading.Thread(
+            target=_reap_worker, name=f"mcp-unkillable-reap-{handle_id}", daemon=True
+        )
+        with self._lock:
+            self._unkillable_reap_threads.append(t)
+        t.start()
 
     def _reservation_is_current(self, token: int) -> bool:
         """Return True while this attempt still owns an uncorrupted reservation.
@@ -2819,6 +3024,7 @@ def start_mcp_server(
             workspace_root=root,
             session_id=session.session_id,
             broker_fingerprint=_finger(broker_secret_val),
+            effective_config_fingerprint=compute_effective_config_fingerprint(root),
         )
         # Stash the listening socket on the bridge so ``shutdown`` can
         # close it deterministically (R1 invariant: the port stays ours
@@ -3023,6 +3229,14 @@ def _spawn_mcp_process(
     # Compute broker_secret_fingerprint using the helper.
     broker_secret_val: str | None = getattr(session, "broker_secret", None)
     broker_fingerprint: str | None = _finger(broker_secret_val)
+    # C1 step 2: compute the parent's effective-config fingerprint BEFORE
+    # the first spawn so the snapshot baseline is anchored to the merged
+    # layers at the moment of spawning. The fingerprint persists in
+    # ``session.json`` and the candidate echoes it on the private readiness
+    # channel. Returns ``None`` on hosts without ``tomllib`` or with a
+    # malformed merged config; the candidate comparison tolerates ``None``
+    # without rejecting legitimate candidates (no baseline == no check).
+    effective_config_fingerprint: str | None = compute_effective_config_fingerprint(root)
     # Write snapshot on first spawn (when session.json does not yet exist).
     if not snap_session_file.exists():
         write_snapshot(
@@ -3030,6 +3244,7 @@ def _spawn_mcp_process(
             session_id=session_id_value,
             run_id=bridge_run_id,
             broker_secret_fingerprint=broker_fingerprint,
+            effective_config_fingerprint=effective_config_fingerprint,
         )
     # Use the injection seam when provided (tests + production seam); otherwise
     # use the snapshot file so cross-respawn session_id persistence works.
@@ -3076,6 +3291,14 @@ def _spawn_mcp_process(
             parent_sock, child_sock = create_handover_socketpair()
             child_fd = child_sock.fileno()
             env[MCP_BRIDGE_PARENT_SOCK] = str(child_fd)
+            # C1 step 2: bind the candidate to the configuration snapshot the
+            # parent captured BEFORE this spawn. The candidate echoes the
+            # digest on the private readiness channel and the parent compares
+            # it against its own baseline, so a candidate started from a
+            # stale/divergent configuration is refused while the old child
+            # keeps serving. Only a SHA-256 digest crosses the boundary.
+            if effective_config_fingerprint is not None:
+                env[MCP_EFFECTIVE_CONFIG_FINGERPRINT] = effective_config_fingerprint
             pass_fds = (*pass_fds, child_fd)
         spawn_start = time.monotonic()
         process = deps.spawn_process(
@@ -3184,6 +3407,7 @@ def _build_spawn_env(
         MCP_RESPAWN_ENV,
         MCP_ACCEPT_RESUME_FILE,
         MCP_BRIDGE_PARENT_SOCK,
+        MCP_EFFECTIVE_CONFIG_FINGERPRINT,
     ):
         env.pop(_branch_owned_key, None)
     # Persist session_id in the subprocess environment so runtime_session.py

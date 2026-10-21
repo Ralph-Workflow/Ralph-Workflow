@@ -46,7 +46,7 @@ Any edit to a public-facing markdown file (README, USERS.md, docs/, the Sphinx o
 
 ## Total test budget — 60 seconds, ABSOLUTE and IMMUTABLE
 
-The 60-second combined total test budget is **absolute and immutable**. It cannot be changed, overridden, or circumvented. `make verify` runs `make test`, which selects `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` across the maintained pytest shards. The production-clock workspace baseline runs once before parallel shards start, so competing test processes do not distort its latency measurements. This serial preflight shares the same absolute suite deadline and combined budget; its thresholds and failure behavior are unchanged.
+The 60-second combined total test budget is **absolute and immutable**. It cannot be changed, overridden, or circumvented. `make verify` runs `make test`, which selects `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` across the maintained pytest shards. The previously serial "production-clock workspace baseline" preflight has been removed: those files now join the same LPT partition as every other selected file, distributed across the parallel shards (`ralph/test_suites.py:1494-1500`). A dedicated Python process no longer runs serially before the fan-out, so the critical path is the slowest shard rather than a serial preflight + parallel shards.
 
 `ralph/verify.py` enforces these import-time invariants (using `if`/`raise RuntimeError`, NOT `assert`, so they survive `python -O`):
 

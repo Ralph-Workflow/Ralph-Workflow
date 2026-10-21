@@ -23,6 +23,7 @@ import sys
 import tempfile
 import time
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 import psutil
@@ -37,15 +38,18 @@ from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.server._wire_ledger import WireLedgerIOError, append_wire_record
 
-pytestmark = [pytest.mark.subprocess_e2e]
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 
 class _FakeProcess:
-    def __init__(self, poll_result: int | None = None, pid: int = 9999) -> None:
+    def __init__(
+        self, poll_result: int | None = None, pid: int = 9999, *, unkillable: bool = False
+    ) -> None:
         self._poll_result = poll_result
         self._pid = pid
         self.terminated = False
         self.killed = False
+        self._unkillable = unkillable
 
     @property
     def pid(self) -> int:
@@ -56,26 +60,30 @@ class _FakeProcess:
 
     def terminate(self, grace_period_s: float = 5.0) -> None:
         self.terminated = True
-        self._poll_result = 0
+        if not self._unkillable:
+            self._poll_result = 0
 
     def wait(self, timeout: float | None = None) -> int:
         return 0
 
     def kill(self) -> None:
         self.killed = True
-        self._poll_result = -9
+        if not self._unkillable:
+            self._poll_result = -9
 
 
 def _make_inner(
     poll_result: int | None = None,
     pid: int = 9999,
     endpoint: str = "http://127.0.0.1:9100/mcp",
+    *,
+    unkillable: bool = False,
 ) -> StandaloneMcpProcess:
     session_file = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     session_file.write_text("{}", encoding="utf-8")
     return StandaloneMcpProcess(
         endpoint=endpoint,
-        process=_FakeProcess(poll_result=poll_result, pid=pid),
+        process=_FakeProcess(poll_result=poll_result, pid=pid, unkillable=unkillable),
         session_file=session_file,
     )
 
@@ -110,18 +118,42 @@ def test_e51_pid_reuse_guard_anchored_to_bridge_generation() -> None:
 # ---------------------------------------------------------------------------
 # E5.2: Unkillable child (D state) does not block candidate promotion
 # ---------------------------------------------------------------------------
-def test_e52_unkillable_child_does_not_block_promotion() -> None:
-    class _UnkillableProcess(_FakeProcess):
-        def kill(self) -> None:
-            # Remains alive even after kill
-            self.killed = True
-            self._poll_result = None
+def test_e52_unkillable_child_does_not_block_promotion(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """E5.2: An old child that survives SIGKILL inside the bounded pause-kill
+    window MUST NOT block promotion of a verified candidate. Single-acceptor
+    safety is preserved because (a) the pause sentinel was written so the
+    old child drops its accepting FD on its next pass, and (b) a D-state
+    survivor cannot run user code. Promotion proceeds; the survivor handle
+    is registered for bounded background reap, joined at bridge shutdown.
 
-    old_inner = StandaloneMcpProcess(
-        endpoint="http://127.0.0.1:9100/mcp",
-        process=_UnkillableProcess(poll_result=None, pid=1001),
-        session_file=pathlib.Path(tempfile.mkdtemp()) / "session.json",
-    )
+    The test passes ``workspace_root`` to force the production handshake
+    code path (the ``if self._workspace_root is not None`` guard at
+    lifecycle.py:1709), and uses a fake whose ``kill()`` and ``terminate()``
+    are absorbed without flipping ``_poll_result`` so ``_is_alive_process``
+    keeps returning True — exactly the D-state observation pattern.
+
+    Direct call to ``_hand_over_accept`` rather than ``_perform_restart`` so
+    the test exercises the actual production handshake code while staying
+    inside the per-test budget. The fake sleeper is wired in to keep the
+    bounded ack-wait at its production timeout (1.0 s); the production
+    helper then escalates SIGTERM -> SIGKILL and observes the survivor is
+    still alive, schedules bounded reap, and falls through to promotion.
+    """
+    # Make the bounded ack/kill waits expire immediately. The sleeper itself
+    # ``time.sleep()``s on the production timeout, so we shrink the constants
+    # by patching them locally to a smaller bounded value rather than racing
+    # wall-clock against the per-test budget.
+    monkeypatch.setattr(lifecycle, "_HANDOVER_ACK_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(lifecycle, "_HANDOVER_KILL_WAIT_S", 0.05)
+    # The bounded background reap is unrelated to the assertion, so suppress
+    # it to keep the test free of background-thread cleanup noise.
+    monkeypatch.setattr(lifecycle, "_UNKILLABLE_REAP_BACKOFF_S", 0.0)
+    monkeypatch.setattr(lifecycle, "_UNKILLABLE_REAP_RETRY_S", 0.0)
+
+    workspace = tmp_path
+    old_inner = _make_inner(poll_result=None, pid=1001, unkillable=True)
     candidate = _make_inner(poll_result=None, pid=2002)
 
     bridge = lifecycle.RestartAwareMcpBridge(
@@ -129,7 +161,55 @@ def test_e52_unkillable_child_does_not_block_promotion() -> None:
         restart_fn=lambda: candidate,
         restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
         run_id="test-run",
-        sleep_fn=lambda s: None,
+        workspace_root=workspace,
+        sleep_fn=time.sleep,
+    )
+
+    # Drive the production handshake synchronously. This proves that the
+    # real production handshake code path (the one guarded by
+    # ``if self._workspace_root is not None`` at lifecycle.py:1709) now
+    # treats an unkillable survivor as a non-blocker instead of raising
+    # McpServerError and abandoning the candidate.
+    bridge._hand_over_accept(old_inner, candidate)
+
+    # Hand-over completed without raising. Single-acceptor safety is
+    # preserved (E1.2): the pause sentinel was written so the old child
+    # drops its accepting FD on its next pass, and the D-state survivor
+    # cannot run user code. Promotion proceeds through the surrounding
+    # _promote_and_reap call in the real make-before-break path, which
+    # test_bridge_make_before_break.py covers. The bounded background reap
+    # is registered on the bridge and is joined at bridge shutdown.
+    assert bridge._inner is old_inner  # hand_over_accept does NOT swap _inner
+
+
+def test_e52_unkillable_child_promotes_via_full_make_before_break(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """E5.2 (full): D-state / unkillable survivor does not block promotion.
+
+    Drives the FULL ``_perform_restart`` path with both ``process_exited=False``
+    (so the old child's handle is registered as alive) and an unkillable
+    surrogate whose ``poll()`` always returns ``None``. The previous
+    production code raised ``McpServerError`` here, abandoning the candidate
+    and aborting the agent run; the new code schedules a bounded background
+    reap and lets the candidate promotion proceed.
+    """
+    monkeypatch.setattr(lifecycle, "_HANDOVER_ACK_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(lifecycle, "_HANDOVER_KILL_WAIT_S", 0.05)
+    monkeypatch.setattr(lifecycle, "_UNKILLABLE_REAP_BACKOFF_S", 0.0)
+    monkeypatch.setattr(lifecycle, "_UNKILLABLE_REAP_RETRY_S", 0.0)
+
+    workspace = tmp_path
+    old_inner = _make_inner(poll_result=None, pid=1001, unkillable=True)
+    candidate = _make_inner(poll_result=None, pid=2002)
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        old_inner,
+        restart_fn=lambda: candidate,
+        restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
+        run_id="test-run",
+        workspace_root=workspace,
+        sleep_fn=time.sleep,
     )
 
     promoted = bridge._perform_restart(process_exited=False, probe_duration_s=1.0)
@@ -226,6 +306,33 @@ def test_e54_zombie_child_reaped_by_poll() -> None:
         if proc.poll() is None:
             proc.kill()
             proc.wait(timeout=1.0)
+
+
+def test_e54_is_alive_process_uses_poll_not_bare_kill() -> None:
+    """E5.4 unit: ``_is_alive_process`` relies on the OWNED handle's ``poll()``.
+
+    The canonical E5.4-safe liveness test is the process handle's
+    ``poll()`` — anchored to the handle we own rather than a bare pid
+    the kernel may have recycled. ``os.kill(pid, 0)`` is NOT safe
+    because it succeeds against an unreaped zombie and so cannot
+    distinguish a living process from a dead one. The
+    ``_is_alive_process`` helper routes through the handle.
+    """
+    # Live handle: poll() is None — _is_alive_process returns True.
+    live = _FakeProcess(poll_result=None, pid=1001)
+    assert lifecycle._is_alive_process(live) is True
+
+    # Dead handle: poll() returns the exit code (zombie-reaped).
+    # _is_alive_process returns False regardless of the underlying pid.
+    dead = _FakeProcess(poll_result=0, pid=1001)
+    assert lifecycle._is_alive_process(dead) is False
+
+    # No poll callable at all: fail-closed (returns False) so MagicMock
+    # and other incomplete doubles cannot leak through.
+    class _NoPoll:
+        pass
+
+    assert lifecycle._is_alive_process(_NoPoll()) is False
 
 
 # ---------------------------------------------------------------------------
