@@ -819,17 +819,16 @@ def test_all_three_gates_agree_on_tree_state(
     repo = _make_real_repo(tmp_path)
     actor = Actor("Test Committer", "test@example.com")
 
-    # Feature branch with work
-    repo.git.checkout("-b", "feature/work")
+    # Feature branch with work (create without switching)
+    repo.git.branch("feature/work")
 
     # Advance main so boundary catch-up gate observes a target ahead
-    repo.git.checkout("main")
     main_file = tmp_path / "main.txt"
     main_file.write_text("main advance\n", encoding="utf-8")
     repo.index.add(["main.txt"])
     repo.index.commit("main advance", author=actor, committer=actor)
 
-    # Return to feature branch and apply state
+    # Switch to feature branch and apply state
     repo.git.checkout("feature/work")
     setup_state(repo, tmp_path)
 

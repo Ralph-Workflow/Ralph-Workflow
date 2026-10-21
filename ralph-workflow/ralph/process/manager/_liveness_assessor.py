@@ -235,8 +235,9 @@ verbatim.
 
 Verified by ``tests/test_liveness_assessor.py`` (regressions locking
 the verbatim counterexample scores and the case-(c) kill times),
-``tests/test_exec_liveness_scenarios.py`` (the 13 trace-library
-scenarios, including the PROOF-1 closed form for scenarios 8 and 13),
+``tests/test_exec_liveness_scenarios.py`` (the 14 trace-library
+scenarios, including the PROOF-1 closed form for scenarios 8 and 13
+and the never-output shape that meets the kill-time bound literally),
 ``tests/test_liveness_properties.py`` (property tests over randomized
 windows) and ``tests/test_liveness_pa002_properties.py`` (the
 executable PROOF-1 floor, the PROOF-1 theta sweep and the locked

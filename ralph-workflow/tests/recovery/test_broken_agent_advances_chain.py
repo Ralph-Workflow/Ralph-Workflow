@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 
+@functools.lru_cache(maxsize=1)
 def _minimal_policy_bundle() -> PolicyBundle:
     with tempfile.TemporaryDirectory() as directory:
         return load_policy(Path(directory) / ".agent")

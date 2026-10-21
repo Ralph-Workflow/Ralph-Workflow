@@ -27,13 +27,34 @@ from ralph.pipeline.auto_integrate_record import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.git.git_run_result import GitRunResult
     from ralph.mcp.artifacts.file_backend import FileBackend
+
+_GIT_REFUSAL_DETAIL_LIMIT = 200
+
+
+def _refusal(reason: str, result: GitRunResult) -> RuntimeError:
+    """Return a fail-closed refusal that names the git exit and git's own diagnostic.
+
+    Each enumeration below runs a real git child, so one nonzero exit covers
+    two unrelated worlds: git answered that the work cannot be captured, or
+    the child never produced an answer at all (an unreadable index or config,
+    or a spawn that did not exec). Reporting only ``reason`` collapsed both
+    into one opaque sentence, so
+    ``ralph.pipeline._pending_merge_repair._repair_owned_merge`` retained the
+    integration with nothing that separates a repository fault from a spawn
+    fault. Naming the exit code and git's own stderr keeps the refusal
+    fail-closed and identical in behaviour while making it attributable.
+    """
+    detail = " ".join(result.stderr.split())[:_GIT_REFUSAL_DETAIL_LIMIT]
+    observed = f": {detail}" if detail else " with no diagnostic"
+    return RuntimeError(f"{reason} (git exit {result.returncode}{observed})")
 
 
 def capture_unstaged_work(root: Path) -> dict[str, str]:
     result = run_git(("diff", "--name-only", "-z"), cwd=root, label="repair:dirty-paths")
     if result.returncode:
-        raise RuntimeError("cannot enumerate existing unstaged work")
+        raise _refusal("cannot enumerate existing unstaged work", result)
     captured: dict[str, str] = {}
     for path in filter(None, result.stdout.split("\0")):
         diff = run_git(
@@ -50,7 +71,7 @@ def capture_unstaged_work(root: Path) -> dict[str, str]:
             label="repair:dirty-snapshot",
         )
         if diff.returncode:
-            raise RuntimeError(f"cannot protect existing work in {path}")
+            raise _refusal(f"cannot protect existing work in {path}", diff)
         captured[path] = diff.stdout
     loose = run_git(
         ("ls-files", "--others", "--exclude-standard", "-z"),
@@ -58,7 +79,7 @@ def capture_unstaged_work(root: Path) -> dict[str, str]:
         label="repair:untracked",
     )
     if loose.returncode:
-        raise RuntimeError("cannot enumerate pre-existing untracked work")
+        raise _refusal("cannot enumerate pre-existing untracked work", loose)
     for path in filter(None, loose.stdout.split("\0")):
         if path.startswith(".agent/"):
             continue
@@ -68,7 +89,7 @@ def capture_unstaged_work(root: Path) -> dict[str, str]:
             label="repair:untracked-snapshot",
         )
         if digest.returncode:
-            raise RuntimeError(f"cannot protect untracked work in {path}")
+            raise _refusal(f"cannot protect untracked work in {path}", digest)
         captured[path] = f"untracked:{digest.stdout.strip()}"
     return captured
 

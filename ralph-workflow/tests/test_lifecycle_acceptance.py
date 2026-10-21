@@ -501,19 +501,23 @@ def test_acceptance_scenario_7_entry_point_parity(tmp_path: Path) -> None:
     )
 
     # 1. End-to-end matrix parity test
-    test_entry_point_matrix_evaluates_consistent_phase_decision(tmp_path)
+    path_matrix = tmp_path / "matrix"
+    path_matrix.mkdir()
+    test_entry_point_matrix_evaluates_consistent_phase_decision(path_matrix)
 
     # 2. Explicit direct inspection of all 6 public entry points against the same state
-    (tmp_path / ".git").mkdir(exist_ok=True)
+    path_direct = tmp_path / "direct"
+    path_direct.mkdir()
+    (path_direct / ".git").mkdir()
     record = IntegrationRecord(
         phase="integrating",
         target="main",
         pre_feature_sha="abc111",
         pre_target_sha="def222",
         engine="git-merge",
-        owning_worktree=str(tmp_path),
+        owning_worktree=str(path_direct),
     ).with_transition(START_INTEGRATING)
-    write_record(tmp_path, record)
+    write_record(path_direct, record)
 
     policy = _policy()
     shared_rebase = RebaseState()
@@ -523,15 +527,15 @@ def test_acceptance_scenario_7_entry_point_parity(tmp_path: Path) -> None:
     bundle = bundle.model_copy(update={"pipeline": policy})
 
     decision_startup = _eval_startup_inspection(
-        tmp_path, shared_rebase, shared_state, policy, record
+        path_direct, shared_rebase, shared_state, policy, record
     )
     decision_phase_boundary, ctx = _eval_phase_boundary_run_loop(
-        tmp_path, shared_state, policy, record, bundle
+        path_direct, shared_state, policy, record, bundle
     )
-    decision_commit = _eval_commit_handling(tmp_path, shared_state, bundle)
-    decision_cooldown = _eval_cooldown_recovery(tmp_path, shared_state, ctx)
-    decision_parallel_join = _eval_parallel_join(tmp_path, shared_state, shared_rebase, bundle)
-    decision_terminal = _eval_terminal_handling(tmp_path, shared_rebase, policy, record)
+    decision_commit = _eval_commit_handling(path_direct, shared_state, bundle)
+    decision_cooldown = _eval_cooldown_recovery(path_direct, shared_state, ctx)
+    decision_parallel_join = _eval_parallel_join(path_direct, shared_state, shared_rebase, bundle)
+    decision_terminal = _eval_terminal_handling(path_direct, shared_rebase, policy, record)
 
     decisions = {
         "startup": decision_startup,

@@ -13,8 +13,15 @@ Tests real process trees under:
     mechanism. There is no cross-platform parent-death equivalent, so once
     the server is SIGKILLed on a non-Linux platform the orphaned tree has
     no in-process lifetime bound at all and the test skips there.
+(d) The four liveness kill causes -- ``stalled``, ``no_progress``,
+    ``hard_cap`` and ``abandoned`` -- each proven to reap a real worker ->
+    descendant tree, not just the root. Cause *termination* for those four is
+    already covered on fake processes by ``tests/test_exec_jobs.py``; that file
+    explicitly scopes its cleanup evidence to root-only (see its
+    ``CLEANUP-EVIDENCE SCOPE`` note), which is exactly the gap these proofs
+    close.
 
-Each test spawns a multi-process tree (worker → python → sleep child) so
+Each test spawns a multi-process tree (worker -> python -> sleep child) so
 the proof is structural, not just a single-PID check. The descendant
 PID is written by the spawned worker into a sentinel file so the test
 process can read it without relying on subprocess pipe timing.
@@ -22,13 +29,14 @@ process can read it without relying on subprocess pipe timing.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
 
@@ -719,3 +727,385 @@ def _wait_for_sentinel_text(path: Path, timeout_s: float = 5.0) -> None:
         if time.monotonic() > deadline:
             raise AssertionError(f"{path} never written within {timeout_s}s")
         time.sleep(0.02)
+
+
+# ---------------------------------------------------------------------------
+# Proof (e) — liveness-cause tree reaping.
+#
+# Acceptance criterion 5 requires that "every kill cause ... is covered by a
+# test, AND the process tree is cleaned up in each case". ``tests/test_exec_jobs.py``
+# covers the four liveness causes' *termination* on fake process doubles and
+# self-declares its cleanup evidence as root-only (its ``CLEANUP-EVIDENCE SCOPE``
+# note). These proofs close that second clause on real trees: each drives the
+# production ``_exec_jobs.ExecJobRegistry.step_job`` kill branch
+# (``_exec_jobs.py:498-549``) until it reports its own kill cause, and then
+# asserts that BOTH the exec worker AND the worker's own child are gone.
+#
+# The production kill path under test is identical for all four causes:
+# ``_kill_job`` -> ``ManagedProcess.terminate(grace_period_s=0.0)``
+# (``_exec_jobs.py:442-460``) -> ``ProcessManager._escalate_termination_sync``
+# -> ``_find_procs_to_terminate``, which returns
+# ``[root, *root.children(recursive=True)]``
+# (``ralph/process/manager/_process_manager.py:1716-1727``). So the descendant
+# reaping is real, not incidental; these tests exist to keep it that way.
+#
+# Only the CLOCK is injected. The holder drives the real registry with the
+# real ``step_job`` and the real ``ProcessManager``; ``clock=`` plus
+# ``background_sampler=False`` let the multi-minute production windows
+# (120 s abandonment, 900 s no-progress, 30 s liveness evidence window) be
+# crossed inside the 60 s combined test budget without touching a single
+# timeout constant. Every process, signal, verdict and kill is production.
+# ---------------------------------------------------------------------------
+
+#: The exec-job command under test. It forks a real ``sleep 600`` grandchild,
+#: records that grandchild's PID, then goes silent. ``WORKER_SPIN=1`` makes it
+#: a real CPU burner instead, which is what drives ``CpuBusy`` -> ``R4``
+#: (silent compute, suspicious) and therefore the no-progress clock.
+#: It prints NOTHING, so ``last_output_at`` stays ``None`` and the registry
+#: samples the never-output window -- the shape criterion C3 is literally met
+#: on (``tests/test_exec_liveness_scenarios.py`` scenario 14).
+_LIVENESS_TREE_WORKER = """
+import os, subprocess, time
+
+_descendant = subprocess.Popen(["sleep", "600"])
+with open(os.environ["DESCENDANT_FILE"], "w") as _fh:
+    _fh.write(str(_descendant.pid))
+if os.environ.get("WORKER_SPIN") == "1":
+    while True:  # real CPU burner: CpuBusy saturates -> R4 (silent compute)
+        pass
+while True:
+    time.sleep(60)
+"""
+
+
+def _liveness_holder_script() -> str:
+    """Return the holder source that drives one real liveness kill to completion.
+
+    The holder owns a real :class:`ExecJobRegistry` (and, through it, the
+    process-local ``ProcessManager``) and starts one real exec job whose
+    command is :data:`_LIVENESS_TREE_WORKER`. It then:
+
+    1. publishes the worker's PID and blocks until the worker has published
+       its descendant PID and the test has armed ``$GO_FILE`` — so the test
+       can prove BOTH PIDs are alive *before* any kill is requested;
+    2. runs ``AGE_STEPS`` aging steps with ``dt=0``. The fake clock jumps past
+       ``EXEC_LIVENESS_EVIDENCE_WINDOW_S`` so the worker's own fork ages out
+       of the sampler's windowed child-event history. Without this the
+       ``TreeActive`` membership keeps ``R3`` (``z = 0.9``) firing, the stall
+       score never drops below theta, and the stall branch is unreachable —
+       which is the designed C2 behaviour ("working commands must not time
+       out easily"), not a defect, but it would mask the branch under test;
+    3. runs ``DRIVE_STEPS`` steps that advance the fake clock and hand the
+       real integration ``dt`` to ``step_job``, calling ``wait()`` between
+       steps when ``REFRESH_WAIT=1`` so the abandonment branch cannot fire
+       ahead of the branch under test;
+    4. prints the kill cause the production code recorded, plus the final
+       verdict, and stays alive so the test can observe the tree.
+
+    Every knob is an env var so one holder serves all four causes without
+    branching in Python.
+    """
+    return (
+        "import os, sys, time\n"
+        "from ralph.mcp.tools._exec_jobs import ExecJobRegistry\n"
+        "_clock = [0.0]\n"
+        "_registry = ExecJobRegistry(\n"
+        "    clock=lambda: _clock[0],\n"
+        "    background_sampler=False,\n"
+        "    auto_register_runtime_hooks=False,\n"
+        ")\n"
+        "_cmd = [sys.executable, '-u', '-c', os.environ['WORKER_CODE']]\n"
+        "_job_id = _registry.start(\n"
+        "    _cmd,\n"
+        "    capability='ProcessExecBounded',\n"
+        "    timeout_ms=int(os.environ['TIMEOUT_MS']),\n"
+        "    max_runtime_ms=int(os.environ['MAX_RUNTIME_MS']),\n"
+        ")\n"
+        "_job = _registry._running_jobs[_job_id]\n"
+        "with open(os.environ['WORKER_FILE'], 'w') as _fh:\n"
+        "    _fh.write(str(_job.handle.pid))\n"
+        "_deadline = time.monotonic() + 15.0\n"
+        "while not os.path.exists(os.environ['DESCENDANT_FILE']):\n"
+        "    if time.monotonic() > _deadline:\n"
+        "        raise SystemExit('descendant sentinel never appeared')\n"
+        "    time.sleep(0.02)\n"
+        "while not os.path.exists(os.environ['GO_FILE']):\n"
+        "    if time.monotonic() > _deadline:\n"
+        "        raise SystemExit('go sentinel never appeared')\n"
+        "    time.sleep(0.02)\n"
+        "for _ in range(int(os.environ['AGE_STEPS'])):\n"
+        "    _clock[0] += float(os.environ['AGE_CLOCK_STEP_S'])\n"
+        "    _registry.step_job(_job_id, dt=0.0)\n"
+        "_refresh = os.environ['REFRESH_WAIT'] == '1'\n"
+        "_drive_dt = float(os.environ['DRIVE_DT_S'])\n"
+        "for _ in range(int(os.environ['DRIVE_STEPS'])):\n"
+        "    time.sleep(float(os.environ['DRIVE_REAL_SLEEP_S']))\n"
+        "    _clock[0] += float(os.environ['DRIVE_CLOCK_STEP_S'])\n"
+        "    if _refresh:\n"
+        "        _registry.wait(_job_id, wait_ms=0, capability='ProcessExecBounded')\n"
+        "    _registry.step_job(_job_id, dt=_drive_dt)\n"
+        "    if _job_id not in _registry._running_jobs:\n"
+        "        break\n"
+        "_res = _registry.wait(_job_id, wait_ms=0, capability='ProcessExecBounded')\n"
+        "_verdict = getattr(_res, 'verdict', None)\n"
+        "print('CAUSE ' + str(getattr(_res, 'kill_cause', 'no-result')), flush=True)\n"
+        "print(\n"
+        "    'VERDICT '\n"
+        "    + str(getattr(_verdict, 'verdict_kind', ''))\n"
+        "    + ' '\n"
+        "    + str(getattr(_verdict, 'strongest_rule', ''))\n"
+        "    + ' '\n"
+        "    + str(getattr(_verdict, 'score', '')),\n"
+        "    flush=True,\n"
+        ")\n"
+        "while True:\n"
+        "    time.sleep(0.1)\n"
+    )
+
+
+class _LivenessKillOutcome(NamedTuple):
+    """What one liveness-cause run produced, as observed by the test process."""
+
+    cause: str
+    verdict: str
+    worker_pid: int
+    descendant_pid: int
+    worker_dead: bool
+    descendant_dead: bool
+
+
+def _run_liveness_kill_case(
+    tmp_path: Path,
+    *,
+    age_steps: int,
+    age_clock_step_s: float,
+    drive_steps: int,
+    drive_clock_step_s: float,
+    drive_dt_s: float,
+    drive_real_sleep_s: float,
+    refresh_wait: bool,
+    timeout_ms: int,
+    max_runtime_ms: int,
+    spin: bool,
+) -> _LivenessKillOutcome:
+    """Drive one real liveness kill and report cause + per-PID tree liveness.
+
+    Asserts only what every caller shares -- the tree really existed, i.e.
+    both PIDs were live before the kill was requested. The recorded kill cause
+    and the two death booleans are returned so each caller states its own
+    expectations in its own test body.
+    """
+    worker_file = f"{tmp_path}/liveness_worker.pid"
+    descendant_file = f"{tmp_path}/liveness_descendant.pid"
+    go_file = f"{tmp_path}/liveness_go"
+
+    env = dict(os.environ)
+    env["WORKER_FILE"] = worker_file
+    env["DESCENDANT_FILE"] = descendant_file
+    env["GO_FILE"] = go_file
+    env["WORKER_CODE"] = _LIVENESS_TREE_WORKER
+    env["WORKER_SPIN"] = "1" if spin else "0"
+    env["TIMEOUT_MS"] = str(timeout_ms)
+    env["MAX_RUNTIME_MS"] = str(max_runtime_ms)
+    env["AGE_STEPS"] = str(age_steps)
+    env["AGE_CLOCK_STEP_S"] = repr(age_clock_step_s)
+    env["DRIVE_STEPS"] = str(drive_steps)
+    env["DRIVE_CLOCK_STEP_S"] = repr(drive_clock_step_s)
+    env["DRIVE_DT_S"] = repr(drive_dt_s)
+    env["DRIVE_REAL_SLEEP_S"] = repr(drive_real_sleep_s)
+    env["REFRESH_WAIT"] = "1" if refresh_wait else "0"
+
+    holder = subprocess.Popen(
+        [sys.executable, "-u", "-c", _liveness_holder_script()],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert holder.stdout is not None
+    worker_pid = 0
+    descendant_pid = 0
+    try:
+        worker_pid = _wait_for_sentinel(worker_file, timeout_s=10.0)
+        descendant_pid = _wait_for_sentinel(descendant_file, timeout_s=10.0)
+        assert worker_pid > 0
+        assert descendant_pid > 0
+        # Both PIDs must be live before the kill is even requested, otherwise
+        # "the descendant is gone afterwards" would prove nothing.
+        os.kill(worker_pid, 0)
+        os.kill(descendant_pid, 0)
+
+        Path(go_file).touch()
+
+        cause_line = holder.stdout.readline().strip()
+        verdict_line = holder.stdout.readline().strip()
+        cause = cause_line.removeprefix("CAUSE ")
+        verdict = verdict_line.removeprefix("VERDICT ")
+
+        worker_dead = _wait_for_pid_dead(worker_pid, timeout_s=5.0)
+        descendant_dead = _wait_for_pid_dead(descendant_pid, timeout_s=5.0)
+    finally:
+        # Never leave a long-running holder (or its tree) behind when an
+        # assertion fires before the kill path ran.
+        if holder.poll() is None:
+            with contextlib.suppress(Exception):
+                holder.kill()
+                holder.wait(timeout=2.0)
+        for pid in (worker_pid, descendant_pid):
+            if pid <= 0:
+                continue
+            with contextlib.suppress(ProcessLookupError, OSError):
+                os.kill(pid, 9)
+
+    return _LivenessKillOutcome(
+        cause=cause,
+        verdict=verdict,
+        worker_pid=worker_pid,
+        descendant_pid=descendant_pid,
+        worker_dead=worker_dead,
+        descendant_dead=descendant_dead,
+    )
+
+
+#: Aging steps that age the worker's own fork out of the sampler's windowed
+#: child-event history, so ``TreeActive`` stops masking the stall branch.
+#: Two steps of 35 s put the fork at ``t = 35`` and a clean re-baseline at
+#: ``t = 70``; the first drive sample then reads ``now = 70.x`` with a 30 s
+#: evidence window, so the ``t = 35`` fork record is pruned while the ``t = 70``
+#: record survives. Both records matter: pruning the fork record is what frees
+#: the stall branch, and keeping the ``t = 70`` record is what keeps the CPU
+#: rate window short enough to still read as "busy" in the no-progress proof.
+#: Shared by the two causes whose branch sits behind the liveness sampler.
+_AGE_STEPS: int = 2
+_AGE_CLOCK_STEP_S: float = 35.0
+
+
+def test_liveness_kill_stalled_reaps_worker_and_descendant(tmp_path: Path) -> None:
+    """Proof (e1): a ``stalled`` kill reaps the whole tree, not just the root.
+
+    The exec worker is silent from birth, so ``last_output_at`` stays ``None``
+    and every sample scores 0.0 through ``R5`` (idle) alone. Pressure
+    therefore accrues at the maximum unit rate and crosses the stall window
+    (``TIMEOUT_MS = 800`` -> 0.8 s) within a few samples, which is exactly the
+    shape criterion C3 names.
+    """
+    out = _run_liveness_kill_case(
+        tmp_path,
+        age_steps=_AGE_STEPS,
+        age_clock_step_s=_AGE_CLOCK_STEP_S,
+        drive_steps=6,
+        drive_clock_step_s=0.25,
+        drive_dt_s=0.25,
+        # No real sleep: the idle worker burns no CPU, so the score stays a
+        # clean 0.0 and the crossing lands within a couple of samples.
+        drive_real_sleep_s=0.0,
+        refresh_wait=True,
+        timeout_ms=800,
+        max_runtime_ms=3_600_000,
+        spin=False,
+    )
+
+    assert out.cause == "stalled", f"expected 'stalled', got {out.cause!r}; {out.verdict!r}"
+    assert out.worker_dead, f"Worker {out.worker_pid} was not reaped on a stalled kill"
+    assert out.descendant_dead, (
+        f"Descendant {out.descendant_pid} was not reaped on a stalled kill — "
+        "tree cleanup incomplete"
+    )
+
+
+def test_liveness_kill_hard_cap_reaps_worker_and_descendant(tmp_path: Path) -> None:
+    """Proof (e2): a ``hard_cap`` kill reaps the whole tree, not just the root.
+
+    The ceiling is shrunk to 1 s through the public ``max_runtime_ms``
+    argument (no timeout constant is touched), and the stall window is pushed
+    out of reach so the hard-cap branch is provably the one that fires.
+    """
+    out = _run_liveness_kill_case(
+        tmp_path,
+        age_steps=0,
+        age_clock_step_s=0.0,
+        drive_steps=6,
+        drive_clock_step_s=0.4,
+        drive_dt_s=0.0,
+        drive_real_sleep_s=0.0,
+        refresh_wait=False,
+        timeout_ms=900_000,
+        max_runtime_ms=1_000,
+        spin=False,
+    )
+
+    assert out.cause == "hard_cap", f"expected 'hard_cap', got {out.cause!r}; {out.verdict!r}"
+    assert out.worker_dead, f"Worker {out.worker_pid} was not reaped on a hard_cap kill"
+    assert out.descendant_dead, (
+        f"Descendant {out.descendant_pid} was not reaped on a hard_cap kill — "
+        "tree cleanup incomplete"
+    )
+
+
+def test_liveness_kill_abandoned_reaps_worker_and_descendant(tmp_path: Path) -> None:
+    """Proof (e3): an ``abandoned`` kill reaps the whole tree, not just the root.
+
+    Abandonment is purely a clock verdict ("nobody has called ``wait`` for
+    ``EXEC_JOB_ABANDON_S``"), so one step past the window fires it. The stall
+    and hard-cap branches are held out of reach by their own windows.
+    """
+    out = _run_liveness_kill_case(
+        tmp_path,
+        age_steps=0,
+        age_clock_step_s=0.0,
+        drive_steps=1,
+        drive_clock_step_s=121.0,
+        drive_dt_s=0.0,
+        drive_real_sleep_s=0.0,
+        # No ``wait()`` refresh: refreshing it is exactly what defers the
+        # abandonment verdict.
+        refresh_wait=False,
+        timeout_ms=900_000,
+        max_runtime_ms=900_000,
+        spin=False,
+    )
+
+    assert out.cause == "abandoned", f"expected 'abandoned', got {out.cause!r}; {out.verdict!r}"
+    assert out.worker_dead, f"Worker {out.worker_pid} was not reaped on an abandoned kill"
+    assert out.descendant_dead, (
+        f"Descendant {out.descendant_pid} was not reaped on an abandoned kill — "
+        "tree cleanup incomplete"
+    )
+
+
+def test_liveness_kill_no_progress_reaps_worker_and_descendant(tmp_path: Path) -> None:
+    """Proof (e4): a ``no_progress`` kill reaps the whole tree, not the root only.
+
+    The worker is a real CPU burner, so ``CpuBusy`` saturates and ``R4``
+    (silent compute) dominates every sample. ``R4`` is a SUSPICIOUS rule, so
+    the suspicion clock accrues while stall pressure drains (``z4 = 0.6`` is
+    above theta) — the only trace shape that can reach the 15-minute
+    no-progress window. The suspicion clock is charged a full 300 s per sample
+    while the fake clock advances 0.15 s per sample, which crosses the window
+    in three samples without any 15-minute wait.
+    """
+    out = _run_liveness_kill_case(
+        tmp_path,
+        age_steps=_AGE_STEPS,
+        age_clock_step_s=_AGE_CLOCK_STEP_S,
+        drive_steps=4,
+        drive_clock_step_s=0.10,
+        drive_dt_s=300.0,
+        # Real CPU has to accumulate for the sampler to measure a busy ratio,
+        # so this phase sleeps for real while the fake clock advances the same
+        # amount -- the ratio stays saturated without a long wait.
+        drive_real_sleep_s=0.10,
+        # ``wait()`` between steps refreshes the abandonment clock, so only the
+        # no-progress branch stays reachable.
+        refresh_wait=True,
+        timeout_ms=3_600_000,
+        max_runtime_ms=3_600_000,
+        spin=True,
+    )
+
+    assert out.cause == "no_progress", f"expected 'no_progress', got {out.cause!r}; {out.verdict!r}"
+    assert out.worker_dead, f"Worker {out.worker_pid} was not reaped on a no_progress kill"
+    assert out.descendant_dead, (
+        f"Descendant {out.descendant_pid} was not reaped on a no_progress kill — "
+        "tree cleanup incomplete"
+    )

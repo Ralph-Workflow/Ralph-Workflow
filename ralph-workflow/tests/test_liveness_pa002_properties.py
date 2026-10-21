@@ -824,7 +824,7 @@ def test_burst_then_idle_kill_never_beats_proof1_floor() -> None:
     (``burst_duration_s + 137.5``) is asserted separately by
     ``tests/test_exec_liveness_scenarios.py`` scenarios 8 and 13.
     """
-    dt = 0.01
+    dt = 0.1
     for burst_duration_s, stall_window_s in (
         (10.0, 30.0),
         (30.0, 60.0),

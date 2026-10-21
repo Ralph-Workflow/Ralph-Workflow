@@ -1,6 +1,6 @@
 """Scenario trace library for the §3b pure deterministic liveness assessor.
 
-13 pure signal/pressure traces evaluated directly against ``assess`` and
+14 pure signal/pressure traces evaluated directly against ``assess`` and
 ``StallIntegrator`` with scripted sample data and a synthetic time sequence.
 All tests are pure arithmetic: no subprocess, no sleep, no wall-clock I/O.
 Kill times are asserted accurate to one sample interval (± dt).
@@ -780,3 +780,84 @@ def test_scenario_13_mid_run_deadlock_all_children_asleep_stalled() -> None:
     criterion_deadline_s = deadlock_at_s + stall_window_s + _DEFAULT_DT
     assert proof1_floor_s > criterion_deadline_s
     assert res.kill_time_s > criterion_deadline_s
+
+
+# ---------------------------------------------------------------------------
+# Scenario 14 — Never emitted any output (``last_output_at is None``)
+# ---------------------------------------------------------------------------
+
+
+def test_scenario_14_never_output_shape_stalled_at_stall_window() -> None:
+    """Scenario 14: the never-output shape -> ``stalled`` at stall_window ± dt.
+
+    Scenarios 1 / 8 / 13 all model a trace whose ``last_output_at`` HAS been
+    set and whose output then ages past the ``OutputRecent`` breakpoints.
+    This scenario locks the one shape acceptance criterion C3 ("An idle
+    command is killed with cause ``stalled`` within ``stall_window`` plus one
+    sample interval") is literally reachable on, and the shape PROOF 1 in
+    ``ralph/process/manager/_liveness_assessor.py`` names but did not have a
+    scenario behind it.
+
+    The trace is built exactly the way ``TreeSampler.sample`` builds a
+    never-output window in production
+    (``ralph/process/manager/_liveness_sampler.py:470-474``): a job whose
+    tracked ``last_output_at`` is still ``None`` reports
+    ``seconds_since_output = None`` — not ``0.0`` and not an aged value — while
+    every other signal is a real reading from a real idle tree (cpu 0, io 0,
+    no children, no voluntary context switches). ``output_novelty`` stays
+    ``None`` because the evidence window holds no output records
+    (``_compute_output_novelty`` needs >= 20 lines).
+
+    Mechanism the criterion rests on: ``_output_recent(None) == 0.0``
+    (``ralph/process/manager/_liveness_assessor.py:339-340``), so ``R5`` (idle,
+    ``z5 = 0.0``) is the only rule with non-zero weight and the score is 0.0
+    from the very first sample — the ``OutputRecent`` ramp of scenarios 8 / 13
+    never engages. Stall pressure therefore accrues at the maximum unit rate,
+    ``dt`` per step, and the crossing lands on the stall window itself.
+
+    Two consequences are locked together with the timing, because together
+    they are the whole criterion:
+
+    * the kill time lands ON ``stall_window_s`` (not the
+      ``stall_window_s + 47.5`` of the burst-then-idle shape), within one
+      sample interval; and
+    * the cause is ``stalled``, not ``no_progress`` — the idle shape is
+      classified ``stalled`` rather than ``suspicious``, so the D4 suspicion
+      clock never accrues and the 15-minute no-progress window is unreachable
+      from this trace.
+    """
+    stall_window_s = 90.0
+
+    def sample(t: float) -> LivenessWindow:
+        # Production never-output window: ``last_output_at is None`` so the
+        # sampler reports ``None``, not ``0.0``. Everything else is the real
+        # reading a fully idle, silent, childless tree produces.
+        return LivenessWindow(
+            seconds_since_output=None,
+            cpu_ratio=0.0,
+            io_bytes_per_s=0.0,
+            child_events=0,
+            output_novelty=None,
+            voluntary_ctx_per_s=0.0,
+            elapsed_s=t,
+        )
+
+    # The very first sample already reads as the canonical idle shape, with no
+    # ramp to traverse: R5 alone, score 0.0, not suspicious.
+    first = assess(sample(_DEFAULT_DT), CFG)
+    assert first.score == 0.0
+    assert first.strongest_rule == "R5"
+    assert first.verdict_kind == "stalled"
+    assert first.suspicious is False
+
+    res = _run_scenario(sample, total_duration_s=200.0, stall_window_s=stall_window_s)
+    assert res.killed is True
+    assert res.kill_cause == "stalled"
+    assert abs(res.kill_time_s - stall_window_s) <= _DEFAULT_DT
+    # ... and it lands exactly on the window on the shipped ``_DEFAULT_DT``
+    # grid: pressure accrues at one second per second, so the crossing is the
+    # stall window itself.
+    assert res.kill_time_s == stall_window_s
+    # The idle shape never accrues suspicion, so no-progress is unreachable
+    # from this trace and ``stalled`` is the only cause it can die of.
+    assert res.suspicious_reported is False
