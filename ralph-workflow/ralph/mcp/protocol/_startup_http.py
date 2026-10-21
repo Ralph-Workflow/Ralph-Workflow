@@ -1,8 +1,29 @@
 """HTTP/SSE startup helpers for MCP server preflight checks.
 
+This module is Ralph's ACTIVE MCP HTTP client boundary. Every JSON-RPC POST
+Ralph makes to an MCP endpoint (the bridge health probe wired at
+``ralph/mcp/server/lifecycle.py`` ``probe=probe_mcp_http_endpoint``, the
+startup preflight ``preflight_http_attempt``, and the ``/health`` route probe)
+goes through :func:`post_http_jsonrpc_with_session`, so the replay and error
+classification contract lives here rather than in a test-only helper.
+
 Builds JSON-RPC initialize/tools/list payloads, performs HTTP POST and
 legacy SSE exchanges, and validates that a remote MCP endpoint exposes
 the tools Ralph Workflow depends on.
+
+Transport contract (E3.4 / E1.4 / E3.2):
+
+* A request that failed on a connection the server had already closed is
+  replayed EXACTLY ONCE, and only when the replay cannot duplicate an
+  effect: either the transport failed before any byte reached the server, or
+  the JSON-RPC method is on the idempotent allowlist. See
+  :func:`_post_jsonrpc_with_bounded_replay` and :func:`_replay_is_safe`.
+* A non-idempotent request whose outcome may already be committed raises
+  :class:`~ralph.mcp.server._mcp_outcome_unknown_error.McpOutcomeUnknownError`
+  rather than being replayed or reported as a plain failure, so the caller
+  verifies or de-duplicates instead of blindly re-running the mutation.
+* When the client deadline fires first the failure surfaces as
+  :class:`RetryablePreflightError`; the caller above owns the retry loop.
 """
 
 from __future__ import annotations
@@ -10,13 +31,14 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 from urllib.parse import urljoin, urlparse
 
 import httpx
 
 from ralph.mcp.protocol._permanent_preflight_error import PermanentPreflightError
 from ralph.mcp.protocol._retryable_preflight_error import RetryablePreflightError
+from ralph.mcp.server._mcp_outcome_unknown_error import McpOutcomeUnknownError
 
 if TYPE_CHECKING:
     from datetime import timedelta
@@ -51,6 +73,55 @@ _HTTP_OK = 200
 _HTTP_ACCEPTED = 202
 # Generous bound: still fail-closed, but tolerant of slow scheduling under load.
 _HTTP_JSONRPC_POST_TIMEOUT_S = 20.0
+
+#: Total attempts (the original plus replays) this client makes for ONE
+#: JSON-RPC POST. E3.4 caps a severed-connection replay at exactly one extra
+#: attempt, so a permanently severed endpoint costs two round trips, never
+#: three. Raising it would turn a transient handover gap into a retry storm
+#: against a child that is already being replaced.
+_MAX_TRANSPORT_ATTEMPTS: Final[int] = 2
+
+#: JSON-RPC methods this client may replay after a severed connection.
+#: ALLOWLIST semantics on purpose: ``tools/call`` and every method added in
+#: the future are treated as non-idempotent until someone audits them, so a
+#: severed connection can never replay a mutation by omission.
+_IDEMPOTENT_JSONRPC_METHODS: Final[frozenset[str]] = frozenset(
+    {
+        "initialize",
+        "notifications/initialized",
+        "ping",
+        "prompts/list",
+        "resources/list",
+        "resources/templates/list",
+        "tools/list",
+    }
+)
+
+#: Transport failures raised BEFORE any byte of the request reached the
+#: server. Nothing was processed, so replaying is safe for ANY method.
+_NEVER_SENT_TRANSPORT_ERRORS: Final[tuple[type[httpx.TransportError], ...]] = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+)
+
+#: Transport failures raised when the server closed the connection without
+#: answering. The request may or may not have been read, so a replay is only
+#: safe for an allowlisted idempotent method.
+_SEVERED_CONNECTION_TRANSPORT_ERRORS: Final[tuple[type[httpx.TransportError], ...]] = (
+    httpx.RemoteProtocolError,
+)
+
+#: Transport failures raised AFTER the request was handed to the server and
+#: no answer arrived. The server may already have committed the effect, so a
+#: non-idempotent call raises McpOutcomeUnknownError instead of being
+#: replayed or reported as a plain "failed" that invites a blind re-run.
+_OUTCOME_UNKNOWN_TRANSPORT_ERRORS: Final[tuple[type[httpx.TransportError], ...]] = (
+    httpx.ReadTimeout,
+    httpx.WriteTimeout,
+    httpx.ReadError,
+    httpx.RemoteProtocolError,
+)
 
 
 @dataclass(frozen=True)
@@ -299,6 +370,71 @@ def preflight_http_attempt(
     ensure_required_tools(required_tools, tools)
 
 
+def jsonrpc_request_is_idempotent(payload: object) -> bool:
+    """Return ``True`` when ``payload`` is a request this client may replay.
+
+    Allowlist semantics: only methods whose server-side effect is a pure read
+    (or an idempotent handshake step) are replayable. ``tools/call`` and any
+    method nobody has audited are non-idempotent, so a severed connection can
+    never replay a mutation.
+    """
+    if not isinstance(payload, Mapping):
+        return False
+    method = payload.get("method")
+    return isinstance(method, str) and method in _IDEMPOTENT_JSONRPC_METHODS
+
+
+def _tool_name_for_payload(payload: object) -> str | None:
+    """Return the ``tools/call`` tool name carried by ``payload``, when present."""
+    if not isinstance(payload, Mapping):
+        return None
+    params = payload.get("params")
+    if not isinstance(params, Mapping):
+        return None
+    name = params.get("name")
+    return name if isinstance(name, str) else None
+
+
+def _replay_is_safe(exc: httpx.TransportError, *, is_idempotent: bool) -> bool:
+    """Return ``True`` when replaying the request behind ``exc`` is side-effect free.
+
+    Two arms, and only two: the transport failed before the server saw the
+    request, or the request is on the idempotent allowlist. Every other
+    failure - including a connection reset mid-response - is a real failure
+    that must keep its existing classification and must never be replayed.
+    """
+    if isinstance(exc, _NEVER_SENT_TRANSPORT_ERRORS):
+        return True
+    return is_idempotent and isinstance(exc, _SEVERED_CONNECTION_TRANSPORT_ERRORS)
+
+
+def _post_jsonrpc_with_bounded_replay(
+    endpoint: str,
+    *,
+    payload: JsonRpcResponse,
+    headers: dict[str, str],
+    timeout: float,
+    post_fn: HttpPostFn,
+    is_idempotent: bool,
+) -> httpx.Response:
+    """POST once, replaying EXACTLY once when the failure is safe to replay.
+
+    Raises:
+        httpx.TransportError: The last transport failure, unchanged, so the
+            caller classifies the real httpx class rather than a wrapped one.
+    """
+    attempts = 0
+    while True:
+        attempts += 1
+        try:
+            return post_fn(endpoint, json=payload, headers=headers, timeout=timeout)
+        except httpx.TransportError as exc:
+            if attempts >= _MAX_TRANSPORT_ATTEMPTS or not _replay_is_safe(
+                exc, is_idempotent=is_idempotent
+            ):
+                raise
+
+
 def post_http_jsonrpc(
     endpoint_or_target: str | HttpEndpointTarget,
     target_or_payload: HttpEndpointTarget | JsonRpcResponse,
@@ -327,8 +463,13 @@ def post_http_jsonrpc_with_session(
     ``HttpEndpointTarget`` plus payload. Propagates the
     ``mcp-session-id`` header when the server returns one.
 
+    A severed connection is replayed exactly once when the replay is
+    side-effect free (see :func:`_replay_is_safe`).
+
     Raises:
         RetryablePreflightError: On transport-level failures.
+        McpOutcomeUnknownError: When a NON-idempotent request failed after it
+            was dispatched, so its effect may already be committed.
         PermanentPreflightError: On HTTP error status or unparseable JSON.
     """
     if isinstance(endpoint_or_target, HttpEndpointTarget):
@@ -337,22 +478,35 @@ def post_http_jsonrpc_with_session(
         payload_obj = cast(
             "JsonRpcResponse", target_or_payload
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    else:
-        endpoint = endpoint_or_target
+    elif isinstance(target_or_payload, HttpEndpointTarget):
+        endpoint = str(endpoint_or_target)
         assert payload is not None
         payload_obj = payload
+    else:
+        endpoint = str(endpoint_or_target)
+        payload_obj = target_or_payload if payload is None else payload
 
+    is_idempotent = jsonrpc_request_is_idempotent(payload_obj)
     try:
         headers = {"Accept": "application/json, text/event-stream"}
         if session_id:
             headers["mcp-session-id"] = session_id
-        response = post_fn(
+        response = _post_jsonrpc_with_bounded_replay(
             endpoint,
-            json=payload_obj,
+            payload=payload_obj,
             headers=headers,
             timeout=_HTTP_JSONRPC_POST_TIMEOUT_S,
+            post_fn=post_fn,
+            is_idempotent=is_idempotent,
         )
     except httpx.TransportError as exc:
+        if not is_idempotent and isinstance(exc, _OUTCOME_UNKNOWN_TRANSPORT_ERRORS):
+            raise McpOutcomeUnknownError(
+                f"non-idempotent MCP request to {endpoint} was dispatched but never "
+                f"answered ({exc}); outcome unknown, replay forbidden",
+                restart_count=0,
+                tool_name=_tool_name_for_payload(payload_obj),
+            ) from exc
         raise RetryablePreflightError(
             f"failed to connect to MCP endpoint {endpoint}: {exc}"
         ) from exc
@@ -506,6 +660,7 @@ __all__ = [
     "extract_preflight_tool_names",
     "initialize_request",
     "initialized_notification",
+    "jsonrpc_request_is_idempotent",
     "legacy_sse_jsonrpc_exchange",
     "looks_like_legacy_sse_endpoint",
     "parse_http_endpoint",

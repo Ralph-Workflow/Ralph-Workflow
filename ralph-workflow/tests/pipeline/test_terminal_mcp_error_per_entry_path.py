@@ -8,6 +8,7 @@ not as an unhandled traceback.
 from __future__ import annotations
 
 import importlib
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -30,23 +31,29 @@ from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.parallel import worker_runtime
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.phase_agent_handler import phase_event_after_agent_run
+from ralph.pipeline.plumbing import commit_plumbing, smoke_plumbing
 from ralph.pipeline.runner import load_policy_bundle_for_run
 from ralph.pipeline.state import PipelineState
 from ralph.project_policy import cli_integration
 from ralph.project_policy.pipeline_graph import PHASE_REMEDIATION
 from ralph.workspace import FsWorkspace, WorkspaceScope
-from tests._pipeline_deps_factory import _RecordingBridgeFactory, make_test_pipeline_deps
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.pipeline._terminal_mcp_error_seams import (
     _AGENT_PROCESS_LABEL_PREFIX,
     _assert_no_traceback_or_crash,
     _default_policy_bundle,
     _deps_with_terminal_supervisor,
+    _fake_materialize_master_prompt,
+    _fast_heartbeat,
+    _HealthyBridge,
     _log_capture,
     _no_agent_output,
     _no_bridge_health_check,
     _patch_invoke_agent,
     _policy_bundle,
-    _SupervisorBridge,
+    _RegistryForAnyAgentFactory,
+    _SequenceBridgeFactory,
+    _TerminalBridge,
     _TerminalSupervisorFactory,
 )
 
@@ -566,10 +573,13 @@ def _commit_attempt_with_bridge(
     importlib.import_module("ralph.cli.commands.commit")
     from ralph.pipeline.plumbing import commit_plumbing
 
+    prompt_path = tmp_path / "PROMPT.md"
+    if not prompt_path.exists():
+        prompt_path.write_text("commit prompt", encoding="utf-8")
     attempt, _session_id, last_error = commit_plumbing._run_commit_agent_attempt_with_recovery(
         "claude",
         AgentConfig(cmd="claude", transport="claude", json_parser="generic"),
-        prompt_file=str(tmp_path / "PROMPT.md"),
+        prompt_file=str(prompt_path),
         attempt_context=CommitAttemptContext(
             repo_root=tmp_path,
             verbose=False,
@@ -591,7 +601,7 @@ def _drive_commit_plumbing(
     factory: _TerminalSupervisorFactory,
 ) -> object:
     del monkeypatch, factory
-    return _commit_attempt_with_bridge(tmp_path, deps, _SupervisorBridge())
+    return _commit_attempt_with_bridge(tmp_path, deps, _TerminalBridge())
 
 
 def _assert_commit_outcome(outcome: object) -> None:
@@ -650,7 +660,7 @@ def _drive_smoke_plumbing(
     factory: _TerminalSupervisorFactory,
 ) -> object:
     del monkeypatch
-    return _smoke_turn_with_bridge(tmp_path, deps, _SupervisorBridge(), factory, first_turn=True)
+    return _smoke_turn_with_bridge(tmp_path, deps, _TerminalBridge(), factory, first_turn=True)
 
 
 def _assert_smoke_outcome(outcome: object) -> None:
@@ -827,41 +837,182 @@ def _drive_bridge_forwarding_path(
 _BRIDGE_FORWARDING_PATHS: tuple[str, ...] = ("commit_plumbing", "smoke_plumbing")
 
 
+def _patch_execute_agent_effect_capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[PipelineEvent]:
+    """Record every ``PipelineEvent`` ``execute_agent_effect`` returns.
+
+    The bridge-forwarding plumbing modules (``commit_plumbing``,
+    ``smoke_plumbing``) ``from ralph.pipeline.effect_executor import
+    execute_agent_effect`` eagerly at module-import time, so the
+    per-module rebind is what those modules actually call. Patching the
+    modules' bound symbols (rather than ``effect_executor_module``) makes
+    the captured list reflect what flowed through the bridge-forwarding
+    paths and only those paths.
+    """
+    captured: list[PipelineEvent] = []
+    real_execute = effect_executor_module.execute_agent_effect
+
+    def recording_execute(*args: object, **kwargs: object) -> PipelineEvent:
+        result = real_execute(*args, **kwargs)
+        captured.append(result)
+        return result
+
+    for module in (commit_plumbing, smoke_plumbing):
+        monkeypatch.setattr(module, "execute_agent_effect", recording_execute, raising=False)
+    return captured
+
+
 @pytest.mark.parametrize("path_id", _BRIDGE_FORWARDING_PATHS)
-def test_next_attempt_after_terminal_mcp_error_gets_fresh_bridge(
+def test_terminal_failure_then_distinct_healthy_bridge_succeeds_on_next_attempt(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     path_id: str,
 ) -> None:
-    """The attempt after a terminal failure is supervised over a FRESH bridge.
+    """After a terminal ``McpServerError``, the next attempt is supervised over a DISTINCT,
+    HEALTHY bridge the ``bridge_factory`` built -- not the dead one the caller handed in.
 
-    ``effect_executor`` marks the next attempt for a fresh bridge before it
-    converts the error (``ralph/pipeline/effect_executor.py:755``). Both
-    attempts here are handed the SAME dead bridge, so the only thing that
-    can make the second one consult the bridge factory is that mark --
-    without it the second attempt would re-supervise the corpse.
+    Both attempts here are handed the SAME ``dead_bridge``. The seam under
+    test is the pair of instructions at ``effect_executor.py:613-624``:
+
+    - the next-attempt fresh-bridge mark (``_retry_intent_local.fresh_bridge_requested``)
+      forces ``bridge = None`` on attempt 2, so ``own_bridge=True``;
+    - the resulting ``_start_bridge`` consults ``pipeline_deps.bridge_factory``
+      and supervises the FRESH bridge it returns.
+
+    Concretely the test asserts:
+
+    1. ``factory.supervised_bridges[0] is dead_bridge`` -- attempt 1 was
+       supervised over the dead_bridge the caller handed in, exactly as
+       the executor's ``own_bridge=False`` code path prescribes.
+    2. ``factory.supervised_bridges[1] is healthy_bridge`` AND
+       ``is not dead_bridge`` -- attempt 2 was supervised over a
+       DIFFERENT object, the healthy bridge the factory built.
+    3. ``captured_events == [AGENT_FAILURE, AGENT_SUCCESS]`` -- the
+       dead bridge made attempt 1 fail with the typed conversion
+       (``AGENT_FAILURE``), and the healthy bridge made attempt 2
+       genuinely succeed (``AGENT_SUCCESS``).
+    4. ``len(bridge_factory.calls) == 1`` -- only attempt 2 needed a
+       fresh bridge; attempt 1 carried its own and skipped the factory.
+    5. The shared matrix invariants still hold: no
+       ``"Phase handler crashed"`` log, no ``"Traceback (most recent
+       call last)"`` log, and the positive-control
+       ``"last_stage=registry_built"`` WARNING fires on attempt 1 only.
+
+    The earlier proof at ``tests/pipeline/test_terminal_mcp_error_per_entry_path.py:844-867``
+    (now replaced by this test) only proved "the factory was consulted";
+    it handed the SAME dead_bridge object to both attempts and the seam
+    helper discarded the bridge argument entirely, so a successful test
+    was the same as a vacuous one.
     """
-    dead_bridge = _SupervisorBridge()
-    deps, factory = _deps_with_terminal_supervisor(tmp_path, bridge=dead_bridge)
-    _patch_invoke_agent(monkeypatch, factory.agent_exits_cleanly)
+    dead_bridge = _TerminalBridge()
+    healthy_bridge = _HealthyBridge()
+    bridge_factory = _SequenceBridgeFactory(deque([healthy_bridge]))
 
-    bridge_factory = deps.bridge_factory
-    assert isinstance(bridge_factory, _RecordingBridgeFactory)
-    calls_before = len(bridge_factory.calls)
-
-    first = _drive_bridge_forwarding_path(tmp_path, deps, dead_bridge, factory, path_id, 1)
-    assert isinstance(first, _CommitOutcome | _SmokeOutcome)
-    assert isinstance(first, _CommitOutcome) or first.supervised_turns == 1
-    assert len(bridge_factory.calls) == calls_before, (
-        "the first attempt was handed a usable bridge, so the bridge factory "
-        "must not be consulted for it"
+    factory = _TerminalSupervisorFactory()
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge_factory=bridge_factory,
+        master_prompt_materializer=_fake_materialize_master_prompt(tmp_path),
+        registry_factory=_RegistryForAnyAgentFactory(),
+        check_mcp_bridge_health_fn=_no_bridge_health_check,
+        mcp_supervisor_factory=factory,
+        heartbeat_policy_from_env_fn=_fast_heartbeat,
     )
 
-    second = _drive_bridge_forwarding_path(tmp_path, deps, dead_bridge, factory, path_id, 2)
-    assert isinstance(second, _CommitOutcome | _SmokeOutcome)
-    assert len(bridge_factory.calls) == calls_before + 1, (
-        "the attempt after a terminal MCP failure must be supervised over a "
-        "bridge the bridge_factory built, not the dead one it was handed"
+    _patch_invoke_agent(monkeypatch, factory.attempt_returns_immediately)
+    captured_events = _patch_execute_agent_effect_capture(monkeypatch)
+
+    with _log_capture() as recorder:
+        # Attempt 1: handed dead_bridge; ``own_bridge=False`` so the
+        # executor does not consult the factory. Supervisor is built
+        # around dead_bridge and goes terminal on its first tick;
+        # ``McpSupervisor.__exit__`` re-raises the stored
+        # ``McpServerError``; the executor converts it to
+        # ``AGENT_FAILURE`` and marks the next attempt for a fresh bridge.
+        first = _drive_bridge_forwarding_path(
+            tmp_path, deps, dead_bridge, factory, path_id, 1
+        )
+        assert isinstance(first, _CommitOutcome | _SmokeOutcome)
+        if isinstance(first, _SmokeOutcome):
+            assert first.supervised_turns == 1
+            assert first.turns_completed == 1
+
+        # Attempt 2: handed the SAME dead_bridge, but the executor's
+        # fresh-bridge mark forces ``bridge=None`` so
+        # ``_start_bridge`` consults the factory and supervises the
+        # DISTINCT healthy_bridge. McpSupervisor.__exit__ returns
+        # cleanly; the executor returns ``AGENT_SUCCESS``.
+        second = _drive_bridge_forwarding_path(
+            tmp_path, deps, dead_bridge, factory, path_id, 2
+        )
+        assert isinstance(second, _CommitOutcome | _SmokeOutcome)
+        if isinstance(second, _SmokeOutcome):
+            assert second.supervised_turns == 1
+            assert second.turns_completed == 2
+
+    # ── Per-attempt supervised-bridge identity (the core proof) ─────────
+    assert len(factory.supervised_bridges) == 2, (
+        "the supervisor factory must have been consulted on EACH attempt; "
+        f"got supervised_bridges={list(factory.supervised_bridges)!r}"
     )
-    assert dead_bridge.shutdown_count >= 1, "the dead bridge must be torn down, not reused"
-    assert len(factory.supervisors) >= 2
+    attempt1_bridge = factory.supervised_bridges[0]
+    attempt2_bridge = factory.supervised_bridges[1]
+    assert attempt1_bridge is dead_bridge, (
+        "attempt 1 must be supervised over the dead_bridge the caller "
+        f"handed in; got {attempt1_bridge!r} vs dead_bridge={dead_bridge!r}"
+    )
+    assert attempt2_bridge is not dead_bridge, (
+        "attempt 2 must NOT be supervised over the dead_bridge the caller "
+        "handed in -- the fresh-bridge contract requires a distinct object"
+    )
+    assert attempt2_bridge is healthy_bridge, (
+        "attempt 2 must be supervised over the healthy_bridge the factory built"
+    )
+    # Identity-tag belt-and-braces: ``is not`` already proves identity,
+    # but the per-instance tag makes a regression report self-describing.
+    assert attempt1_bridge.identity_tag != attempt2_bridge.identity_tag, (
+        "attempt 1 and attempt 2 supervised bridges must carry distinct identity tags; "
+        f"got {attempt1_bridge.identity_tag!r} == {attempt2_bridge.identity_tag!r}"
+    )
+
+    # ── Per-attempt PipelineEvent ────────────────────────────────────────
+    assert len(captured_events) == 2, (
+        f"expected two execute_agent_effect invocations, got {captured_events!r}"
+    )
+    attempt1_event = captured_events[0]
+    attempt2_event = captured_events[1]
+    assert attempt1_event == PipelineEvent.AGENT_FAILURE, (
+        "attempt 1 must end in AGENT_FAILURE because the supervised bridge is terminal; "
+        f"got {attempt1_event!r}"
+    )
+    assert attempt2_event == PipelineEvent.AGENT_SUCCESS, (
+        "attempt 2 must end in AGENT_SUCCESS because the supervised bridge is healthy; "
+        f"got {attempt2_event!r}"
+    )
+
+    # ── bridge_factory consultation count ───────────────────────────────
+    assert len(bridge_factory.calls) == 1, (
+        "the bridge_factory must be consulted exactly once across both attempts "
+        "(attempt 1's bridge was handed in directly; only attempt 2 needed a "
+        f"fresh bridge); got calls={list(bridge_factory.calls)!r}"
+    )
+
+    # ── Bridge lifecycle ──────────────────────────────────────────────────
+    assert dead_bridge.shutdown_count >= 1, (
+        "the dead bridge must be torn down after the terminal error, not reused"
+    )
+    assert healthy_bridge.shutdown_count >= 1, (
+        "the healthy bridge must be shut down once it has finished its attempt"
+    )
+
+    # ── Shared matrix invariants ──────────────────────────────────────────
+    _assert_no_traceback_or_crash(recorder)
+    assert len(factory.supervisors) == 2
+    assert factory.terminal.is_set()
+    assert list(factory.interrupted_labels) == [
+        f"{_AGENT_PROCESS_LABEL_PREFIX}{factory.label_scopes[0]}:"
+    ], (
+        "only attempt 1's supervisor must have interrupted its agent processes; "
+        "attempt 2 was healthy and never interrupted"
+    )

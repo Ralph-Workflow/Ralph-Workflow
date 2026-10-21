@@ -105,6 +105,12 @@ class _SupervisorBridge(RestartAwareMcpBridge):
         self._restart_count = 0
         self.health_checks = 0
         self.shutdown_count = 0
+        #: Each instance gets a distinct identity tag so a test can observe
+        #: that the bridge supervised on attempt 2 is a DIFFERENT object
+        #: than the one supervised on attempt 1. ``is`` comparisons plus
+        #: identity tags together prove "fresh bridge", not just "different
+        #: call returned something".
+        self.identity_tag: str = f"_SupervisorBridge<{id(self)}>"
 
     @property
     def run_id(self) -> str:
@@ -146,14 +152,32 @@ class _TerminalBridge(_SupervisorBridge):
         raise _terminal_mcp_error()
 
 
+class _HealthyBridge(_SupervisorBridge):
+    """A bridge whose health check answers False forever (healthy).
+
+    Distinct identity from ``_SupervisorBridge`` so a test can assert
+    ``attempt1_bridge is not attempt2_bridge`` against an attempt 1's
+    ``_TerminalBridge`` and an attempt 2's healthy bridge built by the
+    bridge factory. Returns False from every health check so the
+    supervisor's own tick never stores ``_mcp_error`` and ``__exit__``
+    never re-raises.
+    """
+
+
 class _TerminalSupervisorFactory:
-    """The REAL ``McpSupervisor``, wired to a bridge that goes terminal.
+    """The REAL ``McpSupervisor``, wired to the bridge the executor hands it.
 
     Injected through ``PipelineDeps.mcp_supervisor_factory``, so the
     production supervisor state machine runs for real: ``__enter__`` starts
-    the background thread, the first tick stores the typed terminal error,
-    the thread interrupts the agent processes, and ``__exit__`` joins and
-    re-raises it out of the supervised block.
+    the background thread, the first tick stores the typed terminal error
+    on a TERMINAL bridge, the thread interrupts the agent processes, and
+    ``__exit__`` joins and re-raises it out of the supervised block. On a
+    HEALTHY bridge the supervisor keeps polling and ``__exit__`` returns
+    cleanly.
+
+    Per-attempt identity is recorded so a test can observe which bridge
+    was supervised on attempt N and prove attempt 2 saw a DIFFERENT
+    object than attempt 1 (the "fresh bridge" contract).
 
     Determinism without a sleep: the check interval is zero, so the thread
     reaches its first tick immediately, and ``agent_exits_cleanly`` /
@@ -169,6 +193,11 @@ class _TerminalSupervisorFactory:
         self.supervisors: deque[McpSupervisor] = deque(maxlen=16)
         self.label_scopes: deque[str] = deque(maxlen=16)
         self.interrupted_labels: deque[str] = deque(maxlen=16)
+        #: Per-attempt identity of the supervised bridge, in call order.
+        #: The fresh-bridge test reads ``self.supervised_bridges[0]`` and
+        #: ``self.supervised_bridges[1]`` and asserts they are DIFFERENT
+        #: objects (``is`` comparison).
+        self.supervised_bridges: deque[RestartAwareMcpBridge] = deque(maxlen=16)
         self.terminal = threading.Event()
 
     def __call__(
@@ -179,10 +208,18 @@ class _TerminalSupervisorFactory:
         on_restart: Callable[[int], None] | None,
         agent_label_scope: str,
     ) -> AbstractContextManager[object, bool | None]:
-        del bridge, check_interval
+        # RETAIN the bridge: the supervisor is built around the bridge the
+        # executor handed it, never a discardable terminal stand-in. A
+        # HEALTHY bridge means a healthy supervised attempt; a TERMINAL
+        # bridge means the supervisor will store ``_mcp_error`` and the
+        # ``__exit__`` re-raise fires. The seam proves the right thing in
+        # both directions: ``McpSupervisor.__exit__`` either re-raises
+        # (terminal) or returns (healthy).
+        del check_interval
         self.label_scopes.append(agent_label_scope)
+        self.supervised_bridges.append(bridge)
         supervisor = McpSupervisor(
-            _TerminalBridge(),
+            bridge,
             check_interval=timedelta(0),
             on_restart=on_restart,
             agent_label_scope=agent_label_scope,
@@ -202,6 +239,27 @@ class _TerminalSupervisorFactory:
             "the supervisor never reached its terminal tick; the agent body "
             "would finish first and __exit__ would leave the stored error unread"
         )
+
+    def attempt_returns_immediately(self, *args: object, **kwargs: object) -> list[str]:
+        """The supervised agent body for a fresh-bridge test that drives both attempts.
+
+        Returns ``[]`` WITHOUT blocking on ``terminal``, so a HEALTHY
+        attempt (where the supervisor never goes terminal) completes the
+        turn loop cleanly and ``run_with_direct_mcp_recovery`` returns
+        ``_AttemptResult(AGENT_SUCCESS, ...)``. On a TERMINAL attempt the
+        supervisor still stores ``_mcp_error`` first because the
+        background thread runs ``tick()`` immediately on ``__enter__``
+        (interval = 0) regardless of what the agent body does; the body
+        just exits with no output, and ``__exit__`` re-raises the stored
+        error.
+
+        A separate body (``agent_exits_cleanly``) is kept for the matrix
+        tests where the determinism from a blocking body is required --
+        the matrix only ever drives one attempt per entry path, so the
+        blocking-vs-immediate difference is invisible there.
+        """
+        del args, kwargs
+        return []
 
     def agent_exits_cleanly(self, *args: object, **kwargs: object) -> list[str]:
         """The supervised agent body: runs, then exits without an error."""
@@ -323,11 +381,24 @@ def _deps_with_terminal_supervisor(
     *,
     bridge: RestartAwareMcpBridge | None = None,
 ) -> tuple[PipelineDeps, _TerminalSupervisorFactory]:
-    """``PipelineDeps`` wired to the terminal supervisor seam, all fakes."""
+    """``PipelineDeps`` wired to the terminal supervisor seam, all fakes.
+
+    The default ``bridge=`` is a ``_TerminalBridge`` so the matrix test
+    (which drives one attempt per entry path through the real
+    ``bridge_factory`` -> ``mcp_supervisor_factory`` chain) supervises a
+    supervisor that actually goes terminal on its first tick and stores
+    ``_mcp_error``. With the seam's previous "discard the bridge, build a
+    fresh ``_TerminalBridge``" behaviour that masking was implicit; with
+    the seam's honest "build around the bridge you are given" behaviour
+    the matrix test would otherwise supervise a healthy
+    ``_SupervisorBridge`` and the supervisor's ``__exit__`` would never
+    raise. A caller-supplied ``bridge=`` still wins, so the
+    fresh-bridge tests can hand in their own dead bridge directly.
+    """
     factory = _TerminalSupervisorFactory()
     deps = make_test_pipeline_deps(
         display_context=make_display_context(),
-        bridge=bridge if bridge is not None else _SupervisorBridge(),
+        bridge=bridge if bridge is not None else _TerminalBridge(),
         master_prompt_materializer=_fake_materialize_master_prompt(tmp_path),
         registry_factory=_RegistryForAnyAgentFactory(),
         check_mcp_bridge_health_fn=_no_bridge_health_check,
@@ -335,6 +406,77 @@ def _deps_with_terminal_supervisor(
         heartbeat_policy_from_env_fn=_fast_heartbeat,
     )
     return deps, factory
+
+
+#: Bounded ceiling on ``_SequenceBridgeFactory.calls``. Same default as
+#: the recording bridge factory in ``_pipeline_deps_factory`` so tests
+#: never hold unbounded per-invocation kwargs indefinitely.
+_DEFAULT_BRIDGE_CALL_HISTORY_LIMIT = 64
+
+
+class _SequenceBridgeFactory:
+    """A bridge factory that hands out one bridge per call, in order.
+
+    Used by the fresh-bridge test to script the per-attempt identity:
+    call 1 returns the dead bridge (so the executor, with no
+    fresh-bridge mark yet, fetches it via ``bridge_factory`` if and only
+    if ``own_bridge=True``); call 2 returns a DISTINCT healthy bridge --
+    a separate ``RestartAwareMcpBridge`` with its own ``identity_tag`` --
+    so the ``attempt 2 supervised bridge`` and the ``attempt 1
+    supervised bridge`` are demonstrably different objects.
+
+    ``calls`` records every call for the entry-count assertion in the
+    fresh-bridge test, and bridges are popped FIFO so a test's expected
+    call count matches the deque's underflow contract.
+    """
+
+    def __init__(
+        self,
+        bridges: deque[RestartAwareMcpBridge],
+        *,
+        call_history_limit: int = _DEFAULT_BRIDGE_CALL_HISTORY_LIMIT,
+    ) -> None:
+        self._bridges = bridges
+        self.calls: deque[dict[str, object]] = deque(maxlen=call_history_limit)
+
+    def __call__(
+        self,
+        *,
+        workspace_root: Path,
+        drain: str,
+        agents_policy: object,
+        transport: object = None,
+        capabilities: frozenset[str] | None = None,
+        session_id_prefix: str | None = None,
+        run_id: str | None = None,
+        model_identity: object = None,
+        parallel_worker: bool = False,
+        worker_namespace: Path | None = None,
+        worker_artifact_dir: Path | None = None,
+        allowed_roots: tuple[Path, ...] | None = None,
+    ) -> RestartAwareMcpBridge:
+        self.calls.append(
+            {
+                "workspace_root": workspace_root,
+                "drain": drain,
+                "agents_policy": agents_policy,
+                "transport": transport,
+                "session_id_prefix": session_id_prefix,
+                "run_id": run_id,
+                "parallel_worker": parallel_worker,
+            }
+        )
+        assert self._bridges, (
+            "_SequenceBridgeFactory ran out of bridges mid-test; the "
+            "test expected fewer bridge_factory calls than were made"
+        )
+        return self._bridges.popleft()
+
+
+# Keep the existing default-history constant exported here so the
+# ``_RecordingBridgeFactory`` already in ``_pipeline_deps_factory`` can
+# stay a separate type -- no monkey-patching of ``tests._pipeline_deps_factory``
+# is needed.
 
 
 def _policy_bundle(tmp_path: Path) -> PolicyBundle:
@@ -354,9 +496,10 @@ def _patch_invoke_agent(
     THEIR module globals instead. Patching all three keeps the whole matrix
     subprocess-free without touching the executor's own argument plumbing.
     """
+    import ralph.cli.commands.commit as commit_cli
     from ralph.pipeline.plumbing import commit_plumbing, smoke_plumbing
 
-    for module in (effect_executor_module, smoke_plumbing, commit_plumbing):
+    for module in (effect_executor_module, smoke_plumbing, commit_plumbing, commit_cli):
         monkeypatch.setattr(module, "invoke_agent", invoke, raising=False)
 
 

@@ -625,25 +625,153 @@ def test_e17_metrics_reset_safe_across_child_swap(tmp_path: pathlib.Path) -> Non
 def test_e17_upstream_sessions_reset_safe_across_child_swap(
     tmp_path: pathlib.Path,
 ) -> None:
-    """Upstream sessions are reset-safe: a fresh child reopens upstream MCP connections.
+    """Upstream client sessions are NOT reused across a child swap.
 
-    Pinning the E1.7 enumeration line "upstream sessions". The
-    :class:`ralph.mcp.upstream.registry.UpstreamRegistry` aggregates
-    tools from multiple upstream MCP servers under stable proxy
-    aliases; each registry instance holds a ``dict[str, client]``
-    keyed by server name. The catalogue classifies upstream
-    sessions as child-scoped, so a swap zeroes the cache and the
-    next tool call against an upstream server re-opens the session.
+    Production model: each child constructs its OWN
+    :class:`ralph.mcp.upstream.registry.UpstreamRegistry` -- a real
+    instance holding a ``dict[str, _AnyUpstreamClient]`` keyed by the
+    configured upstream server name. The catalogue classifies upstream
+    sessions as child-scoped. Across a swap, the bridge swaps
+    :class:`StandaloneMcpProcess` inner handles; the upstream-registry
+    state that lives on the McpServer's tool-registry side does NOT
+    carry across because the NEW child constructs its own McpServer
+    (and therefore its own UpstreamRegistry) from its own configured
+    upstreams.
 
-    We pin via the production registry's constructor contract:
-    two distinct instances hold independent client dictionaries,
-    so a swap that constructs a new registry in the NEW child
-    does NOT inherit the OLD child's session cache.
+    This test pins the contract two ways:
+
+    1. Two distinct :class:`UpstreamRegistry` instances are constructed
+       via :meth:`UpstreamRegistry.build_from_tool_catalog` with
+       distinguishable upstream server names AND a distinguishable
+       custom ``client_factory`` that produces server-tagged client
+       instances. The two registries' client dictionaries are
+       independent: the OLD registry's client for its server is NOT
+       the same object as the NEW registry's client for its server,
+       and their ``_clients`` dicts are distinct objects with
+       disjoint keys.
+    2. A real bridge ``_perform_restart`` swap runs between two
+       :class:`StandaloneMcpProcess` inners (the same seam used by
+       the other E1.7 tests in this module). After the swap, BOTH
+       registries are preserved unchanged -- the OLD registry's
+       clients still hold OLD's tools and the NEW registry's clients
+       still hold NEW's tools. No carry across: the NEW registry's
+       ``_clients`` dict contains none of the OLD registry's keys,
+       and the OLD registry's ``_clients`` dict contains none of the
+       NEW registry's keys.
+
+    The first part proves the registry constructor produces
+    independent state per construction; the second part proves the
+    bridge swap does not magically transport client dicts between
+    registries. If either contract regresses -- e.g. the bridge
+    started sharing an upstream-registry singleton, or the registry
+    constructor stopped keeping distinct client dicts -- this test
+    fails clearly with the divergence it observed.
     """
     from ralph.mcp.upstream.config import UpstreamMcpServer
+    from ralph.mcp.upstream.models import UpstreamTool
+    from ralph.mcp.upstream.registry import UpstreamRegistry
 
     old_inner = _make_inner(tmp_path, poll_result=None, pid=1001)
     new_inner = _make_inner(tmp_path, poll_result=None, pid=2002)
+
+    # PROOF (1) -- construct two distinct UpstreamRegistry instances
+    # via the production :meth:`build_from_tool_catalog` path with
+    # server-tagged client factories so a carry-across would surface
+    # as a wrong-marker client in the wrong registry.
+
+    class _OldUpstreamClient:
+        """Marker class: every instance is the OLD child's client."""
+
+        server_marker = "old"
+
+        def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
+            del timeout_s
+            return []
+
+        def call_tool(self, name: str, arguments: dict[str, object]) -> object:
+            del name, arguments
+            return {"content": []}
+
+    old_server = UpstreamMcpServer(
+        name="e17-old-upstream",
+        transport="stdio",
+        command="echo",
+        args=("noop",),
+    )
+    old_registry = UpstreamRegistry.build_from_tool_catalog(
+        [old_server],
+        {
+            "e17-old-upstream": [
+                UpstreamTool(name="e17_old_tool_1", description="OLD child tool #1"),
+                UpstreamTool(name="e17_old_tool_2", description="OLD child tool #2"),
+            ],
+        },
+        client_factory=lambda _s: _OldUpstreamClient(),
+    )
+
+    old_tools_before = sorted(proxied.tool.name for proxied in old_registry.tool_definitions())
+    assert old_tools_before == ["e17_old_tool_1", "e17_old_tool_2"], old_tools_before
+    old_old_client = old_registry._clients["e17-old-upstream"]
+    assert isinstance(old_old_client, _OldUpstreamClient)
+    assert old_old_client.server_marker == "old"
+
+    class _NewUpstreamClient:
+        """Marker class: every instance is the NEW child's client."""
+
+        server_marker = "new"
+
+        def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
+            del timeout_s
+            return []
+
+        def call_tool(self, name: str, arguments: dict[str, object]) -> object:
+            del name, arguments
+            return {"content": []}
+
+    new_server = UpstreamMcpServer(
+        name="e17-new-upstream",
+        transport="stdio",
+        command="echo",
+        args=("noop",),
+    )
+    new_registry = UpstreamRegistry.build_from_tool_catalog(
+        [new_server],
+        {
+            "e17-new-upstream": [
+                UpstreamTool(name="e17_new_tool_1", description="NEW child tool #1"),
+            ],
+        },
+        client_factory=lambda _s: _NewUpstreamClient(),
+    )
+
+    new_tools_before = sorted(proxied.tool.name for proxied in new_registry.tool_definitions())
+    assert new_tools_before == ["e17_new_tool_1"], new_tools_before
+    new_new_client = new_registry._clients["e17-new-upstream"]
+    assert isinstance(new_new_client, _NewUpstreamClient)
+    assert new_new_client.server_marker == "new"
+
+    # The two UpstreamRegistry instances are constructed
+    # independently; their client dicts, proxied-tool lists, and
+    # alias maps are distinct Python objects with disjoint keys.
+    assert old_registry is not new_registry
+    assert old_registry._clients is not new_registry._clients
+    assert old_registry._proxied_tools is not new_registry._proxied_tools
+    assert old_registry._alias_map is not new_registry._alias_map
+    assert set(old_registry._clients.keys()) == {"e17-old-upstream"}
+    assert set(new_registry._clients.keys()) == {"e17-new-upstream"}
+    # Cross-leak assertions: the OLD registry MUST NOT hold a
+    # NEW-marker client; the NEW registry MUST NOT hold an
+    # OLD-marker client. A carry-across would have made a
+    # wrong-marker client land in the wrong registry's dict.
+    assert not any(
+        isinstance(client, _NewUpstreamClient) for client in old_registry._clients.values()
+    )
+    assert not any(
+        isinstance(client, _OldUpstreamClient) for client in new_registry._clients.values()
+    )
+
+    # PROOF (2) -- drive the production child-swap path through the
+    # bridge (same seam as the other E1.7 tests in this module).
     bridge = lifecycle.RestartAwareMcpBridge(
         old_inner,
         restart_fn=lambda: new_inner,
@@ -651,70 +779,172 @@ def test_e17_upstream_sessions_reset_safe_across_child_swap(
         run_id="run-e17-upstream",
         sleep_fn=lambda s: None,
     )
-
-    # Establish the OLD child's upstream-session surface: a bag of
-    # ``server.name -> client`` keys the OLD child populated.
-    old_session_keys: set[str] = {
-        "e17-upstream-server-1",
-        "e17-upstream-server-2",
-    }
-    assert len(old_session_keys) == 2
-
-    # Pin the production invariant: two distinct UpstreamRegistry
-    # instances do NOT share client state. The OLD registry holds
-    # the OLD child's keys; the NEW registry starts empty.
-    old_server_config = UpstreamMcpServer(
-        name="e17-upstream-old",
-        transport="stdio",
-        command="echo",
-        args=("noop",),
-    )
-
-    # Pin the contract via the UpstreamServer's identity: a
-    # configuration carrying a stale ``name`` from the OLD child
-    # does NOT land in the NEW child's session namespace.
-    new_server_config = UpstreamMcpServer(
-        name="e17-upstream-new",
-        transport="stdio",
-        command="echo",
-        args=("noop",),
-    )
-    assert old_server_config.name != new_server_config.name
-
-    # Perform the swap. The bridge promotes ``new_inner`` to
-    # ``_inner``; the OLD child's upstream session cache is NOT
-    # carried across.
     restarted = bridge._perform_restart(process_exited=False, probe_duration_s=0.2)
     assert restarted is True
+    assert bridge._bridge_generation == 1
+    assert bridge.process.pid == 2002
 
-    # DISPOSITION (reset-safe): the NEW child (now bridge._inner) has
-    # a fresh upstream session namespace — a fresh
-    # ``UpstreamServer`` config identity that the OLD child's
-    # populated keys cannot collide with.
-    new_session_keys: set[str] = set()
-    # The OLD child's keys do NOT appear in the NEW child's set.
-    assert old_session_keys.isdisjoint(new_session_keys)
-    # The OLD child's session surface is preserved (the swap does
-    # NOT touch the OLD child's session state).
-    assert len(old_session_keys) == 2
+    # DISPOSITION (reset-safe upstream sessions): after the swap,
+    # OLD's registry is preserved (the swap does not erase OLD's
+    # client cache) and NEW's registry has independent content
+    # (NEW's keys are not in OLD's cache, and vice versa).
+    old_tools_after = sorted(proxied.tool.name for proxied in old_registry.tool_definitions())
+    new_tools_after = sorted(proxied.tool.name for proxied in new_registry.tool_definitions())
+    assert old_tools_after == old_tools_before, (
+        f"OLD upstream registry mutated across swap: {old_tools_after!r} != {old_tools_before!r}"
+    )
+    assert new_tools_after == new_tools_before, (
+        f"NEW upstream registry mutated across swap: {new_tools_after!r} != {new_tools_before!r}"
+    )
+    assert "e17-old-upstream" not in new_registry._clients, (
+        "NEW upstream registry inherited OLD's upstream client key after a child swap"
+    )
+    assert "e17-new-upstream" not in old_registry._clients, (
+        "OLD upstream registry acquired NEW's upstream client key after a child swap"
+    )
+    # Marker preservation: the OLD client's marker must STILL be
+    # "old" and the NEW client's marker must STILL be "new". A
+    # carry-across would have rebounded either marker.
+    assert old_registry._clients["e17-old-upstream"].server_marker == "old"
+    assert new_registry._clients["e17-new-upstream"].server_marker == "new"
 
 
 def test_e17_exec_resource_handle_reset_safe_across_child_swap(
     tmp_path: pathlib.Path,
 ) -> None:
-    """``ralph://exec/`` handles are reset-safe: a fresh session does not inherit exec handles.
+    """``ralph://exec/`` handles issued by the OLD child are NOT replayable in the NEW child.
 
-    Pinning the E1.7 enumeration line "``ralph://exec/`` handles".
-    The session-scoped ``exec_resource_resolver`` is the parent of
-    every ``ralph://exec/<spill-name>`` URI returned by
-    ``format=summary`` exec calls. The catalogue classifies exec
-    handles as child-scoped (the spill file lives in the OLD
-    child's filesystem, the NEW child has its own); the swap zeroes
-    the handle so the agent gets a clean ``ralph://exec/``
-    namespace.
+    DISPOSITION POLICY (explicitly documented here per replan trigger
+    R-02; the production code implied this contract but it was never
+    stated in one place -- now it is):
+
+    > A :class:`ralph://exec/<spill-name>` URI issued by the OLD
+    > child's :class:`ralph.mcp.tools._exec_resource_uri.ExecResourceResolver`
+    > is bound to the resolver that registered it -- which lives in
+    > the OLD child's memory. The NEW child constructs its OWN
+    > ExecResourceResolver from the on-disk session payload's
+    > ``exec_spill_roots`` (or, if absent, no resolver at all). The
+    > NEW child's resolver is a DIFFERENT Python object, so
+    > ``resources/read`` against the NEW child for an OLD URI
+    > returns the typed JSON-RPC error ``-32602 Unsupported resource
+    > URI: '...'. Exec spill resolver is not attached to this
+    > session.`` (or, when the NEW child has a same-trusted-root
+    > resolver populated, ``-32602 Resource not found: '...'``).
+
+    This test pins three observable contracts against the real
+    production code path (``McpServer._handle_resources_read``):
+
+    1. The OLD child's :class:`FileBackedSession` owns an
+       :class:`ExecResourceResolver` with a real spill file on disk
+       under a trusted root. The OLD child can replay the
+       ``ralph://exec/<spill-name>`` URI it issued -- the production
+       handler returns the spill bytes base64-encoded (the AC-11
+       contract).
+    2. A real bridge ``_perform_restart`` swap runs (the same swap
+       seam used by the other E1.7 tests in this module).
+    3. The NEW child's :class:`FileBackedSession` does NOT own an
+       :class:`ExecResourceResolver` -- no injection at ``__init__``
+       AND no ``exec_spill_roots`` in the on-disk payload, so the
+       lazy :attr:`FileBackedSession.exec_resource_resolver`
+       property yields ``None``. The production handler against the
+       NEW session returns the structured ``-32602`` error
+       ("``Exec spill resolver is not attached``") -- the agent gets
+       a typed, observable failure rather than a silent miss or an
+       untyped crash.
+
+    The OLD resolver state is preserved across the swap: a follow-up
+    ``resources/read`` against OLD still returns the blob. The swap
+    does not erase OLD's spill registry.
     """
+    from ralph.mcp.server._json_rpc_request import JsonRpcRequest
+    from ralph.mcp.server._mcp_server import McpServer
+    from ralph.mcp.server.runtime_session import FileBackedSession
+    from ralph.mcp.tools._exec_resource_uri import ExecResourceResolver
+
     old_inner = _make_inner(tmp_path, poll_result=None, pid=1001)
     new_inner = _make_inner(tmp_path, poll_result=None, pid=2002)
+
+    # 1) OLD child session: a real FileBackedSession with an
+    #    injected ExecResourceResolver, plus an ``exec_spill_roots``
+    #    entry in the on-disk payload (so the on-disk discovery path
+    #    matches the production layout). The OLD spill directory is a
+    #    real path on disk under ``tmp_path`` so register() can
+    #    succeed.
+    old_spill_root = tmp_path / "e17_old_spills"
+    old_spill_root.mkdir(parents=True, exist_ok=True)
+    old_session_file = tmp_path / "e17_old_session.json"
+    old_session_file.write_text(
+        json.dumps(
+            {
+                "session_id": "session-e17-exec-old",
+                "run_id": "run-e17-exec-old",
+                "capabilities": ["ProcessExecBounded"],
+                "exec_spill_roots": [str(old_spill_root)],
+            }
+        ),
+        encoding="utf-8",
+    )
+    old_resolver = ExecResourceResolver(spill_roots=(old_spill_root,))
+    old_session = FileBackedSession(
+        old_session_file,
+        workspace_root=tmp_path,
+        exec_resource_resolver=old_resolver,
+    )
+
+    old_spill = old_spill_root / "ralph-exec-e17old.txt"
+    old_payload = b"OLD-child spill body: recoverable via ralph://exec/"
+    old_spill.write_bytes(old_payload)
+    old_uri = old_resolver.register(old_spill)
+    assert old_uri.startswith("ralph://exec/"), old_uri
+    # Pin the OLD side: the resolver is attached via the public
+    # property (no fabricated attribute, no direct private access).
+    assert old_session.exec_resource_resolver is old_resolver
+
+    # 2) NEW child session: a FRESH FileBackedSession with NO resolver
+    #    injection AND no ``exec_spill_roots`` in the payload, so the
+    #    lazy ``exec_resource_resolver`` property returns ``None``.
+    new_session_file = tmp_path / "e17_new_session.json"
+    new_session_file.write_text(
+        json.dumps(
+            {
+                "session_id": "session-e17-exec-new",
+                "run_id": "run-e17-exec-new",
+                "capabilities": ["ProcessExecBounded"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    new_session = FileBackedSession(
+        new_session_file,
+        workspace_root=tmp_path,
+    )
+    assert new_session.exec_resource_resolver is None
+
+    # 3) Pin the OLD-can-replay contract via the real production
+    #    entry point BEFORE the swap (proves the OLD URI is a valid,
+    #    replayable resource in the OLD child).
+    handler_old = object.__new__(McpServer)
+    handler_old._session = old_session
+    old_request = JsonRpcRequest(
+        jsonrpc="2.0",
+        method="resources/read",
+        params={"uri": old_uri},
+        msg_id=1,
+    )
+    old_response, _state_old = handler_old._handle_resources_read(old_request)
+    assert old_response.error is None, (
+        f"OLD child should replay {old_uri!r} via resources/read: {old_response.error}"
+    )
+    old_result = old_response.result
+    assert isinstance(old_result, dict)
+    old_first = old_result["contents"][0]
+    assert isinstance(old_first, dict)
+    assert old_first["uri"] == old_uri
+    import base64 as _base64
+
+    assert _base64.b64decode(old_first["blob"]) == old_payload
+
+    # 4) Drive the production child-swap path through the bridge.
     bridge = lifecycle.RestartAwareMcpBridge(
         old_inner,
         restart_fn=lambda: new_inner,
@@ -722,48 +952,51 @@ def test_e17_exec_resource_handle_reset_safe_across_child_swap(
         run_id="run-e17-exec",
         sleep_fn=lambda s: None,
     )
-
-    # OLD child session has an ``exec_resource_resolver`` attached —
-    # the surface that owns every ``ralph://exec/<spill-name>`` URI
-    # returned by ``format=summary`` exec calls.
-    class _OldExecResolver:
-        """Stand-in for the OLD child's exec-resource resolver."""
-
-        spill_roots: tuple[str, ...] = (str(tmp_path / "old-child-spills"),)
-
-    class _NewExecResolver:
-        """Stand-in for the NEW child's exec-resource resolver."""
-
-        spill_roots: tuple[str, ...] = (str(tmp_path / "new-child-spills"),)
-
-    old_session = bridge._inner
-    old_session.exec_resource_resolver = _OldExecResolver()
-    assert getattr(old_session, "exec_resource_resolver", None) is not None
-
-    # NEW child session has NO exec-resource resolver attached — a
-    # fresh ``ralph://exec/`` namespace from the agent's view.
-    new_session = new_inner
-    new_session.exec_resource_resolver = None
-    assert getattr(new_session, "exec_resource_resolver", None) is None
-
-    # Perform the swap. The bridge promotes ``new_inner`` to ``_inner``;
-    # the OLD child's exec resolver is NOT carried across.
     restarted = bridge._perform_restart(process_exited=False, probe_duration_s=0.2)
     assert restarted is True
+    assert bridge._bridge_generation == 1
 
-    # DISPOSITION (reset-safe): the NEW child (now bridge._inner) has
-    # its OWN exec-resource resolver surface — a ``None`` resolver
-    # means the agent's ``resources/read`` handler reports
-    # "unsupported URI" for any ``ralph://exec/`` request, which is
-    # the correct safe-default for a fresh child.
-    new_after = bridge._inner
-    new_resolver = getattr(new_after, "exec_resource_resolver", None)
-    assert new_resolver is None, (
-        f"ralph://exec/ handles must be reset-safe across child swap; "
-        f"new child inherited {new_resolver!r}"
+    # 5) Pin the NEW-cannot-replay-OLD-URI contract via the real
+    #    production entry point AFTER the swap. The NEW session has
+    #    no resolver, so the handler must return a STRUCTURED
+    #    ``-32602`` error (not None, not a silent miss, not an
+    #    untyped crash). This is the typed-failure surface the agent
+    #    relies on.
+    handler_new = object.__new__(McpServer)
+    handler_new._session = new_session
+    new_request = JsonRpcRequest(
+        jsonrpc="2.0",
+        method="resources/read",
+        params={"uri": old_uri},
+        msg_id=2,
     )
-    # The OLD child's resolver is NOT touched by the swap.
-    assert getattr(old_session, "exec_resource_resolver", None) is not None
+    new_response, _state_new = handler_new._handle_resources_read(new_request)
+    assert new_response.error is not None, (
+        f"NEW child should return a structured error for OLD {old_uri!r}; "
+        f"got result={new_response.result!r}"
+    )
+    new_error = new_response.error
+    assert new_error["code"] == -32602, (
+        f"NEW child must return the structured JSON-RPC error code -32602 "
+        f"for an unsupported exec URI after a swap; got code="
+        f"{new_error['code']!r} message={new_error['message']!r}"
+    )
+    assert "Exec spill resolver is not attached" in new_error["message"], (
+        f"NEW child returned an unexpected error message for an OLD URI "
+        f"after the swap; expected the typed 'Exec spill resolver is not "
+        f"attached' message, got {new_error['message']!r}"
+    )
+
+    # 6) The OLD child's resolver is preserved across the swap: the
+    #    OLD URI is still replayable from the OLD session (the swap
+    #    does not erase OLD's spill registry).
+    post_old_response, _post_state = handler_old._handle_resources_read(old_request)
+    assert post_old_response.error is None, (
+        f"OLD child resolver was unexpectedly erased across the swap: "
+        f"error={post_old_response.error!r}"
+    )
+    post_old_first = post_old_response.result["contents"][0]
+    assert _base64.b64decode(post_old_first["blob"]) == old_payload
 
 
 def test_e17_repetition_tracker_carried_via_bridge_swap_with_fake_inners(

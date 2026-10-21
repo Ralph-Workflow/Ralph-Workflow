@@ -37,12 +37,17 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 from unittest import mock
 
+import httpx
 import pytest
 from loguru import logger
 
+from ralph.mcp.protocol._startup_http import (
+    _HTTP_JSONRPC_POST_TIMEOUT_S,
+    post_http_jsonrpc_with_session,
+)
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
-from ralph.mcp.server._http_tools_list import execute_mcp_http_request, http_tools_list_names
+from ralph.mcp.server._http_tools_list import http_tools_list_names
 from ralph.mcp.server._mcp_outcome_unknown_error import McpOutcomeUnknownError
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
@@ -120,12 +125,9 @@ def _build_production_bridge(
     )
     workspace = FsWorkspace(tmp_path)
     real_spawn = lifecycle._default_lifecycle_deps().spawn_process
-
-    def noop_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:
-        del endpoint, required_tools, timeout
-
     deps = lifecycle._default_lifecycle_deps().__replace__(
-        preflight=noop_preflight, spawn_process=real_spawn
+        preflight=lambda endpoint, required_tools, timeout: None,
+        spawn_process=real_spawn,
     )
     extras = lifecycle.McpServerExtras(
         restart_policy=McpRestartPolicy(max_restarts=max_restarts, cooldown_seconds=0.0),
@@ -309,11 +311,9 @@ def test_e32_production_bridge_retry_through_real_handover_gap(
 
     real_spawn = lifecycle._default_lifecycle_deps().spawn_process
 
-    def noop_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:
-        del endpoint, required_tools, timeout
-
     deps = lifecycle._default_lifecycle_deps().__replace__(
-        preflight=noop_preflight, spawn_process=real_spawn
+        preflight=lambda endpoint, required_tools, timeout: None,
+        spawn_process=real_spawn,
     )
     extras = lifecycle.McpServerExtras(
         restart_policy=McpRestartPolicy(cooldown_seconds=0.0),
@@ -322,12 +322,14 @@ def test_e32_production_bridge_retry_through_real_handover_gap(
 
     try:
         endpoint = bridge.endpoint_uri()
-        # The client retry's HTTP timeout must be larger than the bridge
-        # replacement bound so the retry observes the post-respawn endpoint,
-        # not a transport timeout. 15s gives generous headroom for a slow
-        # CI platform; the typical respawn is sub-second so the test
-        # completes in ~3-5s on a healthy machine.
-        client_timeout_s = 15.0
+        # The client retry's HTTP timeout is the configured production timeout
+        # (_HTTP_JSONRPC_POST_TIMEOUT_S), which provably dominates the bridge
+        # replacement bound (_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S).
+        assert _HTTP_JSONRPC_POST_TIMEOUT_S >= lifecycle._CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S, (
+            f"Configured client timeout ({_HTTP_JSONRPC_POST_TIMEOUT_S}s) must dominate "
+            f"replacement bound ({lifecycle._CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S}s)"
+        )
+        client_timeout_s = _HTTP_JSONRPC_POST_TIMEOUT_S
 
         # Force the gap.
         bridge.process.kill()
@@ -591,17 +593,61 @@ def test_e34_stale_keepalive_after_real_handover(
             "params": {},
         }
 
+        class StaleConnectionTransport:
+            def __init__(self, port: int) -> None:
+                self.port = port
+                self.conn: http.client.HTTPConnection | None = None
+                self.attempts = 0
+
+            def post(
+                self,
+                url: str,
+                *,
+                headers: dict[str, str],
+                timeout: float,
+                **kwargs: object,
+            ) -> httpx.Response:
+                del url
+                self.attempts += 1
+                if self.conn is None:
+                    self.conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=timeout)
+                req_payload = kwargs.get("json")
+                body = (
+                    req_payload
+                    if isinstance(req_payload, (bytes, bytearray))
+                    else json.dumps(req_payload).encode("utf-8")
+                )
+                try:
+                    self.conn.request("POST", "/mcp", body=body, headers=headers)
+                    resp = self.conn.getresponse()
+                    content = resp.read()
+                    return httpx.Response(status_code=resp.status, content=content)
+                except (
+                    http.client.RemoteDisconnected,
+                    http.client.CannotSendRequest,
+                    http.client.BadStatusLine,
+                    BrokenPipeError,
+                    ConnectionResetError,
+                    OSError,
+                ) as exc:
+                    self.conn.close()
+                    self.conn = None
+                    raise httpx.RemoteProtocolError(f"Server disconnected: {exc}") from exc
+
+            def close(self) -> None:
+                if self.conn is not None:
+                    with contextlib.suppress(Exception):
+                        self.conn.close()
+                    self.conn = None
+
         # ---- Baseline: idempotent call on real keep-alive socket ----
-        # 5 s timeout matches the test's fresh-connection budget; the stdlib
-        # read returns immediately on a healthy child, but the same host-saturated
-        # xdist profiles can delay the very first connect-accept by tens of ms.
-        keepalive = http.client.HTTPConnection("127.0.0.1", port, timeout=5.0)
+        transport = StaleConnectionTransport(port)
         try:
-            status, attempts, _ = execute_mcp_http_request(
-                port, tools_list_payload, existing_conn=keepalive, is_idempotent=True
+            resp_payload, _ = post_http_jsonrpc_with_session(
+                endpoint, tools_list_payload, post_fn=transport.post
             )
-            assert status == 200
-            assert attempts == 1
+            assert resp_payload is not None
+            assert transport.attempts == 1
 
             old_pid = bridge.process.pid
 
@@ -614,14 +660,13 @@ def test_e34_stale_keepalive_after_real_handover(
             assert bridge._bridge_generation >= 1
 
             # Request on the stale keep-alive connection retries safely once on fresh connection.
-            status_after, attempts_after, _ = execute_mcp_http_request(
-                port, tools_list_payload, existing_conn=keepalive, is_idempotent=True
+            resp_after, _ = post_http_jsonrpc_with_session(
+                endpoint, tools_list_payload, post_fn=transport.post
             )
-            assert status_after == 200
-            assert attempts_after == 2
+            assert resp_after is not None
+            assert transport.attempts == 3  # 1 from baseline + 2 from the retried request
         finally:
-            with contextlib.suppress(Exception):
-                keepalive.close()
+            transport.close()
 
         # ---- Non-idempotent path: severed connection must raise McpOutcomeUnknownError ----
         unsafe_payload: dict[str, object] = {
@@ -633,26 +678,28 @@ def test_e34_stale_keepalive_after_real_handover(
                 "arguments": {"artifact_type": "development_result", "x": 1},
             },
         }
-        unsafe_conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5.0)
+        unsafe_transport = StaleConnectionTransport(port)
         try:
             # Establish the socket with the active child.
-            status_pre, _, _ = execute_mcp_http_request(
-                port, tools_list_payload, existing_conn=unsafe_conn, is_idempotent=True
+            resp_pre, _ = post_http_jsonrpc_with_session(
+                endpoint, tools_list_payload, post_fn=unsafe_transport.post
             )
-            assert status_pre == 200
+            assert resp_pre is not None
+            assert unsafe_transport.attempts == 1
 
             # Sever the connection by killing the child.
             bridge.process.kill()
             _wait_child_dead(bridge.process, timeout_s=3.0)
 
             with pytest.raises(McpOutcomeUnknownError) as exc_info:
-                execute_mcp_http_request(
-                    port, unsafe_payload, existing_conn=unsafe_conn, is_idempotent=False
+                post_http_jsonrpc_with_session(
+                    endpoint, unsafe_payload, post_fn=unsafe_transport.post
                 )
             assert exc_info.value.tool_name == "ralph_submit_md_artifact"
+            # Crucial: non-idempotent mutation was NOT retried (attempts == 2: 1 pre + 1 severed)
+            assert unsafe_transport.attempts == 2
         finally:
-            with contextlib.suppress(Exception):
-                unsafe_conn.close()
+            unsafe_transport.close()
     finally:
         with contextlib.suppress(Exception):
             bridge.shutdown()
