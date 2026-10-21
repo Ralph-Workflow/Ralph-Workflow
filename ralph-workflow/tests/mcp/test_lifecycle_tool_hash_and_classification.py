@@ -35,25 +35,28 @@ Baseline (DEC-001, the first live-child replacement had no baseline):
 Handover step (DEC-002):
 - Every McpServerError raised from the make-before-break path carries
   ``handover_step`` naming the failing stage.
+
+Deterministic synthetic private channel:
+- The candidate responder thread signals an ``attached`` event once it owns
+  its socket end, and ``_handover_candidate`` waits on it, so the readiness
+  exchange never races thread start-up.
+- Every synthetic responder's parent socket AND thread are registered with the
+  ``synthetic_responders`` fixture and torn down there (close, then join), so no
+  responder outlives its test and closes a file-descriptor number that a later
+  test's ``socketpair`` has already recycled.
+- A drift refusal is asserted on the refusal REASON, not only on the boolean
+  verdict: a refused exchange (timeout, transport failure, missing baseline)
+  also returns ``False``, so a verdict-only assertion silently passes when the
+  private channel never delivered the candidate's catalogue.
 """
 
-from __future__ import annotations
-
-import contextlib
-import json
 import os
 import pathlib
-import socket
-import tempfile
-import threading
-from collections.abc import Iterator
 from datetime import timedelta
-from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import psutil
 import pytest
-from loguru import logger
 
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
@@ -67,204 +70,27 @@ from ralph.mcp.server._handover_protocol import (
 )
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._mcp_server_error import McpServerError
+from ralph.mcp.server._process_like import ProcessLike
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
-
-if TYPE_CHECKING:
-    from ralph.mcp.server._process_like import ProcessLike
-
-pytestmark = [pytest.mark.timeout_seconds(10)]
-
-
-class _FakeProcess:
-    def __init__(self, poll_result: int | None = None, pid: int = 9999) -> None:
-        self._poll_result = poll_result
-        self._pid = pid
-        self.terminated = False
-        self.killed = False
-
-    @property
-    def pid(self) -> int:
-        return self._pid
-
-    def poll(self) -> int | None:
-        return self._poll_result
-
-    def terminate(self, grace_period_s: float = 5.0) -> None:
-        self.terminated = True
-        self._poll_result = 0
-
-    def wait(self, timeout: float | None = None) -> int:
-        return 0
-
-    def kill(self) -> None:
-        self.killed = True
-        self._poll_result = -9
+from tests.mcp._lifecycle_tool_hash_seams import (
+    TOOLS_BASE,
+    TOOLS_DRIFTED,
+    _bridge_with_old_child,
+    _captured_logs,
+    _FakeListeningSocket,
+    _FakeMcpServer,
+    _FakeProcess,
+    _handover_candidate,
+    _make_inner,
+    _SyntheticResponder,
+    register_synthetic_responders,
+)
 
 
-def _make_inner(
-    poll_result: int | None = None,
-    pid: int = 9999,
-    endpoint: str = "http://127.0.0.1:9100/mcp",
-    session_file: pathlib.Path | None = None,
-) -> StandaloneMcpProcess:
-    if session_file is None:
-        session_file = pathlib.Path(tempfile.mkdtemp()) / "session.json"
-        session_file.write_text("{}", encoding="utf-8")
-    return StandaloneMcpProcess(
-        endpoint=endpoint,
-        process=_FakeProcess(poll_result=poll_result, pid=pid),
-        session_file=session_file,
-    )
-
-
-class _FakeRegistry:
-    """Registry double exposing the ``tools`` list the private channel reads."""
-
-    def __init__(self, tools: list[dict[str, object]]) -> None:
-        self.tools = tools
-
-
-class _FakeMcpServer:
-    """Minimal ``_registry`` holder shaped like the live MCP server."""
-
-    def __init__(self, tools: list[dict[str, object]]) -> None:
-        self._registry = _FakeRegistry(tools)
-
-
-class _FakeListeningSocket:
-    """Stand-in for the parent-owned listening socket (no real bind)."""
-
-    def __init__(self) -> None:
-        self.closed = False
-
-    def fileno(self) -> int:
-        return 7
-
-    def close(self) -> None:
-        self.closed = True
-
-
-@contextlib.contextmanager
-def _captured_logs() -> Iterator[list[str]]:
-    """Collect loguru WARNING+ records emitted inside the block."""
-    records: list[str] = []
-    sink_id = logger.add(lambda message: records.append(str(message)), level="WARNING")
-    try:
-        yield records
-    finally:
-        logger.remove(sink_id)
-
-
-def _serve_tool_list(
-    child_sock: socket.socket,
-    *,
-    pid: int,
-    stage_id: str,
-    tools: list[dict[str, object]],
-    session_id: str = "",
-) -> None:
-    """Answer one ``initialize`` + ``tools/list`` exchange on the private channel."""
-    with child_sock:
-        buf = b""
-        while True:
-            try:
-                chunk = child_sock.recv(4096)
-            except (TimeoutError, OSError):
-                break
-            if not chunk:
-                break
-            buf += chunk
-            while b"\n" in buf:
-                line, buf = buf.split(b"\n", 1)
-                if not line.strip():
-                    continue
-                msg = json.loads(line.decode("utf-8"))
-                method = msg.get("method")
-                if method == "initialize":
-                    result: dict[str, object] = {
-                        "protocolVersion": "2024-11-05",
-                        "serverInfo": {"name": "ralph-mcp", "version": "0.1.0"},
-                        "pid": pid,
-                        "spawn_id": stage_id,
-                        "session_id": session_id,
-                        "broker_secret_fingerprint": None,
-                    }
-                elif method == "tools/list":
-                    result = {"tools": tools}
-                else:
-                    result = {}
-                resp = {"jsonrpc": "2.0", "id": msg.get("id"), "result": result}
-                child_sock.sendall(json.dumps(resp).encode("utf-8") + b"\n")
-
-
-def _tmp_root() -> pathlib.Path:
-    """Scratch directory holding a synthetic child's session file."""
-    return pathlib.Path(tempfile.mkdtemp(prefix="mcp-tool-hash-"))
-
-
-def _handover_candidate(
-    tmp_path: pathlib.Path,
-    *,
-    tools: list[dict[str, object]],
-    pid: int,
-    stage_id: str,
-    label: str,
-) -> tuple[StandaloneMcpProcess, threading.Thread]:
-    """Build a candidate whose private channel serves ``tools``."""
-    parent_sock, child_sock = create_handover_socketpair()
-    candidate = _make_inner(
-        poll_result=None,
-        pid=pid,
-        session_file=tmp_path / f"{label}-session.json",
-    )
-    candidate.handover_parent_sock = parent_sock
-    candidate.stage_id = stage_id
-    worker = threading.Thread(
-        target=_serve_tool_list,
-        args=(child_sock,),
-        kwargs={"pid": pid, "stage_id": stage_id, "tools": tools},
-        daemon=True,
-    )
-    worker.start()
-    return candidate, worker
-
-
-def _bridge_with_old_child(
-    tmp_path: pathlib.Path,
-    *,
-    old_pid: int = 1001,
-    workspace_root: pathlib.Path | None = None,
-    restart_fn: object = None,
-    tool_entries_fn: object = None,
-) -> lifecycle.RestartAwareMcpBridge:
-    """Build a bridge whose old child is fake but lives under ``tmp_path``."""
-    inner = _make_inner(
-        poll_result=None,
-        pid=old_pid,
-        session_file=tmp_path / "old-session.json",
-    )
-    kwargs: dict[str, object] = {}
-    if tool_entries_fn is not None:
-        kwargs["tool_entries_fn"] = tool_entries_fn
-    return lifecycle.RestartAwareMcpBridge(
-        inner,
-        restart_fn=restart_fn if restart_fn is not None else _make_inner,
-        restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
-        run_id="test-run",
-        workspace_root=workspace_root,
-        sleep_fn=lambda _seconds: None,
-        **kwargs,
-    )
-
-
-TOOLS_BASE: list[dict[str, object]] = [
-    {"name": "read_file", "description": "Read a file", "inputSchema": {"type": "object"}},
-    {"name": "write_file", "description": "Write a file", "inputSchema": {"type": "object"}},
-]
-TOOLS_DRIFTED: list[dict[str, object]] = [
-    {"name": "read_file", "description": "Read a file", "inputSchema": {"type": "object"}},
-    {"name": "other_tool", "description": "Other", "inputSchema": {}},
-]
+@pytest.fixture(scope="function")
+def synthetic_responders(request: pytest.FixtureRequest) -> list[_SyntheticResponder]:
+    """Own teardown of every synthetic responder (see the shared seams module)."""
+    return register_synthetic_responders(request)
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +98,10 @@ TOOLS_DRIFTED: list[dict[str, object]] = [
 # ---------------------------------------------------------------------------
 
 
-def test_candidate_verification_retains_tool_hash_on_success() -> None:
+def test_candidate_verification_retains_tool_hash_on_success(
+    tmp_path: pathlib.Path,
+    synthetic_responders: list[_SyntheticResponder],
+) -> None:
     """Successful candidate verification retains the candidate tool hash."""
     bridge = lifecycle.RestartAwareMcpBridge(
         _make_inner(poll_result=None, pid=1001),
@@ -282,8 +111,13 @@ def test_candidate_verification_retains_tool_hash_on_success() -> None:
     )
     tools = [{"name": "read_file", "description": "Read file", "inputSchema": {}}]
     expected_hash = compute_tool_set_hash(tools)
-    candidate, _worker = _handover_candidate(
-        _tmp_root(), tools=tools, pid=2002, stage_id="test-stage-1", label="s1"
+    candidate = _handover_candidate(
+        tmp_path,
+        tools=tools,
+        pid=2002,
+        stage_id="test-stage-1",
+        label="s1",
+        responders=synthetic_responders,
     )
 
     # Pre-set expected tool hash
@@ -293,7 +127,10 @@ def test_candidate_verification_retains_tool_hash_on_success() -> None:
     assert bridge._expected_tool_hash == expected_hash
 
 
-def test_tool_set_drift_refused_when_old_child_alive() -> None:
+def test_tool_set_drift_refused_when_old_child_alive(
+    tmp_path: pathlib.Path,
+    synthetic_responders: list[_SyntheticResponder],
+) -> None:
     """When tool set drifts, candidate is refused and old child is kept."""
     bridge = lifecycle.RestartAwareMcpBridge(
         _make_inner(poll_result=None, pid=1001),
@@ -305,15 +142,34 @@ def test_tool_set_drift_refused_when_old_child_alive() -> None:
     tools_new = [{"name": "other_tool", "description": "Other", "inputSchema": {}}]
     bridge._expected_tool_hash = compute_tool_set_hash(tools_old)
     bridge._expected_tool_entries = tools_old
-    candidate, _worker = _handover_candidate(
-        _tmp_root(), tools=tools_new, pid=2002, stage_id="test-stage-drift", label="sd"
+    candidate = _handover_candidate(
+        tmp_path,
+        tools=tools_new,
+        pid=2002,
+        stage_id="test-stage-drift",
+        label="sd",
+        responders=synthetic_responders,
     )
 
-    ok = bridge._verify_candidate(candidate)
+    with _captured_logs() as records:
+        ok = bridge._verify_candidate(candidate)
     assert ok is False  # Refused!
+    # A verdict-only assertion cannot tell the drift refusal apart from a
+    # refused exchange: a private-channel timeout, a transport failure, and a
+    # missing baseline ALL also return False. Under parallel host load a
+    # starved responder produces exactly that, so the test would pass without
+    # the drift check ever running. Only the ``tool_set_drift`` branch with a
+    # live old child logs the name-level TOOL DIFF, so requiring it pins the
+    # refusal to the behaviour under test.
+    drift_logs = [record for record in records if "tool-set drift" in record.lower()]
+    assert drift_logs, records
+    assert any("other_tool" in record for record in drift_logs)
 
 
-def test_tool_set_drift_promoted_when_old_child_dead() -> None:
+def test_tool_set_drift_promoted_when_old_child_dead(
+    tmp_path: pathlib.Path,
+    synthetic_responders: list[_SyntheticResponder],
+) -> None:
     """When old child is dead, candidate with drifted tool hash is promoted with warning."""
     # Old child is dead (poll_result = 1)
     bridge = lifecycle.RestartAwareMcpBridge(
@@ -326,8 +182,13 @@ def test_tool_set_drift_promoted_when_old_child_dead() -> None:
     tools_new = [{"name": "other_tool", "description": "Other", "inputSchema": {}}]
     bridge._expected_tool_hash = compute_tool_set_hash(tools_old)
     new_hash = compute_tool_set_hash(tools_new)
-    candidate, _worker = _handover_candidate(
-        _tmp_root(), tools=tools_new, pid=2002, stage_id="test-stage-dead", label="sdead"
+    candidate = _handover_candidate(
+        tmp_path,
+        tools=tools_new,
+        pid=2002,
+        stage_id="test-stage-dead",
+        label="sdead",
+        responders=synthetic_responders,
     )
 
     ok = bridge._verify_candidate(candidate)
@@ -566,6 +427,7 @@ def test_capture_tool_hash_baseline_stores_served_hash(tmp_path: pathlib.Path) -
 
 def test_baseline_capture_failure_blocks_candidate_promotion_when_old_child_alive(
     tmp_path: pathlib.Path,
+    synthetic_responders: list[_SyntheticResponder],
 ) -> None:
     """Failed baseline capture must FAIL CLOSED: refuse drifted candidates while old child lives.
 
@@ -591,12 +453,13 @@ def test_baseline_capture_failure_blocks_candidate_promotion_when_old_child_aliv
     assert bridge._baseline_capture_failed is True
     assert any("tool-hash baseline" in record for record in records)
 
-    candidate, _worker = _handover_candidate(
+    candidate = _handover_candidate(
         tmp_path,
         tools=TOOLS_DRIFTED,
         pid=2002,
         stage_id="cand-fail-closed",
         label="failclosed",
+        responders=synthetic_responders,
     )
 
     with _captured_logs() as refuse_records:
@@ -614,6 +477,7 @@ def test_baseline_capture_failure_blocks_candidate_promotion_when_old_child_aliv
 
 def test_baseline_unavailable_promotes_candidate_when_old_child_dead(
     tmp_path: pathlib.Path,
+    synthetic_responders: list[_SyntheticResponder],
 ) -> None:
     """When baseline is unavailable AND the old child is already dead, the dead-child escape still fires."""
 
@@ -631,12 +495,13 @@ def test_baseline_unavailable_promotes_candidate_when_old_child_dead(
 
     assert bridge._baseline_capture_failed is True
 
-    candidate, _worker = _handover_candidate(
+    candidate = _handover_candidate(
         tmp_path,
         tools=TOOLS_DRIFTED,
         pid=2003,
         stage_id="cand-dead-escape",
         label="deadescape",
+        responders=synthetic_responders,
     )
 
     with _captured_logs() as promote_records:
@@ -757,17 +622,21 @@ def test_canonical_tool_entries_collapse_non_canonical_variants() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_tool_set_drift_logs_tool_diff_and_counts_failed_attempt(tmp_path: pathlib.Path) -> None:
+def test_tool_set_drift_logs_tool_diff_and_counts_failed_attempt(
+    tmp_path: pathlib.Path,
+    synthetic_responders: list[_SyntheticResponder],
+) -> None:
     """Drift refuses promotion, logs the tool diff, counts the attempt, keeps the old child."""
     candidates: list[StandaloneMcpProcess] = []
 
     def _spawn_candidate() -> StandaloneMcpProcess:
-        candidate, _worker = _handover_candidate(
+        candidate = _handover_candidate(
             tmp_path,
             tools=TOOLS_DRIFTED,
             pid=2002,
             stage_id="cand-drift",
             label="drift",
+            responders=synthetic_responders,
         )
         candidates.append(candidate)
         return candidate
@@ -797,20 +666,31 @@ def test_tool_set_drift_logs_tool_diff_and_counts_failed_attempt(tmp_path: pathl
 
 def test_validated_candidate_hash_replaces_baseline_for_next_candidate(
     tmp_path: pathlib.Path,
+    synthetic_responders: list[_SyntheticResponder],
 ) -> None:
     """A successful verification becomes the reference the next candidate is judged against."""
     bridge = _bridge_with_old_child(tmp_path, old_pid=1001)
     bridge._expected_tool_hash = compute_tool_set_hash(TOOLS_BASE)
     bridge._expected_tool_entries = list(TOOLS_BASE)
 
-    matching, _w1 = _handover_candidate(
-        tmp_path, tools=TOOLS_BASE, pid=2002, stage_id="cand-a", label="a"
+    matching = _handover_candidate(
+        tmp_path,
+        tools=TOOLS_BASE,
+        pid=2002,
+        stage_id="cand-a",
+        label="a",
+        responders=synthetic_responders,
     )
     assert bridge._verify_candidate(matching) is True
     assert bridge._expected_tool_hash == compute_tool_set_hash(TOOLS_BASE)
 
-    drifted, _w2 = _handover_candidate(
-        tmp_path, tools=TOOLS_DRIFTED, pid=2003, stage_id="cand-b", label="b"
+    drifted = _handover_candidate(
+        tmp_path,
+        tools=TOOLS_DRIFTED,
+        pid=2003,
+        stage_id="cand-b",
+        label="b",
+        responders=synthetic_responders,
     )
     # Refused: the retained hash (not None) is what the second candidate is compared to.
     assert bridge._verify_candidate(drifted) is False
@@ -833,142 +713,3 @@ def test_describe_tool_set_diff_reports_added_removed_and_changed() -> None:
     assert "added=['added']" in described
     assert "removed=['gone']" in described
     assert "changed=['changed']" in described
-
-
-# ---------------------------------------------------------------------------
-# DEC-002: make-before-break errors name the failing handover stage
-# ---------------------------------------------------------------------------
-
-
-def test_spawn_stage_failure_is_stamped_with_handover_step(tmp_path: pathlib.Path) -> None:
-    """A candidate-spawn McpServerError names the spawn stage (field and log)."""
-    raised: list[McpServerError] = []
-
-    def _explode() -> StandaloneMcpProcess:
-        err = McpServerError("spawn refused", restart_count=1)
-        raised.append(err)
-        raise err
-
-    bridge = _bridge_with_old_child(tmp_path, old_pid=1001, restart_fn=_explode)
-    with _captured_logs() as records:
-        assert bridge._run_with_make_before_break() is False
-    # Non-terminal under the C2 contract: the old child keeps serving...
-    assert bridge.process.pid == 1001
-    # ...but the error itself still names the stage that produced it.
-    assert len(raised) == 1
-    assert raised[0].handover_step == "spawn_candidate"
-    assert any("handover_step=spawn_candidate" in record for record in records)
-
-
-def test_verify_stage_failure_escapes_with_handover_step(tmp_path: pathlib.Path) -> None:
-    """A verification-stage McpServerError escapes the make-before-break path stamped."""
-    bridge = _bridge_with_old_child(tmp_path, old_pid=1001)
-
-    def _verify(_candidate: StandaloneMcpProcess) -> bool:
-        raise McpServerError("verification exploded", restart_count=1)
-
-    with (
-        patch.object(bridge, "_verify_candidate", _verify),
-        pytest.raises(McpServerError) as excinfo,
-    ):
-        bridge._run_with_make_before_break()
-    assert excinfo.value.handover_step == "verify_candidate"
-
-
-def test_pause_ack_stage_failure_escapes_with_handover_step(tmp_path: pathlib.Path) -> None:
-    """A pause/ack failure names the pause-ack stage, not a generic handover step."""
-
-    def _explode(_pause_path: pathlib.Path) -> None:
-        raise McpServerError("pause file write failed", restart_count=1)
-
-    old_inner = _make_inner(poll_result=None, pid=os.getpid(), session_file=tmp_path / "o.json")
-    candidate = _make_inner(poll_result=None, pid=2002, session_file=tmp_path / "c.json")
-    candidate.stage_id = "cand-pause"
-    bridge = lifecycle.RestartAwareMcpBridge(
-        old_inner,
-        restart_fn=_make_inner,
-        restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
-        run_id="run-pause",
-        workspace_root=tmp_path,
-        sleep_fn=lambda _seconds: None,
-    )
-
-    with (
-        patch.object(lifecycle, "request_old_child_pause", _explode),
-        pytest.raises(McpServerError) as excinfo,
-    ):
-        bridge._hand_over_accept(old_inner, candidate)
-    assert excinfo.value.handover_step == "pause_ack"
-
-
-def test_resume_stage_failure_escapes_with_handover_step(tmp_path: pathlib.Path) -> None:
-    """A resume-sentinel failure names the resume stage."""
-
-    def _explode(_resume_path: pathlib.Path) -> None:
-        raise McpServerError("resume file write failed", restart_count=1)
-
-    old_inner = _make_inner(poll_result=None, pid=os.getpid(), session_file=tmp_path / "o.json")
-    candidate = _make_inner(poll_result=None, pid=2002, session_file=tmp_path / "c.json")
-    candidate.stage_id = "cand-resume"
-    bridge = lifecycle.RestartAwareMcpBridge(
-        old_inner,
-        restart_fn=_make_inner,
-        restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
-        run_id="run-resume",
-        workspace_root=tmp_path,
-        sleep_fn=lambda _seconds: None,
-    )
-
-    with (
-        patch.object(lifecycle, "wait_for_old_child_pause_ack", lambda *a, **k: True),
-        patch.object(lifecycle, "signal_candidate_resume", _explode),
-        pytest.raises(McpServerError) as excinfo,
-    ):
-        bridge._hand_over_accept(old_inner, candidate)
-    assert excinfo.value.handover_step == "resume_candidate"
-
-
-def test_promote_stage_failure_escapes_with_handover_step(tmp_path: pathlib.Path) -> None:
-    """A promotion failure names the promote stage."""
-
-    def _explode(_candidate: StandaloneMcpProcess, _old: StandaloneMcpProcess) -> None:
-        raise McpServerError("promotion failed", restart_count=1)
-
-    bridge = _bridge_with_old_child(tmp_path, old_pid=1001)
-    _candidate, _worker = _handover_candidate(
-        tmp_path, tools=TOOLS_BASE, pid=2002, stage_id="cand-promote", label="promote"
-    )
-    bridge._expected_tool_hash = compute_tool_set_hash(TOOLS_BASE)
-    bridge._expected_tool_entries = list(TOOLS_BASE)
-
-    with (
-        patch.object(bridge, "_verify_candidate", lambda _c: True),
-        patch.object(bridge, "_promote_and_reap", _explode),
-        pytest.raises(McpServerError) as excinfo,
-    ):
-        bridge._run_with_make_before_break()
-    assert excinfo.value.handover_step == "promote_candidate"
-
-
-def test_drain_stage_failure_is_not_overwritten_by_the_promote_stage(
-    tmp_path: pathlib.Path,
-) -> None:
-    """The innermost stage wins: a drain failure keeps its own step."""
-
-    def _explode(_old: StandaloneMcpProcess) -> None:
-        raise McpServerError("drain failed", restart_count=1)
-
-    bridge = _bridge_with_old_child(tmp_path, old_pid=1001)
-    _candidate, _worker = _handover_candidate(
-        tmp_path, tools=TOOLS_BASE, pid=2002, stage_id="cand-drain", label="drain"
-    )
-    bridge._expected_tool_hash = compute_tool_set_hash(TOOLS_BASE)
-    bridge._expected_tool_entries = list(TOOLS_BASE)
-
-    with (
-        patch.object(bridge, "_verify_candidate", lambda _c: True),
-        patch.object(bridge, "_drain_old", _explode),
-        pytest.raises(McpServerError) as excinfo,
-    ):
-        bridge._run_with_make_before_break()
-    assert excinfo.value.handover_step == "drain_old_child"

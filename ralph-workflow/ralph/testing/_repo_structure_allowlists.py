@@ -909,6 +909,19 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "ralph.cli.commands._load_result",
             ("_LoadResult",),
         ),
+        # The C4 typed-terminal-failure suite drives the REAL
+        # ``cli_integration._make_production_invoke_agent`` closure, whose
+        # only entry type is the private ``_LoadResult`` NamedTuple; the
+        # out-of-graph boundary is exactly what makes the policy entry path
+        # interesting (it restores the retry-intent thread-local), so a
+        # test-local structural stand-in would measure a different seam. A
+        # public re-export would duplicate the type purely for testability,
+        # matching the three existing entries above.
+        (
+            "tests/pipeline/test_terminal_mcp_error_per_entry_path.py",
+            "ralph.cli.commands._load_result",
+            ("_LoadResult",),
+        ),
         # validators.py was split at the 1000-line cap; these two checks now
         # live in the module that owns their layer, and the tests follow them.
         (
