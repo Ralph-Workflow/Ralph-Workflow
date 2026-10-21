@@ -287,6 +287,110 @@ def test_e43_single_acceptor_graceful_handover(tmp_path: Path) -> None:
         parent_sock.close()
 
 
+def test_e43_single_acceptor_failed_kill_reaps_candidate_and_preserves_old_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """E4.3 / E1.2: If pause ACK fails and kill is ineffective (e.g. unkillable / D-state child),
+    handover fails closed: candidate is reaped, resume is NOT signaled, and old child remains single acceptor.
+    """
+    script_path = tmp_path / "acceptor_child.py"
+    _create_child_script(script_path)
+    log_file = tmp_path / "events_failed_kill.log"
+
+    # Fast handover ACK and kill wait timeouts (<0.2s each)
+    monkeypatch.setattr(lifecycle, "_HANDOVER_ACK_TIMEOUT_S", 0.1)
+    monkeypatch.setattr(lifecycle, "_HANDOVER_KILL_WAIT_S", 0.1)
+
+    parent_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    parent_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    parent_sock.bind(("127.0.0.1", 0))
+    parent_sock.listen(128)
+    port = parent_sock.getsockname()[1]
+    parent_fd = parent_sock.fileno()
+
+    workspace_dir = tmp_path / "ws_failed_kill"
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    run_id = "test-failed-kill-run"
+    snap = snapshot_dir(workspace_dir, run_id)
+    snap.mkdir(parents=True, exist_ok=True)
+
+    old_stage = "stage_old_fk"
+    cand_stage = "stage_cand_fk"
+    pause_file = snap / f"accept.pause.{old_stage}"
+    resume_file = snap / f"accept.resume.{cand_stage}"
+
+    old_proc = _spawn_acceptor(script_path, "old", port, log_file, parent_fd, pause_file, None)
+    cand_proc = _spawn_acceptor(
+        script_path, "candidate", port, log_file, parent_fd, None, resume_file
+    )
+
+    old_session = tmp_path / "old_session_fk.json"
+    old_session.write_text("{}", encoding="utf-8")
+    cand_session = tmp_path / "cand_session_fk.json"
+    cand_session.write_text("{}", encoding="utf-8")
+
+    class _ImmortalProcessAdapter(_ProcessAdapter):
+        def kill(self) -> None:
+            # Simulate ineffective kill (e.g. process stuck in uninterruptible D-state)
+            pass
+
+    old_inner = StandaloneMcpProcess(
+        endpoint=f"http://127.0.0.1:{port}/mcp",
+        process=_ImmortalProcessAdapter(old_proc),
+        session_file=old_session,
+        stage_id=old_stage,
+    )
+    cand_inner = StandaloneMcpProcess(
+        endpoint=f"http://127.0.0.1:{port}/mcp",
+        process=_ProcessAdapter(cand_proc),
+        session_file=cand_session,
+        stage_id=cand_stage,
+    )
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        old_inner,
+        restart_fn=lambda: cand_inner,
+        restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
+        run_id=run_id,
+        workspace_root=workspace_dir,
+    )
+    bridge._listening_socket = parent_sock
+
+    try:
+        _wait_for_mode_event(log_file, "old", "STARTED_ACCEPT")
+
+        # Freeze the old child so it cannot ACK pause
+        os.kill(old_proc.pid, signal.SIGSTOP)
+
+        # Handover fails closed because old process does not exit after kill attempt
+        with pytest.raises(lifecycle.McpServerError) as excinfo:
+            bridge._hand_over_accept(old_inner, cand_inner)
+        assert excinfo.value.handover_step == "pause_ack"
+        assert "abandoning candidate" in str(excinfo.value)
+
+        # Invariant: resume file was never created for candidate
+        assert not resume_file.exists()
+        # Candidate process was reaped/terminated
+        cand_proc.wait(timeout=1.0)
+        assert cand_proc.poll() is not None
+
+        # Remove pause file before resuming old child so it continues normal accept loop
+        if pause_file.exists():
+            pause_file.unlink()
+        os.kill(old_proc.pid, signal.SIGCONT)
+        with socket.create_connection(("127.0.0.1", port), timeout=2.0) as conn:
+            assert conn.recv(1024) == b"PONG_old\n"
+
+    finally:
+        bridge.shutdown()
+        for proc in (old_proc, cand_proc):
+            with contextlib.suppress(Exception):
+                os.kill(proc.pid, signal.SIGCONT)
+                proc.kill()
+                proc.wait(timeout=1.0)
+        parent_sock.close()
+
+
 def test_e43_single_acceptor_sigstopped_old_child_kills_before_resume(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

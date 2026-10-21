@@ -120,6 +120,7 @@ _OUTCOME_UNKNOWN_TRANSPORT_ERRORS: Final[tuple[type[httpx.TransportError], ...]]
     httpx.ReadTimeout,
     httpx.WriteTimeout,
     httpx.ReadError,
+    httpx.WriteError,
     httpx.RemoteProtocolError,
 )
 

@@ -111,7 +111,7 @@ def test_in_flight_agent_error_is_replaced_by_terminal_conversion(
             deps,
             WorkspaceScope(tmp_path),
             display_context=make_display_context(),
-            bridge=_SupervisorBridge(),
+            bridge=_TerminalBridge(),
             policy_bundle=_policy_bundle(tmp_path),
         )
 

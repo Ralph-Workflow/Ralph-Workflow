@@ -58,17 +58,8 @@ from tests.pipeline._terminal_mcp_error_seams import (
 )
 
 if TYPE_CHECKING:
-    from ralph.config.enums import AgentTransport
-    from ralph.phases.phase_context import PhaseContext
-    from ralph.pipeline.effects import Effect
-    from ralph.pipeline.events import Event
-    from ralph.pipeline.factory import PipelineDeps
-    from ralph.policy.models import PolicyBundle
-
-if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.config.enums import AgentTransport
     from ralph.phases.phase_context import PhaseContext
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.events import Event
@@ -94,7 +85,6 @@ class _FakeBridge(RestartAwareMcpBridge):
         return self.agent_endpoint_uri()
 
     def shutdown(self) -> None:
-        """Matches RestartAwareMcpBridge.shutdown(self) signature."""
         pass
 
 
@@ -111,28 +101,10 @@ def _registry_factory(config: object) -> object:
 
 
 def _make_deps(tmp_path: Path) -> PipelineDeps:
-    def fake_materialize_master_prompt(
-        workspace_root: Path,
-        name: str,
-        default_product_criteria: str | None = None,
-        worker_namespace: Path | None = None,
-        planning_style: bool = False,
-        transport: AgentTransport | None = None,
-    ) -> str:
-        del (
-            workspace_root,
-            name,
-            default_product_criteria,
-            worker_namespace,
-            planning_style,
-            transport,
-        )
-        return str(tmp_path / "MASTER_PROMPT.md")
-
     return make_test_pipeline_deps(
         display_context=make_display_context(),
         bridge=_FakeBridge(),
-        master_prompt_materializer=fake_materialize_master_prompt,
+        master_prompt_materializer=_fake_materialize_master_prompt(tmp_path),
         registry_factory=_registry_factory,
         check_mcp_bridge_health_fn=_no_bridge_health_check,
     )
@@ -930,9 +902,7 @@ def test_terminal_failure_then_distinct_healthy_bridge_succeeds_on_next_attempt(
         # ``McpSupervisor.__exit__`` re-raises the stored
         # ``McpServerError``; the executor converts it to
         # ``AGENT_FAILURE`` and marks the next attempt for a fresh bridge.
-        first = _drive_bridge_forwarding_path(
-            tmp_path, deps, dead_bridge, factory, path_id, 1
-        )
+        first = _drive_bridge_forwarding_path(tmp_path, deps, dead_bridge, factory, path_id, 1)
         assert isinstance(first, _CommitOutcome | _SmokeOutcome)
         if isinstance(first, _SmokeOutcome):
             assert first.supervised_turns == 1
@@ -943,9 +913,7 @@ def test_terminal_failure_then_distinct_healthy_bridge_succeeds_on_next_attempt(
         # ``_start_bridge`` consults the factory and supervises the
         # DISTINCT healthy_bridge. McpSupervisor.__exit__ returns
         # cleanly; the executor returns ``AGENT_SUCCESS``.
-        second = _drive_bridge_forwarding_path(
-            tmp_path, deps, dead_bridge, factory, path_id, 2
-        )
+        second = _drive_bridge_forwarding_path(tmp_path, deps, dead_bridge, factory, path_id, 2)
         assert isinstance(second, _CommitOutcome | _SmokeOutcome)
         if isinstance(second, _SmokeOutcome):
             assert second.supervised_turns == 1

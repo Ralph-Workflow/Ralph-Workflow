@@ -1,26 +1,7 @@
 """Pins E3.x and E4.1: Transport gap, real-child retry, and state transitions.
 
-Catalogue requirements pinned here:
-- E3.1: Client gets typed 503 / Retry-After during handover gap if request arrives during pause,
-        and kernel backlog buffers burst connections without ECONNREFUSED.
-- E3.2: Typed retry succeeds once candidate is serving (transparent recovery after gap).
-- E3.4: Probe failure during candidate warmup does not kill healthy old child,
-        and stale keep-alive connections retry safely on fresh connection.
-- E4.1: Bridge transitions cleanly between states (SERVING -> REPLACING -> SERVING)
-        without dropping requests.
-- E6.1: Log level suppression during expected rotation transient (no ERROR/CRITICAL
-        emissions during expected rotation) and clock-enforced backoff intervals.
-
-The E3.x and E4.1 tests in this module drive the REAL production bridge path
-(``start_mcp_server`` -> real MCP subprocess, real parent listening socket,
-real restart path) so the gap is the documented bridge handover gap, not a
-custom-mock handler scenario.
-
-The typed-retry helper ``execute_mcp_http_request`` that previously lived in
-``_http_tools_list`` was deleted (it had no production caller; see git log).
-The E3.4 stale keep-alive contract is now pinned against the RAW
-``http.client.HTTPConnection`` boundary the agent actually uses, with the
-real bridge endpoint and the real handover path producing the test event.
+Catalogue: E1.4 (uncertain write outcome), E3.1 (503/backlog), E3.2 (retry),
+E3.4 (probe failure/keepalive), E4.1 (state transitions), E6.1 (transient logs).
 """
 
 from __future__ import annotations
@@ -231,6 +212,66 @@ def test_e31_backlog_burst_during_production_bridge_handover_gap(
     finally:
         with contextlib.suppress(Exception):
             bridge.shutdown()
+
+
+def test_e14_write_error_uncertain_outcome_classification() -> None:
+    """E1.4: httpx.WriteError on non-idempotent call raises McpOutcomeUnknownError with no replay."""
+    from ralph.mcp.protocol._startup_http import RetryablePreflightError
+
+    attempts = {"call": 0}
+
+    def failing_post_write_error(
+        endpoint: str,
+        *args: object,
+        **kwargs: object,
+    ) -> httpx.Response:
+        del endpoint, args, kwargs
+        attempts["call"] += 1
+        raise httpx.WriteError("connection reset after partial request write")
+
+    # 1. Non-idempotent tools/call with WriteError -> McpOutcomeUnknownError, no retry (attempts == 1), tool attributed
+    unsafe_payload: dict[str, object] = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "dangerous_action",
+            "arguments": {"foo": "bar"},
+        },
+    }
+    with pytest.raises(McpOutcomeUnknownError) as exc_info:
+        post_http_jsonrpc_with_session(
+            "http://127.0.0.1:9999/mcp", unsafe_payload, post_fn=failing_post_write_error
+        )
+    assert exc_info.value.tool_name == "dangerous_action"
+    assert attempts["call"] == 1
+
+    # 2. Idempotent tools/list with WriteError -> RetryablePreflightError
+    attempts["call"] = 0
+    safe_payload: dict[str, object] = {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/list",
+        "params": {},
+    }
+    with pytest.raises(RetryablePreflightError):
+        post_http_jsonrpc_with_session(
+            "http://127.0.0.1:9999/mcp", safe_payload, post_fn=failing_post_write_error
+        )
+
+    # 3. Connect error on non-idempotent call -> RetryablePreflightError (retained connect behavior)
+    def failing_post_connect_error(
+        endpoint: str,
+        *args: object,
+        **kwargs: object,
+    ) -> httpx.Response:
+        del endpoint, args, kwargs
+        raise httpx.ConnectError("connection refused")
+
+    with pytest.raises(RetryablePreflightError):
+        post_http_jsonrpc_with_session(
+            "http://127.0.0.1:9999/mcp", unsafe_payload, post_fn=failing_post_connect_error
+        )
 
 
 def test_e31_repeat_burst_during_handover_gap_with_zero_refusals(
@@ -872,6 +913,14 @@ def test_e41_bridge_state_transitions_cleanly_without_dropping_requests(
         assert isinstance(names_phase3, list)
         assert bridge.agent_endpoint_uri() == endpoint
     finally:
+        with contextlib.suppress(Exception):
+            patcher = getattr(bridge, "_slow_verify_patcher", None)
+            if patcher is not None:
+                patcher.stop()
+        with contextlib.suppress(Exception):
+            patcher = getattr(bridge, "_slow_socket_patcher", None)
+            if patcher is not None:
+                patcher.stop()
         with contextlib.suppress(Exception):
             bridge.shutdown()
 

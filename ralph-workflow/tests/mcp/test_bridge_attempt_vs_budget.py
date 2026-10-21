@@ -333,3 +333,121 @@ def test_typed_helper_raises_on_budget_exhausted() -> None:
         bridge._attempt_restart_with_candidate(process_exited=True, probe_duration_s=None)
     assert exc.value.failure_kind == RestartAttemptResult.BUDGET_EXHAUSTED
     assert "restart budget exhausted" in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# C2: Sustained-health budget reset matrix (WU-A)
+# ---------------------------------------------------------------------------
+
+
+def test_sustained_health_resets_restart_count_of_20_across_periodic_successes() -> None:
+    """Case 1: Periodic successes beyond healthy_reset_s reset restart_count from 20 to 0.
+
+    Normal periodic probes every 5s allow the uninterrupted healthy period
+    to advance past healthy_reset_s (300s) and clear both restart_count and timestamps.
+    """
+    current_time = [1000.0]
+
+    def fake_clock() -> float:
+        return current_time[0]
+
+    inner = _make_inner(poll_result=None)
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: _make_inner(poll_result=None),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=20, healthy_reset_s=300.0),
+        run_id="test-sustained-health-reset",
+        clock_fn=fake_clock,
+    )
+    # Simulate that 20 restarts had previously occurred in this session
+    bridge._restart_count = 20
+    bridge._restart_timestamps.extend([current_time[0] - 10.0] * 5)
+
+    # Periodic probes every 5s across 605 seconds (121 probe ticks)
+    for _ in range(121):
+        current_time[0] += 5.0
+        bridge.check_health_and_restart_if_needed()
+
+    assert bridge.restart_count == 0
+    assert len(bridge._restart_timestamps) == 0
+
+
+def test_more_than_20_incidents_separated_by_sustained_health_remain_recoverable() -> None:
+    """Case 2: More than 20 incidents separated by sustained health remain recoverable.
+
+    A long run with 25 separate crash incidents separated by >300s of healthy probes
+    recovers from all 25 incidents without exhausting the max_restarts=20 budget.
+    """
+    current_time = [1000.0]
+
+    def fake_clock() -> float:
+        return current_time[0]
+
+    inner = _make_inner(poll_result=None)
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: _make_inner(poll_result=None),
+        restart_policy=lifecycle.McpRestartPolicy(
+            max_restarts=20,
+            rolling_max_in_window=25,
+            healthy_reset_s=300.0,
+            cooldown_seconds=0.0,
+        ),
+        run_id="test-25-incidents-recoverable",
+        clock_fn=fake_clock,
+    )
+
+    for incident in range(25):
+        # Crash incident: inner process exits
+        bridge._inner = _make_inner(poll_result=1)
+        restarted = bridge.check_health_and_restart_if_needed()
+        assert restarted is True, f"Incident {incident + 1} failed to restart"
+
+        # Sustained health: 310s of periodic healthy probes (every 10s)
+        for _ in range(31):
+            current_time[0] += 10.0
+            bridge.check_health_and_restart_if_needed()
+
+        assert bridge.restart_count == 0, f"Incident {incident + 1} did not reset restart_count"
+
+
+def test_continuous_failures_without_sustained_health_exhaust_budget() -> None:
+    """Case 3: Continuous failures without sustained health exhaust the restart budget.
+
+    20 consecutive failures without an uninterrupted healthy period trigger BUDGET_EXHAUSTED.
+    """
+    current_time = [1000.0]
+
+    def fake_clock() -> float:
+        return current_time[0]
+
+    def failing_restart_fn() -> StandaloneMcpProcess:
+        raise RuntimeError("always fails")
+
+    inner = _make_inner(poll_result=1)
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=failing_restart_fn,
+        restart_policy=lifecycle.McpRestartPolicy(
+            max_restarts=20,
+            rolling_max_in_window=25,
+            healthy_reset_s=300.0,
+            cooldown_seconds=0.0,
+        ),
+        run_id="test-continuous-failures-exhaust",
+        clock_fn=fake_clock,
+    )
+
+    # 20 non-terminal failed attempts (under 0.1-second intervals, no healthy period)
+    for i in range(20):
+        current_time[0] += 0.1
+        result = bridge._attempt_restart_with_candidate(process_exited=True, probe_duration_s=None)
+        assert result == RestartAttemptResult.ATTEMPT_FAILED
+        assert bridge.restart_count == i + 1
+
+    # Next attempt (budget exhausted) raises McpServerError
+    current_time[0] += 0.1
+    with pytest.raises(McpServerError) as exc:
+        bridge._attempt_restart_with_candidate(process_exited=True, probe_duration_s=None)
+    assert exc.value.failure_kind == RestartAttemptResult.BUDGET_EXHAUSTED
+    assert "restart budget exhausted" in str(exc.value)

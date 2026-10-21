@@ -1,16 +1,4 @@
-"""Pins E1.7: Ledger state continuity and per-child state continuity across child replacement.
-
-Catalogue requirements:
-- E1.7: Per-child state lost at swap:
-  Enumerate ALL state categories (wire ledger chain, repetition tracker, session identity,
-  broker fingerprint, tool set hash, wrap-up flags, saturation counters, metrics, exec handles).
-  Pins:
-  1. Wire ledger state continuity across child replacement (HMAC chain unbroken across child swaps).
-  2. Wire ledger replay preserves exact chronological event sequence and detects tampering across swaps.
-  3. Repetition tracker is carried across swaps (loop breaker trips on 3rd identical error even if child swapped).
-  4. Bridge session attributes (session_id, run_id, broker_fingerprint, expected_tool_hash) carried across swaps.
-  5. Child-scoped state (saturation counters, wrap-up flags, child-local handles) are cleanly reset-safe.
-"""
+"""Pins E1.7: Ledger state continuity and per-child state continuity across child replacement."""
 
 from __future__ import annotations
 
@@ -328,20 +316,7 @@ def test_e17_transport_loop_breaker_reset_clears_the_carried_streak(
 # E1.7: Bridge-level state continuity vs reset-safe child state enumeration
 # ---------------------------------------------------------------------------
 def test_e17_bridge_state_continuity_enumeration(tmp_path: pathlib.Path) -> None:
-    """Verify full enumeration of carried vs reset-safe states across bridge replacement.
-
-    Enumerates EVERY per-child state category the E1.7 catalogue calls
-    out (wire ledger chain, repetition tracker, session identity, broker
-    fingerprint, tool set hash, wrap-up flags, saturation counters,
-    metrics, upstream sessions, ``ralph://exec/`` handles). For each
-    category the test asserts EITHER carried-across (the swap is
-    transparent to that state) OR reset-safe (the swap zeroes that
-    state and the agent sees the fresh value).
-
-    The wire-ledger continuity and repetition-tracker continuity proofs
-    live in dedicated tests further up in this module; this test pins
-    the bridge-level bridge attributes + the per-child reset surface.
-    """
+    """Verify full enumeration of carried vs reset-safe states across bridge replacement."""
     old_inner = _make_inner(tmp_path, poll_result=None, pid=1001)
     new_inner = _make_inner(tmp_path, poll_result=None, pid=2002)
 
@@ -429,31 +404,7 @@ def test_e17_bridge_state_continuity_enumeration(tmp_path: pathlib.Path) -> None
 
 
 def test_e17_wrap_up_flags_reset_safe_across_child_swap(tmp_path: pathlib.Path) -> None:
-    """Wrap-up flags are reset-safe: a fresh child observes the default wrap-up state.
-
-    Pinning the E1.7 enumeration line "wrap-up flags". Wrap-up state
-    lives in :class:`ralph.mcp.server._session_wrapup` as a
-    ``ContextVar``; the catalogue classifies it as child-scoped, so
-    a swap zeroes the flag in the NEW child process. Because
-    ``ContextVar`` is process-local (each child is a separate
-    process in production), the NEW child process starts with the
-    default value (``None``), which evaluates as
-    ``before_warning=True`` per the wrap-up module's contract.
-
-    We pin the contract two ways:
-
-    - In the SAME process, a child swap via ``_perform_restart``
-      does NOT carry the OLD ContextVar value across (the OLD value
-      is preserved in the same process, so this test cannot directly
-      observe a "reset" in-process). We pin the implementation
-      invariant: ``ContextVar.reset`` returns the flag to the
-      default, AND a different thread observes the default. The
-      production swap (separate processes) gets the reset for free
-      because each child process has its own ContextVar.
-    - Across the swap, the OLD child's wrap-up flag is preserved
-      in the OLD process (this is a black-box invariant for the
-      bridge's per-call ``reset_session_budget`` notification path).
-    """
+    """Wrap-up flags are reset-safe: a fresh child observes the default wrap-up state."""
     from ralph.mcp.server._session_wrapup import (
         session_before_warning,
         session_warning_fired,
@@ -497,28 +448,7 @@ def test_e17_wrap_up_flags_reset_safe_across_child_swap(tmp_path: pathlib.Path) 
 def test_e17_saturation_counters_reset_safe_across_child_swap(
     tmp_path: pathlib.Path,
 ) -> None:
-    """Saturation counters are reset-safe: a fresh child's dispatch executor starts at zero.
-
-    Pinning the E1.7 enumeration line "saturation counters". The
-    :class:`ralph.mcp.server._saturated_dispatch._SaturatedDispatch`
-    singleton tracks the process-wide in-flight count. The catalogue
-    classifies saturation counters as child-scoped: each child is
-    a separate process in production, so a fresh child process
-    starts with ``inflight=0`` and does NOT inherit the OLD child's
-    count.
-
-    The test environment simulates both children in one process, so
-    the singleton is shared. Pin the contract two ways:
-
-    - The dispatcher exposes a ``reset_default`` seam (test-only)
-      that zeroes ``inflight`` — this is the production path a
-      fresh child would take implicitly because each child is its
-      own process.
-    - The bridge does NOT mutate the dispatcher during a swap
-      (the bridge swap happens at the ``_inner`` level, NOT at the
-      dispatch wrapper level). A swap MUST NOT silently decrement
-      the OLD child's in-flight count.
-    """
+    """Saturation counters are reset-safe: a fresh child's dispatch executor starts at zero."""
     import ralph.mcp.server._saturated_dispatch as saturated_dispatch
 
     old_inner = _make_inner(tmp_path, poll_result=None, pid=1001)
@@ -571,15 +501,7 @@ def test_e17_saturation_counters_reset_safe_across_child_swap(
 
 
 def test_e17_metrics_reset_safe_across_child_swap(tmp_path: pathlib.Path) -> None:
-    """Metrics counters are reset-safe: a fresh child's transport metrics start at zero.
-
-    Pinning the E1.7 enumeration line "metrics". The
-    :class:`ralph.mcp.server._metrics.McpMetrics` singleton tracks
-    transport-level counters (post-header failures, terminal frames,
-    health-probe outcomes). The catalogue classifies metrics as
-    child-scoped: a swap zeroes the counter so a new child does NOT
-    inherit the OLD child's failure counts.
-    """
+    """Metrics counters are reset-safe: a fresh child's transport metrics start at zero."""
     from ralph.mcp.server._metrics import get_default_metrics, reset_default_metrics
 
     old_inner = _make_inner(tmp_path, poll_result=None, pid=1001)
@@ -625,48 +547,7 @@ def test_e17_metrics_reset_safe_across_child_swap(tmp_path: pathlib.Path) -> Non
 def test_e17_upstream_sessions_reset_safe_across_child_swap(
     tmp_path: pathlib.Path,
 ) -> None:
-    """Upstream client sessions are NOT reused across a child swap.
-
-    Production model: each child constructs its OWN
-    :class:`ralph.mcp.upstream.registry.UpstreamRegistry` -- a real
-    instance holding a ``dict[str, _AnyUpstreamClient]`` keyed by the
-    configured upstream server name. The catalogue classifies upstream
-    sessions as child-scoped. Across a swap, the bridge swaps
-    :class:`StandaloneMcpProcess` inner handles; the upstream-registry
-    state that lives on the McpServer's tool-registry side does NOT
-    carry across because the NEW child constructs its own McpServer
-    (and therefore its own UpstreamRegistry) from its own configured
-    upstreams.
-
-    This test pins the contract two ways:
-
-    1. Two distinct :class:`UpstreamRegistry` instances are constructed
-       via :meth:`UpstreamRegistry.build_from_tool_catalog` with
-       distinguishable upstream server names AND a distinguishable
-       custom ``client_factory`` that produces server-tagged client
-       instances. The two registries' client dictionaries are
-       independent: the OLD registry's client for its server is NOT
-       the same object as the NEW registry's client for its server,
-       and their ``_clients`` dicts are distinct objects with
-       disjoint keys.
-    2. A real bridge ``_perform_restart`` swap runs between two
-       :class:`StandaloneMcpProcess` inners (the same seam used by
-       the other E1.7 tests in this module). After the swap, BOTH
-       registries are preserved unchanged -- the OLD registry's
-       clients still hold OLD's tools and the NEW registry's clients
-       still hold NEW's tools. No carry across: the NEW registry's
-       ``_clients`` dict contains none of the OLD registry's keys,
-       and the OLD registry's ``_clients`` dict contains none of the
-       NEW registry's keys.
-
-    The first part proves the registry constructor produces
-    independent state per construction; the second part proves the
-    bridge swap does not magically transport client dicts between
-    registries. If either contract regresses -- e.g. the bridge
-    started sharing an upstream-registry singleton, or the registry
-    constructor stopped keeping distinct client dicts -- this test
-    fails clearly with the divergence it observed.
-    """
+    """Upstream client sessions are child-scoped and not reused across child swaps."""
     from ralph.mcp.upstream.config import UpstreamMcpServer
     from ralph.mcp.upstream.models import UpstreamTool
     from ralph.mcp.upstream.registry import UpstreamRegistry
@@ -812,50 +693,7 @@ def test_e17_upstream_sessions_reset_safe_across_child_swap(
 def test_e17_exec_resource_handle_reset_safe_across_child_swap(
     tmp_path: pathlib.Path,
 ) -> None:
-    """``ralph://exec/`` handles issued by the OLD child are NOT replayable in the NEW child.
-
-    DISPOSITION POLICY (explicitly documented here per replan trigger
-    R-02; the production code implied this contract but it was never
-    stated in one place -- now it is):
-
-    > A :class:`ralph://exec/<spill-name>` URI issued by the OLD
-    > child's :class:`ralph.mcp.tools._exec_resource_uri.ExecResourceResolver`
-    > is bound to the resolver that registered it -- which lives in
-    > the OLD child's memory. The NEW child constructs its OWN
-    > ExecResourceResolver from the on-disk session payload's
-    > ``exec_spill_roots`` (or, if absent, no resolver at all). The
-    > NEW child's resolver is a DIFFERENT Python object, so
-    > ``resources/read`` against the NEW child for an OLD URI
-    > returns the typed JSON-RPC error ``-32602 Unsupported resource
-    > URI: '...'. Exec spill resolver is not attached to this
-    > session.`` (or, when the NEW child has a same-trusted-root
-    > resolver populated, ``-32602 Resource not found: '...'``).
-
-    This test pins three observable contracts against the real
-    production code path (``McpServer._handle_resources_read``):
-
-    1. The OLD child's :class:`FileBackedSession` owns an
-       :class:`ExecResourceResolver` with a real spill file on disk
-       under a trusted root. The OLD child can replay the
-       ``ralph://exec/<spill-name>`` URI it issued -- the production
-       handler returns the spill bytes base64-encoded (the AC-11
-       contract).
-    2. A real bridge ``_perform_restart`` swap runs (the same swap
-       seam used by the other E1.7 tests in this module).
-    3. The NEW child's :class:`FileBackedSession` does NOT own an
-       :class:`ExecResourceResolver` -- no injection at ``__init__``
-       AND no ``exec_spill_roots`` in the on-disk payload, so the
-       lazy :attr:`FileBackedSession.exec_resource_resolver`
-       property yields ``None``. The production handler against the
-       NEW session returns the structured ``-32602`` error
-       ("``Exec spill resolver is not attached``") -- the agent gets
-       a typed, observable failure rather than a silent miss or an
-       untyped crash.
-
-    The OLD resolver state is preserved across the swap: a follow-up
-    ``resources/read`` against OLD still returns the blob. The swap
-    does not erase OLD's spill registry.
-    """
+    """ralph://exec/ handles issued by the OLD child are NOT replayable in the NEW child."""
     from ralph.mcp.server._json_rpc_request import JsonRpcRequest
     from ralph.mcp.server._mcp_server import McpServer
     from ralph.mcp.server.runtime_session import FileBackedSession
@@ -1056,20 +894,7 @@ def test_e17_repetition_tracker_carried_across_real_subprocess_swap(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Repetition tracker is CARRIED across a swap of two REAL subprocess children.
-
-    Pins the E1.7 repetition-tracker carry-across disposition against
-    REAL OS subprocesses. Two real ``time.sleep`` loops are spawned via
-    the process manager; the bridge's ``restart_fn`` returns the NEW
-    subprocess wrapped in a :class:`StandaloneMcpProcess`. After the
-    swap, the parent-owned state file shows the streak the OLD child
-    wrote, and the NEXT observe (the NEW child's first attempt)
-    returns True.
-
-    This is the production-grade E1.7 proof: parent-owned state
-    continuity holds across an actual subprocess-to-subprocess
-    transition, not just an in-process bridge swap.
-    """
+    """Repetition tracker is CARRIED across a swap of two REAL subprocess children."""
     monkeypatch.setenv(MCP_SNAPSHOT_DIR_ENV, str(_parent_owned_snapshot_dir(tmp_path)))
     signature = _loop_signature()
 

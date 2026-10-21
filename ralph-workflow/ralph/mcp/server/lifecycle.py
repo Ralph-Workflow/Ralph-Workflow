@@ -959,6 +959,9 @@ class RestartAwareMcpBridge:
         self._last_probe_error: Exception | None = None
         self._restart_timestamps: collections.deque[float] = collections.deque(maxlen=64)
         self._last_healthy_at: float = clock_fn() if clock_fn is not None else time.monotonic()
+        self._healthy_period_started_at: float | None = (
+            clock_fn() if clock_fn is not None else time.monotonic()
+        )
         self._restart_count = 0
         # Consecutive failed probes. A probe that times out proves the
         # server is slow, not dead: under load a healthy server routinely
@@ -1351,9 +1354,13 @@ class RestartAwareMcpBridge:
             healthy_reset_s: float = (
                 float(raw_healthy) if isinstance(raw_healthy, (int, float)) else 300.0
             )
-            if now - self._last_healthy_at > healthy_reset_s:
+            if (
+                self._healthy_period_started_at is not None
+                and now - self._healthy_period_started_at >= healthy_reset_s
+            ):
                 self._restart_timestamps.clear()
                 self._restart_count = 0
+            self._healthy_period_started_at = None
             self._last_healthy_at = now
 
             raw_window: object = getattr(self._restart_policy, "rolling_window_s", 600.0)
@@ -1750,14 +1757,28 @@ class RestartAwareMcpBridge:
                     poll_fn = cast(
                         "Callable[[], object] | None", getattr(proc, "poll", None)
                     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                    old_exited = False
                     if poll_fn is not None and callable(poll_fn):
                         deadline = time.monotonic() + _HANDOVER_KILL_WAIT_S
                         while time.monotonic() < deadline:
                             poll_res: object = poll_fn()
                             if poll_res is not None:
+                                old_exited = True
                                 break
                             sleep_fn = self._sleep_fn if self._sleep_fn is not None else time.sleep
                             sleep_fn(0.05)
+                    elif not _is_alive_pid(pid):
+                        old_exited = True
+
+                    if not old_exited:
+                        with contextlib.suppress(Exception):
+                            candidate.shutdown()
+                        raise McpServerError(
+                            "Old child failed to acknowledge pause and could not be confirmed stopped; "
+                            "abandoning candidate to guarantee single-acceptor safety",
+                            restart_count=self._restart_count,
+                            handover_step=_HANDOVER_STEP_PAUSE_ACK,
+                        )
             try:
                 signal_candidate_resume(resume_file)
                 if cand_stage is not None:
@@ -2038,6 +2059,25 @@ class RestartAwareMcpBridge:
 
             try:
                 self._hand_over_accept(old_inner, candidate)
+            except McpServerError as handover_exc:
+                if handover_exc.handover_step == _HANDOVER_STEP_PAUSE_ACK:
+                    logger.warning(
+                        "MCP {} attempt {}/{} candidate handover failed: "
+                        "old child still alive and could not be confirmed stopped "
+                        "(non-terminal, old child kept, handover_step={}): {}",
+                        initiator,
+                        attempt_index,
+                        self._restart_policy.max_restarts,
+                        _HANDOVER_STEP_PAUSE_ACK,
+                        handover_exc,
+                    )
+                    self._abandon_candidate(candidate)
+                    self._mark_probe_misses_consumed()
+                    return False
+                self._abandon_candidate(candidate)
+                raise
+
+            try:
                 self._promote_and_reap(candidate, old_inner)
             except BaseException as promote_exc:
                 self._abandon_candidate(candidate)
@@ -2246,17 +2286,21 @@ class RestartAwareMcpBridge:
                     self._consecutive_probe_failures_deferred = 0
                     self._first_probe_deferred_at = None
                 now = _bridge_clock(self)()
+                self._last_healthy_at = now
+                if self._healthy_period_started_at is None:
+                    self._healthy_period_started_at = now
                 raw_healthy: object = getattr(self._restart_policy, "healthy_reset_s", 300.0)
                 healthy_reset_s: float = (
                     float(raw_healthy) if isinstance(raw_healthy, (int, float)) else 300.0
                 )
-                if now - self._last_healthy_at > healthy_reset_s:
+                if now - self._healthy_period_started_at >= healthy_reset_s:
                     self._restart_timestamps.clear()
                     self._restart_count = 0
-                self._last_healthy_at = now
+                    self._healthy_period_started_at = now
                 return False
 
             self._consecutive_probe_successes = 0
+            self._healthy_period_started_at = None
 
             # Capture the probed bridge identity BEFORE releasing the
             # lock. The producer below runs OFF the lock; while it
