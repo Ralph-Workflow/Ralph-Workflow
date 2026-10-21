@@ -794,9 +794,7 @@ def _run_burst_then_idle_offset(
         t += dt
         last_output_s = t
         si.step(
-            verdict_score=assess(
-                LivenessWindow(0.0, 0.2, 10.0, 0, 1.0, 1.0, t), config
-            ).score,
+            verdict_score=assess(LivenessWindow(0.0, 0.2, 10.0, 0, 1.0, 1.0, t), config).score,
             dt=dt,
         )
     while True:

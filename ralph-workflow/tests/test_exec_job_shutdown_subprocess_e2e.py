@@ -8,11 +8,11 @@ Tests real process trees under:
 (c) Linux-only proof that a ProcessManager-spawned exec job dies when its
     parent is SIGKILLed via the kernel's ``PR_SET_PDEATHSIG=SIGKILL``
     mechanism installed by ``ralph.process.manager._install_pdeathsig``
-    (``ralph/process/manager/__init__.py:90-108``). The MCP server itself
+    (``ralph/process/manager/__init__.py:94-112``). The MCP server itself
     dying has no Python hook to run; tree death on Linux depends on this
-    mechanism. On non-Linux platforms the exec job tree is bounded only
-    by registry caps and abandonment in a future server, so the test
-    skips there.
+    mechanism. There is no cross-platform parent-death equivalent, so once
+    the server is SIGKILLed on a non-Linux platform the orphaned tree has
+    no in-process lifetime bound at all and the test skips there.
 
 Each test spawns a multi-process tree (worker → python → sleep child) so
 the proof is structural, not just a single-PID check. The descendant
@@ -260,17 +260,23 @@ def test_owner_loss_watcher_kills_worker_and_descendant(
     assert child_dead, f"Child server {child_pid} failed to exit on owner loss"
 
 
-# Linux-only: PR_SET_PDEATHSIG is a Linux-only mechanism. macOS lacks an
-# equivalent; on other Unix platforms the exec job tree is bounded only by
-# registry caps and abandonment in a future server (a future CPR-killer
-# helper). Skip the proof rather than silently passing on a platform where
-# the mechanism cannot fire.
+# Linux-only: PR_SET_PDEATHSIG is a Linux-only mechanism — there is no
+# per-platform equivalent on macOS/Windows. Once the MCP server is
+# SIGKILLed, there is NO in-process lifetime bound for an orphaned
+# exec-job tree: the ExecJobRegistry, liveness sampler threads, the
+# abandonment timer, and signal/atexit hooks are all part of the
+# now-dead server process and stop running with it. The only real
+# mitigations would be an external supervisor (out of scope here) or a
+# cross-platform parent-death mechanism that does not currently exist
+# on macOS/Windows. Skip the proof rather than silently passing on a
+# platform where the mechanism cannot fire.
 _LINUX_ONLY: pytest.MarkDecorator = pytest.mark.skipif(
     sys.platform != "linux",
     reason=(
-        "PR_SET_PDEATHSIG is Linux-only; on other platforms the exec job "
-        "tree is bounded only by registry caps and abandonment in a "
-        "future server"
+        "PR_SET_PDEATHSIG is Linux-only and no cross-platform "
+        "parent-death equivalent is available; once the MCP server is "
+        "SIGKILLed on a non-Linux platform there is no in-process "
+        "lifetime bound for an orphaned exec-job tree"
     ),
 )
 
@@ -294,7 +300,7 @@ def test_parent_sigkill_kills_exec_job_via_pr_set_pdeathsig(
       and signal handlers are skipped. Tree death relies on the Linux
       kernel sending SIGKILL to children whose ``PR_SET_PDEATHSIG`` was
       armed by ``ralph.process.manager._install_pdeathsig`` at the
-      ProcessManager preexec (``ralph/process/manager/__init__.py:90-108``).
+      ProcessManager preexec (``ralph/process/manager/__init__.py:94-112``).
       When that preexec runs (Linux + main thread), the worker's effective
       parent is the holder, so the kernel signals the worker when the
       holder dies.
