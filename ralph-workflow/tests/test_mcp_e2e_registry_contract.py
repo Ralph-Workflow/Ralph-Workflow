@@ -25,8 +25,14 @@ _EXEMPT_MCP_SUBPROCESS_E2E_FILES: frozenset[str] = frozenset()
 def _is_file_marked_subprocess_e2e(file_path: Path) -> bool:
     """Return True if file_path defines pytestmark containing subprocess_e2e."""
     try:
-        tree = ast.parse(file_path.read_text(encoding="utf-8"))
-    except (SyntaxError, UnicodeDecodeError):
+        text = file_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return False
+    if "subprocess_e2e" not in text:
+        return False
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
         return False
     for node in tree.body:
         if isinstance(node, ast.Assign):

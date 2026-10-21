@@ -78,7 +78,7 @@ def test_spill_file_is_readable_by_workspace_scoped_read(tmp_path: Path) -> None
     """
     spill_dir = tmp_path / ".agent" / "tmp"
     spill_dir.mkdir(parents=True, exist_ok=True)
-    large_text = "this is some very long output that should trigger a spill\n" * 100_000
+    large_text = "this is some very long output that should trigger a spill\n" * 20_000
     format_or_spill(
         large_text,
         returncode=0,

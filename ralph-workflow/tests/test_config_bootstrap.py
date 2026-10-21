@@ -871,6 +871,7 @@ def test_ensure_local_configs_git_exclude_idempotent(tmp_git_repo: Path) -> None
         )
 
 
+@pytest.mark.timeout_seconds(5.0)
 def test_ensure_local_configs_git_exclude_covers_canonical_paths(tmp_git_repo: Path) -> None:
     """A representative agent-runtime artifact path is listed in the exclude file."""
     agent_dir = tmp_git_repo / ".agent"

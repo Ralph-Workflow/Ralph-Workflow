@@ -87,11 +87,13 @@ def _build_config(
     *,
     enabled: bool = True,
     target: str | None = None,
+    remote_enabled: bool = False,
 ) -> UnifiedConfig:
     """Build a real ``UnifiedConfig`` with the auto-integrate knobs set."""
     payload: dict[str, object] = {
         "general": {
             "auto_integrate_enabled": enabled,
+            "auto_integrate_remote_enabled": remote_enabled,
         }
     }
     if target is not None:

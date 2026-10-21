@@ -130,7 +130,8 @@ def _supervisor_invocation(command: Sequence[str]) -> list[str]:
         sys.executable,
         "-I",
         "-u",
-        str(_SUPERVISOR_SCRIPT),
+        "-c",
+        ("import sys; from ralph.process.manager._supervisor import main; sys.exit(main())"),
         *[os.fsdecode(a) for a in command],
     ]
 
@@ -163,7 +164,8 @@ def _default_sync_process_factory(
     )
     on_linux = sys.platform.startswith("linux")
     on_main_thread = threading.current_thread() is threading.main_thread()
-    if on_linux and not on_main_thread and not opts.require_direct_parent:
+    is_exec_job = opts.label is not None and opts.label.startswith("exec_job:")
+    if on_linux and not on_main_thread and is_exec_job:
         # Off-main-thread spawn (the production HTTP dispatch path: see
         # ``ralph/mcp/server/_saturated_dispatch.py:155-173`` -> the exec
         # tool's registry.start). Popen with NO ``preexec_fn`` is safe from

@@ -77,6 +77,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from types import FrameType
 
+from ralph.process._spawn_env import sanitize_process_environment
+
 # Linux prctl(2) numbers, not exposed by the stdlib.
 _PR_SET_PDEATHSIG: int = 1
 _SIGTERM: int = 15
@@ -197,6 +199,7 @@ def run(argv: list[str]) -> int:
     The supervisor has no other observable side effects on import; calling
     ``run`` does not require any module-level pre-condition.
     """
+    sanitize_process_environment()
     if not argv:
         return 127
 
@@ -251,5 +254,11 @@ def run(argv: list[str]) -> int:
             return 128 + os.WTERMSIG(status)
 
 
+def main() -> int:
+    """Supervisor CLI entry point; sanitizes environment before spawning worker."""
+    sanitize_process_environment()
+    return run(sys.argv[1:])
+
+
 if __name__ == "__main__":
-    sys.exit(run(sys.argv[1:]))
+    sys.exit(main())

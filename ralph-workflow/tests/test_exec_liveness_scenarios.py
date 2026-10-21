@@ -443,11 +443,13 @@ def test_scenario_08_short_burst_then_idle_stalled_at_window_after_activity() ->
     assert fine_res.killed is True
     assert fine_res.kill_cause == "stalled"
     expected_kill = fine_res.kill_time_s
+    assert fine_res.kill_time_s == pytest.approx(167.5, abs=0.05)
 
     res = _run_scenario(sample, total_duration_s=300.0, stall_window_s=stall_window_s)
     assert res.killed is True
     assert res.kill_cause == "stalled"
     assert abs(res.kill_time_s - expected_kill) <= _DEFAULT_DT
+    assert res.kill_time_s == 168.0
 
 
 # ---------------------------------------------------------------------------
@@ -722,8 +724,10 @@ def test_scenario_13_mid_run_deadlock_all_children_asleep_stalled() -> None:
     assert fine_res.killed is True
     assert fine_res.kill_cause == "stalled"
     expected_kill = fine_res.kill_time_s
+    assert fine_res.kill_time_s == pytest.approx(257.5, abs=0.05)
 
     res = _run_scenario(sample, total_duration_s=400.0, stall_window_s=stall_window_s)
     assert res.killed is True
     assert res.kill_cause == "stalled"
     assert abs(res.kill_time_s - expected_kill) <= _DEFAULT_DT
+    assert res.kill_time_s == 258.0

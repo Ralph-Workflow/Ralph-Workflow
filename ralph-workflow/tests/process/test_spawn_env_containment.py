@@ -155,11 +155,19 @@ def _has_main_guard(tree: ast.Module) -> bool:
 
 def _imports_spawn_seam(tree: ast.Module) -> bool:
     return any(
-        isinstance(node, ast.ImportFrom)
-        and node.module is not None
-        and (
-            node.module in {"ralph.executor.process", "ralph._install_runtime"}
-            or node.module.startswith("ralph.process.manager")
+        (
+            isinstance(node, ast.ImportFrom)
+            and node.module is not None
+            and (
+                node.module in {"ralph.executor.process", "ralph._install_runtime"}
+                or node.module.startswith("ralph.process.manager")
+            )
+        )
+        or (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "os"
+            and node.attr in {"fork", "execvp", "execv", "execl"}
         )
         for node in ast.walk(tree)
     )
@@ -290,6 +298,7 @@ def test_spawn_capable_entry_points_sanitize_before_work() -> None:
         "ralph.install.main",
         "ralph.mcp.explore._bench_r6_metrics.main",
         "ralph.mcp.server.runtime.main",
+        "ralph.process.manager._supervisor.main",
         "ralph.test_suites.main",
         "ralph.verify.main",
         "ralph.verify_timeout.main",
