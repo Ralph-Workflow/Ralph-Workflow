@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from ralph import install as install_module
+
 pytestmark = [pytest.mark.smoke, pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 _COMMAND_TIMEOUT_SECONDS = 8.0
@@ -51,15 +53,40 @@ elif [ "$#" -eq 5 ] && [ "$1" = "sync" ] && [ "$2" = "--locked" ] && [ "$3" = "-
     printf '%s\\n' 'home = offline fake uv' > .venv/pyvenv.cfg
     printf '%s\\n' '#!/bin/sh' 'exit 0' > .venv/bin/python
     chmod 755 .venv/bin/python
-elif [ "$#" -eq 6 ] && [ "$1" = "run" ] && [ "$2" = "--locked" ] && [ "$3" = "--project" ] && [ "$5" = "ralph" ] && [ "$6" = "--version" ]; then
+elif {{ [ "$#" -eq 6 ] && [ "$5" = "ralph" ] && [ "$6" = "--version" ]; }} || {{ [ "$#" -eq 9 ] && [ "$5" = "python" ] && [ "$6" = "-I" ] && [ "$7" = "-c" ] && [ "$9" = "--version" ]; }}; then
+    if [ "$1" != "run" ] || [ "$2" != "--locked" ] || [ "$3" != "--project" ]; then
+        printf '%s\\n' 'offline fake uv rejected run argv' >&2
+        exit 64
+    fi
     project=$4
+    isolated=0
+    if [ "$#" -eq 9 ]; then
+        isolated=1
+    fi
     if [ ! -f "$project/.venv/pyvenv.cfg" ] || [ ! -x "$project/.venv/bin/python" ]; then
         printf '%s\\n' 'snapshot is missing the required fake uv environment' >&2
         exit 19
     fi
-    version=$(sed -En 's/^__version__(: str)? = "([^"]*)"$/\\2/p' "$project/ralph/__init__.py")
-    flavor=$(grep -E '^BUILD_FLAVOR(: str)? = ' "$project/ralph/_build_meta.py" | sed 's/.*= //' | tr -d '"' | tr -d "'")
-    if [ -z "$version" ] || ! grep -Eq '^BUILD_FLAVOR(: str)? = ' "$project/ralph/_build_meta.py"; then
+    # Mirror Python's import precedence: unless the interpreter runs isolated
+    # (-I), a PYTHONPATH entry holding a ralph package shadows the snapshot,
+    # exactly as the real interpreter would.
+    package_root=$project
+    saved_ifs=$IFS
+    IFS=:
+    search_path=${{PYTHONPATH:-}}
+    if [ "$isolated" = "1" ]; then
+        search_path=
+    fi
+    for entry in $search_path; do
+        if [ -n "$entry" ] && [ -f "$entry/ralph/_build_meta.py" ]; then
+            package_root=$entry
+            break
+        fi
+    done
+    IFS=$saved_ifs
+    version=$(sed -En 's/^__version__(: str)? = "([^"]*)"$/\\2/p' "$package_root/ralph/__init__.py")
+    flavor=$(grep -E '^BUILD_FLAVOR(: str)? = ' "$package_root/ralph/_build_meta.py" | sed 's/.*= //' | tr -d '"' | tr -d "'")
+    if [ -z "$version" ] || ! grep -Eq '^BUILD_FLAVOR(: str)? = ' "$package_root/ralph/_build_meta.py"; then
         printf '%s\\n' 'snapshot has no version' >&2
         exit 18
     fi
@@ -189,3 +216,32 @@ def test_make_install_regression_offline_transaction_preserves_operator_artifact
         source_backup.replace(source)
     assert detached_source_version.returncode == 0, detached_source_version.stderr
     assert detached_source_version.stdout.strip().endswith("-build")
+
+    # A caller exporting PYTHONPATH at a checkout (every package Make recipe
+    # does) must still run the snapshot, not shadow it with unflavored source.
+    shadowed_version = _run_rdev({**environment, "PYTHONPATH": str(source)})
+    assert shadowed_version.returncode == 0, shadowed_version.stderr
+    assert shadowed_version.stdout.strip().endswith("-build")
+
+
+def test_existing_install_probe_ignores_shadowing_ralph_packages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The conflict probe must report the executable's own package.
+
+    ``make`` runs the installer from the checkout with PYTHONPATH exported at
+    it; an unisolated probe resolved every global ``ralph`` to that checkout.
+    """
+    shadow_root = tmp_path / "shadow"
+    (shadow_root / "ralph").mkdir(parents=True)
+    (shadow_root / "ralph" / "__init__.py").write_text("", encoding="utf-8")
+    console_script = tmp_path / "bin" / "ralph"
+    console_script.parent.mkdir()
+    console_script.write_text(f"#!{sys.executable}\n", encoding="utf-8")
+    monkeypatch.chdir(shadow_root)
+    monkeypatch.setenv("PYTHONPATH", str(shadow_root))
+
+    resolved = install_module.resolve_package_file(str(console_script))
+
+    assert resolved is not None
+    assert not resolved.is_relative_to(tmp_path)

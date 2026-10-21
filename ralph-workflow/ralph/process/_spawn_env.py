@@ -91,10 +91,3 @@ def sanitize_process_environment() -> tuple[str, ...]:
     must read its one-time relay controls before it can remove them.
     """
     return strip_malloc_debug_noise(os.environ)
-
-
-def installer_env_for_spawn() -> dict[str, str]:
-    environment = dict(os.environ)
-    for name in INSTALLER_PYTHON_INJECTION_VARS:
-        environment.pop(name, None)
-    return environment

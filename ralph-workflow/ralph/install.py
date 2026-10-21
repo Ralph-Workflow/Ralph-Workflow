@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
@@ -251,13 +252,50 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
+def global_executable(
+    name: str,
+    *,
+    search_path: str | None = None,
+    own_bin: Path | None = None,
+) -> str | None:
+    """Find ``name`` on ``PATH``, skipping this installer's own virtualenv ``bin``.
+
+    ``make`` runs the installer through ``uv run``, which puts the checkout's
+    ``.venv/bin`` first on ``PATH``, so a bare ``shutil.which`` reported the
+    installer's own environment as an existing global install: ``make install``
+    printed a false conflict notice and an interactive ``make stable`` aborted.
+    A real global launcher symlinked to that venv is still found through its
+    own ``PATH`` entry.
+    """
+    excluded = own_bin if own_bin is not None else _own_environment_bin()
+    entries = (
+        search_path if search_path is not None else os.environ.get("PATH", os.defpath)
+    ).split(os.pathsep)
+    if excluded is not None:
+        entries = [entry for entry in entries if not entry or not _same_directory(entry, excluded)]
+    return shutil.which(name, path=os.pathsep.join(entries))
+
+
+def _own_environment_bin() -> Path | None:
+    if sys.prefix == sys.base_prefix:
+        return None
+    return Path(sys.prefix) / "bin"
+
+
+def _same_directory(entry: str, directory: Path) -> bool:
+    try:
+        return Path(entry).resolve() == directory.resolve()
+    except OSError:
+        return False
+
+
 def _absolute_uv_path(found: str | None) -> str | None:
     return None if found is None else str(Path(found).resolve(strict=True))
 
 
 def _report_dev_launcher_conflict(*, emit: Callable[[str], None] = print) -> None:
     existing = detect_existing_ralph(
-        which_fn=shutil.which,
+        which_fn=global_executable,
         environ=real_environment(),
         resolve_package_file=resolve_package_file,
     )
@@ -267,7 +305,7 @@ def _report_dev_launcher_conflict(*, emit: Callable[[str], None] = print) -> Non
 
 def _resolve_install_conflict(*, run: _RunCommand) -> None:
     existing = detect_existing_ralph(
-        which_fn=shutil.which,
+        which_fn=global_executable,
         environ=real_environment(),
         resolve_package_file=resolve_package_file,
     )

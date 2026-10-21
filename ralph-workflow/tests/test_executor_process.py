@@ -15,7 +15,7 @@ from ralph.executor.process import ProcessRunOptions
 from ralph.process.manager import ProcessManager, ProcessManagerPolicy, ProcessStatus, SpawnOptions
 from ralph.testing._fake_async_process import FakeAsyncProcess
 from ralph.testing._process_state import ProcessState
-from ralph.testing.fake_process import FakeControllableAsyncProcess, FakeTimeoutPopen
+from ralph.testing.fake_process import FakeControllableAsyncProcess, FakePopen, FakeTimeoutPopen
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -546,3 +546,43 @@ async def test_run_process_async_reaps_child_spawned_under_foreign_family_label(
 
     assert result.stdout.strip() == "ok"
     assert "refusing process teardown" not in caplog.text
+
+
+def _make_env_recording_pm(spawned_envs: list[dict[str, str] | None]) -> ProcessManager:
+    pid_iter = itertools.count(1)
+
+    def factory(command: object, opts: SpawnOptions) -> object:
+        del command
+        spawned_envs.append(opts.env)
+        return FakePopen(next(pid_iter), state=ProcessState(returncode=0))
+
+    return ProcessManager(policy=_FAST_POLICY, sync_process_factory=factory)
+
+
+def test_run_process_env_remove_drops_inherited_variables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``env_remove`` must keep a parent variable out of the child, even though
+    ``env`` overlays ``os.environ`` (removing a key from ``env`` cannot)."""
+    monkeypatch.setenv("PYTHONPATH", "/source/checkout")
+    monkeypatch.setenv("RALPH_KEEP_ME", "kept")
+    spawned_envs: list[dict[str, str] | None] = []
+
+    run_process(
+        "fake-cmd",
+        options=ProcessRunOptions(
+            env={"RALPH_EXTRA": "extra"}, env_remove=frozenset({"PYTHONPATH"})
+        ),
+        _pm=_make_env_recording_pm(spawned_envs),
+    )
+
+    [child_env] = spawned_envs
+    assert child_env is not None
+    assert "PYTHONPATH" not in child_env
+    assert child_env["RALPH_KEEP_ME"] == "kept"
+    assert child_env["RALPH_EXTRA"] == "extra"
+
+
+def test_process_run_options_rejects_setting_and_removing_the_same_variable() -> None:
+    with pytest.raises(ValueError, match="PYTHONPATH"):
+        ProcessRunOptions(env={"PYTHONPATH": "/x"}, env_remove=frozenset({"PYTHONPATH"}))

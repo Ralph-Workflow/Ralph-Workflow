@@ -245,7 +245,7 @@ def run_process(
             cmd,
             SpawnOptions(
                 cwd=_normalize_cwd(effective_options.cwd),
-                env=_build_env(effective_options.env),
+                env=_build_env(effective_options.env, effective_options.env_remove),
                 stdout=pipe,
                 stderr=pipe,
                 label=effective_label,
@@ -310,10 +310,14 @@ def _normalize_cwd(cwd: str | Path | None) -> str | None:
     return str(cwd)
 
 
-def _build_env(env: Mapping[str, str] | None) -> dict[str, str]:
+def _build_env(
+    env: Mapping[str, str] | None, remove: frozenset[str] = frozenset()
+) -> dict[str, str]:
     merged = dict(os.environ)
     if env is not None:
         merged.update(env)
+    for name in remove:
+        merged.pop(name, None)
     return merged
 
 

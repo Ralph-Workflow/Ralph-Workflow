@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from contextlib import nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -124,4 +125,15 @@ def test_dev_launcher_quotes_absolute_uv_and_snapshot_paths(hostile_path: Path) 
     launcher = install_module.render_dev_launcher(hostile_path, "/tools/uv $() `quoted`")
 
     assert "exec '/tools/uv $() `quoted`' run --locked --project" in launcher
-    assert 'ralph "$@"' in launcher
+    argv = shlex.split(launcher[launcher.index("exec ") :])
+    assert argv[:6] == [
+        "exec",
+        "/tools/uv $() `quoted`",
+        "run",
+        "--locked",
+        "--project",
+        str(hostile_path),
+    ]
+    # The snapshot interpreter runs isolated so a caller's PYTHONPATH cannot shadow it.
+    assert argv[6:8] == ["python", "-I"]
+    assert argv[-1] == "$@"

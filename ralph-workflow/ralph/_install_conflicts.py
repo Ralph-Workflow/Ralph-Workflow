@@ -58,9 +58,12 @@ def resolve_package_file(executable: str) -> Path | None:
     if interpreter is None:
         return None
     try:
+        # ``-I`` keeps the installer's cwd and PYTHONPATH (``make`` exports
+        # the source checkout) off the probe's ``sys.path``; without it the
+        # probe reported the checkout instead of the executable's own package.
         result = run_process(
             interpreter,
-            ("-c", _PACKAGE_FILE_SCRIPT),
+            ("-I", "-c", _PACKAGE_FILE_SCRIPT),
             options=ProcessRunOptions(timeout=5),
         )
     except ProcessExecutionError:

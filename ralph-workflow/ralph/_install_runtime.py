@@ -10,11 +10,12 @@ from typing import TYPE_CHECKING, Protocol
 from packaging.version import InvalidVersion, Version
 
 from ralph._install_errors import InstallError
+from ralph._install_render import dev_launcher_command
 from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
-from ralph.process._spawn_env import installer_env_for_spawn
+from ralph.process._spawn_env import INSTALLER_PYTHON_INJECTION_VARS
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -56,7 +57,9 @@ def run_command(command: Sequence[str], *, cwd: Path) -> None:
         cmd[0],
         cmd[1:],
         options=ProcessRunOptions(
-            cwd=cwd, timeout=_INSTALL_COMMAND_TIMEOUT_SECONDS, env=installer_env_for_spawn()
+            cwd=cwd,
+            timeout=_INSTALL_COMMAND_TIMEOUT_SECONDS,
+            env_remove=INSTALLER_PYTHON_INJECTION_VARS,
         ),
     )
     if not result.succeeded:
@@ -69,7 +72,9 @@ def preflight_uv(uv_executable: str) -> None:
     result = run_process(
         uv_executable,
         ("--version",),
-        options=ProcessRunOptions(timeout=5.0, capture_output=True, env=installer_env_for_spawn()),
+        options=ProcessRunOptions(
+            timeout=5.0, capture_output=True, env_remove=INSTALLER_PYTHON_INJECTION_VARS
+        ),
     )
     if not result.succeeded:
         raise InstallError(f"uv >= 0.7.0 is required; install it: {_UV_INSTALL_URL}")
@@ -85,14 +90,15 @@ def preflight_uv(uv_executable: str) -> None:
 
 
 def run_snapshot_version(uv_executable: str, snapshot: Path) -> str:
+    _, *launcher_args = dev_launcher_command(snapshot, uv_executable)
     result = run_process(
         uv_executable,
-        ("run", "--locked", "--project", str(snapshot), "ralph", "--version"),
+        (*launcher_args, "--version"),
         options=ProcessRunOptions(
             cwd=snapshot,
             timeout=_INSTALL_COMMAND_TIMEOUT_SECONDS,
             capture_output=True,
-            env=installer_env_for_spawn(),
+            env_remove=INSTALLER_PYTHON_INJECTION_VARS,
         ),
     )
     if not result.succeeded:

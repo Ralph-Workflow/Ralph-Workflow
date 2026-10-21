@@ -53,7 +53,7 @@ def test_main_default_installs_dev_checkout(monkeypatch: pytest.MonkeyPatch) -> 
         "install_stable_release",
         lambda **_kwargs: pytest.fail("unexpected stable install"),
     )
-    monkeypatch.setattr(install_module.shutil, "which", lambda name: f"/opt/bin/{name}")
+    monkeypatch.setattr(install_module.shutil, "which", lambda name, **_kwargs: f"/opt/bin/{name}")
     monkeypatch.setattr(install_module, "_absolute_uv_path", lambda path: path)
     monkeypatch.setattr(install_module.Path, "home", classmethod(lambda _cls: Path("/home/u")))
     assert install_module.main([]) == 0
@@ -75,7 +75,7 @@ def test_main_default_install_keeps_conflicting_ralph_and_explains_rdev(
     monkeypatch.setattr(
         install_module, "install_dev_checkout", lambda **kwargs: installs.append(kwargs)
     )
-    monkeypatch.setattr(install_module.shutil, "which", lambda _name: "/opt/bin/uv")
+    monkeypatch.setattr(install_module.shutil, "which", lambda _name, **_kwargs: "/opt/bin/uv")
     monkeypatch.setattr(install_module, "_absolute_uv_path", lambda path: path)
     assert install_module.main(argv) == 0
     assert installs
@@ -93,7 +93,7 @@ def test_main_stable_flag_installs_pinned_release(monkeypatch: pytest.MonkeyPatc
         lambda **_kwargs: pytest.fail("unexpected dev install"),
     )
     monkeypatch.setattr(install_module, "preflight_uv", lambda _uv: None)
-    monkeypatch.setattr(install_module.shutil, "which", lambda name: f"/opt/bin/{name}")
+    monkeypatch.setattr(install_module.shutil, "which", lambda name, **_kwargs: f"/opt/bin/{name}")
     monkeypatch.setattr(install_module, "_absolute_uv_path", lambda path: path)
     assert install_module.main(["--stable"]) == 0
     assert captured["version"] is None
@@ -103,7 +103,7 @@ def test_main_stable_preflights_before_resolving_install_conflicts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     order: list[str] = []
-    monkeypatch.setattr(install_module.shutil, "which", lambda _name: "/opt/bin/uv")
+    monkeypatch.setattr(install_module.shutil, "which", lambda _name, **_kwargs: "/opt/bin/uv")
     monkeypatch.setattr(install_module, "_absolute_uv_path", lambda path: path)
     monkeypatch.setattr(install_module, "preflight_uv", lambda _uv: order.append("preflight"))
     monkeypatch.setattr(

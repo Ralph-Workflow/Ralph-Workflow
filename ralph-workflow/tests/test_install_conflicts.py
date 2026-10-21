@@ -179,7 +179,7 @@ def test_install_conflict_regression_resolves_env_shebang_interpreter(
 
     def fake_run(executable: str, arguments: tuple[str, ...], *, options: object) -> object:
         assert executable == "python3"
-        assert arguments == ("-c", conflicts._PACKAGE_FILE_SCRIPT)
+        assert arguments == ("-I", "-c", conflicts._PACKAGE_FILE_SCRIPT)
         assert options is not None
         return SimpleNamespace(succeeded=True, stdout="/venv/site-packages/ralph/__init__.py\n")
 
@@ -199,7 +199,7 @@ def test_install_conflict_regression_resolves_env_split_string_interpreter(
 
     def fake_run(executable: str, arguments: tuple[str, ...], *, options: object) -> object:
         assert executable == "python3"
-        assert arguments == ("-c", conflicts._PACKAGE_FILE_SCRIPT)
+        assert arguments == ("-I", "-c", conflicts._PACKAGE_FILE_SCRIPT)
         assert options is not None
         return SimpleNamespace(succeeded=True, stdout="/venv/site-packages/ralph/__init__.py\n")
 
