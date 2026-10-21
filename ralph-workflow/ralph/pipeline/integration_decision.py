@@ -50,16 +50,27 @@ names):
    observations the table selects the **direct** action
    (:attr:`NextAction.DISPATCH_RESOLVER`,
    :attr:`NextAction.RESUME_OWNED_OPERATION`,
-   :attr:`NextAction.COMMIT`) while
-   ``repeat_count_for(observation, direct_action) < repeat_threshold``;
-   once the same ``(signature, action)`` key repeats to
-   :attr:`AttemptState.repeat_threshold` with no progress, the table
-   returns the action mapped to :attr:`AttemptState.rung` instead and
-   :meth:`AttemptState.with_attempt` then advances exactly one rung.
-   Past the terminal rung the table stays at the terminal rung and the
-   repeat counter keeps accumulating under the same ``(signature,
-   action)`` key — no wraparound, no unbounded re-dispatch of the
-   resolver agent.
+   :attr:`NextAction.COMMIT`) while the observation is free of
+   *repeat pressure*. Repeat pressure is
+   :meth:`AttemptState.repeat_pressure`: the per-``(signature, action)``
+   count for the direct action has reached
+   :attr:`AttemptState.repeat_threshold` at a signature that has already
+   been attempted at least
+   :data:`MIN_SIGNATURE_ATTEMPTS_FOR_ESCALATION` times. **The first
+   contact with a signature is never a repeat**, so
+   ``repeat_threshold=1`` still returns the direct action once before
+   the ladder moves; that off-by-one is what let a first, un-attempted
+   signature escalate immediately.
+   Under repeat pressure the table returns the ladder action of the
+   rung :data:`ESCALATED_RUNG_STRIDE` positions above
+   :attr:`AttemptState.rung` — never the rung's own action, which the
+   boundary has already taken, and never the rung the direct action
+   occupies. :meth:`AttemptState.with_attempt` then advances the ladder
+   by exactly **one** rung. Past the terminal rung the table stays at
+   the terminal rung and the repeat counter keeps accumulating under
+   the same ``(signature, action)`` key — no wraparound, and no
+   re-dispatch of the resolver agent for a condition it has already
+   failed to change.
 7. The mapping is total: every combination of the seven dimensions yields
    exactly one action; there is no fall-through default, no
    ``WAIT_FOR_ENVIRONMENT`` catch-all other than the unknown rule. The
@@ -77,6 +88,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Final
 
 from ralph.pipeline.integration_observation import (
     HeadState,
@@ -131,6 +143,20 @@ LADDER_ORDER: tuple[EscalationRung, ...] = (
     EscalationRung.REBUILD_ON_TARGET,
     EscalationRung.CONTINUE_WITH_INTEGRATION_PENDING,
 )
+
+#: How many charged attempts a signature must have before the ladder is
+#: allowed to react to it at all. The first contact with a signature is
+#: the boundary *trying* the direct action; only a genuine repeat counts
+#: as repeat pressure. With ``repeat_threshold=1`` this is what keeps
+#: the very first attempt from escalating the ladder.
+MIN_SIGNATURE_ATTEMPTS_FOR_ESCALATION: Final[int] = 2
+
+#: How far above the current rung the table reaches when it answers
+#: under repeat pressure. The rung's own action has already been taken
+#: (it is what produced the current rung) and the rung the direct action
+#: occupies is the one being repeated, so the table falls forward past
+#: both; :meth:`AttemptState.with_attempt` still advances only one rung.
+ESCALATED_RUNG_STRIDE: Final[int] = 2
 
 
 # Bounded per-(signature, action) repeat counter. The accumulator is
@@ -228,6 +254,53 @@ class AttemptState:
         """Return the repeat count for the ``(signature, action)`` pair (0 if absent)."""
         return self.repeat_counts.get(self.key_pair(observation, action), 0)
 
+    def signature_attempts(self, observation: Observation) -> int:
+        """Return every charged attempt recorded for ``observation``'s signature.
+
+        This is the *signature-level* total across all actions — the
+        difference between a first contact with a state and a genuine
+        repeat of it. It is derived from
+        :attr:`repeat_counts` on every call rather than stored, so it
+        can never drift from the counts it summarises.
+        """
+        signature = self.signature(observation)
+        return sum(
+            count
+            for (key_signature, _action), count in self.repeat_counts.items()
+            if key_signature == signature
+        )
+
+    def repeat_pressure(self, *, repeat_count: int, signature_attempts: int) -> bool:
+        """True when ``repeat_count`` at ``signature_attempts`` is a repeat, not a first try.
+
+        Repeat pressure needs **both** halves: the per-``(signature,
+        action)`` count must have reached
+        :attr:`repeat_threshold` *and* the signature must already have
+        been attempted at least
+        :data:`MIN_SIGNATURE_ATTEMPTS_FOR_ESCALATION` times. Without the
+        second half a ``repeat_threshold`` of 1 would escalate on the
+        first, never-attempted contact with a signature.
+        """
+        return (
+            repeat_count >= self.repeat_threshold
+            and signature_attempts >= MIN_SIGNATURE_ATTEMPTS_FOR_ESCALATION
+        )
+
+    def should_advance(self, *, repeat_count: int, signature_attempts: int) -> bool:
+        """True when this charge must advance the ladder by exactly one rung.
+
+        ``repeat_count`` and ``signature_attempts`` describe the state
+        *after* the charge was folded into the counters. The terminal
+        rung never advances: the ladder is finite and the climb is
+        monotone, so the counter keeps accumulating under the same key
+        while the rung stays put.
+        """
+        if LADDER_ORDER.index(self.rung) >= len(LADDER_ORDER) - 1:
+            return False
+        return self.repeat_pressure(
+            repeat_count=repeat_count, signature_attempts=signature_attempts
+        )
+
     def _with_updated_repeat_counts(self, updated: RepeatCounts) -> AttemptState:
         return AttemptState(
             rung=self.rung,
@@ -251,6 +324,11 @@ class AttemptState:
         passing ``False`` for a probe that yielded an unknown reading
         would silently violate rule 1 of the decision contract. Returns
         an entirely new dataclass — no in-place mutation.
+
+        A non-unknown charge advances the ladder by exactly one rung when
+        :meth:`should_advance` is true; the first contact with a
+        signature never advances no matter how small
+        :attr:`repeat_threshold` is.
         """
         if is_unknown:
             return AttemptState(
@@ -264,11 +342,11 @@ class AttemptState:
         updated: RepeatCounts = OrderedDict(self.repeat_counts)
         new_count = updated.get(key, 0) + 1
         updated[key] = new_count
-        if len(updated) > _REPEAT_COUNTER_CAP:
+        while len(updated) > _REPEAT_COUNTER_CAP:
             updated.popitem(last=False)
-        if (
-            new_count >= self.repeat_threshold
-            and self.rung is not LADDER_ORDER[-1]
+        attempts_after = self.signature_attempts(observation) + 1
+        if self.should_advance(
+            repeat_count=new_count, signature_attempts=attempts_after
         ):
             return AttemptState(
                 rung=self.next_rung(),
@@ -296,8 +374,8 @@ def _is_real_conflict(observation: Observation) -> bool:
     )
 
 
-def _ladder_action(attempts: AttemptState) -> NextAction:
-    """Map the current rung to the action that rung represents."""
+def _ladder_action(rung: EscalationRung) -> NextAction:
+    """Map ``rung`` to the action that rung represents."""
     return {
         EscalationRung.REPAIR: NextAction.REPAIR,
         EscalationRung.DISPATCH_RESOLVER: NextAction.DISPATCH_RESOLVER,
@@ -305,7 +383,7 @@ def _ladder_action(attempts: AttemptState) -> NextAction:
         EscalationRung.CONTINUE_WITH_INTEGRATION_PENDING: (
             NextAction.CONTINUE_WITH_INTEGRATION_PENDING
         ),
-    }[attempts.rung]
+    }[rung]
 
 
 def _is_target_moved(observation: Observation) -> bool:
@@ -385,7 +463,7 @@ def _ladder_action_for(
     if _is_landed(observation):
         return NextAction.LAND
     if _needs_ladder(observation) or not _is_target_moved(observation):
-        return _ladder_action_skipping_resolver(attempts, observation)
+        return _ladder_action_skipping_resolver(attempts.rung, observation)
     return NextAction.REINTEGRATE
 
 
@@ -406,16 +484,16 @@ def _is_boring_observation(observation: Observation) -> bool:
 
 
 def _ladder_action_skipping_resolver(
-    attempts: AttemptState, observation: Observation
+    rung: EscalationRung, observation: Observation
 ) -> NextAction:
-    """Return the rung's mapped action, skipping ``DISPATCH_RESOLVER`` for boring states.
+    """Return ``rung``'s mapped action, skipping ``DISPATCH_RESOLVER`` for boring states.
 
     Rule 4 (resolver-skipping invariant) — see module docstring rule 4.
     Only boring observations skip; repairable records and detached HEAD
     (conflict-class signatures) keep the resolver action because the
     resolver can legitimately fix them.
     """
-    action = _ladder_action(attempts)
+    action = _ladder_action(rung)
     if (
         action is NextAction.DISPATCH_RESOLVER
         and _is_boring_observation(observation)
@@ -424,35 +502,52 @@ def _ladder_action_skipping_resolver(
     return action
 
 
+def _escalated_rung(rung: EscalationRung) -> EscalationRung:
+    """Return the rung the table answers with when ``rung`` is under repeat pressure.
+
+    Two positions ahead, clamped at the terminal rung: the rung's own
+    action is the one the boundary has already taken (it is what
+    produced ``rung``), and the rung one position up is the rung the
+    direct action occupies — the very thing that just repeated without
+    progress. Falling past both is what stops a resolver agent being
+    dispatched again for a condition it has already failed to change.
+    """
+    index = LADDER_ORDER.index(rung) + ESCALATED_RUNG_STRIDE
+    return LADDER_ORDER[min(index, len(LADDER_ORDER) - 1)]
+
+
 def _ladder_dispatch_or_direct(
     attempts: AttemptState,
     observation: Observation,
     *,
     direct: NextAction,
 ) -> NextAction:
-    """Select the direct action or the current rung's ladder action.
+    """Select the direct action or the escalated rung's ladder action.
 
     Encodes rule 6 (repeat-pressure escalation for the bounded set of
     real-conflict, owned-in-progress and dirty-worktree observations):
 
-    * While ``attempts.repeat_count_for(observation, direct) <
-      attempts.repeat_threshold`` the table returns ``direct`` (the
-      same direct action the table has always returned for that
-      observation class).
-    * Once the per-``(signature, direct)`` repeat count reaches the
-      threshold, the table returns the ladder action for
-      :attr:`AttemptState.rung` instead. The caller is then expected to
-      invoke :meth:`AttemptState.with_attempt` with the returned action,
-      which will advance the rung by exactly one step.
+    * While :meth:`AttemptState.repeat_pressure` is false the table
+      returns ``direct`` — the same direct action the table has always
+      returned for that observation class. A signature the boundary has
+      never attempted is *not* repeat pressure, however small
+      :attr:`AttemptState.repeat_threshold` is.
+    * Under repeat pressure the table returns the action of
+      :func:`_escalated_rung`, which is never the direct action and
+      never the current rung's own action. The caller is then expected
+      to invoke :meth:`AttemptState.with_attempt` with the returned
+      action, which advances the rung by exactly one step.
 
     The function is total over ``attempts`` and ``observation``: every
     pair maps to one of the direct action or a rung action.
     """
-    if (
-        attempts.repeat_count_for(observation, direct)
-        >= attempts.repeat_threshold
+    if attempts.repeat_pressure(
+        repeat_count=attempts.repeat_count_for(observation, direct),
+        signature_attempts=attempts.signature_attempts(observation) + 1,
     ):
-        return _ladder_action_skipping_resolver(attempts, observation)
+        return _ladder_action_skipping_resolver(
+            _escalated_rung(attempts.rung), observation
+        )
     return direct
 
 
@@ -474,12 +569,12 @@ def decide(context: DecisionContext) -> NextAction:
     verbatim.
 
     Real-conflict, owned-in-progress and dirty-worktree observations use
-    :func:`_ladder_dispatch_or_direct` so the table no longer repeats
-    the same direct action forever — once the per-(signature,
-    direct-action) repeat count reaches
-    :attr:`AttemptState.repeat_threshold` the table returns the rung's
-    ladder action and :meth:`AttemptState.with_attempt` advances the
-    rung by one, yielding a finite, restart-proof escalation.
+    :func:`_ladder_dispatch_or_direct` so the table never repeats the
+    same direct action forever: once the boundary has *re-tried* a
+    signature (see :meth:`AttemptState.repeat_pressure`) the table
+    answers with the escalated rung's action and
+    :meth:`AttemptState.with_attempt` advances the rung by one, giving a
+    finite, restart-proof escalation.
     """
     observation = context.observation
     attempts = context.attempts
@@ -512,7 +607,10 @@ def decide(context: DecisionContext) -> NextAction:
 
 
 __all__ = [
+    "ESCALATED_RUNG_STRIDE",
     "LADDER_ORDER",
+    "MIN_SIGNATURE_ATTEMPTS_FOR_ESCALATION",
+    "AttemptState",
     "DecisionContext",
     "EscalationRung",
     "NextAction",
