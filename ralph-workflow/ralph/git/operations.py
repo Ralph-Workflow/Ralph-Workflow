@@ -3,6 +3,21 @@
 This module provides a high-level interface for git operations,
 wrapping GitPython to provide the functionality needed by the pipeline.
 
+Serialized git queue:
+
+Every git interaction this module performs -- the ``run_git`` subprocess
+path AND every ``repo.git.*`` dispatch (the ``git status`` fallback in
+:func:`list_changed_paths`, ``git add`` in :func:`stage_all` /
+:func:`stage_files`, ``git push`` in :func:`push`) -- is dispatched
+through :mod:`ralph.git.git_command_queue`. GitPython takes no
+process-wide repository lock, so an unserialized ``git add`` can race a
+sibling ``git commit`` on ``.git/index``; routing both through the same
+per-common-dir queue makes them mutually exclusive and gives them one
+shared health/backoff signal. :func:`_queued_git_call` is the single
+GitPython dispatch point; :func:`_queued_remote_push` covers
+``Remote.push``, which drives git through GitPython's own dispatch rather
+than through the router.
+
 Stale Git Lock Recovery:
 Operations that mutate git state run through
 ``_run_git_operation_with_stale_lock_recovery``. When encountering git lock
@@ -34,11 +49,12 @@ import hashlib
 import os
 import tempfile
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping, Sequence
 
     from ralph.git._lock_recovery import LivenessProbeFn
 
@@ -74,6 +90,13 @@ from ralph.git._lock_recovery import (
 )
 from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
 from ralph.git.errors import GitOperationError
+from ralph.git.git_command_queue import (
+    _classify_exception as _queue_outcome_kind,
+)
+from ralph.git.git_command_queue import (
+    get_queue_for_repo,
+    route_git_method,
+)
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 
@@ -86,6 +109,84 @@ def _close_repo(repo: Repo | None) -> None:
     close = cast("Callable[[], object] | None", getattr(repo, "close", None))
     if callable(close):
         close()
+
+
+@dataclass(frozen=True)
+class _RepoQueueView:
+    """Structural ``Repo`` stand-in carrying the queue-routing seam attributes.
+
+    :func:`~ralph.git.git_command_queue.route_git_method` reads exactly two
+    attributes off the object it is handed: ``git`` (the dynamic
+    ``repo.git.<method>`` dispatch handle) and ``git_dir`` (the
+    per-repository queue key). A live :class:`~git.Repo` carries both and is
+    passed through untouched. A duck-typed ``Repo`` double -- the shape the
+    operations tests use to stay off the git binary -- carries only ``git``,
+    so this view supplies the key from the repo root the caller already
+    holds. Both shapes normalize to the SAME common-dir, so the double
+    serializes against the live repository exactly as the real object does.
+    """
+
+    git: object
+    git_dir: str
+
+
+def _is_queue_view(candidate: object) -> bool:
+    """Return whether ``candidate`` is a queue-routing view wrapper."""
+    return isinstance(candidate, _RepoQueueView)
+
+
+def _queue_routing_target(repo_root: Path | str, repo: Repo) -> Repo:
+    """Return the object whose git-dir identifies this repository's queue.
+
+    Live :class:`~git.Repo` objects are returned unchanged (their ``git_dir``
+    is already the canonical worktree git-dir). Anything else is wrapped in
+    :class:`_RepoQueueView` keyed on ``repo_root``, so the queue key never
+    depends on a double exposing ``git_dir``.
+    """
+    if _is_queue_view(repo):
+        view = _RepoQueueView(git=repo.git, git_dir=str(repo_root))
+        return cast("Repo", view)  # cast-policy: seam: structural boundary (queue-routing view exposes exactly the two attributes route_git_method reads)
+    return repo
+
+
+def _queued_git_call(
+    repo_root: Path | str,
+    repo: Repo,
+    method_name: str,
+    args: Sequence[object] = (),
+    kwargs: Mapping[str, object] | None = None,
+) -> object:
+    """Run ``repo.git.<method_name>(...)`` inside the shared git queue.
+
+    Routing every GitPython dispatch in this module through
+    :func:`~ralph.git.git_command_queue.route_git_method` is what makes a
+    ``git add`` / ``git status`` issued here serialize against the
+    ``run_git`` subprocess path: both resolve the same per-common-dir
+    :class:`~ralph.git.git_command_queue.GitCommandQueue` and therefore share
+    one lock and one health/backoff signal. Return value and exception
+    behaviour are exactly the underlying dispatch's.
+    """
+    return route_git_method(_queue_routing_target(repo_root, repo), method_name, args, kwargs)
+
+
+def _queued_remote_push(repo_root: Path | str, repo: Repo, remote: str, branch: str) -> None:
+    """Push ``branch`` to ``remote`` while holding the shared git queue lock.
+
+    :meth:`git.Remote.push` drives ``git push`` through GitPython's own
+    dispatch rather than through :func:`route_git_method`, so the lock -- and
+    the outcome this repository's shared health signal records -- is taken
+    here. The queue is keyed on ``repo_root`` for the same reason
+    :func:`_queue_routing_target` supplies a key: the caller may hold a
+    duck-typed ``Repo`` double.
+    """
+    queue = get_queue_for_repo(Path(repo_root))
+    with queue.execute_lock:
+        try:
+            repo.remote(remote).push(branch)
+        except BaseException as exc:
+            queue.record_outcome(_queue_outcome_kind(exc))
+            raise
+        queue.record_outcome("success")
 
 
 # Test seams overrideable via monkeypatch
@@ -358,13 +459,10 @@ def list_changed_paths(repo_root: Path | str) -> list[str]:
         repo: Repo | None = None
         try:
             repo = Repo(repo_root)
-            # D2 queue-routing insertion point (operations.py:list_changed_paths fallback, line ~361).
-            # Unit D2 wraps this ``repo.git.status`` call in a queue; keep the
-            # status-output parsing ABOVE the queue so the fallback path is a
-            # genuine I/O wrapper, not a parallel-rerun conflict.
-            status_lines = cast(
-                "str", repo.git.status("--porcelain")
-            ).splitlines()  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            status_output = cast(
+                "str", _queued_git_call(repo_root, repo, "status", ("--porcelain",))
+            )  # cast-policy: seam: structural boundary (git stdout probe; CLI returns plain text)
+            status_lines = status_output.splitlines()
         finally:
             _close_repo(repo)
 
@@ -459,16 +557,14 @@ def stage_all(repo_root: Path | str) -> None:
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
+        active_repo = repo
 
         def _stage() -> None:
-            # D2 queue-routing insertion point (operations.py:stage_all, line ~463).
-            # Unit D2 wraps this ``repo.git.add`` call in a queue. The staging
-            # closure owns index mutation; the queue must NEVER permit two
-            # parallel ``stage_all`` invocations against the same repo because
-            # Git's index is not safe for concurrent writers.
-            _ = cast(
-                "str", repo.git.add(A=True)
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            # Index mutation: ``git add -A`` rewrites the SHARED index, so it
+            # runs inside the per-repository queue lock. Two producers staging
+            # the same repository -- or a ``git status`` racing the stage --
+            # are serialized instead of interleaving on ``.git/index``.
+            _ = _queued_git_call(repo_root, active_repo, "add", kwargs={"A": True})
 
         _run_git_operation_with_stale_lock_recovery("stage_all", _stage)
         logger.debug("Staged all changes in {}", repo_root)
@@ -490,15 +586,13 @@ def stage_files(repo_root: Path | str, files: list[str]) -> None:
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)
+        active_repo = repo
 
         def _stage() -> None:
-            # D2 queue-routing insertion point (operations.py:stage_files, line ~489).
-            # Unit D2 wraps this ``repo.git.add --all -- <paths>`` call in a
-            # queue. As with ``stage_all``, parallel staging against the
-            # same repo must be serialised behind the queue.
-            _ = cast(
-                "str", repo.git.add("--all", "--", *files)
-            )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            # As with ``stage_all``: the selective add shares the index, so it
+            # runs inside the per-repository queue lock and cannot interleave
+            # with a sibling stage or a concurrent ``git status``/``git commit``.
+            _ = _queued_git_call(repo_root, active_repo, "add", ("--all", "--", *files))
 
         _run_git_operation_with_stale_lock_recovery("stage_files", _stage)
         logger.debug("Staged {} selected paths in {}", len(files), repo_root)
@@ -743,12 +837,12 @@ def create_commit(
     try:
         repo = Repo(repo_root)
         message = _append_ralph_workflow_coauthor_trailer(message)
-        # D2 queue-routing insertion point (operations.py:create_commit head).
-        # The detached-HEAD reattach and tree-based idempotency short-circuits
-        # intentionally live BELOW this marker; if unit D2 wraps any of the
-        # git invocations below in a queue, keep the reattach helper and the
-        # write-tree / rev-parse calls outside the queue so the seam's
-        # idempotency invariants are preserved.
+        # Every git invocation in this function (the detached-HEAD reattach,
+        # the tree-based idempotency short-circuit, the commit-tree + CAS
+        # publish) already runs through ``run_git`` -> ``route_run_git``, so
+        # the whole body is serialized on this repository's shared queue. The
+        # steps stay in that order: the idempotency short-circuit must observe
+        # HEAD's tree and the candidate tree inside the same serialized run.
         current_head_sha = repo.head.commit.hexsha if hasattr(repo, "head") else ""
         if not hasattr(repo, "git_dir"):
             author_name, author_email = _resolve_commit_identity(repo, author_name, author_email)
@@ -879,11 +973,11 @@ def push(
                 active_branch,
             )
             return
-        # D2 queue-routing insertion point (operations.py:push). Unit D2 wraps
-        # the push call in a queue; keep the already-pushed short-circuit
-        # above the queue insertion so a re-dispatch that finds the local and
-        # remote-tracking SHAs already in sync never re-issues a push.
-        repo.remote(remote).push(active_branch)
+        # The already-pushed short-circuit stays ABOVE the queue: a re-dispatch
+        # that finds the local and remote-tracking SHAs already in sync never
+        # re-issues a push. The push itself is taken through the shared queue
+        # so it cannot interleave with a concurrent git call on this repository.
+        _queued_remote_push(repo_root, repo, remote, active_branch)
         logger.info("Pushed {} to {}/{}", active_branch, remote, active_branch)
     except Exception as exc:
         raise GitOperationError("push", str(exc)) from exc

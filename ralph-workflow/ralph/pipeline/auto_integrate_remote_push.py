@@ -351,11 +351,20 @@ def reconcile_after_rejected_push(
     """Try a bounded reconcile-then-push cycle after a non-fast-forward.
 
     Per-seam cap is ``_MAX_REMOTE_SYNC_ATTEMPTS`` (3), matching the
-    Part-A landing loop budget. Exhausting the cap is NOT a give-up:
-    the pending push is carried forward on
-    :attr:`RebaseState.last_remote_sync` as
-    ``REMOTE_PUSH_REJECTED`` and retried on the next seam, so the
-    fail-open contract holds for the whole run, not just one seam.
+    Part-A landing loop budget. Each attempt is one
+    fetch -> reintegrate -> land -> push cycle, so the loop repeats
+    until the push reports the postcondition "the remote holds the
+    target", which is exactly "refs are equal". Exhausting the cap is
+    NOT a give-up: the pending push is carried forward on
+    :attr:`RebaseState.last_remote_sync` and on the typed
+    :class:`PublicationDecision`, and the next start re-derives the
+    obligation from the refs themselves, so the fail-open contract
+    holds for the whole run, not just one seam.
+
+    The obligation is NEVER derived from per-run memory: this loop
+    receives only ``repo_root`` / ``target`` / the live client, so a
+    crash between landing and push is recovered by the next start in
+    any worktree that observes the same refs.
     """
     from ralph.pipeline.auto_integrate_remote_sync import (
         REMOTE_PULL_FAILED,
@@ -410,6 +419,11 @@ def reconcile_after_rejected_push(
                     _remote_sync_status(outcome.status)
                     if outcome.status is not None
                     else REMOTE_PULL_FAILED
+                ),
+                "last_outcome": (
+                    RebaseOutcomeKind.REMOTE_PUSHED
+                    if outcome.success
+                    else RebaseOutcomeKind.REMOTE_FAILED
                 ),
             },
         ).set_publication_decision(post_decision)

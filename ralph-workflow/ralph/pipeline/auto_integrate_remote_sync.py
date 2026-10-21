@@ -75,6 +75,7 @@ from ralph.pipeline.auto_integrate_remote_constants import (
     reclaim_target_worktree_enabled,
     remote_sync_enabled,
     remote_target_name,
+    remote_unreachable_reason,
     resolver_attempt_limit,
 )
 from ralph.pipeline.auto_integrate_remote_push import (
@@ -152,6 +153,7 @@ __all__ = [
     "refresh_target_from_remote",
     "remote_sync_enabled",
     "remote_target_name",
+    "remote_unreachable_reason",
     "resolver_allowed",
     "resolver_attempt_limit",
     "start_conflict_attempt",
@@ -233,19 +235,93 @@ def _throttle_allows_pull(
 # ----- Reconciler: ref-comparison-driven publication --------------------
 
 
+#: Refresh labels whose remote-tracking ref read may be trusted as an
+#: observation of the configured remote.
+_READABLE_REFRESH_OUTCOMES: frozenset[str] = frozenset(
+    {
+        REFRESH_LOCAL_FLEET,
+        REFRESH_LOCAL_AHEAD,
+        REFRESH_DIVERGED,
+        REFRESH_NO_REMOTE,
+        REFRESH_NO_LOCAL_BRANCH,
+        REFRESH_ORIGIN_AHEAD,
+        REFRESH_SUPPRESSED,
+        "refreshed",
+        "already current",
+        "refresh suppressed",
+        "refresh suppressed by throttle",
+    }
+)
+
+#: Refresh labels that mean "NO fetch was taken", so the remote-tracking
+#: ref behind the reading is whatever the last real fetch left there.
+_STALE_REFRESH_OUTCOMES: frozenset[str] = frozenset(
+    {REFRESH_SUPPRESSED, "refresh suppressed", "refresh suppressed by throttle"}
+)
+
+
+def _read_remote_tracking_sha(
+    client: RemoteClient,
+    repo_root: Path,
+    target: str,
+    remote: str,
+) -> str | None:
+    """Read ``<remote>/<target>`` through the client, never a hardcoded ref."""
+    if hasattr(client, "observe_remote_sha"):
+        return client.observe_remote_sha(repo_root, target, remote=remote)
+    from ralph.pipeline.auto_integrate_catchup import observe_remote_target_sha
+
+    return observe_remote_target_sha(repo_root, remote, target)
+
+
+def _throttled_reading_needs_refetch(
+    observed: str | None,
+    local_sha: str | None,
+) -> bool:
+    """Whether a throttled reading must be replaced by a real fetch.
+
+    A suppressed probe leaves the remote-tracking ref exactly as the last
+    real fetch left it. Two readings are worthless against that cache:
+
+    * ``observed is None`` -- nothing is known about the remote at all.
+      The module-level probe is forced; if it cannot answer either, the
+      observation stays UNKNOWN and the caller defers.
+    * ``observed == local_sha`` -- the stale cache appears to CONVERGE.
+      That is the dangerous case: answering "already current" for a
+      remote that moved during the throttle window silently drops a
+      divergence that Ralph otherwise has no way to see.
+
+    Everything else (``observed != local_sha``) already proves a
+    divergence, so the stale cache is enough to route the reconciler
+    into the push/reconcile path, where the server's rejection forces
+    the fetch that repairs the cache.
+    """
+    if observed is None:
+        return True
+    return local_sha is None or observed == local_sha
+
+
 def _observe_remote_target_sha(
     repo_root: Path,
     target: str,
     *,
     remote: str,
     remote_client: RemoteClient | None = None,
+    local_sha: str | None = None,
 ) -> tuple[str | None, str]:
-    """Observe the remote-tracking ref SHA and refresh status without raising.
+    """Observe ``<remote>/<target>`` and the refresh status without raising.
 
-    The remote-tracking ref is refreshed first so the comparison
-    is not made against a stale cache. Returns ``(None, status)`` for
-    any failure (unreachable remote, missing branch, transient
-    network error).
+    The remote-tracking ref is refreshed first so the comparison is not
+    made against a stale cache. When the periodic probe was throttled and
+    its reading cannot back the caller's verdict
+    (:func:`_throttled_reading_needs_refetch`), a real fetch is forced and
+    the ref is re-read before any branch is chosen.
+
+    Returns ``(None, status)`` for any failure (unreachable remote,
+    missing branch, transient network error). ``local_sha`` is the local
+    target ref the caller already read; it only decides whether a
+    throttled reading needs refetching and never selects a branch on its
+    own.
     """
     client = remote_client or _DEFAULT_REMOTE_CLIENT
     try:
@@ -257,48 +333,21 @@ def _observe_remote_target_sha(
         )
         if refresh == REFRESH_NO_REMOTE_BRANCH:
             return None, REFRESH_NO_REMOTE_BRANCH
-        if refresh not in (
-            REFRESH_LOCAL_FLEET,
-            REFRESH_LOCAL_AHEAD,
-            REFRESH_DIVERGED,
-            REFRESH_NO_REMOTE,
-            REFRESH_NO_LOCAL_BRANCH,
-            REFRESH_ORIGIN_AHEAD,
-            REFRESH_SUPPRESSED,
-            "refreshed",
-            "already current",
-            "refresh suppressed",
-            "refresh suppressed by throttle",
-        ):
+        if refresh not in _READABLE_REFRESH_OUTCOMES:
             return None, refresh
-        observed: str | None = None
-        if hasattr(client, "observe_remote_sha"):
-            observed = client.observe_remote_sha(repo_root, target, remote=remote)
-        else:
-            from ralph.pipeline.auto_integrate_catchup import observe_remote_target_sha
-
-            observed = observe_remote_target_sha(repo_root, remote, target)
-        if observed is None and refresh in (
-            REFRESH_SUPPRESSED,
-            "refresh suppressed",
-            "refresh suppressed by throttle",
+        observed = _read_remote_tracking_sha(client, repo_root, target, remote)
+        if refresh in _STALE_REFRESH_OUTCOMES and _throttled_reading_needs_refetch(
+            observed, local_sha
         ):
-            try:
-                forced_refresh = refresh_target_from_remote(
-                    repo_root,
-                    target,
-                    timeout_seconds=FETCH_TIMEOUT_SECONDS,
-                    remote=remote,
-                )
-                if hasattr(client, "observe_remote_sha"):
-                    observed = client.observe_remote_sha(repo_root, target, remote=remote)
-                else:
-                    from ralph.pipeline.auto_integrate_catchup import observe_remote_target_sha
-
-                    observed = observe_remote_target_sha(repo_root, remote, target)
-                return observed, forced_refresh
-            except Exception:
-                pass
+            forced = refresh_target_from_remote(
+                repo_root,
+                target,
+                timeout_seconds=FETCH_TIMEOUT_SECONDS,
+                remote=remote,
+            )
+            observed = _read_remote_tracking_sha(client, repo_root, target, remote)
+            if forced in _READABLE_REFRESH_OUTCOMES:
+                refresh = forced
         return observed, refresh
     except Exception as exc:
         logger.debug("auto_integrate: remote observation failed: {}", exc)
@@ -634,7 +683,11 @@ def reconcile_remote_publication(
         )
     client = remote_client or _DEFAULT_REMOTE_CLIENT
     remote_sha, refresh = _observe_remote_target_sha(
-        repo_root, target, remote=chosen_remote, remote_client=client
+        repo_root,
+        target,
+        remote=chosen_remote,
+        remote_client=client,
+        local_sha=local_sha,
     )
     if refresh == REFRESH_NO_REMOTE_BRANCH:
         return _handle_no_remote_branch(
@@ -650,6 +703,7 @@ def reconcile_remote_publication(
         return _record_publication_failure(
             base_state,
             last_remote_sync=REMOTE_REMOTE_UNREACHABLE,
+            last_reason=remote_unreachable_reason(chosen_remote),
             last_refresh=refresh,
             publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
         )
@@ -710,19 +764,27 @@ def refresh_observation_record(
     remote: str,
     remote_client: RemoteClient | None = None,
 ) -> RebaseState:
-    """Refresh the durable record from the CURRENT live observation.
+    """Re-render the publication record from the CURRENT live observation.
 
-    Recomputes local vs ``<remote>/<target>`` from the same client
-    the runtime uses; preserves every unrelated field on ``base_state``
-    (in particular the caller's prior publication decision) and only
-    mutates the publication obligation. Used by the run loop and by
-    boundary seams that need an O2 freshness check before reporting
-    terminal success; the O2 contract demands that NO state leaves
-    local ahead of the remote with a satisfied publication decision.
+    Recomputes local vs ``<remote>/<target>`` from the same client the
+    runtime uses, then rewrites BOTH the typed publication obligation and
+    the operator-facing status line from that single observation. Used by
+    the run loop and by boundary seams that need an O2 freshness check
+    before reporting terminal success; the O2 contract demands that NO
+    state leaves local ahead of the remote with a satisfied publication
+    decision.
 
-    The function never raises. It returns ``base_state`` unchanged
-    when remote sync is disabled or when the configured remote is
-    missing.
+    ``base_state.last_reason`` is deliberately OVERWRITTEN here, never
+    inherited. This is the render-time seam: replaying the prose a
+    previous seam persisted would present a stale ``... unreachable ...
+    recovery will retry`` line as the current explanation after the
+    remote has already recovered. Every branch below therefore renders
+    its line from the SHAs this call just observed.
+
+    The function never raises. It returns ``base_state`` unchanged when
+    remote sync is disabled or when the configured remote is missing --
+    those are "not observed", which must not overwrite a live line with
+    a fabricated one.
     """
     if not isinstance(target, str) or not target or not isinstance(remote, str) or not remote:
         return base_state
@@ -731,7 +793,11 @@ def refresh_observation_record(
         return base_state
     client = remote_client or _DEFAULT_REMOTE_CLIENT
     remote_sha, refresh = _observe_remote_target_sha(
-        repo_root, target, remote=remote, remote_client=client
+        repo_root,
+        target,
+        remote=remote,
+        remote_client=client,
+        local_sha=local_sha,
     )
     if remote_sha is not None and _observation_reconciles(
         repo_root=repo_root,
@@ -743,6 +809,7 @@ def refresh_observation_record(
         return _record_publication_failure(
             base_state,
             last_remote_sync=REMOTE_ALREADY_CURRENT,
+            last_reason=_render_converged_reason(target, remote),
             fast_forwarded=True,
             publication_decision=PublicationDecision.PUBLICATION_TERMINAL,
         )
@@ -750,6 +817,7 @@ def refresh_observation_record(
         return _record_publication_failure(
             base_state,
             last_remote_sync=REMOTE_REMOTE_UNREACHABLE,
+            last_reason=remote_unreachable_reason(remote),
             last_refresh=refresh,
             publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
         )
@@ -758,6 +826,7 @@ def refresh_observation_record(
             update={
                 "last_remote": remote,
                 "last_remote_sync": REMOTE_NO_REMOTE_BRANCH,
+                "last_reason": _render_missing_branch_reason(target, remote),
             }
         ).set_publication_decision(
             PublicationDecision.PUBLISH_DEFERRED_REMOTE,
@@ -767,8 +836,24 @@ def refresh_observation_record(
             "last_remote": remote,
             "last_remote_sync": REMOTE_LOCAL_AHEAD,
             "last_refresh": refresh,
+            "last_reason": _render_unpublished_reason(target, remote),
         }
     ).set_publication_decision(PublicationDecision.PUBLISH_DEFERRED_REMOTE)
+
+
+def _render_converged_reason(target: str, remote: str) -> str:
+    """Render-time line for "the two refs name the same commit"."""
+    return f"local {target} and {remote}/{target} converge"
+
+
+def _render_unpublished_reason(target: str, remote: str) -> str:
+    """Render-time line for "local is ahead; the remote still owes the push"."""
+    return f"local {target} is not yet published to {remote}/{target}"
+
+
+def _render_missing_branch_reason(target: str, remote: str) -> str:
+    """Render-time line for "the remote exists but has no target branch yet"."""
+    return f"{remote}/{target} does not exist yet; publication will create it"
 
 
 # ----- AC-14 catalog evidence -----

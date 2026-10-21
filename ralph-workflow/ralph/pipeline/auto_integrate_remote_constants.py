@@ -61,6 +61,25 @@ REMOTE_BACKOFF_MAX_SECONDS = 300.0
 _MAX_REMOTE_SYNC_ATTEMPTS = 3
 
 
+def remote_unreachable_reason(remote: str) -> str:
+    """Operator-facing line for ONE observation of an unreachable remote.
+
+    Rendered at observation time from the CONFIGURED remote name, so a
+    project configured with ``tacos`` never sees prose about ``origin``
+    (the status vocabulary is name-accurate for the same reason:
+    :attr:`RemoteSyncStatus.REMOTE_UNREACHABLE` is ``"remote
+    unreachable"``, not ``"origin unreachable"``).
+
+    The returned line is PRESENTATION ONLY. Nothing on the publication
+    path reads it back: every branch decision is derived from the live
+    comparison of the local target ref against ``<remote>/<target>``, and
+    every seam that renders a status line renders its own line from its
+    own fresh observation. See :func:`_observation_reconciles` in
+    :mod:`ralph.pipeline.auto_integrate_remote_sync`.
+    """
+    return f"remote {remote} unreachable; recovery will retry"
+
+
 def remote_sync_enabled(config: object | None) -> bool:
     """Whether configured-remote synchronization is enabled by policy.
 

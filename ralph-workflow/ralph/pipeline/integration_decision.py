@@ -27,7 +27,13 @@ names):
 4. :attr:`NextAction.DISPATCH_RESOLVER` is returned ONLY for
    :class:`KnownBlocked` ``REAL_CONFLICT`` evidence: an unmerged worktree
    or a foreign in-progress operation that blocks the integration
-   boundary. Never for any unknown reading.
+   boundary. Never for any unknown reading, and never as a rung action
+   when the current observation is not a real conflict — the resolver
+   rung is bypassed in that case and the table falls forward to
+   :attr:`NextAction.REBUILD_ON_TARGET` (the resolver-skipping
+   invariant). Together with rule 6 this guarantees the resolver agent
+   is not dispatched again for a condition it has already failed to
+   change.
 5. Owned in-progress operations yield
    :attr:`NextAction.RESUME_OWNED_OPERATION`; foreign in-progress
    operations are treated as ``REAL_CONFLICT`` and admitted to the
@@ -39,13 +45,27 @@ names):
    :attr:`EscalationRung.CONTINUE_WITH_INTEGRATION_PENDING`.
    :attr:`NextAction.REBUILD_ON_TARGET` is documented as **"backup refs
    first"** — the executor must capture the feature's pre-rebuild HEAD
-   on a backup ref before re-creating the integration branch. When the
-   same ``(signature, action)`` key repeats without progress, the table
-   advances one rung per the per-(sig, action) repeat counter stored on
-   :class:`AttemptState`.
+   on a backup ref before re-creating the integration branch. For
+   **real-conflict**, **owned-in-progress** and **dirty-worktree**
+   observations the table selects the **direct** action
+   (:attr:`NextAction.DISPATCH_RESOLVER`,
+   :attr:`NextAction.RESUME_OWNED_OPERATION`,
+   :attr:`NextAction.COMMIT`) while
+   ``repeat_count_for(observation, direct_action) < repeat_threshold``;
+   once the same ``(signature, action)`` key repeats to
+   :attr:`AttemptState.repeat_threshold` with no progress, the table
+   returns the action mapped to :attr:`AttemptState.rung` instead and
+   :meth:`AttemptState.with_attempt` then advances exactly one rung.
+   Past the terminal rung the table stays at the terminal rung and the
+   repeat counter keeps accumulating under the same ``(signature,
+   action)`` key — no wraparound, no unbounded re-dispatch of the
+   resolver agent.
 7. The mapping is total: every combination of the seven dimensions yields
    exactly one action; there is no fall-through default, no
-   ``WAIT_FOR_ENVIRONMENT`` catch-all other than the unknown rule.
+   ``WAIT_FOR_ENVIRONMENT`` catch-all other than the unknown rule. The
+   repeat-threshold check is total over ``AttemptState`` too: every
+   ``(observation, attempts)`` pair maps to exactly one of the direct
+   action or the current rung action.
 8. :attr:`NextAction.REPAIR` handles repairable known-blocked states
    (stale / unreadable / older_version / foreign records, detached HEAD);
    a dirty / staged / untracked worktree WITHOUT conflict yields
@@ -351,12 +371,90 @@ def _needs_ladder(observation: Observation) -> bool:
 def _ladder_action_for(
     observation: Observation, attempts: AttemptState
 ) -> NextAction:
-    """Resolve a fully-observed, conflict-free, quiescent observation."""
+    """Resolve a fully-observed, conflict-free, quiescent observation.
+
+    Honours rule 4 (resolver-skipping invariant): the current rung's
+    action is returned, but if the rung is ``DISPATCH_RESOLVER`` and the
+    observation is a *boring* (clean) one the table returns
+    :attr:`NextAction.REBUILD_ON_TARGET` instead so the resolver agent
+    is never dispatched for a clean tree. Repairable record states
+    (STALE / UNREADABLE / OLDER_VERSION / FOREIGN) and a detached HEAD
+    are NOT boring — they are conflict-class signatures that legitimately
+    reach the resolver rung on the ladder — so they keep DISPATCH_RESOLVER.
+    """
     if _is_landed(observation):
         return NextAction.LAND
     if _needs_ladder(observation) or not _is_target_moved(observation):
-        return _ladder_action(attempts)
+        return _ladder_action_skipping_resolver(attempts, observation)
     return NextAction.REINTEGRATE
+
+
+def _is_boring_observation(observation: Observation) -> bool:
+    """True when the observation has no agent-fixable conflict or repairable state.
+
+    A "boring" observation is one where dispatching the resolver agent
+    would do no useful work — the tree is clean, the HEAD is attached,
+    and the durable record is consistent (or simply absent). Only
+    boring observations are skipped from the DISPATCH_RESOLVER rung by
+    the resolver-skipping invariant.
+    """
+    return not (
+        _is_real_conflict(observation)
+        or observation.head is HeadState.DETACHED
+        or _is_repairable_record(observation)
+    )
+
+
+def _ladder_action_skipping_resolver(
+    attempts: AttemptState, observation: Observation
+) -> NextAction:
+    """Return the rung's mapped action, skipping ``DISPATCH_RESOLVER`` for boring states.
+
+    Rule 4 (resolver-skipping invariant) — see module docstring rule 4.
+    Only boring observations skip; repairable records and detached HEAD
+    (conflict-class signatures) keep the resolver action because the
+    resolver can legitimately fix them.
+    """
+    action = _ladder_action(attempts)
+    if (
+        action is NextAction.DISPATCH_RESOLVER
+        and _is_boring_observation(observation)
+    ):
+        return NextAction.REBUILD_ON_TARGET
+    return action
+
+
+def _ladder_dispatch_or_direct(
+    attempts: AttemptState,
+    observation: Observation,
+    *,
+    direct: NextAction,
+) -> NextAction:
+    """Select the direct action or the current rung's ladder action.
+
+    Encodes rule 6 (repeat-pressure escalation for the bounded set of
+    real-conflict, owned-in-progress and dirty-worktree observations):
+
+    * While ``attempts.repeat_count_for(observation, direct) <
+      attempts.repeat_threshold`` the table returns ``direct`` (the
+      same direct action the table has always returned for that
+      observation class).
+    * Once the per-``(signature, direct)`` repeat count reaches the
+      threshold, the table returns the ladder action for
+      :attr:`AttemptState.rung` instead. The caller is then expected to
+      invoke :meth:`AttemptState.with_attempt` with the returned action,
+      which will advance the rung by exactly one step.
+
+    The function is total over ``attempts`` and ``observation``: every
+    pair maps to one of the direct action or a rung action.
+    """
+    if (
+        attempts.repeat_count_for(observation, direct)
+        >= attempts.repeat_threshold
+    ):
+        return _ladder_action_skipping_resolver(attempts, observation)
+    return direct
+
 
 def _wait_or_continue(attempts: AttemptState) -> NextAction:
     """Map an unknown observation to wait, or continue once the budget is spent."""
@@ -374,6 +472,14 @@ def decide(context: DecisionContext) -> NextAction:
     no subprocess, no mutable global state. It encodes rules 1-8 in the
     module docstring; downstream units H, G, I import this name
     verbatim.
+
+    Real-conflict, owned-in-progress and dirty-worktree observations use
+    :func:`_ladder_dispatch_or_direct` so the table no longer repeats
+    the same direct action forever — once the per-(signature,
+    direct-action) repeat count reaches
+    :attr:`AttemptState.repeat_threshold` the table returns the rung's
+    ladder action and :meth:`AttemptState.with_attempt` advances the
+    rung by one, yielding a finite, restart-proof escalation.
     """
     observation = context.observation
     attempts = context.attempts
@@ -382,13 +488,25 @@ def decide(context: DecisionContext) -> NextAction:
         return _wait_or_continue(attempts)
 
     if _is_real_conflict(observation):
-        return NextAction.DISPATCH_RESOLVER
+        return _ladder_dispatch_or_direct(
+            attempts,
+            observation,
+            direct=NextAction.DISPATCH_RESOLVER,
+        )
 
     if _is_owned_in_progress(observation):
-        return NextAction.RESUME_OWNED_OPERATION
+        return _ladder_dispatch_or_direct(
+            attempts,
+            observation,
+            direct=NextAction.RESUME_OWNED_OPERATION,
+        )
 
     if _is_dirty_without_conflict(observation):
-        return NextAction.COMMIT
+        return _ladder_dispatch_or_direct(
+            attempts,
+            observation,
+            direct=NextAction.COMMIT,
+        )
 
     return _ladder_action_for(observation, attempts)
 

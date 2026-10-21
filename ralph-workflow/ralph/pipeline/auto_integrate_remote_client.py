@@ -31,10 +31,10 @@ from ralph.pipeline.auto_integrate_remote_constants import (
     REMOTE_PULL_FAILED,
     REMOTE_PULLED,
     REMOTE_RECONCILED,
-    REMOTE_REMOTE_UNREACHABLE,
     reclaim_target_worktree_enabled,
     remote_sync_enabled,
     remote_target_name,
+    remote_unreachable_reason,
     resolver_attempt_limit,
 )
 from ralph.pipeline.auto_integrate_sync import (
@@ -244,7 +244,9 @@ def _dispatch_pull_outcome(
     * ``REFRESH_LOCAL_FLEET`` -- the local ref store already mirrors the
       remote; arm the throttle and report no operator-visible change.
     * ``REFRESH_UNREACHABLE`` -- fetch failed; recorded as
-      ``REMOTE_PULL_FAILED`` with the standard unreachable reason.
+      ``REMOTE_PULL_FAILED`` with an operator line naming the
+      CONFIGURED remote. The line is rendered from this observation
+      and is never read back as a decision input.
     * ``REFRESH_NO_REMOTE`` / ``REFRESH_NO_REMOTE_BRANCH`` -- the remote
       or its target branch is missing; recorded as ``REMOTE_NO_REMOTE``
       (resp. ``REMOTE_NO_REMOTE_BRANCH``) and the throttle is NOT armed.
@@ -276,7 +278,7 @@ def _dispatch_pull_outcome(
             target,
             last_remote_sync=REMOTE_PULL_FAILED,
             last_refresh=refresh,
-            reason=REMOTE_REMOTE_UNREACHABLE,
+            reason=remote_unreachable_reason(chosen_remote),
             freshness_verdict="degraded",
             freshness_source="fetch",
         )
