@@ -43,6 +43,11 @@ _GIT_BATCH_MODE_ENV: dict[str, str] = {
     "GIT_NO_REPLACE_OBJECTS": "1",
 }
 
+#: Reported exit status for a git child that was torn down without ever
+#: answering. Nonzero so every ``if result.returncode:`` fail-closed gate
+#: refuses, and ``check=True`` raises rather than returning a silent success.
+_UNREPORTED_RETURNCODE: int = -9
+
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
@@ -207,6 +212,23 @@ def run_git(
         # Output-cap hit — kill the proc tree and propagate.
         proc.terminate(grace_period_s=0)
         raise
+    except BaseException:
+        # Any other exception escaping ``communicate_and_cleanup`` — a signal
+        # the caller turned into an error (SIGALRM test timeout, SIGINT,
+        # ``CancelledError``), or an I/O fault on the pipes — still leaves a
+        # live git child. Without this branch the ``finally`` below closes the
+        # pipes and ``__exit__``s the Popen WITHOUT killing that child, so an
+        # interrupted git is orphaned mid-write: a real observation is that
+        # SIGALRM landing inside a git index write left ``.git/index``
+        # truncated, and the NEXT ``run_git`` enumeration then exits 128 with
+        # "index file smaller than expected" / "index file corrupt". The
+        # survivor also keeps writing into a repository nobody is reaping.
+        # Terminate the whole tree before unwinding. The guard suppresses a
+        # failing ``terminate`` so the original exception — the one the caller
+        # must see — is never masked.
+        with contextlib.suppress(Exception):
+            proc.terminate(grace_period_s=0)
+        raise
     finally:
         raw_proc_obj: object = proc._proc
         for stream in (proc.stdout, proc.stderr):
@@ -228,7 +250,14 @@ def run_git(
 
     stdout = _str(raw_stdout)
     stderr = _str(raw_stderr)
-    returncode = proc.returncode if proc.returncode is not None else 0
+    # Fail closed when the child never reported an exit status: the enumeration
+    # is unproven, and reporting success would let callers treat "I could not
+    # ask git" as "git said there is nothing here". Every consumer of this
+    # result is a safety gate — unswept-work capture, staged-patch proofs,
+    # protected-path prompts — so an unreadable answer must read as failure.
+    # ``_UNREPORTED_RETURNCODE`` is SIGKILL's conventional code: the process is
+    # gone and never answered, which is exactly the state being reported.
+    returncode = proc.returncode if proc.returncode is not None else _UNREPORTED_RETURNCODE
 
     if effective_options.check and returncode != 0:
         raise subprocess.CalledProcessError(returncode, list(cmd), stdout, stderr)
