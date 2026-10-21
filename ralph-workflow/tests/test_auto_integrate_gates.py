@@ -780,7 +780,6 @@ def _setup_tree_staged_dirty(repo: Repo, root: Path) -> None:
 
 
 def _setup_tree_detached_dirty(repo: Repo, root: Path) -> None:
-    repo.git.checkout("--detach", "HEAD")
     dirty_file = root / "tracked.txt"
     dirty_file.write_text("detached dirty content\n", encoding="utf-8")
     repo.index.add(["tracked.txt"])
@@ -788,7 +787,7 @@ def _setup_tree_detached_dirty(repo: Repo, root: Path) -> None:
 
 def _setup_tree_detached_clean(repo: Repo, _root: Path) -> None:
     """detached+clean: HEAD detached at a SHA, worktree clean."""
-    repo.git.checkout("--detach", "HEAD")
+    pass
 
 
 @pytest.mark.timeout_seconds(5)
@@ -828,8 +827,11 @@ def test_all_three_gates_agree_on_tree_state(
     repo.index.add(["main.txt"])
     repo.index.commit("main advance", author=actor, committer=actor)
 
-    # Switch to feature branch and apply state
-    repo.git.checkout("feature/work")
+    # Switch to feature branch (detached if testing detached state) and apply state
+    if "detached" in state_name:
+        repo.git.checkout("--detach", "feature/work")
+    else:
+        repo.git.checkout("feature/work")
     setup_state(repo, tmp_path)
 
     cfg = _config()

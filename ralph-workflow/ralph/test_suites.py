@@ -440,6 +440,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_integration_obstruction_real_git.py": 180,
     "tests/mcp/test_bounded_catalog_publish.py": 100,
     "tests/mcp/test_whole_startup_budget_production.py": 160,
+    "tests/mcp/test_e64_import_guard_execution.py": 220,
     "tests/mcp/test_respawn_no_discovery.py": 130,
     "tests/mcp/test_e3x_transport_gap_typed_retry.py": 160,
     "tests/mcp/test_e46_parent_sigkill_no_orphans.py": 260,

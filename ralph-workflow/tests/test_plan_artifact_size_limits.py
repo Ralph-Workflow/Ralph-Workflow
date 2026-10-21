@@ -20,6 +20,7 @@ def test_shape_and_list_counts_do_not_constrain_plan_size() -> None:
     assert check_plan_size({"steps": [{}] * 10_000, "work_units": [{}] * 10_000}) is None
 
 
+@pytest.mark.timeout_seconds(5)
 def test_non_raw_payload_has_no_serialization_based_size_check() -> None:
     assert check_plan_size({"prose": "é" * 4_000_000}) is None
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
 RALPH_ROOT = Path(__file__).parent.parent / "ralph"
 TESTS_ROOT = Path(__file__).parent
 
@@ -295,6 +297,7 @@ def _allowed(rel_path: str) -> bool:
     return any(rel_path == path for path, _ in ALLOWLIST)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_no_direct_subprocess_calls_outside_process_manager() -> None:
     """Assert no production file under ralph/ uses subprocess directly except manager.py."""
     violations: list[str] = []
@@ -312,6 +315,7 @@ def test_no_direct_subprocess_calls_outside_process_manager() -> None:
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_no_direct_subprocess_calls_in_tests() -> None:
     """Assert no test file uses subprocess or POSIX kill APIs directly.
 

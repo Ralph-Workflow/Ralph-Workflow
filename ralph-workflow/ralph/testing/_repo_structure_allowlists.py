@@ -96,6 +96,17 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         # ``subprocess_e2e`` marker granularity that the default
         # profile depends on.
         "tests/test_pipeline_runner_timeout.py",
+        # wt-19: terminal MCP error suite pins typed error conversion
+        # across every execution entry path and supervisor lifecycle;
+        # kept co-located so entry path parity remains auditable.
+        "tests/pipeline/test_terminal_mcp_error_per_entry_path.py",
+        # wt-19: subprocess e2e shutdown suite covers all liveness kill
+        # causes and process-tree reaping under real kernels;
+        # referenced by docs/agents/exec-long-running-root-cause.md.
+        "tests/test_exec_job_shutdown_subprocess_e2e.py",
+        # wt-19: state continuity suite covers MCP restart invariants;
+        # referenced by docs/sphinx/mcp-restart-decisions.md.
+        "tests/mcp/test_e17_state_continuity.py",
         "tests/process/test_spawn_options_pass_fds.py",
         "tests/agents/parsers/test_pi_parser.py",
         "tests/test_git_commit_cleanup.py",

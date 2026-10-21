@@ -164,6 +164,7 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
     bridge.shutdown()
 
 
+@pytest.mark.timeout_seconds(5)
 def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> None:
     seen: dict[str, object] = {}
 
@@ -1029,6 +1030,7 @@ def test_session_payload_json_includes_parallel_worker_metadata(tmp_path: Path) 
     assert payload["allowed_roots"] == [str(allowed_root), str(worker_namespace)]
 
 
+@pytest.mark.timeout_seconds(5)
 def test_listening_socket_closed_on_first_spawn_preflight_failure(tmp_path: Path) -> None:
     """R1 cleanup invariant: the reserved listening socket must not leak.
 

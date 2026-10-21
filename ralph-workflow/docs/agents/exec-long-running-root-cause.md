@@ -691,16 +691,17 @@ that changes any of the cited lines without updating this table is a
 drift edit; the per-row proof-or-bound column is what the §3b fix's
 "kills the tree" claims have to back up against.
 
-## Accepted deviations
+## Deviations (PENDING-RECONCILIATION)
 
-PA-001 is closed by this section. Prior to this fix the scenario-8 /
-scenario-13 effective kill times were unreconciled against the spec's
-"killed at `stall_window` after activity stops" wording, and the
-spec-internal score / kill-time monotonicity stood as an open conflict
-rather than a deliberate acceptance. Both findings are now decided
-deviations, recorded on `path:line` evidence.
+PA-001 escalation: criteria 3 and 6 are PENDING-RECONCILIATION with external product authority.
+Prior to this fix the scenario-8 / scenario-13 effective kill times were
+unreconciled against the spec's "killed at `stall_window` after activity stops"
+wording, and the spec-internal score / kill-time monotonicity stood as an open
+conflict. Both findings are proven mathematical limits of the spec's D2/D3
+architecture awaiting authoritative product reconciliation, recorded on
+`path:line` evidence, not decided or accepted by developer authority.
 
-### A. Ramp-offset timing — deliberate read of the spec wording
+### A. Ramp-offset timing — mathematical limit of spec D2/D3 wording (PENDING-RECONCILIATION)
 
 The spec table reads "killed at `stall_window` after activity stops".
 The closed-form derivation reveals that the elapsed time from **pressure onset**
@@ -753,9 +754,11 @@ one sample interval") holds for a trace idle from the start
 (`last_output = 0`); the scenario library asserts the tighter bound
 `last_output + ramp_end + (stall_window - ramp_accrued)` within one
 sample interval for both the burst-then-idle and the mid-run-deadlock
-shapes.
+shapes. The deviation for traces with prior activity is PENDING-RECONCILIATION
+with external product authority to reconcile the spec table wording
+against the mathematical consequences of the specified membership curves.
 
-### B. Strict-Monotonic score / kill-time — deliberate acceptance
+### B. Strict-Monotonic score / kill-time — mathematical limit under literal-Sugeno aggregate (PENDING-RECONCILIATION)
 
 The shipped aggregate is the literal-Sugeno weighted average
 `sum(w_i * z_i) / sum(w_i)` verbatim from D2/D3; that aggregate admits
@@ -769,10 +772,13 @@ dilutes R1's `z = 1.0`, the score falls from 1.0 to 0.95, and the
 per-step delta becomes less negative so pressure drains less over the
 working segment.
 
-The deviation is **decided**, not open: the literal-Sugeno aggregate
-stays (D2/D3 verbatim, no scoring-code change). Any operator who
-requires strictly score-monotone behaviour has to change the spec's
-own Part A aggregate, not this implementation. The rest of the spec's
+The deviation is **PENDING-RECONCILIATION** with external product authority:
+it reflects a proven mathematical impossibility of satisfying both the
+literal-Sugeno aggregate prescribed in D2/D3 and strict score/kill-time
+monotonicity simultaneously. The literal-Sugeno aggregate is retained
+as implemented (D2/D3 verbatim, without arbitrary developer-side scoring-code
+changes). Product authority must determine whether to relax the strict
+monotonicity criterion or revise the Part A aggregate. The rest of the spec's
 property list holds under the shipped aggregate:
 
 - **Baseline-relative score monotonicity** — from an all-idle window
@@ -786,19 +792,20 @@ property list holds under the shipped aggregate:
 - **Fail-closed unknowns** (D5) — replacing a signal with unknown never
   delays a kill compared with the same trace at that signal's zero.
 
-## Disposition (superseded by "Accepted deviations" above)
+## Disposition (PENDING-RECONCILIATION)
 
-The monotonicity disposition previously lived in this section as an
-"open conflict". It is now owned by the "Accepted deviations" section
-immediately above and is **decided**, not open. The evidence cites
-that used to live here — `tests/test_liveness_assessor.py`,
+The monotonicity and ramp-offset timing dispositions are
+**PENDING-RECONCILIATION** with external product authority, as detailed in
+the "Deviations (PENDING-RECONCILIATION)" section above. The mathematical
+proofs demonstrate that these deviations cannot be eliminated within the
+confining requirements of the current D2/D3 spec without product-level
+trade-offs (such as weakening C2 to meet C3, or changing the Part A aggregate
+to satisfy strict monotonicity). The evidence cites that back this analysis —
+`tests/test_liveness_assessor.py`,
 `tests/test_liveness_pa002_properties.py`,
 `tests/test_liveness_properties.py`, and the
 `Cause 1 — present-day liveness subsystem (CURRENT)` rule table — are
-preserved unchanged and now back the section B analysis rather than
-the old open-conflict framing. A future agent that wants to read the
-old framing verbatim can `git show` the version that preceded this
-collapse; the records are not removed from the doc, only relocated.
+preserved unchanged to support the product reconciliation process.
 
 ## Appendix: how to verify the doc is still truthful
 

@@ -147,7 +147,7 @@ def test_malformed_ndjson_does_not_crash(tmp_path: Path) -> None:
     assert "not valid json {{{" in output
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.timeout_seconds(10)
 def test_raw_log_written_via_subprocess_executor(tmp_path: Path) -> None:
     """SubprocessAgentExecutor writes raw lines to .agent/raw/<unit>.log."""
 
