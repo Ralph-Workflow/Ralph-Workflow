@@ -7,6 +7,7 @@ an existing install.
 
 from __future__ import annotations
 
+import shlex
 from enum import StrEnum
 from os import environ as process_environ
 from pathlib import Path
@@ -46,15 +47,39 @@ def _interpreter_from_shebang(first_line: str) -> str | None:
     return interpreter_parts[0] if interpreter_parts else None
 
 
+def _interpreter_from_exec_trampoline(line: str) -> str | None:
+    """Return the interpreter named by a pip/uv ``/bin/sh`` exec trampoline.
+
+    A shebang cannot carry an interpreter path containing spaces, so installers
+    write ``#!/bin/sh`` followed by ``'''exec' "<python>" "$0" "$@"``.
+    """
+    if not line.startswith("'''exec'"):
+        return None
+    try:
+        words = shlex.split(line)
+    except ValueError:
+        return None
+    return words[1] if len(words) > 1 and words[0] == "exec" else None
+
+
+def _interpreter_from_script(lines: list[str]) -> str | None:
+    interpreter = _interpreter_from_shebang(lines[0])
+    if interpreter is not None and Path(interpreter).name == "sh" and len(lines) > 1:
+        return _interpreter_from_exec_trampoline(lines[1]) or interpreter
+    return interpreter
+
+
 def resolve_package_file(executable: str) -> Path | None:
     """Resolve a console script to its interpreter's installed package file."""
     script = Path(executable).resolve()
     try:
         # filesystem-read-ok: console-script shebang inspection occurs once per explicit install-conflict check
-        first_line = script.read_text(encoding="utf-8").splitlines()[0]
-    except (OSError, IndexError, UnicodeDecodeError):
+        lines = script.read_text(encoding="utf-8").splitlines()[:2]
+    except (OSError, UnicodeDecodeError):
         return None
-    interpreter = _interpreter_from_shebang(first_line)
+    if not lines:
+        return None
+    interpreter = _interpreter_from_script(lines)
     if interpreter is None:
         return None
     try:

@@ -9,6 +9,7 @@ as an operator would.
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -237,7 +238,14 @@ def test_existing_install_probe_ignores_shadowing_ralph_packages(
     (shadow_root / "ralph" / "__init__.py").write_text("", encoding="utf-8")
     console_script = tmp_path / "bin" / "ralph"
     console_script.parent.mkdir()
-    console_script.write_text(f"#!{sys.executable}\n", encoding="utf-8")
+    # Write the script the way installers do: a shebang cannot carry an
+    # interpreter path containing spaces, so they fall back to a sh trampoline.
+    header = (
+        f"#!/bin/sh\n'''exec' {shlex.quote(sys.executable)} \"$0\" \"$@\"\n' '''\n"
+        if " " in sys.executable
+        else f"#!{sys.executable}\n"
+    )
+    console_script.write_text(header, encoding="utf-8")
     monkeypatch.chdir(shadow_root)
     monkeypatch.setenv("PYTHONPATH", str(shadow_root))
 

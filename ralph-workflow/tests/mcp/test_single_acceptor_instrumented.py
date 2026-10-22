@@ -246,8 +246,20 @@ def _drive_failed_kill_handover_and_assert_candidate_serves(
     log_file: Path,
     port: int,
     resume_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Freeze old child, hand over (kill absorbed), assert candidate serves and survivor is tracked."""
+    # Record the reap hand-off itself: the reaper thread runs immediately
+    # (backoff pinned to 0) and its SIGTERM kills a stopped child at once on
+    # macOS, so the live ``_unkillable_reapers`` entry can already be gone.
+    scheduled_reaps: list[object] = []
+    schedule_reap = bridge._schedule_unkillable_reap
+
+    def _record_scheduled_reap(proc: object) -> None:
+        scheduled_reaps.append(proc)
+        schedule_reap(proc)
+
+    monkeypatch.setattr(bridge, "_schedule_unkillable_reap", _record_scheduled_reap)
     _wait_for_mode_event(log_file, "old", "STARTED_ACCEPT")
 
     os.kill(old_proc.pid, signal.SIGSTOP)
@@ -261,8 +273,7 @@ def _drive_failed_kill_handover_and_assert_candidate_serves(
         data = conn.recv(1024)
         assert data in (b"PONG_candidate\n", b"PONG_old\n")
 
-    registered_handles = [entry[1] for entry in bridge._unkillable_reapers]
-    assert id(old_proc) in registered_handles or id(old_inner.process) in registered_handles
+    assert any(proc is old_proc or proc is old_inner.process for proc in scheduled_reaps)
 
 
 def _sigcont_old_and_wait_for_recovery(
@@ -273,6 +284,10 @@ def _sigcont_old_and_wait_for_recovery(
     """SIGCONT the old child and poll until it answers ``PONG_old`` or the timeout elapses."""
     if pause_file.exists():
         pause_file.unlink()
+    if old_proc.poll() is not None:
+        # The background reap already collected it (macOS delivers the
+        # reaper's SIGTERM to a stopped child immediately); nothing to resume.
+        return
     os.kill(old_proc.pid, signal.SIGCONT)
     deadline = time.monotonic() + 2.0
     while time.monotonic() < deadline:
@@ -469,6 +484,7 @@ def test_e43_single_acceptor_failed_kill_reaps_candidate_and_preserves_old_child
             log_file=log_file,
             port=port,
             resume_file=resume_file,
+            monkeypatch=monkeypatch,
         )
         _sigcont_old_and_wait_for_recovery(old_proc, pause_file, port)
     finally:

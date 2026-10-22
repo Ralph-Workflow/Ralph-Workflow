@@ -47,7 +47,7 @@ A foreign process that holds the listening-fd inode (i.e. a holder outside
 the bridge lineage) is impossible because (a) ``SO_REUSEADDR`` is NOT set on
 the parent-owned listening socket and (b) the FD is passed only to bridge
 children via ``pass_fds``. After bridge shutdown the listening inode has
-zero holders anywhere in ``/proc`` AND no descendant of the spawned tree is
+zero holders anywhere on the host AND no descendant of the spawned tree is
 still alive: the ProcessManager orphan sweep (``os.killpg`` over the child's
 own session, reached because the child is spawned with
 ``start_new_session=True``) plus the upstream's parent-death liveness check
@@ -130,6 +130,17 @@ class _Sample(NamedTuple):
     rss: int
 
 
+class _Listener(NamedTuple):
+    """Identity of the parent-owned listening socket.
+
+    Linux finds holders by ``inode`` under ``/proc/<pid>/fd``; other platforms
+    find them by the LISTEN ``address`` in each process's own TCP table.
+    """
+
+    inode: int
+    address: tuple[str, int]
+
+
 class _OverlapPeaks(NamedTuple):
     """Peak whole-tree footprint observed inside the make-before-break window."""
 
@@ -189,13 +200,26 @@ def _proc_open_inodes(pid: int) -> set[int]:
     return inodes
 
 
-def _count_listening_fd_holders(pids: tuple[int, ...] | list[int], listening_inode: int) -> int:
-    """Count how many of ``pids`` have ``listening_inode`` open via ``/proc/<pid>/fd/*``."""
+def _holds_listener(pid: int, listener: _Listener) -> bool:
+    """Return True iff ``pid`` holds the parent-owned listening socket."""
+    if sys.platform.startswith("linux") and Path("/proc").is_dir():
+        return listener.inode in _proc_open_inodes(pid)
+    try:
+        connections = psutil.Process(pid).net_connections(kind="tcp")
+    except (psutil.Error, OSError):
+        return False
+    return any(
+        conn.laddr == listener.address and conn.status == psutil.CONN_LISTEN for conn in connections
+    )
+
+
+def _count_listening_fd_holders(pids: tuple[int, ...] | list[int], listener: _Listener) -> int:
+    """Count how many of ``pids`` hold the parent-owned listening socket."""
     holder_count = 0
     for pid in pids:
         if not _running(pid):
             continue
-        if listening_inode in _proc_open_inodes(pid):
+        if _holds_listener(pid, listener):
             holder_count += 1
     return holder_count
 
@@ -259,20 +283,20 @@ def _bridge_tree(
 def _sample_lineage(
     child_pids: list[int],
     upstream_pidfiles: dict[int, Path],
-    listening_inode: int,
+    listener: _Listener,
 ) -> _Sample:
     """Snapshot one footprint sample over the whole bridge tree."""
     children, tree = _bridge_tree(child_pids, upstream_pidfiles)
     return _Sample(
         children=children,
         tree=tree,
-        fd_holders=_count_listening_fd_holders(tree, listening_inode),
+        fd_holders=_count_listening_fd_holders(tree, listener),
         rss=_aggregate_rss(tree),
     )
 
 
-def _foreign_listening_fd_holders(listening_inode: int, bridge_pids: set[int]) -> set[int]:
-    """Return all live PIDs in ``/proc`` that hold ``listening_inode``.
+def _foreign_listening_fd_holders(listener: _Listener, bridge_pids: set[int]) -> set[int]:
+    """Return all live PIDs on the host that hold the parent-owned listening socket.
 
     Bridges may legitimately have the parent (test) PID and the live child
     PID(s) holding the inherited FD inode. Anything outside that lineage is a
@@ -280,20 +304,13 @@ def _foreign_listening_fd_holders(listening_inode: int, bridge_pids: set[int]) -
     has no business owning the listening socket during or after the bridge's
     make-before-break run.
     """
-    if not sys.platform.startswith("linux") or not Path("/proc").is_dir():
-        # Cross-platform no-op: nothing foreign can be reported positive
-        # without /proc/<pid>/fd access.
-        return set()
     foreign: set[int] = set()
-    for entry in Path("/proc").iterdir():
-        if not entry.name.isdigit():
-            continue
-        pid = int(entry.name)
+    for pid in psutil.pids():
         if pid in bridge_pids:
             continue
         if not _alive(pid):
             continue
-        if listening_inode in _proc_open_inodes(pid):
+        if _holds_listener(pid, listener):
             foreign.add(pid)
     return foreign
 
@@ -503,7 +520,7 @@ def _sample_loop(
     old_pid: int,
     candidate_pid_holder: list[int | None],
     upstream_pidfiles: dict[int, Path],
-    listening_inode: int,
+    listener: _Listener,
     candidate_overlap_observed: threading.Event,
     stop_sampling: threading.Event,
     overlap_samples: list[_Sample],
@@ -518,7 +535,7 @@ def _sample_loop(
         sample = _sample_lineage(
             _sampled_child_pids(old_pid, candidate_pid_holder),
             upstream_pidfiles,
-            listening_inode,
+            listener,
         )
         overlap_samples.append(sample)
         if sample.fd_holders == OVERLAP_MAX_CHILDREN:
@@ -547,14 +564,14 @@ def _drive_make_before_break(bridge: lifecycle.RestartAwareMcpBridge) -> bool:
 def _assert_baseline(
     old_pid: int,
     upstream_pidfiles: dict[int, Path],
-    listening_inode: int,
+    listener: _Listener,
 ) -> tuple[tuple[int, ...], int, int]:
     """Snapshot the single-child-tree baseline metrics and assert the contract.
 
     Returns ``(tree_pids, fd_holders, rss)``.
     """
     children, tree = _bridge_tree([old_pid], upstream_pidfiles)
-    fd_holders = _count_listening_fd_holders(tree, listening_inode)
+    fd_holders = _count_listening_fd_holders(tree, listener)
     rss = _aggregate_rss(tree)
     assert len(children) == 1, f"baseline must observe exactly 1 bridge child, got {len(children)}"
     assert len(tree) == TREE_PROCS_PER_CHILD, (
@@ -636,7 +653,7 @@ def _assert_post_handover(
     bridge: lifecycle.RestartAwareMcpBridge,
     old_pid: int,
     upstream_pidfiles: dict[int, Path],
-    listening_inode: int,
+    listener: _Listener,
 ) -> tuple[int, tuple[int, ...], int]:
     """Snapshot the post-handover single-tree state and assert the contract.
 
@@ -656,7 +673,7 @@ def _assert_post_handover(
         timeout_s=2.0,
     )
     children, tree = _bridge_tree([new_inner_pid], upstream_pidfiles)
-    fd_holders = _count_listening_fd_holders(tree, listening_inode)
+    fd_holders = _count_listening_fd_holders(tree, listener)
     rss = _aggregate_rss(tree)
     assert len(children) == 1, (
         f"post-retirement must observe exactly 1 bridge child, got {len(children)}"
@@ -689,22 +706,22 @@ def _assert_candidate_upstream_published(
     return upstream_pid
 
 
-def _assert_no_foreign_holders(listening_inode: int, bridge_lineage_pids: set[int]) -> None:
-    """Verify no PID outside the bridge lineage holds the listening fd inode."""
-    foreign = _foreign_listening_fd_holders(listening_inode, bridge_lineage_pids)
+def _assert_no_foreign_holders(listener: _Listener, bridge_lineage_pids: set[int]) -> None:
+    """Verify no PID outside the bridge lineage holds the listening socket."""
+    foreign = _foreign_listening_fd_holders(listener, bridge_lineage_pids)
     assert not foreign, (
-        f"foreign processes hold the listening fd inode {listening_inode}: "
+        f"foreign processes hold the listening socket {listener}: "
         f"{sorted(foreign)}; the bridge leaked the parent-owned FD outside its lineage"
     )
 
 
-def _assert_tree_reaped(observed_tree_pids: set[int], listening_inode: int) -> None:
+def _assert_tree_reaped(observed_tree_pids: set[int], listener: _Listener) -> None:
     """After bridge shutdown: zero lineage descendants alive, zero fd holders."""
     survivors = sorted(pid for pid in observed_tree_pids if _running(pid))
     assert not survivors, (
         f"descendants of the spawned bridge tree survived bridge shutdown: {survivors}"
     )
-    post_shutdown_holders = _foreign_listening_fd_holders(listening_inode, set())
+    post_shutdown_holders = _foreign_listening_fd_holders(listener, set())
     assert not post_shutdown_holders, (
         f"listening fd holders survived bridge shutdown: {sorted(post_shutdown_holders)}"
     )
@@ -728,7 +745,7 @@ def test_e72_real_child_make_before_break_footprint(tmp_path: Path) -> None:
     * No foreign PID (outside ``test_pid`` U ``bridge_lineage_pids``) holds the
       listening socket inode at any point.
     * After ``bridge.shutdown()``: every descendant of the spawned tree is
-      gone and zero listening-fd holders remain anywhere in ``/proc``. The
+      gone and zero listening-fd holders remain anywhere on the host. The
       ``finally`` block escalates to SIGKILL for the failure path so a failed
       assertion can never leak the tree into the rest of the suite.
     * Total test wall-clock stays well inside the documented 60-second
@@ -742,7 +759,8 @@ def test_e72_real_child_make_before_break_footprint(tmp_path: Path) -> None:
     sock.bind(("127.0.0.1", 0))
     sock.listen(128)
     sock_fd = sock.fileno()
-    listening_inode = os.fstat(sock_fd).st_ino
+    host, port = sock.getsockname()
+    listener = _Listener(inode=os.fstat(sock_fd).st_ino, address=(host, port))
     run_id = "e72-footprint-run"
 
     spawned: list[ManagedProcess] = []
@@ -779,7 +797,7 @@ def test_e72_real_child_make_before_break_footprint(tmp_path: Path) -> None:
 
         # 6. Phase 1: BASELINE measurement.
         baseline_tree, _baseline_fd_holders, baseline_rss = _assert_baseline(
-            old_pid, upstream_pidfiles, listening_inode
+            old_pid, upstream_pidfiles, listener
         )
         observed_tree_pids |= set(baseline_tree)
 
@@ -792,7 +810,7 @@ def test_e72_real_child_make_before_break_footprint(tmp_path: Path) -> None:
                 old_pid,
                 candidate_pid_holder,
                 upstream_pidfiles,
-                listening_inode,
+                listener,
                 candidate_overlap_observed,
                 stop_sampling,
                 overlap_samples,
@@ -814,7 +832,7 @@ def test_e72_real_child_make_before_break_footprint(tmp_path: Path) -> None:
 
         # 10. Phase 3: POST-HANDOVER measurement.
         new_inner_pid, promoted_tree, post_rss = _assert_post_handover(
-            bridge, old_pid, upstream_pidfiles, listening_inode
+            bridge, old_pid, upstream_pidfiles, listener
         )
         observed_tree_pids |= set(promoted_tree)
         candidate_upstream_pid = _assert_candidate_upstream_published(
@@ -830,7 +848,7 @@ def test_e72_real_child_make_before_break_footprint(tmp_path: Path) -> None:
         for cand_proc in candidate_procs:
             assert isinstance(cand_proc.pid, int) and cand_proc.pid > 0
             bridge_lineage_pids.add(cand_proc.pid)
-        _assert_no_foreign_holders(listening_inode, bridge_lineage_pids)
+        _assert_no_foreign_holders(listener, bridge_lineage_pids)
 
         # 12. Shutdown + descendant-lifecycle accounting.
         bridge.shutdown()
@@ -839,7 +857,7 @@ def test_e72_real_child_make_before_break_footprint(tmp_path: Path) -> None:
             lambda: not any(_running(pid) for pid in observed_tree_pids),
             timeout_s=2.0,
         )
-        _assert_tree_reaped(observed_tree_pids, listening_inode)
+        _assert_tree_reaped(observed_tree_pids, listener)
 
         # 13. Report the measured footprint (visible under ``pytest -s``).
         print(

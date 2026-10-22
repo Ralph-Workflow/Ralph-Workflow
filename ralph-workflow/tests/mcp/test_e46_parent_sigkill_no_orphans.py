@@ -383,6 +383,13 @@ def test_e46_parent_sigkill_reaps_every_child_of_a_make_before_break_overlap(
 
 
 @pytest.mark.xdist_group("e46_sigkill")
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason=(
+        "the grandchild's only parent-death bound is PR_SET_PDEATHSIG, which is "
+        "Linux-only; no cross-platform parent-death equivalent is available"
+    ),
+)
 def test_e46_upstream_grandchild_dies_with_its_candidate(e46_overlap: dict[str, int]) -> None:
     """E4.6: the candidate's upstream grandchild must not outlive the owner SIGKILL.
 

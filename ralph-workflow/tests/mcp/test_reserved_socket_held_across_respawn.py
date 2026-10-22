@@ -13,6 +13,7 @@ from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server._reserved_socket import _reserve_listening_socket
 from ralph.workspace.fs import FsWorkspace
+from tests.mcp._listen_state import socket_is_listening
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -46,8 +47,7 @@ def test_reserved_listening_socket_is_listening() -> None:
     """The reserved socket is in LISTEN state (canonical kernel proof)."""
     _host, _port, sock = _reserve_listening_socket()
     try:
-        accept_conn = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN)
-        assert accept_conn != 0
+        assert socket_is_listening(sock)
     finally:
         sock.close()
 
@@ -110,8 +110,7 @@ def test_parent_holds_listening_socket_from_start_until_shutdown(tmp_path: pathl
         assert listening_socket.fileno() >= 0
 
         # In LISTEN state
-        accept_conn = listening_socket.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN)
-        assert accept_conn != 0
+        assert socket_is_listening(listening_socket)
 
         # Foreign bind raises EADDRINUSE
         sock_addr = listening_socket.getsockname()

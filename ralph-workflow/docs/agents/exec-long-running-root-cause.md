@@ -304,12 +304,12 @@ Even after the operator raises `timeout_ms`, the wall clock is capped.
   production entry path.
 - On the **production entry path**, the wall-clock cap is the registry's
   job ceiling, not `EXEC_MAX_TIMEOUT_MS`:
-  `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:219-223` resolves the
+  `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:254-258` resolves the
   ceiling once per job (`ceiling_s = min(max_runtime_ms / 1000.0,
   EXEC_JOB_CEILING_MAX_S)` when the caller set `max_runtime_ms`, else
   `EXEC_JOB_CEILING_S` (`ralph/timeout_defaults.py:563`, 3600 s)) and stores
   it as `job.ceiling_ms`; `step_job` kills with `cause="hard_cap"` at
-  `_exec_jobs.py:504-505` against that single value. `EXEC_JOB_CEILING_MAX_S = 14400.0`
+  `_exec_jobs.py:539-540` against that single value. `EXEC_JOB_CEILING_MAX_S = 14400.0`
   (`ralph/timeout_defaults.py:569`, 4 h) is the outer bound.
 - **Historical (pre-§3b) wording**, quoted here because it is the text that
   used to ship: `ralph-workflow/ralph/mcp/tools/_exec_execution_error.py`
@@ -824,8 +824,8 @@ stale, and the fastest drift check is a re-read of:
   seam) and `:790-820` (the production registry entry path) — reading
   these two ranges is how a reader tells whether the output-only window
   is still reachable for normal calls.
-- `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:219-223` (the registry
-  `hard_cap` ceiling resolution), `:504-505` (the kill check against
+- `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:254-258` (the registry
+  `hard_cap` ceiling resolution), `:539-540` (the kill check against
   `job.ceiling_ms`) and `:57-59` (the six kill causes)
 - `ralph-workflow/ralph/mcp/transport/opencode.py:131,148` (Cause 3
   per-server + experimental writes; the comment block at lines 41-45

@@ -59,7 +59,10 @@ def test_request_interactive_exit_does_not_lose_returncode(tmp_path: Path) -> No
     pm = ProcessManager(
         ProcessManagerPolicy(
             default_grace_period_s=0.02,
-            kill_followup_timeout_s=0.02,
+            # macOS holds an exiting PTY session leader for ~0.6s once its
+            # terminal has echoed the ``/exit`` input, so a 20 ms follow-up
+            # declared the dying child unkillable before the kernel reaped it.
+            kill_followup_timeout_s=1.0,
             log_events=False,
             enable_zombie_reaper=False,
         )

@@ -22,6 +22,7 @@ import pytest
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
 from ralph.workspace.fs import FsWorkspace
+from tests.mcp._listen_state import socket_is_listening
 
 if TYPE_CHECKING:
     from ralph.mcp.server._lifecycle_deps import LifecycleDeps
@@ -229,9 +230,8 @@ def test_endpoint_never_refuses_during_real_respawn(tmp_path: Path) -> None:
         listening_socket = bridge._listening_socket
         assert listening_socket is not None, "bridge must hold _listening_socket"
         assert listening_socket.fileno() >= 0, "socket fd must be valid"
-        backlog_state = listening_socket.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN)
-        assert backlog_state != 0, (
-            "inherited socket must stay in LISTEN state (SO_ACCEPTCONN != 0) "
+        assert socket_is_listening(listening_socket), (
+            "inherited socket must stay in LISTEN state "
             "while the child is dead; ECONNREFUSED is structurally impossible"
         )
 
@@ -310,8 +310,9 @@ def test_inherited_socket_stays_listening_across_kill(tmp_path: Path) -> None:
         # socket is still live and in LISTEN state
         listening_socket = bridge._listening_socket
         assert listening_socket is not None
-        backlog_state = listening_socket.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN)
-        assert backlog_state != 0, "SO_ACCEPTCONN must be non-zero while bridge owns the socket"
+        assert socket_is_listening(listening_socket), (
+            "socket must stay in LISTEN state while bridge owns the socket"
+        )
 
         # foreign bind still fails
         sock_addr = listening_socket.getsockname()

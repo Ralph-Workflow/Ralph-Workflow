@@ -15,6 +15,7 @@ import io
 import logging
 import secrets
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -115,6 +116,40 @@ def _ensure_runtime_hooks() -> tuple[_HookRegistrar, _HookRegistrar]:
     return cached_owner_loss, cached_shutdown
 
 
+class _PsutilLivenessProc:
+    """Typed view of a ``psutil.Process`` satisfying ``_LivenessProc`` on every platform.
+
+    psutil provides no ``io_counters`` on macOS; there the call raises
+    ``AttributeError``, which the sampler already treats as missing I/O
+    evidence.
+    """
+
+    def __init__(self, proc: psutil.Process) -> None:
+        self._proc = proc
+
+    @property
+    def pid(self) -> int:
+        return self._proc.pid
+
+    def children(self, recursive: bool = False) -> Sequence[_LivenessProc]:
+        return [_PsutilLivenessProc(c) for c in self._proc.children(recursive=recursive)]
+
+    def cpu_times(self) -> object:
+        return self._proc.cpu_times()
+
+    def io_counters(self) -> object:
+        if sys.platform == "darwin":
+            raise AttributeError("psutil does not provide io_counters on macOS")
+        else:
+            return self._proc.io_counters()
+
+    def num_ctx_switches(self) -> object:
+        return self._proc.num_ctx_switches()
+
+    def create_time(self) -> float:
+        return self._proc.create_time()
+
+
 class _DefaultPsutilModule:
     """Default psutil module wrapper satisfying _PsutilModuleLike."""
 
@@ -122,7 +157,7 @@ class _DefaultPsutilModule:
         self.Process: Callable[[int], _LivenessProc] = self._get_process
 
     def _get_process(self, pid: int) -> _LivenessProc:
-        return psutil.Process(pid)
+        return _PsutilLivenessProc(psutil.Process(pid))
 
 
 _DEFAULT_PSUTIL_MODULE = _DefaultPsutilModule()

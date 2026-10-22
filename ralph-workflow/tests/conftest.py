@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import signal
+import sys
+import tempfile
 import threading
 import time
 from collections.abc import Generator
@@ -189,6 +192,43 @@ def pytest_configure(config: pytest.Config) -> None:
     skipping only those end-of-session gc passes.
     """
     config.stash[gc_collect_iterations_key] = 0
+    _bypass_macos_git_shim()
+
+
+_MACOS_GIT_SHIM = "/usr/bin/git"
+_XCODE_SELECT_LINK = Path("/var/db/xcode_select_link")
+
+
+def _bypass_macos_git_shim() -> None:
+    """Put the real git binary ahead of macOS's ``/usr/bin/git`` xcrun shim.
+
+    The shim re-resolves the active developer directory on every spawn. That
+    nearly doubled the real-git tests' wall clock (the four heaviest real-git
+    files measured 26.9s through the shim versus 14.2s direct). Exposing the
+    exact binary the shim would exec keeps git's behaviour identical. Child
+    processes inherit the adjusted ``PATH``; xdist workers and nested pytest
+    runs find the bypass already in place and leave it alone.
+    """
+    if sys.platform != "darwin" or shutil.which("git") != _MACOS_GIT_SHIM:
+        return
+    developer_dir = os.environ.get("DEVELOPER_DIR")
+    if not developer_dir and _XCODE_SELECT_LINK.is_symlink():
+        developer_dir = os.path.realpath(_XCODE_SELECT_LINK)
+    if not developer_dir:
+        return
+    real_git = Path(developer_dir) / "usr" / "bin" / "git"
+    if not real_git.is_file():
+        return
+    bypass_dir = Path(tempfile.gettempdir()) / f"ralph-pytest-git-{os.getuid()}"
+    bypass_dir.mkdir(mode=0o700, exist_ok=True)
+    link = bypass_dir / "git"
+    if not (link.is_symlink() and link.resolve() == real_git.resolve()):
+        # Concurrent shards race here; an atomic rename keeps ``link`` valid.
+        staging = bypass_dir / f"git.{os.getpid()}"
+        staging.unlink(missing_ok=True)
+        staging.symlink_to(real_git)
+        staging.replace(link)
+    os.environ["PATH"] = f"{bypass_dir}{os.pathsep}{os.environ.get('PATH', '')}"
 
 
 @pytest.hookimpl(tryfirst=True)

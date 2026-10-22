@@ -210,6 +210,29 @@ def test_install_conflict_regression_resolves_env_split_string_interpreter(
     )
 
 
+def test_install_conflict_regression_resolves_sh_exec_trampoline_interpreter(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    script = tmp_path / "ralph"
+    script.write_text(
+        "#!/bin/sh\n'''exec' '/Volumes/My Disk/venv/bin/python3' \"$0\" \"$@\"\n' '''\n",
+        encoding="utf-8",
+    )
+
+    def fake_run(executable: str, arguments: tuple[str, ...], *, options: object) -> object:
+        assert executable == "/Volumes/My Disk/venv/bin/python3"
+        assert arguments == ("-I", "-c", conflicts._PACKAGE_FILE_SCRIPT)
+        assert options is not None
+        return SimpleNamespace(succeeded=True, stdout="/venv/site-packages/ralph/__init__.py\n")
+
+    monkeypatch.setattr(conflicts, "run_process", fake_run)
+
+    assert conflicts.resolve_package_file(str(script)) == Path(
+        "/venv/site-packages/ralph/__init__.py"
+    )
+
+
 def test_install_conflict_missing_executable_returns_none() -> None:
     assert (
         detect_existing_ralph(
