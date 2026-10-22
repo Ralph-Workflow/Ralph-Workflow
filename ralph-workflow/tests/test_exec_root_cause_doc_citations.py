@@ -39,8 +39,8 @@ defensible on file:line and URL evidence:
    extracts tokens at ``exec_sse_streaming.py:62-89`` and emits
    ``notifications/progress`` at ``exec_sse_streaming.py:107-126``)
    and "the inactivity window is the kill rule for short in-request
-   calls" (the production path at ``exec.py:790-819`` starts a
-   registry job unconditionally; ``exec.py:775-788`` is an injected
+   calls" (the production path at ``exec.py:792-821`` starts a
+   registry job unconditionally; ``exec.py:777-790`` is an injected
    runner seam). The doc now labels that evidence historical; these
    assertions keep it labelled.
 7. Every backticked ``<file>.py:<line>`` citation in the doc resolves
@@ -204,10 +204,10 @@ REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
     ("ralph/process/manager/_managed_process.py", 301, "last_output_at_ref[0] = _time.monotonic()"),
     ("ralph/process/manager/_managed_process.py", 378, 'timeout_cause = "inactivity"'),
     # Cause 1 — the production entry path vs the injected-runner seam.
-    ("ralph/mcp/tools/exec.py", 807, "job_id = effective_registry.start("),
-    ("ralph/mcp/tools/exec.py", 817, "wait_ms=EXEC_SOFT_REPLY_BUDGET_MS"),
+    ("ralph/mcp/tools/exec.py", 809, "job_id = effective_registry.start("),
+    ("ralph/mcp/tools/exec.py", 819, "wait_ms=EXEC_SOFT_REPLY_BUDGET_MS"),
     # Cause 2 — the seam's hard_cap and the registry's job ceiling clamp.
-    ("ralph/mcp/tools/exec.py", 634, "hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000"),
+    ("ralph/mcp/tools/exec.py", 636, "hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000"),
     ("ralph/mcp/tools/_exec_jobs.py", 220, "EXEC_JOB_CEILING_MAX_S"),
     ("ralph/mcp/tools/_exec_jobs.py", 504, "job.ceiling_ms / 1000.0"),
     # Cause 3 — the Pi bridge startup deadline.
@@ -482,12 +482,12 @@ class TestRootCauseDocCitations:
 
     def test_injected_runner_seam_is_not_the_production_path(self) -> None:
         text = _read_doc()
-        for required in ("exec.py:790-819", "exec.py:775-788", "injected runner"):
+        for required in ("exec.py:792-821", "exec.py:777-790", "injected runner"):
             assert required in text, (
                 f"root-cause doc must contain {required!r}. The doc previously "
                 "claimed short/normal calls keep output-only inactivity kills. "
-                "That was false: exec.py:790-819 always starts a registry job "
-                "and exec.py:775-788 is only an injected runner seam."
+                "That was false: exec.py:792-821 always starts a registry job "
+                "and exec.py:777-790 is only an injected runner seam."
             )
 
     def test_exec_wait_and_exec_cancel_named_as_present(self) -> None:

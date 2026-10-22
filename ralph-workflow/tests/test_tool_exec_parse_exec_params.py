@@ -238,3 +238,54 @@ class TestParseExecParams:
         result = parse_exec_params({"command": "echo hi"})
         assert result.command == "echo"
         assert result.args == ["hi"]
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            '["cat", "tsconfig.json"]',
+            "['cat', 'tsconfig.json']",
+            '  ["cat","tsconfig.json"]  ',
+        ],
+    )
+    def test_stringified_argv_list_is_read_as_argv(self, command: str) -> None:
+        for key in ("command", "argv"):
+            result = parse_exec_params({key: command})
+            assert result.command == "cat"
+            assert result.args == ["tsconfig.json"]
+            assert result.shell_command is None
+
+    def test_stringified_argv_list_keeps_quoted_operators_literal(self) -> None:
+        result = parse_exec_params({"command": '["grep", "-E", "a|b", "file.txt"]'})
+        assert result.command == "grep"
+        assert result.args == ["-E", "a|b", "file.txt"]
+        assert result.shell_command is None
+
+    def test_stringified_argv_list_merges_explicit_args(self) -> None:
+        result = parse_exec_params({"command": '["npm", "run"]', "args": ["lint"]})
+        assert result.command == "npm"
+        assert result.args == ["run", "lint"]
+
+    @pytest.mark.parametrize(
+        ("command", "expected_command", "expected_args"),
+        [
+            ('[ "$x" ]', "[", ["$x", "]"]),
+            ("[ -f package.json ]", "[", ["-f", "package.json", "]"]),
+            ("[[ -n $x ]]", "[[", ["-n", "$x", "]]"]),
+            ("[1, 2]", "[1,", ["2]"]),
+            ('["cat", 3]', "[cat,", ["3]"]),
+            ("[]", "[]", []),
+            ('["unterminated"', "[unterminated", []),
+        ],
+    )
+    def test_bracketed_text_that_is_not_a_string_list_is_left_alone(
+        self, command: str, expected_command: str, expected_args: list[str]
+    ) -> None:
+        result = parse_exec_params({"command": command})
+        assert result.command == expected_command
+        assert result.args == expected_args
+
+    def test_stringified_argv_cannot_smuggle_a_nul_past_the_nul_guard(self) -> None:
+        """A JSON ``\\u0000`` escape decodes after the raw-string NUL check ran."""
+        for command in ('["su\\u0000do", "-i"]', "['su\\x00do', '-i']"):
+            with pytest.raises(InvalidParamsError, match="embedded NUL"):
+                parse_exec_params({"command": command})

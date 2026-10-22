@@ -87,6 +87,7 @@ from ralph.mcp.tools._exec_safety import (
     check_network_exfiltration,
     check_privilege_escalation,
 )
+from ralph.mcp.tools._exec_stringified_argv import decode_stringified_argv
 from ralph.mcp.tools._exec_vcs_scanner import (
     _GIT_BLOCKED_SUBCOMMANDS,
     _VCS_COMMANDS,
@@ -188,6 +189,7 @@ def parse_exec_max_runtime(params: Mapping[str, object]) -> int | None:
 
 def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
     """Parse and validate exec tool parameters."""
+    params = decode_stringified_argv(params)
     _reject_nul_params(params)
     timeout_ms = parse_exec_timeout(params)
     max_runtime_ms = parse_exec_max_runtime(params)

@@ -132,7 +132,10 @@ def _all_test_files() -> Iterator[Path]:
     """
     root = _repo_root() / "tests"
     for path in sorted(root.rglob("*.py")):
-        if any(part.startswith(".") for part in path.parts):
+        # Relative parts only: the checkout itself may live under a dot
+        # directory (a ``.claude/worktrees/...`` worktree), which must not
+        # hide every test file.
+        if any(part.startswith(".") for part in path.relative_to(root).parts):
             continue
         if "__pycache__" in path.parts:
             continue

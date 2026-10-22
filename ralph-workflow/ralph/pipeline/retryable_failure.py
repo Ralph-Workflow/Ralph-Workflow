@@ -42,6 +42,11 @@ _TRANSIENT_CONNECTIVITY_MARKERS = (
 
 _TURN_LIMIT_MARKERS = ("conversation exceeded 50 turns",)
 
+# Codex's client-side deadline on a Ralph MCP ``tools/call``. It contains
+# ``timed out`` but says nothing about the network, so it is reported on its
+# own ahead of the connectivity markers.
+_MCP_TOOL_CALL_TIMEOUT_MARKERS = ("timed out awaiting tools/call",)
+
 
 def retryable_agent_failure_reason(
     exc: Exception,
@@ -73,6 +78,10 @@ def retryable_agent_failure_reason(
         (
             contains_casefolded_marker(detail_parts, _TURN_LIMIT_MARKERS),
             "the agent conversation turn limit",
+        ),
+        (
+            contains_casefolded_marker(detail_parts, _MCP_TOOL_CALL_TIMEOUT_MARKERS),
+            "a Ralph MCP tool call that timed out",
         ),
         (
             _has_transient_connectivity_signal(primary_text),

@@ -402,7 +402,7 @@ def test_worker_thread_sigkill_kills_exec_job_tree_and_its_descendant(
     * Worker thread shape. Production HTTP dispatch runs the exec tool
       callback inside a ``ThreadPoolExecutor`` worker thread
       (``ralph/mcp/server/_saturated_dispatch.py:155-173`` ->
-      ``ralph/mcp/tools/exec.py:807-814`` ->
+      ``ralph/mcp/tools/exec.py:809-816`` ->
       ``ralph/mcp/tools/_exec_jobs.py:665-675`` ->
       ``ProcessManager.spawn``). Python's stdlib refuses ``preexec_fn``
       from a non-main thread, so the legacy main-thread-only

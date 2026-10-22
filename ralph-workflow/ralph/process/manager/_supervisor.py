@@ -11,7 +11,7 @@ multi-threaded fork -- any state the other threads hold (e.g. the GIL,
 ``_thread.lock`` instances held under the import lock) becomes a corpse that
 re-locks the moment the child tries to touch it. Production exec jobs go
 through ``ThreadPoolExecutor`` (see ``ralph/mcp/server/_saturated_dispatch.py
-:155-173`` -> ``ralph/mcp/tools/exec.py:807-814`` ->
+:155-173`` -> ``ralph/mcp/tools/exec.py:809-816`` ->
 ``ralph/mcp/tools/_exec_jobs.py:665-675``); that path runs OFF the main thread,
 so ``preexec_fn`` is ``None`` and the exec job is unprotected against holder
 SIGKILL. Even when the existing main-thread path fires, PR_SET_PDEATHSIG does

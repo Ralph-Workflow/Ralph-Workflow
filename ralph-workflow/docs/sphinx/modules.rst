@@ -1562,6 +1562,13 @@ ralph.pipeline.retryable_failure
    :members:
    :show-inheritance:
 
+ralph.pipeline.watchdog_fire_record
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.watchdog_fire_record
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.state
 ~~~~~~~~~~~~~~~~~~~~
 

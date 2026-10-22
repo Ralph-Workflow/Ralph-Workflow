@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 import pytest
@@ -111,18 +112,24 @@ def test_conflict_resolution_config_has_no_elapsed_progress_kill_except_operator
     assert "inactivity_timeout_seconds" in names
 
 
-def test_one_agent_conflict_chain_is_warned_at_policy_load() -> None:
-    """R3/B1: a one-agent rebase_conflict_resolution chain is warned at policy load."""
-    from ralph.policy.loader import load_policy
+def test_one_agent_conflict_chain_is_warned_at_policy_load(tmp_path: Path) -> None:
+    """R3/B1: a one-agent rebase_conflict_resolution chain is warned at policy load.
 
+    The warning is emitted once per process per chain name, so the chain gets a
+    unique name instead of depending on whether another test loaded it first.
+    """
+    from ralph.policy.loader import load_policy
+    from tests._support.policy_dirs import policy_dir_with_resolver_chain
+
+    chain = f"solo_{uuid.uuid4().hex}"
     records: list[str] = []
     sink_id = logger.add(records.append, level="WARNING", format="{message}")
     try:
-        bundle = load_policy(Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults")
+        bundle = load_policy(policy_dir_with_resolver_chain(tmp_path, chain))
     finally:
         logger.remove(sink_id)
 
     drain = bundle.agents.agent_drains["rebase_conflict_resolution"]
-    agents = bundle.agents.agent_chains[drain.chain].agents
-    assert len(agents) == 1
-    assert any("one-agent chain" in record for record in records)
+    assert drain.chain == chain
+    assert len(bundle.agents.agent_chains[chain].agents) == 1
+    assert any("one-agent chain" in record and chain in record for record in records)

@@ -83,6 +83,7 @@ from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.pipeline.session_bridge import build_session_bridge, scoped_reset_tool_registry_callback
 from ralph.pipeline.waiting_dispatch import dispatch_waiting_event
+from ralph.pipeline.watchdog_fire_record import record_watchdog_fire, watchdog_fire_detail
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_NOT_FOUND_SUBSTRINGS
 from ralph.recovery.failure_classifier import is_unsubmitted_artifact_failure
@@ -1313,6 +1314,13 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
         # repeated incomplete exit is terminal. The loop-level bound in
         # ``run_with_direct_mcp_recovery`` is enforcement point 2.
         return None
+    record_watchdog_fire(
+        recovery_input.workspace_root,
+        recovery_input.exc,
+        agent=recovery_input.effect.agent_name,
+        phase=str(recovery_input.effect.phase),
+        recorded_at=time.time(),
+    )
     untruncated = _is_stale_session_failure(recovery_input.exc)
     context_lines = _recovery_context_lines(
         recovery_input.exc,
@@ -1358,6 +1366,7 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
         completion_recovery=completion_recovery,
         drain=recovery_input.effect.drain,
         worker_namespace=recovery_input.worker_namespace,
+        detail=watchdog_fire_detail(recovery_input.exc),
     )
     return AgentRecoveryPlan(
         prompt_file=prompt_file,
@@ -1611,6 +1620,7 @@ def _retry_prompt_file_for_context(
     completion_recovery: bool = False,
     drain: str | None = None,
     worker_namespace: Path | None = None,
+    detail: str | None = None,
 ) -> str:
     return _write_agent_retry_prompt(
         workspace_root=workspace_root,
@@ -1626,6 +1636,7 @@ def _retry_prompt_file_for_context(
         completion_recovery=completion_recovery,
         drain=drain,
         worker_namespace=worker_namespace,
+        detail=detail,
     )
 
 
@@ -1738,6 +1749,7 @@ def _write_agent_retry_prompt(
     completion_recovery: bool = False,
     drain: str | None = None,
     worker_namespace: Path | None = None,
+    detail: str | None = None,
 ) -> str:
     prompt_path = Path(prompt_file)
     prompt_dir = workspace_root / ".agent" / "tmp"
@@ -1755,6 +1767,7 @@ def _write_agent_retry_prompt(
     validation_retry = reason == "ArtifactValidation" or bool(validation_hint)
     error_block = build_retry_error_block(
         failure_summary=f"the previous attempt failed because of {reason}",
+        detail=detail,
         prompt_path=str(prompt_path),
         context_path=str(context_path),
         validation=validation_retry,

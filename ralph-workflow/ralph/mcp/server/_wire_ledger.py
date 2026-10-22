@@ -32,6 +32,7 @@ import datetime
 import fcntl
 import hashlib
 import hmac
+import itertools
 import json
 import os
 import threading
@@ -39,7 +40,9 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
+
+from loguru import logger
 
 from ralph.mcp.server._wire_ledger_capture import WireLedgerCapture
 from ralph.mcp.server._wire_ledger_index import (
@@ -84,6 +87,20 @@ _GENESIS_HMAC = GENESIS_HMAC
 #: Bytes read per step when scanning the ledger backwards for its chain
 #: head. One row is a few hundred bytes, so one chunk almost always holds it.
 TAIL_CHUNK_BYTES = 64 * 1024
+
+#: How long an append waits for the sidecar lock before dropping its frame.
+#: Bounded (MCP timeout contract): a writer descheduled while holding the lock
+#: on a loaded host must not stall dispatch indefinitely.
+DEFAULT_LOCK_TIMEOUT_S: Final[float] = 1.0
+
+_LOCK_POLL_INTERVAL_S: Final[float] = 0.01
+
+#: Log the first dropped witness, then one line per this many, so a sustained
+#: contention storm costs a handful of log lines instead of one per frame.
+_DROP_LOG_EVERY: Final[int] = 100
+
+#: Frames dropped to lock contention in this process; ``next()`` is atomic.
+_dropped_frames = itertools.count(1)
 
 #: Verified views kept per process, keyed by (ledger path, secret
 #: fingerprint). A run touches one or two ledgers; the cap only bounds
@@ -335,6 +352,18 @@ def _read_last_hmac(ledger_path: Path) -> str:
     return _GENESIS_HMAC
 
 
+def _note_dropped_frame(method: str) -> None:
+    """Record one frame dropped to lock contention, logging at a bounded rate."""
+    dropped = next(_dropped_frames)
+    if dropped == 1 or dropped % _DROP_LOG_EVERY == 0:
+        logger.warning(
+            "wire ledger: lock held past the deadline, witness dropped for {} "
+            "({} dropped in this process); the chain stays intact",
+            method,
+            dropped,
+        )
+
+
 def append_wire_record(
     workspace_root: Path,
     *,
@@ -349,6 +378,7 @@ def append_wire_record(
     model_id: str | None = None,
     agent_id: str | None = None,
     capability_profile_digest: str | None = None,
+    lock_timeout_s: float | None = None,
 ) -> WireLedgerRecord | None:
     """Append one HMAC-chained record for a dispatched JSON-RPC frame.
 
@@ -392,18 +422,19 @@ def append_wire_record(
         raise WireLedgerIOError(f"wire_ledger_io_error: failed setup for wire ledger: {e}") from e
 
     try:
-        deadline = time.monotonic() + 0.2
+        deadline = time.monotonic() + (
+            DEFAULT_LOCK_TIMEOUT_S if lock_timeout_s is None else lock_timeout_s
+        )
         while True:
             try:
                 fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
-            except BlockingIOError as e:
+            except BlockingIOError:
                 if time.monotonic() >= deadline:
-                    raise WireLedgerIOError(
-                        f"wire_ledger_io_error: lock contention or lock failure: {e}"
-                    ) from e
+                    _note_dropped_frame(method)
+                    return None
                 # filesystem-poll-ok: bounded retry loop for wire ledger flock acquisition
-                time.sleep(0.01)
+                time.sleep(_LOCK_POLL_INTERVAL_S)
             except OSError as e:
                 raise WireLedgerIOError(
                     f"wire_ledger_io_error: lock contention or lock failure: {e}"

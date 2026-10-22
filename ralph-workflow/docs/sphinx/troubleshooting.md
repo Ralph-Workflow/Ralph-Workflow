@@ -139,7 +139,7 @@ ralph --check-mcp
 
 **Cause:** Ralph Workflow decides idleness from real provider activity, not just from what happened to appear on screen. Streaming deltas, lifecycle events, tool calls, and tool results count as activity; blank heartbeat lines do not. If Ralph Workflow has to kill the subprocess for inactivity, any captured session ID is treated as unsafe and the retry starts fresh unless the transport explicitly supports safe resume after forced termination.
 
-**Fix:** Check the watchdog log line for `reason`, `last_activity_kind`, and `resume_safe`. If the next attempt reports `No conversation found with session ID`, recovery treats it as a stale session and retries fresh within the remaining budget.
+**Fix:** Read `<workspace>/.agent/watchdog-fire-events.jsonl`: every watchdog kill appends one JSON line with the `rule` that fired (for example `no_output_deadline`, `repeated_error_loop`, `repeated_identical_tool_call`, `children_persist_too_long`), the `timeout_seconds`, the kill `message`, and a `snapshot` of the watchdog state (`live_subagent_count`, `mcp_tool_call_count`, `last_activity_kind`, `idle_elapsed_seconds`). The retry prompt carries the same rule and snapshot facts as `watchdog rule <rule>: ...`. A loop-breaker rule means the agent was stopped for repeating itself, not for silence. The watchdog log line still shows `reason`, `last_activity_kind`, and `resume_safe`. If the next attempt reports `No conversation found with session ID`, recovery treats it as a stale session and retries fresh within the remaining budget.
 
 ## Conflict resolution ended while rebasing or merging
 

@@ -6,7 +6,7 @@ import base64 as _base64
 import hashlib
 import json
 import time
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from loguru import logger
 
@@ -171,6 +171,12 @@ def decode_json_payload_from_content(content_blocks: object) -> dict[str, object
     return cast("dict[str, object]", decoded)
 
 
+#: A ``tools/call`` whose shared pre-dispatch phase (activity relay + wire
+#: ledger) takes this long is logged; every tool waits on that phase, so a
+#: stall there times out cheap read-only tools on the client.
+_SLOW_PRE_DISPATCH_S: Final[float] = 5.0
+
+
 class McpServer:
     """Lightweight MCP server that dispatches JSON-RPC requests to Ralph tools.
 
@@ -195,7 +201,9 @@ class McpServer:
         expose_mcp_aliases: bool = True,
         metrics: McpMetrics | None = None,
         mcp_activity_sink: Callable[[str], None] | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        self._clock = clock
         self._session = session
         self._workspace = workspace
         self._registry = registry
@@ -327,7 +335,15 @@ class McpServer:
                 run_id=self._session.run_id,
                 secret=self._session.broker_secret,
             )
-        except (AttributeError, OSError, TypeError, WireLedgerIOError):
+        except (OSError, WireLedgerIOError) as exc:
+            # One line, no traceback: the ledger is diagnostic evidence and an
+            # I/O fault repeats for every frame until it clears.
+            logger.debug(
+                "MCP server: wire-ledger append failed (suppressed); {} dispatch proceeds: {}",
+                request.method,
+                exc,
+            )
+        except (AttributeError, TypeError):
             logger.opt(exception=True).debug(
                 "MCP server: wire-ledger append failed (suppressed); {} dispatch proceeds",
                 request.method,
@@ -752,6 +768,7 @@ class McpServer:
         if resolved_name is not None:
             tool_name = resolved_name
 
+        pre_dispatch_started = self._clock()
         # Notify the activity sink BEFORE dispatch so the channel is
         # recorded on the same logical call (success or error) — the
         # watchdog treats both as evidence of demonstrable work. The
@@ -768,6 +785,14 @@ class McpServer:
         # ledger BEFORE dispatch, so the record exists even if the tool
         # handler raises.
         ledger_err = self._record_wire_ledger_before_dispatch(tool_name, dict(arguments_value))
+        pre_dispatch_s = self._clock() - pre_dispatch_started
+        if pre_dispatch_s >= _SLOW_PRE_DISPATCH_S:
+            logger.warning(
+                "MCP server: tools/call {} spent {:.1f}s in pre-dispatch (activity relay + "
+                "wire ledger) before its handler ran",
+                tool_name,
+                pre_dispatch_s,
+            )
         if ledger_err is not None:
             return (
                 JsonRpcResponse(jsonrpc="2.0", error=ledger_err, msg_id=request.msg_id),

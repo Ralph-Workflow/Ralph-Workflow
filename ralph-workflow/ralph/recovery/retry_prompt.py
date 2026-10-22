@@ -40,7 +40,11 @@ def build_retry_error_block(
             (
                 "Fix the underlying issue before submitting again. Do not resubmit unchanged work."
                 if validation
-                else "The exact cause may be unknown."
+                else (
+                    "The detail above names the cause."
+                    if detail
+                    else "The exact cause may be unknown."
+                )
             ),
             *(
                 []

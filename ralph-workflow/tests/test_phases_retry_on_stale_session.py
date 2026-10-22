@@ -294,7 +294,8 @@ def test_runner_inactivity_timeout_with_captured_session_retries_same_session(
     retry_content = Path(second_prompt).read_text(encoding="utf-8")
     assert retry_content.splitlines()[0] == "ERROR RECOVERY REQUIRED"
     assert "inactivity timeout" in retry_content.lower()
-    assert "the exact cause may be unknown" in retry_content.lower()
+    assert "watchdog rule no_output_deadline" in retry_content.lower()
+    assert "the exact cause may be unknown" not in retry_content.lower()
     assert "original prompt:" in retry_content.lower()
     assert str(prompt_file) in retry_content
 

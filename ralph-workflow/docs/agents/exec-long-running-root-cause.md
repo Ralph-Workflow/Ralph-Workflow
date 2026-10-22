@@ -176,10 +176,10 @@ contract the agent does not honour:
 > exec subprocess timeout — the *pre-§3b* output-only inactivity window
 > that the liveness-based subsystem has since superseded. The §3b fix
 > replaces this rule for the whole production entry path: normal `exec`
-> always becomes a registry job (`ralph/mcp/tools/exec.py:790-819`), so
+> always becomes a registry job (`ralph/mcp/tools/exec.py:792-821`), so
 > the inactivity window is no longer the kill rule for short in-request
 > calls either — it survives only on the injected-runner seam
-> (`ralph/mcp/tools/exec.py:775-788`). See "Cause 1 — present-day
+> (`ralph/mcp/tools/exec.py:777-790`). See "Cause 1 — present-day
 > liveness subsystem" further on for current behavior. This section is
 > preserved so a reader can tell what the old failure mode was, and so
 > the WU-5 citations remain anchored to the source code they describe.
@@ -209,7 +209,7 @@ raised `timeout_ms`". Under the job and liveness architecture, the fix
 routes exec through the `ExecJobRegistry`, which decides every kill from
 sampled liveness rather than from the output-only window. The output-only
 rule survives only on the **injected-runner seam**
-(`ralph-workflow/ralph/mcp/tools/exec.py:775-788`), which the production
+(`ralph-workflow/ralph/mcp/tools/exec.py:777-790`), which the production
 entry path does not take — see "Cause 1 — present-day liveness subsystem"
 for the current behavior.
 
@@ -221,21 +221,21 @@ is no longer the kill rule for any production `exec` call, short or long: the
 production path always starts a registry job and the registry decides kills
 from sampled liveness.
 
-- `ralph-workflow/ralph/mcp/tools/exec.py:790-819` is the production entry
+- `ralph-workflow/ralph/mcp/tools/exec.py:792-821` is the production entry
   path. It resolves the registry (`:790-797`), calls
   `effective_registry.start(...)` unconditionally (`:807-814`), and then
   `effective_registry.wait(job_id, wait_ms=EXEC_SOFT_REPLY_BUDGET_MS, ...)`
   (`:815-820`). **Every** normal `exec` therefore becomes a registry job;
   none of them fall back to the output-only window.
-- `ralph-workflow/ralph/mcp/tools/exec.py:775-788` is the **injected runner
+- `ralph-workflow/ralph/mcp/tools/exec.py:777-790` is the **injected runner
   seam**, not a fallback for "short" calls. It is entered only when
   `effective_deps.runner is not None` or `run_command is not
   _DEFAULT_RUN_COMMAND` (`:775-777`) — i.e. when a caller injected a custom
   runner. Only on this seam does `run_command` reach
-  `_run_subprocess` (`ralph/mcp/tools/exec.py:565`) and the
+  `_run_subprocess` (`ralph/mcp/tools/exec.py:567`) and the
   `_managed_process.py` output-only inactivity window.
 - A short in-request completion still returns the legacy output shape
-  end-to-end — `exec.py:826-869` converts a terminal `JobResult` into the
+  end-to-end — `exec.py:828-871` converts a terminal `JobResult` into the
   same `_CompletedProcessAdapter` the seam produced — so the *observable*
   output contract is unchanged. What changed is the kill rule, not the
   response shape.
@@ -286,7 +286,7 @@ from sampled liveness.
   `JobResult` and the legacy output shape is preserved end-to-end;
   only jobs that take longer than the soft-reply budget return a
   snapshot with a `job_id` and the "call exec_wait; do not re-run"
-  instruction (`exec.py:826-838`, `_exec_jobs.py:770-777`).
+  instruction (`exec.py:828-840`, `_exec_jobs.py:770-777`).
 
 ## Cause 2 (CONFIRMED) — single 300-second absolute cap
 
@@ -296,11 +296,11 @@ Even after the operator raises `timeout_ms`, the wall clock is capped.
   — 5 minutes. Larger values are rejected at the import-time invariant
   check below the constant.
 - On the **injected-runner seam** only,
-  `ralph-workflow/ralph/mcp/tools/exec.py:629-635` passes
+  `ralph-workflow/ralph/mcp/tools/exec.py:631-637` passes
   `hard_timeout=EXEC_MAX_TIMEOUT_MS / 1000` to
   `handle.communicate_and_cleanup`. The `inactivity` window is gated BELOW
   this; the `hard_cap` window is the outermost envelope. Note this is the
-  seam path (`exec.py:775-788` → `exec.py:565` → `exec.py:601`), not the
+  seam path (`exec.py:777-790` → `exec.py:567` → `exec.py:603`), not the
   production entry path.
 - On the **production entry path**, the wall-clock cap is the registry's
   job ceiling, not `EXEC_MAX_TIMEOUT_MS`:
@@ -338,7 +338,7 @@ Even after the operator raises `timeout_ms`, the wall clock is capped.
   `ralph/mcp/tools/_exec_job_tools.py:43-44` and `handle_exec_wait` at
   `:126`). A long call returns a `JobSnapshot` carrying a `job_id` and
   the `"instruction": "call exec_wait; do not re-run"` string
-  (`ralph/mcp/tools/exec.py:826-838`), and `handle_exec_wait` clamps its
+  (`ralph/mcp/tools/exec.py:828-840`), and `handle_exec_wait` clamps its
   `wait_ms` to `EXEC_SOFT_REPLY_BUDGET_MS`
   (`_exec_job_tools.py:139-143`). The hard-cap template no longer
   recommends a nonexistent path.
@@ -506,7 +506,7 @@ token. The historical "zero matches" claim no longer holds.
   subscription is bound afterwards by
   `ralph/mcp/tools/_exec_jobs.attach_progress_subscription`
   (`_exec_jobs.py:884`), which the exec handler hands the subscription
-  to at `ralph/mcp/tools/exec.py:805-820`.
+  to at `ralph/mcp/tools/exec.py:807-822`.
 - `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:241-244` wires
   both mechanisms into the streaming POST: the output-chunk sink at
   `:237` and the progress subscription at `:241-243`, published to the
@@ -820,7 +820,7 @@ stale, and the fastest drift check is a re-read of:
 - `ralph-workflow/ralph/process/manager/_managed_process.py:301` (the
   output-only `last_output_at_ref` reset) and `:365-391` (the poll
   loop that computes `inactivity_deadline` and arms the kill)
-- `ralph-workflow/ralph/mcp/tools/exec.py:775-788` (the injected-runner
+- `ralph-workflow/ralph/mcp/tools/exec.py:777-790` (the injected-runner
   seam) and `:790-820` (the production registry entry path) — reading
   these two ranges is how a reader tells whether the output-only window
   is still reachable for normal calls.

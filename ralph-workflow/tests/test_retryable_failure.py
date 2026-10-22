@@ -71,6 +71,25 @@ def test_bare_fetch_failed_is_a_transient_connectivity_failure() -> None:
     assert reason == "a transient connectivity failure"
 
 
+def test_mcp_tool_call_deadline_is_not_labelled_as_connectivity() -> None:
+    """Codex reports a stalled Ralph MCP call as ``timed out awaiting tools/call``.
+
+    The provider connection is fine; only the tool server did not answer in
+    time. Calling it a connectivity failure sends the retry agent hunting for
+    an internet outage that never happened, but the failure stays retryable.
+    """
+    exc = AgentInvocationError(
+        "codex",
+        1,
+        "tool call error: tool call failed for `ralph/git_status`\n\n"
+        "Caused by:\n    timed out awaiting tools/call after 75s",
+    )
+
+    reason = retryable_agent_failure_reason(exc, AgentInactivityTimeoutError)
+
+    assert reason == "a Ralph MCP tool call that timed out"
+
+
 def test_unrelated_failure_is_not_retryable() -> None:
     """A failure with none of the retryable signals returns None."""
     exc = AgentInvocationError(
