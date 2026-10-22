@@ -148,6 +148,9 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # reconciler cannot regress to fire-once semantics or fire-and-forget
     # ``origin``/``main`` defaults.
     "tests/test_auto_integrate_acceptance_scenarios_e2e.py",
+    # Real-Git proof that auto-rebase is idempotent and that a run starting
+    # inside a paused, conflicted rebase hands every stop to the resolver.
+    "tests/test_auto_rebase_idempotence_e2e.py",
     # Real-Git regression for the workspace-bounded git cwd contract
     # (symlink and parent-repo bypass shapes). Must run under the default
     # ``make test`` profile so the boundary cannot rot silently.
@@ -447,6 +450,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_no_anti_drift_regression.py": 76,
     "tests/test_audit_opts_key_drift.py": 280,
     "tests/test_auto_integrate_acceptance_scenarios_e2e.py": 200,
+    "tests/test_auto_rebase_idempotence_e2e.py": 120,
     "tests/test_integration_obstruction_real_git.py": 180,
     "tests/mcp/test_bounded_catalog_publish.py": 100,
     "tests/mcp/test_whole_startup_budget_production.py": 160,

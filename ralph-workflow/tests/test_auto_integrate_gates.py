@@ -17,6 +17,7 @@ import pytest
 from git import Actor, Repo
 
 from ralph.config.models import UnifiedConfig
+from ralph.git.branch_relation import BranchRelation
 from ralph.git.merge import MERGE_STATE_NONE
 from ralph.pipeline import auto_integrate_boundary as boundary
 from ralph.pipeline import auto_integrate_planning as planning
@@ -111,7 +112,9 @@ def _assert_planning_agrees(
     # integrator is a stub so the test is hermetic.
     monkeypatch.setattr(planning_module, "resolve_integration_target", lambda _c, _r: "main")
     monkeypatch.setattr(planning_module, "assess_tree_readiness", lambda _root: readiness)
-    monkeypatch.setattr(planning_module, "ancestry_state", lambda _r, _t, _h: False)
+    monkeypatch.setattr(
+        planning_module, "branch_relation", lambda _r, _t: BranchRelation.TARGET_AHEAD
+    )
     monkeypatch.setattr(
         planning_module,
         "auto_integrate_after_commit",
@@ -397,7 +400,7 @@ def test_planning_staged_block_records_skip_not_unresolved_conflict(
     """Planning records STAGED_BLOCKS_INTEGRATION as a skip, avoiding conflict loop."""
     (tmp_path / ".git").mkdir()
     monkeypatch.setattr(planning, "resolve_integration_target", lambda _c, _r: "main")
-    monkeypatch.setattr(planning, "ancestry_state", lambda _r, _t, _h: False)
+    monkeypatch.setattr(planning, "branch_relation", lambda _r, _t: BranchRelation.TARGET_AHEAD)
     monkeypatch.setattr(
         planning,
         "assess_tree_readiness",
@@ -435,7 +438,7 @@ def test_planning_modified_tracked_records_skip_without_force_merge(
         "worktree not clean; uncommitted tracked changes deferred catch-up integration"
     )
     monkeypatch.setattr(planning, "resolve_integration_target", lambda _c, _r: "main")
-    monkeypatch.setattr(planning, "ancestry_state", lambda _r, _t, _h: False)
+    monkeypatch.setattr(planning, "branch_relation", lambda _r, _t: BranchRelation.TARGET_AHEAD)
     monkeypatch.setattr(
         planning,
         "assess_tree_readiness",
@@ -490,7 +493,7 @@ def test_boundary_and_planning_agree_on_cleanliness_deferral(
     assert "worktree not clean" in str(outcome.last_reason)
 
     monkeypatch.setattr(planning, "resolve_integration_target", lambda _c, _r: "main")
-    monkeypatch.setattr(planning, "ancestry_state", lambda _r, _t, _h: False)
+    monkeypatch.setattr(planning, "branch_relation", lambda _r, _t: BranchRelation.TARGET_AHEAD)
     monkeypatch.setattr(planning, "assess_tree_readiness", lambda _root: readiness)
     monkeypatch.setattr(
         planning,

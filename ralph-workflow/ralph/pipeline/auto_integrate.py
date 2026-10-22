@@ -651,7 +651,9 @@ def _integrate_once_owned(
     # Idempotent land: the target already holds every feature commit, so
     # nothing needs rebasing, merging or moving. Report the same success a
     # first landing reports and release every latch the record was holding.
-    contained = contained_land(root, target)
+    # A forced endpoint merge is the catch-up path: the branch must also
+    # absorb the target tip, so "feature already inside target" is not enough.
+    contained = contained_land(root, target, require_in_sync=force_endpoint_merge)
     if contained is not None:
         return contained, False
     pre_feature_sha = get_head_sha(root)

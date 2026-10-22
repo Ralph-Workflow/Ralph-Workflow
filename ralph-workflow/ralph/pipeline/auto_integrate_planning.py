@@ -4,17 +4,22 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.git.merge_obstructions import ancestry_state
+from ralph.git.branch_relation import branch_relation
+from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline._planning_obstruction import identify_planning_obstruction
 from ralph.pipeline.auto_integrate import _integrate_once, auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_catchup import resolve_integration_target
-from ralph.pipeline.auto_integrate_outcome import record_skip
+from ralph.pipeline.auto_integrate_outcome import record_conflict, record_skip
 from ralph.pipeline.auto_integrate_recovery import (
     recover_incomplete_integration,
     recovery_retained_record,
 )
 from ralph.pipeline.commit_executor import (
     reattach_head_if_detached as _reattach_head_if_detached,
+)
+from ralph.pipeline.conflict_resolution import (
+    resolution_session_from_config,
+    resolve_rebase_in_progress,
 )
 from ralph.pipeline.integration_resolution import (
     TreeReadinessAssessment,
@@ -64,15 +69,18 @@ def integrate_before_planning(
             recovered is not None and recovered.fast_forwarded
         ):
             return recovered
-    if not config.general.auto_integrate_enabled:
-        return None
-    target = resolve_integration_target(config, root)
+    target = (
+        resolve_integration_target(config, root) if config.general.auto_integrate_enabled else None
+    )
     if target is None:
         return None
+    unfinished = _finish_paused_rebase(config, root, target, rebase_stop_resolver)
+    if unfinished is not None:
+        return unfinished
     _reattach_head_if_detached(root, config=config, auto_integrate_target=target)
     if readiness is None:
         readiness = assess_tree_readiness(root)
-    if readiness.integration_ready and ancestry_state(root, target, "HEAD") is True:
+    if readiness.integration_ready and not branch_relation(root, target).needs_catch_up:
         return auto_integrate_after_commit(
             config,
             scope,
@@ -94,6 +102,33 @@ def integrate_before_planning(
         conflict_resolver,
         rebase_stop_resolver=rebase_stop_resolver,
         display=display,
+    )
+
+
+def _finish_paused_rebase(
+    config: UnifiedConfig,
+    root: Path,
+    target: str,
+    resolver: RebaseStopResolver | None,
+) -> RebaseState | None:
+    """Drive a rebase already underway to completion before planning.
+
+    A run that starts inside a paused rebase (its own interrupted one or an
+    operator's) must not plan on a detached, half-replayed tree, and must
+    not wait for a human: every stop goes to the resolver. ``None`` means
+    the rebase finished and normal integration continues; a conflict state
+    means it did not, and the next entry offers the same stop again, so
+    repeating the call is safe. ``None`` also when no rebase is paused.
+    """
+    if resolver is None or not rebase_in_progress(root):
+        return None
+    if resolve_rebase_in_progress(
+        root, target, resolver, session=resolution_session_from_config(config)
+    ):
+        return None
+    return record_conflict(
+        reason="rebase already in progress could not be resolved; the resolver is asked again",
+        target=target,
     )
 
 

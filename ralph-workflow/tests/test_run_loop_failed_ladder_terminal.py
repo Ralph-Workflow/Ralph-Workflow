@@ -157,6 +157,8 @@ def run_recovery_scenario(
         "ancestry_state",
         ancestry,
     )
+    monkeypatch.setattr("ralph.git.rebase.rebase.rebase_in_progress", lambda _root=None: False)
+    monkeypatch.setattr(merge, "merge_state", lambda _root: merge.MERGE_STATE_NONE)
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", save)
     monkeypatch.setattr(runner, "run_pipeline_step", dispatch)
     monkeypatch.setattr(run_loop, "legacy_rebase_startup_block", legacy)

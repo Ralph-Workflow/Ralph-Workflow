@@ -59,6 +59,8 @@ def repo(monkeypatch: pytest.MonkeyPatch) -> _Repo:
         "ralph.git.merge_obstructions.ancestry_state",
         lambda _root, ancestor, _desc: fake.landed if ancestor == "HEAD" else fake.contained,
     )
+    monkeypatch.setattr("ralph.git.rebase.rebase.rebase_in_progress", lambda _root=None: False)
+    monkeypatch.setattr("ralph.git.merge.merge_state", lambda _root: "none")
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda _s, _c: None)
 
     return fake

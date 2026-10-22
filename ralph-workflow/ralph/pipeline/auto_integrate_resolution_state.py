@@ -160,8 +160,13 @@ def containment_release(
     )
 
 
-def contained_land(root: Path, target: str) -> RebaseState | None:
+def contained_land(root: Path, target: str, *, require_in_sync: bool = False) -> RebaseState | None:
     """Return the no-op success for an already-contained land, else ``None``.
+
+    ``require_in_sync`` is for callers that must also absorb the target
+    (planning catch-up): a feature merely *inside* a target that has moved
+    ahead is not in sync, so there the shortcut is refused and the real
+    integration runs.
 
     Landing is idempotent: once every feature commit is inside the target
     there is nothing to rebase, merge, or move, so the second land must be
@@ -171,6 +176,11 @@ def contained_land(root: Path, target: str) -> RebaseState | None:
     verdict = evaluate_integration_containment(root, target)
     if not verdict.contained:
         return None
+    if require_in_sync:
+        from ralph.git.branch_relation import branch_relation
+
+        if branch_relation(root, target).needs_catch_up:
+            return None
     logger.info("auto_integrate: {}", verdict.reason)
     return apply_containment_release(
         RebaseState(

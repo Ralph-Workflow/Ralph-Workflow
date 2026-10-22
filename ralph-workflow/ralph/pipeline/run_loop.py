@@ -1982,8 +1982,8 @@ def _planning_sync_gap(ctx: _LoopContext) -> str | None:
     a clean tree after an aborted or refused merge is still a stale branch.
     An unreadable answer is a gap, never "in sync".
     """
+    from ralph.git.branch_relation import BranchRelation, branch_relation
     from ralph.git.merge import observe_branch_sha
-    from ralph.git.merge_obstructions import ancestry_state
 
     configured = _configured_sync_target(ctx)
     if configured is None:
@@ -1996,15 +1996,14 @@ def _planning_sync_gap(ctx: _LoopContext) -> str | None:
             " general.auto_integrate_target to the branch this work integrates into"
             " (or disable general.auto_integrate_enabled)"
         )
-    contained = ancestry_state(root, target, "HEAD")
-    if contained is True:
-        landed = ancestry_state(root, "HEAD", target)
-        if landed is True:
-            return None
+    relation = branch_relation(root, target)
+    if relation is BranchRelation.SYNCED:
+        return None
+    if relation is BranchRelation.FEATURE_AHEAD:
         return f"feature commits not landed on '{target}' (fast-forward not proven)"
-    if contained is False:
-        return f"branch does not contain the tip of '{target}'"
-    return f"cannot prove the branch contains '{target}' (ancestry query failed)"
+    if relation is BranchRelation.UNKNOWN:
+        return f"cannot prove the branch contains '{target}' (ancestry query failed)"
+    return f"branch does not contain the tip of '{target}'"
 
 
 def _reconcile_dispatch_state(state: PipelineState) -> PipelineState:

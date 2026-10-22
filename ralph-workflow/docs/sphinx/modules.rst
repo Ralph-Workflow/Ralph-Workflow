@@ -3155,6 +3155,13 @@ ralph.git.merge
    :members:
    :show-inheritance:
 
+ralph.git.branch_relation
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.branch_relation
+   :members:
+   :show-inheritance:
+
 ralph.git.merge_obstructions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
