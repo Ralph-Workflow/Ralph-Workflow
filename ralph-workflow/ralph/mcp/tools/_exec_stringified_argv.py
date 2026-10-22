@@ -42,7 +42,7 @@ def _stringified_argv(value: str) -> list[str] | None:
     for decode in (_json_value, _python_literal):
         try:
             decoded = decode(stripped)
-        except (ValueError, SyntaxError, RecursionError, MemoryError):
+        except (ValueError, SyntaxError, TypeError, RecursionError, MemoryError):
             continue
         if not isinstance(decoded, list) or not decoded:
             continue

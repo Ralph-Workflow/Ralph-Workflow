@@ -275,6 +275,8 @@ class TestParseExecParams:
             ('["cat", 3]', "[cat,", ["3]"]),
             ("[]", "[]", []),
             ('["unterminated"', "[unterminated", []),
+            ('["a", {[1]: 2}]', "[a,", ["{[1]:", "2}]"]),
+            ('["a", {1, [2]}]', "[a,", ["{1,", "[2]}]"]),
         ],
     )
     def test_bracketed_text_that_is_not_a_string_list_is_left_alone(

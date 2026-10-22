@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Final
 
+from loguru import logger
+
 from ralph.agents.invoke import AgentInactivityTimeoutError
 
 if TYPE_CHECKING:
@@ -32,6 +34,18 @@ _DETAIL_SNAPSHOT_KEYS: Final[tuple[str, ...]] = (
     "last_alive_by",
     "current_subagent_tool_call",
 )
+
+
+#: Longest string kept per snapshot value or message in the journal. Loop-breaker
+#: diagnostics carry exec argv previews that can hold secrets and the file is
+#: append-only, so each record stays short.
+_MAX_RECORDED_TEXT: Final[int] = 512
+
+
+def _clip(value: object) -> object:
+    if isinstance(value, str) and len(value) > _MAX_RECORDED_TEXT:
+        return value[:_MAX_RECORDED_TEXT] + "...[truncated]"
+    return value
 
 
 def _snapshot(exc: AgentInactivityTimeoutError) -> dict[str, object]:
@@ -81,14 +95,20 @@ def record_watchdog_fire(
         "phase": phase,
         "rule": _rule(exc),
         "timeout_seconds": exc.timeout_seconds,
-        "message": exc.stderr,
-        "snapshot": _snapshot(exc),
+        "message": _clip(exc.stderr),
+        "snapshot": {key: _clip(value) for key, value in _snapshot(exc).items()},
     }
     journal = workspace_root / WATCHDOG_FIRE_EVENTS_RELPATH
-    journal.parent.mkdir(parents=True, exist_ok=True)
-    # filesystem-write-ok: append-only one-line-per-kill journal; write_text_if_changed's whole-file replace semantics would drop earlier kills.
-    with journal.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, default=str) + "\n")
+    line = json.dumps(record, default=str) + "\n"
+    try:
+        journal.parent.mkdir(parents=True, exist_ok=True)
+        # filesystem-write-ok: append-only one-line-per-kill journal; write_text_if_changed's whole-file replace semantics would drop earlier kills.
+        with journal.open("a", encoding="utf-8") as handle:
+            handle.write(line)
+    except OSError as error:
+        # Diagnostic only: a journal that cannot be written must not turn a
+        # retryable watchdog kill into a crash of the retry layer.
+        logger.warning("Could not record watchdog fire to {}: {}", journal, error)
 
 
 __all__ = ["WATCHDOG_FIRE_EVENTS_RELPATH", "record_watchdog_fire", "watchdog_fire_detail"]

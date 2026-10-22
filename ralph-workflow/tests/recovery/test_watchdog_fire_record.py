@@ -19,7 +19,9 @@ from pathlib import Path
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError, AgentInvocationError
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
-from ralph.pipeline.effect_executor import AgentRecoveryInput, build_agent_recovery_plan
+from ralph.checked_accessors import as_mapping, as_str
+from ralph.pipeline.agent_recovery_input import AgentRecoveryInput
+from ralph.pipeline.effect_executor import build_agent_recovery_plan
 from ralph.pipeline.effects import InvokeAgentEffect
 
 EVENTS_RELPATH = Path(".agent") / "watchdog-fire-events.jsonl"
@@ -68,7 +70,7 @@ def _quiet_kill(snapshot: dict[str, object]) -> AgentInactivityTimeoutError:
 
 def _events(tmp_path: Path) -> list[dict[str, object]]:
     lines = (tmp_path / EVENTS_RELPATH).read_text(encoding="utf-8").splitlines()
-    return [json.loads(line) for line in lines]
+    return [dict(as_mapping(json.loads(line))) for line in lines]
 
 
 def test_retry_prompt_names_the_rule_that_fired_and_the_live_work(tmp_path: Path) -> None:
@@ -149,3 +151,20 @@ def test_a_non_watchdog_failure_writes_no_event_and_keeps_its_wording(tmp_path: 
 
     assert "The exact cause may be unknown" in text
     assert not (tmp_path / EVENTS_RELPATH).exists()
+
+
+def test_an_unwritable_journal_does_not_break_the_retry(tmp_path: Path) -> None:
+    (tmp_path / EVENTS_RELPATH).mkdir(parents=True)
+
+    text = _plan(tmp_path, _quiet_kill({"live_subagent_count": 0}))
+
+    assert "no_output_deadline" in text
+
+
+def test_long_snapshot_text_is_clipped_in_the_journal(tmp_path: Path) -> None:
+    _plan(tmp_path, _quiet_kill({"last_activity_kind": "x" * 5000}))
+
+    kind = as_str(as_mapping(_events(tmp_path)[0]["snapshot"])["last_activity_kind"])
+
+    assert len(kind) < 600
+    assert kind.endswith("[truncated]")
