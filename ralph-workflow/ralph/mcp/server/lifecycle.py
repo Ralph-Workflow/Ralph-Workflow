@@ -2053,6 +2053,7 @@ class RestartAwareMcpBridge:
 
         def _reap_worker() -> None:
             try:
+                # filesystem-poll-ok: bounded unkillable-child reap backoff
                 time.sleep(_UNKILLABLE_REAP_BACKOFF_S)
                 terminate_fn = cast("Callable[[], object] | None", getattr(proc, "terminate", None))
                 if callable(terminate_fn):
@@ -2065,6 +2066,7 @@ class RestartAwareMcpBridge:
                         with contextlib.suppress(Exception):
                             if poll_fn() is not None:
                                 return
+                    # filesystem-poll-ok: bounded child-exit retry before forced kill
                     time.sleep(0.05)
                 kill_fn = cast("Callable[[], object] | None", getattr(proc, "kill", None))
                 if callable(kill_fn):

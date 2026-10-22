@@ -67,7 +67,7 @@ def artifact_specs() -> list[ToolSpec]:
                     "properties": {
                         "artifact_type": {"type": "string"},
                         "content": {"type": "string"},
-                        "mode": {"enum": ["append", "replace_all"]},
+                        "mode": {"type": "string", "enum": ["append", "replace_all"]},
                     },
                     "required": ["artifact_type", "content"],
                 },

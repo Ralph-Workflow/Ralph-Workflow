@@ -127,7 +127,7 @@ def test_attempt_ledger_recovers_when_payload_is_not_a_dict(tmp_path: Path) -> N
     """A list-shaped payload parses to the default state."""
     ledger_path = attempt_ledger_path(tmp_path)
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    ledger_path.write_text("[\"not\", \"a\", \"dict\"]", encoding="utf-8")
+    ledger_path.write_text('["not", "a", "dict"]', encoding="utf-8")
 
     fresh = AttemptLedger(tmp_path)
     restored = fresh.read()
@@ -278,21 +278,21 @@ def test_attempt_ledger_rung_monotone_after_terminal(tmp_path: Path) -> None:
 
 
 def test_attempt_ledger_repeat_counts_bounded_by_cap(tmp_path: Path) -> None:
-    """Pushing past the cap keeps the most-recent ``_REPEAT_CAP`` keys only."""
-    from ralph.pipeline.integration_attempt_ledger import _REPEAT_CAP
+    """Pushing past the cap keeps the most-recent ``REPEAT_CAP`` keys only."""
+    from ralph.pipeline.integration_attempt_ledger import REPEAT_CAP
 
     ledger = AttemptLedger(tmp_path, repeat_threshold=9999)
-    for index in range(_REPEAT_CAP + 50):
+    for index in range(REPEAT_CAP + 50):
         ledger.with_attempt(f"sig-{index}", "wait", is_unknown=False)
 
     persisted = AttemptLedger(tmp_path).read()
 
-    assert len(persisted.repeat_counts) == _REPEAT_CAP
+    assert len(persisted.repeat_counts) == REPEAT_CAP
     # FIFO eviction — the first ``50`` keys must be gone, the most
-    # recent ``_REPEAT_CAP`` keys must survive.
+    # recent ``REPEAT_CAP`` keys must survive.
     assert ("sig-0", "wait") not in persisted.repeat_counts
     assert ("sig-49", "wait") not in persisted.repeat_counts
-    last_index = _REPEAT_CAP + 49
+    last_index = REPEAT_CAP + 49
     assert (f"sig-{last_index}", "wait") in persisted.repeat_counts
 
 

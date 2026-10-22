@@ -38,7 +38,7 @@ This module publishes a single, restart-proof ledger contract:
   there for its lifetime: never skip a charge, never block, never
   restore allowance on restart.
 * Storage stays bounded: per-``(signature, action)`` keys live in an
-  :class:`collections.OrderedDict` capped at :data:`_REPEAT_CAP`.
+  :class:`collections.OrderedDict` capped at :data:`REPEAT_CAP`.
   Evicted entries are folded into :attr:`AttemptLedgerState.saturated_repeats`
   rather than discarded, so eviction never restores budget. There is no
   clamp-on-load: the durable aggregates only ever increase.
@@ -61,7 +61,7 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Protocol, cast, runtime_checkable
 
 from ralph.pipeline.integration_decision import (
     LADDER_ORDER,
@@ -120,7 +120,7 @@ GLOBAL_ACTION_BOUND: Final[int] = 2
 #: workspace produces more than 1024 distinct repeat keys, which is well
 #: above the bounded signature/action matrix. Evicted counts fold into
 #: :attr:`AttemptLedgerState.saturated_repeats`.
-_REPEAT_CAP = 1024
+REPEAT_CAP = 1024
 
 #: Ceiling for the saturating aggregate; the aggregate is monotonic, so
 #: it must saturate rather than grow without bound over a long run.
@@ -184,13 +184,13 @@ class AttemptLedgerState:
     rung: EscalationRung = EscalationRung.REPAIR
     repeat_counts: OrderedDict[tuple[str, str], int] = field(
         default_factory=OrderedDict,
-    )  # bounded-accumulator-ok: FIFO-capped by _REPEAT_CAP on every persist
+    )  # bounded-accumulator-ok: FIFO-capped by REPEAT_CAP on every persist
     unknown_attempts: int = 0
     unknown_budget: int = 3
     repeat_threshold: int = 2
     version: int = CURRENT_SCHEMA_VERSION
     saturated_repeats: int = 0
-    """Saturating sum of every repeat count evicted by :data:`_REPEAT_CAP`.
+    """Saturating sum of every repeat count evicted by :data:`REPEAT_CAP`.
 
     Folded, never dropped, so an evicted entry can never hand its
     allowance back to a later load.
@@ -267,6 +267,11 @@ def _further_rung(left: EscalationRung, right: EscalationRung) -> EscalationRung
     return right
 
 
+@runtime_checkable
+class _HasFileno(Protocol):
+    def fileno(self) -> int: ...
+
+
 def _take_lock(handle: object, deadline: float) -> bool:
     """Take an exclusive advisory lock on ``handle`` before ``deadline``.
 
@@ -279,16 +284,16 @@ def _take_lock(handle: object, deadline: float) -> bool:
         import fcntl  # PLC0415: POSIX-only; optional at runtime
     except ImportError:
         return True
-    fileno = getattr(handle, "fileno", None)
-    if not callable(fileno):
+    if not isinstance(handle, _HasFileno):
         return True
     while True:
         try:
-            fcntl.flock(fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             return True
         except OSError:
             if time.monotonic() >= deadline:
                 return False
+            # filesystem-poll-ok: bounded advisory-lock acquisition deadline
             time.sleep(_LOCK_POLL_SECONDS)
 
 
@@ -298,11 +303,10 @@ def _release_lock(handle: object) -> None:
         import fcntl  # PLC0415: POSIX-only; optional at runtime
     except ImportError:
         return
-    fileno = getattr(handle, "fileno", None)
-    if not callable(fileno):
+    if not isinstance(handle, _HasFileno):
         return
     try:
-        fcntl.flock(fileno(), fcntl.LOCK_UN)
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
     except OSError:
         return
 
@@ -457,7 +461,7 @@ class AttemptLedger:
             return self._default_state(), LedgerLoadStatus.UNKNOWABLE
 
         try:
-            payload: object = json.loads(raw_text)
+            payload = cast("object", json.loads(raw_text))
         except (ValueError, RecursionError):
             return self._default_state(), LedgerLoadStatus.UNKNOWABLE
 
@@ -597,9 +601,7 @@ class AttemptLedger:
         updated: OrderedDict[tuple[str, str], int] = OrderedDict(state.repeat_counts)
         new_count = updated.get(key, 0) + 1
         updated[key] = new_count
-        updated, saturated = self._clamp_repeats(
-            updated, saturated=state.saturated_repeats
-        )
+        updated, saturated = self._clamp_repeats(updated, saturated=state.saturated_repeats)
         signature_attempts = sum(
             count
             for (key_signature, _action), count in updated.items()
@@ -631,9 +633,7 @@ class AttemptLedger:
         process is pinned to the exhausted/pending rung for its lifetime.
         """
         self._unknowable = True
-        charged_total, granted = self._spend_global_allowance(
-            self._global_charged_total()
-        )
+        charged_total, granted = self._spend_global_allowance(self._global_charged_total())
         if granted:
             return charged
         self._forced_pending = True
@@ -656,9 +656,7 @@ class AttemptLedger:
         disk, _status = self._load()
         self._write_state(state, disk)
 
-    def _write_state(
-        self, state: AttemptLedgerState, disk: AttemptLedgerState
-    ) -> None:
+    def _write_state(self, state: AttemptLedgerState, disk: AttemptLedgerState) -> None:
         """Atomically persist the monotone merge of ``state`` over ``disk``."""
         merged = self._merge_monotone(state, disk)
         path = self._ledger_path
@@ -666,9 +664,7 @@ class AttemptLedger:
         self._atomic_write(path, self._serialize(merged))
 
     @staticmethod
-    def _merge_monotone(
-        state: AttemptLedgerState, disk: AttemptLedgerState
-    ) -> AttemptLedgerState:
+    def _merge_monotone(state: AttemptLedgerState, disk: AttemptLedgerState) -> AttemptLedgerState:
         """Merge ``state`` over ``disk`` without ever restoring a budget.
 
         The rung, the saturating aggregate and the global charge take
@@ -692,9 +688,7 @@ class AttemptLedger:
             repeat_threshold=min(state.repeat_threshold, disk.repeat_threshold),
             version=CURRENT_SCHEMA_VERSION,
             saturated_repeats=saturated,
-            global_actions_charged=max(
-                state.global_actions_charged, disk.global_actions_charged
-            ),
+            global_actions_charged=max(state.global_actions_charged, disk.global_actions_charged),
         )
 
     @staticmethod
@@ -725,15 +719,18 @@ class AttemptLedger:
             stream.flush()
             descriptor = stream.fileno()
             if isinstance(descriptor, int):
-                os.fsync(descriptor)
+                os.fsync(descriptor)  # filesystem-write-ok: durable atomic ledger replacement
         temp_path.replace(path)
         directory = path.parent
         try:
-            directory_fd = os.open(str(directory), os.O_RDONLY)
+            directory_fd = os.open(  # filesystem-write-ok: durable rename; resource-lifecycle-ok: adjacent finally closes fd
+                str(directory),
+                os.O_RDONLY,
+            )
         except OSError:
             return
         try:
-            os.fsync(directory_fd)
+            os.fsync(directory_fd)  # filesystem-write-ok: persist ledger rename metadata
         finally:
             os.close(directory_fd)
 
@@ -741,7 +738,7 @@ class AttemptLedger:
     def _clamp_repeats(
         repeats: OrderedDict[tuple[str, str], int],
         *,
-        cap: int = _REPEAT_CAP,
+        cap: int = REPEAT_CAP,
         saturated: int = 0,
     ) -> tuple[OrderedDict[tuple[str, str], int], int]:
         """Clamp ``repeats`` to ``cap`` entries, folding evictions into ``saturated``.
@@ -817,12 +814,13 @@ class AttemptLedger:
         """Persist the monotone global-action charge beside the ledger."""
         path = self.tombstone_path
         path.parent.mkdir(parents=True, exist_ok=True)
+        tombstone: dict[str, object] = {
+            "version": _TOMBSTONE_SCHEMA_VERSION,
+            "global_actions_charged": charged,
+            "global_action_bound": GLOBAL_ACTION_BOUND,
+        }
         payload = json.dumps(
-            {
-                "version": _TOMBSTONE_SCHEMA_VERSION,
-                "global_actions_charged": charged,
-                "global_action_bound": GLOBAL_ACTION_BOUND,
-            },
+            tombstone,
             indent=2,
             sort_keys=False,
         )
@@ -834,7 +832,9 @@ class AttemptLedger:
         lock_path = self._ledger_path.with_name(self._ledger_path.name + _LOCK_SUFFIX)
         try:
             lock_path.parent.mkdir(parents=True, exist_ok=True)
-            handle = lock_path.open("a+", encoding="utf-8")
+            handle = lock_path.open(  # filesystem-write-ok: advisory sidecar lock file
+                "a+", encoding="utf-8"
+            )
         except OSError:
             yield False
             return
@@ -883,13 +883,10 @@ class AttemptLedger:
         if unknown_budget < 1:
             unknown_budget = self._default_unknown_budget
 
-        repeat_threshold_raw = payload.get(
-            "repeat_threshold", self._default_repeat_threshold
-        )
+        repeat_threshold_raw = payload.get("repeat_threshold", self._default_repeat_threshold)
         repeat_threshold = (
             int(repeat_threshold_raw)
-            if isinstance(repeat_threshold_raw, int)
-            and not isinstance(repeat_threshold_raw, bool)
+            if isinstance(repeat_threshold_raw, int) and not isinstance(repeat_threshold_raw, bool)
             else self._default_repeat_threshold
         )
         if repeat_threshold < 1:

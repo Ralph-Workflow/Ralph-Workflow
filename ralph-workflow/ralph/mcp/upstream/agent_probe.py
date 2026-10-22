@@ -38,7 +38,7 @@ from ralph.mcp.protocol.startup import (
     post_http_jsonrpc_with_session,
     tools_list_request,
 )
-from ralph.mcp.server._schema_flavor import flatten_root_schema_for_openai_function
+from ralph.mcp.server._schema_flavor import normalize_schema_for_function_calling
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.upstream._agent_transport_probe_error import AgentTransportProbeError
 from ralph.mcp.upstream.client import make_upstream_client
@@ -432,7 +432,7 @@ def _assert_kimi_relayable_schema(server_name: str, tool: UpstreamTool) -> None:
     result proves the flattened advertisement passes, anything else
     fails preflight with the exact offending path.
     """
-    flattened = flatten_root_schema_for_openai_function(tool.input_schema)
+    flattened = normalize_schema_for_function_calling(tool.input_schema)
     violations = _kimi_schema_violations(tool.input_schema, "root")
     if violations:
         repair_note = (

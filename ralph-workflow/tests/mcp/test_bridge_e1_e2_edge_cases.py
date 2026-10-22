@@ -306,10 +306,10 @@ def _issue_wedged_inflight_request(
 def _wait_for_path(path: pathlib.Path, timeout_s: float = 5.0) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        if path.exists():
+        if path.exists() and path.stat().st_size > 0:
             return True
         time.sleep(0.02)
-    return path.exists()
+    return path.exists() and path.stat().st_size > 0
 
 
 @pytest.mark.timeout_seconds(10)

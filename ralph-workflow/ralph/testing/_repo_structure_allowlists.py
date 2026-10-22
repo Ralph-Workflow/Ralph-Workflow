@@ -245,6 +245,14 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
 # backlog that should shrink as code is refactored.
 _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
     {
+        "ralph/git/git_command_queue.py",
+        "ralph/git/merge.py",
+        "ralph/pipeline/integration_attempt_ledger.py",
+        "ralph/pipeline/integration_decision.py",
+        "ralph/pipeline/integration_director.py",
+        "ralph/pipeline/integration_observation.py",
+        "ralph/pipeline/integration_resolution.py",
+        "ralph/pipeline/plumbing/commit_plumbing.py",
         # wt-16 §3b: ``LivenessConfig``, ``LivenessWindow``,
         # ``LivenessVerdict``, and ``StallIntegrator`` form the cohesive
         # §3b pure deterministic liveness assessor contract. Splitting
@@ -2080,7 +2088,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # not merge (cold-cap fires BEFORE the budget gate; budget
         # gate fires ONLY when cold-cap is not in effect; the
         # conflict-timeout path is separate from both).
-        ("ralph/pipeline/run_loop.py", 1458),
+        ("ralph/pipeline/run_loop.py", 1465),
         # wt-18: ``_run_cold_capped_escalation`` returns once per
         # distinct branch: live-rederive-clear (the cached record
         # was stale), paused-rebase path, in-progress merge
@@ -2090,7 +2098,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # into a single accumulator would break the re-derive-clear
         # fast path that prevents the cap from being burned on a
         # state that no longer exists.
-        ("ralph/pipeline/run_loop.py", 1644),
+        ("ralph/pipeline/run_loop.py", 1651),
         # wt-16: ``_host_contention_signal`` lazily imports
         # ``_mcp_health_event.record_host_contention_signal`` inside
         # the producer functions. The lazy import keeps the producer

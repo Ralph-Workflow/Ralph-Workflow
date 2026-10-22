@@ -14,11 +14,12 @@ import json
 import os
 from typing import TYPE_CHECKING
 
-from ralph.mcp.server import _wire_ledger
 from ralph.mcp.server._wire_ledger import (
+    TAIL_CHUNK_BYTES,
     _ledger_path,
     _read_last_hmac,
     append_wire_record,
+    expected_row_hmac,
     verify_chain,
     wire_evidence_for,
 )
@@ -44,7 +45,7 @@ def _append(root: Path, *, tool_name: str = "t", run_id: str = "run-1") -> None:
 def _counting_index(path: Path, calls: list[int]) -> WireLedgerIndex:
     def expected(row: dict[str, object], prior: str) -> str | None:
         calls.append(1)
-        return _wire_ledger._expected_row_hmac(_SECRET, row, prior)
+        return expected_row_hmac(_SECRET, row, prior)
 
     return WireLedgerIndex(path, expected)
 
@@ -55,7 +56,7 @@ def test_read_last_hmac_scans_backwards_past_a_chunk_boundary(tmp_path: Path) ->
     last = json.dumps({"hmac": "b" * 64})
     lines = [filler] * 400 + [last, "not json", ""]
     path.write_text("\n".join(lines), encoding="utf-8")
-    assert path.stat().st_size > _wire_ledger._TAIL_CHUNK_BYTES
+    assert path.stat().st_size > TAIL_CHUNK_BYTES
 
     assert _read_last_hmac(path) == "b" * 64
 

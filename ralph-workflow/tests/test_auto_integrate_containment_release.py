@@ -125,15 +125,15 @@ def _fake_git(
     from ralph.git import merge as merge_probe
     from ralph.git.rebase import rebase as rebase_module
 
-    monkeypatch.setattr(
-        rebase_module, "rebase_in_progress", lambda _root=None: operation_in_flight
-    )
+    monkeypatch.setattr(rebase_module, "rebase_in_progress", lambda _root=None: operation_in_flight)
     monkeypatch.setattr(
         merge_probe,
         "merge_state",
-        lambda _root: merge_probe.MERGE_STATE_IN_PROGRESS
-        if operation_in_flight
-        else merge_probe.MERGE_STATE_NONE,
+        lambda _root: (
+            merge_probe.MERGE_STATE_IN_PROGRESS
+            if operation_in_flight
+            else merge_probe.MERGE_STATE_NONE
+        ),
     )
 
 

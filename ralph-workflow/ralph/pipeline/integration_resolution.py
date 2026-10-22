@@ -165,7 +165,9 @@ def _uncommitted_integration_reasons(porcelain_output: str) -> tuple[str, ...]:
     if has_staged:
         reasons.append("staged uncommitted work blocks integration")
     if has_modified_tracked:
-        reasons.append("worktree not clean; uncommitted tracked changes deferred catch-up integration")
+        reasons.append(
+            "worktree not clean; uncommitted tracked changes deferred catch-up integration"
+        )
     if reasons or not porcelain_output.strip():
         return tuple(reasons)
     for raw_line in porcelain_output.splitlines():
@@ -340,19 +342,29 @@ def _clean_assessed_verdict() -> _AssessedIntegrationResolutionVerdict:
 def _unknown_assessed_verdict(
     unknown_kinds: tuple[UnknownKind, ...],
 ) -> _AssessedIntegrationResolutionVerdict:
-    """Verdict for unreadable evidence: dispatchable, not integration-ready."""
+    critical_unknown = frozenset(unknown_kinds) == frozenset(UnknownKind)
     logger.info(
-        "integration resolution: {} unreadable; integration state unknown, "
-        "dispatch allowed without a recovery executor",
+        "integration resolution: {} unreadable; integration state unknown, dispatch {}",
         ", ".join(kind.value for kind in unknown_kinds),
+        "blocked until recovery can inspect it" if critical_unknown else "allowed",
     )
+    if not critical_unknown:
+        return _AssessedIntegrationResolutionVerdict(
+            RESOLVED,
+            (),
+            None,
+            development_dispatch_allowed=True,
+            integration_ready=False,
+            blocking_reasons=(),
+            unknown_kinds=unknown_kinds,
+        )
     return _AssessedIntegrationResolutionVerdict(
-        RESOLVED,
-        (),
-        None,
-        development_dispatch_allowed=True,
+        RECOVERABLE,
+        ("integration evidence is unreadable",),
+        RESOLUTION_DRAIN,
+        development_dispatch_allowed=False,
         integration_ready=False,
-        blocking_reasons=(),
+        blocking_reasons=("integration evidence is unreadable",),
         unknown_kinds=unknown_kinds,
     )
 
@@ -416,7 +428,7 @@ def inspect_integration_resolution(
     if not readiness.development_dispatch_allowed:
         return _AssessedIntegrationResolutionVerdict(
             persisted.status if persisted is not None else RECOVERABLE,
-            persisted.reasons if persisted is not None else readiness.blocking_reasons,
+            readiness.blocking_reasons,
             persisted.recovery_executor if persisted is not None else RESOLUTION_DRAIN,
             development_dispatch_allowed=False,
             integration_ready=False,

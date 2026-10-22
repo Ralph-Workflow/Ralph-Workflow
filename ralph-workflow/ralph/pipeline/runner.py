@@ -1019,6 +1019,12 @@ def _reconcile_rebase_if_live_resolved(
     """Discard stale durable conflict evidence only after a clean inspection."""
     if not isinstance(cast("object", rebase), RebaseState):
         return rebase
+    if not (
+        rebase.integration_unresolved
+        or rebase.resolution_exhausted
+        or rebase.recovery_record_retained
+    ):
+        return rebase
     return (
         reconcile_stale_unresolved_state(rebase)
         if inspect_integration_resolution(workspace_scope.root, rebase).dispatch_allowed

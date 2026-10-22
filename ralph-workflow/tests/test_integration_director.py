@@ -28,8 +28,11 @@ from pathlib import Path
 import pytest
 
 from ralph.pipeline.auto_integrate_record import (
+    IntegrationRecord,
     RecordReadOutcome,
     RecordReadOutcomeDisposition,
+    record_path,
+    write_record,
 )
 from ralph.pipeline.integration_attempt_ledger import AttemptLedgerState
 from ralph.pipeline.integration_decision import (
@@ -48,6 +51,7 @@ from ralph.pipeline.integration_observation import (
     TargetVsFeature,
     WorktreeState,
 )
+from ralph.pipeline.operation_evidence import identity_fingerprint
 
 pytestmark = pytest.mark.timeout_seconds(30)
 
@@ -68,9 +72,7 @@ class _ProbeOverrides:
         self.repo_clean: bool = True
         self.branch_shas: dict[str, str | None] = {DEFAULT_TARGET_BRANCH: "deadbeef" * 5}
         self.remote_probe: tuple[str | None, bool] = ("deadbeef" * 5, True)
-        self.record_disposition: RecordReadOutcomeDisposition = (
-            RecordReadOutcomeDisposition.ABSENT
-        )
+        self.record_disposition: RecordReadOutcomeDisposition = RecordReadOutcomeDisposition.ABSENT
         self.record_phase: str = ""
 
 
@@ -126,9 +128,7 @@ def _install_probe_overrides(
     ) -> RecordReadOutcome:
         del backend, kwargs
         if overrides.record_disposition is RecordReadOutcomeDisposition.ABSENT:
-            return RecordReadOutcome(
-                disposition=RecordReadOutcomeDisposition.ABSENT
-            )
+            return RecordReadOutcome(disposition=RecordReadOutcomeDisposition.ABSENT)
         if overrides.record_disposition is RecordReadOutcomeDisposition.PRESENT:
             from ralph.pipeline.auto_integrate_record import IntegrationRecord
 
@@ -142,28 +142,16 @@ def _install_probe_overrides(
             )
         return RecordReadOutcome(disposition=overrides.record_disposition)
 
-    def _fake_remote_probe(
-        root: Path, remote: str, target: str
-    ) -> tuple[str | None, bool]:
+    def _fake_remote_probe(root: Path, remote: str, target: str) -> tuple[str | None, bool]:
         del root, remote, target
         return overrides.remote_probe
 
     del tmp_path  # unused; kept for signature parity with test arguments.
-    monkeypatch.setattr(
-        "ralph.pipeline.integration_director._read_porcelain", _fake_porcelain
-    )
-    monkeypatch.setattr(
-        "ralph.pipeline.integration_director.rebase_in_progress", _fake_rebase
-    )
-    monkeypatch.setattr(
-        "ralph.pipeline.integration_director.merge_state", _fake_merge
-    )
-    monkeypatch.setattr(
-        "ralph.pipeline.integration_director.is_repo_clean", _fake_repo_clean
-    )
-    monkeypatch.setattr(
-        "ralph.pipeline.integration_director.get_head_sha", _fake_get_head
-    )
+    monkeypatch.setattr("ralph.pipeline.integration_director._read_porcelain", _fake_porcelain)
+    monkeypatch.setattr("ralph.pipeline.integration_director.rebase_in_progress", _fake_rebase)
+    monkeypatch.setattr("ralph.pipeline.integration_director.merge_state", _fake_merge)
+    monkeypatch.setattr("ralph.pipeline.integration_director.is_repo_clean", _fake_repo_clean)
+    monkeypatch.setattr("ralph.pipeline.integration_director.get_head_sha", _fake_get_head)
     monkeypatch.setattr(
         "ralph.pipeline.integration_director.observe_branch_sha",
         _fake_branch_sha,
@@ -183,13 +171,10 @@ def _default_director(
     tmp_path: Path, overrides: _ProbeOverrides, **kwargs: object
 ) -> IntegrationDirector:
     """Build a director that wires the test's ``remote_probe`` override."""
-    return IntegrationDirector(
-        tmp_path,
-        target=DEFAULT_TARGET_BRANCH,
-        remote=DEFAULT_REMOTE,
-        remote_probe=lambda _root, _remote, _target: overrides.remote_probe,
-        **kwargs,
-    )
+    kwargs.setdefault("target", DEFAULT_TARGET_BRANCH)
+    kwargs.setdefault("remote", DEFAULT_REMOTE)
+    kwargs.setdefault("remote_probe", lambda _root, _remote, _target: overrides.remote_probe)
+    return IntegrationDirector(tmp_path, **kwargs)
 
 
 def test_director_landed_work_short_circuits_to_land_and_releases_record(
@@ -202,31 +187,54 @@ def test_director_landed_work_short_circuits_to_land_and_releases_record(
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
 
     # Seed a real retained record so ``clear_record`` actually has work to do.
-    record_dir = tmp_path / ".agent"
-    record_dir.mkdir(parents=True)
-    record_file = record_dir / "auto_integrate_record.json"
-    record_file.write_text(
-        (
-            "{"
-            '"phase": "integrating",'
-            '"target": "main",'
-            '"operation_kind": "REBASE"'
-            "}"
+    record_file = record_path(tmp_path)
+    write_record(
+        tmp_path,
+        IntegrationRecord(
+            phase="integrating",
+            target="main",
+            pre_feature_sha="0" * 40,
+            pre_target_sha="0" * 40,
         ),
-        encoding="utf-8",
     )
 
     director = _default_director(tmp_path, overrides)
     decision = director.decide_and_act()
 
     assert isinstance(decision, DirectorDecision)
-    assert decision.action is NextAction.LAND, (
-        f"landed work should LAND, got {decision.action}"
-    )
+    assert decision.action is NextAction.LAND, f"landed work should LAND, got {decision.action}"
     assert decision.release_applied is True
     assert decision.observation.target_vs_feature is TargetVsFeature.EQUAL
     assert decision.observation.worktree is WorktreeState.CLEAN
     assert not record_file.exists(), "director should have cleared the retained record"
+
+
+def test_director_landed_work_preserves_operator_intervention_record(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    overrides = _ProbeOverrides()
+    overrides.record_disposition = RecordReadOutcomeDisposition.PRESENT
+    _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
+    record_file = record_path(tmp_path)
+    held_record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="0" * 40,
+        pre_target_sha="0" * 40,
+        diagnostic_evidence=(("head", "0" * 40),),
+        diagnostic_intervention_required=True,
+    )
+    write_record(
+        tmp_path,
+        held_record.model_copy(
+            update={"diagnostic_ownership": f"{identity_fingerprint(held_record)}:9999999999"}
+        ),
+    )
+
+    decision = _default_director(tmp_path, overrides).decide_and_act()
+
+    assert decision.release_applied is False
+    assert record_file.exists()
 
 
 def test_director_clean_tree_with_no_record_keeps_release_false(
@@ -301,9 +309,7 @@ def test_director_unmerged_worktree_repeats_advance_rung(
     overrides.rebase_active = True
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
 
-    director = _default_director(
-        tmp_path, overrides, repeat_threshold=1
-    )
+    director = _default_director(tmp_path, overrides, repeat_threshold=1)
     sequence = [director.decide_and_act() for _ in range(3)]
     actions = [step.action for step in sequence]
     rungs = [step.attempts.rung for step in sequence]

@@ -21,8 +21,8 @@ from ralph.mcp.server._activity_sink import get_active_sink, invoke_active_sink
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
 from ralph.mcp.server._metrics import McpMetrics, get_default_metrics
 from ralph.mcp.server._schema_flavor import (
-    OPENAI_FUNCTION_FLAVOR,
-    flatten_root_schema_for_openai_function,
+    FUNCTION_CALLING_SCHEMA_FLAVOR,
+    normalize_schema_for_function_calling,
     schema_flavor_for_client_name,
 )
 from ralph.mcp.server._server_state import ServerState
@@ -201,9 +201,8 @@ class McpServer:
         self._registry = registry
         self._expose_mcp_aliases = expose_mcp_aliases
         # Schema flavor negotiated at the MCP ``initialize`` handshake:
-        # clients whose backing API cannot consume full JSON Schema at
-        # the tool-schema ROOT (``kimi-code`` -> Moonshot's OpenAI-style
-        # function parameters) receive a flattened root advertisement.
+        # model-routing clients receive a provider-neutral function-calling
+        # schema so changing models cannot invalidate the tool catalog.
         # ``None`` (the default, before any handshake and for every other
         # client) keeps the full JSON Schema contract. One McpServer
         # serves exactly one agent client per subprocess, so per-instance
@@ -337,9 +336,8 @@ class McpServer:
     def _handle_initialize(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
         # Negotiate the advertised tool-schema flavor from the client's
         # self-reported ``clientInfo.name``. This is the protocol's own
-        # capability-negotiation point: only clients that identify here
-        # as needing the OpenAI function flavor (``kimi-code``) get the
-        # flattened root schema in ``tools/list``.
+        # capability-negotiation point: model-routing clients receive the
+        # portable function-calling schema in ``tools/list``.
         #
         # The flavor is STICKY: once a flavored client has negotiated, a
         # later nameless handshake does NOT reset it. Measured on the
@@ -348,8 +346,8 @@ class McpServer:
         # own preflight/probe handshakes also arrive without a flavor
         # name; a nameless re-handshake that reset the flavor would make
         # the NEXT ``tools/list`` re-advertise the composed roots
-        # (``read_file`` et al.) and Moonshot rejects those with the
-        # exact 400 this flavor exists to prevent. Sticky-but-never-set
+        # (``read_file`` et al.) and a newly selected provider may reject
+        # the catalog. Sticky-but-never-set
         # stays safe because an unnamed client's tools/list still gets
         # the full JSON Schema advertisement until a flavored handshake
         # arrives.
@@ -375,14 +373,14 @@ class McpServer:
     def _advertised_input_schema(self, definition: ToolDefinition) -> dict[str, object]:
         """Return the ``inputSchema`` to advertise for ``definition``.
 
-        Full JSON Schema by default; the OpenAI-function-flavored root
+        Full JSON Schema by default; the portable function-calling root
         (composition keywords dropped, plain-object vocabulary kept) when
         the connecting client negotiated that flavor at ``initialize``.
         The registered ``definition.input_schema`` itself is never
         mutated — only the advertisement changes.
         """
-        if self._schema_flavor == OPENAI_FUNCTION_FLAVOR:
-            return flatten_root_schema_for_openai_function(definition.input_schema)
+        if self._schema_flavor == FUNCTION_CALLING_SCHEMA_FLAVOR:
+            return normalize_schema_for_function_calling(definition.input_schema)
         return definition.input_schema
 
     def _handle_tools_list(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:

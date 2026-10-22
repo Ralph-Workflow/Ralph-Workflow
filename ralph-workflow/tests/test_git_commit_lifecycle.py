@@ -86,9 +86,7 @@ def test_create_commit_cas_failure_with_unchanged_head_raises_operation_error(
 
         monkeypatch.setattr(operations_module, "run_git", failed_update_ref)
         with pytest.raises(GitOperationError, match="lock denied"):
-            operations_module.create_commit(
-                tmp_git_repo, "candidate", expected_head=expected_head
-            )
+            operations_module.create_commit(tmp_git_repo, "candidate", expected_head=expected_head)
         # The candidate was never published: HEAD is unchanged.
         assert repo.head.commit.hexsha == expected_head
     finally:

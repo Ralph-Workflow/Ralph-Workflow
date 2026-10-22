@@ -878,7 +878,11 @@ def _save_recovered_rebase_checkpoint(
     try:
         from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
 
-        reconciled = reconcile_stale_unresolved_state(state.rebase)
+        reconciled = (
+            reconcile_stale_unresolved_state(state.rebase)
+            if state.rebase.integration_unresolved
+            else state.rebase
+        )
         checkpoint_state = (
             state if reconciled is state.rebase else state.copy_with(rebase=reconciled)
         )
@@ -1313,15 +1317,18 @@ def _apply_startup_rebase_outcomes(
     process startup.
     """
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.state import PipelineState as RuntimePipelineState
 
     try:
         candidate_deps = ctx.pipeline_deps
     except AttributeError:
         candidate_deps = None
     pipeline_deps = candidate_deps if isinstance(candidate_deps, PipelineDeps) else None
+    if candidate_deps is not None and not isinstance(cast("object", state), RuntimePipelineState):
+        return state
     if pipeline_deps is not None and pipeline_deps.startup_rebase_resolver is not None:
         injected_rebase = pipeline_deps.startup_rebase_resolver(ctx.config, ctx.workspace_scope)
-        if injected_rebase is None:
+        if injected_rebase is None or injected_rebase == state.rebase:
             return state
         return state.copy_with(rebase=injected_rebase)
 
@@ -1345,7 +1352,7 @@ def _apply_startup_rebase_outcomes(
             _announce_deferred_startup_integration(ctx, recovered_rebase)
             return state
     startup_rebase = _run_startup_integration(ctx, state.rebase)
-    if startup_rebase is not None:
+    if startup_rebase is not None and startup_rebase != state.rebase:
         state = state.copy_with(rebase=startup_rebase)
         if not startup_rebase.is_skipped():
             _save_recovered_rebase_checkpoint(state, ctx)
@@ -2001,6 +2008,12 @@ def _planning_sync_gap(ctx: _LoopContext) -> str | None:
 
 
 def _reconcile_dispatch_state(state: PipelineState) -> PipelineState:
+    if not (
+        state.rebase.integration_unresolved
+        or state.rebase.resolution_exhausted
+        or state.rebase.recovery_record_retained
+    ):
+        return state
     reconciled = reconcile_stale_unresolved_state(state.rebase)
     return state if reconciled is state.rebase else state.copy_with(rebase=reconciled)
 
@@ -2672,6 +2685,8 @@ def _render_current_observation_detail(rebase: RebaseState) -> str:
     from ralph.pipeline._publication_state_machine import PublicationDecision
 
     decision = rebase.last_publication_decision
+    if decision is None and rebase.last_reason:
+        return rebase.last_reason
     if decision == PublicationDecision.PUBLISH_DEFERRED_REMOTE.value:
         return "configured remote currently unreachable"
     if decision == PublicationDecision.PUBLISH_DEFERRED_FRESHNESS.value:
@@ -3848,9 +3863,7 @@ def _report_pending_remote_publication(state: PipelineState, ctx: _LoopContext) 
     # final state's explanation. Derive the detail from the typed
     # publication decision instead.
     reason = (
-        _render_current_observation_detail(state.rebase)
-        or state.rebase.last_push
-        or pending_status
+        _render_current_observation_detail(state.rebase) or state.rebase.last_push or pending_status
     )
     return state.copy_with(
         rebase=state.rebase.model_copy(

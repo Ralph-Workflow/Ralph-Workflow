@@ -199,8 +199,7 @@ class IntegrationRecord(RalphBaseModel):
         """
         if not isinstance(transition, Transition) or transition not in Transition.ALL:
             raise ValueError(f"Invalid transition: {transition!r}")
-        update = transition.apply(self, **fields)
-        return self.model_copy(update=update)
+        return transition.apply(self, **fields)
 
 
 # ---------------------------------------------------------------------------

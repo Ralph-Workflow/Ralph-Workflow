@@ -60,6 +60,34 @@ ralph.main
    :members:
    :show-inheritance:
 
+ralph.pipeline.integration_attempt_ledger
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.integration_attempt_ledger
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.integration_decision
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.integration_decision
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.integration_director
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.integration_director
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.integration_observation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.integration_observation
+   :members:
+   :show-inheritance:
+
 ralph.logging
 ~~~~~~~~~~~~~
 
@@ -3094,6 +3122,13 @@ ralph.git.errors
 ~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.git.errors
+   :members:
+   :show-inheritance:
+
+ralph.git.git_command_queue
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.git_command_queue
    :members:
    :show-inheritance:
 

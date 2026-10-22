@@ -143,9 +143,11 @@ def _queue_routing_target(repo_root: Path | str, repo: Repo) -> Repo:
     :class:`_RepoQueueView` keyed on ``repo_root``, so the queue key never
     depends on a double exposing ``git_dir``.
     """
-    if _is_queue_view(repo):
+    if not _is_queue_view(repo) and not hasattr(repo, "git_dir"):
         view = _RepoQueueView(git=repo.git, git_dir=str(repo_root))
-        return cast("Repo", view)  # cast-policy: seam: structural boundary (queue-routing view exposes exactly the two attributes route_git_method reads)
+        return cast(
+            "Repo", view
+        )  # cast-policy: seam: structural boundary (queue-routing view exposes exactly the two attributes route_git_method reads)
     return repo
 
 
@@ -682,7 +684,7 @@ def _resolve_detached_head_reattach_branch(repo_root: Path) -> str | None:
             idx = line.find(marker)
             if idx == -1:
                 continue
-            rest = line[idx + len(marker):]
+            rest = line[idx + len(marker) :]
             parts = rest.split(" to ", 1)
             if len(parts) == _REFLOG_DEST_PARTS:
                 dest = parts[1].strip()
@@ -845,6 +847,8 @@ def create_commit(
         # HEAD's tree and the candidate tree inside the same serialized run.
         current_head_sha = repo.head.commit.hexsha if hasattr(repo, "head") else ""
         if not hasattr(repo, "git_dir"):
+            if current_head_sha and current_head_sha != expected_head:
+                return CommitCreationResult.already_advanced(current_head_sha)
             author_name, author_email = _resolve_commit_identity(repo, author_name, author_email)
             actor = Actor(author_name, author_email)
             commit = _run_git_operation_with_stale_lock_recovery(
@@ -860,9 +864,7 @@ def create_commit(
             message_file.write(message)
             message_path = Path(message_file.name)
         try:
-            message = _run_prepare_commit_hooks(
-                Path(repo_root), str(repo.git_dir), message_path
-            )
+            message = _run_prepare_commit_hooks(Path(repo_root), str(repo.git_dir), message_path)
         finally:
             message_path.unlink(  # filesystem-write-ok: transient hook message scratch
                 missing_ok=True
@@ -941,6 +943,7 @@ def push(
     try:
         repo = Repo(repo_root)
         active_branch = branch or repo.active_branch.name
+        repo.remote(remote)
         # Publish idempotency (AC11): skip the push when the local SHA equals
         # the remote-tracking SHA. A re-dispatch, an interrupted run, or a
         # repeated fan-out must not re-issue a non-fast-forward push.
@@ -949,22 +952,14 @@ def push(
             cwd=Path(repo_root),
             label="git-rev-parse-local-branch",
         )
-        local_sha = (
-            local_sha_result.stdout.strip()
-            if local_sha_result.returncode == 0
-            else ""
-        )
+        local_sha = local_sha_result.stdout.strip() if local_sha_result.returncode == 0 else ""
         remote_tracking_ref = f"refs/remotes/{remote}/{active_branch}"
         remote_sha_result = run_git(
             ("rev-parse", "--verify", remote_tracking_ref),
             cwd=Path(repo_root),
             label="git-rev-parse-remote-tracking",
         )
-        remote_sha = (
-            remote_sha_result.stdout.strip()
-            if remote_sha_result.returncode == 0
-            else ""
-        )
+        remote_sha = remote_sha_result.stdout.strip() if remote_sha_result.returncode == 0 else ""
         if local_sha and remote_sha and local_sha == remote_sha:
             logger.info(
                 "Push of {} to {}/{} skipped: local sha matches remote-tracking sha",

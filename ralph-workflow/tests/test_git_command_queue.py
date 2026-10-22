@@ -21,7 +21,7 @@ import contextlib
 import shutil
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
@@ -92,10 +92,6 @@ class _FakeRepo:
         self.git_dir = git_dir
         self.git = git
 
-    def as_repo(self) -> Repo:
-        """Return this fake typed as ``Repo`` for the queue dispatch seam."""
-        return cast("Repo", self)
-
 
 class _FakeProcess:
     def __init__(self, log: list[str], lock: threading.Lock, timed_out: bool) -> None:
@@ -151,10 +147,9 @@ def _install_fake_run_git(
         except TimeoutError:
             proc.terminate()
             raise
-        args_seq = cast("tuple[str, ...]", args)
-        return GitRunResult(
-            args=("git", *args_seq), returncode=0, stdout=stdout, stderr=stderr
-        )
+        assert isinstance(args, (list, tuple))
+        assert all(isinstance(arg, str) for arg in args)
+        return GitRunResult(args=("git", *args), returncode=0, stdout=stdout, stderr=stderr)
 
     from ralph.git import subprocess_runner
 
@@ -173,9 +168,9 @@ def test_gitpython_and_subprocess_paths_serialize_shared_queue(
     repo = _FakeRepo(repo_dir, _FakeGit(log, set()))
     cwd = Path(real_repo.working_dir or repo_dir)
 
-    route_git_method(repo.as_repo(), "status", ("--porcelain",))
+    route_git_method(repo, "status", ("--porcelain",))
     route_run_git(["diff", "--cached", "--name-only"], cwd=cwd, label="t")
-    route_git_method(repo.as_repo(), "ls_files", ("--stage",))
+    route_git_method(repo, "ls_files", ("--stage",))
 
     assert log == ["gitpy:status", "subprocess:git", "gitpy:ls_files"]
     queue = get_queue_for_repo(real_repo)
@@ -233,7 +228,7 @@ def test_consecutive_timeouts_share_health_across_both_paths(
     assert queue.health_factor() == 1
 
     with pytest.raises(TimeoutError):
-        route_git_method(repo.as_repo(), "status", ("--porcelain",))
+        route_git_method(repo, "status", ("--porcelain",))
     assert queue.health_factor() == 2
 
     # A success on either path resets the shared counter.

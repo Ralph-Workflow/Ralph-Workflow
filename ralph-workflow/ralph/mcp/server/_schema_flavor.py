@@ -1,57 +1,14 @@
-"""Client-flavored tool-schema advertisement for the MCP server.
+"""Portable function-calling schemas for model-routing MCP clients.
 
-Some MCP clients do not consume full JSON Schema. The known case is the
-Kimi Code CLI (``kimi-code``), which forwards every ``tools/list`` entry
-verbatim as an OpenAI-style ``tools[].function.parameters`` payload when
-it calls the Moonshot API. Moonshot validates that payload with a
-stricter "moonshot flavored json schema" than JSON Schema draft 2020-12
-and rejects a ROOT schema that mixes ``type`` with composition keywords
-(``oneOf`` / ``anyOf`` / ``allOf`` / ``not``) or boolean sub-schemas,
-failing the whole request with HTTP 400::
+OpenCode and Kimi Code can route requests to different model providers. Ralph
+therefore cannot select a tool-schema dialect from the configured model name.
+Instead, those clients receive a provider-neutral function-calling subset at
+the MCP boundary. Full JSON Schema clients retain Ralph's richer validation
+contracts.
 
-    tools.function.parameters is not a valid moonshot flavored json
-    schema, details: <At path 'root': when using anyOf, type should be
-    defined in anyOf items instead of the parent schema>
-
-Ralph deliberately advertises selector mutual-exclusion contracts
-(``read_file``, ``read_multiple_files``, ``exec``) through exactly those
-root composition keywords because full JSON Schema clients benefit from
-them. Rather than weaken the public contract for every client, the MCP
-server negotiates the flavor at the MCP ``initialize`` handshake — the
-protocol's own capability-negotiation point — and flattens ONLY the
-advertised root schema, ONLY for clients that identify themselves as
-needing the OpenAI function flavor.
-
-Flattening keeps the plain-object root vocabulary (``type``,
-``properties``, ``required``, ``additionalProperties``, ``description``,
-``title``), drops the composition keywords, and defaults ``type`` to
-``"object"``. The flattening then recurses one deliberate level into
-direct ``properties`` sub-schemas: Moonshot's flavor check is not
-root-only (re-measured live on 2026-08-17 — after root-only flattening
-shipped, Moonshot still rejected the advertisement with the same
-``At path 'root': when using anyOf...`` 400 because
-``exec.properties.command/argv/args`` keep ``oneOf`` with no sibling
-``type``). For each direct property the same rule is applied: a
-composition keyword mixed with a sibling ``type`` is flattened to the
-plain vocabulary, and a composition-only property (``exec``'s
-``command``/``argv``/``args``, which accept ``string | list[string]``)
-is rewritten to ``{"type": ["string", "array"], "items": {...}}`` —
-JSON Schema type unions — because Moonshot accepts a bare ``type``
-array but never an ``oneOf`` branch list. Direct ``properties``
-sub-schemas are additionally repaired in one narrow way: Moonshot
-rejects an enum whose parent has no ``type`` (``At path
-'properties.mode': type is not defined``), so a direct property
-declaring ``enum`` without ``type`` gains ``"type": "string"`` when
-every enum member is a string (the observed
-``ralph_stage_md_artifact.mode`` case, re-measured against the live
-Moonshot API on 2026-08-17). Anything deeper is left untouched: the
-live 42-tool advertisement passes Moonshot's validator once the
-composed roots, the ``exec`` property unions, and the untyped-enum
-repair are applied.
-
-The registered :class:`~ralph.mcp.tools.bridge._tool_definition.ToolDefinition`
-``input_schema`` is never mutated: dispatch-time validation and every
-non-flavored client keep the full JSON Schema contract.
+The normalization keeps plain object keywords, removes root composition, and
+normalizes direct property unions. Registered tool definitions are never
+mutated, so dispatch-time validation continues to use the complete schema.
 """
 
 from __future__ import annotations
@@ -61,15 +18,9 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from ralph.mcp.tools.bridge._types import JsonObject
 
-#: Client ``clientInfo.name`` values (from the MCP ``initialize`` request)
-#: whose backing API accepts only the OpenAI function-calling schema
-#: flavor. Kimi Code CLI identifies itself as ``kimi-code`` at handshake
-#: (verified on the wire: ``"clientInfo": {"name": "kimi-code",
-#: "version": "0.0.0"}``).
-OPENAI_FUNCTION_FLAVOR_CLIENTS: frozenset[str] = frozenset({"kimi-code"})
+FUNCTION_CALLING_SCHEMA_CLIENTS: frozenset[str] = frozenset({"kimi-code", "opencode"})
 
-#: Sentinel flavor value for clients that need the flattened root schema.
-OPENAI_FUNCTION_FLAVOR = "openai-function"
+FUNCTION_CALLING_SCHEMA_FLAVOR = "function-calling"
 
 #: Root keywords preserved by flattening. Everything else at the ROOT
 #: (composition keywords, boolean sub-schemas, unknown extras) is dropped.
@@ -88,18 +39,16 @@ _ROOT_KEYS_PRESERVED: frozenset[str] = frozenset(
 def schema_flavor_for_client_name(client_name: str | None) -> str | None:
     """Map an MCP ``initialize`` ``clientInfo.name`` to a schema flavor.
 
-    Returns :data:`OPENAI_FUNCTION_FLAVOR` when the client's backing API
-    accepts only the OpenAI function-calling schema flavor, ``None``
-    otherwise (including unknown, missing, or empty names). ``None`` is
-    the default full-JSON-Schema advertisement.
+    Model-routing clients receive the portable function-calling flavor.
+    Unknown clients retain the complete JSON Schema advertisement.
     """
-    if client_name and client_name in OPENAI_FUNCTION_FLAVOR_CLIENTS:
-        return OPENAI_FUNCTION_FLAVOR
+    if client_name and client_name in FUNCTION_CALLING_SCHEMA_CLIENTS:
+        return FUNCTION_CALLING_SCHEMA_FLAVOR
     return None
 
 
 def _flatten_property_subschema(subschema: JsonObject) -> JsonObject:
-    """Flatten one direct ``properties`` sub-schema for Moonshot.
+    """Flatten one direct property for portable function calling.
 
     Same root rule applied one level down: a composition keyword mixed
     with a sibling ``type`` keeps only the plain vocabulary; a
@@ -107,8 +56,7 @@ def _flatten_property_subschema(subschema: JsonObject) -> JsonObject:
     declare a plain ``type`` (the ``exec`` ``command``/``argv``/``args``
     ``string | array`` union) is rewritten to a JSON Schema type union
     ``{"type": ["array", "string"]}`` plus the single array branch's
-    ``items`` — Moonshot accepts a ``type`` array but never a branch
-    list. Any other composition shape (a branch without ``type``, a
+    ``items``. Any other composition shape (a branch without ``type``, a
     bare ``not``, ...) is returned untouched (never observed from this
     server's registry).
     """
@@ -124,8 +72,7 @@ def _flatten_property_subschema(subschema: JsonObject) -> JsonObject:
         if branch_types and len(branch_types) == len(branches):
             # Composition-only property whose every branch declares a
             # plain ``type`` (e.g. ``exec``'s ``command``/``argv``/``args``
-            # ``string | array`` union): Moonshot accepts a bare ``type``
-            # array but never a branch list, so collapse the branches into
+            # ``string | array`` union): collapse the branches into
             # one JSON Schema type union and lift the array branch's
             # ``items`` when exactly one array branch exists.
             flattened_prop: JsonObject = {
@@ -142,11 +89,9 @@ def _flatten_property_subschema(subschema: JsonObject) -> JsonObject:
 
 
 def _repair_property_enum_without_type(properties: JsonObject) -> JsonObject:
-    """Give untyped ``enum`` properties a ``type`` Moonshot accepts.
+    """Give untyped string-enum properties an explicit portable type.
 
-    Moonshot's validator rejects ``{"enum": [...]}`` with no sibling
-    ``type`` (``At path 'properties.mode': type is not defined``). The
-    repair adds ``"type": "string"`` when every enum member is a string;
+    The repair adds ``"type": "string"`` when every enum member is a string;
     anything else is returned untouched (never observed from this
     server's registry). Property sub-schemas are copied only when
     repaired; untouched entries keep their identity.
@@ -169,8 +114,8 @@ def _repair_property_enum_without_type(properties: JsonObject) -> JsonObject:
     return repaired
 
 
-def flatten_root_schema_for_openai_function(schema: JsonObject) -> JsonObject:
-    """Return ``schema`` with an OpenAI-function-flavored root.
+def normalize_schema_for_function_calling(schema: JsonObject) -> JsonObject:
+    """Return ``schema`` normalized to a portable function-calling root.
 
     The root keeps the plain-object vocabulary (``type``, ``properties``,
     ``required``, ``additionalProperties``, ``description``, ``title``),
@@ -193,8 +138,8 @@ def flatten_root_schema_for_openai_function(schema: JsonObject) -> JsonObject:
 
 
 __all__ = [
-    "OPENAI_FUNCTION_FLAVOR",
-    "OPENAI_FUNCTION_FLAVOR_CLIENTS",
-    "flatten_root_schema_for_openai_function",
+    "FUNCTION_CALLING_SCHEMA_CLIENTS",
+    "FUNCTION_CALLING_SCHEMA_FLAVOR",
+    "normalize_schema_for_function_calling",
     "schema_flavor_for_client_name",
 ]

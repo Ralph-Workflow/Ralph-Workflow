@@ -60,3 +60,4 @@ def test_plan_edit_tool_is_not_exposed() -> None:
     assert (
         "replace_all" in specs["ralph_stage_md_artifact"].input_schema["properties"]["mode"]["enum"]
     )
+    assert specs["ralph_stage_md_artifact"].input_schema["properties"]["mode"]["type"] == "string"

@@ -127,7 +127,9 @@ class _FakeRunGitScript:
         stdout: str = "",
         stderr: str = "",
     ) -> GitRunResult:
-        return GitRunResult(args=("git", *args), returncode=returncode, stdout=stdout, stderr=stderr)
+        return GitRunResult(
+            args=("git", *args), returncode=returncode, stdout=stdout, stderr=stderr
+        )
 
     def _for_each_ref(self, headless_args: tuple[str, ...]) -> GitRunResult:
         stdout = f"{self.for_each_ref_branch}\n" if self.for_each_ref_branch else ""
@@ -432,10 +434,19 @@ def test_create_commit_detached_head_reattaches_to_feature_branch(
     assert result.status is CommitCreationStatus.CREATED
     assert result.sha == _REWRITTEN_SHA  # the fake commit-tree output sha
     # The seam used the resolved feature branch as the update-ref target.
-    assert ("for-each-ref", "--points-at=0123456789abcdef0123456789abcdef01234567",
-            "refs/heads/", "--format=%(refname:short)") in script.calls
-    assert ("update-ref", "-m", "ralph reattach detached HEAD", "HEAD",
-            "feature/work") in script.calls
+    assert (
+        "for-each-ref",
+        "--points-at=0123456789abcdef0123456789abcdef01234567",
+        "refs/heads/",
+        "--format=%(refname:short)",
+    ) in script.calls
+    assert (
+        "update-ref",
+        "-m",
+        "ralph reattach detached HEAD",
+        "HEAD",
+        "feature/work",
+    ) in script.calls
     assert ("update-ref", "feature/work", _REWRITTEN_SHA, _FULL_SHA) in script.calls
 
 
@@ -453,14 +464,12 @@ def test_create_commit_detached_head_falls_back_to_head_file_residual(
     script.symbolic_ref_returncode = 1
     script.symbolic_ref_stdout = ""
 
-    def fake_path_is_file(self: Path) -> bool:  # type: ignore[override]
+    def fake_path_is_file(self: Path) -> bool:
         if str(self).endswith(".git/HEAD"):
             return True
         return _real_is_file(self)
 
-    def fake_path_read_text(
-        self: Path, *args: object, **kwargs: object
-    ) -> str:
+    def fake_path_read_text(self: Path, *args: object, **kwargs: object) -> str:
         if str(self).endswith(".git/HEAD"):
             return "ref: refs/heads/feature/work\n"
         return _real_read_text(self, *args, **kwargs)
@@ -475,8 +484,13 @@ def test_create_commit_detached_head_falls_back_to_head_file_residual(
     )
 
     assert result.status is CommitCreationStatus.CREATED
-    assert ("update-ref", "-m", "ralph reattach detached HEAD", "HEAD",
-            "feature/work") in script.calls
+    assert (
+        "update-ref",
+        "-m",
+        "ralph reattach detached HEAD",
+        "HEAD",
+        "feature/work",
+    ) in script.calls
 
 
 def test_create_commit_detached_head_no_branch_raises_with_explanatory_error(
@@ -492,7 +506,7 @@ def test_create_commit_detached_head_no_branch_raises_with_explanatory_error(
     not ``failed_terminal``).
     """
 
-    def fake_path_is_file(self: Path) -> bool:  # type: ignore[override]
+    def fake_path_is_file(self: Path) -> bool:
         return False
 
     monkeypatch.setattr(Path, "is_file", fake_path_is_file)
@@ -597,12 +611,9 @@ def test_push_skips_when_local_sha_matches_remote_tracking_sha(
 
     assert push_calls == []
     # The seam compared local and remote-tracking SHAs.
+    assert any(args == ("rev-parse", "--verify", "main") for args in script.calls)
     assert any(
-        args == ("rev-parse", "--verify", "main") for args in script.calls
-    )
-    assert any(
-        args == ("rev-parse", "--verify", "refs/remotes/origin/main")
-        for args in script.calls
+        args == ("rev-parse", "--verify", "refs/remotes/origin/main") for args in script.calls
     )
 
 
@@ -837,8 +848,6 @@ def test_commit_idempotency_display_outcome_failed(monkeypatch: MonkeyPatch) -> 
 
     # Constructor can also stamp outcomes explicitly; the dataclass
     # does not mutate them.
-    stamped = CommitAgentResult(
-        message="feat: ok", outcome=CommitAgentOutcome.COMPLETED
-    )
+    stamped = CommitAgentResult(message="feat: ok", outcome=CommitAgentOutcome.COMPLETED)
     assert stamped.failed is False
     assert stamped.outcome is CommitAgentOutcome.COMPLETED

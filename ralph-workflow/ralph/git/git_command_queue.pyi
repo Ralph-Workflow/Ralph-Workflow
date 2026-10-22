@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import os
 import threading
 from collections import deque
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Protocol
 
 from git import Repo
 
@@ -46,6 +47,14 @@ class WorktreeLeaseHolder:
 
 class WorktreeLeaseUnavailableError(RuntimeError): ...
 
+class RepoPath(Protocol):
+    @property
+    def git_dir(self) -> str | os.PathLike[str]: ...
+
+class GitMethodRepo(RepoPath, Protocol):
+    @property
+    def git(self) -> object: ...
+
 WorktreeLeaseUnavailable: type = WorktreeLeaseUnavailableError
 
 class WorktreeLease:
@@ -56,12 +65,11 @@ class WorktreeLease:
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None: ...
 
 def route_git_method(
-    repo: Repo,
+    repo: GitMethodRepo,
     method_name: str,
     args: Sequence[object] = ...,
     kwargs: Mapping[str, object] | None = ...,
 ) -> object: ...
-
 def route_run_git(
     args: Sequence[str],
     *,
@@ -69,25 +77,18 @@ def route_run_git(
     label: str,
     options: GitRunOptions | None = ...,
 ) -> GitRunResult: ...
-
-def get_queue_for_repo(repo_or_path: Repo | Path | str) -> GitCommandQueue: ...
-
+def get_queue_for_repo(repo_or_path: RepoPath | Path | str) -> GitCommandQueue: ...
 def reset_all_queues() -> None: ...
-
 def begin_agent_lease(
     repo_or_path: Repo | Path | str,
     *,
     holder: WorktreeLeaseHolder | None = ...,
 ) -> WorktreeLease: ...
-
 def try_acquire_lease(
     repo_or_path: Repo | Path | str,
     *,
     holder: WorktreeLeaseHolder | None = ...,
 ) -> WorktreeLease | None: ...
-
 def end_agent_lease(lease: WorktreeLease) -> None: ...
-
 def is_lease_held(repo_or_path: Repo | Path | str) -> bool: ...
-
 def _classify_exception(exc: BaseException) -> Literal["timeout", "error"]: ...

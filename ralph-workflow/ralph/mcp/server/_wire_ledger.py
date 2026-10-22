@@ -83,7 +83,7 @@ _GENESIS_HMAC = GENESIS_HMAC
 
 #: Bytes read per step when scanning the ledger backwards for its chain
 #: head. One row is a few hundred bytes, so one chunk almost always holds it.
-_TAIL_CHUNK_BYTES = 64 * 1024
+TAIL_CHUNK_BYTES = 64 * 1024
 
 #: Verified views kept per process, keyed by (ledger path, secret
 #: fingerprint). A run touches one or two ledgers; the cap only bounds
@@ -318,7 +318,7 @@ def _read_last_hmac(ledger_path: Path) -> str:
             end = handle.seek(0, os.SEEK_END)
             carry = b""
             while end > 0:
-                start = max(0, end - _TAIL_CHUNK_BYTES)
+                start = max(0, end - TAIL_CHUNK_BYTES)
                 handle.seek(start)
                 lines = (handle.read(end - start) + carry).split(b"\n")
                 end = start
@@ -477,7 +477,7 @@ def _ledger_index(workspace_root: Path, secret: str) -> WireLedgerIndex:
         index = _INDEXES.get(key)
         if index is None:
             index = WireLedgerIndex(
-                ledger_path, lambda row, prior: _expected_row_hmac(secret, row, prior)
+                ledger_path, lambda row, prior: expected_row_hmac(secret, row, prior)
             )
             _INDEXES[key] = index
             while len(_INDEXES) > _MAX_CACHED_INDEXES:
@@ -487,7 +487,7 @@ def _ledger_index(workspace_root: Path, secret: str) -> WireLedgerIndex:
         return index
 
 
-def _expected_row_hmac(secret: str, row: dict[str, object], prior: str) -> str | None:
+def expected_row_hmac(secret: str, row: dict[str, object], prior: str) -> str | None:
     """Recompute the HMAC ``row`` was sealed with, or ``None`` if it is malformed.
 
     S-6 (criterion 17): the four optional S-6 fields are read from the

@@ -288,8 +288,8 @@ def test_fast_profile_registry_is_a_fixed_nonempty_routing_contract() -> None:
     assert not set(EXPECTED_FAST_TEST_FILES) & set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
 
 
-def test_required_e2e_shard_xdist_workers_constant_is_pinned_to_eight() -> None:
-    """Use eight workers for the isolated real-git shard.
+def test_required_e2e_shard_xdist_workers_constant_is_pinned_to_twelve() -> None:
+    """Use twelve workers for the isolated real-git shard.
 
     wt-03-fix-bug pinned four to hold total concurrent processes at 12
     (8 general + 4 E2E) on the then-maintained 12-core host. On the current
@@ -300,7 +300,7 @@ def test_required_e2e_shard_xdist_workers_constant_is_pinned_to_eight() -> None:
     immutable cumulative 60 s budget. The value stays a strict, pinned
     runner-architecture constant -- a change here must be deliberate.
     """
-    assert test_suites_module._REQUIRED_E2E_SHARD_XDIST_WORKERS == "8"
+    assert test_suites_module._REQUIRED_E2E_SHARD_XDIST_WORKERS == "12"
 
 
 def test_required_auto_integrate_e2e_registry_matches_discovery_contract() -> None:

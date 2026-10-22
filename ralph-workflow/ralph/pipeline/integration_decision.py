@@ -227,9 +227,7 @@ class AttemptState:
             )
         )
 
-    def key_pair(
-        self, observation: Observation, action: NextAction
-    ) -> tuple[str, str]:
+    def key_pair(self, observation: Observation, action: NextAction) -> tuple[str, str]:
         """Return the ``(signature, action)`` key the ladder uses to count repeats."""
         return (self.signature(observation), action.value)
 
@@ -248,9 +246,7 @@ class AttemptState:
         """True once :attr:`unknown_attempts` has met or passed the budget."""
         return self.unknown_attempts >= self.unknown_budget
 
-    def repeat_count_for(
-        self, observation: Observation, action: NextAction
-    ) -> int:
+    def repeat_count_for(self, observation: Observation, action: NextAction) -> int:
         """Return the repeat count for the ``(signature, action)`` pair (0 if absent)."""
         return self.repeat_counts.get(self.key_pair(observation, action), 0)
 
@@ -345,9 +341,7 @@ class AttemptState:
         while len(updated) > _REPEAT_COUNTER_CAP:
             updated.popitem(last=False)
         attempts_after = self.signature_attempts(observation) + 1
-        if self.should_advance(
-            repeat_count=new_count, signature_attempts=attempts_after
-        ):
+        if self.should_advance(repeat_count=new_count, signature_attempts=attempts_after):
             return AttemptState(
                 rung=self.next_rung(),
                 repeat_counts=updated,
@@ -388,18 +382,14 @@ def _ladder_action(rung: EscalationRung) -> NextAction:
 
 def _is_target_moved(observation: Observation) -> bool:
     """True when target has moved past feature and the tree is clean enough to mirror."""
-    return (
-        observation.target_vs_feature
-        in (TargetVsFeature.BEHIND, TargetVsFeature.DIVERGED)
-    )
+    return observation.target_vs_feature in (TargetVsFeature.BEHIND, TargetVsFeature.DIVERGED)
 
 
 def _is_landed(observation: Observation) -> bool:
     """True when the feature's work is contained in the target already."""
-    return (
-        observation.worktree is WorktreeState.CLEAN
-        and observation.target_vs_feature
-        in (TargetVsFeature.EQUAL, TargetVsFeature.AHEAD)
+    return observation.worktree is WorktreeState.CLEAN and observation.target_vs_feature in (
+        TargetVsFeature.EQUAL,
+        TargetVsFeature.AHEAD,
     )
 
 
@@ -440,15 +430,10 @@ def _needs_ladder(observation: Observation) -> bool:
     REINTEGRATE, RESUME, COMMIT) bypass the ladder because their meaning
     is independent of the repeat count.
     """
-    return (
-        observation.head is HeadState.DETACHED
-        or _is_repairable_record(observation)
-    )
+    return observation.head is HeadState.DETACHED or _is_repairable_record(observation)
 
 
-def _ladder_action_for(
-    observation: Observation, attempts: AttemptState
-) -> NextAction:
+def _ladder_action_for(observation: Observation, attempts: AttemptState) -> NextAction:
     """Resolve a fully-observed, conflict-free, quiescent observation.
 
     Honours rule 4 (resolver-skipping invariant): the current rung's
@@ -483,9 +468,7 @@ def _is_boring_observation(observation: Observation) -> bool:
     )
 
 
-def _ladder_action_skipping_resolver(
-    rung: EscalationRung, observation: Observation
-) -> NextAction:
+def _ladder_action_skipping_resolver(rung: EscalationRung, observation: Observation) -> NextAction:
     """Return ``rung``'s mapped action, skipping ``DISPATCH_RESOLVER`` for boring states.
 
     Rule 4 (resolver-skipping invariant) — see module docstring rule 4.
@@ -494,10 +477,7 @@ def _ladder_action_skipping_resolver(
     resolver can legitimately fix them.
     """
     action = _ladder_action(rung)
-    if (
-        action is NextAction.DISPATCH_RESOLVER
-        and _is_boring_observation(observation)
-    ):
+    if action is NextAction.DISPATCH_RESOLVER and _is_boring_observation(observation):
         return NextAction.REBUILD_ON_TARGET
     return action
 
@@ -545,9 +525,7 @@ def _ladder_dispatch_or_direct(
         repeat_count=attempts.repeat_count_for(observation, direct),
         signature_attempts=attempts.signature_attempts(observation) + 1,
     ):
-        return _ladder_action_skipping_resolver(
-            _escalated_rung(attempts.rung), observation
-        )
+        return _ladder_action_skipping_resolver(_escalated_rung(attempts.rung), observation)
     return direct
 
 
@@ -581,6 +559,9 @@ def decide(context: DecisionContext) -> NextAction:
 
     if observation.has_unknown():
         return _wait_or_continue(attempts)
+
+    if _is_repairable_record(observation) and not _is_landed(observation):
+        return _ladder_action_skipping_resolver(attempts.rung, observation)
 
     if _is_real_conflict(observation):
         return _ladder_dispatch_or_direct(

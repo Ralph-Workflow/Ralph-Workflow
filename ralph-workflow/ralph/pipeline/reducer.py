@@ -1529,6 +1529,7 @@ def _resolve_commit_escalation_phase(
 def _recoverable_git_failure_default_target(
     state: PipelineState,
     policy: PipelinePolicy,
+    last_error: str | None,
 ) -> str | None:
     """Return the in-place phase to retry when a repairable git failure has no recovery phase.
 
@@ -1558,9 +1559,6 @@ def _recoverable_git_failure_default_target(
         on failure it stays on disk.
       - A fresh pass of ``execute_commit_effect`` re-reads ``effect.message_file``.
     """
-    from ralph.pipeline.commit_executor import get_last_commit_error
-
-    last_error = get_last_commit_error() or state.last_error
     if not _is_repairable_git_failure(last_error):
         return None
     if _resolve_commit_recovery_phase(state, policy) is not None:
@@ -1590,7 +1588,7 @@ def _handle_commit_failure(
        non-repairable (or no recovery/in-place target exists), never merely because
        the retry counter reached the cap on a repairable failure.
     """
-    from ralph.pipeline.commit_executor import get_last_commit_error
+    from ralph.pipeline.commit_executor import get_last_commit_error, set_last_commit_error
 
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for commit failure routing", policy)
@@ -1599,7 +1597,10 @@ def _handle_commit_failure(
         pending_cycle_outcome=None,
         last_execution_result_status="failed",
     )
-    last_error = get_last_commit_error() or state.last_error
+    last_error = get_last_commit_error()
+    set_last_commit_error(None)
+    if last_error is None and _is_repairable_git_failure(state.last_error):
+        last_error = state.last_error
 
     if _is_repairable_git_failure(last_error):
         recovery_phase = _resolve_commit_recovery_phase(cleared_state, policy)
@@ -1652,7 +1653,11 @@ def _handle_commit_failure(
 
         # No commit_recovery / commit_cleanup phase: re-route in-place to retry
         # with the validated message preserved on disk at effect.message_file.
-        in_place_target = _recoverable_git_failure_default_target(cleared_state, policy)
+        in_place_target = _recoverable_git_failure_default_target(
+            cleared_state,
+            policy,
+            last_error,
+        )
         if in_place_target is not None:
             failure_reason = last_error or commit_failure_reason(state)
             # Extract lock path and age from the error for the operator log.

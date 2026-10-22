@@ -126,10 +126,10 @@ def boundary_freshness_outcome(
         rebase_stop_resolver=rebase_stop_resolver,
     )
     last_remote_sync_now = pending.last_remote_sync
-    already_current = (
-        last_remote_sync_now in {REMOTE_ALREADY_CURRENT, RemoteSyncStatus.ALREADY_CURRENT.value}
-        or not remote_sync_enabled(config)
-    )
+    already_current = last_remote_sync_now in {
+        REMOTE_ALREADY_CURRENT,
+        RemoteSyncStatus.ALREADY_CURRENT.value,
+    } or not remote_sync_enabled(config)
     is_transient_failure = last_remote_sync_now in {
         REMOTE_PULL_FAILED,
         REMOTE_REMOTE_UNREACHABLE,

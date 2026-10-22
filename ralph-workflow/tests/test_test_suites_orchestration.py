@@ -836,11 +836,11 @@ def test_main_regression_rejects_unknown_profile_before_spawning(
         test_suites_module.main(("--profile", "unknown"))
 
 
-def test_default_profile_dedicated_required_e2e_shard_uses_eight_xdist_workers(
+def test_default_profile_dedicated_required_e2e_shard_uses_twelve_xdist_workers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The dedicated E2E shard uses eight workers for isolated real-git tests.
+    """The dedicated E2E shard uses twelve workers for isolated real-git tests.
 
     The value was pinned to 4 to hold total concurrent processes at 12
     (8 general + 4 E2E) on the then-maintained 12-core host. On the current
@@ -884,7 +884,7 @@ def test_default_profile_dedicated_required_e2e_shard_uses_eight_xdist_workers(
     assert dedicated_command[3] == "tests"
     assert sorted(spawner.manifest_files[-1]) == sorted(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
     xdist_index = dedicated_command.index("-n")
-    assert dedicated_command[xdist_index + 1] == "8"
+    assert dedicated_command[xdist_index + 1] == "12"
     assert dedicated_command[dedicated_command.index("--dist") + 1] == "loadgroup"
 
 

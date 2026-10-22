@@ -400,7 +400,7 @@ _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
 _PYTEST_DURATIONS_REPORT: int = 10
 
 
-# Required real-git files use a dedicated shard with eight xdist workers.
+# Required real-git files use a dedicated shard with twelve xdist workers.
 # wt-03-fix-bug originally pinned this at 4 to hold the total concurrent
 # process count at 12 (8 general + 4 E2E) on the then-maintained 12-core
 # host. That host is gone: the suite now runs on a 40-core host where the
@@ -410,10 +410,11 @@ _PYTEST_DURATIONS_REPORT: int = 10
 # workers: slowest shard 47.36 s, and because ``make test-verification-smoke``
 # is charged to the same cumulative tracker (``ralph/verify.py``
 # ``_BUDGET_TRACKED_STEPS``, 13 s wall), ``make test`` + smoke = 60.4 s
-# exceeds the immutable 60 s budget. Eight workers over-provisions the tail
-# shard against the freed cores. The cumulative budget itself is untouched.
+# exceeds the immutable 60 s budget. Twelve workers keep the expanded real-git
+# suite and the verification smoke inside that budget on the 40-core host.
+# The cumulative budget itself is untouched.
 def _required_e2e_xdist_workers() -> str:
-    return "8"
+    return "12"
 
 
 _REQUIRED_E2E_SHARD_XDIST_WORKERS = _required_e2e_xdist_workers()

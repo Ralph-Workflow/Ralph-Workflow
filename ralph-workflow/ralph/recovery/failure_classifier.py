@@ -163,6 +163,10 @@ _PERMANENT_ACCOUNT_SUBSTRINGS: tuple[str, ...] = (
 # matched case-insensitively via ``contains_casefolded_marker``. Add provider-
 # specific and cross-provider phrases here; keep them lowercase because the
 # helper casefolds both the marker and the detail surface.
+_MODEL_PREFLIGHT_UNAVAILABLE_SUBSTRINGS: tuple[str, ...] = (
+    "opencode local model preflight failed",
+)
+
 _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
     # Claude Code documented limits
     "You've hit your session limit",
@@ -541,7 +545,11 @@ def _terminal_process_unavailability_reason(
     agent_origin: bool = supported_type and failure_origin == "agent"
     if contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS):
         return None
-    if agent_origin and _is_subscription_limit_message(detail_parts):
+    if agent_origin and contains_casefolded_marker(
+        detail_parts, _MODEL_PREFLIGHT_UNAVAILABLE_SUBSTRINGS
+    ):
+        result = UnavailabilityReason.PROVIDER_UNAVAILABLE
+    elif agent_origin and _is_subscription_limit_message(detail_parts):
         result = (
             UnavailabilityReason.OUT_OF_CREDITS
             if (connectivity_state or "").casefold() == "online"
@@ -1041,7 +1049,9 @@ class FailureClassifier:
         # ``AgentInactivityTimeoutError`` whose ``__cause__`` is the
         # stream-timeout wrapper whose ``__cause__`` is the typed
         # ``IdleWatchdogKilledError``).
-        if self._find_typed_watchdog_cause(exc) is not None:
+        if self._find_typed_watchdog_cause(exc) is not None or contains_casefolded_marker(
+            detail_parts, _MODEL_PREFLIGHT_UNAVAILABLE_SUBSTRINGS
+        ):
             return FailureCategory.AGENT, True, False
         for predicate, result in (
             (_is_user_config_exc(exc), (FailureCategory.USER_CONFIG, False, False)),

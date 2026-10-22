@@ -378,6 +378,7 @@ def _setup_bridge(
     ManagedProcess,
     list[ManagedProcess],
     list[int | None],
+    threading.Event,
     dict[int, Path],
     list[ManagedProcess],
     str,
@@ -413,6 +414,7 @@ def _setup_bridge(
     old_inner = StandaloneMcpProcess(endpoint, old_proc, session_file, stage_id=_OLD_STAGE_ID)
     candidate_procs: list[ManagedProcess] = []
     candidate_pid_holder: list[int | None] = [None]
+    candidate_overlap_observed = threading.Event()
 
     def _spawn_candidate() -> StandaloneMcpProcess:
         stage_id = f"e72-cand-{len(candidate_procs)}"
@@ -431,6 +433,9 @@ def _setup_bridge(
         spawned.append(cand_proc)
         upstream_pidfiles[cand_proc.pid] = upstream_pidfile(tmp_path, stage_id=stage_id)
         candidate_pid_holder[0] = cand_proc.pid
+        assert candidate_overlap_observed.wait(timeout=2.0), (
+            "sampler never observed both children holding the inherited listening socket"
+        )
         return StandaloneMcpProcess(
             endpoint,
             cand_proc,
@@ -452,6 +457,7 @@ def _setup_bridge(
         old_proc,
         candidate_procs,
         candidate_pid_holder,
+        candidate_overlap_observed,
         upstream_pidfiles,
         spawned,
         endpoint,
@@ -498,24 +504,26 @@ def _sample_loop(
     candidate_pid_holder: list[int | None],
     upstream_pidfiles: dict[int, Path],
     listening_inode: int,
+    candidate_overlap_observed: threading.Event,
     stop_sampling: threading.Event,
     overlap_samples: list[_Sample],
 ) -> None:
     """Repeatedly snapshot whole-tree metrics while the bridge runs.
 
-    Sampler thread body: ``stop_sampling.wait(0.01)`` paces ~100 ticks/sec
+    Sampler thread body: ``stop_sampling.wait(0.001)`` paces ~1000 ticks/sec
     which is fast enough to catch the sub-second overlap window without
     flooding /proc reads.
     """
     while not stop_sampling.is_set():
-        overlap_samples.append(
-            _sample_lineage(
-                _sampled_child_pids(old_pid, candidate_pid_holder),
-                upstream_pidfiles,
-                listening_inode,
-            )
+        sample = _sample_lineage(
+            _sampled_child_pids(old_pid, candidate_pid_holder),
+            upstream_pidfiles,
+            listening_inode,
         )
-        stop_sampling.wait(0.01)
+        overlap_samples.append(sample)
+        if sample.fd_holders == OVERLAP_MAX_CHILDREN:
+            candidate_overlap_observed.set()
+        stop_sampling.wait(0.001)
 
 
 def _drive_make_before_break(bridge: lifecycle.RestartAwareMcpBridge) -> bool:
@@ -749,6 +757,7 @@ def test_e72_real_child_make_before_break_footprint(tmp_path: Path) -> None:
             old_proc,
             candidate_procs,
             candidate_pid_holder,
+            candidate_overlap_observed,
             upstream_pidfiles,
             spawned,
             endpoint,
@@ -784,6 +793,7 @@ def test_e72_real_child_make_before_break_footprint(tmp_path: Path) -> None:
                 candidate_pid_holder,
                 upstream_pidfiles,
                 listening_inode,
+                candidate_overlap_observed,
                 stop_sampling,
                 overlap_samples,
             ),

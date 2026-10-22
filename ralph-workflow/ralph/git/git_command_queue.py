@@ -36,21 +36,64 @@ from __future__ import annotations
 
 import contextlib
 import errno
+import importlib
 import os
 import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard
 
 from git import Repo
+
+from ralph.git.git_run_result import GitRunResult
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
-    from ralph.git.git_run_result import GitRunResult
     from ralph.git.subprocess_runner import GitRunOptions
+
+
+class RepoPath(Protocol):
+    """Structural repository handle used by the queue boundary."""
+
+    @property
+    def git_dir(self) -> str | os.PathLike[str]: ...
+
+
+class GitMethodRepo(RepoPath, Protocol):
+    """Structural GitPython-compatible handle used by method dispatch."""
+
+    @property
+    def git(self) -> object: ...
+
+
+class _SpawnGit(Protocol):
+    def __call__(
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path | None,
+        label: str,
+        options: GitRunOptions | None = None,
+    ) -> GitRunResult: ...
+
+
+class _SpawnModule(Protocol):
+    _spawn_git: object
+
+
+def _is_git_method(value: object) -> TypeGuard[Callable[..., object]]:
+    return callable(value)
+
+
+def _is_spawn_git(value: object) -> TypeGuard[_SpawnGit]:
+    return callable(value)
+
+
+def _is_spawn_module(value: object) -> TypeGuard[_SpawnModule]:
+    return hasattr(value, "_spawn_git")
 
 
 # ---------------------------------------------------------------------------
@@ -142,12 +185,16 @@ class GitCommandQueue:
         self.common_dir = common_dir
         self.execute_lock = threading.RLock()
         self.consecutive_timeouts = 0
-        self.outcome_log = deque(maxlen=_HEALTH_LOG_CAP)
+        self.outcome_log = deque(
+            maxlen=_HEALTH_LOG_CAP
+        )  # bounded-accumulator-ok: FIFO cap _HEALTH_LOG_CAP
 
     def record_outcome(self, kind: Literal["success", "timeout", "error"]) -> None:
         """Update the health signal and bounded outcome log."""
         if kind == "timeout":
-            self.consecutive_timeouts = min(self.consecutive_timeouts + 1, _MAX_CONSECUTIVE_TIMEOUTS)
+            self.consecutive_timeouts = min(
+                self.consecutive_timeouts + 1, _MAX_CONSECUTIVE_TIMEOUTS
+            )
         else:
             self.consecutive_timeouts = 0
         self.outcome_log.append(QueuedCallOutcome(kind=kind))
@@ -183,9 +230,7 @@ if not (_MAX_CONSECUTIVE_TIMEOUTS > 0):
         f"_MAX_CONSECUTIVE_TIMEOUTS must be positive; got {_MAX_CONSECUTIVE_TIMEOUTS!r}"
     )
 if not (_LEASE_STALE_SECONDS > 0):
-    raise RuntimeError(
-        f"_LEASE_STALE_SECONDS must be positive; got {_LEASE_STALE_SECONDS!r}"
-    )
+    raise RuntimeError(f"_LEASE_STALE_SECONDS must be positive; got {_LEASE_STALE_SECONDS!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +280,7 @@ class _QueueRegistry:
 _REGISTRY: _QueueRegistry = _QueueRegistry()
 
 
-def _resolve_common_dir(repo_or_path: Repo | Path | str) -> Path:
+def _resolve_common_dir(repo_or_path: RepoPath | Path | str) -> Path:
     """Return the canonical common-directory path for ``repo_or_path``.
 
     Accepts a :class:`git.Repo` (reads ``git_dir``), a :class:`Path`,
@@ -243,13 +288,8 @@ def _resolve_common_dir(repo_or_path: Repo | Path | str) -> Path:
     two callers using different aliases (e.g. ``/foo`` and
     ``/foo/.git``) land on the same queue key.
     """
-    if isinstance(repo_or_path, Repo):
+    if not isinstance(repo_or_path, (Path, str)):
         return _normalize_git_dir(Path(repo_or_path.git_dir))
-    git_dir_attr = getattr(repo_or_path, "git_dir", None)
-    if isinstance(git_dir_attr, str):
-        # Repo-like boundary: tests and threaded re-entry may carry a
-        # duck-typed Repo proxy; ``git_dir`` is the only attribute read.
-        return _normalize_git_dir(Path(git_dir_attr))
     path = Path(repo_or_path).expanduser()
     return _normalize_git_dir(path)
 
@@ -274,15 +314,16 @@ def _normalize_git_dir(path: Path) -> Path:
     using different aliases share a queue. Falls back to the resolved
     input when detection is uncertain.
     """
-    resolved = path.resolve(strict=False)
+    try:
+        resolved = path.resolve(strict=False)
+    except ValueError as exc:
+        raise OSError("embedded null byte in path") from exc
     git_marker = resolved / ".git"
     if git_marker.is_dir():
         resolved = git_marker
     elif git_marker.is_file():
         try:
-            first_line = git_marker.read_text(encoding="utf-8", errors="replace").split(
-                "\n", 1
-            )[0]
+            first_line = git_marker.read_text(encoding="utf-8", errors="replace").split("\n", 1)[0]
         except OSError:
             first_line = ""
         if first_line.startswith("gitdir:"):
@@ -299,7 +340,7 @@ def _normalize_git_dir(path: Path) -> Path:
     return resolved
 
 
-def get_queue_for_repo(repo_or_path: Repo | Path | str) -> GitCommandQueue:
+def get_queue_for_repo(repo_or_path: RepoPath | Path | str) -> GitCommandQueue:
     """Return the queue for ``repo_or_path``; create it lazily.
 
     Two callers using paths that resolve to the same common-dir land
@@ -327,7 +368,7 @@ def reset_all_queues() -> None:
 
 
 def route_git_method(
-    repo: Repo,
+    repo: GitMethodRepo,
     method_name: str,
     args: Sequence[object] = (),
     kwargs: Mapping[str, object] | None = None,
@@ -348,7 +389,7 @@ def route_git_method(
     GitPython returns ``str`` for textual subcommands, ``True``/``None``
     for state-changing ones, ``list[...]`` for ``--format``
     enumerations, etc. The router therefore returns ``object``; the
-    caller (``cast("str", ...)`) carries the proof obligation.
+    caller (``cast("str", ...)``) carries the proof obligation.
 
     Args:
         repo: A live :class:`git.Repo`. The caller is responsible for
@@ -368,23 +409,22 @@ def route_git_method(
         OSError: Re-raised for filesystem-level failures.
         subprocess.TimeoutExpired: Re-raised unchanged.
     """
-    queue = get_queue_for_repo(cast("Repo | Path | str", repo))
+    queue = get_queue_for_repo(repo)
     call_kwargs: Mapping[str, object] = kwargs if kwargs is not None else {}
     with queue.execute_lock:
-        git_attr: object = getattr(repo, "git", None)
+        git_attr = repo.git
         if git_attr is None:
             queue.record_outcome("error")
             msg = f"repo {repo!r} has no .git attribute"
             raise AttributeError(msg)
         try:
-            raw_method: object = getattr(git_attr, method_name)
-            method: Callable[..., object] = cast("Callable[..., object]", raw_method)  # type: ignore[misc,explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            method: object = getattr(git_attr, method_name)
         except AttributeError as exc:
             queue.record_outcome("error")
-            raise AttributeError(
-                f"repo.git has no method named {method_name!r}"
-            ) from exc
+            raise AttributeError(f"repo.git has no method named {method_name!r}") from exc
         try:
+            if not _is_git_method(method):
+                raise TypeError(f"repo.git attribute {method_name!r} is not callable")
             result = method(*args, **call_kwargs)
         except BaseException as exc:
             queue.record_outcome(_classify_exception(exc))
@@ -431,14 +471,19 @@ def route_run_git(
     (``GIT_SUBPROCESS_TIMEOUT_SECONDS``) remains the hard wall for the
     child; the queue adds nothing to that ceiling — it stacks NO sleep.
     """
-    from ralph.git.subprocess_runner import (  # noqa: PLC0415
-        _spawn_git,  # reason: lazy import breaks queue<->runner cycle
-    )
+    spawn_module: object = importlib.import_module("ralph.git.subprocess_runner")
+    if not _is_spawn_module(spawn_module):
+        raise TypeError("ralph.git.subprocess_runner has no _spawn_git")
+    spawn_git: object = spawn_module._spawn_git
+    if not _is_spawn_git(spawn_git):
+        raise TypeError("ralph.git.subprocess_runner._spawn_git is not callable")
 
     queue = get_queue_for_repo(cwd if cwd is not None else Path.cwd())
     with queue.execute_lock:
         try:
-            result = _spawn_git(args, cwd=cwd, label=label, options=options)
+            result = spawn_git(args, cwd=cwd, label=label, options=options)
+            if not isinstance(result, GitRunResult):
+                raise TypeError("_spawn_git returned a non-GitRunResult value")
         except BaseException as exc:
             queue.record_outcome(_classify_exception(exc))
             raise
@@ -592,7 +637,7 @@ def _acquire_lock_file(lock_path: Path, holder: WorktreeLeaseHolder) -> int:
     """
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     payload = f"{holder.name}|{time.monotonic():.6f}\n".encode()
-    fd = os.open(
+    fd = os.open(  # filesystem-write-ok: atomic O_EXCL lease; resource-lifecycle-ok: lease release closes fd
         str(lock_path),
         os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_CLOEXEC,
         0o600,
@@ -732,9 +777,9 @@ def is_lease_held(repo_or_path: Repo | Path | str) -> bool:
 
 def _repo_or_open(repo_or_path: Repo | Path | str) -> Repo:
     """Return ``repo_or_path`` if it already is a ``Repo``; else open it."""
-    if isinstance(repo_or_path, Repo):  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        return repo_or_path
-    return Repo(Path(repo_or_path))
+    if isinstance(repo_or_path, (Path, str)):
+        return Repo(Path(repo_or_path))
+    return repo_or_path
 
 
 # ---------------------------------------------------------------------------

@@ -541,7 +541,9 @@ def test_observation_unknown_helper_covers_the_worktree_dimension() -> None:
 def test_worktree_verdict_helpers_are_mutually_exclusive() -> None:
     """``ALLOWED``, ``BLOCKED`` and ``UNKNOWN`` never both answer one verdict."""
     for row in _ALL_ROWS:
-        reading = Reading.unknown(_UNKNOWN_REASON) if row.state is WorktreeState.UNKNOWN else row.reading
+        reading = (
+            Reading.unknown(_UNKNOWN_REASON) if row.state is WorktreeState.UNKNOWN else row.reading
+        )
         verdict: WorktreeVerdict = classify_worktree(reading)
         flags = (
             verdict.dispatch_allowed,

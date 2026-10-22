@@ -469,7 +469,12 @@ def test_unsafe_divergence_real_reconciler_uses_rejected_push_path_without_force
         return head_sha
 
     def fake_observe_remote_sha(
-        _root: Path, _target: str, *, remote: str, remote_client: object = None
+        _root: Path,
+        _target: str,
+        *,
+        remote: str,
+        remote_client: object = None,
+        local_sha: str | None = None,
     ) -> tuple[str | None, str]:
         # Remote is strictly ahead AND strictly behind: a true divergence.
         return "remote-advance-sha", "diverged"

@@ -217,7 +217,11 @@ def push_target_after_landing(
     observed_remote_sha = _observe_remote_tracking_sha(
         repo_root, target, remote=chosen_remote, remote_client=remote_client
     )
-    if local_sha is not None and observed_remote_sha is not None and local_sha == observed_remote_sha:
+    if (
+        local_sha is not None
+        and observed_remote_sha is not None
+        and local_sha == observed_remote_sha
+    ):
         return _remote_sync._record_publication_failure(
             record,
             last_remote_sync=_remote_sync.REMOTE_ALREADY_CURRENT,

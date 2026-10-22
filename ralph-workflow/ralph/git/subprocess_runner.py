@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import importlib
 import os
 import subprocess
 from dataclasses import dataclass
@@ -51,6 +52,17 @@ _UNREPORTED_RETURNCODE: int = -9
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
+    from typing import Protocol
+
+    class _QueuedRunGit(Protocol):
+        def __call__(
+            self,
+            args: Sequence[str],
+            *,
+            cwd: Path | None,
+            label: str,
+            options: GitRunOptions | None = None,
+        ) -> GitRunResult: ...
 
     class _PopenExitProtocol:
         def __exit__(
@@ -161,11 +173,12 @@ def run_git(
     Raises subprocess.TimeoutExpired if timeout is exceeded.
     Raises subprocess.CalledProcessError if options.check is True and returncode != 0.
     """
-    from ralph.git.git_command_queue import (  # noqa: PLC0415
-        route_run_git,  # reason: lazy import breaks runner<->queue cycle
+    queued_run_git = cast(
+        "_QueuedRunGit",
+        importlib.import_module("ralph.git.git_command_queue").route_run_git,
     )
 
-    return route_run_git(args, cwd=cwd, label=label, options=options)
+    return queued_run_git(args, cwd=cwd, label=label, options=options)
 
 
 def _spawn_git(

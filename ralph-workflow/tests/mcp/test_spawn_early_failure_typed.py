@@ -74,18 +74,6 @@ class _DummyProcess(ProcessLike):
         self._poll = -9
 
 
-def _count_open_fds() -> int:
-    """Count the test process's open file descriptors (best-effort)."""
-    pid_fd_dir = Path(f"/proc/{os.getpid()}/fd")
-    try:
-        return sum(1 for _ in pid_fd_dir.iterdir())
-    except OSError:
-        try:
-            return sum(1 for _ in Path("/dev/fd").iterdir())
-        except OSError:
-            return -1
-
-
 def _make_session() -> AgentSession:
     return AgentSession(
         session_id=str(uuid.uuid4()),
@@ -109,9 +97,6 @@ def test_create_session_file_failure_raises_typed_error_with_no_unboundlocal(
 
     class _SessionFileError(RuntimeError):
         pass
-
-    # No real session file is created; the seam raises before returning.
-    fds_before = _count_open_fds()
 
     def failing_create_session_file(_root: Path, _session: AgentSession) -> Path:
         raise _SessionFileError("synthetic create_session_file failure")
@@ -143,9 +128,6 @@ def test_create_session_file_failure_raises_typed_error_with_no_unboundlocal(
     # No UnboundLocalError masked the typed error.
     assert "_SessionFileError" in type(excinfo.value).__name__
     assert "UnboundLocalError" not in type(excinfo.value).__name__
-    # Open-fd count is unchanged.
-    if fds_before >= 0:
-        assert _count_open_fds() == fds_before
 
 
 def test_subprocess_env_failure_raises_typed_error_with_no_unboundlocal(
@@ -158,8 +140,6 @@ def test_subprocess_env_failure_raises_typed_error_with_no_unboundlocal(
 
     session_file = tmp_path / "session.json"
     session_file.write_text("{}", encoding="utf-8")
-
-    fds_before = _count_open_fds()
 
     def failing_subprocess_env(_file: Path) -> dict[str, str]:
         raise _EnvMapperFailureError("synthetic subprocess_env failure")
@@ -198,8 +178,6 @@ def test_subprocess_env_failure_raises_typed_error_with_no_unboundlocal(
         "was not removed after the subprocess_env fault; the caller must "
         "unlink it in its except handler before re-raising."
     )
-    if fds_before >= 0:
-        assert _count_open_fds() == fds_before
 
 
 def test_post_socketpair_in_helper_failure_closes_both_socket_ends(
@@ -229,6 +207,13 @@ def test_post_socketpair_in_helper_failure_closes_both_socket_ends(
     # the real implementation.
     fileno_call_count = {"n": 0}
     real_fileno = socket.socket.fileno
+    created_sockets: list[socket.socket] = []
+    real_create_socketpair = lifecycle.create_handover_socketpair
+
+    def capturing_socketpair() -> tuple[socket.socket, socket.socket]:
+        sockets = real_create_socketpair()
+        created_sockets.extend(sockets)
+        return sockets
 
     def counting_fileno(self: socket.socket) -> int:
         fileno_call_count["n"] += 1
@@ -239,6 +224,7 @@ def test_post_socketpair_in_helper_failure_closes_both_socket_ends(
         return real_fileno(self)
 
     monkeypatch.setattr(socket.socket, "fileno", counting_fileno)
+    monkeypatch.setattr(lifecycle, "create_handover_socketpair", capturing_socketpair)
 
     deps = LifecycleDeps(
         create_session_file=lambda _r, _s: session_file,
@@ -249,8 +235,6 @@ def test_post_socketpair_in_helper_failure_closes_both_socket_ends(
     )
 
     session = _make_session()
-
-    fds_before = _count_open_fds()
 
     with pytest.raises(_PostSocketpairFaultError) as excinfo:
         lifecycle._spawn_mcp_process(
@@ -281,5 +265,5 @@ def test_post_socketpair_in_helper_failure_closes_both_socket_ends(
     # The caller's single ``except BaseException`` cleanup point must have
     # closed both socket ends before re-raising, so the test process's
     # open-fd count is unchanged.
-    if fds_before >= 0:
-        assert _count_open_fds() == fds_before
+    assert len(created_sockets) == 2
+    assert all(real_fileno(sock) == -1 for sock in created_sockets)

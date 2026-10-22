@@ -70,8 +70,8 @@ class Transition:
         self,
         record: IntegrationRecord,
         **fields: object,
-    ) -> dict[str, object]:
-        """Validate the transition and return the update dict for ``model_copy``.
+    ) -> IntegrationRecord:
+        """Validate and apply this transition to ``record``.
 
         The from-state guard runs first; a record whose phase does
         not permit this transition raises :class:`ValueError`. The
@@ -89,7 +89,7 @@ class Transition:
                     f"expected one of {sorted(self._field_map)}"
                 )
             update[self._field_map[key]] = value
-        return update
+        return record.model_copy(update=update)
 
 
 # --- Concrete transitions ---

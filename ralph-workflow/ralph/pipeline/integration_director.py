@@ -59,9 +59,7 @@ from ralph.pipeline.auto_integrate_record import (
     RecordReadOutcomeDisposition,
     clear_record,
     read_record_outcome,
-)
-from ralph.pipeline.auto_integrate_resolution_state import (
-    evaluate_integration_containment,
+    record_path,
 )
 from ralph.pipeline.integration_attempt_ledger import (
     AttemptLedger,
@@ -640,8 +638,11 @@ class IntegrationDirector:
         )
         attempts = ledger.read()
         decision_attempts = self._to_attempt_state(attempts)
-        action = decide(
-            DecisionContext(observation=observation, attempts=decision_attempts)
+        record_disposition = self.observe_durable_record()
+        action = (
+            NextAction.REPAIR
+            if record_disposition.value is RecordReadOutcomeDisposition.BUSY
+            else decide(DecisionContext(observation=observation, attempts=decision_attempts))
         )
         release_applied = self._maybe_release_containment(observation)
         next_attempts = self._bump_attempts(attempts, observation, action)
@@ -672,18 +673,6 @@ class IntegrationDirector:
         if not (contained_ahead and clean and quiescent):
             return False
 
-        try:
-            verdict = evaluate_integration_containment(
-                self._root,
-                self._target,
-                feature_sha=_feature_sha_safe(self._root),
-                proven=False,
-            )
-        except Exception:
-            return False
-        if not verdict.contained:
-            return False
-
         return self._release_retained_record()
 
     def _release_retained_record(self) -> bool:
@@ -695,21 +684,13 @@ class IntegrationDirector:
         success. Returns ``False`` for every failure mode (absent,
         unreadable, busy, raised).
         """
-        try:
-            before = read_record_outcome(self._root)
-        except (OSError, ValueError):
-            return False
-        if before.disposition is RecordReadOutcomeDisposition.ABSENT:
-            return False
+        path = record_path(self._root)
+        existed = path.exists()
         try:
             clear_record(self._root)
-        except (OSError, ValueError, RuntimeError):
+        except (OSError, RuntimeError):
             return False
-        try:
-            after = read_record_outcome(self._root)
-        except (OSError, ValueError):
-            return False
-        return after.disposition is RecordReadOutcomeDisposition.ABSENT
+        return existed and not path.exists()
 
     def _bump_attempts(
         self,
@@ -730,9 +711,7 @@ class IntegrationDirector:
         ``WAIT_FOR_ENVIRONMENT``.
         """
         view = self._to_attempt_state(current)
-        is_unknown = (
-            action is NextAction.WAIT_FOR_ENVIRONMENT or observation.has_unknown()
-        )
+        is_unknown = action is NextAction.WAIT_FOR_ENVIRONMENT or observation.has_unknown()
         bumped = view.with_attempt(observation, action, is_unknown=is_unknown)
         return AttemptLedgerState(
             rung=bumped.rung,

@@ -22,11 +22,13 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._mcp_server import McpServer
 from ralph.mcp.server._schema_flavor import (
-    OPENAI_FUNCTION_FLAVOR,
-    flatten_root_schema_for_openai_function,
+    FUNCTION_CALLING_SCHEMA_FLAVOR,
+    normalize_schema_for_function_calling,
     schema_flavor_for_client_name,
 )
 from ralph.mcp.server._server_state import ServerState
@@ -116,14 +118,15 @@ def _schema_of(entry: dict[str, object]) -> dict[str, object]:
 
 
 def test_schema_flavor_mapping() -> None:
-    assert schema_flavor_for_client_name("kimi-code") == OPENAI_FUNCTION_FLAVOR
+    assert schema_flavor_for_client_name("kimi-code") == FUNCTION_CALLING_SCHEMA_FLAVOR
+    assert schema_flavor_for_client_name("opencode") == FUNCTION_CALLING_SCHEMA_FLAVOR
     assert schema_flavor_for_client_name("claude-code") is None
     assert schema_flavor_for_client_name("") is None
     assert schema_flavor_for_client_name(None) is None
 
 
 def test_flatten_root_schema_drops_composition_and_keeps_plain_vocabulary() -> None:
-    flattened = flatten_root_schema_for_openai_function(_COMPOSED_ROOT_SCHEMA)
+    flattened = normalize_schema_for_function_calling(_COMPOSED_ROOT_SCHEMA)
     assert set(flattened) == {
         "type",
         "properties",
@@ -151,16 +154,16 @@ def test_flatten_root_schema_defaults_type_and_is_idempotent() -> None:
         "anyOf": [{"required": ["command"]}, {"required": ["argv"]}],
         "properties": {"command": {"type": "string"}},
     }
-    once = flatten_root_schema_for_openai_function(untyped_root)
+    once = normalize_schema_for_function_calling(untyped_root)
     assert once["type"] == "object"
     assert "anyOf" not in once
-    twice = flatten_root_schema_for_openai_function(once)
+    twice = normalize_schema_for_function_calling(once)
     assert twice == once
 
 
 def test_flatten_root_schema_does_not_mutate_input() -> None:
     original = dict(_COMPOSED_ROOT_SCHEMA)
-    flatten_root_schema_for_openai_function(original)
+    normalize_schema_for_function_calling(original)
     assert original == _COMPOSED_ROOT_SCHEMA
 
 
@@ -180,7 +183,7 @@ def test_flatten_root_schema_repairs_untyped_string_enum_property() -> None:
         },
         "required": ["mode"],
     }
-    flattened = flatten_root_schema_for_openai_function(schema)
+    flattened = normalize_schema_for_function_calling(schema)
     properties = dict(must_mapping(flattened["properties"]))
     assert properties["mode"] == {"enum": ["append", "replace_all"], "type": "string"}
     # Already-typed or non-string enums are not rewritten.
@@ -191,9 +194,10 @@ def test_flatten_root_schema_repairs_untyped_string_enum_property() -> None:
     assert schema["properties"]["mode"] == {"enum": ["append", "replace_all"]}
 
 
-def test_kimi_code_handshake_flattens_raw_and_alias_advertisement() -> None:
+@pytest.mark.parametrize("client_name", ["kimi-code", "opencode"])
+def test_model_router_handshake_uses_portable_function_schema(client_name: str) -> None:
     server = _build_server_with_composed_tool()
-    _initialize(server, "kimi-code")
+    _initialize(server, client_name)
     tools = _tools_list(server)
     alias = claude_tool_name("read_file", server_name=RALPH_MCP_SERVER_NAME)
     raw = next(tool for tool in tools if tool["name"] == "read_file")

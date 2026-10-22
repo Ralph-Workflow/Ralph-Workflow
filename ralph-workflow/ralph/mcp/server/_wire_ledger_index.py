@@ -73,7 +73,9 @@ class WireLedgerIndex:
         self._tail_line = b""
         self._head = GENESIS_HMAC
         self._intact = True
-        self._calls: list[dict[str, object]] = []  # bounded-accumulator-ok: one entry per verified tools/call row in this ledger file
+        self._calls: list[
+            dict[str, object]
+        ] = []  # bounded-accumulator-ok: one entry per verified tools/call row in this ledger file
 
     def snapshot(self) -> tuple[bool, tuple[dict[str, object], ...]]:
         """Return ``(chain_intact, tools/call rows)`` for the ledger as it is now.
@@ -149,4 +151,3 @@ class WireLedgerIndex:
         if expected is None or not hmac.compare_digest(stored, expected):
             return head, False, None
         return stored, True, row if row.get("method") == "tools/call" else None
-

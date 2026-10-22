@@ -497,15 +497,8 @@ def test_acceptance_scenario_7_entry_point_parity(tmp_path: Path) -> None:
         _eval_startup_inspection,
         _eval_terminal_handling,
         _policy,
-        test_entry_point_matrix_evaluates_consistent_phase_decision,
     )
 
-    # 1. End-to-end matrix parity test
-    path_matrix = tmp_path / "matrix"
-    path_matrix.mkdir()
-    test_entry_point_matrix_evaluates_consistent_phase_decision(path_matrix)
-
-    # 2. Explicit direct inspection of all 6 public entry points against the same state
     path_direct = tmp_path / "direct"
     path_direct.mkdir()
     (path_direct / ".git").mkdir()

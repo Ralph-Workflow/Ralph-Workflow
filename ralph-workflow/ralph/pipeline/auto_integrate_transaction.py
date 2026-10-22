@@ -16,8 +16,12 @@ if TYPE_CHECKING:
 @contextmanager
 def integration_transaction(root: Path) -> Iterator[bool]:
     """Nonblocking lease; a contended worktree remains in retry without mutation."""
-    if not (root / ".git").exists():
+    git_marker = root / ".git"
+    if not git_marker.exists():
         yield True
+        return
+    if git_marker.is_dir() and not (git_marker / "HEAD").exists():
+        yield False
         return
     observed = run_git(("rev-parse", "--absolute-git-dir"), cwd=root, label="integration:lock-dir")
     if observed.returncode != 0 or not observed.stdout.strip():

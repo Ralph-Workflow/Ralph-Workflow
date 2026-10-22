@@ -487,9 +487,7 @@ def read_worktree(root: Path) -> Reading[WorktreeVerdict]:
     """Observe the worktree and classify it through the one classifier."""
     porcelain = read_worktree_porcelain(root)
     if not porcelain.is_known_good:
-        return Reading[WorktreeVerdict].unknown(
-            porcelain.reason or "worktree probe did not answer"
-        )
+        return Reading[WorktreeVerdict].unknown(porcelain.reason or "worktree probe did not answer")
     return Reading.known(classify_worktree(porcelain))
 
 

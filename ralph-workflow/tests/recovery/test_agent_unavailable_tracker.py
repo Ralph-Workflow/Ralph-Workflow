@@ -742,6 +742,53 @@ def test_credit_exhaustion_agent_skipped_in_recovery_cycle() -> None:
     assert fallovers[0].to_agent == "opencode"
 
 
+def test_model_preflight_failure_skips_unavailable_agent_without_connectivity() -> None:
+    clock = FakeClock(start=0.0)
+    registry = _make_registry_with_budget("development", "opencode/model-a", max_retries=2)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            budget_registry=registry,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _make_state(["opencode/model-a", "codex/model-b"])
+
+    new_state, _, evt = controller.handle(
+        state,
+        AgentInvocationError(
+            "opencode",
+            1,
+            "OpenCode local model preflight failed for 'provider/model-a': "
+            "the selected binary does not list this model after refresh: quota exceeded.",
+        ),
+        FailureContext(phase="development", agent="opencode/model-a"),
+    )
+
+    assert evt.category == "agent"
+    assert new_state.chain_for_phase("development").current_index == 1
+    assert controller.snapshot()["unavailable_timeouts"]["opencode/model-a"] == 60_000
+
+
+def test_model_preflight_failure_remains_agent_unavailable_with_billing_detail() -> None:
+    failure = FailureClassifier().classify(
+        AgentInvocationError(
+            "opencode",
+            1,
+            "OpenCode local model preflight failed for 'provider/model-a': "
+            "could not refresh provider: payment required",
+        ),
+        phase="development",
+        agent="opencode/model-a",
+        connectivity_state="online",
+    )
+
+    assert failure.category == FailureCategory.AGENT
+    assert failure.is_unavailable is True
+    assert failure.unavailability_reason == UnavailabilityReason.PROVIDER_UNAVAILABLE
+
+
 def test_all_agents_unavailable_credit_exhaustion_waits_for_cooldown() -> None:
     """Credit-exhaustion across the whole chain waits rather than crashing."""
     clock = FakeClock(start=0.0)

@@ -463,6 +463,7 @@ def _dispatch_ref_comparison(
         from ralph.pipeline.auto_integrate_catchup import (
             attempt_catchup_fast_forward,
         )
+
         if config is None:
             return _record_publication_failure(
                 base_state,

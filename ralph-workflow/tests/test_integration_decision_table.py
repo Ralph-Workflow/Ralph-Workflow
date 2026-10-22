@@ -140,9 +140,7 @@ def test_decide_total_mapping_covers_every_state_and_reaches_every_member() -> N
                 f"non-action returned for {observation} at rung {rung}: {action!r}"
             )
             reached.add(action)
-    assert reached == set(NextAction), (
-        f"unreachable members: {set(NextAction) - reached}"
-    )
+    assert reached == set(NextAction), f"unreachable members: {set(NextAction) - reached}"
 
 
 # ---------------------------------------------------------------------------
@@ -156,9 +154,7 @@ def test_decide_unknown_observation_never_dispatches_resolver() -> None:
     assert unknown_observations, "expected at least one unknown observation"
     for observation in unknown_observations:
         for rung in LADDER_ORDER:
-            ctx = DecisionContext(
-                observation=observation, attempts=AttemptState(rung=rung)
-            )
+            ctx = DecisionContext(observation=observation, attempts=AttemptState(rung=rung))
             assert decide(ctx) is not NextAction.DISPATCH_RESOLVER, (
                 f"resolver dispatched on unknown reading: {observation} @ {rung}"
             )
@@ -174,9 +170,7 @@ def test_decide_unknown_observation_yields_wait_or_pending() -> None:
             AttemptState(unknown_attempts=2, unknown_budget=5),
         ):
             for _rung in LADDER_ORDER:
-                ctx = DecisionContext(
-                    observation=observation, attempts=attempts
-                )
+                ctx = DecisionContext(observation=observation, attempts=attempts)
                 action = decide(ctx)
                 assert action in (
                     NextAction.WAIT_FOR_ENVIRONMENT,
@@ -205,15 +199,11 @@ def test_decide_wait_for_environment_holds_until_budget_then_continues() -> None
     assert decide(DecisionContext(observation=obs, attempts=attempts)) is (
         NextAction.WAIT_FOR_ENVIRONMENT
     )
-    attempts_one = attempts.with_attempt(
-        obs, NextAction.WAIT_FOR_ENVIRONMENT, is_unknown=True
-    )
+    attempts_one = attempts.with_attempt(obs, NextAction.WAIT_FOR_ENVIRONMENT, is_unknown=True)
     assert decide(DecisionContext(observation=obs, attempts=attempts_one)) is (
         NextAction.WAIT_FOR_ENVIRONMENT
     )
-    attempts_two = attempts_one.with_attempt(
-        obs, NextAction.WAIT_FOR_ENVIRONMENT, is_unknown=True
-    )
+    attempts_two = attempts_one.with_attempt(obs, NextAction.WAIT_FOR_ENVIRONMENT, is_unknown=True)
     assert attempts_two.unknown_attempts == 2
     assert decide(DecisionContext(observation=obs, attempts=attempts_two)) is (
         NextAction.WAIT_FOR_ENVIRONMENT
@@ -294,9 +284,7 @@ def test_decide_real_conflict_uses_dispatch_resolver() -> None:
     )
     for rung in LADDER_ORDER:
         ctx = DecisionContext(observation=unmerged, attempts=AttemptState(rung=rung))
-        assert decide(ctx) is NextAction.DISPATCH_RESOLVER, (
-            f"unmerged tree should resolve @ {rung}"
-        )
+        assert decide(ctx) is NextAction.DISPATCH_RESOLVER, f"unmerged tree should resolve @ {rung}"
 
     for kind in (
         InProgressKind.REBASE,

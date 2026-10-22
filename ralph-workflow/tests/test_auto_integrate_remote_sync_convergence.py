@@ -79,13 +79,9 @@ class _FakeRemoteClient:
         self.refresh_calls += 1
         assert remote == REMOTE, f"configured path touched non-configured remote {remote!r}"
         assert target == TARGET, f"configured path touched non-configured target {target!r}"
-        return self._refresh_outcomes[
-            min(self.refresh_calls - 1, len(self._refresh_outcomes) - 1)
-        ]
+        return self._refresh_outcomes[min(self.refresh_calls - 1, len(self._refresh_outcomes) - 1)]
 
-    def observe_remote_sha(
-        self, repo_root: Path, target: str, *, remote: str
-    ) -> str | None:
+    def observe_remote_sha(self, repo_root: Path, target: str, *, remote: str) -> str | None:
         self.observe_calls += 1
         assert remote == REMOTE
         # One true remote SHA per fetch cycle: a forced re-observe within
@@ -168,9 +164,7 @@ def test_diverged_local_pushes_until_refs_equal(
         remote_shas=["old-remote-sha", "local-sha-1"],
         refresh_outcomes=["refreshed", "already current"],
     )
-    out = reconcile_remote_publication(
-        _config(), Path("/repo"), TARGET, remote_client=client
-    )
+    out = reconcile_remote_publication(_config(), Path("/repo"), TARGET, remote_client=client)
     assert out.last_remote_sync == remote_sync.REMOTE_PUSHED
     assert out.last_publication_decision == "publication_terminal"
     assert client.push_calls == [(TARGET, REMOTE)]
@@ -208,9 +202,7 @@ def test_non_fast_forward_triggers_reconcile_then_push(
         remote_shas=["old-remote-sha", "old-remote-sha", "local-sha-1"],
         refresh_outcomes=["refreshed", "refreshed", "already current"],
     )
-    out = reconcile_remote_publication(
-        _config(), Path("/repo"), TARGET, remote_client=client
-    )
+    out = reconcile_remote_publication(_config(), Path("/repo"), TARGET, remote_client=client)
     assert out.last_remote_sync == remote_sync.REMOTE_PUSHED
     assert len(client.push_calls) == 2
     assert client.refresh_calls >= 2
@@ -224,9 +216,7 @@ def test_unreachable_remote_is_unknown_backoff_not_stored_claim(
         remote_shas=[None],
         refresh_outcomes=["refresh suppressed by throttle"],
     )
-    out = reconcile_remote_publication(
-        _config(), Path("/repo"), TARGET, remote_client=client
-    )
+    out = reconcile_remote_publication(_config(), Path("/repo"), TARGET, remote_client=client)
     assert out.last_remote_sync == RemoteSyncStatus.REMOTE_UNREACHABLE
     assert out.last_publication_decision == "publish_deferred_remote"
     assert client.push_calls == []
@@ -241,9 +231,7 @@ def test_unreachable_then_recovering_remote_converges_without_stale_reason(
         remote_shas=[None, "old-remote-sha", "local-sha-1"],
         refresh_outcomes=["refresh suppressed by throttle", "refreshed", "already current"],
     )
-    first = reconcile_remote_publication(
-        _config(), Path("/repo"), TARGET, remote_client=client
-    )
+    first = reconcile_remote_publication(_config(), Path("/repo"), TARGET, remote_client=client)
     assert first.last_publication_decision == "publish_deferred_remote"
     second = reconcile_remote_publication(
         _config(),
@@ -278,9 +266,7 @@ def test_concurrent_remote_advance_reintegrates_until_equal(
         remote_shas=["concurrent-sha", "concurrent-sha", "local-sha-1"],
         refresh_outcomes=[REFRESH_DIVERGED, REFRESH_DIVERGED, "already current"],
     )
-    out = reconcile_remote_publication(
-        _config(), Path("/repo"), TARGET, remote_client=client
-    )
+    out = reconcile_remote_publication(_config(), Path("/repo"), TARGET, remote_client=client)
     assert reconciliation_calls == ["reconcile"]
     assert out.last_remote_sync == remote_sync.REMOTE_PUSHED
 
@@ -326,9 +312,7 @@ def test_configured_path_reads_only_configured_names(
     forbidden: list[str] = []
 
     class _SpyClient(_FakeRemoteClient):
-        def observe_remote_sha(
-            self, repo_root: Path, target: str, *, remote: str
-        ) -> str | None:
+        def observe_remote_sha(self, repo_root: Path, target: str, *, remote: str) -> str | None:
             forbidden.extend((target, remote))
             return "local-sha-1"
 

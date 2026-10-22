@@ -41,7 +41,7 @@ from ralph.pipeline.rebase_state import RebaseState
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.pipeline.integration_resolution import _AssessedIntegrationResolutionVerdict
+    from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
 
 
 class _ProbeError(Exception):
@@ -63,7 +63,7 @@ def _nonzero(_args: object, **_kwargs: object) -> GitRunResult:
     return GitRunResult((), 128, "", "fatal: unable to read index")
 
 
-def _assert_unknown(verdict: _AssessedIntegrationResolutionVerdict) -> None:
+def _assert_unknown(verdict: IntegrationResolutionVerdict) -> None:
     """No blocking reason, no resolver, nothing persisted, dispatch still open."""
     assert verdict.integration_state is IntegrationState.UNKNOWN
     assert verdict.status is RESOLVED
