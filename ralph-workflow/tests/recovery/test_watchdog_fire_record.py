@@ -168,3 +168,15 @@ def test_long_snapshot_text_is_clipped_in_the_journal(tmp_path: Path) -> None:
 
     assert len(kind) < 600
     assert kind.endswith("[truncated]")
+
+
+def test_nested_long_text_is_clipped_and_unserialisable_snapshot_is_survived(
+    tmp_path: Path,
+) -> None:
+    loop: list[object] = []
+    loop.append(loop)
+    _plan(tmp_path, _quiet_kill({"evidence_summary": [{"detail": "y" * 5000}]}))
+    text = _plan(tmp_path, _quiet_kill({"loop": loop}))
+
+    assert "no_output_deadline" in text
+    assert len((tmp_path / EVENTS_RELPATH).read_text(encoding="utf-8")) < 2000

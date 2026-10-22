@@ -42,9 +42,18 @@ _DETAIL_SNAPSHOT_KEYS: Final[tuple[str, ...]] = (
 _MAX_RECORDED_TEXT: Final[int] = 512
 
 
-def _clip(value: object) -> object:
+_MAX_CLIP_DEPTH: Final[int] = 6
+
+
+def _clip(value: object, depth: int = 0) -> object:
     if isinstance(value, str) and len(value) > _MAX_RECORDED_TEXT:
         return value[:_MAX_RECORDED_TEXT] + "...[truncated]"
+    if isinstance(value, (list, dict)) and depth >= _MAX_CLIP_DEPTH:
+        return "...[nested too deep]"
+    if isinstance(value, list):
+        return [_clip(item, depth + 1) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _clip(item, depth + 1) for key, item in value.items()}
     return value
 
 
@@ -99,13 +108,13 @@ def record_watchdog_fire(
         "snapshot": {key: _clip(value) for key, value in _snapshot(exc).items()},
     }
     journal = workspace_root / WATCHDOG_FIRE_EVENTS_RELPATH
-    line = json.dumps(record, default=str) + "\n"
     try:
+        line = json.dumps(record, default=str) + "\n"
         journal.parent.mkdir(parents=True, exist_ok=True)
         # filesystem-write-ok: append-only one-line-per-kill journal; write_text_if_changed's whole-file replace semantics would drop earlier kills.
         with journal.open("a", encoding="utf-8") as handle:
             handle.write(line)
-    except OSError as error:
+    except (OSError, TypeError, ValueError) as error:
         # Diagnostic only: a journal that cannot be written must not turn a
         # retryable watchdog kill into a crash of the retry layer.
         logger.warning("Could not record watchdog fire to {}: {}", journal, error)
