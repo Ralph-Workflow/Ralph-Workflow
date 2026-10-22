@@ -1300,6 +1300,15 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
     that bypasses ``_build_recovery_input_for_attempt`` (tests, future
     callers). AC-03.
     """
+    # Journal first: the kill that exhausts the budget (or a conflict resolver's,
+    # which has none) is the one an operator needs named.
+    record_watchdog_fire(
+        recovery_input.workspace_root,
+        recovery_input.exc,
+        agent=recovery_input.effect.agent_name,
+        phase=str(recovery_input.effect.phase),
+        recorded_at=time.time(),
+    )
     if recovery_input.attempt_index >= recovery_input.max_recovery_attempts:
         return None
     reason = retryable_agent_failure_reason(
@@ -1314,13 +1323,6 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
         # repeated incomplete exit is terminal. The loop-level bound in
         # ``run_with_direct_mcp_recovery`` is enforcement point 2.
         return None
-    record_watchdog_fire(
-        recovery_input.workspace_root,
-        recovery_input.exc,
-        agent=recovery_input.effect.agent_name,
-        phase=str(recovery_input.effect.phase),
-        recorded_at=time.time(),
-    )
     untruncated = _is_stale_session_failure(recovery_input.exc)
     context_lines = _recovery_context_lines(
         recovery_input.exc,
