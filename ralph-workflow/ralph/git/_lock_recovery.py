@@ -562,9 +562,7 @@ def _lock_has_no_live_holder(
     *,
     probe_timeout_s: float = _PROBE_TIMEOUT_S,
     _proc_root: Path = Path("/proc"),
-    probe_lsof_fuser_fn: Callable[
-        [Path, float], Literal["live", "dead", "unknown"] | bool
-    ]
+    probe_lsof_fuser_fn: Callable[[Path, float], Literal["live", "dead", "unknown"] | bool]
     | None = None,
     executor: ThreadPoolExecutor | None = None,
 ) -> Literal["live", "dead", "unknown"]:

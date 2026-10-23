@@ -191,6 +191,7 @@ from ralph.display.theme import (
 )
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
+from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
 from ralph.recovery.retry_prompt import VALIDATION_FAILURE_BANNER
 
 if TYPE_CHECKING:
@@ -330,11 +331,10 @@ _PHASE_STYLES: dict[str, str] = {
     # entered from the auto-integration seams. It therefore never resolves
     # through the pipeline-policy branch below, and without this entry
     # _phase_style falls through to "theme.text.muted" -- rendering the one
-    # phase the operator most needs to see as inert grey text. The name is
-    # a literal rather than an import of PHASE_RESOLUTION
-    # (ralph/pipeline/conflict_resolution/graph.py) because ralph.display
-    # must not import ralph.pipeline at runtime.
-    "rebase_conflict_resolution": "theme.phase.fix",
+    # phase the operator most needs to see as inert grey text. The name comes
+    # from the ralph.policy leaf module because ralph.display must not import
+    # ralph.pipeline at runtime.
+    RESOLUTION_DRAIN_NAME: "theme.phase.fix",
 }
 
 _MAJOR_ROLE_PAIRS: frozenset[tuple[str, str]] = frozenset(

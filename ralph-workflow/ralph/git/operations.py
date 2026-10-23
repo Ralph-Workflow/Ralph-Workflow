@@ -195,9 +195,9 @@ def _queued_remote_push(repo_root: Path | str, repo: Repo, remote: str, branch: 
 _LOCK_BACKOFF_S: tuple[float, ...] = _BASE_LOCK_BACKOFF_S
 _STALE_GIT_LOCK_AGE_SECONDS: float = _BASE_STALE_GIT_LOCK_AGE_SECONDS
 _sleep_fn: Callable[[float], None] = _base_sleep_fn
-_probe_lsof_fuser: Callable[
-    [Path, float], Literal["live", "dead", "unknown"] | bool
-] = _base_probe_lsof_fuser
+_probe_lsof_fuser: Callable[[Path, float], Literal["live", "dead", "unknown"] | bool] = (
+    _base_probe_lsof_fuser
+)
 _find_lock_holder: Callable[[Path], str] = _base_find_lock_holder
 
 

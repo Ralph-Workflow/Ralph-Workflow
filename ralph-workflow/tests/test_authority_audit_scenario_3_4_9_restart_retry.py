@@ -59,6 +59,7 @@ from ralph.pipeline.operation_fact import OperationFact
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
+from tests._resolver_controller import make_resolver_controller
 
 # --- Shared helpers -----------------------------------------------------
 
@@ -343,6 +344,7 @@ def test_exhaustion_across_restarts_no_replenishment_and_no_renewed_invocation(
     # --- real handoff boundary --------------------------------------
     record = _handoff_record(cap - 1)
     assert not handoff_integration_diagnostic(
+        controller=make_resolver_controller(),
         root=tmp_path,
         record=record,
         failure="receipt unreadable",
@@ -378,6 +380,7 @@ def test_exhaustion_across_restarts_no_replenishment_and_no_renewed_invocation(
 
     for _round in range(2):
         assert not handoff_integration_diagnostic(
+            controller=make_resolver_controller(),
             root=tmp_path,
             record=record,
             failure="receipt unreadable after restart",
@@ -447,6 +450,7 @@ def test_kill_at_cap_does_not_replenish_after_restart(tmp_path: Path) -> None:
     # The handoff itself refuses: the existing cap is honoured, no
     # renewed invocation, no budget mutation.
     assert not handoff_integration_diagnostic(
+        controller=make_resolver_controller(),
         root=tmp_path,
         record=reloaded,
         failure="receipt unreadable after kill-at-cap",

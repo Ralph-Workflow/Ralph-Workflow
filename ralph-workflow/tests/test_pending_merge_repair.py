@@ -17,6 +17,7 @@ from ralph.pipeline.auto_integrate_record import (
     record_path,
 )
 from tests._pipeline_deps_factory import make_test_pipeline_deps
+from tests._resolver_controller import make_resolver_controller
 from tests.test_auto_integrate_record_idempotent import _RecordBackend
 
 if TYPE_CHECKING:
@@ -55,8 +56,10 @@ def test_repair_handoff_preserves_snapshot_and_rotates_after_failed_agent(
             raise RuntimeError("agent transport unavailable")
         return False
 
+    controller = make_resolver_controller()
     for _ in range(2):
         handoff_pending_merge_repair(
+            controller=controller,
             root=root,
             record=record,
             failure="pre-commit: formatter executable missing",
@@ -92,6 +95,7 @@ def test_missing_repair_agent_keeps_pending_record_without_claiming_completion()
         raise AssertionError(f"unexpected invocation: {agent} {prompt}")
 
     assert not handoff_pending_merge_repair(
+        controller=make_resolver_controller(),
         root=Path("/workspace"),
         record=record,
         failure="hook rejected commit",
@@ -200,6 +204,7 @@ def test_commit_repair_uses_supervised_resolution_session_and_retains_pending_st
     monkeypatch.setattr(repair_edits, "pending_merge_identity_matches", matches)
     root = Path("/workspace")
     assert repair_pending_merge(
+        controller=make_resolver_controller(),
         workspace_scope=WorkspaceScope(root),
         config=UnifiedConfig(),
         pipeline_deps=make_test_pipeline_deps(

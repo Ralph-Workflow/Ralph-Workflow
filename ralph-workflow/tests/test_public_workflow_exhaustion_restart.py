@@ -15,6 +15,7 @@ from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
+from tests._resolver_controller import make_resolver_controller
 
 
 def _policy() -> PipelinePolicy:
@@ -52,6 +53,7 @@ def test_exhaustion_restart_prevents_budget_replenishment(tmp_path: Path) -> Non
 
     # 2. Invoke genuine handoff_integration_diagnostic entry point with exhausted attempts
     handoff_success = handoff_integration_diagnostic(
+        controller=make_resolver_controller(),
         root=tmp_path,
         record=record,
         failure="diagnostic failure evidence",
@@ -76,6 +78,7 @@ def test_exhaustion_restart_prevents_budget_replenishment(tmp_path: Path) -> Non
     # Restart public recovery with the reloaded exhausted record; assert zero agent calls occur
     mock_invoke = MagicMock()
     handoff_restart = handoff_integration_diagnostic(
+        controller=make_resolver_controller(),
         root=tmp_path,
         record=restarted_record,
         failure="diagnostic failure after restart",

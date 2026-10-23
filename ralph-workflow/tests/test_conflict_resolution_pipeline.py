@@ -60,6 +60,12 @@ _RESTORE_STATUS_BAR = driver_module._restore_status_bar
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
+@pytest.fixture(autouse=True)
+def _no_real_cooldown_waits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed agent is benched and the driver waits out its cooldown; never for real here."""
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+
+
 class _FakeStatusBar:
     """Records the model the driver last pushed."""
 

@@ -2233,6 +2233,7 @@ def _repair_pending_merge_commit(ctx: _LoopContext, failure: str) -> None:
                 if ctx.registry.get(agent) is not None
             ),
             failure=failure,
+            controller=ctx.controller,
         )
     except Exception as exc:
         logger.critical("Merge commit retained; repair agent unavailable: {}", exc)
@@ -2622,6 +2623,16 @@ def _continue_after_startup_integration(
     return _run_inner_loop_after_startup(state, ctx, prev_phase)
 
 
+def _with_run_ledger(
+    pipeline_deps: PipelineDeps | None,
+    controller: RecoveryController,
+) -> PipelineDeps | None:
+    """Make the run controller's unavailability store the one ledger resolver paths share."""
+    if pipeline_deps is None:
+        return None
+    return dataclasses.replace(pipeline_deps, unavailability_store=controller.unavailability_store)
+
+
 def _iteration_pipeline_deps(
     ctx: _LoopContext,
     connectivity_provider: Callable[[], str | None],
@@ -2920,6 +2931,25 @@ def _handle_intervention_required_retry(
     return state.clear_waiting()
 
 
+#: Longest single pause while waiting for a resolver cooldown; keeps the loop
+#: responsive to interrupts and to cooldowns that end early.
+_MAX_COOLDOWN_SLEEP_SECONDS = 30.0
+
+
+def _resolver_cooldown_wait_ms(ctx: _LoopContext) -> int:
+    """Milliseconds until an installed resolver is selectable; 0 when one already is."""
+    from ralph.pipeline.conflict_resolution.resolver_health import choose_resolver
+    from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
+
+    installed = tuple(
+        agent
+        for agent in resolution_chain_agents(ctx.policy_bundle)
+        if ctx.registry.get(agent) is not None
+    )
+    choice = choose_resolver(ctx.controller, installed)
+    return choice.wait_ms if choice.agent is None else 0
+
+
 def _handle_pending_retry(
     state: PipelineState,
     ctx: _LoopContext,
@@ -2939,6 +2969,19 @@ def _handle_pending_retry(
     wait). Recovery returning ``None`` or an unresolved/blocked state
     is treated as no progress and charges the attempt counter.
     """
+    cooldown_ms = _resolver_cooldown_wait_ms(ctx) if rebase.integration_unresolved else 0
+    if cooldown_ms > 0:
+        # The blocker needs a resolver and every installed one is cooling down,
+        # so nothing could run this pass: it is a wait, not a failed attempt, and
+        # must not be charged to the conflict cap (that would hand the run to the
+        # operator while the cooldown is still ticking). Passes that need no
+        # resolver (publication retries, Git-side re-derivation) are never held.
+        waiting = rebase.set_operation_display_state(OperationDisplayState.WAITING)
+        state = state.copy_with(rebase=waiting).set_waiting(WaitReason.EXHAUSTED_RETRY, None)
+        _save_recovered_rebase_checkpoint(state, ctx)
+        ctx.latest_state[:] = [state]
+        ctx.sleep(min(cooldown_ms / 1000.0, _MAX_COOLDOWN_SLEEP_SECONDS))
+        return state.clear_waiting()
     recovered = _run_auto_integrate_recovery_preamble(
         ctx.workspace_scope, ctx.config, backend=backend
     )
@@ -4170,7 +4213,7 @@ def run(
         heartbeat_client=_heartbeat_client,
         pro_watcher=_pro_watcher,
         snapshot_registry=collaborators.snapshot_registry,
-        pipeline_deps=pipeline_deps,
+        pipeline_deps=_with_run_ledger(pipeline_deps, _controller),
         catchup_worker=(
             pipeline_deps.catchup_worker_factory(config, workspace_scope.root)
             if pipeline_deps is not None and pipeline_deps.catchup_worker_factory is not None

@@ -39,6 +39,7 @@ from ralph.policy.models import (
     PolicyBlock,
     PolicyBundle,
 )
+from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
 from ralph.policy.validation import (
     PolicyValidationError,
     validate_drain_contracts,
@@ -812,7 +813,7 @@ def _merge_agents_policy_onto_defaults(user_policy: AgentsPolicy) -> AgentsPolic
     _alias_out_of_graph_drain(
         user_chains,
         user_drains,
-        drain="rebase_conflict_resolution",
+        drain=RESOLUTION_DRAIN_NAME,
         drain_class="development",
         fallback_drain="development",
     )

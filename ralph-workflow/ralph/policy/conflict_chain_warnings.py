@@ -7,11 +7,13 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
+
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 _MIN_CONFLICT_FALLBACK_CHAIN_LENGTH = 2
-_CONFLICT_RESOLUTION_DRAIN = "rebase_conflict_resolution"
+_CONFLICT_RESOLUTION_DRAIN = RESOLUTION_DRAIN_NAME
 #: Distinct chain names warned about per process; far above any real config.
 _MAX_WARNED_CHAINS = 32
 

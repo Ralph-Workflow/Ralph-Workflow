@@ -25,6 +25,7 @@ from ralph.pipeline.rebase_state import RebaseState
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
+from tests._resolver_controller import make_resolver_controller
 from tests.test_cli_commit_command import _write_commit_message_doc
 from tests.test_pending_merge_commit_recovery import _commit, _git
 
@@ -890,6 +891,7 @@ def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
 
     monkeypatch.setattr("ralph.pipeline.effect_executor.execute_agent_effect", execute)
     assert repair_pending_merge(
+        controller=make_resolver_controller(),
         workspace_scope=WorkspaceScope(feature),
         config=UnifiedConfig(),
         pipeline_deps=make_test_pipeline_deps(

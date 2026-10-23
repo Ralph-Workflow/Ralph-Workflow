@@ -59,6 +59,7 @@ from ralph.pipeline.agent_retry_intent import (
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import FalloverRecord
 from ralph.policy.models import PhaseRetryPolicy
+from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
 from ralph.recovery._broken_agent_same_shape_error import BrokenAgentSameShapeLimitError
 from ralph.recovery._broken_agent_same_shape_tracker import (
     BrokenAgentFingerprint,
@@ -1195,10 +1196,13 @@ class RecoveryController:
         raw_failure: BaseException | str,
         *,
         agent: str,
-        phase: str = "rebase_conflict_resolution",
+        phase: str = RESOLUTION_DRAIN_NAME,
+        connectivity_state: str | None = None,
     ) -> ClassifiedFailure:
         """Classify a failed conflict-resolution invoke without pipeline state."""
-        return self._classifier.classify(raw_failure, phase=phase, agent=agent)
+        return self._classifier.classify(
+            raw_failure, phase=phase, agent=agent, connectivity_state=connectivity_state
+        )
 
     def next_conflict_candidate(self, candidates: Sequence[str], *, failed_index: int) -> int:
         """Advance past a failed candidate; never restart at the head of the chain."""

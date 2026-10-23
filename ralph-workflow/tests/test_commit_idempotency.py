@@ -171,6 +171,7 @@ class _FakeRunGitScript:
             returncode=self.update_ref_returncode,
             stderr=self.update_ref_stderr,
         )
+
     def _reflog(self, headless_args: tuple[str, ...]) -> GitRunResult:
         body = "\n".join(self.reflog_lines) + ("\n" if self.reflog_lines else "")
         return self._result(headless_args, returncode=0, stdout=body)

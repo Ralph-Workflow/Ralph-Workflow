@@ -7,6 +7,7 @@ instead of directly managing _unavailable_timeouts and _backoff_attempts dicts.
 from __future__ import annotations
 
 import ast
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
@@ -109,6 +110,9 @@ class AgentUnavailabilityTracker:
         initial_backoff_attempts: dict[str, int] | None = None,
     ) -> None:
         self._scope = scope
+        # The run's ledger is shared by the pipeline, resolver paths and watchdog
+        # threads; every read or write of the entries goes through this lock.
+        self._lock = threading.RLock()
         self._clock = clock or SystemClock()
         self._backoff_policy: dict[UnavailabilityReason, ReasonBackoffPolicy] = (
             backoff_policy if backoff_policy is not None else DEFAULT_UNAVAILABILITY_BACKOFF_POLICY
@@ -153,83 +157,87 @@ class AgentUnavailabilityTracker:
         Returns:
             The new UnavailabilityEntry with computed backoff.
         """
-        del phase
-        key = agent
-        current_time_ms = int(self._clock.monotonic() * 1000)
-        # Opportunistically prune expired entries so the dict does
-        # not grow without bound across long parallel runs.
-        self.prune_expired(now_ms=current_time_ms)
-        attempt: int = self._backoff_attempts.get(key, 0)
+        with self._lock:
+            del phase
+            key = agent
+            current_time_ms = int(self._clock.monotonic() * 1000)
+            # Opportunistically prune expired entries so the dict does
+            # not grow without bound across long parallel runs.
+            self.prune_expired(now_ms=current_time_ms)
+            attempt: int = self._backoff_attempts.get(key, 0)
 
-        if reason is not None and reason in self._backoff_policy:
-            policy = self._backoff_policy[reason]
-        else:
-            policy = None
+            if reason is not None and reason in self._backoff_policy:
+                policy = self._backoff_policy[reason]
+            else:
+                policy = None
 
-        if policy is not None:
-            base_ms = policy.base_backoff_ms
-            cap_ms = policy.max_backoff_ms
-        else:
-            base_ms = DEFAULT_LEGACY_BACKOFF_MS
-            cap_ms = DEFAULT_LEGACY_MAX_BACKOFF_MS
+            if policy is not None:
+                base_ms = policy.base_backoff_ms
+                cap_ms = policy.max_backoff_ms
+            else:
+                base_ms = DEFAULT_LEGACY_BACKOFF_MS
+                cap_ms = DEFAULT_LEGACY_MAX_BACKOFF_MS
 
-        base_ms_int: int = int(base_ms)
-        # Enforce the universal five-hour ceiling. The per-reason cap
-        # may still be lower (custom policies), so the effective cap is
-        # the smaller of the two.
-        cap_ms_int: int = min(int(cap_ms), _UNIVERSAL_COOLDOWN_CAP_MS)
+            base_ms_int: int = int(base_ms)
+            # Enforce the universal five-hour ceiling. The per-reason cap
+            # may still be lower (custom policies), so the effective cap is
+            # the smaller of the two.
+            cap_ms_int: int = min(int(cap_ms), _UNIVERSAL_COOLDOWN_CAP_MS)
 
-        # ceil(log2(cap / base)), using integer arithmetic only.
-        saturated_attempt = ((cap_ms_int - 1) // base_ms_int).bit_length()
-        attempt = min(attempt, saturated_attempt)
-        backoff_ms = min(base_ms_int << attempt, cap_ms_int)
+            # ceil(log2(cap / base)), using integer arithmetic only.
+            saturated_attempt = ((cap_ms_int - 1) // base_ms_int).bit_length()
+            attempt = min(attempt, saturated_attempt)
+            backoff_ms = min(base_ms_int << attempt, cap_ms_int)
 
-        unavailable_until_ms = current_time_ms + backoff_ms
-        self._entries[key] = UnavailabilityEntry(
-            unavailable_until_ms=unavailable_until_ms,
-            reason=reason,
-            attempt=attempt,
-            base_backoff_ms=base_ms_int,
-            max_backoff_ms=cap_ms_int,
-        )
-        # Saturate the recorded attempt counter at the same threshold so
-        # the per-agent history does not continue growing without bound
-        # after the cap is reached.
-        self._backoff_attempts[key] = min(attempt + 1, saturated_attempt)
-        return self._entries[key]
+            unavailable_until_ms = current_time_ms + backoff_ms
+            self._entries[key] = UnavailabilityEntry(
+                unavailable_until_ms=unavailable_until_ms,
+                reason=reason,
+                attempt=attempt,
+                base_backoff_ms=base_ms_int,
+                max_backoff_ms=cap_ms_int,
+            )
+            # Saturate the recorded attempt counter at the same threshold so
+            # the per-agent history does not continue growing without bound
+            # after the cap is reached.
+            self._backoff_attempts[key] = min(attempt + 1, saturated_attempt)
+            return self._entries[key]
 
     def is_available(self, phase: str, agent: str) -> bool:
         """Return True when the agent is not currently marked unavailable."""
-        del phase
-        entry = self._entries.get(agent)
-        if entry is None:
-            return True
-        current_time_ms = int(self._clock.monotonic() * 1000)
-        return current_time_ms >= entry.unavailable_until_ms
+        with self._lock:
+            del phase
+            entry = self._entries.get(agent)
+            if entry is None:
+                return True
+            current_time_ms = int(self._clock.monotonic() * 1000)
+            return current_time_ms >= entry.unavailable_until_ms
 
     def earliest_unavailable_wait_ms(self, phase: str, agents: list[str]) -> int:
         """Return milliseconds until the earliest unavailable agent becomes available.
 
         Returns 0 if any agent is available.
         """
-        del phase
-        current_time_ms = int(self._clock.monotonic() * 1000)
-        min_remaining: int | None = None
-        for agent in agents:
-            entry = self._entries.get(agent)
-            if entry is None:
-                return 0
-            if entry.unavailable_until_ms > current_time_ms:
-                remaining = entry.unavailable_until_ms - current_time_ms
-                if min_remaining is None or remaining < min_remaining:
-                    min_remaining = remaining
-        return max(0, min_remaining or 0)
+        with self._lock:
+            del phase
+            current_time_ms = int(self._clock.monotonic() * 1000)
+            min_remaining: int | None = None
+            for agent in agents:
+                entry = self._entries.get(agent)
+                if entry is None:
+                    return 0
+                if entry.unavailable_until_ms > current_time_ms:
+                    remaining = entry.unavailable_until_ms - current_time_ms
+                    if min_remaining is None or remaining < min_remaining:
+                        min_remaining = remaining
+            return max(0, min_remaining or 0)
 
     def reset_backoff(self, phase: str, agent: str) -> None:
         """Clear the unavailable entry and history for an agent."""
-        del phase
-        self._entries.pop(agent, None)
-        self._backoff_attempts.pop(agent, None)
+        with self._lock:
+            del phase
+            self._entries.pop(agent, None)
+            self._backoff_attempts.pop(agent, None)
 
     def prune_expired(self, now_ms: int | None = None) -> int:
         """Remove entries whose cooldown has elapsed at ``now_ms``.
@@ -251,27 +259,29 @@ class AgentUnavailabilityTracker:
         Returns:
             Number of entries pruned.
         """
-        if now_ms is None:
-            now_ms = int(self._clock.monotonic() * 1000)
-        expired_keys = [
-            key for key, entry in self._entries.items() if now_ms >= entry.unavailable_until_ms
-        ]
-        for key in expired_keys:
-            self._entries.pop(key, None)
-        return len(expired_keys)
+        with self._lock:
+            if now_ms is None:
+                now_ms = int(self._clock.monotonic() * 1000)
+            expired_keys = [
+                key for key, entry in self._entries.items() if now_ms >= entry.unavailable_until_ms
+            ]
+            for key in expired_keys:
+                self._entries.pop(key, None)
+            return len(expired_keys)
 
     def snapshot(self) -> dict[str, dict[str, object]]:
         """Return a defensive copy of the internal state."""
-        return {
-            "unavailable_timeouts": {
-                key: entry.unavailable_until_ms for key, entry in self._entries.items()
-            },
-            "unavailability_reasons": {
-                key: str(entry.reason) if entry.reason is not None else None
-                for key, entry in self._entries.items()
-            },
-            "backoff_attempts": dict(self._backoff_attempts),
-        }
+        with self._lock:
+            return {
+                "unavailable_timeouts": {
+                    key: entry.unavailable_until_ms for key, entry in self._entries.items()
+                },
+                "unavailability_reasons": {
+                    key: str(entry.reason) if entry.reason is not None else None
+                    for key, entry in self._entries.items()
+                },
+                "backoff_attempts": dict(self._backoff_attempts),
+            }
 
     @property
     def scope(self) -> Literal["session", "persistent"]:

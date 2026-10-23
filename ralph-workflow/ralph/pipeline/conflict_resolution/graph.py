@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Final
 
-PHASE_RESOLUTION: Final[str] = "rebase_conflict_resolution"
+from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
+
+PHASE_RESOLUTION: Final[str] = RESOLUTION_DRAIN_NAME
 TERMINAL_RESOLVED: Final[str] = "resolved"
 TERMINAL_ABANDONED: Final[str] = "abandoned"
 

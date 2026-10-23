@@ -31,6 +31,7 @@ from ralph.pipeline.operation_evidence import identity_fingerprint
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
+from ralph.recovery.controller import RecoveryController
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -64,6 +65,7 @@ def _create_retry_ctx(
         "run_loop._LoopContext",
         SimpleNamespace(
             policy_bundle=SimpleNamespace(
+                agents=SimpleNamespace(agent_drains={}, agent_chains={}),
                 pipeline=PipelinePolicy(
                     entry_phase="development",
                     phases={
@@ -72,7 +74,7 @@ def _create_retry_ctx(
                             transitions=PhaseTransition(on_success="complete"),
                         )
                     },
-                )
+                ),
             ),
             active_display=SimpleNamespace(emit_warn_line=_noop_warn),
             config=UnifiedConfig(),
@@ -81,6 +83,8 @@ def _create_retry_ctx(
             sleep=sleep_sink.append,
             connectivity_monitor=SimpleNamespace(current_state=None),
             _session_handoff_dispatched=False,
+            registry={},
+            controller=RecoveryController(),
         ),
     )
 

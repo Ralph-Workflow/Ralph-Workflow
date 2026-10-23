@@ -645,6 +645,13 @@ ralph.policy.conflict_chain_warnings
    :members:
    :show-inheritance:
 
+ralph.policy.resolution_names
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.policy.resolution_names
+   :members:
+   :show-inheritance:
+
 ralph.policy.loader
 ~~~~~~~~~~~~~~~~~~~
 
@@ -1170,6 +1177,13 @@ ralph.pipeline.conflict_resolution.session
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.conflict_resolution.session
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.conflict_resolution.resolver_health
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.resolver_health
    :members:
    :show-inheritance:
 

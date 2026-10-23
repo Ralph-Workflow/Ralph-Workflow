@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     )
     from ralph.pro_support.state_query import SnapshotRegistry
     from ralph.prompts.materialize import PromptPhaseContext, PromptPhaseOptions
+    from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
     from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityState
     from ralph.workspace.scope import WorkspaceScope
 
@@ -249,6 +250,10 @@ class PipelineDeps:
     policy_bundle_factory: PolicyBundleFactory | None = None
     state_factory: StateFactory | None = None
     recovery_controller_factory: RecoveryControllerFactory | None = None
+    # The run's agent cooldown ledger. Integration resolvers (conflict driver,
+    # diagnostic, pending-merge repair) bench failed agents here so one path's
+    # failure holds in every other path of the same run.
+    unavailability_store: UnavailabilityStore | None = None
     marker_watcher_factory: MarkerWatcherFactory | None = None
     snapshot_registry: SnapshotRegistry | None = None
     recovery_sleep: Callable[[float], None] | None = None
@@ -304,6 +309,7 @@ class PipelineDeps:
         policy_bundle_factory: PolicyBundleFactory | None = None,
         state_factory: StateFactory | None = None,
         recovery_controller_factory: RecoveryControllerFactory | None = None,
+        unavailability_store: UnavailabilityStore | None = None,
         marker_watcher_factory: MarkerWatcherFactory | None = None,
         snapshot_registry: SnapshotRegistry | None = None,
         recovery_sleep: Callable[[float], None] | None = None,
@@ -427,6 +433,7 @@ class PipelineDeps:
         object.__setattr__(self, "policy_bundle_factory", policy_bundle_factory)
         object.__setattr__(self, "state_factory", state_factory)
         object.__setattr__(self, "recovery_controller_factory", recovery_controller_factory)
+        object.__setattr__(self, "unavailability_store", unavailability_store)
         object.__setattr__(self, "marker_watcher_factory", marker_watcher_factory)
         object.__setattr__(self, "snapshot_registry", snapshot_registry)
         object.__setattr__(self, "recovery_sleep", recovery_sleep)

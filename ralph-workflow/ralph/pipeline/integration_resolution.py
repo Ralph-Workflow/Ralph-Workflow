@@ -32,6 +32,7 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline.integration_dispatch_blocked_error import IntegrationDispatchBlockedError
 from ralph.pipeline.integration_resolution_status import IntegrationResolutionStatus
 from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
+from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -39,7 +40,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.rebase_state import RebaseState
 
-RESOLUTION_DRAIN = "rebase_conflict_resolution"
+RESOLUTION_DRAIN = RESOLUTION_DRAIN_NAME
 
 # ``XY<space>PATH`` -- the shortest meaningful porcelain v1 entry is a
 # two-letter status code, a separator, and at least one path character.

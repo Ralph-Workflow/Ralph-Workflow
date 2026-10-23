@@ -182,8 +182,13 @@ commit = "commit"
 # max_fallback_agents = 2              # compatibility only; does not cap chain candidates
 # total_resolution_cap_seconds = None  # opt-in elapsed cap; only bound that may stop active work
 # Candidate order, retries, and backoff live on [agent_chains.rebase_conflict_resolution]
-# in agents.toml (bundled: claude, max_retries = 2, retry_delay_ms = 1000).
+# in agents.toml (bundled: claude, max_retries = 2, retry_delay_ms = 1000). When your own
+# config declares agent chains but no rebase_conflict_resolution chain, the resolver follows
+# your `development` chain; declare the chain to choose resolvers explicitly.
 # The rebase_conflict_resolution drain binds that chain; max_fallback_agents cannot cap it.
+# A resolver that exits without a verified result is put on a cooldown that grows with each
+# repeat (and is longer for quota or auth failures); while every resolver is cooling down,
+# Ralph waits instead of calling one again.
 
 # Edit this only if you need to change workflow automation behavior.
 # -----------------------------------------------------------------------------

@@ -186,6 +186,10 @@ _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
     "monthly spend limit reached",
     "selected model is at capacity",
     "you've run out of credits",
+    # Cursor CLI: ActionRequiredError carries no vendor error code, only prose.
+    "hit your usage limit",
+    "usage limits will reset",
+    "set a spend limit to continue",
     # Anthropic / Claude API families
     "rate_limit_error",
     "number of request tokens has exceeded your per-minute rate limit",

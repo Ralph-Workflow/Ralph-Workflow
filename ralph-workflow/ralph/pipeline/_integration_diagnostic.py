@@ -54,6 +54,11 @@ from ralph.pipeline.auto_integrate_record import (
     write_record,
 )
 from ralph.pipeline.auto_integrate_record_store import apply_record_transition
+from ralph.pipeline.conflict_resolution.resolver_health import (
+    bench_resolver,
+    choose_resolver,
+    clear_resolver,
+)
 from ralph.pipeline.operation_evidence import (
     EvidenceVerdict,
     OperationEvidenceCollector,
@@ -72,6 +77,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from ralph.pipeline.run_loop import _LoopContext
+    from ralph.recovery.controller import RecoveryController
 
 
 # Default collector used by the diagnostic path. Tests inject
@@ -227,6 +233,57 @@ def diagnostic_needed(root: Path, record: IntegrationRecord) -> bool:
         return True
 
 
+def _next_resolver(controller: RecoveryController, agents: Sequence[str]) -> str | None:
+    """Return the next resolver to call, or ``None`` (after saying why) while all are benched."""
+    choice = choose_resolver(controller, agents)
+    if choice.agent is None:
+        logger.warning(
+            "Integration diagnostic: every resolver is cooling down; next one is "
+            "selectable in {:.0f}s",
+            choice.wait_ms / 1000.0,
+        )
+    return choice.agent
+
+
+def _invoke_and_judge(
+    agent: str,
+    prompt: Path,
+    invoke: Callable[[str, Path], bool],
+    controller: RecoveryController,
+    inspection_root: Path,
+    record: IntegrationRecord,
+    col: OperationEvidenceCollector,
+    failure_detail: Callable[[], BaseException | str | None] | None,
+) -> bool:
+    """Invoke ``agent``; clear it on verified proof, bench it on every other way out.
+
+    An invocation that raises is benched before the error propagates, so a
+    crashing resolver cannot be re-offered on the next pass.
+    """
+    try:
+        invoked_ok = invoke(agent, prompt)
+        verified = (
+            invoked_ok
+            and _check_operation_completion_proof(inspection_root, record, collector=col)[0]
+        )
+    except Exception as exc:
+        bench_resolver(controller, agent, exc)
+        raise
+    if verified:
+        clear_resolver(controller, agent)
+    else:
+        bench_resolver(controller, agent, _failure_text(agent, failure_detail))
+    return invoked_ok
+
+
+def _failure_text(
+    agent: str, failure_detail: Callable[[], BaseException | str | None] | None
+) -> BaseException | str:
+    """The real failure of the attempt, or a statement that it produced no proof."""
+    detail = failure_detail() if failure_detail is not None else None
+    return detail or f"resolver '{agent}' ended without a verified completion proof"
+
+
 def diagnose_retained_integration(
     ctx: _LoopContext,
     failure: str,
@@ -240,6 +297,7 @@ def diagnose_retained_integration(
     from ralph.pipeline.auto_integrate_record import read_record
     from ralph.pipeline.auto_integrate_transaction import integration_transaction
     from ralph.pipeline.conflict_resolution.session import (
+        ResolutionSession,
         invoke_resolution_agent,
         resolution_chain_agents,
     )
@@ -303,9 +361,11 @@ def diagnose_retained_integration(
             return False
 
         effective_invoke: Callable[[str, Path], bool]
+        attempt_session = ResolutionSession()
         if invoke is None:
 
             def _default_invoke(agent: str, prompt: Path) -> bool:
+                attempt_session.last_attempt_failure = None
                 with workspace_context(operation_root):
                     return invoke_resolution_agent(
                         agent_name=agent,
@@ -318,6 +378,7 @@ def diagnose_retained_integration(
                         display_context=ctx.display_context,
                         operator_cap_seconds=ctx.config.conflict_resolution.total_resolution_cap_seconds,
                         require_completion_evidence=True,
+                        session=attempt_session,
                     )
 
             effective_invoke = _default_invoke
@@ -361,6 +422,8 @@ def diagnose_retained_integration(
                 ),
                 invoke=effective_invoke,
                 collector=col,
+                controller=ctx.controller,
+                failure_detail=lambda: attempt_session.last_attempt_failure,
             )
             retained = read_record(ctx.workspace_scope.root)
             return bool(
@@ -836,6 +899,47 @@ def _complete_or_intervene(
     return True
 
 
+def _settle_exhausted_cap(
+    root: Path,
+    inspection_root: Path,
+    record: IntegrationRecord,
+    col: OperationEvidenceCollector,
+    backend: FileBackend,
+) -> bool:
+    """Release the hold when Git shows no diagnostic is needed; otherwise raise intervention."""
+    proof_ok, _ = _check_operation_completion_proof(inspection_root, record, collector=col)
+    if proof_ok or not diagnostic_needed(inspection_root, record):
+        try:
+            apply_record_transition(
+                root,
+                RELEASE_DIAGNOSTIC_EVIDENCE,
+                backend=backend,
+                diagnostic_evidence=(),
+                diagnostic_ownership=None,
+                diagnostic_owner_pid=None,
+                diagnostic_owner_boot_id=None,
+                diagnostic_intervention_required=False,
+                repair_cap_reason=None,
+            )
+        except (RecordBusyError, RecordUnreadableError):
+            return False
+        logger.info("Automated recovery re-derived state; released diagnostic evidence")
+        return True
+    write_record(
+        root,
+        _raise_intervention(
+            record,
+            "diagnostic repair exhausted; operator intervention required",
+        ),
+        backend=backend,
+    )
+    logger.critical(
+        "Integration diagnostic repair exhausted after {} attempts; operator intervention required",
+        record.merge_commit_repair_attempts,
+    )
+    return False
+
+
 def handoff_integration_diagnostic(
     *,
     root: Path,
@@ -846,8 +950,16 @@ def handoff_integration_diagnostic(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     repair_attempt_cap: int = DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
     collector: OperationEvidenceCollector | None = None,
+    failure_detail: Callable[[], BaseException | str | None] | None = None,
+    controller: RecoveryController,
 ) -> bool:
-    """Rotate inspection candidates without authorizing publication or record cleanup.
+    """Offer inspection candidates by health without authorizing publication or cleanup.
+
+    Candidates come from the shared resolver health ledger (``controller``):
+    one that ended an attempt without a verified result is benched with
+    exponential backoff and is not offered again until its cooldown elapses.
+    While every candidate is benched nothing is invoked and no attempt is
+    spent, so the caller's retry cadence costs nothing.
 
     The diagnostic-repair attempt counter is bounded at
     ``repair_attempt_cap``. When the cap is reached, the function
@@ -874,38 +986,7 @@ def handoff_integration_diagnostic(
         return pre_pass_result
 
     if record.merge_commit_repair_attempts >= repair_attempt_cap:
-        proof_ok, _ = _check_operation_completion_proof(inspection_root, record, collector=col)
-        if proof_ok or not diagnostic_needed(inspection_root, record):
-            try:
-                apply_record_transition(
-                    root,
-                    RELEASE_DIAGNOSTIC_EVIDENCE,
-                    backend=backend,
-                    diagnostic_evidence=(),
-                    diagnostic_ownership=None,
-                    diagnostic_owner_pid=None,
-                    diagnostic_owner_boot_id=None,
-                    diagnostic_intervention_required=False,
-                    repair_cap_reason=None,
-                )
-                logger.info("Automated recovery re-derived state; released diagnostic evidence")
-                return True
-            except (RecordBusyError, RecordUnreadableError):
-                return False
-        write_record(
-            root,
-            _raise_intervention(
-                record,
-                "diagnostic repair exhausted; operator intervention required",
-            ),
-            backend=backend,
-        )
-        logger.critical(
-            "Integration diagnostic repair exhausted after {} attempts; "
-            "operator intervention required",
-            record.merge_commit_repair_attempts,
-        )
-        return False
+        return _settle_exhausted_cap(root, inspection_root, record, col, backend)
     if not agents:
         target_record = _bump_attempt(
             record,
@@ -923,7 +1004,9 @@ def handoff_integration_diagnostic(
             )
         write_record(root, target_record, backend=backend)
         return False
-    agent = agents[record.merge_commit_repair_attempts % len(agents)]
+    agent = _next_resolver(controller, agents)
+    if agent is None:
+        return False
     prompt = root / ".agent" / "tmp" / "integration_diagnostic_prompt.md"
     content = (
         "Inspect the retained integration blocker and repair only its environment.\n"
@@ -949,4 +1032,6 @@ def handoff_integration_diagnostic(
         _bump_attempt(record, failure[:8192], repair_attempt_cap=repair_attempt_cap),
         backend=backend,
     )
-    return invoke(agent, prompt)
+    return _invoke_and_judge(
+        agent, prompt, invoke, controller, inspection_root, record, col, failure_detail
+    )

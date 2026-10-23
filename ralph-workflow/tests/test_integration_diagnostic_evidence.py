@@ -28,6 +28,7 @@ from ralph.pipeline.operation_evidence import (
     OperationFact,
     identity_fingerprint,
 )
+from tests._resolver_controller import make_resolver_controller
 from tests.test_auto_integrate_record_idempotent import _RecordBackend
 
 
@@ -47,8 +48,10 @@ def test_missing_evidence_rotates_inspection_without_clearing_ownership() -> Non
         agents.append(agent)
         return False
 
+    controller = make_resolver_controller()
     for _attempt in range(2):
         assert not diagnostic.handoff_integration_diagnostic(
+            controller=controller,
             root=root,
             record=record,
             failure="completion receipt unreadable",
@@ -274,6 +277,7 @@ def test_handoff_integration_diagnostic_honors_injected_collector() -> None:
         facts=(OperationFact(kind="rebase_object_resolvable", value="False"),)
     )
     result = diagnostic.handoff_integration_diagnostic(
+        controller=make_resolver_controller(),
         root=root,
         record=record,
         failure="test failure",
@@ -314,6 +318,7 @@ def test_handoff_integration_diagnostic_repeated_missing_agents_persists_interve
 
     # Attempt 1: bumps attempt count below cap
     assert not diagnostic.handoff_integration_diagnostic(
+        controller=make_resolver_controller(),
         root=root,
         record=record,
         failure="receipt unreadable 1",
@@ -330,6 +335,7 @@ def test_handoff_integration_diagnostic_repeated_missing_agents_persists_interve
 
     # Attempt 2: reaches cap, raises intervention
     assert not diagnostic.handoff_integration_diagnostic(
+        controller=make_resolver_controller(),
         root=root,
         record=saved1,
         failure="receipt unreadable 2",
@@ -346,6 +352,7 @@ def test_handoff_integration_diagnostic_repeated_missing_agents_persists_interve
 
     # Attempt 3: already at cap with intervention; zero later invocations occur
     assert not diagnostic.handoff_integration_diagnostic(
+        controller=make_resolver_controller(),
         root=root,
         record=saved2,
         failure="receipt unreadable 3",

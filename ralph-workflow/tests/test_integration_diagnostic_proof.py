@@ -32,6 +32,7 @@ from ralph.pipeline.operation_evidence import (
     InMemoryOperationEvidenceCollector,
     identity_fingerprint,
 )
+from tests._resolver_controller import make_resolver_controller
 from tests.test_pending_merge_commit_recovery import _commit, _git
 
 
@@ -105,6 +106,7 @@ def test_positive_completion_proof_releases_evidence(tmp_path: Path) -> None:
             return False
 
         result = diagnostic.handoff_integration_diagnostic(
+            controller=make_resolver_controller(),
             root=root,
             record=record,
             failure="test failure",
@@ -153,6 +155,7 @@ def test_unreachable_merge_object_takes_intervention_path(tmp_path: Path) -> Non
         return False
 
     result = diagnostic.handoff_integration_diagnostic(
+        controller=make_resolver_controller(),
         root=root,
         record=record,
         failure="test failure",
@@ -208,6 +211,7 @@ def test_reachable_merge_head_with_unreadable_index_preserves_metadata(tmp_path:
         return False
 
     result = diagnostic.handoff_integration_diagnostic(
+        controller=make_resolver_controller(),
         root=root,
         record=record,
         failure="test failure",
@@ -251,6 +255,7 @@ def test_no_positive_proof_routes_to_intervention_without_consuming_attempt(tmp_
         return False
 
     result = diagnostic.handoff_integration_diagnostic(
+        controller=make_resolver_controller(),
         root=root,
         record=record,
         failure="ancestry mismatch",
@@ -444,6 +449,7 @@ def test_handoff_uncertain_marker_query_persists_intervention_preserving_markers
         return False
 
     result = diagnostic.handoff_integration_diagnostic(
+        controller=make_resolver_controller(),
         root=root,
         record=record,
         failure="test uncertain error",
@@ -512,6 +518,7 @@ def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress
         ")\n"
         "from ralph.pipeline.conflict_resolution.session import resolution_chain_agents\n"
         "from ralph.policy.loader import load_policy\n"
+        "from ralph.recovery.controller import RecoveryController\n"
         "from ralph.workspace.scope import WorkspaceScope\n"
         "\n"
         "root = Path(sys.argv[1])\n"
@@ -538,6 +545,7 @@ def test_interrupted_diagnostic_dead_owner_releases_and_makes_automated_progress
         "    registry={a: MagicMock() for a in agents},\n"
         "    active_display=MagicMock(),\n"
         "    display_context=None,\n"
+        "    controller=RecoveryController(),\n"
         ")\n"
         "\n"
         "def slow_invoke(agent, prompt):\n"

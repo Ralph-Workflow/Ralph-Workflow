@@ -23,6 +23,7 @@ from ralph.pipeline.operation_evidence import (
     EvidenceVerdict,
     identity_fingerprint,
 )
+from tests._resolver_controller import make_resolver_controller
 
 
 class _InMemoryBackend(FileBackend):
@@ -459,6 +460,7 @@ def test_handoff_integration_diagnostic_at_repair_cap_rederives(
     write_record(tmp_path, record)
 
     res = diagnostic.handoff_integration_diagnostic(
+        controller=make_resolver_controller(),
         root=tmp_path,
         record=record,
         failure="diagnostic failure",

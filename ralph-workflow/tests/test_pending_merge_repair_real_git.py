@@ -17,6 +17,7 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.policy.models import PolicyBundle
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
+from tests._resolver_controller import make_resolver_controller
 from tests.test_pending_merge_commit_recovery import _git, _prepared
 
 if TYPE_CHECKING:
@@ -122,6 +123,7 @@ def test_hook_source_fix_is_reverified_and_landed_without_sweeping_wip(
         if case in {"before_stage", "staged_intruder"}:
             crash.setattr(repair_edits, "run_git", fail_staging)
         repaired = repair_pending_merge(
+            controller=make_resolver_controller(),
             workspace_scope=WorkspaceScope(root),
             config=UnifiedConfig(),
             pipeline_deps=make_test_pipeline_deps(

@@ -17,6 +17,7 @@ from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     write_record,
 )
+from ralph.pipeline.conflict_resolution.resolver_health import bench_resolver, choose_resolver
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import PolicyBundle
+    from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
 
@@ -39,6 +41,7 @@ def repair_pending_merge(
     display_context: DisplayContext | None,
     agents: Sequence[str],
     failure: str,
+    controller: RecoveryController,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> bool:
     """Hold recovery ownership while a supervised agent repairs the commit blocker."""
@@ -76,6 +79,7 @@ def repair_pending_merge(
             display_context=display_context,
             agents=agents,
             failure=failure,
+            controller=controller,
             backend=backend,
         )
 
@@ -90,6 +94,7 @@ def _repair_owned_merge(
     display_context: DisplayContext | None,
     agents: Sequence[str],
     failure: str,
+    controller: RecoveryController,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> bool:
     """Hold recovery ownership while a supervised agent repairs the commit blocker."""
@@ -144,6 +149,7 @@ def _repair_owned_merge(
             agents=agents,
             invoke=invoke,
             backend=backend,
+            controller=controller,
             protected_paths=tuple(before),
         )
         if capture_commit_controls(root, backend) != controls:
@@ -170,18 +176,33 @@ def handoff_pending_merge_repair(
     failure: str,
     agents: Sequence[str],
     invoke: Callable[[str, Path], bool],
+    controller: RecoveryController,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     protected_paths: Sequence[str] = (),
 ) -> bool:
-    """Persist candidate rotation before invoking repair; Git still decides completion.
+    """Offer repair agents by health before invoking one; Git still decides completion.
 
     The caller holds integration ownership and validates the prepared index.
     Agent success only authorizes another normal commit attempt, never landing.
+    An agent that failed or raised is benched in ``controller``'s shared ledger.
+    A first-offer success is not: if it worked the pending record is gone, and a
+    cooldown would only tax the next unrelated integration. A success on a record
+    that was already offered before proves the earlier one did not land, so that
+    agent is benched. While every agent is benched nothing is invoked and no
+    attempt is spent.
     """
     if not agents:
         logger.critical("Pending integration retained: no installed repair agent")
         return False
-    agent = agents[record.merge_commit_repair_attempts % len(agents)]
+    choice = choose_resolver(controller, agents)
+    if choice.agent is None:
+        logger.warning(
+            "Pending integration retained: every repair agent is cooling down; next one is "
+            "selectable in {:.0f}s",
+            choice.wait_ms / 1000.0,
+        )
+        return False
+    agent = choice.agent
     prompt = root / ".agent" / "tmp" / "pending_merge_commit_repair_prompt.md"
     diagnostic = failure[:8192]
     if record.repair_last_error and record.repair_last_error != diagnostic:
@@ -230,7 +251,12 @@ def handoff_pending_merge_repair(
             backend=backend,
         )
         logger.warning("Pending {} repair handed to '{}': {}", operation, agent, diagnostic)
-        return invoke(agent, prompt)
+        succeeded = invoke(agent, prompt)
     except Exception as exc:
         logger.critical("Pending integration retained; repair handoff failed: {}", exc)
+        bench_resolver(controller, agent, exc)
         return False
+    if succeeded and record.merge_commit_repair_attempts == 0:
+        return succeeded
+    bench_resolver(controller, agent, f"repair agent '{agent}' did not clear the pending commit")
+    return succeeded

@@ -88,6 +88,7 @@ from ralph.pipeline.conflict_resolution.session import (
     begin_resolution_stop,
     classify_failed_resolution_attempt,
     conflict_chain_max_retries,
+    ensure_session_controller,
     invoke_resolution_agent,
     resolution_chain_agents,
 )
@@ -448,6 +449,9 @@ def _run_rounds(
     # the session, and an unreset session reports the LAST conflict's
     # verdict for a stop that never invoked anybody.
     begin_resolution_stop(session, is_strategy_rotation=is_rotation)
+    if pipeline_deps is not None and session.unavailability_store is None:
+        session.unavailability_store = pipeline_deps.unavailability_store
+    ensure_session_controller(session, policy_bundle)
     prepared, early, decision_paths = _prepare_conflicted_paths(root, stop, session, display)
     if early is not None:
         return early
@@ -752,6 +756,7 @@ def _handle_candidate_failure(
         candidates=candidates,
         failed_index=offset,
         policy_bundle=policy_bundle,
+        bench=session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS,
     )
 
 
@@ -795,6 +800,7 @@ def _execute_single_candidate(
             candidates=candidates,
             failed_index=offset,
             policy_bundle=policy_bundle,
+            bench=True,
         )
         return False, False
     else:
@@ -943,14 +949,24 @@ def _preferred_conflict_candidate(
     controller = session.recovery_controller
     if not isinstance(controller, RecoveryController):
         return candidates.index(eligible[0])
-    while True:
-        selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
-        if selection.agent is not None:
-            return candidates.index(selection.agent)
-        delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
-        if delay <= 0:
-            return None
-        _sleep_seconds(delay / 1000.0)
+    selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
+    if selection.agent is not None:
+        return candidates.index(selection.agent)
+    delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
+    if delay <= 0:
+        return None
+    # Wait out the earliest cooldown ONCE, then go on with the candidate that
+    # was closest to returning. Looping until the ledger says "available" would
+    # spin forever whenever the sleep does not actually advance the clock.
+    _sleep_seconds(delay / 1000.0)
+    selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
+    if selection.agent is not None:
+        return candidates.index(selection.agent)
+
+    def remaining_wait_ms(name: str) -> int:
+        return controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
+
+    return candidates.index(min(eligible, key=remaining_wait_ms))
 
 
 def _reset_conflict_success(session: ResolutionSession, agent: str) -> None:
