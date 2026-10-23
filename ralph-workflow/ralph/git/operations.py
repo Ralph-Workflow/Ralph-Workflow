@@ -34,8 +34,8 @@ recovery uses an age-and-liveness gate:
   proc environ GIT_DIR, lsof, and fuser). If any signal indicates a live
   process or liveness cannot be verified ("unknown"), removal is refused
   fail-closed.
-* Bounded 0.5s ThreadPoolExecutor probe: liveness checks run inside a worker
-  thread with a strict 0.5s timeout (``_PROBE_TIMEOUT_S``) to prevent
+* Bounded 1s ThreadPoolExecutor probe: liveness checks run inside a worker
+  thread with a strict 1s timeout (``_PROBE_TIMEOUT_S``) to prevent
   unbounded hangs.
 * Bounded backoff: when a lock cannot be unlinked due to contention, retries
   with bounded backoff (0.2s, 0.5s, 1.0s; total ≤ 1.7s) before re-raising.
@@ -195,7 +195,9 @@ def _queued_remote_push(repo_root: Path | str, repo: Repo, remote: str, branch: 
 _LOCK_BACKOFF_S: tuple[float, ...] = _BASE_LOCK_BACKOFF_S
 _STALE_GIT_LOCK_AGE_SECONDS: float = _BASE_STALE_GIT_LOCK_AGE_SECONDS
 _sleep_fn: Callable[[float], None] = _base_sleep_fn
-_probe_lsof_fuser: Callable[[Path, float], bool] = _base_probe_lsof_fuser
+_probe_lsof_fuser: Callable[
+    [Path, float], Literal["live", "dead", "unknown"] | bool
+] = _base_probe_lsof_fuser
 _find_lock_holder: Callable[[Path], str] = _base_find_lock_holder
 
 
@@ -213,7 +215,9 @@ def _lock_has_no_live_holder(
         gitdir_common,
         probe_timeout_s=probe_timeout_s,
         _proc_root=_proc_root,
-        probe_lsof_fuser_fn=_probe_lsof_fuser,
+        probe_lsof_fuser_fn=(
+            None if _probe_lsof_fuser is _base_probe_lsof_fuser else _probe_lsof_fuser
+        ),
     )
 
 
@@ -903,13 +907,16 @@ def create_commit(
         if commit_result.returncode != 0:
             raise GitOperationError("create_commit", commit_result.stderr.strip())
         candidate_sha = commit_result.stdout.strip()
-        result = _cas_publish_or_detect_advance(
-            Path(repo_root),
-            ref_name,
-            candidate_sha,
-            expected_head,
-            Path(repo.git_dir) / "hooks",
-            {"GIT_REFLOG_ACTION": "ralph create_commit"},
+        result = _run_git_operation_with_stale_lock_recovery(
+            "create_commit",
+            lambda: _cas_publish_or_detect_advance(
+                Path(repo_root),
+                ref_name,
+                candidate_sha,
+                expected_head,
+                Path(repo.git_dir) / "hooks",
+                {"GIT_REFLOG_ACTION": "ralph create_commit"},
+            ),
         )
         if result.status is CommitCreationStatus.CREATED:
             logger.info(

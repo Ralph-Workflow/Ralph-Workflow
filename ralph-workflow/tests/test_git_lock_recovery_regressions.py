@@ -65,6 +65,49 @@ def _make_index_lock_error(lock_path: Path) -> GitCommandError:
     )
 
 
+def test_recover_stale_branch_ref_lock_without_live_holder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gitdir = tmp_path / ".git"
+    lock_path = gitdir / "refs" / "heads" / "wt-30-e2e-testing.lock"
+    lock_path.parent.mkdir(parents=True)
+    lock_path.write_text("stale", encoding="utf-8")
+    lock_mtime = lock_path.stat().st_mtime
+    monkeypatch.setattr(time, "time", lambda: lock_mtime + 60.0)
+    error = GitCommandError(
+        ["git", "commit"],
+        128,
+        stderr=(
+            "fatal: update_ref failed for ref 'refs/heads/wt-30-e2e-testing': "
+            f"cannot lock ref: Unable to create '{lock_path}': File exists."
+        ),
+    )
+
+    recovered = _recover_stale_git_lock("create_commit", error, liveness_fn=_fake_dead)
+
+    assert recovered is True
+    assert not lock_path.exists()
+
+
+def test_external_probe_can_prove_stale_lock_dead_when_proc_probe_is_unavailable(
+    tmp_path: Path,
+) -> None:
+    gitdir = tmp_path / ".git"
+    gitdir.mkdir()
+    lock_path = gitdir / "index.lock"
+    lock_path.write_text("stale", encoding="utf-8")
+
+    result = _lock_has_no_live_holder(
+        lock_path,
+        gitdir,
+        _proc_root=tmp_path / "missing-proc",
+        probe_lsof_fuser_fn=lambda _lock, _timeout: "dead",
+    )
+
+    assert result == "dead"
+
+
 # ---------------------------------------------------------------------------
 # AC 1: exact 32 404.9 s binary index.lock, no holder, recovered through
 # the public ``_run_git_operation_with_stale_lock_recovery`` retry path,

@@ -39,7 +39,7 @@ from ralph.git.errors import GitOperationError
 _LOCK_PATH_PATTERN = re.compile(r"Unable to create '([^']+\.lock)'")
 _RECOVERABLE_GIT_LOCK_FILES = frozenset({"index.lock", "HEAD.lock", "packed-refs.lock"})
 _STALE_GIT_LOCK_AGE_SECONDS = 10.0
-_PROBE_TIMEOUT_S = 0.5  # whole-probe ThreadPoolExecutor and subprocess budget
+_PROBE_TIMEOUT_S = 1.0
 _PROBE_MAX_WORKERS: int = 4
 
 
@@ -97,12 +97,32 @@ def _parse_lock_path_from_error(error_text: str) -> Path | None:
     if match is None:
         return None
     lock_path = Path(match.group(1))
-    if lock_path.name not in _RECOVERABLE_GIT_LOCK_FILES:
+    if lock_path.name in _RECOVERABLE_GIT_LOCK_FILES:
+        return lock_path
+    if "refs" not in lock_path.parts or not lock_path.name.endswith(".lock"):
         return None
     return lock_path
 
 
-def _probe_lsof_fuser(lock: Path, timeout: float) -> bool:
+def _gitdir_for_lock(lock_path: Path) -> Path:
+    parts = lock_path.parts
+    if "refs" not in parts:
+        return lock_path.parent
+    refs_index = parts.index("refs")
+    return Path(*parts[:refs_index])
+
+
+def _normalize_external_liveness(
+    status: Literal["live", "dead", "unknown"] | bool,
+) -> Literal["live", "dead", "unknown"]:
+    if status in (True, "live"):
+        return "live"
+    if status == "dead":
+        return "dead"
+    return "unknown"
+
+
+def _probe_lsof_fuser(lock: Path, timeout: float) -> Literal["live", "dead", "unknown"]:
     # mcp-timeout-ok: bounded lock-liveness probe
     try:
         # filesystem-poll-ok: bounded read-only lsof liveness probe
@@ -113,7 +133,9 @@ def _probe_lsof_fuser(lock: Path, timeout: float) -> bool:
             check=False,
         )
         if result.returncode == 0 and b"p" in result.stdout:
-            return True
+            return "live"
+        if result.returncode == 1:
+            return "dead"
     except (OSError, subprocess.TimeoutExpired, PermissionError):
         pass
 
@@ -129,11 +151,13 @@ def _probe_lsof_fuser(lock: Path, timeout: float) -> bool:
             )
         )
         if result.returncode == 0:
-            return True
+            return "live"
+        if result.returncode == 1:
+            return "dead"
     except (OSError, subprocess.TimeoutExpired, PermissionError):
         pass
 
-    return False
+    return "unknown"
 
 
 def _is_git_process(proc_root: Path, pid_str: str) -> bool:
@@ -538,7 +562,10 @@ def _lock_has_no_live_holder(
     *,
     probe_timeout_s: float = _PROBE_TIMEOUT_S,
     _proc_root: Path = Path("/proc"),
-    probe_lsof_fuser_fn: Callable[[Path, float], bool] | None = None,
+    probe_lsof_fuser_fn: Callable[
+        [Path, float], Literal["live", "dead", "unknown"] | bool
+    ]
+    | None = None,
     executor: ThreadPoolExecutor | None = None,
 ) -> Literal["live", "dead", "unknown"]:
     """Return whether the lock has no live holder, or "unknown" if unprovable.
@@ -590,6 +617,13 @@ def _lock_has_no_live_holder(
                     )
             return "unknown"
 
+        external_status: Literal["live", "dead", "unknown"] | bool = "unknown"
+        if _proc_root == Path("/proc"):
+            external_status = lsof_fuser(lock, probe_timeout_s)
+            normalized_external_status = _normalize_external_liveness(external_status)
+            if normalized_external_status != "unknown":
+                return normalized_external_status
+
         proc_status = _scan_proc(
             _proc_root,
             lock,
@@ -600,11 +634,11 @@ def _lock_has_no_live_holder(
         )
         if proc_status in ("live", "dead"):
             return proc_status
-        # proc_status == "unknown": /proc scan could not prove dead (platform
-        # limitation, e.g. macOS / Windows without /proc, or PermissionError on
-        # another UID's /proc entries). Fall through to the lsof/fuser probe.
-        if lsof_fuser(lock, probe_timeout_s):
-            return "live"
+        if probe_lsof_fuser_fn is not None:
+            external_status = lsof_fuser(lock, probe_timeout_s)
+            normalized_external_status = _normalize_external_liveness(external_status)
+            if normalized_external_status != "unknown":
+                return normalized_external_status
         if time.monotonic() - probe_start >= probe_timeout_s:
             return "unknown"
         platform_reason = (
@@ -699,7 +733,7 @@ def _recover_stale_git_lock(
             )
             return False
 
-        gitdir = lock_path.parent
+        gitdir = _gitdir_for_lock(lock_path)
         liveness_check = liveness_fn if liveness_fn is not None else _lock_has_no_live_holder
         liveness = liveness_check(lock_path, gitdir)
         if liveness in {"live", "unknown"}:

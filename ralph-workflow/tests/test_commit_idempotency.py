@@ -82,6 +82,7 @@ class _FakeRunGitScript:
         self.reflog_lines: tuple[str, ...] = ()
         self.update_ref_returncode: int = 0
         self.update_ref_stderr: str = ""
+        self.update_ref_failures_remaining: int = 0
         self.commit_tree_sha: str = _REWRITTEN_SHA
 
     def __call__(
@@ -158,18 +159,46 @@ class _FakeRunGitScript:
         return self._result(headless_args, returncode=0, stdout=f"{self.commit_tree_sha}\n")
 
     def _update_ref(self, headless_args: tuple[str, ...]) -> GitRunResult:
+        if self.update_ref_failures_remaining > 0:
+            self.update_ref_failures_remaining -= 1
+            return self._result(
+                headless_args,
+                returncode=128,
+                stderr=self.update_ref_stderr,
+            )
         return self._result(
             headless_args,
             returncode=self.update_ref_returncode,
             stderr=self.update_ref_stderr,
         )
-
     def _reflog(self, headless_args: tuple[str, ...]) -> GitRunResult:
         body = "\n".join(self.reflog_lines) + ("\n" if self.reflog_lines else "")
         return self._result(headless_args, returncode=0, stdout=body)
 
     def _hook(self, headless_args: tuple[str, ...]) -> GitRunResult:
         return self._result(headless_args, returncode=0)
+
+
+def test_create_commit_recovers_stale_branch_ref_lock(monkeypatch: MonkeyPatch) -> None:
+    script = _FakeRunGitScript()
+    script.write_tree_sha = _TREE_A
+    script.head_tree_sha = _TREE_B
+    script.update_ref_failures_remaining = 1
+    script.update_ref_stderr = (
+        "fatal: cannot lock ref 'refs/heads/main': Unable to create "
+        "'/tmp/repo/.git/refs/heads/main.lock': File exists."
+    )
+    _patch_seam(monkeypatch, head_sha=_FULL_SHA, script=script)
+
+    result = create_commit(
+        Path("/tmp/repo"),
+        "fix: recover stale branch lock",
+        expected_head=_FULL_SHA,
+    )
+
+    assert result.status is CommitCreationStatus.CREATED
+    update_ref_calls = [call for call in script.calls if call and call[0] == "update-ref"]
+    assert len(update_ref_calls) == 2
 
 
 class _RepoSimple:

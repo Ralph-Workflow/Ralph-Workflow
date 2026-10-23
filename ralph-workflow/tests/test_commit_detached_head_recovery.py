@@ -239,20 +239,7 @@ def test_commit_failure_clears_pending_completed_outcome() -> None:
         set_last_commit_error(None)
 
 
-def test_exhausted_commit_failure_routes_to_automated_recovery_not_terminal() -> None:
-    """A repairable commit failure exhausted the bounded counter.
-
-    The bounded counter protects against an infinite recovery loop
-    but MUST NOT turn a repairable failure into a terminal one:
-    Ralph owns the recovery path. The repairable failure is routed
-    to the policy's commit-recovery phase (the distinct automated
-    resolver) even when the counter is exhausted. Once the raw
-    next increment would exceed the declared cap, the epoch is
-    clamped at the cap and the recovery phase is still invoked.
-    The phase display MUST NOT report 'completed' for a commit
-    that failed and the route MUST NEVER be ``failed_terminal``
-    for a repairable Git state.
-    """
+def test_exhausted_commit_failure_stops_at_terminal_failure() -> None:
     # Hardcoded mirror of ``ralph.pipeline.reducer._MAX_COMMIT_RECOVERY_ATTEMPTS``
     # (= 3). The reducer is the only owner of that cap; the test pins the
     # boundary so a runtime cap bump is a deliberate, single-site change.
@@ -271,19 +258,12 @@ def test_exhausted_commit_failure_routes_to_automated_recovery_not_terminal() ->
     try:
         next_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy)
 
-        # The phase must NEVER be failed_terminal for a repairable
-        # commit failure, and the phase display must NOT report
-        # 'completed' for a commit that failed.
-        assert next_state.phase != "failed_terminal"
-        assert next_state.phase in (
-            "commit_recovery",
-            "development_commit_cleanup",
-        )
+        assert next_state.phase == policy.recovery.failed_route
         assert next_state.pending_cycle_outcome is None
-        # The counter is bounded: once the next increment would
-        # exceed the cap, the epoch is clamped at the cap rather
-        # than growing past it.
         assert next_state.recovery_epoch == cap
+        assert next_state.last_execution_result_status == "failed"
+        assert next_state.progress_guard is not None
+        assert next_state.progress_guard["is_exhausted"] is True
     finally:
         set_last_commit_error(None)
 
@@ -738,7 +718,7 @@ def test_detached_head_with_staged_changes_commits_on_feature_branch_and_integra
     assert repo.heads.main.commit.hexsha == committed_sha
 
 
-def test_persistent_repairable_failure_without_recovery_phase_escalates_to_automated_resolver(
+def test_persistent_repairable_failure_without_recovery_phase_stops_at_retry_cap(
     tmp_path: Path,
 ) -> None:
     """O1 retry risk: Persistent repairable Git failure under policy without cleanup/recovery.
@@ -748,11 +728,10 @@ def test_persistent_repairable_failure_without_recovery_phase_escalates_to_autom
     ``commit_recovery`` nor ``commit_cleanup``:
     1. Retries in-place up to the bounded ``_MAX_COMMIT_RECOVERY_ATTEMPTS`` cap.
     2. Once the counter is exhausted, does NOT cycle in-place indefinitely.
-    3. Escalates to the policy's automated recovery/resolver route (e.g. upstream
-       execution phase ``development``).
+    3. Routes to the policy's terminal failure phase.
     4. Preserves the validated commit message state and message file on disk.
     5. Never reports failed work completed.
-    6. Never escalates a repairable Git state to ``failed_terminal``.
+    6. Preserves the actionable Git failure diagnostic.
     """
     _make_test_repo(tmp_path, "feature/work")
     tracked_file = tmp_path / "feature.txt"
@@ -840,30 +819,24 @@ def test_persistent_repairable_failure_without_recovery_phase_escalates_to_autom
     assert state3.pending_cycle_outcome is None
     assert state3.commit.agent_invoked is True
 
-    # Attempt 4: beyond the bounded counter — must NOT cycle in-place indefinitely,
-    # must NOT terminally fail, but must escalate to automated resolver route ('development')
     event4 = execute_commit_effect(
         effect,
         tmp_path,
         stage_all_fn=failing_stage_all,
     )
-    escalated_state, _ = reduce(state3, event4, policy_no_cleanup)
+    terminal_state, _ = reduce(state3, event4, policy_no_cleanup)
 
-    # Demonstrates the livelock was broken and automated recovery was dispatched:
-    assert escalated_state.phase != "development_commit", "Must not cycle in-place indefinitely"
-    assert escalated_state.phase != "failed_terminal", (
-        "Must not terminally fail repairable git state"
-    )
-    assert escalated_state.phase == "development", "Must escalate to automated resolver phase"
-    assert escalated_state.recovery_epoch == 3, "Counter remains bounded at cap"
-    assert escalated_state.pending_cycle_outcome is None, "Must never report failed work completed"
-    assert escalated_state.last_execution_result_status == "failed"
-    assert escalated_state.commit.agent_invoked is True, "Validated commit state must be preserved"
+    assert terminal_state.phase == policy_no_cleanup.recovery.failed_route
+    assert terminal_state.recovery_epoch == 3, "Counter remains bounded at cap"
+    assert terminal_state.pending_cycle_outcome is None, "Must never report failed work completed"
+    assert terminal_state.last_execution_result_status == "failed"
+    assert lock_err in (terminal_state.last_error or "")
+    assert terminal_state.progress_guard is not None
+    assert terminal_state.progress_guard["is_exhausted"] is True
     assert message_file.exists(), "Validated commit message file must remain on disk"
 
 
-def test_persistent_repairable_failure_escalates_to_workflow_fallback_when_configured() -> None:
-    """O1 retry risk: Persistent repairable commit failure honors policy workflow_fallback."""
+def test_persistent_repairable_failure_stops_even_with_workflow_fallback() -> None:
     from ralph.policy.models._phase_workflow_fallback import PhaseWorkflowFallback
 
     base_policy = _load_pipeline_policy()
@@ -889,8 +862,7 @@ def test_persistent_repairable_failure_escalates_to_workflow_fallback_when_confi
     set_last_commit_error("GitOperationError: Unable to create '.git/index.lock': File exists")
     try:
         next_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy_with_fallback)
-        assert next_state.phase == "planning"
-        assert next_state.phase != "failed_terminal"
+        assert next_state.phase == policy_with_fallback.recovery.failed_route
         assert next_state.pending_cycle_outcome is None
         assert next_state.recovery_epoch == 3
     finally:

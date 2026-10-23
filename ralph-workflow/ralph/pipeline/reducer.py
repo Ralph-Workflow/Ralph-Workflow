@@ -1482,50 +1482,6 @@ def _resolve_commit_recovery_phase(
     return None
 
 
-def _resolve_commit_escalation_phase(
-    state: PipelineState,
-    policy: PipelinePolicy,
-) -> str | None:
-    """Resolve an automated escalation/recovery target phase when in-place retries are exhausted.
-
-    Under a policy without a dedicated commit_recovery or commit_cleanup phase,
-    exhaustion of the bounded in-place retry counter must not loop indefinitely.
-    This helper identifies the next automated recovery/escalation phase in priority order:
-    1. A declared workflow_fallback on the current phase (if non-terminal and distinct)
-    2. A declared non-terminal on_failure transition on the current phase (distinct)
-    3. The previous non-terminal phase (e.g. execution phase such as 'development')
-    """
-    terminal_states = policy.terminal_states()
-    current_phase_def = policy.phases.get(state.phase)
-    if current_phase_def is not None:
-        if (
-            current_phase_def.workflow_fallback is not None
-            and current_phase_def.workflow_fallback.target != state.phase
-            and current_phase_def.workflow_fallback.target in policy.phases
-            and current_phase_def.workflow_fallback.target not in terminal_states
-        ):
-            return current_phase_def.workflow_fallback.target
-
-        on_failure = current_phase_def.transitions.on_failure
-        if (
-            on_failure is not None
-            and on_failure != state.phase
-            and on_failure in policy.phases
-            and on_failure not in terminal_states
-        ):
-            return on_failure
-
-    if (
-        isinstance(state.previous_phase, str)
-        and state.previous_phase != state.phase
-        and state.previous_phase in policy.phases
-        and state.previous_phase not in terminal_states
-    ):
-        return state.previous_phase
-
-    return None
-
-
 def _recoverable_git_failure_default_target(
     state: PipelineState,
     policy: PipelinePolicy,
@@ -1541,11 +1497,7 @@ def _recoverable_git_failure_default_target(
     When these hold, the reducer re-routes the cycle to the in-place phase so a
     fresh pass of ``commit_executor.execute_commit_effect`` re-reads the validated
     commit message from ``effect.message_file`` (which is preserved on disk when
-    the commit operation fails). The ``recovery_epoch`` counter is **clamped** at
-    ``_MAX_COMMIT_RECOVERY_ATTEMPTS`` rather than used as a stop-the-line: the
-    reducer keeps retrying in-place so an orphaned ``index.lock`` cannot end the
-    run before the worker's own ``_LOCK_BACKOFF_S`` sequence and ``recovery_epoch``
-    cap give way to a higher-priority non-repairable error.
+    the commit operation fails).
 
     When the failure is not repairable, returns ``None`` and the caller falls
     through to ``failed_terminal``.
@@ -1574,19 +1526,17 @@ def _handle_commit_failure(
     """Handle commit failure without unconditionally routing to failed_terminal.
 
     A repairable commit failure (detached HEAD, index.lock contention,
-    unmerged paths, conflict, repeated commit failure) is never an
-    immediate terminal failure: Ralph owns the recovery path.
+    unmerged paths, conflict, repeated commit failure) receives a bounded
+    automated recovery budget before Ralph stops the workflow.
     1. If the policy defines a recovery phase (``commit_recovery`` or
-       ``commit_cleanup``), the reducer routes there. When ``recovery_epoch``
-       exceeds ``_MAX_COMMIT_RECOVERY_ATTEMPTS``, it is clamped at the cap
-       and routing still proceeds to automated recovery rather than terminating.
+       ``commit_cleanup``), the reducer routes there until ``recovery_epoch``
+       reaches ``_MAX_COMMIT_RECOVERY_ATTEMPTS``.
     2. If the policy defines no recovery phase, the reducer performs an in-place
        retry of the current commit phase (via :func:`_recoverable_git_failure_default_target`),
        preserving the validated commit message in ``effect.message_file`` across
-       attempts and clamping ``recovery_epoch`` at ``_MAX_COMMIT_RECOVERY_ATTEMPTS``.
-    3. Escalation to ``failed_terminal`` occurs only when the commit failure is
-       non-repairable (or no recovery/in-place target exists), never merely because
-       the retry counter reached the cap on a repairable failure.
+       attempts.
+    3. Exhausting the recovery budget routes to the policy's terminal failure
+       phase with the original Git diagnostic preserved.
     """
     from ralph.pipeline.commit_executor import get_last_commit_error, set_last_commit_error
 
@@ -1603,34 +1553,30 @@ def _handle_commit_failure(
         last_error = state.last_error
 
     if _is_repairable_git_failure(last_error):
+        failure_reason = last_error or commit_failure_reason(state)
+        if cleared_state.recovery_epoch >= _MAX_COMMIT_RECOVERY_ATTEMPTS:
+            from ralph.pipeline._retry_progress_guard import RetryProgressGuard
+
+            logger.bind(component="policy.routing").error(
+                "commit-recovery counter exhausted (epoch={}, cap={}); "
+                "stopping automated recovery after persistent failure: {}",
+                cleared_state.recovery_epoch,
+                _MAX_COMMIT_RECOVERY_ATTEMPTS,
+                failure_reason,
+            )
+            terminal_state, effects = _enter_failed_recovery(
+                cleared_state,
+                failure_reason,
+                policy,
+            )
+            return terminal_state.copy_with(
+                recovery_epoch=_MAX_COMMIT_RECOVERY_ATTEMPTS,
+                last_execution_result_status="failed",
+                progress_guard=RetryProgressGuard(failed_closed=True).snapshot(),
+            ), effects
+
         recovery_phase = _resolve_commit_recovery_phase(cleared_state, policy)
         if recovery_phase is not None:
-            failure_reason = last_error or commit_failure_reason(state)
-            # Cap-enforcement (AC-11 / WU-3): the bounded
-            # ``recovery_epoch`` counter is the durable stop-the-line
-            # for the cleanup loop. When the next increment would
-            # exceed the declared cap, the epoch is clamped at the
-            # cap and a clear exhaustion event is logged; routing
-            # still goes to the policy's automated commit-recovery
-            # phase (the distinct resolver), never to
-            # ``failed_terminal`` for a repairable Git state. The
-            # repairable failure is therefore never turned into a
-            # terminal one by the cap itself.
-            current_epoch = cleared_state.recovery_epoch
-            raw_next_epoch = current_epoch + 1
-            if raw_next_epoch > _MAX_COMMIT_RECOVERY_ATTEMPTS:
-                bounded_epoch = _MAX_COMMIT_RECOVERY_ATTEMPTS
-                logger.bind(component="policy.routing").warning(
-                    "commit-recovery counter exhausted (epoch={}, cap={}); "
-                    "clamping epoch and routing to the policy's automated "
-                    "recovery phase ({}) -- the repairable failure is "
-                    "preserved, not escalated to failed_terminal",
-                    current_epoch,
-                    _MAX_COMMIT_RECOVERY_ATTEMPTS,
-                    recovery_phase,
-                )
-            else:
-                bounded_epoch = raw_next_epoch
             logger.bind(component="policy.routing").info(
                 explain_routing_decision(
                     cleared_state.phase,
@@ -1645,7 +1591,7 @@ def _handle_commit_failure(
             )
             new_state = progress.advance_phase(advanced_state, target, policy=policy).copy_with(
                 last_error=failure_reason,
-                recovery_epoch=bounded_epoch,
+                recovery_epoch=cleared_state.recovery_epoch + 1,
                 pending_cycle_outcome=None,
                 last_execution_result_status="failed",
             )
@@ -1686,39 +1632,6 @@ def _handle_commit_failure(
             advanced_state, target = _prepare_phase_advance(
                 cleared_state, in_place_target, policy, routing_timing=routing_timing
             )
-            # Cap-enforcement: clamp ``recovery_epoch`` at
-            # ``_MAX_COMMIT_RECOVERY_ATTEMPTS`` rather than incrementing
-            # unbounded. If in-place retries are exhausted, escalate to the
-            # policy's automated recovery/fallback route rather than cycling
-            # indefinitely. The repairable failure is preserved with the
-            # validated commit message and never escalated to failed_terminal.
-            raw_next_epoch = cleared_state.recovery_epoch + 1
-            if raw_next_epoch > _MAX_COMMIT_RECOVERY_ATTEMPTS:
-                bounded_epoch = _MAX_COMMIT_RECOVERY_ATTEMPTS
-                escalation_target = _resolve_commit_escalation_phase(cleared_state, policy)
-                if escalation_target is not None:
-                    logger.bind(component="policy.routing").warning(
-                        "commit-recovery in-place counter exhausted (epoch={}, cap={}); "
-                        "escalating to automated recovery route {} -- the repairable "
-                        "failure is preserved, not escalated to failed_terminal",
-                        cleared_state.recovery_epoch,
-                        _MAX_COMMIT_RECOVERY_ATTEMPTS,
-                        escalation_target,
-                    )
-                    advanced_state, target = _prepare_phase_advance(
-                        cleared_state, escalation_target, policy, routing_timing=routing_timing
-                    )
-                else:
-                    logger.bind(component="policy.routing").warning(
-                        "commit-recovery in-place counter exhausted (epoch={}, cap={}); "
-                        "clamping epoch and continuing in-place retry of {} -- the "
-                        "repairable failure is preserved, not escalated to failed_terminal",
-                        cleared_state.recovery_epoch,
-                        _MAX_COMMIT_RECOVERY_ATTEMPTS,
-                        in_place_target,
-                    )
-            else:
-                bounded_epoch = raw_next_epoch
             advanced_after_progress = progress.advance_phase(advanced_state, target, policy=policy)
             # Preserve the original ``state.commit`` across the in-place retry so
             # ``_commit_phase_effect`` (``effect_router.py``) sees
@@ -1732,7 +1645,7 @@ def _handle_commit_failure(
             updates: dict[str, object] = {
                 "commit": state.commit,
                 "last_error": failure_reason,
-                "recovery_epoch": bounded_epoch,
+                "recovery_epoch": cleared_state.recovery_epoch + 1,
                 "pending_cycle_outcome": None,
                 "last_execution_result_status": "failed",
             }
