@@ -1,71 +1,30 @@
-"""Background catch-up fast-forward worker for auto-integration.
+"""Background fast-forward catch-up for auto-integration.
 
-Between integration seams the shared target branch keeps moving (other
-fleet agents land on it), while this agent's checkout only catches up
-at the next clean seam. When the checkout has NO commits of its own the
-catch-up is a pure ``git merge --ff-only`` -- no rebase, no conflict
-resolution, no agent tokens. Waiting for the next seam to perform that
-free move lets divergence accumulate, and divergence is exactly what
-later costs a conflict-resolution agent invocation.
-
-:class:`AutoIntegrateCatchupWorker` closes that gap: a bounded daemon
-thread wakes every :data:`DEFAULT_CATCHUP_INTERVAL_SECONDS` seconds and
-attempts one :func:`attempt_catchup_fast_forward` tick. A tick mutates
-the repository ONLY when every one of these holds:
-
-* auto-integration is enabled and a target branch resolves (same
-  refs-only precedence as
-  :func:`~ralph.pipeline.auto_integrate.resolve_integration_target`);
-* HEAD is on a branch (a detached HEAD means a rebase or similar is in
-  flight -- never interfere) and that branch is NOT the target;
-* the current branch tip is a strict ancestor of the target tip, i.e.
-  the move is a genuine fast-forward;
-* the worktree has no uncommitted tracked changes (same tracked-only
-  definition of clean as the boundary seams).
-
-QUIET-PROBE CONTRACT. The tick fires every 30 seconds for the whole
-run, so its local skip paths must be invisible: no display lines, no
-log lines at ANY level, and no
-:func:`~ralph.git.subprocess_runner.run_git` subprocesses -- every
-ProcessManager spawn writes RUNNING/EXITED lifecycle lines to the log,
-which turned the early run_git-based probes into a 30-second drumbeat of
-log noise. When remote synchronization is enabled, the bounded freshness
-fetch is the one additional read-only subprocess. All local observation
-therefore happens IN-PROCESS via GitPython (the
-:mod:`ralph.git.operations` precedent): branch name, target resolution,
-and both tip SHAs are plain ref-file reads that spawn nothing. The
-ancestry and cleanliness checks go through GitPython's own git wrapper
-(not ProcessManager), and only run once the SHAs prove a fast-forward
-is even possible. The single ProcessManager subprocess left is the
-``git merge --ff-only`` that actually lands -- an event worth its log
-line. ``merge --ff-only`` refuses every non-fast-forward and every
-file overwrite non-destructively, and :func:`_still_safe_to_merge`
-re-verifies branch identity and no-rebase-in-flight immediately before
-the spawn -- see that function's docstring for the bounded residual
-window this design accepts.
-
-Threading contract (mirrors :class:`ralph.pro_support.heartbeat.ProHeartbeatClient`):
-the worker runs in a **daemon thread** so the process can always exit;
-``start()`` is idempotent; ``stop()`` only sets a ``threading.Event``
-and never joins, so shutdown can never block on a slow git subprocess.
-The thread parks in ``Event.wait`` between ticks and every git touch is
-ref-file I/O or a subprocess wait, all of which release the GIL -- the
-worker cannot stall the pipeline thread. The run loop starts the worker
-at pipeline start (:func:`start_catchup_worker_if_enabled`) and stops
-it in the run-loop cleanup path alongside the other background
-collaborators.
+A daemon worker periodically fast-forwards a clean checkout onto the
+configured target. Every mutation is gated by the repository-wide agent
+lease, charged write-ahead to the durable attempt ledger, and classified
+into a named outcome. Repeated attempts against one unchanged ref state
+advance the durable ladder instead of issuing the same merge forever.
 """
 
 from __future__ import annotations
 
+import subprocess
 import threading
-from contextlib import suppress
+from contextlib import contextmanager, suppress
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from git import Repo
 from loguru import logger
 
+from ralph.git.git_command_queue import (
+    WorktreeLeaseHolder,
+    end_agent_lease,
+    is_lease_held,
+    try_acquire_lease,
+)
 from ralph.git.merge import (
     WORKTREE_FOUND,
     WORKTREE_QUERY_FAILED,
@@ -73,7 +32,11 @@ from ralph.git.merge import (
     worktree_lookup,
 )
 from ralph.git.operations import find_main_worktree_root
-from ralph.pipeline.auto_integrate_catchup_coordination import remote_sync_transaction
+from ralph.pipeline.auto_integrate_backoff import compute_retry_delay
+from ralph.pipeline.auto_integrate_catchup_coordination import (
+    RemoteSyncLease,
+    remote_sync_transaction,
+)
 from ralph.pipeline.auto_integrate_ff import (
     fast_forward_target,
 )
@@ -87,15 +50,19 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_UNREACHABLE,
     refresh_target_from_remote,
 )
+from ralph.pipeline.integration_actions import default_clock
+from ralph.pipeline.integration_attempt_ledger import AttemptLedger
+from ralph.process.manager import ProcessTerminationError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from git import Head
 
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_ff import RemoteClient
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
+    from ralph.pipeline.integration_actions import Clock
 
 #: Cadence of the background catch-up probe. Each tick costs a handful
 #: of in-process ref reads (no subprocess, no log lines), so a
@@ -119,17 +86,72 @@ CATCHUP_REFUSED = "refused"
 CATCHUP_REMOTE_SKIPPED = "remote-skipped"
 CATCHUP_FAST_FORWARDED = "fast-forwarded"
 
+#: Named outcomes for the mutation path. These are deliberately more
+#: specific than the historical ``refused`` tag: an operator must be able
+#: to distinguish an active agent, a timeout, a killed child, an unknown
+#: environment failure, and a definite Git refusal without parsing prose.
+CATCHUP_REFUSED_AGENT_ACTIVE = "refused: agent is currently active"
+CATCHUP_LEASE_UNKNOWN = "failed: agent lease state is unknown"
+CATCHUP_LEDGER_UNAVAILABLE = "failed: repository attempt ledger is unavailable"
+CATCHUP_TIMEOUT = "failed: fast-forward timed out"
+CATCHUP_KILLED = "failed: fast-forward was killed"
+CATCHUP_UNKNOWN = "failed: fast-forward outcome is unknown"
+CATCHUP_DEFEDITELY_FAILED = "failed: fast-forward definitely failed"
+CATCHUP_LADDER_ESCALATED = "ladder: fast-forward quarantined after repeated attempts"
+
+#: Stable action key used in the durable ledger. The state signature
+#: carries the observed refs, so this action is counted independently for
+#: every distinct checkout state.
+_CATCHUP_LEDGER_ACTION = "catchup_fast_forward"
+
+#: A command that timed out twice against the same observed state is
+#: quarantined: the third cycle takes the next ladder rung instead of
+#: issuing the identical merge again.
+_MAX_SAME_STATE_ATTEMPTS = 2
+
+type _GitOutcomeKind = Literal[
+    "succeeded",
+    "definitely_failed",
+    "timed_out",
+    "killed",
+    "unknown",
+]
+type _LeaseVerdict = Literal["acquired", "held", "unknown"]
+
+
+@dataclass(frozen=True)
+class _CatchupObservation:
+    """The ref facts that define one catch-up attempt's durable state."""
+
+    target: str
+    current: str
+    target_sha: str
+    current_sha: str
+
+    @property
+    def signature(self) -> str:
+        """Return the durable state signature for the observed checkout."""
+
+        return "|".join(
+            (
+                "catchup",
+                f"target={self.target}@{self.target_sha}",
+                f"head={self.current}@{self.current_sha}",
+            )
+        )
+
+    @property
+    def summary(self) -> str:
+        """Return a compact description of the CURRENT observation."""
+
+        return (
+            f"target={self.target}@{self.target_sha}; "
+            f"head={self.current}@{self.current_sha}"
+        )
+
 
 def _current_branch_name(root: Path) -> str | None:
-    """Name of the branch HEAD is on, or ``None`` when detached / unreadable.
-
-    In-process ref read (``.git/HEAD``); spawns nothing. A detached
-    HEAD (a rebase in flight, a direct SHA checkout) must be an
-    ordinary skip here, not an exception: the catch-up worker fires on
-    a timer and a rebase being in progress is one of its EXPECTED
-    observations, so GitPython's ``active_branch`` ``TypeError`` (and
-    any other failure to read HEAD) collapses to ``None``.
-    """
+    """Name of the branch HEAD is on, or ``None`` when detached/unreadable."""
     repo: Repo | None = None
     try:
         repo = Repo(root)
@@ -150,17 +172,7 @@ def resolve_integration_target(config: UnifiedConfig, root: Path) -> str | None:
 
 
 def _local_head(repo: Repo, name: str) -> Head | None:
-    """The local branch named EXACTLY ``name``, or ``None``.
-
-    Deliberately iterates ``repo.heads`` comparing ``.name`` instead of
-    the tempting ``repo.heads[name]``: GitPython's ``IterableList``
-    falls back to ``getattr`` for string keys, so branch names that
-    collide with ``list`` method names (``append``, ``index``,
-    ``count``, ``sort``, ``copy``, ``pop``) resolve to the BOUND METHOD
-    -- a false "exists" for a missing branch and an unreadable SHA for
-    a real one. Adversarial review reproduced both; exact name
-    comparison has no such collision.
-    """
+    """Return the local branch named exactly ``name``, or ``None``."""
     try:
         return next((head for head in repo.heads if head.name == name), None)
     except Exception:
@@ -168,13 +180,7 @@ def _local_head(repo: Repo, name: str) -> Head | None:
 
 
 def observe_branch_sha(root: Path, name: str) -> tuple[str | None, bool]:
-    """Read ``refs/heads/<name>``'s tip SHA in-process.
-
-    Returns ``(sha, query_ok)`` with the same shape as
-    :func:`ralph.git.merge.observe_branch_sha` (which shells out and
-    would log): ``(None, True)`` when the branch does not exist,
-    ``(None, False)`` when the repository itself cannot be read.
-    """
+    """Read ``refs/heads/<name>``'s tip SHA in-process."""
     repo: Repo | None = None
     try:
         repo = Repo(root)
@@ -189,14 +195,7 @@ def observe_branch_sha(root: Path, name: str) -> tuple[str | None, bool]:
 
 
 def is_ancestor(root: Path, ancestor_sha: str, descendant_sha: str) -> bool:
-    """Whether ``ancestor_sha`` is an ancestor of ``descendant_sha``.
-
-    Delegates to GitPython's ``merge-base --is-ancestor`` wrapper --
-    a git subprocess, but NOT a ProcessManager one, so it emits no
-    lifecycle log lines. Only reached once the two SHAs are known to
-    differ. Fails closed (``False``) so an unreadable repository can
-    never be mistaken for "safe to fast-forward".
-    """
+    """Whether ``ancestor_sha`` is an ancestor of ``descendant_sha``."""
     repo: Repo | None = None
     try:
         repo = Repo(root)
@@ -208,22 +207,9 @@ def is_ancestor(root: Path, ancestor_sha: str, descendant_sha: str) -> bool:
 
 
 def _worktree_is_clean(root: Path) -> bool:
-    """True when no uncommitted TRACKED modification is present.
+    """True when no uncommitted tracked modification is present.
 
-    Runs the seams' EXACT probe -- ``git status --porcelain
-    --untracked-files=no`` (see
-    ``ralph.pipeline.auto_integrate_worktree_state._worktree_is_clean``)
-    -- through GitPython's own git wrapper, so it stays off the
-    ProcessManager/log path while giving byte-identical answers. An
-    earlier revision used ``repo.is_dirty(untracked_files=False)``,
-    but adversarial review showed the two disagree in the UNSAFE
-    direction on line-ending-only modifications under
-    ``core.autocrlf``: ``is_dirty`` applies the clean filter (clean)
-    while ``status`` stat-matches (dirty), and the seam's verdict must
-    win. Untracked files deliberately do not block: ``merge --ff-only``
-    refuses non-destructively per-file for any untracked path it would
-    overwrite. Fails closed (``False``) on any error so the worker
-    never fast-forwards a worktree it cannot prove clean.
+    Uses the seam-compatible tracked-only porcelain probe and fails closed.
     """
     repo: Repo | None = None
     try:
@@ -253,8 +239,16 @@ def attempt_catchup_fast_forward(
     target: str | None = None,
     remote: str | None = None,
     remote_client: RemoteClient | None = None,
+    ledger: AttemptLedger | None = None,
+    clock: Clock | None = None,
+    jitter: Callable[[], float] | None = None,
 ) -> str:
-    """One catch-up probe: fast-forward the checkout onto the target if free."""
+    """One catch-up probe: fast-forward the checkout onto the target if free.
+
+    ``ledger`` and ``clock`` are injection seams for deterministic tests.
+    Production resolves a repository-wide ledger anchored to the Git common
+    directory and the monotonic clock from :mod:`ralph.pipeline.integration_actions`.
+    """
     if not _catchup_enabled(config):
         return CATCHUP_DISABLED
     assert config is not None
@@ -264,22 +258,49 @@ def attempt_catchup_fast_forward(
     resolved_target = target if target is not None else resolve_integration_target(config, root)
     if resolved_target is None:
         return CATCHUP_NO_TARGET
+    effective_clock = clock if clock is not None else default_clock()
     remote_outcome: str | None = None
     if remote_sync_enabled(config):
         if remote_client is not None and remote is not None:
             remote_outcome = _synchronize_remote_target(
-                config, root, resolved_target, remote=remote, remote_client=remote_client
+                config,
+                root,
+                resolved_target,
+                remote=remote,
+                remote_client=remote_client,
+                ledger=ledger,
+                clock=effective_clock,
+                jitter=jitter,
             )
         elif remote_client is not None:
             remote_outcome = _synchronize_remote_target(
-                config, root, resolved_target, remote_client=remote_client
+                config,
+                root,
+                resolved_target,
+                remote_client=remote_client,
+                ledger=ledger,
+                clock=effective_clock,
+                jitter=jitter,
             )
         elif remote is not None:
             remote_outcome = _synchronize_remote_target(
-                config, root, resolved_target, remote=remote
+                config,
+                root,
+                resolved_target,
+                remote=remote,
+                ledger=ledger,
+                clock=effective_clock,
+                jitter=jitter,
             )
         else:
-            remote_outcome = _synchronize_remote_target(config, root, resolved_target)
+            remote_outcome = _synchronize_remote_target(
+                config,
+                root,
+                resolved_target,
+                ledger=ledger,
+                clock=effective_clock,
+                jitter=jitter,
+            )
         if remote_outcome is not None and remote_outcome != CATCHUP_FAST_FORWARDED:
             return remote_outcome
     if current == resolved_target:
@@ -288,7 +309,14 @@ def attempt_catchup_fast_forward(
             if remote_outcome == CATCHUP_FAST_FORWARDED
             else CATCHUP_ON_TARGET
         )
-    return _fast_forward_if_strictly_behind(root, resolved_target, current)
+    return _fast_forward_if_strictly_behind(
+        root,
+        resolved_target,
+        current,
+        ledger=ledger,
+        clock=effective_clock,
+        jitter=jitter,
+    )
 
 
 def _catchup_enabled(config: UnifiedConfig | None) -> bool:
@@ -299,6 +327,134 @@ def _catchup_enabled(config: UnifiedConfig | None) -> bool:
     return isinstance(enabled_raw, bool) and enabled_raw
 
 
+def _repository_ledger(root: Path) -> AttemptLedger:
+    """Return the ledger anchored to the repository-wide Git common directory."""
+
+    repo: Repo | None = None
+    try:
+        repo = Repo(root, search_parent_directories=True)
+        common_dir = Path(repo.common_dir).resolve()
+        return AttemptLedger(root, common_dir=common_dir)
+    finally:
+        _close_repo(repo)
+
+
+@contextmanager
+def _mutation_lease(root: Path) -> Iterator[_LeaseVerdict]:
+    """Reserve the repository mutation lease, or report why it is unavailable."""
+
+    try:
+        if is_lease_held(root):
+            yield "held"
+            return
+        lease = try_acquire_lease(
+            root,
+            holder=WorktreeLeaseHolder(name="auto-integrate-catchup"),
+        )
+    except Exception:
+        yield "unknown"
+        return
+    if lease is None:
+        yield "held"
+        return
+    try:
+        yield "acquired"
+    finally:
+        try:
+            end_agent_lease(lease)
+        except Exception as exc:
+            logger.warning(
+                "auto_integrate catch-up lease release failed: {}",
+                exc,
+            )
+
+
+def _lease_failure(verdict: _LeaseVerdict) -> str:
+    """Return the named outcome for an unavailable mutation lease."""
+
+    if verdict == "held":
+        return CATCHUP_REFUSED_AGENT_ACTIVE
+    return CATCHUP_LEASE_UNKNOWN
+
+
+def _classify_fast_forward_result(result: bool) -> _GitOutcomeKind:
+    """Adapt the current boolean fast-forward result to the local outcome union."""
+
+    return "succeeded" if result else "definitely_failed"
+
+
+def _classify_git_exception(exc: Exception) -> _GitOutcomeKind:
+    """Classify the CURRENT exception shape without parsing its message."""
+
+    if isinstance(exc, (subprocess.TimeoutExpired, TimeoutError)):
+        return "timed_out"
+    if isinstance(exc, ProcessTerminationError):
+        return "killed"
+    return "unknown"
+
+
+def _failure_reason(kind: _GitOutcomeKind, observation: str) -> str:
+    """Render a typed Git outcome as a named, observation-backed reason."""
+
+    reasons: dict[_GitOutcomeKind, str] = {
+        "succeeded": CATCHUP_FAST_FORWARDED,
+        "definitely_failed": CATCHUP_DEFEDITELY_FAILED,
+        "timed_out": CATCHUP_TIMEOUT,
+        "killed": CATCHUP_KILLED,
+        "unknown": CATCHUP_UNKNOWN,
+    }
+    reason = reasons[kind]
+    if kind == "succeeded":
+        return reason
+    return f"{reason}; {observation}"
+
+
+def _backoff_after_failure(
+    clock: Clock,
+    attempt_count: int,
+    *,
+    jitter: Callable[[], float] | None,
+) -> None:
+    """Wait through the injected monotonic clock after an unknown failure."""
+
+    try:
+        delay = compute_retry_delay(attempt_count, jitter=jitter)
+        clock.sleep(delay)
+    except Exception as exc:
+        logger.warning(
+            "auto_integrate catch-up backoff failed (attempt {}): {}",
+            attempt_count,
+            exc,
+        )
+
+
+def _charge_attempt(
+    root: Path,
+    ledger: AttemptLedger | None,
+    signature: str,
+    observation: str,
+) -> tuple[int, str]:
+    """Charge one attempt, or return why the same-state action is quarantined."""
+
+    try:
+        effective_ledger = ledger if ledger is not None else _repository_ledger(root)
+        state = effective_ledger.read()
+        prior_count = state.repeat_counts.get((signature, _CATCHUP_LEDGER_ACTION), 0)
+        if prior_count >= _MAX_SAME_STATE_ATTEMPTS:
+            return (
+                prior_count,
+                f"{CATCHUP_LADDER_ESCALATED}; rung={state.rung.value}; {observation}",
+            )
+        charged = effective_ledger.charge(
+            signature,
+            _CATCHUP_LEDGER_ACTION,
+            is_unknown=False,
+        )
+    except Exception:
+        return 0, f"{CATCHUP_LEDGER_UNAVAILABLE}; {observation}"
+    return charged.repeat_counts.get((signature, _CATCHUP_LEDGER_ACTION), 0), ""
+
+
 def _synchronize_remote_target(
     config: UnifiedConfig,
     root: Path,
@@ -306,36 +462,102 @@ def _synchronize_remote_target(
     *,
     remote: str | None = None,
     remote_client: RemoteClient | None = None,
+    ledger: AttemptLedger | None = None,
+    clock: Clock | None = None,
+    jitter: Callable[[], float] | None = None,
 ) -> str | None:
+    """Fetch and advance the target without mutating while an agent is active."""
+
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
+    effective_clock = clock if clock is not None else default_clock()
     with remote_sync_transaction(root, chosen_remote, target) as lease:
         if lease is None:
             return CATCHUP_REMOTE_SKIPPED
         if not lease.fetch_allowed:
             return None
-        if remote_client is not None:
-            outcome = remote_client.refresh_target(
+        with _mutation_lease(root) as lease_verdict:
+            if lease_verdict != "acquired":
+                return _lease_failure(lease_verdict)
+            return _refresh_remote_target(
                 root,
                 target,
-                timeout_seconds=FETCH_TIMEOUT_SECONDS,
-                remote=chosen_remote,
+                chosen_remote,
+                lease=lease,
+                remote_client=remote_client,
+                ledger=ledger,
+                clock=effective_clock,
+                jitter=jitter,
             )
-        else:
-            outcome = refresh_target_from_remote(
-                root,
-                target,
-                timeout_seconds=FETCH_TIMEOUT_SECONDS,
-                remote=chosen_remote,
-            )
-        if outcome == REFRESH_UNREACHABLE:
-            return CATCHUP_REMOTE_SKIPPED
-        try:
-            lease.record_fetch()
-        except OSError:
-            return CATCHUP_REMOTE_SKIPPED
-        if outcome != REFRESH_ORIGIN_AHEAD:
-            return None
-        return _advance_target_to_remote(root, chosen_remote, target, remote_client=remote_client)
+
+
+def _refresh_remote_target(
+    root: Path,
+    target: str,
+    remote: str,
+    *,
+    lease: RemoteSyncLease,
+    remote_client: RemoteClient | None,
+    ledger: AttemptLedger | None,
+    clock: Clock,
+    jitter: Callable[[], float] | None,
+) -> str | None:
+    """Refresh the remote target and advance it when the fetch proves it ahead."""
+
+    if remote_client is not None:
+        outcome = remote_client.refresh_target(
+            root,
+            target,
+            timeout_seconds=FETCH_TIMEOUT_SECONDS,
+            remote=remote,
+        )
+    else:
+        outcome = refresh_target_from_remote(
+            root,
+            target,
+            timeout_seconds=FETCH_TIMEOUT_SECONDS,
+            remote=remote,
+        )
+    if outcome == REFRESH_UNREACHABLE:
+        return CATCHUP_REMOTE_SKIPPED
+    try:
+        lease.record_fetch()
+    except OSError:
+        return CATCHUP_REMOTE_SKIPPED
+    if outcome != REFRESH_ORIGIN_AHEAD:
+        return None
+    return _advance_target_to_remote(
+        root,
+        remote,
+        target,
+        remote_client=remote_client,
+        ledger=ledger,
+        clock=clock,
+        jitter=jitter,
+    )
+
+
+def _observe_remote_target(
+    root: Path,
+    remote: str,
+    target: str,
+    *,
+    remote_client: RemoteClient | None,
+) -> tuple[str | None, str]:
+    """Observe the remote tip and prove that its target worktree is safe."""
+
+    if remote_client is not None and hasattr(remote_client, "observe_remote_sha"):
+        remote_sha = remote_client.observe_remote_sha(root, target, remote=remote)
+    else:
+        remote_sha = observe_remote_target_sha(root, remote, target)
+    if remote_sha is None:
+        return None, f"{CATCHUP_DEFEDITELY_FAILED}; target={target}@{remote}"
+    primary_root = find_main_worktree_root(root)
+    verdict, owner = worktree_lookup(primary_root, target)
+    if verdict == WORKTREE_QUERY_FAILED:
+        return None, f"{CATCHUP_UNKNOWN}; target={target}@{remote}"
+    if verdict == WORKTREE_FOUND and owner is not None and not _worktree_is_clean(owner):
+        return None, f"{CATCHUP_DEFEDITELY_FAILED}; target={target}@{remote}"
+    return remote_sha, ""
 
 
 def _advance_target_to_remote(
@@ -344,26 +566,46 @@ def _advance_target_to_remote(
     target: str,
     *,
     remote_client: RemoteClient | None = None,
+    ledger: AttemptLedger | None = None,
+    clock: Clock | None = None,
+    jitter: Callable[[], float] | None = None,
 ) -> str | None:
-    if remote_client is not None and hasattr(remote_client, "observe_remote_sha"):
-        remote_sha = remote_client.observe_remote_sha(root, target, remote=remote)
-    else:
-        remote_sha = observe_remote_target_sha(root, remote, target)
-    if remote_sha is None:
-        return CATCHUP_REFUSED
-    primary_root = find_main_worktree_root(root)
-    verdict, owner = worktree_lookup(primary_root, target)
-    if verdict == WORKTREE_QUERY_FAILED:
-        return CATCHUP_REFUSED
-    if verdict == WORKTREE_FOUND and owner is not None and not _worktree_is_clean(owner):
-        return CATCHUP_REFUSED
-    advanced, _reason = fast_forward_target(
+    """Advance the target to the observed remote tip under the durable budget."""
+
+    remote_sha, observe_reason = _observe_remote_target(
         root,
+        remote,
         target,
-        remote_sha,
-        reclaim_target_worktree=False,
+        remote_client=remote_client,
     )
-    return CATCHUP_FAST_FORWARDED if advanced else CATCHUP_REFUSED
+    if remote_sha is None:
+        return observe_reason
+    signature = f"catchup-target|remote={remote}|target={target}@{remote_sha}"
+    observation = f"target={target}@{remote_sha}; remote={remote}@{remote_sha}"
+    attempt_count, charge_reason = _charge_attempt(
+        root,
+        ledger,
+        signature,
+        observation,
+    )
+    if charge_reason:
+        return charge_reason
+    effective_clock = clock if clock is not None else default_clock()
+    try:
+        advanced, reason = fast_forward_target(
+            root,
+            target,
+            remote_sha,
+            reclaim_target_worktree=False,
+        )
+    except Exception as exc:
+        kind = _classify_git_exception(exc)
+        if kind != "definitely_failed":
+            _backoff_after_failure(effective_clock, attempt_count, jitter=jitter)
+        return _failure_reason(kind, observation)
+    if advanced:
+        return CATCHUP_FAST_FORWARDED
+    return f"{CATCHUP_DEFEDITELY_FAILED}; {reason}; {observation}"
 
 
 def observe_remote_target_sha(root: Path, remote: str, target: str) -> str | None:
@@ -379,44 +621,64 @@ def observe_remote_target_sha(root: Path, remote: str, target: str) -> str | Non
         _close_repo(repo)
 
 
-def _fast_forward_if_strictly_behind(root: Path, target: str, current: str) -> str:
-    """SHA-level half of the tick: land only a genuine fast-forward.
+def _ready_catchup_observation(
+    root: Path,
+    target: str,
+    current: str,
+) -> tuple[_CatchupObservation | None, str]:
+    """Return the observed state only when the checkout is safe to mutate."""
 
-    Split from :func:`attempt_catchup_fast_forward` so each half stays
-    under the return-count lint budget; the split line is the natural
-    one between the config/branch-name gates and the SHA observations.
-    """
-    target_sha, skip_reason = _observe_strictly_behind(root, target, current)
-    if target_sha is None:
-        return skip_reason
+    observation, reason = _observe_strictly_behind(root, target, current)
+    if observation is None:
+        return None, reason
     if not _worktree_is_clean(root):
-        return CATCHUP_DIRTY
+        return None, CATCHUP_DIRTY
     if not _still_safe_to_merge(root, current):
-        return CATCHUP_REFUSED
-    if fast_forward_via_worktree(root, target_sha):
-        return CATCHUP_FAST_FORWARDED
-    return CATCHUP_REFUSED
+        return None, CATCHUP_REFUSED
+    return observation, ""
+
+
+def _fast_forward_if_strictly_behind(
+    root: Path,
+    target: str,
+    current: str,
+    *,
+    ledger: AttemptLedger | None = None,
+    clock: Clock | None = None,
+    jitter: Callable[[], float] | None = None,
+) -> str:
+    """SHA-level half of the tick: land only a genuine fast-forward."""
+
+    observation, skip_reason = _ready_catchup_observation(root, target, current)
+    if observation is None:
+        return skip_reason
+    effective_clock = clock if clock is not None else default_clock()
+    with _mutation_lease(root) as lease_verdict:
+        if lease_verdict != "acquired":
+            return _lease_failure(lease_verdict)
+        attempt_count, charge_reason = _charge_attempt(
+            root,
+            ledger,
+            observation.signature,
+            observation.summary,
+        )
+        if charge_reason:
+            return charge_reason
+        try:
+            merged = fast_forward_via_worktree(root, observation.target_sha)
+        except Exception as exc:
+            kind = _classify_git_exception(exc)
+            if kind != "definitely_failed":
+                _backoff_after_failure(effective_clock, attempt_count, jitter=jitter)
+            return _failure_reason(kind, observation.summary)
+        kind = _classify_fast_forward_result(merged)
+        if kind == "succeeded":
+            return CATCHUP_FAST_FORWARDED
+        return _failure_reason(kind, observation.summary)
 
 
 def _still_safe_to_merge(root: Path, expected_branch: str) -> bool:
-    """Last-instant re-check before spawning the merge.
-
-    ``merge --ff-only`` is NOT a complete guard on its own: adversarial
-    review demonstrated that git happily fast-forwards a DETACHED
-    rebase HEAD (a rebase that began after this tick's earlier gates,
-    stopped with a clean transient tree at an ancestor of the target),
-    silently changing the base the rebase resumes on. There is no lock
-    shared with the pipeline thread's seam integration, so this
-    re-check -- all in-process reads, immediately before the spawn --
-    shrinks that tens-of-milliseconds window to the sub-millisecond gap
-    between this read and the merge process starting: HEAD must still
-    be the SAME branch the SHA gates were computed for, and no
-    ``rebase-merge`` / ``rebase-apply`` state may exist in the gitdir.
-    The residual gap is accepted and bounded: a rebase can only begin
-    inside it via the seam or an agent, the originals stay reachable
-    via reflog/ORIG_HEAD, and ``merge --ff-only`` still refuses every
-    non-fast-forward and every overwrite.
-    """
+    """Re-check the attached branch and absence of a rebase before merging."""
     repo: Repo | None = None
     try:
         repo = Repo(root)
@@ -430,15 +692,13 @@ def _still_safe_to_merge(root: Path, expected_branch: str) -> bool:
         _close_repo(repo)
 
 
-def _observe_strictly_behind(root: Path, target: str, current: str) -> tuple[str | None, str]:
-    """Observe both tips; return ``(target_sha, skip_reason)``.
+def _observe_strictly_behind(
+    root: Path,
+    target: str,
+    current: str,
+) -> tuple[_CatchupObservation | None, str]:
+    """Observe both tips; return the state and a skip reason."""
 
-    Exactly one slot is populated: the target SHA when the checkout is
-    strictly behind the target (a fast-forward is possible), else the
-    skip tag explaining why not. Pure observation -- in-process ref
-    reads plus the GitPython ancestry check -- so the caller owns every
-    mutation decision.
-    """
     target_sha, target_ok = observe_branch_sha(root, target)
     if not target_ok or target_sha is None:
         return None, CATCHUP_TARGET_UNREADABLE
@@ -449,19 +709,19 @@ def _observe_strictly_behind(root: Path, target: str, current: str) -> tuple[str
         return None, CATCHUP_UP_TO_DATE
     if not is_ancestor(root, current_sha, target_sha):
         return None, CATCHUP_DIVERGED
-    return target_sha, ""
+    return (
+        _CatchupObservation(
+            target=target,
+            current=current,
+            target_sha=target_sha,
+            current_sha=current_sha,
+        ),
+        "",
+    )
 
 
 class AutoIntegrateCatchupWorker:
-    """Bounded daemon-threaded catch-up loop over :func:`attempt_catchup_fast_forward`.
-
-    Constructor parameters are explicit so tests can inject a recording
-    ``tick`` callable and deterministic ``wait`` function instead of
-    waiting on a real clock. No I/O happens at construction time;
-    ``start()`` launches the daemon thread and ``stop()`` is an
-    idempotent event-set that never joins (the thread is daemonic, and
-    joining could block shutdown on a slow git subprocess).
-    """
+    """Bounded daemon-threaded catch-up loop over the catch-up tick."""
 
     def __init__(
         self,
@@ -473,6 +733,9 @@ class AutoIntegrateCatchupWorker:
         wait: Callable[[float], bool] | None = None,
         remote_client: RemoteClient | None = None,
         rebase_stop_resolver: RebaseStopResolver | None = None,
+        ledger: AttemptLedger | None = None,
+        clock: Clock | None = None,
+        jitter: Callable[[], float] | None = None,
     ) -> None:
         if interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
@@ -481,6 +744,9 @@ class AutoIntegrateCatchupWorker:
         self._interval = float(interval_seconds)
         self._remote_client = remote_client
         self._rebase_stop_resolver = rebase_stop_resolver
+        self._ledger = ledger
+        self._clock = clock
+        self._jitter = jitter
         self._tick: Callable[[], str] = tick if tick is not None else self._default_tick
         self._stop_event = threading.Event()
         self._wait = wait if wait is not None else self._stop_event.wait
@@ -488,7 +754,12 @@ class AutoIntegrateCatchupWorker:
 
     def _default_tick(self) -> str:
         return attempt_catchup_fast_forward(
-            self._config, self._root, remote_client=self._remote_client
+            self._config,
+            self._root,
+            remote_client=self._remote_client,
+            ledger=self._ledger,
+            clock=self._clock,
+            jitter=self._jitter,
         )
 
     def start(self) -> None:
@@ -530,9 +801,24 @@ class AutoIntegrateCatchupWorker:
     def _tick_once(self) -> None:
         try:
             outcome = self._tick()
+        except (subprocess.TimeoutExpired, TimeoutError) as tick_exc:
+            logger.warning(
+                "auto_integrate catch-up tick failed: {}: {}",
+                CATCHUP_TIMEOUT,
+                tick_exc,
+            )
+            return
+        except ProcessTerminationError as tick_exc:
+            logger.warning(
+                "auto_integrate catch-up tick failed: {}: {}",
+                CATCHUP_KILLED,
+                tick_exc,
+            )
+            return
         except Exception as tick_exc:
             logger.warning(
-                "auto_integrate catch-up tick failed (will retry next interval): {}",
+                "auto_integrate catch-up tick failed: {}: {}",
+                CATCHUP_UNKNOWN,
                 tick_exc,
             )
             return
@@ -555,35 +841,47 @@ class AutoIntegrateCatchupWorker:
                 CATCHUP_DISABLED,
                 CATCHUP_NO_TARGET,
                 CATCHUP_NOT_ON_BRANCH,
+                CATCHUP_REFUSED_AGENT_ACTIVE,
+                CATCHUP_REFUSED,
             }
+            and not outcome.startswith(("failed:", "ladder:"))
         ):
-            try:
-                from ralph.pipeline.auto_integrate_remote_sync import (
-                    reconcile_remote_publication,
-                )
-
-                target = resolve_integration_target(self._config, self._root)
-                if target is not None:
-                    reconcile_remote_publication(
-                        self._config,
-                        self._root,
-                        target,
-                        remote=remote_target_name(self._config),
-                        remote_client=self._remote_client,
-                        rebase_stop_resolver=self._rebase_stop_resolver,
+            with _mutation_lease(self._root) as lease_verdict:
+                if lease_verdict != "acquired":
+                    logger.warning(
+                        "auto_integrate catch-up publication deferred: {}",
+                        _lease_failure(lease_verdict),
                     )
-            except Exception as tick_exc:
-                logger.warning(
-                    "auto_integrate catch-up publication tick failed: {}",
-                    tick_exc,
-                )
-        # Skips are deliberately UNLOGGED (quiet-probe contract): the
-        # tick fires every 30 seconds for the whole run and a per-tick
-        # skip line (even at debug level) is pure noise in the log
-        # stream. Only the tick that actually moved the checkout says
-        # anything.
+                else:
+                    try:
+                        from ralph.pipeline.auto_integrate_remote_sync import (
+                            reconcile_remote_publication,
+                        )
+
+                        target = resolve_integration_target(self._config, self._root)
+                        if target is not None:
+                            reconcile_remote_publication(
+                                self._config,
+                                self._root,
+                                target,
+                                remote=remote_target_name(self._config),
+                                remote_client=self._remote_client,
+                                rebase_stop_resolver=self._rebase_stop_resolver,
+                            )
+                    except Exception as tick_exc:
+                        logger.warning(
+                            "auto_integrate catch-up publication tick failed: {}: {}",
+                            CATCHUP_UNKNOWN,
+                            tick_exc,
+                        )
+        # Ordinary skips stay quiet. A refusal, escalation, or failed
+        # external call is NOT a quiet skip: it names the current reason.
         if outcome == CATCHUP_FAST_FORWARDED:
             logger.info("auto_integrate catch-up: fast-forwarded the checkout onto the target")
+        elif outcome == CATCHUP_REFUSED_AGENT_ACTIVE:
+            logger.warning("auto_integrate catch-up tick deferred: {}", outcome)
+        elif outcome.startswith(("failed:", "ladder:")) or outcome == CATCHUP_REFUSED:
+            logger.warning("auto_integrate catch-up tick failed: {}", outcome)
 
 
 def start_catchup_worker_if_enabled(
@@ -617,17 +915,25 @@ def start_catchup_worker_if_enabled(
 
 
 __all__ = [
+    "CATCHUP_DEFEDITELY_FAILED",
     "CATCHUP_DIRTY",
     "CATCHUP_DISABLED",
     "CATCHUP_DIVERGED",
     "CATCHUP_FAST_FORWARDED",
     "CATCHUP_HEAD_UNREADABLE",
+    "CATCHUP_KILLED",
+    "CATCHUP_LADDER_ESCALATED",
+    "CATCHUP_LEASE_UNKNOWN",
+    "CATCHUP_LEDGER_UNAVAILABLE",
     "CATCHUP_NOT_ON_BRANCH",
     "CATCHUP_NO_TARGET",
     "CATCHUP_ON_TARGET",
     "CATCHUP_REFUSED",
+    "CATCHUP_REFUSED_AGENT_ACTIVE",
     "CATCHUP_REMOTE_SKIPPED",
     "CATCHUP_TARGET_UNREADABLE",
+    "CATCHUP_TIMEOUT",
+    "CATCHUP_UNKNOWN",
     "CATCHUP_UP_TO_DATE",
     "DEFAULT_CATCHUP_INTERVAL_SECONDS",
     "AutoIntegrateCatchupWorker",

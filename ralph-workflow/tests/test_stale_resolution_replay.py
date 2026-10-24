@@ -98,6 +98,7 @@ def test_stale_resolution_replay_preserves_work_and_retries_auto_rebase(
         untracked_path.write_text("untracked work\n", encoding="utf-8")
 
     calls: list[tuple[str, str | None]] = []
+    switches: list[dict[str, object]] = []
 
     def fake_integrate_once_owned(
         _config: UnifiedConfig,
@@ -107,10 +108,11 @@ def test_stale_resolution_replay_preserves_work_and_retries_auto_rebase(
         *,
         rebase_stop_resolver: RebaseStopResolver | None = None,
         owned_record: IntegrationRecord | None = None,
-        **_kwargs: object,
+        **kwargs: object,
     ) -> tuple[RebaseState | None, bool]:
         del rebase_stop_resolver
         calls.append((target_name, owned_record.pre_feature_sha if owned_record else None))
+        switches.append(kwargs)
         return RebaseState(last_outcome=RebaseOutcomeKind.REBASED, last_target=target_name), False
 
     monkeypatch.setattr(
@@ -138,6 +140,12 @@ def test_stale_resolution_replay_preserves_work_and_retries_auto_rebase(
 
     assert outcome is not None
     assert calls and calls[0][0] == target
+    # The replay re-enters the ORDINARY integration entry: it does not
+    # ask for a merge-only attempt, so the automatic rebase is the
+    # first attempt again after a crash.
+    assert switches
+    assert not switches[0].get("prefer_merge")
+    assert not switches[0].get("force_endpoint_merge")
     assert "lacks verified completion proof" not in (outcome.last_reason or "")
     current = read_record(root)
     assert current is not None

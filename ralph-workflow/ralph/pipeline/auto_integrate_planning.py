@@ -50,9 +50,11 @@ def integrate_before_planning(
 ) -> RebaseState | None:
     """Land committed work without stashing or committing unfinished edits.
 
-    A dirty tree can publish an already synchronized committed tip. Otherwise
-    use Git's non-destructive merge refusal, with a clean index so the merge
-    cannot sweep staged agent work into history.
+    A tree that is not integration-ready (staged or modified tracked
+    changes) records a typed planning obstruction instead of starting an
+    integration, so unfinished edits are never swept into history. An
+    integration-ready tree that is behind the target catches up through
+    the ordinary rebase-first path.
     """
     root = scope.root
     if retained_integration_reason(root) is not None:
@@ -188,13 +190,28 @@ def _integrate_with_force_merge(
     rebase_stop_resolver: RebaseStopResolver | None,
     display: ParallelDisplay | None,
 ) -> RebaseState | None:
-    """Force a non-destructive endpoint merge for the planning integration."""
+    """Catch the branch up onto the target, rebase first.
+
+    The automatic rebase is ALWAYS the first attempt, so this path no
+    longer forces the endpoint merge. The tree is integration-ready
+    here -- :func:`_record_staged_block` returned no obstruction, so
+    the worktree holds no staged or modified tracked change -- which
+    makes ``rebase_onto`` safe without a snapshot.
+
+    ``require_in_sync`` is what this path still forces: the branch must
+    also ABSORB the target tip, so the "the target already holds every
+    feature commit" shortcut is refused. When the branch has commits of
+    its own the rebase replays them onto the target; when it has none
+    the replay range is empty, and the registered ``all_empty_replay``
+    skip routes the attempt to the endpoint merge, whose fast-forward
+    is the only operation that can move that ref.
+    """
     outcome, _retry = _integrate_once(
         config,
         root,
         target,
         conflict_resolver,
-        force_endpoint_merge=True,
+        require_in_sync=True,
         rebase_stop_resolver=rebase_stop_resolver,
         display=display,
     )

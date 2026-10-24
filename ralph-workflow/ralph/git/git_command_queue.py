@@ -30,6 +30,20 @@ POSIX-atomic acquisition: a second ``begin_agent_lease`` call on the
 same repo fails fast with :class:`WorktreeLeaseUnavailable`. Tests and
 background callers use :func:`try_acquire_lease` for the non-throwing
 variant and treat ``None`` as "skip this tick".
+
+Reclaiming a lease is EVIDENCE-GATED. The lease is never stolen because
+it is old: a steal requires POSITIVE EVIDENCE that the recorded holder is
+dead, produced by the shared git lock liveness probe (the same per-process
+liveness check the stale ``index.lock`` recovery uses, applied to the
+holder PID the lease file names; a lease file that names no holder falls
+back to the repository-wide probe). A live holder and an INDETERMINATE
+probe both refuse the steal and name the reason. ``_LEASE_STALE_SECONDS``
+survives only as a secondary annotation of that evidence -- age alone
+never authorises a steal.
+
+Every routed call is also recorded with a CLOSED, TYPED outcome
+(:data:`ralph.git.git_run_result.GitOutcome`) so no caller has to parse
+stderr text to learn what happened to a git call.
 """
 
 from __future__ import annotations
@@ -39,9 +53,8 @@ import errno
 import importlib
 import os
 import threading
-import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard, TypeVar
 
@@ -60,12 +73,34 @@ from ralph.git._run_git_lock_recovery import (
     is_safe_to_repeat,
     run_with_lock_recovery,
 )
+from ralph.git._worktree_lease import (
+    LeaseLiveness,
+    LeaseStealDecision,
+    LeaseStealReason,
+    _read_lease_record,
+    decide_lease_steal,
+    lease_payload,
+    probe_lease_holder_liveness,
+    reclaim_dead_lease,
+    take_lease_flock,
+)
+from ralph.git.git_call_policy import (
+    GitCallClass,
+    classify_git_exception,
+    classify_git_outcome,
+    effective_deadline_seconds,
+)
+from ralph.git.git_run_result import (
+    GitOutcome,
+    GitRunResult,
+    succeeded_outcome,
+    timed_out_outcome,
+    unknown_outcome,
+)
+from ralph.git.subprocess_runner import GitRunOptions
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
-
-    from ralph.git.git_run_result import GitRunResult
-    from ralph.git.subprocess_runner import GitRunOptions
 
 
 class RepoPath(Protocol):
@@ -129,8 +164,14 @@ _AGENT_LEASE_FILENAME: str = "agent-lease.lock"
 
 #: How many seconds a stale lease may remain before a new agent steals it.
 #: 5x the ``run_git`` ceiling gives ample headroom for the held agent's
-#: wrap-around; anything longer than this is treated as crash-leftover
-#: and silently reclaimable.
+#: wrap-around.
+#:
+#: This is a SECONDARY condition only. It NEVER authorises a steal on its
+#: own: a lease is reclaimed only when the liveness probe has produced
+#: POSITIVE EVIDENCE that the recorded holder is dead. The constant stays
+#: as the annotation of that evidence (a dead holder that has been dead
+#: for a long time is reported differently from one that just died) and as
+#: the secondary condition of the steal decision.
 _LEASE_STALE_SECONDS: float = 600.0
 
 
@@ -150,9 +191,15 @@ class QueuedCallOutcome:
             exception. The success/timeout/error split is the only axis the
             health counter reads; detailed classification belongs to the
             higher layer.
+        outcome: The CLOSED, TYPED outcome of the call (see
+            :data:`ralph.git.git_run_result.GitOutcome`). This is the field
+            an operator or a policy layer reads to learn WHAT happened —
+            a caller never has to parse stderr text or a message string
+            to tell a timeout from a kill from a definite failure.
     """
 
     kind: Literal["success", "timeout", "error"]
+    outcome: GitOutcome = ("unknown", None)
 
 
 class GitCommandQueue:
@@ -202,15 +249,32 @@ class GitCommandQueue:
             maxlen=_HEALTH_LOG_CAP
         )  # bounded-accumulator-ok: FIFO cap _HEALTH_LOG_CAP
 
-    def record_outcome(self, kind: Literal["success", "timeout", "error"]) -> None:
-        """Update the health signal and bounded outcome log."""
+    def record_outcome(
+        self,
+        kind: Literal["success", "timeout", "error"],
+        *,
+        outcome: GitOutcome | None = None,
+    ) -> None:
+        """Update the health signal and bounded outcome log.
+
+        Args:
+            kind: The coarse success/timeout/error split the health
+                counter branches on.
+            outcome: The closed typed outcome of the call. When omitted it
+                is derived from ``kind``: a success is ``"succeeded"``, a
+                timeout is ``"timed_out"`` and any other error is
+                ``"unknown"`` — an error the queue cannot classify is
+                indeterminate, never a definite failure.
+        """
         if kind == "timeout":
             self.consecutive_timeouts = min(
                 self.consecutive_timeouts + 1, _MAX_CONSECUTIVE_TIMEOUTS
             )
         else:
             self.consecutive_timeouts = 0
-        self.outcome_log.append(QueuedCallOutcome(kind=kind))
+        self.outcome_log.append(
+            QueuedCallOutcome(kind=kind, outcome=outcome or _default_outcome_for(kind))
+        )
 
     def health_factor(self) -> int:
         """Return the consecutive-timeout counter for outside callers.
@@ -484,13 +548,27 @@ def _dispatch_git_method(
             raise TypeError(f"repo.git attribute {method_name!r} is not callable")
         result = method(*args, **call_kwargs)
     except GitCommandError as exc:
-        queue.record_outcome(_classify_exception(exc))
+        queue.record_outcome(_classify_exception(exc), outcome=classify_git_exception(exc))
         return None, exc
     except BaseException as exc:
-        queue.record_outcome(_classify_exception(exc))
+        queue.record_outcome(_classify_exception(exc), outcome=classify_git_exception(exc))
         raise
-    queue.record_outcome("success")
+    queue.record_outcome("success", outcome=succeeded_outcome())
     return result, None
+
+
+def _default_outcome_for(kind: Literal["success", "timeout", "error"]) -> GitOutcome:
+    """Return the typed outcome implied by a coarse queue outcome kind.
+
+    A success is a success, a timeout is a timeout, and an error the queue
+    could not classify is INDETERMINATE: reporting it as a definite failure
+    would let an unreadable answer read as "git said no".
+    """
+    if kind == "success":
+        return succeeded_outcome()
+    if kind == "timeout":
+        return timed_out_outcome()
+    return unknown_outcome("unclassified_error")
 
 
 def _classify_exception(exc: BaseException) -> Literal["timeout", "error"]:
@@ -518,6 +596,7 @@ def route_run_git(
     cwd: Path | None,
     label: str,
     options: GitRunOptions | None = None,
+    call_class: GitCallClass | None = None,
 ) -> GitRunResult:
     """Execute :func:`run_git` through the queue with timeout classification.
 
@@ -532,6 +611,21 @@ def route_run_git(
     The 120 s ceiling from :func:`run_git`
     (``GIT_SUBPROCESS_TIMEOUT_SECONDS``) remains the hard wall for the
     child; the queue adds nothing to that ceiling — it stacks NO sleep.
+
+    Args:
+        args: The git arguments to run.
+        cwd: The working directory of the call.
+        label: The process label used for supervision.
+        options: The spawn options. When ``call_class`` is given and the
+            caller set no explicit timeout, the deadline of that call
+            class (from :mod:`ralph.git.git_call_policy`) is applied.
+        call_class: The class of the call. It selects the deadline from
+            the call-class policy table; ``None`` leaves the caller's own
+            timeout (and the repository-wide ceiling) in place.
+
+    Returns:
+        The result of the call, carrying the closed typed outcome of the
+        call in :attr:`GitRunResult.outcome`.
     """
     spawn_module: object = importlib.import_module("ralph.git.subprocess_runner")
     if not _is_spawn_module(spawn_module):
@@ -540,6 +634,7 @@ def route_run_git(
     if not _is_spawn_git(spawn_git):
         raise TypeError("ralph.git.subprocess_runner._spawn_git is not callable")
 
+    effective_options = _apply_call_class_deadline(options, call_class)
     queue = get_queue_for_repo(cwd if cwd is not None else Path.cwd())
 
     def under_queue(call: Callable[[], _T]) -> _T:
@@ -549,12 +644,32 @@ def route_run_git(
             try:
                 outcome = call()
             except BaseException as exc:
-                queue.record_outcome(_classify_exception(exc))
+                queue.record_outcome(_classify_exception(exc), outcome=classify_git_exception(exc))
                 raise
-            queue.record_outcome("success")
+            queue.record_outcome("success", outcome=succeeded_outcome())
             return outcome
 
-    return run_with_lock_recovery(under_queue, spawn_git, args, cwd, label, options)
+    result = run_with_lock_recovery(under_queue, spawn_git, args, cwd, label, effective_options)
+    return replace(result, outcome=classify_git_outcome(returncode=result.returncode))
+
+
+def _apply_call_class_deadline(
+    options: GitRunOptions | None,
+    call_class: GitCallClass | None,
+) -> GitRunOptions | None:
+    """Apply the call-class deadline to spawn options that carry no timeout.
+
+    An explicit timeout from the caller always wins; the table only
+    supplies the default deadline for a call that did not ask for one.
+    """
+    if call_class is None:
+        return options
+    deadline = effective_deadline_seconds(call_class)
+    if options is None:
+        return GitRunOptions(timeout=deadline)
+    if options.timeout is not None:
+        return options
+    return replace(options, timeout=deadline)
 
 
 # ---------------------------------------------------------------------------
@@ -652,62 +767,40 @@ class WorktreeLease:
         self.release()
 
 
-def _lease_lock_path(repo: Repo) -> Path:
+def _lease_lock_path(repo: RepoPath) -> Path:
     git_dir = Path(repo.git_dir)
     return git_dir / "ralph" / _AGENT_LEASE_FILENAME
 
 
-#: Separator count in ``<holder>|<timestamp>`` lock-file lines; a parsed
-#: line must yield at least this many ``|``-split fields.
-_LEASE_LINE_MIN_FIELDS: int = 2
-
-
-def _read_lease_holder(lock_path: Path) -> WorktreeLeaseHolder | None:
-    """Return the holder recorded in ``lock_path``, or ``None`` if absent.
-
-    A stale lease (older than ``_LEASE_STALE_SECONDS``) is reported as
-    ``None`` so the caller can reclaim it. A corrupted lock-file
-    (unparseable) is also reported as ``None`` to fail open: rather
-    than refuse to acquire, we let the new caller win, which matches
-    the "background mutator skip" semantics — a broken lease is a
-    weaker blocker than a held one.
-    """
-    try:
-        raw = lock_path.read_bytes()
-    except FileNotFoundError:
-        return None
-    if not raw:
-        return None
-    first_line = raw.split(b"\n", 1)[0].decode("utf-8", errors="replace")
-    parts = first_line.split("|", 1)
-    if len(parts) < _LEASE_LINE_MIN_FIELDS or not parts[0]:
-        return None
-    try:
-        acquired_at = float(parts[1])
-    except ValueError:
-        return None
-    if (time.monotonic() - acquired_at) > _LEASE_STALE_SECONDS:
-        return None
-    return WorktreeLeaseHolder(name=parts[0])
+#: Module-level seam for the holder-liveness probe. Production uses
+#: :func:`ralph.git._worktree_lease.probe_lease_holder_liveness`; a test
+#: replaces it to drive the evidence gate without touching the process
+#: table.
+_lease_holder_liveness_probe: Callable[[Path, int | None], LeaseLiveness] = (
+    probe_lease_holder_liveness
+)
 
 
 def _acquire_lock_file(lock_path: Path, holder: WorktreeLeaseHolder) -> int:
     """Create ``lock_path`` with ``O_CREAT|O_EXCL``; return the open fd.
 
-    On success the caller holds an open fd for the lifetime of the
-    lease (closing it does not release the lock — ``O_EXCL`` unbinds
-    on unlink only; ``fcntl.flock`` would be cleaner but POSIX-only).
-    A missing parent directory is created; on creation failure the
-    native OSError is propagated.
+    On success the caller holds an open fd for the lifetime of the lease
+    and an exclusive ``flock`` on it: the kernel drops that lock when the
+    holder dies, so a contender can take it as positive evidence that the
+    holder is gone. A missing parent directory is created; on creation
+    failure the native OSError is propagated.
     """
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = f"{holder.name}|{time.monotonic():.6f}\n".encode()
+    payload = lease_payload(holder.name)
     fd = os.open(  # filesystem-write-ok: atomic O_EXCL lease; resource-lifecycle-ok: lease release closes fd
         str(lock_path),
         os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_CLOEXEC,
         0o600,
     )
     try:
+        if not take_lease_flock(fd):
+            msg = f"could not lock the newly created lease file {lock_path!r}"
+            raise OSError(errno.EAGAIN, msg, str(lock_path))
         written = os.write(fd, payload)
     except OSError:
         with contextlib.suppress(OSError):
@@ -725,26 +818,30 @@ def _acquire_lock_file(lock_path: Path, holder: WorktreeLeaseHolder) -> int:
     return fd
 
 
-def _steal_stale_lease(
+def _reclaim_dead_lease(
     lock_path: Path,
     holder: WorktreeLeaseHolder,
-) -> int | None:
-    """Reclaim a lease whose recorded holder is stale (or unparseable).
+) -> tuple[LeaseStealDecision, int | None]:
+    """Reclaim a lease whose holder is provably dead.
 
-    Returns the new fd on successful steal; ``None`` if a competing
-    process stole first and the file is now held fresh.
+    The age of the lease NEVER authorises the reclaim on its own: the
+    shared git lock liveness probe must first produce positive evidence
+    that the holder is dead. A live holder and an indeterminate probe both
+    refuse the reclaim, and the refusal names the reason.
+
+    Returns:
+        The evidence verdict and the new fd (``None`` when refused).
     """
-    current = _read_lease_holder(lock_path)
-    if current is not None:
-        return None
-    try:
-        return _acquire_lock_file(lock_path, holder)
-    except FileExistsError:
-        return None
+    return reclaim_dead_lease(
+        lock_path,
+        holder.name,
+        stale_seconds=_LEASE_STALE_SECONDS,
+        probe=_lease_holder_liveness_probe,
+    )
 
 
 def begin_agent_lease(
-    repo_or_path: Repo | Path | str,
+    repo_or_path: RepoPath | Path | str,
     *,
     holder: WorktreeLeaseHolder | None = None,
 ) -> WorktreeLease:
@@ -753,9 +850,9 @@ def begin_agent_lease(
     Blocks-then-succeeds semantics: this function only returns when
     the lease is held by the calling process. On contention from
     another live holder it raises
-    :class:`WorktreeLeaseUnavailable`. On stale-leftover (a crashed
-    prior holder whose lock-file is older than
-    ``_LEASE_STALE_SECONDS``) it reclaims.
+    :class:`WorktreeLeaseUnavailable`. A crashed prior holder is
+    reclaimed ONLY when the liveness probe produces positive evidence
+    that the holder is dead -- never because the lease is old.
 
     Args:
         repo_or_path: A :class:`git.Repo`, a :class:`Path`, or a
@@ -775,7 +872,9 @@ def begin_agent_lease(
         automatically.
 
     Raises:
-        WorktreeLeaseUnavailable: Another live holder owns the lease.
+        WorktreeLeaseUnavailable: Another live holder owns the lease, or
+            the holder's liveness could not be proven dead. The message
+            names the reason the reclaim was refused.
         OSError: Filesystem-level failure (permission, disk full).
     """
     repo = _repo_or_open(repo_or_path)
@@ -785,10 +884,11 @@ def begin_agent_lease(
     try:
         fd = _acquire_lock_file(lock_path, effective_holder)
     except FileExistsError as exc:
-        stolen = _steal_stale_lease(lock_path, effective_holder)
+        decision, stolen = _reclaim_dead_lease(lock_path, effective_holder)
         if stolen is None:
             raise WorktreeLeaseUnavailable(
-                f"worktree lease for {lock_path} is held by another agent"
+                f"worktree lease for {lock_path} is not reclaimable: "
+                f"{decision.reason} ({decision.detail})"
             ) from exc
         fd = stolen
     lease = WorktreeLease(lock_path, effective_holder)
@@ -797,7 +897,7 @@ def begin_agent_lease(
 
 
 def try_acquire_lease(
-    repo_or_path: Repo | Path | str,
+    repo_or_path: RepoPath | Path | str,
     *,
     holder: WorktreeLeaseHolder | None = None,
 ) -> WorktreeLease | None:
@@ -826,21 +926,26 @@ def end_agent_lease(lease: WorktreeLease) -> None:
     lease.release()
 
 
-def is_lease_held(repo_or_path: Repo | Path | str) -> bool:
+def is_lease_held(repo_or_path: RepoPath | Path | str) -> bool:
     """Return True when a live lease exists for ``repo_or_path``.
 
     Differs from :func:`try_acquire_lease` in that it does NOT attempt
-    to steal. A stale lease is reported as not-held only when it
-    would be reclaimable (i.e. the recorded holder has exceeded
-    ``_LEASE_STALE_SECONDS``). Background mutators use this to decide
-    whether to skip a tick.
+    to reclaim. A lease counts as held unless the liveness probe has
+    produced positive evidence that its holder is dead: a live holder
+    and an INDETERMINATE probe both read as held, so a background
+    mutator skips the tick rather than racing an agent it could not
+    prove was gone. Background mutators use this to decide whether to
+    skip a tick.
     """
     repo = _repo_or_open(repo_or_path)
     lock_path = _lease_lock_path(repo)
-    return _read_lease_holder(lock_path) is not None
+    record = _read_lease_record(lock_path)
+    if record is None:
+        return False
+    return _lease_holder_liveness_probe(lock_path, record.holder_pid) != "dead"
 
 
-def _repo_or_open(repo_or_path: Repo | Path | str) -> Repo:
+def _repo_or_open(repo_or_path: RepoPath | Path | str) -> RepoPath:
     """Return ``repo_or_path`` if it already is a ``Repo``; else open it."""
     if isinstance(repo_or_path, (Path, str)):
         return Repo(Path(repo_or_path))
@@ -854,12 +959,16 @@ def _repo_or_open(repo_or_path: Repo | Path | str) -> Repo:
 
 __all__ = [
     "GitCommandQueue",
+    "LeaseLiveness",
+    "LeaseStealDecision",
+    "LeaseStealReason",
     "QueuedCallOutcome",
     "WorktreeLease",
     "WorktreeLeaseHolder",
     "WorktreeLeaseUnavailable",
     "WorktreeLeaseUnavailableError",
     "begin_agent_lease",
+    "decide_lease_steal",
     "end_agent_lease",
     "get_queue_for_repo",
     "is_lease_held",

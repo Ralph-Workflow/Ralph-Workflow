@@ -3188,6 +3188,20 @@ ralph.git.git_command_queue
    :members:
    :show-inheritance:
 
+ralph.git.git_call_policy
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.git_call_policy
+   :members:
+   :show-inheritance:
+
+ralph.git._worktree_lease
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git._worktree_lease
+   :members:
+   :show-inheritance:
+
 ralph.git.commit_result
 ~~~~~~~~~~~~~~~~~~~~~~~
 

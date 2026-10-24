@@ -60,6 +60,9 @@ from ralph.pipeline.auto_integrate_precondition import (
 from ralph.pipeline.auto_integrate_rebase_merge import (
     run_rebase_or_merge as _run_rebase_or_merge,
 )
+from ralph.pipeline.auto_integrate_rebase_merge import (
+    with_skip_reason,
+)
 from ralph.pipeline.auto_integrate_record import (
     START_INTEGRATING,
     IntegrationRecord,
@@ -116,8 +119,6 @@ from ralph.pipeline.rebase_state import StartupRetentionReason
 _random = (
     random.Random()
 )  # module-local RNG: thread-safe jitter without mutating global random state
-
-_MERGE_INSTEAD_STRATEGY_INDEX = 2
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -431,6 +432,9 @@ def _auto_integrate_after_commit_inner(
             if remote_record is not None and not remote_record.freshness_safe:
                 return remote_record
             identity = observe_conflict_identity(root, target)
+            # Rebase-first on EVERY attempt, including a retry after the conflict
+            # ladder escalated: the escalation changes the RESOLUTION strategy,
+            # never the order of the integration.
             record, retry_ff = _integrate_once(
                 config,
                 root,
@@ -438,9 +442,6 @@ def _auto_integrate_after_commit_inner(
                 effective_resolver,
                 prefer_merge=prefer_merge,
                 refresh=refresh,
-                force_endpoint_merge=(
-                    state.conflict_strategy_index == _MERGE_INSTEAD_STRATEGY_INDEX
-                ),
                 rebase_stop_resolver=(rebase_stop_resolver if allowed else None),
                 display=display,
             )
@@ -622,7 +623,7 @@ def _integrate_once(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
     publish: bool = True,
-    force_endpoint_merge: bool = False,
+    require_in_sync: bool = False,
 ) -> tuple[RebaseState | None, bool]:
     with integration_transaction(root) as acquired:
         if not acquired:
@@ -639,7 +640,7 @@ def _integrate_once(
             rebase_stop_resolver=rebase_stop_resolver,
             display=display,
             publish=publish,
-            force_endpoint_merge=force_endpoint_merge,
+            require_in_sync=require_in_sync,
             owned_record=scheduled_landing(root, target),
         )
 
@@ -655,7 +656,7 @@ def _integrate_once_owned(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
     publish: bool = True,
-    force_endpoint_merge: bool = False,
+    require_in_sync: bool = False,
     owned_record: IntegrationRecord | None = None,
 ) -> tuple[RebaseState | None, bool]:
     """Run one rebase-or-merge integration and report whether a landing race merits retry."""
@@ -663,9 +664,9 @@ def _integrate_once_owned(
     # Idempotent land: the target already holds every feature commit, so
     # nothing needs rebasing, merging or moving. Report the same success a
     # first landing reports and release every latch the record was holding.
-    # A forced endpoint merge is the catch-up path: the branch must also
-    # absorb the target tip, so "feature already inside target" is not enough.
-    contained = contained_land(root, target, require_in_sync=force_endpoint_merge)
+    # A catch-up (``require_in_sync``) is the planning path: the branch must
+    # also absorb the target tip, so "already inside target" is not enough.
+    contained = contained_land(root, target, require_in_sync=require_in_sync)
     if contained is not None:
         return contained, False
     pre_feature_sha = get_head_sha(root)
@@ -711,7 +712,6 @@ def _integrate_once_owned(
             target,
             conflict_resolver,
             prefer_merge=prefer_merge,
-            force_endpoint_merge=force_endpoint_merge,
             rebase_stop_resolver=rebase_stop_resolver,
             display=display,
             conflict_resolution_config=config.conflict_resolution,
@@ -805,18 +805,17 @@ def _integrate_once_owned(
             # the rebase/merged action as the headline so the log line
             # reflects what actually happened to the feature. Only an
             # explicit concurrent target move merits a bounded retry.
-            record = record.model_copy(
-                update={
-                    "last_reason": skip_reason,
-                    "fast_forwarded": False,
-                }
+            record = with_skip_reason(
+                record.model_copy(update={"last_reason": skip_reason, "fast_forwarded": False}),
+                rebase_result.skip_reason,
             )
             return record, is_retryable_fast_forward_failure(skip_reason)
         # Successful fast-forward: the ``fast_forwarded`` boolean is
         # the headline signal, so any residual reason from the
         # rebase/merge phase (including benign rebase NoOp reasons) is
-        # scrubbed here. A clean-success state carries no reason.
-        record = record.model_copy(update={"fast_forwarded": True, "last_reason": None})
+        # scrubbed here -- except a REGISTERED rebase-skip reason, the
+        # only way the operator learns the rebase never ran.
+        record = record.model_copy(update={"fast_forwarded": True})
         if publish:
             # Single publication entry point: the reconciler compares
             # local and remote SHAs, pushes when local is ahead, catches
@@ -852,6 +851,9 @@ def _integrate_once_owned(
                         display=display,
                     ),
                 )
+        # A skipped rebase is RECORDED: the registered reason text rides on
+        # the state, so a prescribed skip is visible next to the fallback.
+        record = with_skip_reason(record, rebase_result.skip_reason)
         return record, False
     except BaseException:
         raise

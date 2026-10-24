@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from ralph.mcp.artifacts.markdown import Diagnostic
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import CycleTimeboxPolicy, DevelopmentTimeboxPolicy
 
@@ -26,6 +27,15 @@ _MAX_PHASE_NAME_CHARACTERS = 80
 _MAX_REDIRECT_REASON_CHARACTERS = 200
 _MAX_FIXED_POINT_ELAPSED_CHARACTERS = 24
 _MAX_DIRECT_COUNT_BITS = 64
+_MAX_DEGRADED_REASON_CHARACTERS = 500
+
+
+class _RunTimeReportValidationError(ValueError):
+    """A validation failure with its actionable diagnostic reason preserved."""
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(f"run_time_report validation failed: {reason}")
 
 
 def _safe_text(value: str) -> str:
@@ -241,6 +251,8 @@ def render_run_time_report(
             + _format_count(state.metrics.total_continuations)
             + "; fallbacks: "
             + _format_count(state.metrics.total_fallbacks)
+            + "; pushes: "
+            + _format_count(state.push_count)
             + ".\n"
             + (
                 "- [SG-2] VALIDATION FAILURE: run ended with an unresolved artifact validation failure "
@@ -299,6 +311,122 @@ def render_run_time_report(
         raise RuntimeError("run_time_report fixed content exceeds its reporting budget")
 
 
+def _validation_failure_reason(diagnostics: list[Diagnostic]) -> str:
+    """Return the first line-anchored validation reason for the failed report."""
+    for diagnostic in diagnostics:
+        if diagnostic.severity != "error":
+            continue
+        location = f" at line {diagnostic.line}"
+        if diagnostic.section is not None:
+            location += f", section {diagnostic.section}"
+        return f"{diagnostic.rule_id}{location}: {diagnostic.message}"
+    return "unknown validation error"
+
+
+def _safe_failure_reason(value: str) -> str:
+    """Collapse an exception message into one bounded report body line."""
+    compact = " ".join(value.split())
+    if not compact:
+        return "unspecified failure"
+    if len(compact) <= _MAX_DEGRADED_REASON_CHARACTERS:
+        return compact
+    return compact[: _MAX_DEGRADED_REASON_CHARACTERS - 3].rstrip() + "..."
+
+
+def _render_degraded_run_time_report(
+    *,
+    state: PipelineState,
+    outcome: str,
+    elapsed_seconds: float,
+    failure_reason: str,
+) -> str:
+    """Render the smallest truthful report that can still carry a failure."""
+    elapsed_text = _format_elapsed(max(0.0, elapsed_seconds))
+    safe_phase = _safe_text(state.phase) or "unknown"
+    safe_outcome = _safe_text(outcome) or "unknown"
+    reason = _safe_failure_reason(failure_reason)
+
+    timing_entries = [f"Total wall-clock time: {elapsed_text}s."]
+    if _development_timebox_was_used(state):
+        timing_entries.append(
+            f"Development timebox consumed: {_development_consumed_text(state)}"
+        )
+    if _cycle_timebox_was_used(state):
+        timing_entries.append(f"Cycle timebox consumed: {_cycle_consumed_text(state)}")
+    timing_lines = [
+        f"- [T-{index}] {entry}" for index, entry in enumerate(timing_entries, start=1)
+    ]
+
+    return (
+        "---\n"
+        "type: run_time_report\n"
+        f"outcome: {safe_outcome}\n"
+        f"elapsed_seconds: {elapsed_text}\n"
+        f"final_phase: {safe_phase}\n"
+        "---\n\n"
+        "## Summary\n"
+        "- [SUM-1] Degraded run-time report; the full report could not be emitted.\n"
+        f"Degradation reason: {reason}\n\n"
+        "## Timing\n"
+        + "\n".join(timing_lines)
+        + "\n\n## Phases\n"
+        + f"- [P-1] Final phase: {safe_phase}.\n"
+        + "\n\n## Slowest Steps\n"
+        + "- [SS-1] Slowest-step details are unavailable in the degraded report.\n"
+        + "\n\n## Signals\n"
+        + "- [SG-1] Agent calls: "
+        + _format_count(state.metrics.total_agent_calls)
+        + "; retries: "
+        + _format_count(state.metrics.total_retries)
+        + "; continuations: "
+        + _format_count(state.metrics.total_continuations)
+        + "; fallbacks: "
+        + _format_count(state.metrics.total_fallbacks)
+        + "; pushes: "
+        + _format_count(state.push_count)
+        + ".\n"
+        + (
+            "- [SG-2] Integration status: unresolved at report time.\n"
+            if state.rebase.integration_unresolved
+            else ""
+        )
+    )
+
+
+def _submit_validated_markdown(workspace_root: Path, markdown: str) -> None:
+    """Validate one report and persist it only when the closed grammar accepts it."""
+    __import__("ralph.mcp.artifacts.markdown.specs")
+
+    content, diagnostics = parse_and_validate(markdown, get_spec("run_time_report"))
+    if any(diagnostic.severity == "error" for diagnostic in diagnostics):
+        raise _RunTimeReportValidationError(_validation_failure_reason(diagnostics))
+    submit_artifact_canonical(
+        workspace_root,
+        "run_time_report",
+        content,
+        markdown=markdown,
+        deps=ArtifactHandlerDeps(history_enabled=True),
+    )
+
+
+def _emit_degraded_run_time_report(
+    workspace_root: Path,
+    *,
+    state: PipelineState,
+    outcome: str,
+    elapsed_seconds: float,
+    failure_reason: str,
+) -> None:
+    """Persist a still-valid minimal report after the full report was rejected."""
+    markdown = _render_degraded_run_time_report(
+        state=state,
+        outcome=outcome,
+        elapsed_seconds=elapsed_seconds,
+        failure_reason=failure_reason,
+    )
+    _submit_validated_markdown(workspace_root, markdown)
+
+
 def emit_run_time_report(
     workspace_root: Path,
     *,
@@ -310,8 +438,6 @@ def emit_run_time_report(
     development_timebox: DevelopmentTimeboxPolicy | None = None,
 ) -> None:
     """Validate and persist a report without changing the pipeline's outcome."""
-    __import__("ralph.mcp.artifacts.markdown.specs")
-
     markdown = render_run_time_report(
         state=state,
         outcome=outcome,
@@ -322,16 +448,7 @@ def emit_run_time_report(
     )
     if len(markdown) > _REPORTING_BUDGET_CHARACTERS:
         raise ValueError("run_time_report exceeds its reporting budget")
-    content, diagnostics = parse_and_validate(markdown, get_spec("run_time_report"))
-    if any(diagnostic.severity == "error" for diagnostic in diagnostics):
-        raise ValueError("run_time_report validation failed")
-    submit_artifact_canonical(
-        workspace_root,
-        "run_time_report",
-        content,
-        markdown=markdown,
-        deps=ArtifactHandlerDeps(history_enabled=True),
-    )
+    _submit_validated_markdown(workspace_root, markdown)
 
 
 def emit_run_time_report_safely(
@@ -357,6 +474,25 @@ def emit_run_time_report_safely(
         )
     except Exception as exc:
         logger.error("run_time_report emission failed: {}", exc)
+        try:
+            failure_reason = (
+                f"run_time_report validation failed: {exc.reason}"
+                if isinstance(exc, _RunTimeReportValidationError)
+                else str(exc)
+            )
+            _emit_degraded_run_time_report(
+                workspace_root,
+                state=state,
+                outcome=outcome,
+                elapsed_seconds=elapsed_seconds,
+                failure_reason=failure_reason,
+            )
+        except Exception as degraded_exc:
+            logger.error(
+                "run_time_report degraded emission failed after {}: {}",
+                exc,
+                degraded_exc,
+            )
 
 
 __all__ = ["emit_run_time_report_safely", "render_run_time_report"]

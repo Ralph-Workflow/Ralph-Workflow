@@ -14,14 +14,18 @@ from __future__ import annotations
 
 import threading
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from loguru import logger
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import auto_integrate_catchup as catchup
+from ralph.pipeline.auto_integrate_remote_sync import FETCH_TIMEOUT_SECONDS
 from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
+from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -30,9 +34,19 @@ _TARGET_SHA = "b" * 40
 _FEATURE_SHA = "a" * 40
 
 
+@dataclass(frozen=True)
+class _FakeRemoteLease:
+    """Minimal remote-sync lease used by focused catch-up tests."""
+
+    fetch_allowed: bool = True
+
+    def record_fetch(self) -> None:
+        """Record the synthetic fetch without touching the filesystem."""
+
+
 @contextmanager
-def _remote_lease(*_args: object, **_kwargs: object) -> Iterator[object]:
-    yield type("Lease", (), {"fetch_allowed": True, "record_fetch": lambda self: None})()
+def _remote_lease(*_args: object, **_kwargs: object) -> Iterator[_FakeRemoteLease]:
+    yield _FakeRemoteLease()
 
 
 def _config(
@@ -96,7 +110,26 @@ def _open_all_gates(
     monkeypatch.setattr(catchup, "observe_branch_sha", _fake_observe)
     monkeypatch.setattr(catchup, "is_ancestor", _fake_is_ancestor)
     monkeypatch.setattr(catchup, "_still_safe_to_merge", _fake_still_safe)
+    def _not_held(_root: Path) -> bool:
+        return False
+
+    def _acquire(_root: Path, **_kwargs: object) -> object:
+        return object()
+
+    def _release(_lease: object) -> None:
+        return None
+
+    def _ledger(repo_root: Path) -> AttemptLedger:
+        return AttemptLedger(
+            repo_root,
+            ledger_path=repo_root / ".agent" / "integration_attempt_ledger.json",
+        )
+
     monkeypatch.setattr(catchup, "fast_forward_via_worktree", _fake_ff)
+    monkeypatch.setattr(catchup, "is_lease_held", _not_held)
+    monkeypatch.setattr(catchup, "try_acquire_lease", _acquire)
+    monkeypatch.setattr(catchup, "end_agent_lease", _release)
+    monkeypatch.setattr(catchup, "_repository_ledger", _ledger)
     return ff_calls
 
 
@@ -142,16 +175,16 @@ class TestAutoIntegrateCatchup:
     ) -> None:
         _open_all_gates(monkeypatch, current="main")
         events: list[str] = []
-        monkeypatch.setattr(
-            catchup,
-            "_synchronize_remote_target",
-            lambda _config, _root, target: events.append(f"sync:{target}") or None,
-        )
-        monkeypatch.setattr(
-            catchup,
-            "_fast_forward_if_strictly_behind",
-            lambda *_args: events.append("checkout-catchup") or catchup.CATCHUP_REFUSED,
-        )
+
+        def _sync(_config: UnifiedConfig, _root: Path, target: str, **_kwargs: object) -> None:
+            events.append(f"sync:{target}")
+
+        def _checkout(*_args: object, **_kwargs: object) -> str:
+            events.append("checkout-catchup")
+            return catchup.CATCHUP_REFUSED
+
+        monkeypatch.setattr(catchup, "_synchronize_remote_target", _sync)
+        monkeypatch.setattr(catchup, "_fast_forward_if_strictly_behind", _checkout)
 
         outcome = catchup.attempt_catchup_fast_forward(_config(remote_enabled=True), tmp_path)
 
@@ -162,13 +195,18 @@ class TestAutoIntegrateCatchup:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         _open_all_gates(monkeypatch, current="main")
-        monkeypatch.setattr(
-            catchup,
-            "_synchronize_remote_target",
-            lambda _config, _root, _target: catchup.CATCHUP_FAST_FORWARDED,
-        )
+
+        def _sync(
+            _config: UnifiedConfig,
+            _root: Path,
+            _target: str,
+            **_kwargs: object,
+        ) -> str:
+            return catchup.CATCHUP_FAST_FORWARDED
+
+        monkeypatch.setattr(catchup, "_synchronize_remote_target", _sync)
         messages: list[str] = []
-        monkeypatch.setattr(catchup.logger, "info", messages.append)
+        monkeypatch.setattr(logger, "info", messages.append)
         worker = catchup.AutoIntegrateCatchupWorker(
             _config(remote_enabled=True),
             tmp_path,
@@ -257,7 +295,7 @@ class TestAutoIntegrateCatchup:
 
         assert outcome == catchup.CATCHUP_FAST_FORWARDED
         assert events == ["refresh", "observe-target"]
-        assert refresh_calls == [(tmp_path, "main", catchup.FETCH_TIMEOUT_SECONDS, "upstream")]
+        assert refresh_calls == [(tmp_path, "main", FETCH_TIMEOUT_SECONDS, "upstream")]
         assert ff_calls == [(tmp_path, _TARGET_SHA)]
 
     def test_remote_sync_disabled_keeps_local_catchup_without_remote_probe(
@@ -283,11 +321,10 @@ class TestAutoIntegrateCatchup:
     ) -> None:
         ff_calls = _open_all_gates(monkeypatch)
 
-        monkeypatch.setattr(
-            catchup,
-            "refresh_target_from_remote",
-            lambda *_args, **_kwargs: REFRESH_UNREACHABLE,
-        )
+        def _unreachable(*_args: object, **_kwargs: object) -> str:
+            return REFRESH_UNREACHABLE
+
+        monkeypatch.setattr(catchup, "refresh_target_from_remote", _unreachable)
         monkeypatch.setattr(catchup, "remote_sync_transaction", _remote_lease)
 
         outcome = catchup.attempt_catchup_fast_forward(_config(remote_enabled=True), tmp_path)
@@ -295,12 +332,12 @@ class TestAutoIntegrateCatchup:
         assert outcome == catchup.CATCHUP_REMOTE_SKIPPED
         assert ff_calls == []
 
-    def test_refused_merge_reports_refused(
+    def test_definitely_failed_merge_reports_named_failure(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         _open_all_gates(monkeypatch, ff_ok=False)
         outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path)
-        assert outcome == catchup.CATCHUP_REFUSED
+        assert outcome.startswith(catchup.CATCHUP_DEFEDITELY_FAILED)
 
     def test_rejects_non_positive_interval(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="interval_seconds"):
@@ -348,12 +385,15 @@ class TestAutoIntegrateCatchup:
                 raise RuntimeError("boom")
             return catchup.CATCHUP_UP_TO_DATE
 
+        def _wait(_interval: float) -> bool:
+            return next(iteration)
+
         worker = catchup.AutoIntegrateCatchupWorker(
             _config(),
             tmp_path,
             interval_seconds=0.005,
             tick=_tick,
-            wait=lambda _interval: next(iteration),
+            wait=_wait,
         )
         worker.run()
 
