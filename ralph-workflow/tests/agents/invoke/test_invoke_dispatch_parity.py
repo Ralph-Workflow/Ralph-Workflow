@@ -322,51 +322,43 @@ class TestResolveInvocationRuntimeParity:
             assert result.server_env is None
             assert result.mcp_endpoint is None
 
-    @pytest.mark.parametrize(
-        ("base_depth", "extra_depth", "expected_depth"),
-        [
+    def test_claude_resolver_preserves_or_repairs_subagent_depth(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+
+        for base_depth, extra_depth, expected_depth in [
             ("8", None, "8"),
             ("8", "12", "12"),
             ("8", "0", "3"),
             ("8", "invalid", "3"),
             (None, None, "3"),
-        ],
-    )
-    def test_claude_resolver_preserves_or_repairs_subagent_depth(
-        self,
-        base_depth: str | None,
-        extra_depth: str | None,
-        expected_depth: str,
-        monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path,
-    ) -> None:
-        base_env = (
-            {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": base_depth} if base_depth is not None else {}
-        )
-        extra_env = (
-            {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": extra_depth} if extra_depth is not None else {}
-        )
-        monkeypatch.setattr(
-            "ralph.agents.invoke.load_existing_claude_upstream_servers",
-            lambda _workspace_path: [],
-        )
+        ]:
+            base_env = (
+                {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": base_depth}
+                if base_depth is not None
+                else {}
+            )
+            extra_env = (
+                {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": extra_depth}
+                if extra_depth is not None
+                else {}
+            )
+            monkeypatch.setattr(
+                "ralph.agents.invoke.load_existing_claude_upstream_servers",
+                lambda _workspace_path: [],
+            )
 
-        result = resolve_invocation_runtime(
-            AgentConfig(cmd="test-agent", transport=AgentTransport.CLAUDE),
-            extra_env=extra_env,
-            workspace_path=tmp_path,
-            _base_env=base_env,
-        )
+            result = resolve_invocation_runtime(
+                AgentConfig(cmd="test-agent", transport=AgentTransport.CLAUDE),
+                extra_env=extra_env,
+                workspace_path=tmp_path,
+                _base_env=base_env,
+            )
 
-        assert result.agent_env is not None
-        assert result.agent_env["CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH"] == expected_depth
+            assert result.agent_env is not None
+            assert result.agent_env["CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH"] == expected_depth
 
-    @pytest.mark.parametrize("has_endpoint", [False])
-    def test_generic_resolver_parity(
-        self,
-        has_endpoint: bool,
-        tmp_path: Path,
-    ) -> None:
+    def test_generic_resolver_parity(self, tmp_path: Path) -> None:
         """Test GENERIC resolver without endpoint (raises with endpoint)."""
         config = AgentConfig(cmd="test-agent", transport=AgentTransport.GENERIC)
 
@@ -410,9 +402,9 @@ class TestResolveInvocationRuntimeParity:
         assert result.server_env is None
         assert result.mcp_endpoint is None
 
-    @pytest.mark.parametrize(
-        "transport",
-        [
+    def test_no_endpoint_no_extra_env(self, tmp_path: Path) -> None:
+
+        for transport in [
             AgentTransport.OPENCODE,
             AgentTransport.NANOCODER,
             AgentTransport.CODEX,
@@ -420,35 +412,29 @@ class TestResolveInvocationRuntimeParity:
             AgentTransport.CLAUDE_INTERACTIVE,
             AgentTransport.GENERIC,
             AgentTransport.AGY,
-        ],
-    )
-    def test_no_endpoint_no_extra_env(
-        self,
-        transport: AgentTransport,
-        tmp_path: Path,
-    ) -> None:
-        """Assert behavior when extra_env is None (no endpoint)."""
-        config = AgentConfig(cmd="test-agent", transport=transport)
+        ]:
+            """Assert behavior when extra_env is None (no endpoint)."""
+            config = AgentConfig(cmd="test-agent", transport=transport)
 
-        result = resolve_invocation_runtime(
-            config,
-            extra_env=None,
-            workspace_path=tmp_path,
-            _base_env={},
-        )
+            result = resolve_invocation_runtime(
+                config,
+                extra_env=None,
+                workspace_path=tmp_path,
+                _base_env={},
+            )
 
-        assert isinstance(result, ResolvedInvocationRuntime)
-        if transport in {AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE}:
-            assert isinstance(result.agent_env, dict)
-            assert result.agent_env["CLAUDE_CODE_FORK_SUBAGENT"] == "1"
-        else:
-            assert result.agent_env is None
-        assert result.server_env is None
-        assert result.mcp_endpoint is None
+            assert isinstance(result, ResolvedInvocationRuntime)
+            if transport in {AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE}:
+                assert isinstance(result.agent_env, dict)
+                assert result.agent_env["CLAUDE_CODE_FORK_SUBAGENT"] == "1"
+            else:
+                assert result.agent_env is None
+            assert result.server_env is None
+            assert result.mcp_endpoint is None
 
-    @pytest.mark.parametrize(
-        "transport",
-        [
+    def test_no_endpoint_with_base_env(self, tmp_path: Path) -> None:
+
+        for transport in [
             AgentTransport.OPENCODE,
             AgentTransport.NANOCODER,
             AgentTransport.CODEX,
@@ -456,38 +442,24 @@ class TestResolveInvocationRuntimeParity:
             AgentTransport.CLAUDE_INTERACTIVE,
             AgentTransport.GENERIC,
             AgentTransport.AGY,
-        ],
-    )
-    def test_no_endpoint_with_base_env(
-        self,
-        transport: AgentTransport,
-        tmp_path: Path,
-    ) -> None:
-        """Assert behavior when _base_env is provided without endpoint."""
-        base_env: Mapping[str, str] = {"PATH": "/usr/bin", "HOME": "/home/test"}
-        config = AgentConfig(cmd="test-agent", transport=transport)
+        ]:
+            """Assert behavior when _base_env is provided without endpoint."""
+            base_env: Mapping[str, str] = {"PATH": "/usr/bin", "HOME": "/home/test"}
+            config = AgentConfig(cmd="test-agent", transport=transport)
 
-        result = resolve_invocation_runtime(
-            config,
-            extra_env={},
-            workspace_path=tmp_path,
-            _base_env=base_env,
-        )
+            result = resolve_invocation_runtime(
+                config,
+                extra_env={},
+                workspace_path=tmp_path,
+                _base_env=base_env,
+            )
 
-        assert isinstance(result, ResolvedInvocationRuntime)
-        assert result.mcp_endpoint is None
+            assert isinstance(result, ResolvedInvocationRuntime)
+            assert result.mcp_endpoint is None
 
-    @pytest.mark.parametrize(
-        (
-            "transport",
-            "cmd",
-            "session_flag",
-            "yolo_flag",
-            "verbose_flag",
-            "print_flag",
-            "expected_argv",
-        ),
-        [
+    def test_configurable_command_builder_parity(self, tmp_path: Path) -> None:
+
+        for transport, cmd, session_flag, yolo_flag, verbose_flag, print_flag, expected_argv in [
             (
                 AgentTransport.OPENCODE,
                 "opencode",
@@ -577,56 +549,44 @@ class TestResolveInvocationRuntimeParity:
                     "hello world",
                 ],
             ),
-        ],
-    )
-    def test_configurable_command_builder_parity(
-        self,
-        transport: AgentTransport,
-        cmd: str,
-        session_flag: str | None,
-        yolo_flag: str | None,
-        verbose_flag: str | None,
-        print_flag: str | None,
-        expected_argv: list[str],
-        tmp_path: Path,
-    ) -> None:
-        """Assert the per-transport builder produces a byte-identical command line.
+        ]:
+            """Assert the per-transport builder produces a byte-identical command line.
 
-        This checks each headless transport through the public
-        ``build_command`` entry point, which dispatches to the same
-        configurable builder the transport owns.
-        """
-        prompt_file = tmp_path / "PROMPT.md"
-        prompt_file.write_text("hello world", encoding="utf-8")
+                This checks each headless transport through the public
+                ``build_command`` entry point, which dispatches to the same
+                configurable builder the transport owns.
+                """
+            prompt_file = tmp_path / "PROMPT.md"
+            prompt_file.write_text("hello world", encoding="utf-8")
 
-        config = AgentConfig(
-            cmd=cmd,
-            session_flag=session_flag,
-            yolo_flag=yolo_flag,
-            verbose_flag=verbose_flag,
-            print_flag=print_flag,
-            transport=transport,
-        )
+            config = AgentConfig(
+                cmd=cmd,
+                session_flag=session_flag,
+                yolo_flag=yolo_flag,
+                verbose_flag=verbose_flag,
+                print_flag=print_flag,
+                transport=transport,
+            )
 
-        model_flag = "--model gpt-4"
-        if transport == AgentTransport.OPENCODE:
-            model_flag = "--model opencode/some-model"
-        elif transport == AgentTransport.AGY:
-            model_flag = "--model claude-3"
-        elif transport == AgentTransport.NANOCODER:
-            model_flag = "--provider openai --model gpt-4"
+            model_flag = "--model gpt-4"
+            if transport == AgentTransport.OPENCODE:
+                model_flag = "--model opencode/some-model"
+            elif transport == AgentTransport.AGY:
+                model_flag = "--model claude-3"
+            elif transport == AgentTransport.NANOCODER:
+                model_flag = "--provider openai --model gpt-4"
 
-        options = BuildCommandOptions(
-            session_id="sess-123",
-            verbose=True,
-            model_flag=model_flag,
-            workspace_path=tmp_path,
-        )
+            options = BuildCommandOptions(
+                session_id="sess-123",
+                verbose=True,
+                model_flag=model_flag,
+                workspace_path=tmp_path,
+            )
 
-        # Replace WORKSPACE_PATH_PLACEHOLDER in expected_argv with actual tmp_path
-        expected = [
-            str(tmp_path) if x == "WORKSPACE_PATH_PLACEHOLDER" else x for x in expected_argv
-        ]
+            # Replace WORKSPACE_PATH_PLACEHOLDER in expected_argv with actual tmp_path
+            expected = [
+                str(tmp_path) if x == "WORKSPACE_PATH_PLACEHOLDER" else x for x in expected_argv
+            ]
 
-        res = build_command(config, str(prompt_file), options=options)
-        assert res == expected
+            res = build_command(config, str(prompt_file), options=options)
+            assert res == expected

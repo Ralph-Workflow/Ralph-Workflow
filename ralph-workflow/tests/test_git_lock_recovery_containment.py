@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 
 from ralph.git import lock_recovery as lr
-from ralph.git._run_git_lock_recovery import git_subcommand, run_with_lock_recovery
 from ralph.git.git_run_result import GitRunResult
+from ralph.git.lock_recovery import git_subcommand, run_with_lock_recovery
 
 
 def _git_dir(root: Path) -> Path:
@@ -33,8 +33,8 @@ def test_a_known_lock_name_outside_a_git_dir_is_never_reapable(tmp_path: Path) -
     victim.write_text("not git's")
     _age(victim, 5000)
     err = Exception(f"fatal: Unable to create '{victim}': File exists.")
-    assert not lr._lock_path_is_reapable(victim)
-    assert lr._recover_stale_git_lock("x", err) is False
+    assert not lr.lock_path_is_reapable(victim)
+    assert lr.recover_stale_git_lock("x", err) is False
     assert victim.exists()
 
 
@@ -50,20 +50,20 @@ def test_ralph_owned_locks_are_never_reapable(tmp_path: Path, rel: str) -> None:
     lock = _git_dir(tmp_path) / rel
     lock.parent.mkdir(parents=True, exist_ok=True)
     lock.write_text("lease")
-    assert not lr._lock_path_is_reapable(lock)
+    assert not lr.lock_path_is_reapable(lock)
 
 
 def test_relative_and_dotdot_lock_paths_are_refused(tmp_path: Path) -> None:
     git_dir = _git_dir(tmp_path)
-    assert lr._parse_lock_path_from_error("Unable to create '.git/index.lock': File exists") is None
+    assert lr.parse_lock_path_from_error("Unable to create '.git/index.lock': File exists") is None
     assert (
-        lr._parse_lock_path_from_error(
+        lr.parse_lock_path_from_error(
             "Unable to create '.git/index.lock': File exists", base_dir=tmp_path
         )
         == git_dir / "index.lock"
     )
     escaped = f"Unable to create '{git_dir}/../../elsewhere/index.lock': File exists"
-    assert lr._parse_lock_path_from_error(escaped) is None
+    assert lr.parse_lock_path_from_error(escaped) is None
 
 
 def test_a_symlinked_ref_directory_is_never_walked(tmp_path: Path) -> None:
@@ -85,8 +85,8 @@ def test_reaping_a_ref_lock_leaves_nothing_in_the_ref_namespace(tmp_path: Path) 
     lock = git_dir / "refs" / "heads" / "feat.lock"
     lock.write_text("x")
     _age(lock, 5000)
-    identity = lr._lock_identity(lock)
-    assert lr._unlink_if_unchanged(lock, identity) is True
+    identity = lr.lock_identity(lock)
+    assert lr.unlink_if_unchanged(lock, identity) is True
     assert list((git_dir / "refs").rglob("*")) == [git_dir / "refs" / "heads"]
     assert not list((git_dir / "ralph").glob("reap-*"))
 
@@ -95,10 +95,10 @@ def test_a_lock_replaced_after_the_probe_is_not_removed(tmp_path: Path) -> None:
     git_dir = _git_dir(tmp_path)
     lock = git_dir / "index.lock"
     lock.write_text("old")
-    stale_identity = lr._lock_identity(lock)
+    stale_identity = lr.lock_identity(lock)
     lock.unlink()
     lock.write_text("a live git's brand new lock")
-    assert lr._unlink_if_unchanged(lock, stale_identity) is False
+    assert lr.unlink_if_unchanged(lock, stale_identity) is False
     assert lock.read_text() == "a live git's brand new lock"
 
 
@@ -115,7 +115,7 @@ def test_a_lock_replaced_after_the_probe_is_not_removed(tmp_path: Path) -> None:
 def test_gitdir_for_lock_uses_the_enclosing_git_dir(
     tmp_path: Path, rel: str, expected: str
 ) -> None:
-    assert lr._gitdir_for_lock(tmp_path / rel) == tmp_path / expected
+    assert lr.gitdir_for_lock(tmp_path / rel) == tmp_path / expected
 
 
 def test_only_a_message_naming_a_lock_file_counts_as_contention() -> None:
@@ -148,12 +148,12 @@ def test_an_unreadable_process_is_ruled_out_only_by_sound_facts(
     tmp_path: Path, comm: str, age_s: float, expected: str
 ) -> None:
     pid = _fake_proc(tmp_path, comm)
-    assert lr._rule_out_unreadable(tmp_path, pid, (1000, 1000), 1000, age_s) == expected
+    assert lr.rule_out_unreadable(tmp_path, pid, (1000, 1000), 1000, age_s) == expected
 
 
 def test_a_foreign_uid_cannot_hold_the_lock(tmp_path: Path) -> None:
     pid = _fake_proc(tmp_path, "python3")
-    assert lr._rule_out_unreadable(tmp_path, pid, (0, 0, 0, 0), 1000, 100.0) == "dead"
+    assert lr.rule_out_unreadable(tmp_path, pid, (0, 0, 0, 0), 1000, 100.0) == "dead"
 
 
 def test_git_subcommand_skips_global_options() -> None:

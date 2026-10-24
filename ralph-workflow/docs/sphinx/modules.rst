@@ -2277,13 +2277,6 @@ ralph.mcp.bridge_diagnostics
    :members:
    :show-inheritance:
 
-ralph.mcp.bridge_handover
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.mcp.bridge_handover
-   :members:
-   :show-inheritance:
-
 ralph.mcp.artifacts
 ~~~~~~~~~~~~~~~~~~~
 
@@ -3301,6 +3294,13 @@ ralph.git.wrapper
 ~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.git.wrapper
+   :members:
+   :show-inheritance:
+
+ralph.git.lock_recovery
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.lock_recovery
    :members:
    :show-inheritance:
 

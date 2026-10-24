@@ -6,78 +6,80 @@ from the end of ``main()`` to the start. Subcommands (``cleanup``, ``star``,
 invoking the heavy bootstrap path. This file pins that contract so any
 regression that re-runs the pipeline bootstrap on the subcommand path fails
 the test, not the operator.
+
+The proof is behavioural: every PUBLIC bootstrap collaborator the CLI owns
+(the pipeline entry point, the global / local config bootstrap, the config
+regenerator, the logging configurator) is replaced with a raising double, and
+the Sentry boundary is spied. If the subcommand path reached ANY of them the
+test fails.
 """
 
 from __future__ import annotations
 
+import atexit
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import pytest
+import sentry_sdk
 import typer.testing
 
+import ralph.cli.main as ralph_cli_main
 from ralph.cli.main import app
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
-
-
 _runner = typer.testing.CliRunner()
 
 
+def _raise_bootstrap(*_args: object, **_kwargs: object) -> None:
+    """Fail loudly if a subcommand dispatch reaches a bootstrap collaborator."""
+    msg = "subcommand dispatch must NOT trigger pipeline bootstrap"
+    raise AssertionError(msg)
+
+
 def _patch_bootstrap_to_raise(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patch every pipeline-bootstrap helper so a stray call raises loudly.
+    """Replace every PUBLIC bootstrap collaborator with a raising double.
 
-    Covers both the private (underscored) names that ``main()`` resolves
-    through the module scope and the public aliases that the rest of the
-    code base imports.
+    Only public names are patched (``ralph.cli.main.run_pipeline``,
+    ``ralph.cli.main.ensure_global_config``, ...) so the assertion targets the
+    observable bootstrap behaviour rather than a private helper name.
     """
+    for target in (
+        "ralph.cli.main.run_pipeline",
+        "ralph.cli.main.ensure_global_config",
+        "ralph.cli.main.ensure_global_agents_config",
+        "ralph.cli.main.ensure_global_mcp_config",
+        "ralph.cli.main.ensure_global_policy_configs",
+        "ralph.cli.main.ensure_local_configs",
+        "ralph.cli.main.regenerate_all",
+        "ralph.cli.main.configure_logging",
+    ):
+        monkeypatch.setattr(target, _raise_bootstrap)
 
-    def _raise_bootstrap(*_args: object, **_kwargs: object) -> None:
-        msg = "subcommand dispatch must NOT trigger pipeline bootstrap"
-        raise AssertionError(msg)
 
-    target_names: tuple[str, ...] = (
-        "_bootstrap_global_configs",
-        "bootstrap_global_configs",
-        "_bootstrap_for_command",
-        "_bootstrap_global_configs_or_exit",
-        "_configure_logging",
-        "configure_logging",
-        "_init_telemetry",
-        "init_telemetry",
-        # config bootstrap helpers consumed through _bootstrap_for_command
-        "ensure_global_config",
-        "ensure_global_agents_config",
-        "ensure_global_mcp_config",
-        "ensure_global_policy_configs",
-        "ensure_local_configs",
-        "regenerate_all",
-        # helpers touched only by the pipeline path
-        "_handle_early_exit_flags",
-        "_handle_generate_local_config",
-        "_handle_force_init_skills",
-        "_handle_regenerate_config",
-        "diagnose_command",
-        "init_command",
-        "explain_command",
-        "check_policy_command",
-        "handle_list_agents",
-        "handle_list_providers",
-        "handle_check_config",
-        "handle_check_mcp",
-        "handle_commit_plumbing",
-        "run_pipeline",
-        "invoke_pipeline",
-    )
-    for fn_name in target_names:
-        if (
-            hasattr(app, "__module__")
-            and fn_name not in __import__("ralph.cli.main", fromlist=[fn_name]).__dict__
-        ):
-            continue
-        monkeypatch.setattr(f"ralph.cli.main.{fn_name}", _raise_bootstrap)
+def _spy_sentry_boundary(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, object]]:
+    """Record every Sentry tag the CLI publishes and keep Sentry offline."""
+    tags: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(sentry_sdk, "init", lambda **_kwargs: None)
+    monkeypatch.setattr(sentry_sdk, "set_user", lambda _user: None)
+    monkeypatch.setattr(sentry_sdk, "set_tag", lambda key, value: tags.append((key, value)))
+    monkeypatch.setattr(sentry_sdk, "set_context", lambda _key, _data: None)
+    monkeypatch.setattr(sentry_sdk, "capture_message", lambda *_a, **_kw: None)
+    monkeypatch.setattr(sentry_sdk, "start_session", lambda **_kw: None)
+    monkeypatch.setattr(sentry_sdk, "start_transaction", lambda **_kw: None)
+    monkeypatch.setattr(sentry_sdk, "add_breadcrumb", lambda **_kw: None)
+    monkeypatch.setattr(atexit, "register", lambda func, *_a, **_kw: func)
+    return tags
+
+
+def _isolate_telemetry_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Keep the anonymous telemetry identity file inside the test tree."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
 
 
 def test_cleanup_subcommand_does_not_trigger_pipeline_bootstrap(
@@ -101,27 +103,41 @@ def test_star_subcommand_does_not_trigger_pipeline_bootstrap(
     assert result.exit_code == 0, result.output
 
 
-def test_subcommand_records_telemetry_via_early_path(
-    monkeypatch: pytest.MonkeyPatch,
+def test_subcommand_does_not_initialize_telemetry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The early subcommand-return path must still forward the telemetry tag."""
-    captured: list[str] = []
+    """The early subcommand-return path never reaches the telemetry bootstrap.
 
-    def _capture(name: str) -> object:
-        captured.append(name)
-        return None
+    The Sentry client is only initialized by the pipeline bootstrap, so a
+    single ``sentry_sdk.init`` call on the subcommand path would mean the
+    heavy bootstrap ran.
+    """
+    _isolate_telemetry_home(monkeypatch, tmp_path)
+    init_calls: list[dict[str, object]] = []
+    _spy_sentry_boundary(monkeypatch)
+    monkeypatch.setattr(sentry_sdk, "init", lambda **kwargs: init_calls.append(kwargs))
+    _patch_bootstrap_to_raise(monkeypatch)
 
-    def _capture_disabled() -> bool:
-        return False
-
-    monkeypatch.setattr("ralph.telemetry._sentry.is_telemetry_disabled", _capture_disabled)
-    monkeypatch.setattr("ralph.telemetry._sentry.record_command_invocation", _capture)
-
-    # The public telemetry sink is the observable surface: the CLI's
-    # command-invocation chokepoint forwards the invoked subcommand name
-    # to ``record_command_invocation``, so the capture above pins the
-    # early-return path without reaching into a private CLI helper.
     result = _runner.invoke(app, ["star", "--no-browser"])
 
     assert result.exit_code == 0, result.output
-    assert captured == ["star"], captured
+    assert init_calls == [], "the subcommand path must not initialize the Sentry client"
+
+
+def test_subcommand_records_telemetry_via_early_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The early subcommand-return path must still forward the telemetry tag.
+
+    The Sentry boundary is the observable surface: the CLI's
+    command-invocation chokepoint forwards the invoked subcommand name to
+    the telemetry sink, which publishes it as the ``command`` tag.
+    """
+    _isolate_telemetry_home(monkeypatch, tmp_path)
+    tags = _spy_sentry_boundary(monkeypatch)
+    ralph_cli_main.init_telemetry()
+
+    result = _runner.invoke(app, ["star", "--no-browser"])
+
+    assert result.exit_code == 0, result.output
+    assert ("command", "star") in tags, f"the command tag was not published; got {tags!r}"

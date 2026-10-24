@@ -82,7 +82,7 @@ def _make_parallel_display(
     is_quiet: bool = False,
     tty_like: bool = True,
     width: int = 120,
-) -> tuple[ParallelDisplay, _TtyLikeStringIO | io.StringIO]:
+) -> tuple[ParallelDisplay, _TtyLikeStringIO | io.StringIO, Console]:
     """Build a ``ParallelDisplay`` with a tty-like or plain StringIO console.
 
     ``tty_like=True`` uses :class:`_TtyLikeStringIO` so the StatusBar
@@ -92,6 +92,10 @@ def _make_parallel_display(
     controls the Rich Console width (default 120 — the canonical
     external-monitor width used by the existing tests; the AC-01..AC-04
     test passes width=100 to cover a common laptop-monitor width).
+
+    The injected ``Console`` is returned so the test asserts on the
+    console IT created (the public Rich surface) instead of reaching
+    through ``ParallelDisplay`` into its private context holder.
     """
     buf = _TtyLikeStringIO() if tty_like else io.StringIO()
     console = Console(
@@ -101,7 +105,7 @@ def _make_parallel_display(
         color_system="standard",
     )
     ctx = make_display_context(console=console, env={})
-    return ParallelDisplay(ctx, is_quiet=is_quiet), buf
+    return ParallelDisplay(ctx, is_quiet=is_quiet), buf, console
 
 
 def test_status_bar_is_active_through_parallel_display_context_manager() -> None:
@@ -117,7 +121,7 @@ def test_status_bar_is_active_through_parallel_display_context_manager() -> None
     composed :class:`StatusBar` instance is reachable only via
     ``pd.status_bar`` (single-owner invariant).
     """
-    pd, _buf = _make_parallel_display()
+    pd, _buf, _console = _make_parallel_display()
     sb = pd.status_bar
     assert isinstance(sb, StatusBar)
     model = StatusBarModel(
@@ -154,9 +158,9 @@ def test_runtime_entry_point_renders_full_model_in_buffer() -> None:
     captured into Live's initial renderable) so the first renderable
     frame contains the model data deterministically.
     """
-    pd, buf = _make_parallel_display()
-    assert pd._ctx.console.is_terminal is True
-    assert pd._ctx.console.file.isatty() is True
+    pd, buf, console = _make_parallel_display()
+    assert console.is_terminal is True
+    assert console.file.isatty() is True
     model = StatusBarModel(
         workspace_root="/tmp/proj",
         phase_label="Development",
@@ -195,9 +199,9 @@ def test_runtime_entry_point_omits_iteration_when_not_applicable() -> None:
     on the model. The buffer proves the field is omitted (not rendered
     as ``--`` or similar placeholder).
     """
-    pd, buf = _make_parallel_display()
-    assert pd._ctx.console.is_terminal is True
-    assert pd._ctx.console.file.isatty() is True
+    pd, buf, console = _make_parallel_display()
+    assert console.is_terminal is True
+    assert console.file.isatty() is True
     model = StatusBarModel(
         workspace_root="/tmp/proj",
         phase_label="Commit",
@@ -261,12 +265,11 @@ def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end()
     Reuses the existing ``_TtyLikeStringIO`` fake-console pattern so
     the StatusBar real-TTY gate passes without a real pseudo-tty.
     """
-    pd_full, buf_full = _make_parallel_display(width=120)
-    assert pd_full._ctx.console.is_terminal is True
-    assert pd_full._ctx.console.file.isatty() is True
-    assert pd_full._ctx.console.width == 120, (
-        f"AC-01: console width MUST be 120 for this focused test; "
-        f"got {pd_full._ctx.console.width!r}"
+    pd_full, buf_full, console_full = _make_parallel_display(width=120)
+    assert console_full.is_terminal is True
+    assert console_full.file.isatty() is True
+    assert console_full.width == 120, (
+        f"AC-01: console width MUST be 120 for this focused test; got {console_full.width!r}"
     )
     sb = pd_full.status_bar
     full_model = StatusBarModel(
@@ -300,7 +303,7 @@ def test_status_bar_shows_workspace_phase_and_applicable_iterations_end_to_end()
         f"AC-04: Live region must surface the inner-analysis iteration 'iter 2/5'; got {full_out!r}"
     )
 
-    pd_none, buf_none = _make_parallel_display(width=100)
+    pd_none, buf_none, _console_none = _make_parallel_display(width=100)
     none_model = StatusBarModel(
         workspace_root="/tmp/ac01-workspace",
         phase_label="commit",
@@ -349,9 +352,9 @@ def test_quiet_mode_suppresses_status_bar_in_runtime_entry_point() -> None:
     StatusBar gated off. The captured buffer is empty so non-interactive
     and quiet runs stay clean.
     """
-    pd, buf = _make_parallel_display(is_quiet=True)
-    assert pd._ctx.console.is_terminal is True
-    assert pd._ctx.console.file.isatty() is True
+    pd, buf, console = _make_parallel_display(is_quiet=True)
+    assert console.is_terminal is True
+    assert console.file.isatty() is True
     sb = pd.status_bar
     model = StatusBarModel(
         workspace_root="/tmp/proj",
@@ -381,9 +384,9 @@ def test_non_tty_console_suppresses_status_bar_in_runtime_entry_point() -> None:
     force_terminal is set (the same pattern real production code uses
     on CI / redirected output / pipe output).
     """
-    pd, buf = _make_parallel_display(tty_like=False)
-    assert pd._ctx.console.is_terminal is True, "force_terminal implies Rich's is_terminal=True"
-    assert pd._ctx.console.file.isatty() is False, (
+    pd, buf, console = _make_parallel_display(tty_like=False)
+    assert console.is_terminal is True, "force_terminal implies Rich's is_terminal=True"
+    assert console.file.isatty() is False, (
         "Plain StringIO is not a TTY (the isatty() conjunct gate check)."
     )
     sb = pd.status_bar
@@ -405,9 +408,9 @@ def test_non_tty_console_suppresses_status_bar_in_runtime_entry_point() -> None:
 
 def test_runtime_entry_point_regression_stop_preserves_prior_transcript_and_banner() -> None:
     """S-1: stopping the live footer keeps earlier CLI output readable."""
-    pd, buf = _make_parallel_display()
+    pd, buf, console = _make_parallel_display()
     banner = "ralph 1.2.3 — welcome"
-    pd._ctx.console.print(banner)
+    console.print(banner)
     before_stop = buf.getvalue()
     model = StatusBarModel(
         workspace_root="/tmp/commit-workspace",
@@ -438,7 +441,7 @@ def test_runtime_entry_point_renders_evidence_diagnosis_from_retained_recovery()
     rebase = RebaseState(recovery_record_retained=True)
     assert rebase.operation_display_state == "evidence_diagnosis"
 
-    pd, buf = _make_parallel_display(width=120)
+    pd, buf, _console = _make_parallel_display(width=120)
     model = StatusBarModel(
         workspace_root="/tmp/recovery-workspace",
         phase_label="Recovery",

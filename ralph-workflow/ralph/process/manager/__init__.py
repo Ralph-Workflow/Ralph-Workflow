@@ -35,8 +35,14 @@ from ralph.process.manager._liveness_assessor import (
     step_with_assessment,
     tree_active,
 )
+from ralph.process.manager._liveness_sampler import (
+    _LivenessProc as LivenessProc,
+)
 from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._managed_process import ManagedProcess
+from ralph.process.manager._managed_process_output_limit_exceeded_error import (
+    ManagedProcessOutputLimitExceededError,
+)
 from ralph.process.manager._managed_pty_process import ManagedPtyProcess
 from ralph.process.manager._process_event import ProcessEvent
 from ralph.process.manager._process_liveness import LivenessResult, verify_process_liveness
@@ -47,6 +53,18 @@ from ralph.process.manager._process_manager_types import (
     _PtyProcessLike,
     _set_defaults,
     _SyncProcessLike,
+)
+from ralph.process.manager._process_manager_types import (
+    _AsyncProcessLike as AsyncProcessLike,
+)
+from ralph.process.manager._process_manager_types import (
+    _PsutilModuleLike as PsutilModuleLike,
+)
+from ralph.process.manager._process_manager_types import (
+    _SyncProcessFactory as SyncProcessFactory,
+)
+from ralph.process.manager._process_manager_types import (
+    _SyncProcessLike as SyncProcessLike,
 )
 from ralph.process.manager._process_record import ProcessRecord
 from ralph.process.manager._process_status import ProcessStatus
@@ -330,13 +348,16 @@ _set_defaults(
 )
 
 __all__ = [
+    "AsyncProcessLike",
     "DeadlineTimeoutExpired",
     "LivenessConfig",
+    "LivenessProc",
     "LivenessResult",
     "LivenessVerdict",
     "LivenessWindow",
     "ManagedAsyncProcess",
     "ManagedProcess",
+    "ManagedProcessOutputLimitExceededError",
     "ManagedPtyProcess",
     "ProcessEvent",
     "ProcessManager",
@@ -344,10 +365,13 @@ __all__ = [
     "ProcessRecord",
     "ProcessStatus",
     "ProcessTerminationError",
+    "PsutilModuleLike",
     "PtySpawnOptions",
     "SpawnOptions",
     "StallIntegrator",
     "SuspicionClock",
+    "SyncProcessFactory",
+    "SyncProcessLike",
     "VerdictKind",
     "_pm_state",
     "assess",

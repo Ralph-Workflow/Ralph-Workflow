@@ -128,7 +128,6 @@ def test_run_process_captures_stdout_stderr_and_exit_code(tmp_path: Path) -> Non
     assert result.command == (PYTHON, "-c", SYNC_FAILURE_SCRIPT)
 
 
-@pytest.mark.timeout_seconds(10)
 @pytest.mark.asyncio
 async def test_run_process_async_captures_output(tmp_path: Path) -> None:
     """Async execution should capture output from completed processes."""

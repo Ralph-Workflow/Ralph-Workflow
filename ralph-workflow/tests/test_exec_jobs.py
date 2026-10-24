@@ -6,7 +6,6 @@ sleeps, zero real subprocesses, fully typed with no type: ignore markers.
 
 from __future__ import annotations
 
-import contextlib
 import itertools
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -14,7 +13,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
 
-from ralph.mcp.tools._exec_jobs import (
+from ralph.mcp.tools import (
     ExecJobError,
     ExecJobRegistry,
     JobResult,
@@ -22,6 +21,7 @@ from ralph.mcp.tools._exec_jobs import (
     ProgressSubscription,
 )
 from ralph.process.manager import (
+    LivenessConfig,
     ManagedAsyncProcess,
     ManagedProcess,
     ManagedPtyProcess,
@@ -29,10 +29,11 @@ from ralph.process.manager import (
     ProcessManagerPolicy,
     SpawnOptions,
 )
-from ralph.process.manager._liveness_assessor import LivenessConfig
-from ralph.testing._fake_popen import FakePopen
-from ralph.testing._fake_psutil import FakePsutil
-from ralph.testing._process_state import ProcessState
+from ralph.testing.fake_process import (
+    FakePopen,
+    FakePsutil,
+    ProcessState,
+)
 from ralph.timeout_defaults import (
     EXEC_JOB_ABANDON_S,
     EXEC_JOB_RESULT_FIFO,
@@ -40,12 +41,28 @@ from ralph.timeout_defaults import (
 )
 
 if TYPE_CHECKING:
-    from ralph.process.manager._liveness_sampler import LivenessProc
-    from ralph.process.manager._process_manager_types import (
-        _PsutilModuleLike,
-        _SyncProcessFactory,
-        _SyncProcessLike,
+    # Public type aliases of the process-manager protocols (exported from
+    # ``ralph.process.manager``) -- annotation-only, no runtime coupling.
+    from ralph.process.manager import (
+        LivenessProc,
+        PsutilModuleLike,
+        SyncProcessFactory,
+        SyncProcessLike,
     )
+
+
+class _ControllableFakePopen(FakePopen):
+    """``FakePopen`` double with a public seam to finish the fake process.
+
+    The shipped ``FakePopen`` snapshots its state at construction time and
+    exposes no public exit seam, so a lifecycle case that must observe the
+    process exiting *after* the job started needs a double that can report an
+    exit code later on.
+    """
+
+    def finish(self, returncode: int) -> None:
+        """Mark the fake process as exited with ``returncode``."""
+        self._returncode = returncode
 
 
 class _FakeClock:
@@ -168,8 +185,8 @@ class _TrackingProcessManager(ProcessManager):
     def __init__(
         self,
         policy: ProcessManagerPolicy | None = None,
-        sync_process_factory: _SyncProcessFactory | None = None,
-        psutil: _PsutilModuleLike | None = None,
+        sync_process_factory: SyncProcessFactory | None = None,
+        psutil: PsutilModuleLike | None = None,
     ) -> None:
         super().__init__(policy=policy, sync_process_factory=sync_process_factory, psutil=psutil)
         self.orphans_cleaned: list[int] = []
@@ -193,16 +210,16 @@ class _TestEnv:
 
     __test__ = False
 
-    def __init__(self) -> None:
+    def __init__(self, liveness_config: LivenessConfig | None = None) -> None:
         self.clock = FakeClock(1000.0)
         self.pids = itertools.count(100)
-        self.procs: dict[int, FakePopen] = {}
+        self.procs: dict[int, _ControllableFakePopen] = {}
         self.sampler_procs: dict[int, FakeSamplerProc] = {}
         self.psutil_module = FakePsutilModule(self.sampler_procs)
 
-        def sync_factory(command: Sequence[str], opts: SpawnOptions) -> _SyncProcessLike:
+        def sync_factory(command: Sequence[str], opts: SpawnOptions) -> SyncProcessLike:
             pid = next(self.pids)
-            p = FakePopen(pid=pid, state=ProcessState(returncode=None))
+            p = _ControllableFakePopen(pid=pid, state=ProcessState(returncode=None))
             self.procs[pid] = p
             self.sampler_procs[pid] = FakeSamplerProc(pid=pid)
             return p
@@ -216,7 +233,7 @@ class _TestEnv:
         self.registry = ExecJobRegistry(
             process_manager=self.pm,
             clock=self.clock,
-            liveness_config=_make_test_config(),
+            liveness_config=liveness_config if liveness_config is not None else _make_test_config(),
             psutil_module=self.psutil_module,
             auto_register_runtime_hooks=False,
             background_sampler=False,
@@ -233,7 +250,7 @@ def test_job_finish_in_budget() -> None:
     job_id = env.registry.start(["echo", "hello"], capability="ProcessExecBounded")
 
     active_proc = next(iter(env.procs.values()))
-    active_proc._returncode = 0
+    active_proc.finish(0)
 
     env.registry.step_job(job_id)
     result = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
@@ -258,7 +275,7 @@ def test_job_snapshot_then_final() -> None:
 
     # Finish process
     active_proc = next(iter(env.procs.values()))
-    active_proc._returncode = 0
+    active_proc.finish(0)
     env.registry.step_job(job_id)
 
     # Next wait returns final JobResult
@@ -279,7 +296,7 @@ def test_job_cancel() -> None:
     assert result.job_id == job_id
     assert result.cancelled
     assert result.kill_cause is None
-    assert active_proc._terminated
+    assert active_proc.pid in env.pm.orphans_cleaned
 
 
 def test_job_abandonment() -> None:
@@ -294,11 +311,10 @@ def test_job_abandonment() -> None:
     result = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
     assert isinstance(result, JobResult)
     assert result.kill_cause == "abandoned"
-    assert active_proc._terminated
+    assert active_proc.pid in env.pm.orphans_cleaned
 
 
 def test_job_stalled() -> None:
-    env = _TestEnv()
     # Configure fast output aging so stall integrator accumulates pressure
     fast_config = LivenessConfig(
         output_recent_min_s=1.0,
@@ -315,7 +331,7 @@ def test_job_stalled() -> None:
         stall_theta=0.5,
         evidence_window_s=5.0,
     )
-    env.registry._liveness_config = fast_config
+    env = _TestEnv(liveness_config=fast_config)
 
     # 5s stall window
     job_id = env.registry.start(["idle_command"], timeout_ms=5_000, capability="ProcessExecBounded")
@@ -330,7 +346,7 @@ def test_job_stalled() -> None:
     result = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
     assert isinstance(result, JobResult)
     assert result.kill_cause == "stalled"
-    assert active_proc._terminated
+    assert active_proc.pid in env.pm.orphans_cleaned
 
 
 def test_job_no_progress() -> None:
@@ -349,7 +365,7 @@ def test_job_no_progress() -> None:
     result = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
     assert isinstance(result, JobResult)
     assert result.kill_cause == "no_progress"
-    assert active_proc._terminated
+    assert active_proc.pid in env.pm.orphans_cleaned
 
 
 def test_job_shutdown_all() -> None:
@@ -433,7 +449,7 @@ def test_finished_results_fifo_cap() -> None:
     for i in range(EXEC_JOB_RESULT_FIFO + 1):
         jid = env.registry.start([f"cmd_{i}"], capability="ProcessExecBounded")
         proc = list(env.procs.values())[-1]
-        proc._returncode = 0
+        proc.finish(0)
         env.registry.step_job(jid)
         jobs.append(jid)
 
@@ -488,7 +504,7 @@ def test_progress_subscription_lifecycle() -> None:
 
     # Finish job -> subscriptions torn down
     active_proc = next(iter(env.procs.values()))
-    active_proc._returncode = 0
+    active_proc.finish(0)
     env.registry.step_job(job_id)
 
     # Subsequent steps do NOT dispatch frames to torn-down sinks
@@ -510,7 +526,7 @@ def test_trace_1_root_exit_with_orphaned_child() -> None:
     root_proc = next(iter(env.procs.values()))
 
     # Root process exits with 0
-    root_proc._returncode = 0
+    root_proc.finish(0)
 
     # Step job detects root exit immediately
     env.registry.step_job(job_id)
@@ -528,19 +544,17 @@ def test_trace_2_hard_cap_at_ceiling() -> None:
     env = _TestEnv()
     job_id = env.registry.start(["long_build"], capability="ProcessExecBounded")
     root_proc = next(iter(env.procs.values()))
-    active_job = env.registry._running_jobs[job_id]
-
     # Advance clock to 3601s (> 3600s EXEC_JOB_CEILING_S) with active output
     for _ in range(121):
         env.clock.advance(30.0)
-        active_job.last_output_at = env.clock()
+        env.registry.note_output(job_id, capability="ProcessExecBounded")
         env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
         env.registry.step_job(job_id, dt=30.0)
 
     result = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
     assert isinstance(result, JobResult)
     assert result.kill_cause == "hard_cap"
-    assert root_proc._terminated
+    assert root_proc.pid in env.pm.orphans_cleaned
 
 
 # ---------------------------------------------------------------------------
@@ -607,8 +621,6 @@ def test_randomized_hard_cap_terminates_healthily_within_budget_at_real_registry
         )
         root_proc = next(iter(env.procs.values()))
         sampler_proc = env.sampler_procs[root_proc.pid]
-        active_job = env.registry._running_jobs[job_id]
-
         mid_snapshot: JobSnapshot | None = None
         killed_at_step = 0
 
@@ -619,14 +631,14 @@ def test_randomized_hard_cap_terminates_healthily_within_budget_at_real_registry
             sampler_proc.user_cpu += 0.5 * sample_interval_s
             sampler_proc.read_bytes += int(128 * 1024 * sample_interval_s)
             sampler_proc.voluntary_ctx += int(20 * sample_interval_s)
-            active_job.last_output_at = env.clock()
+            env.registry.note_output(job_id, capability="ProcessExecBounded")
             # ``wait`` refreshes ``last_wait_time`` so the abandonment branch
             # cannot fire — this is the real client's poll cadence.
             pending = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
             if step_idx == precondition_step and isinstance(pending, JobSnapshot):
                 mid_snapshot = pending
             env.registry.step_job(job_id, dt=sample_interval_s)
-            if job_id not in env.registry._running_jobs:
+            if not env.registry.is_running(job_id):
                 killed_at_step = step_idx + 1
                 break
 
@@ -676,8 +688,14 @@ def test_randomized_hard_cap_terminates_healthily_within_budget_at_real_registry
         assert mid_verdict.pressure == 0.0, "; ".join(case_log)
 
         # CLEANUP EVIDENCE (root-only scope — NOT descendant tree reaping).
-        assert root_proc._terminated is True, "; ".join(case_log)
         assert root_proc.pid in env.pm.orphans_cleaned, "; ".join(case_log)
+        # PUBLIC registry proof that the hard-capped job left the running
+        # set and the registry published its finished result -- the public
+        # stand-in for "the registry holds no running job".
+        assert env.registry.is_running(job_id) is False, "; ".join(case_log)
+        finished = env.registry.last_finished_result()
+        assert finished is not None, "; ".join(case_log)
+        assert finished.job_id == job_id, "; ".join(case_log)
 
 
 def test_trace_3_three_hour_e2e_completing_via_max_runtime() -> None:
@@ -690,12 +708,10 @@ def test_trace_3_three_hour_e2e_completing_via_max_runtime() -> None:
         capability="ProcessExecBounded",
     )
     root_proc = next(iter(env.procs.values()))
-    active_job = env.registry._running_jobs[job_id]
-
     # Advance clock to 7200s (2 hours) with active output — must NOT be killed by default 1h ceiling!
     for _ in range(240):
         env.clock.advance(30.0)
-        active_job.last_output_at = env.clock()
+        env.registry.note_output(job_id, capability="ProcessExecBounded")
         env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
         env.registry.step_job(job_id, dt=30.0)
 
@@ -707,11 +723,11 @@ def test_trace_3_three_hour_e2e_completing_via_max_runtime() -> None:
     # Advance to 3.0 hours (10,800s = additional 3600s) and finish
     for _ in range(120):
         env.clock.advance(30.0)
-        active_job.last_output_at = env.clock()
+        env.registry.note_output(job_id, capability="ProcessExecBounded")
         env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
         env.registry.step_job(job_id, dt=30.0)
 
-    root_proc._returncode = 0
+    root_proc.finish(0)
     env.registry.step_job(job_id, dt=1.0)
 
     final = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
@@ -733,7 +749,7 @@ def test_trace_4_disconnected_request_scenario() -> None:
     # Client "disconnects" / abandons HTTP request.
     # Job advances in the background, finishes naturally.
     env.clock.advance(30.0)
-    root_proc._returncode = 0
+    root_proc.finish(0)
     env.registry.step_job(job_id, dt=30.0)
 
     # Later, client reconnects and calls wait with the job_id
@@ -776,20 +792,17 @@ def test_default_idle_kills_at_90s() -> None:
     drained pressure for the first ``output_recent_max_s`` seconds).
     """
     from ralph import timeout_defaults as _td
-    from ralph.process.manager._liveness_assessor import (
-        StallIntegrator,
-        default_liveness_config,
-    )
+    from ralph.process.manager import default_liveness_config
 
     cfg = default_liveness_config()
     clock = FakeClock(1000.0)
     pids = itertools.count(100)
-    procs: dict[int, FakePopen] = {}
+    procs: dict[int, _ControllableFakePopen] = {}
     sampler_procs: dict[int, FakeSamplerProc] = {}
 
-    def sync_factory(command: Sequence[str], opts: SpawnOptions) -> _SyncProcessLike:
+    def sync_factory(command: Sequence[str], opts: SpawnOptions) -> SyncProcessLike:
         pid = next(pids)
-        p = FakePopen(pid=pid, state=ProcessState(returncode=None))
+        p = _ControllableFakePopen(pid=pid, state=ProcessState(returncode=None))
         procs[pid] = p
         sampler_procs[pid] = FakeSamplerProc(pid=pid)
         return p
@@ -816,10 +829,8 @@ def test_default_idle_kills_at_90s() -> None:
     # ``EXEC_DEFAULT_TIMEOUT_MS`` and the default registered by
     # ``ralph.timeout_defaults``.
     job_id = registry.start(["idle"], timeout_ms=90_000, capability="ProcessExecBounded")
-    active = registry._running_jobs[job_id]
-    # Pin a fresh StallIntegrator so any prior history from the test
-    # scaffold cannot bleed into this regression.
-    active.stall_integrator = StallIntegrator(theta=cfg.stall_theta)
+    # The registry is created fresh in this test, so the job owns a fresh
+    # stall integrator and no prior history can bleed into the regression.
 
     kill_at: float | None = None
     dt = _td.EXEC_LIVENESS_SAMPLE_INTERVAL_S  # 2 s
@@ -828,8 +839,10 @@ def test_default_idle_kills_at_90s() -> None:
         clock.advance(dt)
         registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
         registry.step_job(job_id, dt=dt)
-        if registry._running_jobs.get(job_id) is None or not active.running:
-            kill_at = registry._finished_results[-1].elapsed_s
+        if not registry.is_running(job_id):
+            finished = registry.last_finished_result()
+            assert finished is not None
+            kill_at = finished.elapsed_s
             break
 
     assert kill_at is not None, "idle job did not terminate within 100 s"
@@ -840,7 +853,8 @@ def test_default_idle_kills_at_90s() -> None:
         f"idle kill fired at {kill_at}s, expected 90s ± 1 sample interval "
         f"(88 s..92 s); the EV-002 bug returned 138 s"
     )
-    finished = registry._finished_results[-1]
+    finished = registry.last_finished_result()
+    assert finished is not None
     assert finished.kill_cause == "stalled"
 
 
@@ -889,10 +903,7 @@ def test_session_end_via_registered_shutdown_hook_records_session_end_cause() ->
       * the registry's ``_running_jobs`` dict is empty afterwards — no job
         is waitable as "running" in the same registry anymore
     """
-    from ralph.mcp.server._runtime_hooks import (
-        _SHUTDOWN_HOOKS,
-        register_shutdown_hook,
-    )
+    from ralph.mcp.server.runtime import register_shutdown_hook
 
     env = _TestEnv()
 
@@ -900,34 +911,49 @@ def test_session_end_via_registered_shutdown_hook_records_session_end_cause() ->
     # Keeping a strong reference so we can remove it from the global hook
     # list at teardown (otherwise atexit's _run_shutdown_hooks fan-out fires
     # it on the wrong fake process manager at process exit).
+    hook_state = {"active": True}
+
     def session_end_hook() -> None:
-        env.registry.shutdown_all("session_end")
+        if hook_state["active"]:
+            env.registry.shutdown_all("session_end")
 
     register_shutdown_hook(session_end_hook)
 
     try:
         job_id = env.registry.start(["long_running"], capability="ProcessExecBounded")
         active_proc = next(iter(env.procs.values()))
-        assert active_proc._terminated is False
+        assert active_proc.pid not in env.pm.orphans_cleaned
 
         # Fire the hook — mirrors what the atexit-callback / SIGTERM signal
         # handler invoke at session / process end.
         session_end_hook()
 
         # 1. Process tree was terminated (observable via the FakePopen seam).
-        assert active_proc._terminated is True
+        assert active_proc.pid in env.pm.orphans_cleaned
         # 2. The kill_cause recorded on the JobResult is the session-end literal.
         result = env.registry.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
         assert isinstance(result, JobResult)
         assert result.kill_cause == "session_end"
         # 3. No active job remains waitable as "running" in this registry.
-        assert job_id not in env.registry._running_jobs
-        assert env.registry._running_jobs == {}
+        assert env.registry.is_running(job_id) is False
+        # The registry holds NO running job at all: the finished result is
+        # the only thing its PUBLIC surface still exposes for the job.
+        finished = env.registry.last_finished_result()
+        assert finished is not None, "the registry must publish the finished job"
+        assert finished.job_id == job_id
+        assert finished.kill_cause == "session_end"
     finally:
-        # Remove the hook we added so atexit-time _run_shutdown_hooks cannot
-        # fire it on the wrong fake process manager at process exit.
-        with contextlib.suppress(ValueError):
-            _SHUTDOWN_HOOKS.remove(session_end_hook)
+        # Neutralise the hook we added so the process-exit fan-out cannot
+        # fire it on the wrong fake process manager at process exit. The
+        # hook stays in the process-global shutdown list (the public
+        # registration surface exposes no unregister), so prove it is
+        # INERT instead of leaking a live teardown into process exit.
+        hook_state["active"] = False
+        cleaned_before = list(env.pm.orphans_cleaned)
+        session_end_hook()
+        assert env.pm.orphans_cleaned == cleaned_before, (
+            "the registered shutdown hook must be inert once the test has finished"
+        )
 
 
 def test_restart_lost_fresh_registry_returns_nonretryable_lost_in_server_restart_error() -> None:
@@ -984,4 +1010,4 @@ def test_restart_lost_fresh_registry_returns_nonretryable_lost_in_server_restart
     snapshot = prev.registry.wait(prev_job_id, wait_ms=0, capability="ProcessExecBounded")
     assert isinstance(snapshot, JobSnapshot)
     assert snapshot.running is True
-    assert prev_proc._terminated is False
+    assert prev_proc.pid not in prev.pm.orphans_cleaned

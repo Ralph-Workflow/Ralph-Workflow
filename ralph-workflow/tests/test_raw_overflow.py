@@ -1,4 +1,30 @@
-"""Unit tests for the RawOverflowLog class."""
+"""Unit tests for the RawOverflowLog class.
+
+Testing-policy white-box exception (finalizer handle box):
+
+The cases marked ``# policy: white-box-exception`` below reach into the
+private symbols ``RawOverflowLog._handle_box``,
+``RawOverflowLog._get_raw_log``, ``SubprocessAgentExecutor._raw_logs`` /
+``_raw_overflow_root`` / ``_cwd`` and the display's ``_condensed_logs``
+registry.
+
+Quoted policy clause -- docs/ralph-workflow-policy/testing-policy.md,
+"Default requirements":
+  "White-box tests that reach into private internals are permitted only
+   when no observable surface can express the regression."
+
+Why no public observable expresses this regression: the regression is the
+CLOSE EVENT performed by the ``weakref.finalize`` callback AFTER the owner
+has been collected. The owner is gone by then, so the public ``is_open``
+read cannot be taken (it needs a live instance), and the buffered handle
+itself has no public accessor; the shared one-element box is the only place
+where the finalizer's effect stays observable after the collection. The
+executor case builds a bare ``SubprocessAgentExecutor`` (``__new__`` plus
+three private attributes) because the public constructor spawns a real
+subprocess, which no default-suite test may do, and the raw-log lookup has
+no public accessor; the condensed-log registry is a private per-display
+registry with no public getter.
+"""
 
 from __future__ import annotations
 
@@ -206,9 +232,7 @@ def test_size_bytes_uses_fast_path_after_first_write(tmp_path: Path) -> None:
     log = RawOverflowLog(tmp_path, "unit-1")
     log.append("line one")
     expected = len(b"line one\n")
-    assert expected == log._bytes_written
     assert log.size_bytes == expected
-    assert log.size_bytes == log._bytes_written
     log.close()
 
 
@@ -216,7 +240,7 @@ def test_size_bytes_returns_bytes_written_when_disabled(tmp_path: Path) -> None:
     log = RawOverflowLog(tmp_path, "unit-1")
     log.append("first line")
     log.disable()
-    assert log.size_bytes == log._bytes_written
+    assert log.size_bytes == len(b"first line\n")
 
 
 def test_size_bytes_authoritative_even_when_file_unlinked_after_write(
@@ -236,7 +260,6 @@ def test_size_bytes_authoritative_even_when_file_unlinked_after_write(
     # The in-memory counter is the authoritative liveness signal;
     # the watchdog must still see growth.
     assert log.size_bytes == expected
-    assert log.size_bytes == log._bytes_written
     log.close()
 
 
@@ -347,9 +370,13 @@ def test_executor_drop_unit_closes_raw_log(tmp_path: Path) -> None:
     """SubprocessAgentExecutor.drop_unit() must close the raw log and
     flush its buffered tail to disk (RFC-013 P1)."""
     executor = SubprocessAgentExecutor.__new__(SubprocessAgentExecutor)
+    # policy: white-box-exception
     executor._raw_logs = {}
+    # policy: white-box-exception
     executor._raw_overflow_root = tmp_path
+    # policy: white-box-exception
     executor._cwd = tmp_path
+    # policy: white-box-exception
     log = executor._get_raw_log("unit-x")
     log.append("pending line")
     executor.drop_unit("unit-x")
@@ -393,8 +420,7 @@ def test_weakref_finalize_closes_handle_on_gc(tmp_path: Path) -> None:
     log.flush()
     # The handle is now open and buffered. Confirm the buffered
     # writer is live (it must be, since ``append`` returned True).
-    assert log._fh is not None
-    assert not log._fh.closed
+    assert log.is_open is True
 
     # Capture a WEAK reference so we can read the post-finalize
     # state without keeping the instance alive ourselves.
@@ -417,7 +443,9 @@ def test_weakref_finalize_closes_handle_on_gc(tmp_path: Path) -> None:
     fresh = RawOverflowLog(tmp_path, "u1")
     try:
         assert fresh is not None
-        assert fresh._fh is None
+        # A fresh writer has written nothing and holds no open handle.
+        assert fresh.size_bytes == 0
+        assert fresh.is_open is False
     finally:
         fresh.close()
 
@@ -484,12 +512,10 @@ def test_close_all_raw_overflow_logs_closes_all_handles(tmp_path: Path) -> None:
 
     # A subsequent append on the now-disabled instance must be a
     # no-op (the close_all path also called ``disable()``).
-    log_a_fh = log_a._fh
-    log_b_fh = log_b._fh
-    assert log_a_fh is None or log_a_fh.closed, (
-        "close_all_raw_overflow_logs must close every buffered handle"
-    )
-    assert log_b_fh is None or log_b_fh.closed
+    # PUBLIC observation of the same contract: a closed (or released)
+    # buffered handle is exactly "the writer holds no open handle".
+    assert log_a.is_open is False, "close_all_raw_overflow_logs must close every buffered handle"
+    assert log_b.is_open is False
 
     log_a.close()
     log_b.close()
@@ -555,9 +581,10 @@ def test_long_thinking_emits_one_close_line_no_checkpoints_handle_closed(
     # release the strong references.
     # Condensed bodies are display-authored, so they land in the
     # ``.overflow.log`` sibling rather than the verbatim capture.
+    # policy: white-box-exception
     overflow = pd._condensed_logs.get(unit_id)
     assert overflow is not None
-    assert overflow._fh is not None and not overflow._fh.closed, (
+    assert overflow.is_open is True, (
         "fixture must trigger the raw-overflow append path so the "
         "buffered handle is open at this point"
     )
@@ -568,7 +595,7 @@ def test_long_thinking_emits_one_close_line_no_checkpoints_handle_closed(
 
     pd.drop_unit(unit_id)
 
-    assert overflow._fh is None
+    assert overflow.is_open is False
 
 
 def test_cap_warning_is_emitted_once_per_file(tmp_path: Path) -> None:
@@ -612,6 +639,7 @@ def test_gc_actually_closes_the_buffered_handle(tmp_path: Path) -> None:
     """
     log = RawOverflowLog(tmp_path, "unit-finalize")
     log.append("payload")
+    # policy: white-box-exception
     handle_box = log._handle_box
     assert handle_box[0] is not None, "precondition: the handle is open"
     assert not handle_box[0].closed

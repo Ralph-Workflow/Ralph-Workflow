@@ -1,10 +1,5 @@
 <!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: testing-policy.md -->
-<!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
-project's policy. A remediation agent rewrites it with verified project
-facts (every RALPH-FACT and RALPH-COMMAND below), adapts the defaults to the
-project's established practice, and deletes this banner. Readiness stays
-blocked while this banner or any placeholder token remains. -->
 
 # Testing Policy
 
@@ -64,21 +59,19 @@ The `RALPH-FACT:` lines below record verified project facts. Agents rely
 on them when enforcing this policy and MUST keep them current as the
 project evolves.
 
-<!-- REPLACE-ME: record one verified, machine-checkable value per fact
-below (commands, paths, names, versions — not adjectives or aspirations).
-If the project is too young for a fact to be settled, record the best
-current answer plus the condition that will settle it, e.g.
-"none yet (assumed <date>; revisit when <trigger>)" — a future agent must
-be able to tell a settled fact from a provisional one at a glance. Then
-delete this comment. -->
+RALPH-FACT: test_command: `make test`, run from `ralph-workflow/` (the Makefile `test` target executes `uv run --locked --project . python -m ralph.test_suites`, which selects the default lane with the mark expression `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` declared in `ralph/test_suites.py`). The suite-selection helpers `make test-unit`, `make test-integration`, and `make test-fast` are focused developer profiles over the same runner; `make test` is the default lane.
 
-RALPH-FACT: test_command: PROJECT-FACT-UNRESOLVED
-RALPH-FACT: test_command_prerequisites: PROJECT-FACT-UNRESOLVED
-RALPH-FACT: primary_test_framework: PROJECT-FACT-UNRESOLVED
-RALPH-FACT: secondary_test_frameworks: PROJECT-FACT-UNRESOLVED
-RALPH-FACT: test_isolation_strategy: PROJECT-FACT-UNRESOLVED
-RALPH-FACT: flake_policy: PROJECT-FACT-UNRESOLVED
-RALPH-FACT: regression_test_convention: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: test_command_prerequisites: `uv` >= 0.7.0 (the Makefile `uv-preflight` target is the project's declared minimum and fails closed with the install URL below it) and the project-local `.venv` (the Makefile exports `VIRTUAL_ENV := $(abspath .venv)` and defines `RUN_PYTHON = uv run --locked --project . python`, so the locked dependency set in `uv.lock` is resolved from the checkout without a separate install step). No package manager bootstrap is required beyond a `uv` binary on `PATH`.
+
+RALPH-FACT: primary_test_framework: pytest — `pytest>=8.0` in the `ralph-workflow/pyproject.toml` dev dependencies and `minversion = 8.0` in `ralph-workflow/pytest.ini` — with pytest-xdist (`pytest-xdist>=3.6`) supplying the parallel workers; `ralph/test_suites.py` shards the default lane across up to `_MAX_PYTEST_WORKERS = 8` concurrent workers.
+
+RALPH-FACT: secondary_test_frameworks: none beyond pytest plugins. `pytest-asyncio` (>= 0.23, `pytest.ini` `asyncio_mode = auto`), `pytest-cov` (>= 4.0, used only by the `test-cov` coverage target), and `hypothesis` (>= 6.100) are pytest plugins rather than separate test frameworks. `vulture` (>= 2.16) is a standalone dead-code audit run by `make dead-code`; it is not a test framework and is not part of `make test`.
+
+RALPH-FACT: test_isolation_strategy: injected fakes — `Clock` (`ralph/agents/clock.py`) and `FakeClock` (`ralph/agents/timeout_clock.py`) for time, `MemoryWorkspace` (`ralph/workspace/memory.py`), `FsWorkspace` (`ralph/workspace/fs.py`), and pytest's `tmp_path` for the filesystem, and `MockProcessExecutor` for subprocesses. `ralph/testing/audit_test_policy.py` fails the gate on real `time.sleep()` with non-zero arguments, real file `open()`, real subprocess calls, and real socket/`urllib`/`requests`/`httpx` calls in any test that is not marked `subprocess_e2e`. Real subprocesses and sockets are therefore confined to the `subprocess_e2e` marker and run via `make test-subprocess-e2e`, with the single sanctioned exception of the registered real-git auto-integration files (`ralph/test_suites.py:REQUIRED_AUTO_INTEGRATE_E2E_FILES`), which `ralph-workflow/tests/conftest.py` re-marks `required_auto_integrate_e2e` at collection time so the default lane keeps one external Git proof. `ralph-workflow/tests/test_install_make_smoke.py` is the deliberate `make verify` exception: it drives the public `make install` transaction with an isolated HOME/PATH, a fail-closed fake `uv`, and no network.
+
+RALPH-FACT: flake_policy: every observed failure is owned and fixed — there is no rerun-and-hope, no `@pytest.mark.skip` / `@pytest.mark.xfail` masking, and no flake quarantine. Nondeterminism is repaired at the source (inject the clock, replace real I/O with fakes, refactor the seam behind an interface) rather than absorbed. The combined test budget is immutable: `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS = 60.0` is pinned by an import-time epsilon check (`abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9`) that raises `RuntimeError` under `python -O`, so a slow or flaky test is a design defect to fix, never a budget to raise.
+
+RALPH-FACT: regression_test_convention: the regression test name encodes the regression, following the project's `<area>_regression_<bug_description>` snake_case convention — e.g. `test_development_result_regression_every_terminal_result_consumes_one_analysis_cycle` (`tests/test_partial_execution_result_routing.py`) and `test_opencode_transport_regression_stale_ralph_entry_is_dropped_not_rejected` (`tests/mcp/test_opencode_transport.py`). The name must be parseable by a future reader without opening the diff.
 
 ## AI execution instructions
 
@@ -109,21 +102,21 @@ An agent MUST NOT:
 
 Run every gate below before claiming a change complies with this policy.
 
-<!-- REPLACE-ME: set the project's real gate command. The first token must
-be an approved gate tool (wrap anything else in `make`, `uv run`, or
-`npx`). If the project has no such gate yet, create the smallest real one
-(a make target running the actual check) rather than declaring a hollow
-command; only a gate that truly cannot exist may be recorded as
-inapplicable with a reason and the condition that would create it. Then
-delete this comment. -->
-
-RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-COMMAND: make verify
 
 The expected successful result is a deterministic test suite that
 finishes within the project's documented budget. On failure, report the
 failing test names and the failure category (assertion failure,
 collection error, timeout, environmental). Never ignore or skip a
 failure to obtain green.
+
+`make verify` is the authoritative entry point and runs `make test`
+(the default lane) plus the aggregate `make test-verification-smoke`
+step; both are charged against the immutable 60-second combined budget
+enforced by `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`. An agent that
+needs only the default lane may run `make test` from `ralph-workflow/`
+for fast feedback, but only `make verify` proves that a change complies
+with this policy.
 
 ## Exceptions
 
@@ -176,8 +169,8 @@ Two guardrails bound every amendment:
   NOT such a conflict: keep the stronger requirement unless a
   documented exception narrows it.
 * An amendment MUST NOT subvert the INTENT of this policy. Weakening,
-  disabling, or deleting a requirement so that a failing change passes is
-  forbidden; evolution clarifies and extends, it does not water down.
+  disabling, or deleting a requirement so that a failing change passes
+  is forbidden; evolution clarifies and extends, it does not water down.
 
 ## Ralph markers
 

@@ -1,10 +1,5 @@
 <!-- ralph-policy-schema: v2 -->
 <!-- ralph-policy-id: verification-policy.md -->
-<!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
-project's policy. A remediation agent rewrites it with verified project
-facts (every RALPH-FACT and RALPH-COMMAND below), adapts the defaults to the
-project's established practice, and deletes this banner. Readiness stays
-blocked while this banner or any placeholder token remains. -->
 
 # Verification Policy
 
@@ -34,20 +29,17 @@ The `RALPH-FACT:` lines below record verified project facts. Agents rely
 on them when enforcing this policy and MUST keep them current as the
 project evolves.
 
-<!-- REPLACE-ME: record one verified, machine-checkable value per fact
-below (commands, paths, names, versions — not adjectives or aspirations).
-If the project is too young for a fact to be settled, record the best
-current answer plus the condition that will settle it, e.g.
-"none yet (assumed <date>; revisit when <trigger>)" — a future agent must
-be able to tell a settled fact from a provisional one at a glance. Then
-delete this comment. -->
+RALPH-FACT: authoritative_verify_command: `make verify`, run from `ralph-workflow/`. The Makefile target is `verify: formula-check verify-drift docs` followed by `uv run python -m ralph.verify`, which executes the ordered step list in `ralph/verify.py:_VERIFY_STEPS` and returns the first non-zero exit code. The entry point is also the completion gate in CI: `.github/workflows/verify.yml` runs `cd ralph-workflow && make verify` on every push and pull_request event.
 
-RALPH-FACT: authoritative_verify_command: PROJECT-FACT-UNRESOLVED
-RALPH-FACT: gate_prerequisites: PROJECT-FACT-UNRESOLVED
-RALPH-FACT: gate_order: PROJECT-FACT-UNRESOLVED
-RALPH-FACT: bypass_detection_lint_audit: PROJECT-FACT-UNRESOLVED
-RALPH-FACT: bypass_detection_typecheck_audit: PROJECT-FACT-UNRESOLVED
-RALPH-FACT: ci_integration_command: PROJECT-FACT-UNRESOLVED
+RALPH-FACT: gate_prerequisites: `make verify` runs three Make prerequisites before the Python verify chain: `make formula-check` (Homebrew formula syntax validation via `scripts/packaging_operations.sh`), `make verify-drift` (the bounded, fail-closed policy-drift script `scripts/verify_drift.sh`), and `make docs` (the Sphinx HTML build `uv run --extra docs sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going`, so any Sphinx warning fails the gate). `make docs` is a Make prerequisite and NOT a `_VERIFY_STEPS` entry, so it stays outside the combined test budget. The `docs` step requires the `docs` extra; the Python verify chain resolves its toolchain through `uv run --locked --project .` against `uv.lock`, and the CI runner installs `uv` with `pip install --upgrade uv` and provisions Ruby 3.3.6 for the formula gate.
+
+RALPH-FACT: gate_order: the Make prerequisites run first — `make formula-check`, `make verify-drift`, `make docs` — and then `uv run python -m ralph.verify` runs `ralph/verify.py:_VERIFY_STEPS` in tuple order: `ruff check ralph/ tests/` → `python -m mypy ralph/` → the budget-tracked `make test` → `ruff format --check ralph/ tests/` → the lint-bypass audit → the typecheck-bypass audit → the test-policy audit → the MCP-timeout audit → the DI-seam audit → the activity-aware-watchdog audit → the watchdog-drift audit → the parallelization-dormant audit → the artifact-submission-canonical-path audit → the agent-registry-sync audit → the agent-module-state audit → the agent-internal-paths audit → the social-proof gate (`python3 ../scripts/verify_social_proof.py`) → the resource-lifecycle audit → the skill-auto-commit audit → the skill-mirror-freshness audit → the public-docstring audit → the terminal-escape-containment audit → the repo-structure audit → the fsevents-watch-consolidation audit → the log-sink-buffering audit → the filesystem write-consolidation audit → the filesystem read-consolidation audit → the filesystem polling/invocation-ownership audit → the regression-test-elimination audit → the template render-integrity audit → the fenced-artifact-example audit → the prompt single-sourcing audit → the cast-policy audit → the workspace-resource-inventory audit → the canonical-session-text audit → the kwargs-forwarding audit → the opts-key-drift audit → the budget-tracked aggregate `make test-verification-smoke` → `audit_mcp_agent_boundary`. The exact audit inventory and order live in `_VERIFY_STEPS`, so adding an audit there updates the authoritative topology without a duplicated list elsewhere. Each non-test step carries the `_VERIFY_STEP_TIMEOUT_SECONDS = 30.0` per-step cap; the two test-running steps (`make test` and `make test-verification-smoke`) are charged against the cumulative `_TOTAL_TEST_BUDGET_SECONDS = 60.0` tracker, which sums wall-clock across every budget-tracked step.
+
+RALPH-FACT: bypass_detection_lint_audit: `ralph.testing.audit_lint_bypass` — wired into `make verify` as the `lint bypass audit (audit_lint_bypass)` step of `ralph/verify.py:_VERIFY_STEPS`. It walks the project tree and reports `per-file-ignores`, `extend-per-file-ignores`, blanket `# noqa` without a specific ruff error code, and any suppression comment outside the documented allowlist. The acceptance bar is documented in `ralph-workflow/docs/ralph-workflow-policy/linting-policy.md`; violations fail verify.
+
+RALPH-FACT: bypass_detection_typecheck_audit: `ralph.testing.audit_typecheck_bypass` — wired into `make verify` as the `typecheck bypass audit (audit_typecheck_bypass)` step of `ralph/verify.py:_VERIFY_STEPS`. It walks the project tree and reports `ignore_missing_imports`, `follow_imports = silent`, `ignore_errors`, `disable_error_code`, blanket `# type: ignore` without a specific mypy error code, `# type: ignore` inside test files, and `disallow_untyped_defs = false`. The acceptance bar is documented in `ralph-workflow/docs/agents/type-ignore-policy.md`; violations fail verify.
+
+RALPH-FACT: ci_integration_command: `.github/workflows/verify.yml` runs `cd ralph-workflow && make verify` on every `push` and `pull_request` event on `ubuntu-latest` with Python 3.12, after the CLA check (`python -m ralph.contrib.cla`) and `pip install --upgrade uv`. `.woodpecker.yml` runs the same `cd ralph-workflow && make verify` gate on the Codeberg mirror, adding `apt-get install ruby` for the formula prerequisite. `.github/workflows/cla.yml` is a separate pull_request-only CLA check, and `.github/workflows/publish-python-package.yml` is a release-only workflow triggered by `ralph-workflow-v*` tags. The opt-in `make test-subprocess-e2e` and `make test-live-agy` suites are NOT part of `make verify` and carry their own per-suite budgets.
 
 ## AI execution instructions
 
@@ -72,18 +64,14 @@ An agent MUST NOT:
 
 Run every gate below before claiming a change complies with this policy.
 
-<!-- REPLACE-ME: set the project's real gate command. The first token must
-be an approved gate tool (wrap anything else in `make`, `uv run`, or
-`npx`). If the project has no such gate yet, create the smallest real one
-(a make target running the actual check) rather than declaring a hollow
-command; only a gate that truly cannot exist may be recorded as
-inapplicable with a reason and the condition that would create it. Then
-delete this comment. -->
-
-RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-COMMAND: make verify
 
 The expected successful result is exit 0 from the authoritative entry
 point. On failure, report the failing gate and the failure category.
+
+`make verify` must pass in full. A failure in any step is a blocker that
+the next agent to observe it owns fixing; "it was already failing" and
+"that gate is unrelated to my change" are not acceptable dispositions.
 
 ## Bypass detection
 
@@ -101,14 +89,12 @@ The bypass-detection command is declared as a `RALPH-COMMAND:` under
 this heading. The audit tooling is project-specific; the project's
 existing audit scripts MUST be wired into the verification gate.
 
-<!-- REPLACE-ME: set the real bypass-audit command (wire the project's
-lint/typecheck bypass checks into one gate; wrap it in `make` if needed).
-This gate always requires a RALPH-COMMAND line: if the selected tools
-cannot express bypass detection, create the smallest real audit instead
-(e.g. a make target that greps for new suppression comments and weakened
-config). Then delete this comment. -->
+RALPH-COMMAND: uv run python -m ralph.testing.audit_lint_bypass
 
-RALPH-COMMAND: PROJECT-FACT-UNRESOLVED
+RALPH-COMMAND: uv run python -m ralph.testing.audit_typecheck_bypass
+
+Both commands run inside `make verify` as dedicated `_VERIFY_STEPS`
+entries, so a bypass fails the authoritative entry point.
 
 The expected successful result is exit 0 (no bypass detected). On
 failure, report the affected file, line, and bypass category. Approved
@@ -213,8 +199,8 @@ Two guardrails bound every amendment:
   NOT such a conflict: keep the stronger requirement unless a
   documented exception narrows it.
 * An amendment MUST NOT subvert the INTENT of this policy. Weakening,
-  disabling, or deleting a requirement so that a failing change passes is
-  forbidden; evolution clarifies and extends, it does not water down.
+  disabling, or deleting a requirement so that a failing change passes
+  is forbidden; evolution clarifies and extends, it does not water down.
 
 ## Ralph markers
 

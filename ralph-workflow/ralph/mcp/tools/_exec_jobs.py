@@ -1,8 +1,7 @@
 """Exec job registry and runner for long-running MCP commands.
 
 Manages long-running exec jobs with fuzzy liveness monitoring, bounded
-resource consumption, request-scoped progress subscriptions, and child-owned
-shutdown seams.
+resource consumption, request-scoped progress subscriptions, and shutdown seams.
 """
 
 from __future__ import annotations
@@ -119,9 +118,7 @@ def _ensure_runtime_hooks() -> tuple[_HookRegistrar, _HookRegistrar]:
 class _PsutilLivenessProc:
     """Typed view of a ``psutil.Process`` satisfying ``_LivenessProc`` on every platform.
 
-    psutil provides no ``io_counters`` on macOS; there the call raises
-    ``AttributeError``, which the sampler already treats as missing I/O
-    evidence.
+    psutil has no ``io_counters`` on macOS; the sampler treats that as no I/O evidence.
     """
 
     def __init__(self, proc: psutil.Process) -> None:
@@ -140,8 +137,7 @@ class _PsutilLivenessProc:
     def io_counters(self) -> object:
         if sys.platform == "darwin":
             raise AttributeError("psutil does not provide io_counters on macOS")
-        else:
-            return self._proc.io_counters()
+        return self._proc.io_counters()
 
     def num_ctx_switches(self) -> object:
         return self._proc.num_ctx_switches()
@@ -186,9 +182,7 @@ class _JobResult:
     verdict: LivenessVerdict | None
     elapsed_s: float
     cancelled: bool = False
-    #: Effective runtime ceiling in ms (the clamped ``max_runtime_ms``, else
-    #: ``EXEC_JOB_CEILING_S``). Carried so a kill message can name the limit
-    #: that actually fired instead of an unrelated legacy constant.
+    #: Effective runtime ceiling in ms (clamped ``max_runtime_ms`` else ``EXEC_JOB_CEILING_S``).
     ceiling_ms: int | None = None
 
 
@@ -305,12 +299,7 @@ class _ActiveJob:
 
 
 def _merge_stream_buffers(head: bytearray, tail: bytearray, total_bytes: int) -> bytes:
-    """Join a job's head/tail output buffers into the payload shown to callers.
-
-    The truncation marker is emitted only when bytes were actually dropped,
-    and a stream that never filled its head buffer is rendered from the tail
-    alone.
-    """
+    """Join a job's head/tail output buffers into the payload shown to callers."""
     if len(tail) > 0 and total_bytes > len(head):
         return bytes(head) + b"\n... [truncated] ...\n" + bytes(tail)
     return bytes(head) if len(head) > 0 else bytes(tail)
@@ -359,6 +348,23 @@ class ExecJobRegistry:
             _register_shutdown, _register_owner_loss = _ensure_runtime_hooks()
             _register_shutdown(lambda: self.shutdown_all("session_end"))
             _register_owner_loss(lambda: self.shutdown_all("session_end"))
+
+    def is_running(self, job_id: str) -> bool:
+        """Return whether the job is still active in this registry."""
+        with self._lock:
+            return job_id in self._running_jobs
+
+    def note_output(self, job_id: str, *, capability: str) -> None:
+        """Record that the job produced output now (refreshes the stall window)."""
+        with self._lock:
+            job = self._lookup_job_locked(job_id, capability)
+            if not isinstance(job, JobResult):
+                job.last_output_at = self._clock()
+
+    def last_finished_result(self) -> JobResult | None:
+        """Return the most recently published finished result, if any."""
+        with self._lock:
+            return self._finished_results[-1] if self._finished_results else None
 
     def subscribe_progress(self, sub: ProgressSubscription) -> None:
         """Subscribe a request-scoped sink to progress updates."""

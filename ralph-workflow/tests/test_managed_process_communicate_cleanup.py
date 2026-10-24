@@ -14,20 +14,18 @@ import pytest
 from ralph.process.manager import (
     DeadlineTimeoutExpired,
     ManagedProcess,
+    ManagedProcessOutputLimitExceededError,
     ProcessManager,
     ProcessManagerPolicy,
+    ProcessStatus,
     SpawnOptions,
 )
-from ralph.process.manager._managed_process_output_limit_exceeded_error import (
-    ManagedProcessOutputLimitExceededError,
-)
-from ralph.process.manager._process_status import ProcessStatus
-from ralph.testing._process_state import ProcessState
-from ralph.testing._process_streams import ProcessStreams
 from ralph.testing.fake_process import (
     FakePopen,
     FakePsutil,
     FakePsutilProcess,
+    ProcessState,
+    ProcessStreams,
     make_sync_process_factory,
 )
 
@@ -67,9 +65,30 @@ class TreeProcess(FakePsutilProcess):
         )
         self._direct_children: Sequence[FakePsutilProcess] = list(direct_children or [])
         self._recursive_children: Sequence[FakePsutilProcess] = list(recursive_children or [])
+        # Public observation counters. The manager's contract with the OS is
+        # "stop this descendant", so the double records the *effective*
+        # outcome of each signal it received (a ``stubborn`` double refuses
+        # a graceful terminate) instead of the test reading the double's own
+        # private ``_terminated``/``_killed`` bookkeeping.
+        self.terminations = 0
+        self.kills = 0
 
     def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
         return list(self._recursive_children if recursive else self._direct_children)
+
+    def terminate(self) -> None:
+        super().terminate()
+        if self._terminated:
+            self.terminations += 1
+
+    def kill(self) -> None:
+        super().kill()
+        self.kills += 1
+
+    @property
+    def alive(self) -> bool:
+        """Whether the double still looks alive to a psutil-style observer."""
+        return self.is_running()
 
 
 def _make_handle(
@@ -122,11 +141,11 @@ def test_cleans_snapshot_survivors_and_late_spawns() -> None:
     assert stdout == b"out"
     assert stderr == b"err"
     assert handle.record.status == ProcessStatus.EXITED
-    assert live_child._killed is True
-    assert live_child._terminated is False
-    assert live_grandchild._killed is True
-    assert late_spawn._killed is True
-    assert second_level._killed is True
+    assert live_child.kills == 1
+    assert live_child.terminations == 0
+    assert live_grandchild.kills == 1
+    assert late_spawn.kills == 1
+    assert second_level.kills == 1
 
 
 def test_missing_root_still_returns_output() -> None:
@@ -221,7 +240,7 @@ def test_process_observer_regression_keeps_child_seen_before_permission_error() 
 
     assert stdout == b"ok"
     assert stderr == b""
-    assert child._killed is True
+    assert child.kills == 1
 
 
 def test_kills_root_late_spawn_descendants() -> None:
@@ -246,7 +265,7 @@ def test_kills_root_late_spawn_descendants() -> None:
 
     assert stdout == b"ok"
     assert stderr == b""
-    assert late_spawn._killed is True
+    assert late_spawn.kills == 1
     assert handle.record.status == ProcessStatus.EXITED
 
 
@@ -273,9 +292,9 @@ def test_kills_all_snapshot_descendants() -> None:
 
     assert stdout == b"ok"
     assert stderr == b""
-    assert child_one._killed is True
-    assert child_two._killed is True
-    assert child_three._killed is True
+    assert child_one.kills == 1
+    assert child_two.kills == 1
+    assert child_three.kills == 1
 
 
 def test_kills_descendants_of_snapshot_survivors() -> None:
@@ -300,8 +319,8 @@ def test_kills_descendants_of_snapshot_survivors() -> None:
 
     assert stdout == b"ok"
     assert stderr == b""
-    assert child._killed is True
-    assert grandchild._killed is True
+    assert child.kills == 1
+    assert grandchild.kills == 1
 
 
 def test_kills_second_level_late_spawn_descendants() -> None:
@@ -333,9 +352,9 @@ def test_kills_second_level_late_spawn_descendants() -> None:
 
     assert stdout == b"ok"
     assert stderr == b""
-    assert child._killed is True
-    assert grandchild._killed is True
-    assert great_grandchild._killed is True
+    assert child.kills == 1
+    assert grandchild.kills == 1
+    assert great_grandchild.kills == 1
 
 
 def test_marks_process_as_exited() -> None:
@@ -400,7 +419,7 @@ def test_output_limit_cleanup_kills_descendants_and_returns_tail() -> None:
 
     assert excinfo.value.stdout == b"ef123456"
     assert excinfo.value.stderr == b"err-tail"
-    assert child._killed is True
+    assert child.kills == 1
 
 
 def test_already_dead_descendants_are_ignored() -> None:
@@ -424,9 +443,9 @@ def test_already_dead_descendants_are_ignored() -> None:
 
     assert stdout == b"ok"
     assert stderr == b""
-    assert live_child._killed is True
-    assert dead_child._killed is False
-    assert dead_child._terminated is False
+    assert live_child.kills == 1
+    assert dead_child.kills == 0
+    assert dead_child.terminations == 0
 
 
 def test_timeout_kills_snapshot_descendants() -> None:
@@ -446,7 +465,7 @@ def test_timeout_kills_snapshot_descendants() -> None:
     with pytest.raises(subprocess.TimeoutExpired):
         handle.communicate_and_cleanup(cleanup_grace_period_s=0.0)
 
-    assert live_child._killed, (
+    assert live_child.kills >= 1, (
         "Live snapshot descendants must be killed by communicate_and_cleanup "
         "timeout handler, independent of any exec-level orphan sweeper"
     )
@@ -703,5 +722,5 @@ def test_single_scan_still_reaps_a_descendant_spawned_while_running() -> None:
     stdout, _stderr = handle.communicate_and_cleanup()
 
     assert stdout == b"ok"
-    assert late_spawn._killed is True
+    assert late_spawn.kills == 1
     assert len(scans) == 1

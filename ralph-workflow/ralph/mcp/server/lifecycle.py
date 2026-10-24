@@ -220,7 +220,11 @@ from typing import IO, TYPE_CHECKING, Final, NoReturn, Protocol, cast
 import psutil
 from loguru import logger
 
-from ralph.mcp.bridge_diagnostics import BridgeDiagnostics, classify_probe_failure
+from ralph.mcp.bridge_diagnostics import (
+    BridgeDiagnostics,
+    bound_dominates,
+    classify_probe_failure,
+)
 from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
@@ -525,9 +529,6 @@ _FAILED_ATTEMPT_CLEANUP_S: Final[float] = (
 _WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S: Final[float] = McpRestartPolicy.max_restarts * (
     McpRestartPolicy.cooldown_seconds + _PREFLIGHT_DEADLINE_S + _FAILED_ATTEMPT_CLEANUP_S
 )
-_WORST_CASE_TIME_TO_TERMINAL_EXHAUSTION_S: Final[float] = (
-    _WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S
-)
 
 #: Bound (b): Candidate delay bound with old child alive, computed as
 #: (candidate deadline + handover ack + kill wait + drain). A candidate that
@@ -541,7 +542,6 @@ _CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S: Final[float] = (
     + _HANDOVER_DRAIN_S
     + _FAILED_ATTEMPT_CLEANUP_S
 )
-_CANDIDATE_DELAY_BOUND_S: Final[float] = _CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S
 
 if not (_WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S > 0):
     raise RuntimeError(
@@ -556,18 +556,10 @@ if not (_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S > 0):
 # ---------------------------------------------------------------------------
 # E6.4 arithmetic-dominance proof (not vacuous positivity)
 # ---------------------------------------------------------------------------
-def bound_dominates(bound: float, components: tuple[float, ...]) -> bool:
-    """Return whether ``bound`` dominates every positive duration in ``components``.
-
-    The rule is used by the import-time restart-budget guard and is public so
-    callers can evaluate the same arithmetic contract without reaching into
-    private lifecycle helpers.
-    """
-    if not components or not bound > 0.0:
-        return False
-    return all(component > 0.0 for component in components) and bound >= sum(components)
-
-
+#: The arithmetic-dominance predicate has ONE implementation, published by
+#: ``ralph.mcp.bridge_diagnostics`` so callers can evaluate the same
+#: contract without reaching into private lifecycle helpers. The import-time
+#: restart-budget guard below evaluates it through this alias.
 _e64_bound_dominates = bound_dominates
 
 
@@ -724,7 +716,7 @@ def _is_alive_pid(pid: int | None) -> bool:
     handle), never a bare ``os.kill(pid, 0)`` — the latter cannot
     distinguish a still-alive D-state process from a yet-unreaped zombie
     and is sensitive to PID recycling. New callers MUST prefer
-    :func:`_is_alive_process`; the pid-only form is retained for narrow
+    :func:`is_alive_process`; the pid-only form is retained for narrow
     migration sites where a process handle is not yet in scope and is
     paired at the call site with a process-identity check before any
     termination or handover decision.
@@ -740,7 +732,7 @@ def _is_alive_pid(pid: int | None) -> bool:
         return False
 
 
-def _is_alive_process(proc: object) -> bool:
+def is_alive_process(proc: object) -> bool:
     """Canonical E5.4 liveness check using the ``Popen`` handle's ``poll()``.
 
     Returns ``True`` iff ``proc.poll() is None``: the process is still
@@ -1164,6 +1156,7 @@ class RestartAwareMcpBridge:
                 tool_registry_max_resets=_TOOL_REGISTRY_MAX_RESETS,
                 respawn_alias_verify_timeout_s=_RESPAWN_ALIAS_VERIFY_TIMEOUT_S,
                 initial_tool_hash_timeout_s=_INITIAL_TOOL_HASH_TIMEOUT_S,
+                initial_tool_hash_timeout_max_s=_INITIAL_TOOL_HASH_TIMEOUT_MAX_S,
                 candidate_deadline_s=_CANDIDATE_DEADLINE_S,
                 preflight_deadline_s=_PREFLIGHT_DEADLINE_S,
                 candidate_startup_deadline_s=_CANDIDATE_STARTUP_DEADLINE_S,
@@ -1912,7 +1905,7 @@ class RestartAwareMcpBridge:
             # E5.4: identity-safe liveness on the OWNED Popen handle so a
             # PID-recycled replacement cannot fool us into treating a fresh
             # process as the bridge's old child.
-            if _is_alive_process(proc):
+            if is_alive_process(proc):
                 try:
                     request_old_child_pause(pause_file)
                     ack = wait_for_old_child_pause_ack(
@@ -1956,7 +1949,7 @@ class RestartAwareMcpBridge:
                             sleep_fn = self._sleep_fn if self._sleep_fn is not None else time.sleep
                             sleep_fn(0.05)
                     else:
-                        old_exited = not _is_alive_process(proc)
+                        old_exited = not is_alive_process(proc)
 
                     if not old_exited:
                         # E5.2: an unkillable / D-state survivor must NOT
@@ -1987,7 +1980,7 @@ class RestartAwareMcpBridge:
         drain_s = self._handover_drain_s
         sleep_fn = cast("Callable[[float], object] | None", getattr(self, "_sleep_fn", None))
         proc: object = getattr(old_inner, "process", None)
-        if sleep_fn is None and (self._workspace_root is None or not _is_alive_process(proc)):
+        if sleep_fn is None and (self._workspace_root is None or not is_alive_process(proc)):
             with contextlib.suppress(Exception):
                 old_inner.shutdown()
             return

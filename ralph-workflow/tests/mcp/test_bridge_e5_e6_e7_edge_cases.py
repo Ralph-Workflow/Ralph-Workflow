@@ -12,6 +12,33 @@ Catalogue coverage:
 - E7.1: ENOSPC on .agent/: Wire ledger fails closed with WireLedgerIOError.
 - E7.2: Limit exhaustion: candidate spawn failure keeps old child serving.
 - E7.3: Fresh contention signal defers restart when child is alive.
+
+Testing-policy white-box exception (bridge internals):
+
+The cases marked ``# policy: white-box-exception`` below reach into the
+bridge's private restart machinery. The private symbols involved are
+``RestartAwareMcpBridge._bridge_generation``,
+``RestartAwareMcpBridge._handle_failed_probe_under_lock``,
+``RestartAwareMcpBridge._hand_over_accept`` and
+``RestartAwareMcpBridge._perform_restart``.
+
+Quoted policy clause -- docs/ralph-workflow-policy/testing-policy.md,
+"Default requirements":
+  "White-box tests that reach into private internals are permitted only
+   when no observable surface can express the regression."
+
+Why no public observable expresses these regressions: the bridge's public
+surface (``run_id``, ``restart_count``, ``diagnostics()``,
+``check_health_and_restart_if_needed()``, ``shutdown()``) publishes the
+OUTCOME of a restart, never the VERDICT that produced it. The handover
+verdict probe (``_handle_failed_probe_under_lock``), the make-before-break
+accept step (``_hand_over_accept``) and the restart driver
+(``_perform_restart``) are consumed inside the bridge's own lock and are
+published on no public surface; ``_bridge_generation`` is the PID-reuse
+guard counter and has no public accessor (``run_id`` is a different
+identifier). Re-expressing these cases publicly would mean driving a real
+child replacement through a real socket handover instead of pinning the
+decision point, and no public diagnostic field carries that verdict.
 """
 
 from __future__ import annotations
@@ -30,10 +57,6 @@ import psutil
 import pytest
 
 from ralph.mcp.server import lifecycle
-from ralph.mcp.server._handover_protocol import (
-    _HANDOVER_ACK_TIMEOUT_S,
-    _HANDOVER_DRAIN_S,
-)
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.server._wire_ledger import WireLedgerIOError, append_wire_record
@@ -99,12 +122,15 @@ def test_e51_pid_reuse_guard_anchored_to_bridge_generation() -> None:
         restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
         run_id="test-run",
     )
+    # policy: white-box-exception
     initial_gen = bridge._bridge_generation
 
     # Generation increments on restart / tool-registry-reset
+    # policy: white-box-exception
     bridge._bridge_generation += 1
 
     # Stale probe from prior generation with same PID is discarded
+    # policy: white-box-exception
     restarted = bridge._handle_failed_probe_under_lock(
         fresh_b_signal=False,
         probe_duration_s=1.0,
@@ -131,7 +157,7 @@ def test_e52_unkillable_child_does_not_block_promotion(
     The test passes ``workspace_root`` to force the production handshake
     code path (the ``if self._workspace_root is not None`` guard at
     lifecycle.py:1709), and uses a fake whose ``kill()`` and ``terminate()``
-    are absorbed without flipping ``_poll_result`` so ``_is_alive_process``
+    are absorbed without flipping ``_poll_result`` so ``is_alive_process``
     keeps returning True — exactly the D-state observation pattern.
 
     Direct call to ``_hand_over_accept`` rather than ``_perform_restart`` so
@@ -170,6 +196,7 @@ def test_e52_unkillable_child_does_not_block_promotion(
     # ``if self._workspace_root is not None`` at lifecycle.py:1709) now
     # treats an unkillable survivor as a non-blocker instead of raising
     # McpServerError and abandoning the candidate.
+    # policy: white-box-exception
     bridge._hand_over_accept(old_inner, candidate)
 
     # Hand-over completed without raising. Single-acceptor safety is
@@ -179,7 +206,7 @@ def test_e52_unkillable_child_does_not_block_promotion(
     # _promote_and_reap call in the real make-before-break path, which
     # test_bridge_make_before_break.py covers. The bounded background reap
     # is registered on the bridge and is joined at bridge shutdown.
-    assert bridge._inner is old_inner  # hand_over_accept does NOT swap _inner
+    assert bridge.process is old_inner.process  # hand_over_accept does NOT swap the serving child
 
 
 def test_e52_unkillable_child_promotes_via_full_make_before_break(
@@ -212,9 +239,10 @@ def test_e52_unkillable_child_promotes_via_full_make_before_break(
         sleep_fn=time.sleep,
     )
 
+    # policy: white-box-exception
     promoted = bridge._perform_restart(process_exited=False, probe_duration_s=1.0)
     assert promoted is True
-    assert bridge._inner is candidate
+    assert bridge.process is candidate.process
     assert bridge.process.pid == 2002
 
 
@@ -235,7 +263,8 @@ def test_e53_stopped_child_trips_deferral_ceiling_and_forces_replacement() -> No
     )
 
     # Accumulate deferrals up to the count ceiling
-    for _ in range(lifecycle._DEFERRAL_COUNT_CEILING):
+    for _ in range(bridge.diagnostics().probe_deferral_count_ceiling):
+        # policy: white-box-exception
         restarted = bridge._handle_failed_probe_under_lock(
             fresh_b_signal=True,
             probe_duration_s=1.0,
@@ -244,9 +273,13 @@ def test_e53_stopped_child_trips_deferral_ceiling_and_forces_replacement() -> No
         )
         assert restarted is False
 
-    assert bridge._consecutive_probe_failures_deferred == lifecycle._DEFERRAL_COUNT_CEILING
+    assert (
+        bridge.diagnostics().deferred_probe_failures
+        == bridge.diagnostics().probe_deferral_count_ceiling
+    )
 
     # Next failure trips the ceiling and forces replacement despite fresh contention signal
+    # policy: white-box-exception
     restarted = bridge._handle_failed_probe_under_lock(
         fresh_b_signal=True,
         probe_duration_s=1.0,
@@ -309,30 +342,30 @@ def test_e54_zombie_child_reaped_by_poll() -> None:
 
 
 def test_e54_is_alive_process_uses_poll_not_bare_kill() -> None:
-    """E5.4 unit: ``_is_alive_process`` relies on the OWNED handle's ``poll()``.
+    """E5.4 unit: ``is_alive_process`` relies on the OWNED handle's ``poll()``.
 
     The canonical E5.4-safe liveness test is the process handle's
     ``poll()`` — anchored to the handle we own rather than a bare pid
     the kernel may have recycled. ``os.kill(pid, 0)`` is NOT safe
     because it succeeds against an unreaped zombie and so cannot
     distinguish a living process from a dead one. The
-    ``_is_alive_process`` helper routes through the handle.
+    ``is_alive_process`` helper routes through the handle.
     """
-    # Live handle: poll() is None — _is_alive_process returns True.
+    # Live handle: poll() is None — is_alive_process returns True.
     live = _FakeProcess(poll_result=None, pid=1001)
-    assert lifecycle._is_alive_process(live) is True
+    assert lifecycle.is_alive_process(live) is True
 
     # Dead handle: poll() returns the exit code (zombie-reaped).
-    # _is_alive_process returns False regardless of the underlying pid.
+    # is_alive_process returns False regardless of the underlying pid.
     dead = _FakeProcess(poll_result=0, pid=1001)
-    assert lifecycle._is_alive_process(dead) is False
+    assert lifecycle.is_alive_process(dead) is False
 
     # No poll callable at all: fail-closed (returns False) so MagicMock
     # and other incomplete doubles cannot leak through.
     class _NoPoll:
         pass
 
-    assert lifecycle._is_alive_process(_NoPoll()) is False
+    assert lifecycle.is_alive_process(_NoPoll()) is False
 
 
 # ---------------------------------------------------------------------------
@@ -357,6 +390,7 @@ def test_e61_suspend_resume_clock_jump_trips_wall_time_ceiling() -> None:
     )
 
     # First deferral records start time
+    # policy: white-box-exception
     restarted = bridge._handle_failed_probe_under_lock(
         fresh_b_signal=True,
         probe_duration_s=1.0,
@@ -364,12 +398,13 @@ def test_e61_suspend_resume_clock_jump_trips_wall_time_ceiling() -> None:
         probed_generation=0,
     )
     assert restarted is False
-    assert bridge._consecutive_probe_failures_deferred == 1
+    assert bridge.diagnostics().deferred_probe_failures == 1
 
     # Host suspends and resumes: clock jumps past wall-time ceiling
-    current_time[0] += lifecycle._DEFERRAL_WALL_TIME_CEILING_S + 10.0
+    current_time[0] += bridge.diagnostics().probe_deferral_wall_time_ceiling_s + 10.0
 
     # Next failure trips wall-time ceiling and forces replacement
+    # policy: white-box-exception
     restarted = bridge._handle_failed_probe_under_lock(
         fresh_b_signal=True,
         probe_duration_s=1.0,
@@ -393,8 +428,14 @@ def test_e62_probe_slack_bounds_classification() -> None:
     ``tests/mcp/test_probe_overrun_self_measure.py::test_e62_probe_overrun_is_contention_and_deferral_ceiling_is_the_backstop``.
     These assertions only pin the constant the behavioural test exercises.
     """
-    assert lifecycle._PROBE_DEADLINE_SLACK_S > 0
-    assert lifecycle._PROBE_DEADLINE_SLACK_S <= 1.0
+    bridge = lifecycle.RestartAwareMcpBridge(
+        _make_inner(poll_result=None, pid=1001),
+        restart_fn=lambda: _make_inner(poll_result=None, pid=2002),
+        restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
+        run_id="test-run",
+    )
+    assert bridge.diagnostics().probe_deadline_slack_s > 0
+    assert bridge.diagnostics().probe_deadline_slack_s <= 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -421,76 +462,88 @@ def test_e63_flapping_server_resets_consecutive_failures() -> None:
 
     # 1st probe fails -> consecutive failures = 1, successes = 0
     assert bridge.check_health_and_restart_if_needed() is False
-    assert bridge._consecutive_probe_failures == 1
-    assert bridge._consecutive_probe_successes == 0
+    assert bridge.diagnostics().consecutive_probe_failures == 1
+    assert bridge.diagnostics().consecutive_probe_successes == 0
 
     # 2nd probe passes (1 success) -> consecutive failures RETAINED at 1 (not cleared by lucky probe)
     assert bridge.check_health_and_restart_if_needed() is False
-    assert bridge._consecutive_probe_failures == 1
-    assert bridge._consecutive_probe_successes == 1
+    assert bridge.diagnostics().consecutive_probe_failures == 1
+    assert bridge.diagnostics().consecutive_probe_successes == 1
 
     # 3rd probe fails -> consecutive failures incremented to 2, successes reset to 0
     assert bridge.check_health_and_restart_if_needed() is False
-    assert bridge._consecutive_probe_failures == 2
-    assert bridge._consecutive_probe_successes == 0
+    assert bridge.diagnostics().consecutive_probe_failures == 2
+    assert bridge.diagnostics().consecutive_probe_successes == 0
 
     # 4th probe passes (1 success) -> failures still retained at 2
     assert bridge.check_health_and_restart_if_needed() is False
-    assert bridge._consecutive_probe_failures == 2
-    assert bridge._consecutive_probe_successes == 1
+    assert bridge.diagnostics().consecutive_probe_failures == 2
+    assert bridge.diagnostics().consecutive_probe_successes == 1
 
     # 5th probe passes (2 consecutive successes) -> failures still retained at 2
     assert bridge.check_health_and_restart_if_needed() is False
-    assert bridge._consecutive_probe_failures == 2
-    assert bridge._consecutive_probe_successes == 2
+    assert bridge.diagnostics().consecutive_probe_failures == 2
+    assert bridge.diagnostics().consecutive_probe_successes == 2
 
     # 6th probe passes (3 consecutive successes == _PROBE_SUCCESS_HYSTERESIS_COUNT) -> reset to 0!
     assert bridge.check_health_and_restart_if_needed() is False
-    assert bridge._consecutive_probe_failures == 0
-    assert bridge._consecutive_probe_successes == 3
+    assert bridge.diagnostics().consecutive_probe_failures == 0
+    assert bridge.diagnostics().consecutive_probe_successes == 3
     assert bridge.restart_count == 0
 
     # 7th probe fails -> consecutive failures = 1
     assert bridge.check_health_and_restart_if_needed() is False
-    assert bridge._consecutive_probe_failures == 1
-    assert bridge._consecutive_probe_successes == 0
+    assert bridge.diagnostics().consecutive_probe_failures == 1
+    assert bridge.diagnostics().consecutive_probe_successes == 0
 
 
 # ---------------------------------------------------------------------------
 # E6.4: Budget arithmetic constants checked at import time
 # ---------------------------------------------------------------------------
 def test_e64_import_time_invariants_positive() -> None:
-    assert lifecycle._DEFERRAL_COUNT_CEILING > 0
-    assert lifecycle._DEFERRAL_WALL_TIME_CEILING_S > 0
-    assert lifecycle._TOOL_REGISTRY_MAX_RESETS > 0
-    assert lifecycle._RESPAWN_ALIAS_VERIFY_TIMEOUT_S > 0
+    bridge = lifecycle.RestartAwareMcpBridge(
+        _make_inner(poll_result=None, pid=1001),
+        restart_fn=lambda: _make_inner(poll_result=None, pid=2002),
+        restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
+        run_id="test-run",
+    )
+    assert bridge.diagnostics().probe_deferral_count_ceiling > 0
+    assert bridge.diagnostics().probe_deferral_wall_time_ceiling_s > 0
+    assert bridge.diagnostics().tool_registry_max_resets > 0
+    assert bridge.diagnostics().respawn_alias_verify_timeout_s > 0
 
     # Pin both computed bounds (E6.4 + E2.3):
     # (a) worst-case time to terminal exhaustion with old child dead.
     # Each failed attempt also pays the bounded teardown of its own child
     # (StandaloneMcpProcess.shutdown), so the cleanup term is part of the
     # per-attempt cost and not only of the candidate-delay bound.
-    assert lifecycle._WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S > 0
+    assert bridge.diagnostics().worst_case_terminal_exhaustion_dead_child_s > 0
     expected_dead_exhaustion = McpRestartPolicy.max_restarts * (
         McpRestartPolicy.cooldown_seconds
-        + lifecycle._PREFLIGHT_DEADLINE_S
-        + lifecycle._FAILED_ATTEMPT_CLEANUP_S
+        + bridge.diagnostics().preflight_deadline_s
+        + bridge.diagnostics().failed_attempt_cleanup_s
     )
-    assert expected_dead_exhaustion == lifecycle._WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S
+    assert (
+        expected_dead_exhaustion == bridge.diagnostics().worst_case_terminal_exhaustion_dead_child_s
+    )
 
     # (b) candidate delay bound with old child alive (candidate deadline + handover ack + kill wait + drain + failed-candidate teardown)
-    assert lifecycle._CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S > 0
+    assert bridge.diagnostics().candidate_delay_bound_alive_child_s > 0
     expected_alive_bound = (
-        lifecycle._CANDIDATE_DEADLINE_S
-        + _HANDOVER_ACK_TIMEOUT_S
-        + lifecycle._HANDOVER_KILL_WAIT_S
-        + _HANDOVER_DRAIN_S
-        + lifecycle._FAILED_ATTEMPT_CLEANUP_S
+        bridge.diagnostics().candidate_deadline_s
+        + bridge.diagnostics().handover_ack_timeout_s
+        + bridge.diagnostics().handover_kill_wait_s
+        + bridge.diagnostics().handover_drain_s
+        + bridge.diagnostics().failed_attempt_cleanup_s
     )
-    assert expected_alive_bound == lifecycle._CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S
+    assert expected_alive_bound == bridge.diagnostics().candidate_delay_bound_alive_child_s
 
     # E2.3 candidate startup deadline bounds
-    assert 0 < lifecycle._CANDIDATE_STARTUP_DEADLINE_S < lifecycle._PREFLIGHT_DEADLINE_S
+    assert (
+        0
+        < bridge.diagnostics().candidate_startup_deadline_s
+        < bridge.diagnostics().preflight_deadline_s
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -528,6 +581,7 @@ def test_e72_candidate_limit_exhaustion_keeps_old_child() -> None:
         run_id="test-run",
     )
 
+    # policy: white-box-exception
     restarted = bridge._perform_restart(process_exited=False, probe_duration_s=1.0)
     assert restarted is False
     assert bridge.process.pid == 1001
@@ -548,6 +602,7 @@ def test_e73_contention_signal_defers_restart() -> None:
     )
 
     # Failed probe under contention defers restart
+    # policy: white-box-exception
     restarted = bridge._handle_failed_probe_under_lock(
         fresh_b_signal=True,
         probe_duration_s=1.0,
@@ -555,6 +610,6 @@ def test_e73_contention_signal_defers_restart() -> None:
         probed_generation=0,
     )
     assert restarted is False
-    assert bridge._consecutive_probe_failures_deferred == 1
+    assert bridge.diagnostics().deferred_probe_failures == 1
     assert bridge.restart_count == 0
     assert bridge.process.pid == 1001

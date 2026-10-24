@@ -86,6 +86,7 @@ class BridgeDiagnostics:
     tool_registry_max_resets: int
     respawn_alias_verify_timeout_s: float
     initial_tool_hash_timeout_s: float
+    initial_tool_hash_timeout_max_s: float
     candidate_deadline_s: float
     preflight_deadline_s: float
     candidate_startup_deadline_s: float

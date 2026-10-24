@@ -1,90 +1,71 @@
-"""Tests for ralph.skills._installer install_baseline_skills."""
+"""Behavioral tests for the baseline skill installer.
+
+The installer is driven through its PUBLIC entry point
+(:func:`ralph.skills.manager.install_baseline_skills`, re-exported by the
+public ``ralph.skills.manager`` module that owns the ``SkillManager``
+facade) and every assertion is made on observable outcomes:
+
+* the returned capability status / failure codes, and
+* the files that end up on disk under the injected target directory.
+
+No private module attribute is patched: the target directory is injected
+through the public ``target_dir`` parameter, so the canonical user-global
+skill root is never touched.
+"""
 
 from __future__ import annotations
 
 import hashlib
 import json
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 
-from ralph.skills._agent_paths import AgentSkillRoot
-from ralph.skills._capability_status import CapabilityStatus
-from ralph.skills._content import get_skill_content
-from ralph.skills._installer import install_baseline_skills
-
-pytestmark = pytest.mark.timeout_seconds(5)
-
-
-@pytest.fixture(autouse=True)
-def _isolate_baseline_install_from_user_siblings(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Keep canonical-install behavior tests independent of user-global roots."""
-    canonical_root = AgentSkillRoot(
-        agent="claude",
-        path_segments=(str(tmp_path / "canonical"),),
-        source_url="",
-        is_canonical=True,
-    )
-    monkeypatch.setattr(
-        "ralph.skills._installer.canonical_agent_skill_root", lambda: canonical_root
-    )
-    monkeypatch.setattr("ralph.skills._installer.sibling_agent_skill_roots", lambda: ())
-    monkeypatch.setattr(
-        "ralph.skills._installer._mirror_baseline_skills_to_siblings", lambda _root: []
-    )
-
+from ralph.skills import get_skill_content
+from ralph.skills.manager import install_baseline_skills
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+pytestmark = pytest.mark.timeout_seconds(5)
 
-def test_install_baseline_skills_success(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+#: Wire values of the capability status enum (the observable contract the
+#: installer returns). Comparing the value keeps the assertion on the
+#: installer's OUTPUT rather than on the enum class it happens to use.
+_INSTALLED_HEALTHY = "installed_healthy"
+_NEEDS_REPAIR = "needs_repair"
+
+
+def test_install_baseline_skills_reports_healthy_install(tmp_path: Path) -> None:
+    """A clean install reports the healthy status and no failure codes."""
     target_dir = tmp_path / "skills"
-    mock_materialize = MagicMock(return_value=["using-superpowers"])
-    monkeypatch.setattr("ralph.skills._installer._installed_skills_dir", lambda: target_dir)
-    monkeypatch.setattr(
-        "ralph.skills._installer.materialize_skills_to_claude_dir",
-        mock_materialize,
-    )
 
-    entry, failures = install_baseline_skills()
+    entry, failures = install_baseline_skills(target_dir=target_dir)
 
-    assert entry.status == CapabilityStatus.INSTALLED_HEALTHY
+    assert entry.status == _INSTALLED_HEALTHY
     assert failures == []
-    mock_materialize.assert_called_once_with(target_dir)
 
 
-def test_install_baseline_skills_failure(
-    monkeypatch: pytest.MonkeyPatch,
+def test_install_baseline_skills_reports_failure_when_materialization_fails(
     tmp_path: Path,
 ) -> None:
+    """An unwritable target root yields the materialize failure code."""
+    # A regular file where the skill root belongs makes the directory
+    # creation fail with an OSError, which is the real materialize failure.
     target_dir = tmp_path / "skills"
+    target_dir.write_text("not a directory", encoding="utf-8")
 
-    def _raise(_: Path) -> list[str]:
-        raise OSError("boom")
+    entry, failures = install_baseline_skills(target_dir=target_dir)
 
-    monkeypatch.setattr("ralph.skills._installer._installed_skills_dir", lambda: target_dir)
-    monkeypatch.setattr("ralph.skills._installer.materialize_skills_to_claude_dir", _raise)
-
-    entry, failures = install_baseline_skills()
-
-    assert entry.status == CapabilityStatus.NEEDS_REPAIR
+    assert entry.status == _NEEDS_REPAIR
     assert failures == ["skills-materialize-failed"]
 
 
-def test_install_baseline_skills_writes_metadata_file(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def test_install_baseline_skills_writes_metadata_file(tmp_path: Path) -> None:
+    """The installer publishes the bundle metadata next to the skills."""
     entry, failures = install_baseline_skills(target_dir=tmp_path)
 
-    assert entry.status == CapabilityStatus.INSTALLED_HEALTHY
+    assert entry.status == _INSTALLED_HEALTHY
     assert failures == []
     assert (tmp_path / "metadata.json").exists()
 
@@ -92,38 +73,33 @@ def test_install_baseline_skills_writes_metadata_file(
 def test_install_baseline_skills_writes_claude_discoverable_skill_directories(
     tmp_path: Path,
 ) -> None:
+    """Each baseline skill lands as a Claude-discoverable directory."""
     entry, failures = install_baseline_skills(target_dir=tmp_path)
 
-    assert entry.status == CapabilityStatus.INSTALLED_HEALTHY, failures
+    assert entry.status == _INSTALLED_HEALTHY, failures
     assert failures == []
     skill_file = tmp_path / "using-superpowers" / "SKILL.md"
     assert skill_file.exists()
     assert skill_file.read_text(encoding="utf-8").startswith("---\nname: using-superpowers")
 
 
-def test_install_baseline_skills_preserves_conflicting_user_skill(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def test_install_baseline_skills_preserves_conflicting_user_skill(tmp_path: Path) -> None:
+    """A user-authored skill is never overwritten; the conflict is reported."""
     target_dir = tmp_path / "skills"
     user_skill_dir = target_dir / "using-superpowers"
     user_skill_dir.mkdir(parents=True)
     skill_file = user_skill_dir / "SKILL.md"
     skill_file.write_text("# user version\n", encoding="utf-8")
 
-    monkeypatch.setattr("ralph.skills._installer._installed_skills_dir", lambda: target_dir)
+    entry, failures = install_baseline_skills(target_dir=target_dir)
 
-    entry, failures = install_baseline_skills()
-
-    assert entry.status == CapabilityStatus.NEEDS_REPAIR
+    assert entry.status == _NEEDS_REPAIR
     assert failures == ["skills-conflict-using-superpowers"]
     assert skill_file.read_text(encoding="utf-8") == "# user version\n"
 
 
-def test_install_baseline_skills_updates_ralph_managed_skill_in_place(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def test_install_baseline_skills_updates_ralph_managed_skill_in_place(tmp_path: Path) -> None:
+    """A ralph-managed skill is refreshed to the current baseline content."""
     target_dir = tmp_path / "skills"
     managed_skill_dir = target_dir / "using-superpowers"
     managed_skill_dir.mkdir(parents=True)
@@ -134,19 +110,17 @@ def test_install_baseline_skills_updates_ralph_managed_skill_in_place(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr("ralph.skills._installer._installed_skills_dir", lambda: target_dir)
+    entry, failures = install_baseline_skills(target_dir=target_dir)
 
-    entry, failures = install_baseline_skills()
-
-    assert entry.status == CapabilityStatus.INSTALLED_HEALTHY
+    assert entry.status == _INSTALLED_HEALTHY
     assert failures == []
     assert skill_file.read_text(encoding="utf-8").startswith("---\nname: using-superpowers")
 
 
 def test_install_baseline_skills_preserves_manually_edited_managed_skill(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """A manually edited managed skill keeps the operator's content."""
     target_dir = tmp_path / "skills"
     managed_skill_dir = target_dir / "using-superpowers"
     managed_skill_dir.mkdir(parents=True)
@@ -170,30 +144,24 @@ def test_install_baseline_skills_preserves_manually_edited_managed_skill(
     user_edited_content = "# user edited — do not overwrite\n"
     skill_file.write_text(user_edited_content, encoding="utf-8")
 
-    monkeypatch.setattr("ralph.skills._installer._installed_skills_dir", lambda: target_dir)
-
-    entry, failures = install_baseline_skills()
+    entry, failures = install_baseline_skills(target_dir=target_dir)
 
     # All other skills are installed; the edited one is skipped — overall still healthy
-    assert entry.status == CapabilityStatus.INSTALLED_HEALTHY
+    assert entry.status == _INSTALLED_HEALTHY
     assert failures == []
     # The manually edited file must NOT be overwritten
     assert skill_file.read_text(encoding="utf-8") == user_edited_content
 
 
-def test_install_baseline_skills_adopts_unmarked_identical_skill(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def test_install_baseline_skills_adopts_unmarked_identical_skill(tmp_path: Path) -> None:
+    """An identical but unmarked skill is adopted instead of reported as conflict."""
     target_dir = tmp_path / "skills"
     skill_dir = target_dir / "using-superpowers"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(get_skill_content("using-superpowers"), encoding="utf-8")
 
-    monkeypatch.setattr("ralph.skills._installer._installed_skills_dir", lambda: target_dir)
+    entry, failures = install_baseline_skills(target_dir=target_dir)
 
-    entry, failures = install_baseline_skills()
-
-    assert entry.status == CapabilityStatus.INSTALLED_HEALTHY
+    assert entry.status == _INSTALLED_HEALTHY
     assert failures == []
     assert (skill_dir / ".ralph-managed.json").exists()

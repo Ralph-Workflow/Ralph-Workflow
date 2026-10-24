@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 
 __all__ = [
     "BridgeDiagnostics",
-    "HandoverTiming",
     "McpRestartPolicy",
     "McpServerError",
     "McpServerExtras",
@@ -62,7 +61,6 @@ __all__ = [
 
 _LAZY_MODULES = {
     "BridgeDiagnostics": "ralph.mcp.bridge_diagnostics",
-    "HandoverTiming": "ralph.mcp.bridge_handover",
     "McpRestartPolicy": "ralph.mcp.server.lifecycle",
     "McpServerError": "ralph.mcp.server._mcp_server_error",
     "McpServerExtras": "ralph.mcp.server.lifecycle",

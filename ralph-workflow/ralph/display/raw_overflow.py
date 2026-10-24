@@ -677,6 +677,19 @@ class RawOverflowLog:
     def _fh(self, handle: BinaryIO | None) -> None:
         self._handle_box[0] = handle
 
+    @property
+    def is_open(self) -> bool:
+        """Whether this writer currently holds an open buffered file handle.
+
+        The capture keeps one buffered handle open for the unit's
+        lifetime, so "is the capture live?" is a real question the
+        watchdog and the display both need answered. It mirrors
+        :attr:`size_bytes` in kind: a public read-only view of this
+        writer's own resource state.
+        """
+        handle = self._handle_box[0]
+        return handle is not None and not handle.closed
+
     def disable(self) -> None:
         """Permanently disable this log so future appends are no-ops."""
         with self._lock:

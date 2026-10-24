@@ -30,16 +30,19 @@ code under ``tmp_path``. This is the ``audit_test_policy`` contract.
 
 from __future__ import annotations
 
-import inspect
 from pathlib import Path
+from typing import Never
 
 import pytest
 
-from ralph.pipeline import integration_director, integration_owner
+from ralph.pipeline import (
+    _integration_action,
+    _integration_owner_seam,
+    integration_director,
+    integration_owner,
+)
 from ralph.pipeline._integration_action import IntegrationAction
-from ralph.pipeline._integration_diagnostic_handoff import handoff_integration_diagnostic
 from ralph.pipeline._integration_owner_seam import decide_seam_action
-from ralph.pipeline._integration_record_facts import apply_record_facts
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger, AttemptLedgerState
 from ralph.pipeline.integration_decision import AttemptState, EscalationRung
@@ -398,15 +401,37 @@ def test_the_seam_persists_exactly_one_charge_per_mutation_class_decision(
 # ---------------------------------------------------------------------------
 
 
-def test_the_owner_path_does_not_call_the_retired_record_decider() -> None:
-    """The owner path must not re-derive the ladder from a durable record.
+def test_the_public_owner_path_does_not_invoke_the_retired_record_decider(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The public owner seam never delegates to the retired record decider."""
+    _install_director(monkeypatch, _observation())
 
-    ``next_integration_action`` is the retired record-based decider: the
-    owner (and the seam that asks it) must never call it, or the
-    integration rung would be decided in two places.
-    """
-    assert "next_integration_action(" not in inspect.getsource(integration_owner)
-    for function in (decide_seam_action, apply_record_facts, handoff_integration_diagnostic):
-        module = inspect.getmodule(function)
-        assert module is not None
-        assert "next_integration_action(" not in inspect.getsource(module)
+    def _retired_decider(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("the public owner path invoked the retired record decider")
+
+    monkeypatch.setattr(
+        _integration_action,
+        "next_integration_action",
+        _retired_decider,
+    )
+    monkeypatch.setattr(
+        integration_owner,
+        "next_integration_action",
+        _retired_decider,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        _integration_owner_seam,
+        "next_integration_action",
+        _retired_decider,
+        raising=False,
+    )
+
+    action = decide_seam_action(
+        tmp_path,
+        ledger_path=_ledger_path(tmp_path),
+    )
+
+    assert action is IntegrationAction.LAND_TARGET

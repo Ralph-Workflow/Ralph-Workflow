@@ -261,7 +261,6 @@ if TYPE_CHECKING:
         WaitingStatusEvent,
         WaitingStatusListener,
     )
-    from ralph.agents.parsers.base import AgentParser
 
 _IDLE_TIMEOUT = 0.1
 
@@ -3789,48 +3788,49 @@ def test_opencode_capture_lines_consumable_by_record_subagent_work() -> None:
     assert any("heartbeat" in line.lower() for line in consumed), consumed
 
 
-@pytest.mark.parametrize("transport", list(AgentTransport))
-def test_transport_strategy_surfaces_real_extracted_progress_to_watchdog(
-    transport: AgentTransport,
-) -> None:
-    watchdog = _cross_transport_subagent_visib_make_watchdog()
-    tokens = _bind_subagent_sink_to_watchdog(watchdog)
-    try:
-        watchdog.record_invocation_start()
-        assert watchdog.last_subagent_progress_description is None
+def test_transport_strategy_surfaces_real_extracted_progress_to_watchdog() -> None:
 
-        strategy = strategy_for_transport(transport, registry=_make_registry())
-        strategy.observe_line(_REAL_PROGRESS_LINE)
+    for transport in list(AgentTransport):
+        watchdog = _cross_transport_subagent_visib_make_watchdog()
+        tokens = _bind_subagent_sink_to_watchdog(watchdog)
+        try:
+            watchdog.record_invocation_start()
+            assert watchdog.last_subagent_progress_description is None
 
-        assert watchdog.last_subagent_progress_description == _REAL_PROGRESS_LINE, (
-            f"transport={transport!r}: watchdog did not capture real extracted"
-            f" progress from line observer; got"
-            f" {watchdog.last_subagent_progress_description!r}"
-        )
-        snapshot = watchdog.diagnostic_snapshot(now=0.0)
-        assert snapshot["subagent_progress_count"] >= 1, (
-            f"transport={transport!r}: diagnostic_snapshot"
-            f" MUST report subagent_progress_count >= 1 after a real"
-            f" progress line; got {snapshot['subagent_progress_count']}"
-        )
-        last_activity = snapshot["last_subagent_progress_at"]
-        assert (
-            last_activity is not None and isinstance(last_activity, float) and last_activity >= 0.0
-        ), (
-            f"transport={transport!r}: diagnostic_snapshot"
-            f" MUST report last_subagent_progress_at as a non-None"
-            f" float >= 0.0 after a real progress line; got {last_activity!r}"
-        )
-        assert snapshot["current_subagent_tool_call"] == _parse_tool_call_expected(
-            _REAL_PROGRESS_LINE
-        ), (
-            f"transport={transport!r}: diagnostic_snapshot"
-            f" MUST report current_subagent_tool_call matching the"
-            f" parser output for the observed description; got"
-            f" {snapshot['current_subagent_tool_call']!r}"
-        )
-    finally:
-        _reset_sink_tokens(tokens)
+            strategy = strategy_for_transport(transport, registry=_make_registry())
+            strategy.observe_line(_REAL_PROGRESS_LINE)
+
+            assert watchdog.last_subagent_progress_description == _REAL_PROGRESS_LINE, (
+                f"transport={transport!r}: watchdog did not capture real extracted"
+                f" progress from line observer; got"
+                f" {watchdog.last_subagent_progress_description!r}"
+            )
+            snapshot = watchdog.diagnostic_snapshot(now=0.0)
+            assert snapshot["subagent_progress_count"] >= 1, (
+                f"transport={transport!r}: diagnostic_snapshot"
+                f" MUST report subagent_progress_count >= 1 after a real"
+                f" progress line; got {snapshot['subagent_progress_count']}"
+            )
+            last_activity = snapshot["last_subagent_progress_at"]
+            assert (
+                last_activity is not None
+                and isinstance(last_activity, float)
+                and last_activity >= 0.0
+            ), (
+                f"transport={transport!r}: diagnostic_snapshot"
+                f" MUST report last_subagent_progress_at as a non-None"
+                f" float >= 0.0 after a real progress line; got {last_activity!r}"
+            )
+            assert snapshot["current_subagent_tool_call"] == _parse_tool_call_expected(
+                _REAL_PROGRESS_LINE
+            ), (
+                f"transport={transport!r}: diagnostic_snapshot"
+                f" MUST report current_subagent_tool_call matching the"
+                f" parser output for the observed description; got"
+                f" {snapshot['current_subagent_tool_call']!r}"
+            )
+        finally:
+            _reset_sink_tokens(tokens)
 
 
 def test_transport_strategy_surfaces_real_extraction() -> None:
@@ -8958,32 +8958,28 @@ def test_fresh_progress_path_unchanged() -> None:
 
 
 # === consolidated from test_post_exit_watchdog_no_resume.py ===
-@pytest.mark.parametrize(
-    "failure_reason",
-    (
+def test_post_exit_watchdog_fire_reasons_do_not_resume_with_prior_session() -> None:
+
+    for failure_reason in (
         "PROCESS_EXIT_HANG",
         "DESCENDANT_HANG",
         "CHILDREN_PERSIST_TOO_LONG",
         "DEFERRED_BY_STUCK_CLASSIFIER",
-    ),
-)
-def test_post_exit_watchdog_fire_reasons_do_not_resume_with_prior_session(
-    failure_reason: str,
-) -> None:
-    """PostExitWatchdog fire reasons MUST NOT resume the prior session.
+    ):
+        """PostExitWatchdog fire reasons MUST NOT resume the prior session.
 
-    A post-exit hang (PROCESS_EXIT_HANG) means the agent process
-    closed stdout but did not exit within the grace window. The
-    process tree is in an indeterminate half-dead state and cannot
-    be safely continued via the prior session id; the next attempt
-    MUST restart from a fresh session.
-    """
-    action = recovery_action_for_failure_reason(failure_reason, has_prior_session=True)
-    assert action == "fresh", (
-        f"failure_reason={failure_reason!r} with has_prior_session=True"
-        f" MUST return 'fresh' (the half-dead process tree cannot"
-        f" be safely resumed); got {action!r}"
-    )
+        A post-exit hang (PROCESS_EXIT_HANG) means the agent process
+        closed stdout but did not exit within the grace window. The
+        process tree is in an indeterminate half-dead state and cannot
+        be safely continued via the prior session id; the next attempt
+        MUST restart from a fresh session.
+        """
+        action = recovery_action_for_failure_reason(failure_reason, has_prior_session=True)
+        assert action == "fresh", (
+            f"failure_reason={failure_reason!r} with has_prior_session=True"
+            f" MUST return 'fresh' (the half-dead process tree cannot"
+            f" be safely resumed); got {action!r}"
+        )
 
 
 # === consolidated from test_post_exit_watchdog_no_resume.py ===
@@ -9040,39 +9036,38 @@ def test_resumable_reasons_still_resume_for_prior_session() -> None:
 
 
 # === consolidated from test_production_subagent_registry_wiring.py ===
-@pytest.mark.parametrize("transport", list(AgentTransport))
-def test_agent_registry_build_subagent_pid_registry_per_transport(
-    transport: AgentTransport,
-) -> None:
-    """``AgentRegistry.build_subagent_pid_registry`` returns a per-transport pair.
+def test_agent_registry_build_subagent_pid_registry_per_transport() -> None:
 
-    For each supported ``AgentTransport``, the helper MUST return a
-    ``(SubagentPidRegistry, SubagentPidSource)`` pair where the source
-    filters by the transport's source label. This is the production
-    entry point the analysis flagged as missing.
-    """
-    agent_registry = AgentRegistry()
-    registry, source = agent_registry.build_subagent_pid_registry(transport)
-    assert isinstance(registry, SubagentPidRegistry)
-    assert isinstance(source, SubagentPidSource)
-    # Registering a PID for the correct transport source makes it
-    # visible via the per-transport filtered source. Every supported
-    # ``AgentTransport`` member is bound to its canonical source label
-    # (``transport.value``) -- including Nanocoder, which has its own
-    # ``make_nanocoder_subagent_pid_source`` factory since the
-    # watchdog's per-transport ``SubagentPidSource`` filter (R1) is
-    # keyed on the ``AgentTransport`` enum, not the parser.
-    registry.register(12345, source=transport.value, now=0.0)
-    assert 12345 in source.known_subagent_pids()
-    # A PID registered for a DIFFERENT transport is invisible (R1
-    # isolation between per-transport filtered views).
-    other_transport = (
-        AgentTransport.CLAUDE if transport != AgentTransport.CLAUDE else AgentTransport.PI
-    )
-    other_registry, other_source = agent_registry.build_subagent_pid_registry(other_transport)
-    other_registry.register(67890, source=other_transport.value, now=0.0)
-    assert 67890 not in source.known_subagent_pids()
-    assert 67890 in other_source.known_subagent_pids()
+    for transport in list(AgentTransport):
+        """``AgentRegistry.build_subagent_pid_registry`` returns a per-transport pair.
+
+        For each supported ``AgentTransport``, the helper MUST return a
+        ``(SubagentPidRegistry, SubagentPidSource)`` pair where the source
+        filters by the transport's source label. This is the production
+        entry point the analysis flagged as missing.
+        """
+        agent_registry = AgentRegistry()
+        registry, source = agent_registry.build_subagent_pid_registry(transport)
+        assert isinstance(registry, SubagentPidRegistry)
+        assert isinstance(source, SubagentPidSource)
+        # Registering a PID for the correct transport source makes it
+        # visible via the per-transport filtered source. Every supported
+        # ``AgentTransport`` member is bound to its canonical source label
+        # (``transport.value``) -- including Nanocoder, which has its own
+        # ``make_nanocoder_subagent_pid_source`` factory since the
+        # watchdog's per-transport ``SubagentPidSource`` filter (R1) is
+        # keyed on the ``AgentTransport`` enum, not the parser.
+        registry.register(12345, source=transport.value, now=0.0)
+        assert 12345 in source.known_subagent_pids()
+        # A PID registered for a DIFFERENT transport is invisible (R1
+        # isolation between per-transport filtered views).
+        other_transport = (
+            AgentTransport.CLAUDE if transport != AgentTransport.CLAUDE else AgentTransport.PI
+        )
+        other_registry, other_source = agent_registry.build_subagent_pid_registry(other_transport)
+        other_registry.register(67890, source=other_transport.value, now=0.0)
+        assert 67890 not in source.known_subagent_pids()
+        assert 67890 in other_source.known_subagent_pids()
 
 
 # === consolidated from test_production_subagent_registry_wiring.py ===
@@ -9199,45 +9194,40 @@ def test_strategy_for_transport_threads_subagent_pid_source() -> None:
 
 
 # === consolidated from test_production_subagent_registry_wiring.py ===
-@pytest.mark.parametrize(
-    ("transport_label", "parser_cls"),
-    [
+def test_parser_constructor_stores_subagent_pid_registry() -> None:
+
+    for transport_label, parser_cls in [
         ("claude", ClaudeParser),
         ("claude_interactive", ClaudeInteractiveParser),
         ("codex", CodexParser),
         ("pi", PiParser),
         ("agy", AgyParser),
         ("generic", GenericParser),
-    ],
-)
-def test_parser_constructor_stores_subagent_pid_registry(
-    transport_label: str,
-    parser_cls: type[AgentParser],
-) -> None:
-    """Each parser constructor MUST STORE the registry, not discard it.
+    ]:
+        """Each parser constructor MUST STORE the registry, not discard it.
 
-    The previous pass silently discarded the registry with ``del``.
-    The fix: store as ``self._subagent_pid_registry`` so future code
-    paths can register PIDs into the shared registry without
-    re-plumbing the constructor signature.
+        The previous pass silently discarded the registry with ``del``.
+        The fix: store as ``self._subagent_pid_registry`` so future code
+        paths can register PIDs into the shared registry without
+        re-plumbing the constructor signature.
 
-    The parametrize list is keyed on the eight supported
-    ``AgentTransport`` enum members that have a corresponding parser
-    class (every transport except ``OPENCODE`` -- OpenCode's parser is
-    constructed with the production ``parser_factory`` call, not via
-    the bare constructor, so it has its own dedicated wiring test).
-    ``gemini`` has its own dedicated regression test below
-    (``test_gemini_parser_registers_pid_from_child_progress``) because
-    the public factory path uses a parser-bound source label distinct
-    from its ``AgentTransport`` (``GENERIC``); the regression test
-    pins the explicit behavior so a future PR cannot silently drop
-    ``gemini``-labeled registrations the way the prior bare
-    ``except Exception`` pattern did.
-    """
-    agent_registry = AgentRegistry()
-    registry, _ = agent_registry.build_subagent_pid_registry(AgentTransport(transport_label))
-    parser = parser_cls(subagent_pid_registry=registry)
-    assert getattr(parser, "_subagent_pid_registry", None) is registry
+        The parametrize list is keyed on the eight supported
+        ``AgentTransport`` enum members that have a corresponding parser
+        class (every transport except ``OPENCODE`` -- OpenCode's parser is
+        constructed with the production ``parser_factory`` call, not via
+        the bare constructor, so it has its own dedicated wiring test).
+        ``gemini`` has its own dedicated regression test below
+        (``test_gemini_parser_registers_pid_from_child_progress``) because
+        the public factory path uses a parser-bound source label distinct
+        from its ``AgentTransport`` (``GENERIC``); the regression test
+        pins the explicit behavior so a future PR cannot silently drop
+        ``gemini``-labeled registrations the way the prior bare
+        ``except Exception`` pattern did.
+        """
+        agent_registry = AgentRegistry()
+        registry, _ = agent_registry.build_subagent_pid_registry(AgentTransport(transport_label))
+        parser = parser_cls(subagent_pid_registry=registry)
+        assert getattr(parser, "_subagent_pid_registry", None) is registry
 
 
 # === consolidated from test_production_subagent_registry_wiring.py ===
@@ -9331,61 +9321,56 @@ def test_catalog_default_seeded_transports_have_subagent_pid_registry_factory() 
 
 
 # === consolidated from test_production_subagent_registry_wiring.py ===
-@pytest.mark.parametrize(
-    ("transport_label", "parser_cls"),
-    [
+def test_parser_registers_pid_from_structured_event_when_registry_wired() -> None:
+
+    for transport_label, parser_cls in [
         ("claude", ClaudeParser),
         ("codex", CodexParser),
         ("pi", PiParser),
         ("agy", AgyParser),
         ("generic", GenericParser),
-    ],
-)
-def test_parser_registers_pid_from_structured_event_when_registry_wired(
-    transport_label: str,
-    parser_cls: type[AgentParser],
-) -> None:
-    """Structured event carrying a PID MUST register it into the shared registry.
+    ]:
+        """Structured event carrying a PID MUST register it into the shared registry.
 
-    The R5 production wiring requires the parser's ``_dispatch_json_object``
-    path to call the registry registration hook for every observed
-    structured event. When an event carries an embedded PID, the parser
-    registers it via ``SubagentPidRegistry.register``. When the event
-    has no PID, the hook is a no-op (and the registry stays empty).
+        The R5 production wiring requires the parser's ``_dispatch_json_object``
+        path to call the registry registration hook for every observed
+        structured event. When an event carries an embedded PID, the parser
+        registers it via ``SubagentPidRegistry.register``. When the event
+        has no PID, the hook is a no-op (and the registry stays empty).
 
-    The parametrize list is the subset of parser keys that are
-    also supported ``AgentTransport`` members. ``gemini`` is
-    covered by the dedicated regression test
-    ``test_gemini_parser_registers_pid_from_child_progress`` below
-    (the public factory path uses the parser-bound ``"gemini"``
-    source label even though the catalog maps Gemini to the
-    ``GENERIC`` transport, so it sits outside the
-    ``AgentTransport``-keyed parametrizations).
-    """
-    registry = SubagentPidRegistry()
-    parser = parser_cls(
-        subagent_pid_registry=registry,
-        subagent_source_label=transport_label,
-    )
-    # Pre-condition: empty registry.
-    assert len(registry) == 0
+        The parametrize list is the subset of parser keys that are
+        also supported ``AgentTransport`` members. ``gemini`` is
+        covered by the dedicated regression test
+        ``test_gemini_parser_registers_pid_from_child_progress`` below
+        (the public factory path uses the parser-bound ``"gemini"``
+        source label even though the catalog maps Gemini to the
+        ``GENERIC`` transport, so it sits outside the
+        ``AgentTransport``-keyed parametrizations).
+        """
+        registry = SubagentPidRegistry()
+        parser = parser_cls(
+            subagent_pid_registry=registry,
+            subagent_source_label=transport_label,
+        )
+        # Pre-condition: empty registry.
+        assert len(registry) == 0
 
-    # Drive an event that carries a PID at the top level.
-    pid = 55555
-    line_with_pid = '{"type": "child_progress", "pid": ' + str(pid) + ', "content": "x"}'
-    events = list(parser.parse(iter([line_with_pid])))
-    # Parser still emits the same typed event (registry is a side-effect hook).
-    assert events, "parser MUST still emit an event for child_progress line"
-    assert pid in registry.known_pids()
-    identity = next(iter(registry.snapshot()))
-    assert identity.source == transport_label
+        # Drive an event that carries a PID at the top level.
+        pid = 55555
+        line_with_pid = '{"type": "child_progress", "pid": ' + str(pid) + ', "content": "x"}'
+        events = list(parser.parse(iter([line_with_pid])))
+        # Parser still emits the same typed event (registry is a side-effect hook).
+        assert events, "parser MUST still emit an event for child_progress line"
+        assert pid in registry.known_pids()
+        identity = next(iter(registry.snapshot()))
+        assert identity.source == transport_label
 
-    # Drive an event with no PID -> no-op for the registry.
-    line_without_pid = '{"type": "text", "content": "hello"}'
-    events2 = list(parser.parse(iter([line_without_pid])))
-    assert events2
-    # No new PIDs registered.
-    assert len(registry) == 1
+        # Drive an event with no PID -> no-op for the registry.
+        line_without_pid = '{"type": "text", "content": "hello"}'
+        events2 = list(parser.parse(iter([line_without_pid])))
+        assert events2
+        # No new PIDs registered.
+        assert len(registry) == 1
 
 
 # === consolidated from test_production_subagent_registry_wiring.py ===
@@ -9423,44 +9408,39 @@ def test_parser_registration_hook_no_op_when_source_label_none() -> None:
 
 
 # === consolidated from test_production_subagent_registry_wiring.py ===
-@pytest.mark.parametrize(
-    ("parser_key", "transport_label"),
-    [
+def test_get_parser_threads_registry_and_source_label() -> None:
+
+    for parser_key, transport_label in [
         ("claude", "claude"),
         ("codex", "codex"),
         ("pi", "pi"),
         ("agy", "agy"),
         ("generic", "generic"),
-    ],
-)
-def test_get_parser_threads_registry_and_source_label(
-    parser_key: str,
-    transport_label: str,
-) -> None:
-    """``get_parser(parser_key, subagent_pid_registry=..., subagent_source_label=...)`` wires both.
+    ]:
+        """``get_parser(parser_key, subagent_pid_registry=..., subagent_source_label=...)`` wires both.
 
-    The previous pass silently instantiated parsers as ``parser_cls()``
-    with no registry. The fix: ``get_parser`` MUST accept and forward
-    the registry + source label kwargs so the parser's registration
-    hook fires for PID-carrying events.
+        The previous pass silently instantiated parsers as ``parser_cls()``
+        with no registry. The fix: ``get_parser`` MUST accept and forward
+        the registry + source label kwargs so the parser's registration
+        hook fires for PID-carrying events.
 
-    The parametrize list is the subset of parser keys that are
-    also supported ``AgentTransport`` members. ``gemini`` is
-    covered by the dedicated regression test
-    ``test_get_parser_gemini_threads_registry_and_source_label`` below
-    (the public factory path uses the parser-bound ``"gemini"``
-    source label even though the catalog maps Gemini to the
-    ``GENERIC`` transport, so it sits outside the
-    ``AgentTransport``-keyed parametrizations).
-    """
-    registry = SubagentPidRegistry()
-    parser = get_parser(
-        parser_key,
-        subagent_pid_registry=registry,
-        subagent_source_label=transport_label,
-    )
-    assert parser._subagent_pid_registry is registry
-    assert parser._subagent_source_label == transport_label
+        The parametrize list is the subset of parser keys that are
+        also supported ``AgentTransport`` members. ``gemini`` is
+        covered by the dedicated regression test
+        ``test_get_parser_gemini_threads_registry_and_source_label`` below
+        (the public factory path uses the parser-bound ``"gemini"``
+        source label even though the catalog maps Gemini to the
+        ``GENERIC`` transport, so it sits outside the
+        ``AgentTransport``-keyed parametrizations).
+        """
+        registry = SubagentPidRegistry()
+        parser = get_parser(
+            parser_key,
+            subagent_pid_registry=registry,
+            subagent_source_label=transport_label,
+        )
+        assert parser._subagent_pid_registry is registry
+        assert parser._subagent_source_label == transport_label
 
 
 # === consolidated from test_production_subagent_registry_wiring.py ===
@@ -10204,47 +10184,45 @@ def test_is_resumable_fire_reason_classifies_known_reasons() -> None:
 
 
 # === consolidated from test_resume_after_kill_watchdog_boundary.py ===
-@pytest.mark.parametrize("reason_value", sorted(EXPECTED_FIRE_REASONS))
-def test_expected_fire_reasons_partitioned_into_resumable_or_excluded(
-    reason_value: str,
-) -> None:
-    """Every reason in the import-time ``EXPECTED_FIRE_REASONS`` lock is
-    either resumable or explicitly documented as non-resumable.
+def test_expected_fire_reasons_partitioned_into_resumable_or_excluded() -> None:
 
-    If a future PR adds a ``WatchdogFireReason`` member without updating
-    the resume contract, this test fails.
-    """
-    assert (
-        reason_value in _RESUMABLE_REASON_VALUES or reason_value in _NON_RESUMABLE_REASON_VALUES
-    ), (
-        f"{reason_value!r} is neither resumable nor in the documented"
-        f" non-resumable exclusion set; update the resume contract"
-    )
+    for reason_value in sorted(EXPECTED_FIRE_REASONS):
+        """Every reason in the import-time ``EXPECTED_FIRE_REASONS`` lock is
+        either resumable or explicitly documented as non-resumable.
+
+        If a future PR adds a ``WatchdogFireReason`` member without updating
+        the resume contract, this test fails.
+        """
+        assert (
+            reason_value in _RESUMABLE_REASON_VALUES or reason_value in _NON_RESUMABLE_REASON_VALUES
+        ), (
+            f"{reason_value!r} is neither resumable nor in the documented"
+            f" non-resumable exclusion set; update the resume contract"
+        )
 
 
 # === consolidated from test_resume_after_kill_watchdog_boundary.py ===
-@pytest.mark.parametrize("reason", sorted(WatchdogFireReason, key=str))
-def test_idle_watchdog_killed_error_reason_round_trips_through_resumable_helper(
-    reason: WatchdogFireReason,
-) -> None:
-    """A kill exception carrying any ``WatchdogFireReason`` is classified
-    consistently by ``_is_resumable_fire_reason``.
+def test_idle_watchdog_killed_error_reason_round_trips_through_resumable_helper() -> None:
 
-    This round-trips the boundary: ``reason.value`` flows from the
-    exception to the helper and back to a ``WatchdogFireReason`` enum
-    member.
-    """
-    exc = IdleWatchdogKilledError(
-        reason=reason.value,
-        signal=15,
-        evidence_summary="test boundary",
-        child_alive=False,
-    )
-    recovered = WatchdogFireReason(exc.reason)
-    expected = reason in _RESUMABLE_FIRE_REASONS
-    assert _is_resumable_fire_reason(recovered) is expected, (
-        f"{reason!r}: round-trip resumability mismatch; expected {expected}"
-    )
+    for reason in sorted(WatchdogFireReason, key=str):
+        """A kill exception carrying any ``WatchdogFireReason`` is classified
+        consistently by ``_is_resumable_fire_reason``.
+
+        This round-trips the boundary: ``reason.value`` flows from the
+        exception to the helper and back to a ``WatchdogFireReason`` enum
+        member.
+        """
+        exc = IdleWatchdogKilledError(
+            reason=reason.value,
+            signal=15,
+            evidence_summary="test boundary",
+            child_alive=False,
+        )
+        recovered = WatchdogFireReason(exc.reason)
+        expected = reason in _RESUMABLE_FIRE_REASONS
+        assert _is_resumable_fire_reason(recovered) is expected, (
+            f"{reason!r}: round-trip resumability mismatch; expected {expected}"
+        )
 
 
 # === consolidated from test_resume_contract_invariant.py ===
@@ -10622,150 +10600,139 @@ def test_resumable_fire_reasons_matches_expected_set() -> None:
 
 
 # === consolidated from test_runtime_session_resume_safe_mapping.py ===
-@pytest.mark.parametrize("reason", sorted(_RESUMABLE_REASONS_EXPECTED, key=str))
-def test_is_resumable_fire_reason_returns_true_for_in_set(reason: WatchdogFireReason) -> None:
-    """Every reason in the canonical in-set MUST be resumable.
+def test_is_resumable_fire_reason_returns_true_for_in_set() -> None:
 
-    Drives the production ``_is_resumable_fire_reason`` so a future
-    refactor cannot silently narrow the helper set without breaking
-    this test.
-    """
-    assert _is_resumable_fire_reason(reason) is True, (
-        f"reason={reason!r}: MUST be resumable; got False"
-    )
+    for reason in sorted(_RESUMABLE_REASONS_EXPECTED, key=str):
+        """Every reason in the canonical in-set MUST be resumable.
+
+        Drives the production ``_is_resumable_fire_reason`` so a future
+        refactor cannot silently narrow the helper set without breaking
+        this test.
+        """
+        assert _is_resumable_fire_reason(reason) is True, (
+            f"reason={reason!r}: MUST be resumable; got False"
+        )
 
 
 # === consolidated from test_runtime_session_resume_safe_mapping.py ===
-@pytest.mark.parametrize(
-    "reason",
-    sorted(
+def test_is_resumable_fire_reason_returns_false_for_out_of_set() -> None:
+
+    for reason in sorted(
         set(WatchdogFireReason) - _RESUMABLE_REASONS_EXPECTED,
         key=str,
-    ),
-)
-def test_is_resumable_fire_reason_returns_false_for_out_of_set(reason: WatchdogFireReason) -> None:
-    """Every reason OUTSIDE the canonical in-set MUST NOT be resumable.
+    ):
+        """Every reason OUTSIDE the canonical in-set MUST NOT be resumable.
 
-    Particularly important for ``CHILDREN_PERSIST_TOO_LONG`` (which
-    the previous implementation incorrectly classified as
-    resumable).  Drives the production
-    ``_is_resumable_fire_reason`` so a future refactor cannot
-    silently widen the set without breaking this test.
-    """
-    assert _is_resumable_fire_reason(reason) is False, (
-        f"reason={reason!r}: MUST NOT be resumable; got True"
-    )
+        Particularly important for ``CHILDREN_PERSIST_TOO_LONG`` (which
+        the previous implementation incorrectly classified as
+        resumable).  Drives the production
+        ``_is_resumable_fire_reason`` so a future refactor cannot
+        silently widen the set without breaking this test.
+        """
+        assert _is_resumable_fire_reason(reason) is False, (
+            f"reason={reason!r}: MUST NOT be resumable; got True"
+        )
 
 
 # === consolidated from test_runtime_session_resume_safe_mapping.py ===
-@pytest.mark.parametrize("reason", sorted(_RESUMABLE_REASONS_EXPECTED, key=str))
-def test_process_reader_emits_session_resume_safe_true_for_in_set_reasons(
-    reason: WatchdogFireReason,
-) -> None:
-    """The subprocess line reader's except block MUST emit
-    ``session_resume_safe=True`` for every in-set reason.
+def test_process_reader_emits_session_resume_safe_true_for_in_set_reasons() -> None:
 
-    Drives the production except block by calling the same
-    ``_is_resumable_fire_reason`` helper that
-    ``_process_reader.py`` calls in production.  A future refactor
-    that bypasses the helper or inlines a different set will
-    break this test.
-    """
-    exc = _raise_like_process_reader(
-        _LineReaderLike(),
-        timeout_seconds=30.0,
-        reason=reason,
-    )
-    assert exc.reason == reason
-    assert exc.session_resume_safe is True, (
-        f"reason={reason!r}: production subprocess reader MUST emit"
-        f" session_resume_safe=True; got {exc.session_resume_safe}"
-    )
+    for reason in sorted(_RESUMABLE_REASONS_EXPECTED, key=str):
+        """The subprocess line reader's except block MUST emit
+        ``session_resume_safe=True`` for every in-set reason.
 
-
-# === consolidated from test_runtime_session_resume_safe_mapping.py ===
-@pytest.mark.parametrize("reason", sorted(_RESUMABLE_REASONS_EXPECTED, key=str))
-def test_pty_runner_emits_session_resume_safe_true_for_in_set_reasons(
-    reason: WatchdogFireReason,
-) -> None:
-    """The PTY line reader's except block MUST emit
-    ``session_resume_safe=True`` for every in-set reason.
-
-    Mirrors the subprocess test but for the PTY runner.  Both
-    readers share the canonical helper so a single regression in
-    ``_is_resumable_fire_reason`` breaks BOTH tests.
-    """
-    exc = _raise_like_pty_runner(
-        _LineReaderLike(),
-        timeout_seconds=30.0,
-        reason=reason,
-    )
-    assert exc.reason == reason
-    assert exc.session_resume_safe is True, (
-        f"reason={reason!r}: production PTY runner MUST emit"
-        f" session_resume_safe=True; got {exc.session_resume_safe}"
-    )
+        Drives the production except block by calling the same
+        ``_is_resumable_fire_reason`` helper that
+        ``_process_reader.py`` calls in production.  A future refactor
+        that bypasses the helper or inlines a different set will
+        break this test.
+        """
+        exc = _raise_like_process_reader(
+            _LineReaderLike(),
+            timeout_seconds=30.0,
+            reason=reason,
+        )
+        assert exc.reason == reason
+        assert exc.session_resume_safe is True, (
+            f"reason={reason!r}: production subprocess reader MUST emit"
+            f" session_resume_safe=True; got {exc.session_resume_safe}"
+        )
 
 
 # === consolidated from test_runtime_session_resume_safe_mapping.py ===
-@pytest.mark.parametrize(
-    "reason",
-    [
+def test_pty_runner_emits_session_resume_safe_true_for_in_set_reasons() -> None:
+
+    for reason in sorted(_RESUMABLE_REASONS_EXPECTED, key=str):
+        """The PTY line reader's except block MUST emit
+        ``session_resume_safe=True`` for every in-set reason.
+
+        Mirrors the subprocess test but for the PTY runner.  Both
+        readers share the canonical helper so a single regression in
+        ``_is_resumable_fire_reason`` breaks BOTH tests.
+        """
+        exc = _raise_like_pty_runner(
+            _LineReaderLike(),
+            timeout_seconds=30.0,
+            reason=reason,
+        )
+        assert exc.reason == reason
+        assert exc.session_resume_safe is True, (
+            f"reason={reason!r}: production PTY runner MUST emit"
+            f" session_resume_safe=True; got {exc.session_resume_safe}"
+        )
+
+
+# === consolidated from test_runtime_session_resume_safe_mapping.py ===
+def test_process_reader_emits_session_resume_safe_false_for_out_of_set_reasons() -> None:
+
+    for reason in [
         WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
         WatchdogFireReason.SESSION_CEILING_EXCEEDED,
         WatchdogFireReason.PROCESS_EXIT_HANG,
         WatchdogFireReason.DESCENDANT_HANG,
         WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER,
-    ],
-)
-def test_process_reader_emits_session_resume_safe_false_for_out_of_set_reasons(
-    reason: WatchdogFireReason,
-) -> None:
-    """The subprocess line reader MUST emit ``session_resume_safe=False``
-    for every out-of-set reason.
+    ]:
+        """The subprocess line reader MUST emit ``session_resume_safe=False``
+        for every out-of-set reason.
 
-    Particularly important for ``CHILDREN_PERSIST_TOO_LONG`` -- a
-    long cumulative child-wait can have side effects outside the
-    agent session so the recovery must restart from a fresh
-    session, NOT resume the prior session.
-    """
-    exc = _raise_like_process_reader(
-        _LineReaderLike(),
-        timeout_seconds=30.0,
-        reason=reason,
-    )
-    assert exc.reason == reason
-    assert exc.session_resume_safe is False, (
-        f"reason={reason!r}: production subprocess reader MUST emit"
-        f" session_resume_safe=False; got {exc.session_resume_safe}"
-    )
+        Particularly important for ``CHILDREN_PERSIST_TOO_LONG`` -- a
+        long cumulative child-wait can have side effects outside the
+        agent session so the recovery must restart from a fresh
+        session, NOT resume the prior session.
+        """
+        exc = _raise_like_process_reader(
+            _LineReaderLike(),
+            timeout_seconds=30.0,
+            reason=reason,
+        )
+        assert exc.reason == reason
+        assert exc.session_resume_safe is False, (
+            f"reason={reason!r}: production subprocess reader MUST emit"
+            f" session_resume_safe=False; got {exc.session_resume_safe}"
+        )
 
 
 # === consolidated from test_runtime_session_resume_safe_mapping.py ===
-@pytest.mark.parametrize(
-    "reason",
-    [
+def test_pty_runner_emits_session_resume_safe_false_for_out_of_set_reasons() -> None:
+
+    for reason in [
         WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
         WatchdogFireReason.SESSION_CEILING_EXCEEDED,
         WatchdogFireReason.PROCESS_EXIT_HANG,
         WatchdogFireReason.DESCENDANT_HANG,
         WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER,
-    ],
-)
-def test_pty_runner_emits_session_resume_safe_false_for_out_of_set_reasons(
-    reason: WatchdogFireReason,
-) -> None:
-    """PTY runner mirror of the out-of-set test."""
-    exc = _raise_like_pty_runner(
-        _LineReaderLike(),
-        timeout_seconds=30.0,
-        reason=reason,
-    )
-    assert exc.reason == reason
-    assert exc.session_resume_safe is False, (
-        f"reason={reason!r}: production PTY runner MUST emit"
-        f" session_resume_safe=False; got {exc.session_resume_safe}"
-    )
+    ]:
+        """PTY runner mirror of the out-of-set test."""
+        exc = _raise_like_pty_runner(
+            _LineReaderLike(),
+            timeout_seconds=30.0,
+            reason=reason,
+        )
+        assert exc.reason == reason
+        assert exc.session_resume_safe is False, (
+            f"reason={reason!r}: production PTY runner MUST emit"
+            f" session_resume_safe=False; got {exc.session_resume_safe}"
+        )
 
 
 # === consolidated from test_runtime_session_resume_safe_mapping.py ===
@@ -11105,9 +11072,9 @@ def test_partial_shared_registry_falls_back_to_internal_build() -> None:
 
 
 # === consolidated from test_shared_subagent_pid_registry.py ===
-@pytest.mark.parametrize(
-    "transport",
-    [
+def test_shared_registry_supported_for_every_transport() -> None:
+
+    for transport in [
         AgentTransport.OPENCODE,
         AgentTransport.CLAUDE,
         AgentTransport.PI,
@@ -11116,40 +11083,38 @@ def test_partial_shared_registry_falls_back_to_internal_build() -> None:
         AgentTransport.CODEX,
         AgentTransport.NANOCODER,
         AgentTransport.GENERIC,
-    ],
-)
-def test_shared_registry_supported_for_every_transport(transport: AgentTransport) -> None:
-    """The shared-registry contract works for every supported transport.
+    ]:
+        """The shared-registry contract works for every supported transport.
 
-    The R5 cross-transport subagent visibility requirement covers
-    every transport the orchestrator can dispatch. The
-    ``build_subagent_pid_registry`` factory builds a per-transport
-    source adapter backed by the shared registry, and the registry
-    registrations are visible to the source for every transport in
-    the canonical set.
-    """
-    registry, source = AgentRegistry().build_subagent_pid_registry(transport)
-    transport_name = transport.value
-    # Every supported ``AgentTransport`` member is bound to its canonical
-    # source label (``transport.value``) -- including Nanocoder, which
-    # has its own ``make_nanocoder_subagent_pid_source`` factory since
-    # the watchdog's per-transport ``SubagentPidSource`` filter (R1) is
-    # keyed on the ``AgentTransport`` enum, not the parser.
-    source_label = transport_name
-    # Register a PID under the transport's source label.
-    pid = 70000 + (hash(transport_name) % 1000)
-    # Cast keeps the test fully typed per AGENTS.md 'tests must be
-    # fully typed' (no type-ignore comments in test files). The
-    # pattern mirrors ``tests/agents/idle_watchdog/
-    # test_subagent_identity_excludes_helpers.py`` which casts to
-    # ``SubagentIdentity.__init__`` for the same narrowing reason.
-    registry.register(
-        pid,
-        source=source_label,
-        now=0.0,
-    )
-    # The per-transport source sees the PID (shared-registry contract).
-    assert source.known_subagent_pids() == {pid}
+        The R5 cross-transport subagent visibility requirement covers
+        every transport the orchestrator can dispatch. The
+        ``build_subagent_pid_registry`` factory builds a per-transport
+        source adapter backed by the shared registry, and the registry
+        registrations are visible to the source for every transport in
+        the canonical set.
+        """
+        registry, source = AgentRegistry().build_subagent_pid_registry(transport)
+        transport_name = transport.value
+        # Every supported ``AgentTransport`` member is bound to its canonical
+        # source label (``transport.value``) -- including Nanocoder, which
+        # has its own ``make_nanocoder_subagent_pid_source`` factory since
+        # the watchdog's per-transport ``SubagentPidSource`` filter (R1) is
+        # keyed on the ``AgentTransport`` enum, not the parser.
+        source_label = transport_name
+        # Register a PID under the transport's source label.
+        pid = 70000 + (hash(transport_name) % 1000)
+        # Cast keeps the test fully typed per AGENTS.md 'tests must be
+        # fully typed' (no type-ignore comments in test files). The
+        # pattern mirrors ``tests/agents/idle_watchdog/
+        # test_subagent_identity_excludes_helpers.py`` which casts to
+        # ``SubagentIdentity.__init__`` for the same narrowing reason.
+        registry.register(
+            pid,
+            source=source_label,
+            now=0.0,
+        )
+        # The per-transport source sees the PID (shared-registry contract).
+        assert source.known_subagent_pids() == {pid}
 
 
 # === consolidated from test_silent_after_tool_call_wedge.py ===
@@ -13631,84 +13596,78 @@ def test_stuck_job_sub_ceiling_fires_at_600s_when_alive_by_is_stale() -> None:
 
 
 # === consolidated from test_stuck_job_sub_ceiling.py ===
-@pytest.mark.parametrize(
-    "alive_by",
-    (
+def test_stuck_job_sub_ceiling_fires_for_every_stale_alive_by() -> None:
+
+    for alive_by in (
         AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
         AliveBy.CPU_IDLE_WHILE_ALIVE,
         AliveBy.LOG_STALE_WHILE_ALIVE,
         AliveBy.STALE_LABEL_ONLY,
-    ),
-)
-def test_stuck_job_sub_ceiling_fires_for_every_stale_alive_by(alive_by: AliveBy) -> None:
-    """The sub-ceiling MUST trip for every stale alive_by value.
+    ):
+        """The sub-ceiling MUST trip for every stale alive_by value.
 
-    The fix must not single out one stale value (e.g.
-    ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` only); all four stale values
-    in ``_NON_PROGRESS_ALIVE_BY_VALUES`` trip the sub-ceiling
-    consistently.
-    """
-    clock = FakeClock(start=0.0)
-    watchdog = IdleWatchdog(
-        _stuck_job_sub_ceiling_make_policy(stuck_job_sub_ceiling_seconds=600.0),
-        clock,
-        corroborator=_make_stuck_corroborator(alive_by),
-    )
-    watchdog.record_invocation_start()
+        The fix must not single out one stale value (e.g.
+        ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` only); all four stale values
+        in ``_NON_PROGRESS_ALIVE_BY_VALUES`` trip the sub-ceiling
+        consistently.
+        """
+        clock = FakeClock(start=0.0)
+        watchdog = IdleWatchdog(
+            _stuck_job_sub_ceiling_make_policy(stuck_job_sub_ceiling_seconds=600.0),
+            clock,
+            corroborator=_make_stuck_corroborator(alive_by),
+        )
+        watchdog.record_invocation_start()
 
-    clock.advance(201.0)
-    verdict = watchdog.evaluate(classify_quiet=_stuck_job_sub_ceiling_waiting_on_child)
-    assert verdict == WatchdogVerdict.WAITING_ON_CHILD, (
-        f"first evaluate MUST enter the waiting branch; got {verdict!r}"
-    )
+        clock.advance(201.0)
+        verdict = watchdog.evaluate(classify_quiet=_stuck_job_sub_ceiling_waiting_on_child)
+        assert verdict == WatchdogVerdict.WAITING_ON_CHILD, (
+            f"first evaluate MUST enter the waiting branch; got {verdict!r}"
+        )
 
-    clock.advance(600.0)
-    verdict = watchdog.evaluate(classify_quiet=_stuck_job_sub_ceiling_waiting_on_child)
+        clock.advance(600.0)
+        verdict = watchdog.evaluate(classify_quiet=_stuck_job_sub_ceiling_waiting_on_child)
 
-    assert verdict == WatchdogVerdict.FIRE, (
-        f"stuck_job_sub_ceiling MUST fire for alive_by={alive_by.value!r}; got verdict={verdict!r}"
-    )
-    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+        assert verdict == WatchdogVerdict.FIRE, (
+            f"stuck_job_sub_ceiling MUST fire for alive_by={alive_by.value!r}; got verdict={verdict!r}"
+        )
+        assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
 
 # === consolidated from test_stuck_job_sub_ceiling.py ===
-@pytest.mark.parametrize(
-    "alive_by",
-    (AliveBy.FRESH_PROGRESS, AliveBy.FRESH_HEARTBEAT_ONLY),
-)
-def test_stuck_job_sub_ceiling_does_not_fire_when_alive_by_is_fresh(
-    alive_by: AliveBy,
-) -> None:
-    """The sub-ceiling MUST NOT trip for FRESH alive_by values.
+def test_stuck_job_sub_ceiling_does_not_fire_when_alive_by_is_fresh() -> None:
 
-    A productive live child agent (``FRESH_PROGRESS`` /
-    ``FRESH_HEARTBEAT_ONLY``) is by definition NOT a stuck job; the
-    sub-ceiling is exclusively the stuck-but-alive detector.
-    """
-    clock = FakeClock(start=0.0)
-    watchdog = IdleWatchdog(
-        _stuck_job_sub_ceiling_make_policy(stuck_job_sub_ceiling_seconds=600.0),
-        clock,
-        corroborator=_make_stuck_corroborator(alive_by),
-    )
-    watchdog.record_invocation_start()
+    for alive_by in (AliveBy.FRESH_PROGRESS, AliveBy.FRESH_HEARTBEAT_ONLY):
+        """The sub-ceiling MUST NOT trip for FRESH alive_by values.
 
-    clock.advance(201.0)
-    verdict = watchdog.evaluate(classify_quiet=_stuck_job_sub_ceiling_waiting_on_child)
-    assert verdict == WatchdogVerdict.WAITING_ON_CHILD
+        A productive live child agent (``FRESH_PROGRESS`` /
+        ``FRESH_HEARTBEAT_ONLY``) is by definition NOT a stuck job; the
+        sub-ceiling is exclusively the stuck-but-alive detector.
+        """
+        clock = FakeClock(start=0.0)
+        watchdog = IdleWatchdog(
+            _stuck_job_sub_ceiling_make_policy(stuck_job_sub_ceiling_seconds=600.0),
+            clock,
+            corroborator=_make_stuck_corroborator(alive_by),
+        )
+        watchdog.record_invocation_start()
 
-    clock.advance(600.0)
-    verdict = watchdog.evaluate(classify_quiet=_stuck_job_sub_ceiling_waiting_on_child)
+        clock.advance(201.0)
+        verdict = watchdog.evaluate(classify_quiet=_stuck_job_sub_ceiling_waiting_on_child)
+        assert verdict == WatchdogVerdict.WAITING_ON_CHILD
 
-    assert verdict == WatchdogVerdict.WAITING_ON_CHILD, (
-        f"stuck_job_sub_ceiling MUST NOT fire for FRESH alive_by="
-        f"{alive_by.value!r}; got verdict={verdict!r}"
-    )
-    assert watchdog.last_fire_reason is None, (
-        f"stuck_job_sub_ceiling MUST NOT fire for FRESH alive_by="
-        f"{alive_by.value!r}; got last_fire_reason="
-        f"{watchdog.last_fire_reason!r}"
-    )
+        clock.advance(600.0)
+        verdict = watchdog.evaluate(classify_quiet=_stuck_job_sub_ceiling_waiting_on_child)
+
+        assert verdict == WatchdogVerdict.WAITING_ON_CHILD, (
+            f"stuck_job_sub_ceiling MUST NOT fire for FRESH alive_by="
+            f"{alive_by.value!r}; got verdict={verdict!r}"
+        )
+        assert watchdog.last_fire_reason is None, (
+            f"stuck_job_sub_ceiling MUST NOT fire for FRESH alive_by="
+            f"{alive_by.value!r}; got last_fire_reason="
+            f"{watchdog.last_fire_reason!r}"
+        )
 
 
 # === consolidated from test_stuck_job_sub_ceiling.py ===
@@ -14618,9 +14577,9 @@ def test_known_tool_call_verbs_set_is_twelve_members() -> None:
 
 
 # === consolidated from test_tool_call_parser.py ===
-@pytest.mark.parametrize(
-    ("description", "expected"),
-    [
+def test_parse_returns_canonical_verb_for_known_prefix() -> None:
+
+    for description, expected in [
         # 12 canonical verbs with realistic production descriptions.
         ("tool_use:Read", "tool_use"),
         ("tool_result:Bash", "tool_result"),
@@ -14634,26 +14593,26 @@ def test_known_tool_call_verbs_set_is_twelve_members() -> None:
         ("grep:TODO", "grep"),
         ("webfetch:https://example.com", "webfetch"),
         ("websearch:ralph workflow watchdog", "websearch"),
-    ],
-)
-def test_parse_returns_canonical_verb_for_known_prefix(description: str, expected: str) -> None:
-    """Each canonical verb ``verb:<rest>`` MUST surface as ``verb``.
+    ]:
+        """Each canonical verb ``verb:<rest>`` MUST surface as ``verb``.
 
-    The parser splits on the FIRST ``:`` (not ``": "``) because the
-    canonical production format from the NDJSON parser layer is
-    ``tool_use:<name>`` with no space after the colon (see
-    ``ralph/agents/parsers/claude_interactive.py``). The parser returns
-    the substring before the first ``:`` when that substring is in the
-    canonical verb set, otherwise ``None``.
-    """
-    result = parse_tool_call_from_description(description)
-    assert result == expected, f"description={description!r}: expected {expected!r}, got {result!r}"
+        The parser splits on the FIRST ``:`` (not ``": "``) because the
+        canonical production format from the NDJSON parser layer is
+        ``tool_use:<name>`` with no space after the colon (see
+        ``ralph/agents/parsers/claude_interactive.py``). The parser returns
+        the substring before the first ``:`` when that substring is in the
+        canonical verb set, otherwise ``None``.
+        """
+        result = parse_tool_call_from_description(description)
+        assert result == expected, (
+            f"description={description!r}: expected {expected!r}, got {result!r}"
+        )
 
 
 # === consolidated from test_tool_call_parser.py ===
-@pytest.mark.parametrize(
-    ("description", "expected"),
-    [
+def test_parse_returns_none_for_edge_cases() -> None:
+
+    for description, expected in [
         # None description (no subagent observation yet).
         (None, None),
         # Empty string (falsy description).
@@ -14696,12 +14655,12 @@ def test_parse_returns_canonical_verb_for_known_prefix(description: str, expecte
         # ``subagent_activity``; the ``current_subagent_tool_call`` field
         # is ``None``.
         ('"subagent_activity": "tool_use:Read"', None),
-    ],
-)
-def test_parse_returns_none_for_edge_cases(description: str | None, expected: str | None) -> None:
-    """Edge cases MUST return ``None`` (not raise, not leak partial data)."""
-    result = parse_tool_call_from_description(description)
-    assert result == expected, f"description={description!r}: expected {expected!r}, got {result!r}"
+    ]:
+        """Edge cases MUST return ``None`` (not raise, not leak partial data)."""
+        result = parse_tool_call_from_description(description)
+        assert result == expected, (
+            f"description={description!r}: expected {expected!r}, got {result!r}"
+        )
 
 
 # === consolidated from test_tool_call_parser.py ===

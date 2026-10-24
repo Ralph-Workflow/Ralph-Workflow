@@ -246,14 +246,15 @@ def _assert_intervention(
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("cause", UNREADABLE_CAUSES)
-def test_unreadable_outcome_is_typed_with_reason(workspace_root: Path, cause: str) -> None:
-    payload = _seed_unreadable_record(workspace_root, cause)
-    outcome = read_record_outcome(workspace_root)
-    assert outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE
-    assert outcome.unreadable_reason == cause
-    assert outcome.record is None
-    assert _record_file(workspace_root).read_bytes() == payload
+def test_unreadable_outcome_is_typed_with_reason(workspace_root: Path) -> None:
+
+    for cause in UNREADABLE_CAUSES:
+        payload = _seed_unreadable_record(workspace_root, cause)
+        outcome = read_record_outcome(workspace_root)
+        assert outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE
+        assert outcome.unreadable_reason == cause
+        assert outcome.record is None
+        assert _record_file(workspace_root).read_bytes() == payload
 
 
 # --------------------------------------------------------------------------
@@ -282,15 +283,16 @@ def test_backend_read_failure_maps_to_unreadable_backend_read_failure(
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("cause", UNREADABLE_CAUSES)
-def test_unreadable_evidence_is_preserved_not_cleared(workspace_root: Path, cause: str) -> None:
-    payload = _seed_unreadable_record(workspace_root, cause)
-    store = IntegrationRecordStore(workspace_root)
-    with pytest.raises(RecordUnreadableError):
-        store.transition(START_INTEGRATING)
-    with pytest.raises(RecordUnreadableError):
-        store.transition(CLEAR)
-    assert _record_file(workspace_root).read_bytes() == payload
+def test_unreadable_evidence_is_preserved_not_cleared(workspace_root: Path) -> None:
+
+    for cause in UNREADABLE_CAUSES:
+        payload = _seed_unreadable_record(workspace_root, cause)
+        store = IntegrationRecordStore(workspace_root)
+        with pytest.raises(RecordUnreadableError):
+            store.transition(START_INTEGRATING)
+        with pytest.raises(RecordUnreadableError):
+            store.transition(CLEAR)
+        assert _record_file(workspace_root).read_bytes() == payload
 
 
 # --------------------------------------------------------------------------
@@ -298,16 +300,17 @@ def test_unreadable_evidence_is_preserved_not_cleared(workspace_root: Path, caus
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("cause", UNREADABLE_CAUSES)
-def test_startup_entry_point_reports_intervention(workspace_root: Path, cause: str) -> None:
-    payload = _seed_unreadable_record(workspace_root, cause)
-    recovered = run_loop._run_auto_integrate_recovery_preamble(
-        WorkspaceScope(workspace_root), UnifiedConfig()
-    )
-    assert recovered is not None
-    assert recovered.last_outcome.value == "diagnostic_intervention_required"
-    assert recovered.last_decision == INTERVENTION.value
-    _assert_intervention(workspace_root, recovered, payload)
+def test_startup_entry_point_reports_intervention(workspace_root: Path) -> None:
+
+    for cause in UNREADABLE_CAUSES:
+        payload = _seed_unreadable_record(workspace_root, cause)
+        recovered = run_loop._run_auto_integrate_recovery_preamble(
+            WorkspaceScope(workspace_root), UnifiedConfig()
+        )
+        assert recovered is not None
+        assert recovered.last_outcome.value == "diagnostic_intervention_required"
+        assert recovered.last_decision == INTERVENTION.value
+        _assert_intervention(workspace_root, recovered, payload)
 
 
 # --------------------------------------------------------------------------
@@ -315,35 +318,36 @@ def test_startup_entry_point_reports_intervention(workspace_root: Path, cause: s
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("cause", UNREADABLE_CAUSES)
-def test_phase_boundary_entry_point_reports_intervention(workspace_root: Path, cause: str) -> None:
-    payload = _seed_unreadable_record(workspace_root, cause)
-    recovered = run_loop._run_auto_integrate_recovery_preamble(
-        WorkspaceScope(workspace_root), UnifiedConfig()
-    )
-    assert recovered is not None
-    state = PipelineState(phase="development", rebase=recovered)
-    latest_state: list[PipelineState] = []
-    sleep = MagicMock()
-    ctx = _loop_context(workspace_root, latest_state, sleep)
-    # O1 retry-progress rule (D3): the phase-boundary loop escalates
-    # an unreadable durable record to INTERVENTION_REQUIRED WITHOUT
-    # calling the fixed-interval cooldown sleep. Recovery has no
-    # in-process satisfier for an unreadable record, so escalation
-    # must be immediate -- the loop returns from
-    # ``_continue_after_startup_integration`` via the early-return
-    # branch without sleeping.
-    result_state, _previous, _exit = run_loop._run_inner_loop(state, ctx, "development")
-    assert not sleep.called, (
-        "the phase-boundary loop must escalate an unreadable record "
-        "without calling the cooldown sleep (D3)"
-    )
-    assert result_state.rebase.last_decision == INTERVENTION.value
-    _assert_intervention(workspace_root, result_state.rebase, payload)
-    # The blocked turn checkpoints through the real persistence boundary.
-    reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
-    assert reloaded is not None
-    assert reloaded.rebase.last_decision == INTERVENTION.value
+def test_phase_boundary_entry_point_reports_intervention(workspace_root: Path) -> None:
+
+    for cause in UNREADABLE_CAUSES:
+        payload = _seed_unreadable_record(workspace_root, cause)
+        recovered = run_loop._run_auto_integrate_recovery_preamble(
+            WorkspaceScope(workspace_root), UnifiedConfig()
+        )
+        assert recovered is not None
+        state = PipelineState(phase="development", rebase=recovered)
+        latest_state: list[PipelineState] = []
+        sleep = MagicMock()
+        ctx = _loop_context(workspace_root, latest_state, sleep)
+        # O1 retry-progress rule (D3): the phase-boundary loop escalates
+        # an unreadable durable record to INTERVENTION_REQUIRED WITHOUT
+        # calling the fixed-interval cooldown sleep. Recovery has no
+        # in-process satisfier for an unreadable record, so escalation
+        # must be immediate -- the loop returns from
+        # ``_continue_after_startup_integration`` via the early-return
+        # branch without sleeping.
+        result_state, _previous, _exit = run_loop._run_inner_loop(state, ctx, "development")
+        assert not sleep.called, (
+            "the phase-boundary loop must escalate an unreadable record "
+            "without calling the cooldown sleep (D3)"
+        )
+        assert result_state.rebase.last_decision == INTERVENTION.value
+        _assert_intervention(workspace_root, result_state.rebase, payload)
+        # The blocked turn checkpoints through the real persistence boundary.
+        reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
+        assert reloaded is not None
+        assert reloaded.rebase.last_decision == INTERVENTION.value
 
 
 # --------------------------------------------------------------------------
@@ -351,38 +355,39 @@ def test_phase_boundary_entry_point_reports_intervention(workspace_root: Path, c
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("cause", UNREADABLE_CAUSES)
-def test_commit_entry_point_reports_intervention(workspace_root: Path, cause: str) -> None:
-    payload = _seed_unreadable_record(workspace_root, cause)
-    deps = MagicMock()
-    deps.policy_bundle = _policy_bundle()
-    deps.policy_bundle_factory = None
-    verdict = prepare_commit_integration(
-        workspace_root,
-        UnifiedConfig(),
-        deps,
-        MagicMock(),
-        MagicMock(),
-        conflict_resolver=MagicMock(),
-        rebase_stop_resolver=MagicMock(),
-    )
-    assert not verdict.dispatch_allowed
-    bundle = _policy_bundle()
-    phase_def = bundle.pipeline.phases["development"]
-    outcome = runner._maybe_auto_integrate(
-        effect=CommitEffect(message_file="msg.txt"),
-        event=PipelineEvent.COMMIT_SUCCESS,
-        commit_phase_def=phase_def,
-        config=UnifiedConfig(),
-        workspace_scope=WorkspaceScope(workspace_root),
-        state=PipelineState(phase="development", rebase=RebaseState()),
-        display=MagicMock(),
-        policy_bundle=bundle,
-        registry=MagicMock(),
-    )
-    assert outcome is not None
-    assert outcome.last_outcome.value == "diagnostic_intervention_required"
-    _assert_intervention(workspace_root, outcome, payload)
+def test_commit_entry_point_reports_intervention(workspace_root: Path) -> None:
+
+    for cause in UNREADABLE_CAUSES:
+        payload = _seed_unreadable_record(workspace_root, cause)
+        deps = MagicMock()
+        deps.policy_bundle = _policy_bundle()
+        deps.policy_bundle_factory = None
+        verdict = prepare_commit_integration(
+            workspace_root,
+            UnifiedConfig(),
+            deps,
+            MagicMock(),
+            MagicMock(),
+            conflict_resolver=MagicMock(),
+            rebase_stop_resolver=MagicMock(),
+        )
+        assert not verdict.dispatch_allowed
+        bundle = _policy_bundle()
+        phase_def = bundle.pipeline.phases["development"]
+        outcome = runner._maybe_auto_integrate(
+            effect=CommitEffect(message_file="msg.txt"),
+            event=PipelineEvent.COMMIT_SUCCESS,
+            commit_phase_def=phase_def,
+            config=UnifiedConfig(),
+            workspace_scope=WorkspaceScope(workspace_root),
+            state=PipelineState(phase="development", rebase=RebaseState()),
+            display=MagicMock(),
+            policy_bundle=bundle,
+            registry=MagicMock(),
+        )
+        assert outcome is not None
+        assert outcome.last_outcome.value == "diagnostic_intervention_required"
+        _assert_intervention(workspace_root, outcome, payload)
 
 
 # --------------------------------------------------------------------------
@@ -390,33 +395,34 @@ def test_commit_entry_point_reports_intervention(workspace_root: Path, cause: st
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("cause", UNREADABLE_CAUSES)
-def test_cooldown_entry_point_reports_intervention(workspace_root: Path, cause: str) -> None:
-    payload = _seed_unreadable_record(workspace_root, cause)
-    recovered = run_loop._run_auto_integrate_recovery_preamble(
-        WorkspaceScope(workspace_root), UnifiedConfig()
-    )
-    assert recovered is not None
-    state = PipelineState(phase="development", rebase=recovered)
-    latest_state: list[PipelineState] = [state]
-    sleep = MagicMock()
-    ctx = _loop_context(workspace_root, latest_state, sleep)
-    # O1 retry-progress rule (D3): the cooldown retry path escalates
-    # an unreadable durable record to INTERVENTION_REQUIRED WITHOUT
-    # calling the fixed-interval cooldown sleep. The unreadable
-    # record has no in-process satisfier (no lease, no evidence);
-    # the 5-second sleep that lived here was the operator-only stall
-    # that D3 forbade. Escalation must be immediate.
-    cooled = run_loop._wait_for_integration_retry(state, ctx)
-    assert not sleep.called, (
-        "the cooldown retry path must escalate an unreadable record "
-        "without calling the cooldown sleep (D3)"
-    )
-    assert cooled.rebase.last_decision == INTERVENTION.value
-    _assert_intervention(workspace_root, cooled.rebase, payload)
-    reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
-    assert reloaded is not None
-    assert reloaded.rebase.last_decision == INTERVENTION.value
+def test_cooldown_entry_point_reports_intervention(workspace_root: Path) -> None:
+
+    for cause in UNREADABLE_CAUSES:
+        payload = _seed_unreadable_record(workspace_root, cause)
+        recovered = run_loop._run_auto_integrate_recovery_preamble(
+            WorkspaceScope(workspace_root), UnifiedConfig()
+        )
+        assert recovered is not None
+        state = PipelineState(phase="development", rebase=recovered)
+        latest_state: list[PipelineState] = [state]
+        sleep = MagicMock()
+        ctx = _loop_context(workspace_root, latest_state, sleep)
+        # O1 retry-progress rule (D3): the cooldown retry path escalates
+        # an unreadable durable record to INTERVENTION_REQUIRED WITHOUT
+        # calling the fixed-interval cooldown sleep. The unreadable
+        # record has no in-process satisfier (no lease, no evidence);
+        # the 5-second sleep that lived here was the operator-only stall
+        # that D3 forbade. Escalation must be immediate.
+        cooled = run_loop._wait_for_integration_retry(state, ctx)
+        assert not sleep.called, (
+            "the cooldown retry path must escalate an unreadable record "
+            "without calling the cooldown sleep (D3)"
+        )
+        assert cooled.rebase.last_decision == INTERVENTION.value
+        _assert_intervention(workspace_root, cooled.rebase, payload)
+        reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
+        assert reloaded is not None
+        assert reloaded.rebase.last_decision == INTERVENTION.value
 
 
 # --------------------------------------------------------------------------
@@ -424,23 +430,24 @@ def test_cooldown_entry_point_reports_intervention(workspace_root: Path, cause: 
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("cause", UNREADABLE_CAUSES)
-def test_parallel_join_entry_point_reports_intervention(workspace_root: Path, cause: str) -> None:
-    payload = _seed_unreadable_record(workspace_root, cause)
-    joined = run_worker_auto_integration(
-        config=UnifiedConfig(),
-        workspace_scope=WorkspaceScope(workspace_root),
-        policy_bundle=_policy_bundle(),
-        registry=MagicMock(),
-        pipeline_deps=None,
-        display_context=MagicMock(),
-        recover_first=True,
-        state=RebaseState(),
-    )
-    assert joined is not None
-    assert joined.last_outcome.value == "diagnostic_intervention_required"
-    assert joined.last_decision == INTERVENTION.value
-    _assert_intervention(workspace_root, joined, payload)
+def test_parallel_join_entry_point_reports_intervention(workspace_root: Path) -> None:
+
+    for cause in UNREADABLE_CAUSES:
+        payload = _seed_unreadable_record(workspace_root, cause)
+        joined = run_worker_auto_integration(
+            config=UnifiedConfig(),
+            workspace_scope=WorkspaceScope(workspace_root),
+            policy_bundle=_policy_bundle(),
+            registry=MagicMock(),
+            pipeline_deps=None,
+            display_context=MagicMock(),
+            recover_first=True,
+            state=RebaseState(),
+        )
+        assert joined is not None
+        assert joined.last_outcome.value == "diagnostic_intervention_required"
+        assert joined.last_decision == INTERVENTION.value
+        _assert_intervention(workspace_root, joined, payload)
 
 
 # --------------------------------------------------------------------------
@@ -448,18 +455,19 @@ def test_parallel_join_entry_point_reports_intervention(workspace_root: Path, ca
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("cause", UNREADABLE_CAUSES)
-def test_terminal_entry_point_reports_intervention(workspace_root: Path, cause: str) -> None:
-    payload = _seed_unreadable_record(workspace_root, cause)
-    recovered = run_loop._run_auto_integrate_recovery_preamble(
-        WorkspaceScope(workspace_root), UnifiedConfig()
-    )
-    assert recovered is not None
-    terminal_state = PipelineState(phase="complete", rebase=recovered)
-    assert is_terminal_success_eligible(terminal_state, None, recovered) is False
-    decision = _authority_decision(recovered, phase="complete")
-    assert decision is INTERVENTION
-    _assert_intervention(workspace_root, recovered, payload, phase="complete")
+def test_terminal_entry_point_reports_intervention(workspace_root: Path) -> None:
+
+    for cause in UNREADABLE_CAUSES:
+        payload = _seed_unreadable_record(workspace_root, cause)
+        recovered = run_loop._run_auto_integrate_recovery_preamble(
+            WorkspaceScope(workspace_root), UnifiedConfig()
+        )
+        assert recovered is not None
+        terminal_state = PipelineState(phase="complete", rebase=recovered)
+        assert is_terminal_success_eligible(terminal_state, None, recovered) is False
+        decision = _authority_decision(recovered, phase="complete")
+        assert decision is INTERVENTION
+        _assert_intervention(workspace_root, recovered, payload, phase="complete")
 
 
 # --------------------------------------------------------------------------
@@ -661,18 +669,19 @@ def test_terminal_entry_point_reports_intervention_on_backend_read_failure(
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("cause", UNREADABLE_CAUSES)
-def test_operator_label_shows_intervention_not_diagnosis(workspace_root: Path, cause: str) -> None:
-    payload = _seed_unreadable_record(workspace_root, cause)
-    recovered = run_loop._run_auto_integrate_recovery_preamble(
-        WorkspaceScope(workspace_root), UnifiedConfig()
-    )
-    assert recovered is not None
-    label = format_integration_label(recovered)
-    assert label == "intervention"
-    assert label not in FORBIDDEN_LABELS
-    # The persisted checkpoint's label matches the live projection.
-    _assert_intervention(workspace_root, recovered, payload)
+def test_operator_label_shows_intervention_not_diagnosis(workspace_root: Path) -> None:
+
+    for cause in UNREADABLE_CAUSES:
+        payload = _seed_unreadable_record(workspace_root, cause)
+        recovered = run_loop._run_auto_integrate_recovery_preamble(
+            WorkspaceScope(workspace_root), UnifiedConfig()
+        )
+        assert recovered is not None
+        label = format_integration_label(recovered)
+        assert label == "intervention"
+        assert label not in FORBIDDEN_LABELS
+        # The persisted checkpoint's label matches the live projection.
+        _assert_intervention(workspace_root, recovered, payload)
 
 
 # --------------------------------------------------------------------------
@@ -680,55 +689,54 @@ def test_operator_label_shows_intervention_not_diagnosis(workspace_root: Path, c
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("cause", UNREADABLE_CAUSES)
-def test_restart_does_not_repeat_diagnosis_and_keeps_projection(
-    workspace_root: Path, cause: str
-) -> None:
-    payload = _seed_unreadable_record(workspace_root, cause)
-    # First visit through the real startup seam, then one blocked inner-loop
-    # turn that checkpoints the intervention projection. O1 retry-progress
-    # rule (D3): the loop returns from ``_continue_after_startup_integration``
-    # via the early-return branch without sleeping.
-    recovered = run_loop._run_auto_integrate_recovery_preamble(
-        WorkspaceScope(workspace_root), UnifiedConfig()
-    )
-    assert recovered is not None
-    state = PipelineState(phase="development", rebase=recovered)
-    latest_state: list[PipelineState] = []
-    ctx = _loop_context(workspace_root, latest_state, MagicMock())
-    first, _previous, _exit = run_loop._run_inner_loop(state, ctx, "development")
-    assert first.rebase.last_decision == INTERVENTION.value
-    checkpoint_path = workspace_root / "checkpoint.json"
-    reloaded = checkpoint_module.load(checkpoint_path)
-    assert reloaded is not None
-    assert reloaded.rebase.last_decision == INTERVENTION.value
+def test_restart_does_not_repeat_diagnosis_and_keeps_projection(workspace_root: Path) -> None:
 
-    # Simulated crash + restart: a FRESH loop context (no in-memory state)
-    # reads the same durable evidence through the same real seams. The
-    # diagnosis agent stays silent (autouse fixture), the typed decision is
-    # identical, the persisted projection survives, and the record bytes are
-    # exactly as the crash left them.
-    fresh_latest: list[PipelineState] = []
-    fresh_ctx = _loop_context(workspace_root, fresh_latest, MagicMock())
-    recovered_restart = run_loop._run_auto_integrate_recovery_preamble(
-        WorkspaceScope(workspace_root), UnifiedConfig()
-    )
-    assert recovered_restart is not None
-    restarted, _previous, _exit = run_loop._run_inner_loop(
-        PipelineState(phase="development", rebase=recovered_restart),
-        fresh_ctx,
-        "development",
-    )
-    assert restarted.rebase.last_decision == INTERVENTION.value
-    assert format_integration_label(restarted.rebase) not in FORBIDDEN_LABELS
-    outcome_restart = read_record_outcome(workspace_root)
-    assert outcome_restart.disposition is RecordReadOutcomeDisposition.UNREADABLE
-    assert outcome_restart.unreadable_reason == cause
-    assert _record_file(workspace_root).read_bytes() == payload
-    reloaded_restart = checkpoint_module.load(checkpoint_path)
-    assert reloaded_restart is not None
-    assert reloaded_restart.rebase.last_decision == INTERVENTION.value
-    assert reloaded_restart.rebase.last_outcome.value == "diagnostic_intervention_required"
+    for cause in UNREADABLE_CAUSES:
+        payload = _seed_unreadable_record(workspace_root, cause)
+        # First visit through the real startup seam, then one blocked inner-loop
+        # turn that checkpoints the intervention projection. O1 retry-progress
+        # rule (D3): the loop returns from ``_continue_after_startup_integration``
+        # via the early-return branch without sleeping.
+        recovered = run_loop._run_auto_integrate_recovery_preamble(
+            WorkspaceScope(workspace_root), UnifiedConfig()
+        )
+        assert recovered is not None
+        state = PipelineState(phase="development", rebase=recovered)
+        latest_state: list[PipelineState] = []
+        ctx = _loop_context(workspace_root, latest_state, MagicMock())
+        first, _previous, _exit = run_loop._run_inner_loop(state, ctx, "development")
+        assert first.rebase.last_decision == INTERVENTION.value
+        checkpoint_path = workspace_root / "checkpoint.json"
+        reloaded = checkpoint_module.load(checkpoint_path)
+        assert reloaded is not None
+        assert reloaded.rebase.last_decision == INTERVENTION.value
+
+        # Simulated crash + restart: a FRESH loop context (no in-memory state)
+        # reads the same durable evidence through the same real seams. The
+        # diagnosis agent stays silent (autouse fixture), the typed decision is
+        # identical, the persisted projection survives, and the record bytes are
+        # exactly as the crash left them.
+        fresh_latest: list[PipelineState] = []
+        fresh_ctx = _loop_context(workspace_root, fresh_latest, MagicMock())
+        recovered_restart = run_loop._run_auto_integrate_recovery_preamble(
+            WorkspaceScope(workspace_root), UnifiedConfig()
+        )
+        assert recovered_restart is not None
+        restarted, _previous, _exit = run_loop._run_inner_loop(
+            PipelineState(phase="development", rebase=recovered_restart),
+            fresh_ctx,
+            "development",
+        )
+        assert restarted.rebase.last_decision == INTERVENTION.value
+        assert format_integration_label(restarted.rebase) not in FORBIDDEN_LABELS
+        outcome_restart = read_record_outcome(workspace_root)
+        assert outcome_restart.disposition is RecordReadOutcomeDisposition.UNREADABLE
+        assert outcome_restart.unreadable_reason == cause
+        assert _record_file(workspace_root).read_bytes() == payload
+        reloaded_restart = checkpoint_module.load(checkpoint_path)
+        assert reloaded_restart is not None
+        assert reloaded_restart.rebase.last_decision == INTERVENTION.value
+        assert reloaded_restart.rebase.last_outcome.value == "diagnostic_intervention_required"
 
 
 # --------------------------------------------------------------------------

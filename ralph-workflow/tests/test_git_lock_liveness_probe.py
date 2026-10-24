@@ -17,18 +17,14 @@ from typing import Literal
 
 import pytest
 
-from ralph.git._lock_recovery import (
-    _pid_has_gitdir_environ,
-    _pid_in_repo_cwd,
-)
 from ralph.git.lock_recovery import (
     ProbeExecutorStatus,
+    lock_has_no_live_holder,
+    pid_has_gitdir_environ,
+    pid_in_repo_cwd,
     probe_executor_status,
     probe_pool_capacity,
     reset_probe_executor,
-)
-from ralph.git.operations import (
-    _lock_has_no_live_holder,
 )
 
 
@@ -55,7 +51,7 @@ def test_liveness_probe_whole_timeout_0_5s(
 
     monkeypatch.setattr(ThreadPoolExecutor, "submit", fake_submit)
 
-    result = _lock_has_no_live_holder(lock_path, gitdir, _proc_root=tmp_path / "proc")
+    result = lock_has_no_live_holder(lock_path, gitdir, proc_root=tmp_path / "proc")
     assert result == "unknown", "Probe timeout must return 'unknown', not 'live' or 'dead'"
 
 
@@ -90,7 +86,7 @@ def test_liveness_probe_or_predicate_cwd_only(
 
     monkeypatch.setattr("ralph.git._lock_recovery.subprocess.run", fake_run)
 
-    result = _lock_has_no_live_holder(lock_path, gitdir, gitdir_common, _proc_root=fake_proc)
+    result = lock_has_no_live_holder(lock_path, gitdir, gitdir_common, proc_root=fake_proc)
     assert result == "live", "Process with cwd=gitdir must return 'live' (OR predicate)"
 
 
@@ -126,7 +122,7 @@ def test_liveness_probe_common_gitdir_holder(
 
     monkeypatch.setattr("ralph.git._lock_recovery.subprocess.run", fake_run)
 
-    result = _lock_has_no_live_holder(lock_path, gitdir, gitdir_common, _proc_root=fake_proc)
+    result = lock_has_no_live_holder(lock_path, gitdir, gitdir_common, proc_root=fake_proc)
     assert result == "live", "Process with cwd=common-gitdir must return 'live'"
 
 
@@ -149,8 +145,8 @@ def test_liveness_probe_real_blocked_worker_elapsed_bound(
     monkeypatch.setattr("ralph.git.operations._probe_lsof_fuser", hung_probe)
 
     try:
-        result = _lock_has_no_live_holder(
-            lock_path, gitdir, probe_timeout_s=0.05, _proc_root=tmp_path / "proc"
+        result = lock_has_no_live_holder(
+            lock_path, gitdir, probe_timeout_s=0.05, proc_root=tmp_path / "proc"
         )
         assert result == "unknown", "Hung probe must fail-closed to 'unknown'"
     finally:
@@ -194,7 +190,7 @@ def test_liveness_probe_holder_beyond_120_cap(
 
     monkeypatch.setattr("ralph.git._lock_recovery.subprocess.run", fake_run)
 
-    result = _lock_has_no_live_holder(lock_path, gitdir, _proc_root=fake_proc)
+    result = lock_has_no_live_holder(lock_path, gitdir, proc_root=fake_proc)
     assert result == "live", (
         "Process beyond the old 120-PID cap (PID 140) must be inspected and detected as live"
     )
@@ -231,7 +227,7 @@ def test_liveness_probe_unreadable_pid_returns_unknown(
     monkeypatch.setattr("ralph.git._lock_recovery.subprocess.run", fake_run)
 
     try:
-        result = _lock_has_no_live_holder(lock_path, gitdir, _proc_root=fake_proc)
+        result = lock_has_no_live_holder(lock_path, gitdir, proc_root=fake_proc)
         assert result == "unknown", (
             "Unreadable candidate PID must return 'unknown' (fail-closed negative proof)"
         )
@@ -274,12 +270,12 @@ def test_liveness_probe_unreadable_non_git_fd_does_not_veto_recovery(
     )
     try:
         # A fresh lock may still be a git client's: unreadable stays unknown.
-        assert _lock_has_no_live_holder(lock_path, gitdir, _proc_root=fake_proc) == "unknown"
+        assert lock_has_no_live_holder(lock_path, gitdir, proc_root=fake_proc) == "unknown"
         # Once the lock has outlived any git operation Ralph would wait on, a
         # proven non-git process with an unreadable fd table cannot be it.
         long_ago = time.time() - 10_000
         os.utime(lock_path, (long_ago, long_ago))
-        assert _lock_has_no_live_holder(lock_path, gitdir, _proc_root=fake_proc) == "dead"
+        assert lock_has_no_live_holder(lock_path, gitdir, proc_root=fake_proc) == "dead"
     finally:
         fd_dir.chmod(0o755)
 
@@ -299,7 +295,7 @@ def test_liveness_probe_unreadable_git_fd_fails_closed(
         lambda *a, **k: SimpleNamespace(returncode=1, stdout=b""),
     )
     try:
-        assert _lock_has_no_live_holder(lock_path, gitdir, _proc_root=fake_proc) == "unknown"
+        assert lock_has_no_live_holder(lock_path, gitdir, proc_root=fake_proc) == "unknown"
     finally:
         fd_dir.chmod(0o755)
 
@@ -320,14 +316,14 @@ def test_liveness_probe_inaccessible_metadata_fails_closed(
     commondir_file.chmod(0o000)
 
     try:
-        result = _lock_has_no_live_holder(lock_path, gitdir, _proc_root=tmp_path / "proc")
+        result = lock_has_no_live_holder(lock_path, gitdir, proc_root=tmp_path / "proc")
         assert result == "unknown", "Inaccessible commondir must fail closed to 'unknown'"
     finally:
         commondir_file.chmod(0o644)
 
     # Empty commondir also fails closed
     commondir_file.write_text("", encoding="utf-8")
-    result = _lock_has_no_live_holder(lock_path, gitdir, _proc_root=tmp_path / "proc")
+    result = lock_has_no_live_holder(lock_path, gitdir, proc_root=tmp_path / "proc")
     assert result == "unknown", "Empty commondir metadata must fail closed to 'unknown'"
 
 
@@ -355,7 +351,7 @@ def test_liveness_probe_blocked_metadata_within_whole_probe_timeout(
     monkeypatch.setattr(Path, "read_text", slow_read_text)
 
     try:
-        result = _lock_has_no_live_holder(lock_path, gitdir, probe_timeout_s=0.05)
+        result = lock_has_no_live_holder(lock_path, gitdir, probe_timeout_s=0.05)
         assert result == "unknown", "Stalled metadata read must return 'unknown'"
     finally:
         gate.set()
@@ -385,11 +381,11 @@ def test_probe_worker_lifecycle_under_repeated_timeouts_no_accumulation(
     try:
         # Execute 6 probe calls with timeouts
         for _ in range(6):
-            res = _lock_has_no_live_holder(
+            res = lock_has_no_live_holder(
                 lock_path,
                 gitdir,
                 probe_timeout_s=0.05,
-                _proc_root=tmp_path / "nonexistent",
+                proc_root=tmp_path / "nonexistent",
             )
             assert res == "unknown", "Timed out probe must return 'unknown'"
 
@@ -440,7 +436,7 @@ def test_liveness_probe_zombie_process_treated_as_dead(
     fd_dir.chmod(0o000)
 
     try:
-        result = _lock_has_no_live_holder(lock_path, gitdir, _proc_root=fake_proc)
+        result = lock_has_no_live_holder(lock_path, gitdir, proc_root=fake_proc)
         assert result == "dead", (
             "Zombie process must be recognized as dead even with unreadable fd table"
         )
@@ -501,9 +497,7 @@ def test_liveness_probe_cwd_in_repo_subdirectory_is_live(
 
     monkeypatch.setattr("ralph.git._lock_recovery.subprocess.run", fake_run)
 
-    result = _lock_has_no_live_holder(
-        lock_path, worktree_gitdir, common_gitdir, _proc_root=fake_proc
-    )
+    result = lock_has_no_live_holder(lock_path, worktree_gitdir, common_gitdir, proc_root=fake_proc)
     assert result == "live", (
         "Process with cwd in a subdirectory of the worktree top must return 'live'; "
         "the OR-predicate must recognize ANY path under the worktree top, not only "
@@ -530,7 +524,7 @@ def test_systemd_unreadable_descriptors_does_not_veto_recovery(tmp_path: Path) -
     long_ago = time.time() - 10_000
     os.utime(lock, (long_ago, long_ago))
     try:
-        res = _lock_has_no_live_holder(lock, gitdir, _proc_root=tmp_path / "proc")
+        res = lock_has_no_live_holder(lock, gitdir, proc_root=tmp_path / "proc")
         assert res == "dead"
     finally:
         (pid_dir / "fd").chmod(0o755)
@@ -545,7 +539,7 @@ def test_relative_gitdir_outside_repo_resolves_live(tmp_path: Path) -> None:
     (pid_dir / "cwd").symlink_to(str(outside.resolve()))
     rel_gitdir = os.path.relpath(gitdir.resolve(), outside.resolve())
     (pid_dir / "environ").write_bytes(f"GIT_DIR={rel_gitdir}\x00".encode())
-    res = _lock_has_no_live_holder(gitdir / "index.lock", gitdir, _proc_root=tmp_path / "proc")
+    res = lock_has_no_live_holder(gitdir / "index.lock", gitdir, proc_root=tmp_path / "proc")
     assert res == "live"
 
 
@@ -557,9 +551,9 @@ def test_relative_gitdir_outside_repo_not_pointing_to_gitdir_no_match(tmp_path: 
     pid_dir = _make_fake_proc(tmp_path, "43")
     (pid_dir / "cwd").symlink_to(str(outside.resolve()))
     (pid_dir / "environ").write_bytes(b"GIT_DIR=../other/.git\x00")
-    assert _pid_in_repo_cwd(pid_dir, {gitdir.resolve()}, gitdir.resolve() / "wt") == "not_in_repo"
-    assert _pid_has_gitdir_environ(pid_dir, gitdir, gitdir) == "no_match"
-    res = _lock_has_no_live_holder(gitdir / "index.lock", gitdir, _proc_root=tmp_path / "proc")
+    assert pid_in_repo_cwd(pid_dir, {gitdir.resolve()}, gitdir.resolve() / "wt") == "not_in_repo"
+    assert pid_has_gitdir_environ(pid_dir, gitdir, gitdir) == "no_match"
+    res = lock_has_no_live_holder(gitdir / "index.lock", gitdir, proc_root=tmp_path / "proc")
     assert res == "dead"
 
 
@@ -569,6 +563,6 @@ def test_relative_gitdir_resolution_failure_fails_closed_unknown(tmp_path: Path)
     gitdir.mkdir(parents=True)
     pid_dir = _make_fake_proc(tmp_path, "44")
     (pid_dir / "environ").write_bytes(b"GIT_DIR=relative/.git\x00")
-    assert _pid_has_gitdir_environ(pid_dir, gitdir, gitdir) == "unknown"
-    res = _lock_has_no_live_holder(gitdir / "index.lock", gitdir, _proc_root=tmp_path / "proc")
+    assert pid_has_gitdir_environ(pid_dir, gitdir, gitdir) == "unknown"
+    res = lock_has_no_live_holder(gitdir / "index.lock", gitdir, proc_root=tmp_path / "proc")
     assert res == "unknown"
