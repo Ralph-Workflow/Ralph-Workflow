@@ -283,6 +283,7 @@ def test_failed_invoke_routes_launch_provider_and_decline_through_recovery_contr
         *,
         agent: str,
         phase: str = "rebase_conflict_resolution",
+        connectivity_state: str | None = None,
     ) -> object:
         text = str(raw_failure).lower()
         if "launch" in text:
