@@ -17,6 +17,7 @@ from __future__ import annotations
 import io
 import json
 import tomllib
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import (
@@ -42,6 +43,7 @@ from ralph.agents.invoke import (
     build_command,
     check_agent_available,
     command_for_log,
+    fresh_session_options,
     invoke_agent,
     provider_allowed_mcp_tool_names,
     resolve_invocation_runtime,
@@ -95,10 +97,20 @@ from tests._support.typed_accessors import (
 _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
 
 
+def _no_workspace_monitor(
+    workspace_path: Path,
+    classifier: WorkspaceChangeClassifier | None = None,
+    *args: object,
+    **kwargs: object,
+) -> None:
+    del workspace_path, classifier, args, kwargs
+
+
 # === Helper for test_agents_invoke_1.py ===
 @pytest.fixture(autouse=True)
-def _agents_invoke_1_disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
+def _agents_invoke_1_disable_workspace_monitor() -> Iterator[None]:
+    with InvokeOptions.workspace_monitor_factory_override(_no_workspace_monitor):
+        yield
 
 
 # === Helper for test_agents_invoke_1.py ===
@@ -125,8 +137,9 @@ def _agents_invoke_1_argv(args: tuple[object, ...]) -> list[str]:
 
 # === Helper for test_agents_invoke_2.py ===
 @pytest.fixture(autouse=True)
-def _agents_invoke_2_disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
+def _agents_invoke_2_disable_workspace_monitor() -> Iterator[None]:
+    with InvokeOptions.workspace_monitor_factory_override(_no_workspace_monitor):
+        yield
 
 
 # === Helper for test_agents_invoke_2.py ===
@@ -153,8 +166,9 @@ def _agents_invoke_2_argv(args: tuple[object, ...]) -> list[str]:
 
 # === Helper for test_agents_invoke_3.py ===
 @pytest.fixture(autouse=True)
-def _agents_invoke_3_disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
+def _agents_invoke_3_disable_workspace_monitor() -> Iterator[None]:
+    with InvokeOptions.workspace_monitor_factory_override(_no_workspace_monitor):
+        yield
 
 
 # === Helper for test_agents_invoke_3.py ===
@@ -181,8 +195,9 @@ def _agents_invoke_3_argv(args: tuple[object, ...]) -> list[str]:
 
 # === Helper for test_agents_invoke_4.py ===
 @pytest.fixture(autouse=True)
-def _agents_invoke_4_disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
+def _agents_invoke_4_disable_workspace_monitor() -> Iterator[None]:
+    with InvokeOptions.workspace_monitor_factory_override(_no_workspace_monitor):
+        yield
 
 
 # === Helper for test_agents_invoke_4.py ===
@@ -247,7 +262,6 @@ def _run_agy_transport_proxy_payload_check(
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 
     monkeypatch.setattr("ralph.agents.invoke.run_pty_and_read_lines", fake_run_pty_agy)
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
     sentinel = tmp_path / ".agent" / "completion_seen_test.json"
     sentinel.parent.mkdir(parents=True, exist_ok=True)
     sentinel.write_text('{"run_id": "test"}', encoding="utf-8")
@@ -307,7 +321,6 @@ def test_invoke_agent_passes_idle_timeout_to_subprocess(
     monkeypatch.setattr(
         invoke_module, "run_subprocess_and_read_lines", fake_run_subprocess_and_read_lines
     )
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
 
     list(
         invoke_agent(
@@ -346,7 +359,6 @@ def test_invoke_agent_probe_and_strategy_share_same_registry(
     monkeypatch.setattr(
         invoke_module, "run_subprocess_and_read_lines", fake_run_subprocess_and_read_lines
     )
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
 
     list(
         invoke_agent(
@@ -398,7 +410,6 @@ def test_invoke_agent_scopes_opencode_liveness_to_agent_label_scope(
     monkeypatch.setattr(
         invoke_module, "run_subprocess_and_read_lines", fake_run_subprocess_and_read_lines
     )
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
 
     list(
         invoke_agent(
@@ -517,7 +528,6 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: FakeProcess(),
     )
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
 
     with pytest.raises(AgentInactivityTimeoutError, match="no output for 0s"):
         list(
@@ -1767,7 +1777,6 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setattr(
         "ralph.agents.invoke.provider_allowed_mcp_tool_names",
         lambda config, endpoint: (
@@ -2221,7 +2230,6 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("HOME", str(fake_home))
 
     # Claude's tool restriction now fails CLOSED: a `tools/list` that cannot
@@ -2343,7 +2351,6 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("HOME", str(fake_home))
 
     # Claude's tool restriction now fails CLOSED: a `tools/list` that cannot
@@ -2528,17 +2535,11 @@ def test_invoke_agent_starts_workspace_monitor_without_progress_ui(
 
     captured_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
-    def _spy_start_workspace_monitor(
-        workspace_path: Path | None,
-        classifier: object | None = None,
-        **kwargs: object,
+    def _spy_workspace_monitor_factory(
+        workspace_path: Path,
+        classifier: WorkspaceChangeClassifier | None = None,
     ) -> None:
-        captured_calls.append(((workspace_path,), {"classifier": classifier, **kwargs}))
-
-    monkeypatch.setattr(
-        "ralph.agents.invoke._start_workspace_monitor",
-        _spy_start_workspace_monitor,
-    )
+        captured_calls.append(((workspace_path,), {"classifier": classifier}))
 
     class FakeProcess:
         # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
@@ -2582,17 +2583,18 @@ def test_invoke_agent_starts_workspace_monitor_without_progress_ui(
         lambda *args, **kwargs: FakeProcess(),
     )
 
-    list(
-        invoke_agent(
-            config,
-            str(prompt_file),
-            options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
-            _clock=FakeClock(),
+    with InvokeOptions.workspace_monitor_factory_override(_spy_workspace_monitor_factory):
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
+                _clock=FakeClock(),
+            )
         )
-    )
 
     assert len(captured_calls) == 1, (
-        f"expected one _start_workspace_monitor call, got {captured_calls}"
+        f"expected one workspace_monitor_factory call, got {captured_calls}"
     )
     args, kwargs = captured_calls[0]
     assert args[0] == tmp_path, (
@@ -2826,7 +2828,6 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.delenv("OPENCODE_CONFIG_CONTENT", raising=False)
 
     list(
@@ -3144,7 +3145,6 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv(
         "OPENCODE_CONFIG_CONTENT",
         json.dumps(
@@ -3366,7 +3366,6 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
 
     list(
         invoke_agent(
@@ -3445,7 +3444,6 @@ def test_invoke_agent_injects_codex_master_prompt_file_via_config(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
 
     list(
         invoke_agent(
@@ -3612,7 +3610,6 @@ def test_invoke_agent_preserves_existing_codex_home_state(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("CODEX_HOME", str(source_home))
 
     list(
@@ -3702,8 +3699,6 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(cmd="codex", output_flag="--json-stream", transport=AgentTransport.CODEX)
 
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_: None)
-
     source_home = tmp_path / "source-codex-home"
     source_home.mkdir()
     (source_home / "config.toml").write_text(
@@ -3757,7 +3752,6 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("CODEX_HOME", str(source_home))
 
     list(
@@ -4044,7 +4038,6 @@ def test_claude_strict_mode_only_exposes_ralph_server(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("HOME", str(fake_home))
 
     # Claude's tool restriction now fails CLOSED: a `tools/list` that cannot
@@ -4138,7 +4131,6 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv(
         "OPENCODE_CONFIG_CONTENT",
         json.dumps(
@@ -4246,7 +4238,6 @@ def test_codex_strict_mode_only_exposes_ralph_server(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("CODEX_HOME", str(source_home))
 
     list(
@@ -4283,7 +4274,6 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
     sentinel.parent.mkdir(parents=True, exist_ok=True)
     sentinel.write_text('{"run_id": "test"}', encoding="utf-8")
 
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
     seen_envs: dict[str, dict[str, str]] = {}
 
     class FakeProcess:
@@ -4346,7 +4336,6 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen_claude)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("HOME", str(fake_home))
     # Claude's tool restriction now fails CLOSED: a `tools/list` that cannot
     # be reached aborts the launch instead of silently emitting
@@ -4925,19 +4914,20 @@ def test_claude_command_propagates_unsafe_mode(
     )
     captured: dict[str, object] = {}
 
-    def fake_claude_mcp_config(
-        endpoint: str,
+    def fake_merge_existing_upstreams(
+        agent_name: str,
+        current_config: dict[str, object],
         *,
-        workspace_path: object = None,
         unsafe_mode: bool = False,
-    ) -> str:
+        workspace_path: object = None,
+    ) -> dict[str, object]:
         captured["unsafe_mode"] = unsafe_mode
         captured["workspace_path"] = workspace_path
-        return json.dumps({"mcpServers": {"ralph": {"url": endpoint}}})
+        return current_config
 
     monkeypatch.setattr(
-        "ralph.agents.invoke._command_builders.claude_mcp_config",
-        fake_claude_mcp_config,
+        "ralph.mcp.transport.claude.merge_existing_upstreams",
+        fake_merge_existing_upstreams,
     )
 
     prompt_file = tmp_path / "PROMPT.md"
@@ -5176,3 +5166,63 @@ class TestResolveInvocationRuntime:
         assert prepared.permission_prompt_listener is _permission_listener
         assert prepared.session_id == "sess-existing"
         assert prepared.initial_session_id == "sess-existing"
+
+
+def test_invoke_options_workspace_monitor_factory_override() -> None:
+    """InvokeOptions.workspace_monitor_factory_override populates default factory."""
+    custom_called: list[Path] = []
+
+    def custom_factory(
+        workspace_path: Path,
+        classifier: WorkspaceChangeClassifier | None = None,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        del classifier, args, kwargs
+        custom_called.append(workspace_path)
+
+    # Inside override scope, InvokeOptions() inherits the custom factory
+    with InvokeOptions.workspace_monitor_factory_override(custom_factory):
+        opts = InvokeOptions()
+        assert opts.workspace_monitor_factory is custom_factory
+
+        # Explicit factory takes precedence over the ambient override
+        def explicit_factory(
+            workspace_path: Path,
+            classifier: WorkspaceChangeClassifier | None = None,
+            *args: object,
+            **kwargs: object,
+        ) -> None:
+            del workspace_path, classifier, args, kwargs
+
+        opts_explicit = InvokeOptions(workspace_monitor_factory=explicit_factory)
+        assert opts_explicit.workspace_monitor_factory is explicit_factory
+
+
+def test_fresh_session_options_preserves_and_overrides_workspace_monitor_factory() -> None:
+    """fresh_session_options preserves or allows replacing workspace_monitor_factory."""
+
+    def factory_a(
+        workspace_path: Path,
+        classifier: WorkspaceChangeClassifier | None = None,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        del workspace_path, classifier, args, kwargs
+
+    def factory_b(
+        workspace_path: Path,
+        classifier: WorkspaceChangeClassifier | None = None,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        del workspace_path, classifier, args, kwargs
+
+    opts = InvokeOptions(session_id="sess-123", workspace_monitor_factory=factory_a)
+    fresh = fresh_session_options(opts)
+    assert fresh.session_id is None
+    assert fresh.workspace_monitor_factory is factory_a
+
+    fresh_b = fresh_session_options(opts, workspace_monitor_factory=factory_b)
+    assert fresh_b.session_id is None
+    assert fresh_b.workspace_monitor_factory is factory_b

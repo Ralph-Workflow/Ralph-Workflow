@@ -5,6 +5,7 @@ including staging/commit helpers, managed hook installation, and rebase support.
 Implementation uses GitPython rather than the retired Rust/libgit2 stack.
 """
 
+from ralph.git import lock_recovery
 from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
 from ralph.git.errors import GitOperationError
 from ralph.git.git_command_queue import (
@@ -84,6 +85,7 @@ __all__ = [
     "install_hooks_in_repo",
     "is_lease_held",
     "is_repo_clean",
+    "lock_recovery",
     "merge_base",
     "push",
     "reinstall_hooks_if_tampered",

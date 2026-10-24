@@ -151,7 +151,13 @@ def _walk_locks(base: Path) -> list[Path]:
     found: list[Path] = []
     if base.is_symlink() or not base.is_dir():
         return found
-    for dirpath, dirnames, filenames in os.walk(base, followlinks=False, onerror=lambda _e: None):
+    for (
+        dirpath,
+        dirnames,
+        filenames,
+    ) in os.walk(  # filesystem-read-ok: enumerate git lock files under gitdir without following symlinks
+        base, followlinks=False, onerror=lambda _e: None
+    ):
         here = Path(dirpath)
         dirnames[:] = [d for d in dirnames if not (here / d).is_symlink()]
         found.extend(here / f for f in filenames if f.endswith(".lock"))

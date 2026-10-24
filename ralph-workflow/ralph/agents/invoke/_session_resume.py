@@ -93,10 +93,17 @@ Any change to the resume path MUST keep all four passing.
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
+from ralph.agents.invoke._invoke_options import _INVOKE_OPTS_UNSET
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+
     from ralph.agents.invoke._types import InvokeOptions
+    from ralph.agents.invoke._workspace import WorkspaceMonitor
+    from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
     from ralph.pipeline.agent_retry_intent import AgentRetryAction
 
 
@@ -104,6 +111,9 @@ def fresh_session_options(
     opts: InvokeOptions,
     *,
     prior_session_id: str | None = None,
+    workspace_monitor_factory: (
+        Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None | object
+    ) = _INVOKE_OPTS_UNSET,
 ) -> InvokeOptions:
     """Return a NEW ``InvokeOptions`` instance with ``session_id`` cleared.
 
@@ -115,9 +125,21 @@ def fresh_session_options(
     compatibility but MUST NOT be written back into ``session_id`` —
     ordinary new-phase transitions are explicitly fresh.
 
+    The ``workspace_monitor_factory`` parameter is an additive seam to
+    optionally replace the monitor factory on the resulting options.
+
     Pure function: no side effects, no I/O, no clock reads.
     """
     del prior_session_id  # accepted for API forward-compatibility; never written.
+    if workspace_monitor_factory is not _INVOKE_OPTS_UNSET:
+        return replace(
+            opts,
+            session_id=None,
+            workspace_monitor_factory=cast(
+                "Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None",
+                workspace_monitor_factory,
+            ),
+        )
     return replace(opts, session_id=None)
 
 

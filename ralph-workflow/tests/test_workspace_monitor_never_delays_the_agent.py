@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING
 
 from ralph.agents.invoke._watch_capacity import CAPACITY_PROBE_BUDGET_SECONDS, call_within_budget
 from ralph.agents.invoke._workspace import STOP_OBSERVER_BUDGET_SECONDS, WorkspaceMonitor
+from ralph.agents.invoke._workspace_seams import WorkspaceWatchSeams
 from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
 
 if TYPE_CHECKING:
@@ -132,8 +133,8 @@ class _SlowObserver:
         self.finished = threading.Event()
         self.join_timeouts: list[float | None] = []
 
-    def schedule(self, _event_handler: object, path: str, **_kwargs: object) -> None:
-        del path
+    def schedule(self, event_handler: object, path: str, **kwargs: object) -> None:
+        del event_handler, path, kwargs
 
     def start(self) -> None:
         self.entered.set()
@@ -151,7 +152,7 @@ class _SlowObserver:
 
 
 def test_a_slow_watch_start_does_not_park_the_launch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     """Bounding the ESTIMATE is not bounding the walk it estimates.
 
@@ -161,15 +162,13 @@ def test_a_slow_watch_start_does_not_park_the_launch(
     before any agent process exists.
     """
     observer = _SlowObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: observer
-    )
     monitor = WorkspaceMonitor(
         tmp_path,
         host_budget=8192,
         directory_counter=lambda workspace, cap: 1,
         live_watch_total=0,
         probe_budget_seconds=_PROBE_BUDGET_SECONDS,
+        seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
     )
     try:
         monitor.start()
@@ -285,9 +284,6 @@ def test_abandoning_a_slow_watch_start_releases_the_cross_process_lock(
     monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", lock)
     observer = _SlowObserver()
     monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: observer
-    )
-    monkeypatch.setattr(
         "ralph.agents.invoke._workspace.shared_awareness_for_workspace",
         lambda _root: _FastSidecar(),
     )
@@ -297,6 +293,7 @@ def test_abandoning_a_slow_watch_start_releases_the_cross_process_lock(
         directory_counter=lambda workspace, cap: 1,
         live_watch_total=0,
         probe_budget_seconds=_PROBE_BUDGET_SECONDS,
+        seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
     )
     try:
         monitor.start()
@@ -368,9 +365,6 @@ def test_a_teardown_that_will_not_finish_does_not_park_the_launch(
     """Unwinding a failed watch may not cost more than the watch would."""
     observer = _SlowStoppingObserver()
     monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: observer
-    )
-    monkeypatch.setattr(
         "ralph.agents.invoke._workspace.STOP_OBSERVER_BUDGET_SECONDS", _PROBE_BUDGET_SECONDS
     )
     monitor = WorkspaceMonitor(
@@ -379,6 +373,7 @@ def test_a_teardown_that_will_not_finish_does_not_park_the_launch(
         directory_counter=lambda workspace, cap: 1,
         live_watch_total=0,
         probe_budget_seconds=_PROBE_BUDGET_SECONDS,
+        seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
     )
     try:
         monitor.start()
@@ -507,9 +502,6 @@ def test_the_watch_teardown_joins_with_a_timeout(
     """
     observer = _SlowStoppingObserver()
     monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer", lambda: observer
-    )
-    monkeypatch.setattr(
         "ralph.agents.invoke._workspace.STOP_OBSERVER_BUDGET_SECONDS", _PROBE_BUDGET_SECONDS
     )
     monitor = WorkspaceMonitor(
@@ -518,6 +510,7 @@ def test_the_watch_teardown_joins_with_a_timeout(
         directory_counter=lambda workspace, cap: 1,
         live_watch_total=0,
         probe_budget_seconds=_PROBE_BUDGET_SECONDS,
+        seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
     )
     try:
         monitor.start()

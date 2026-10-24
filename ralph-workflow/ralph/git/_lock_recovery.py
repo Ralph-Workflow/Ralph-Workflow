@@ -122,6 +122,8 @@ _LIVE_HOLDER_POLL_S = 3.0
 
 # Bounded backoff constants for git lock contention retry
 _LOCK_BACKOFF_S: tuple[float, ...] = (0.2, 0.5, 1.0)  # total ≤ 1.7s
+#: Public observation seam for bounded backoff schedule.
+LOCK_BACKOFF_S: tuple[float, ...] = _LOCK_BACKOFF_S
 
 # Seam for time.sleep — patch in tests to avoid real delays
 _sleep_fn: Callable[[float], None] = time.sleep
@@ -171,6 +173,7 @@ def _lock_has_no_live_holder(
     gitdir_common: Path | str | None = None,
     *,
     probe_timeout_s: float = _PROBE_TIMEOUT_S,
+    proc_root: Path | None = None,
     _proc_root: Path = Path("/proc"),
     probe_lsof_fuser_fn: Callable[[Path, float], Literal["live", "dead", "unknown"] | bool]
     | None = None,
@@ -199,6 +202,7 @@ def _lock_has_no_live_holder(
         "dead"  -- no live holder found across scanned signals; safe to unlink
         "unknown" -- platform limitation or probe timeout; refuse
     """
+    effective_proc_root = proc_root if proc_root is not None else _proc_root
     lsof_fuser = probe_lsof_fuser_fn if probe_lsof_fuser_fn is not None else _probe_lsof_fuser
 
     probe_start = time.monotonic()
@@ -235,7 +239,7 @@ def _lock_has_no_live_holder(
         # fact or leaves the verdict "unknown". It runs first and is bounded by
         # the probe deadline.
         proc_status = _scan_proc(
-            _proc_root,
+            effective_proc_root,
             lock,
             live_cwds,
             common_worktrees_dir,
@@ -244,7 +248,11 @@ def _lock_has_no_live_holder(
             lock_stat=lock_stat,
             deadline=probe_start + probe_timeout_s,
         )
-        if proc_status == "dead" and _proc_root == Path("/proc") and _not_host_pid_namespace():
+        if (
+            proc_status == "dead"
+            and effective_proc_root == Path("/proc")
+            and _not_host_pid_namespace()
+        ):
             # A nested pid namespace shows only its own processes; "nobody else is
             # here" proves nothing about a git running on the host.
             proc_status = "unknown"
@@ -256,14 +264,16 @@ def _lock_has_no_live_holder(
         # platform their silence is not evidence; their "live" is.
         remaining_s = probe_start + probe_timeout_s - time.monotonic()
         external: Literal["live", "dead", "unknown"] = "unknown"
-        if (_proc_root == Path("/proc") or probe_lsof_fuser_fn is not None) and remaining_s > 0:
+        if (
+            effective_proc_root == Path("/proc") or probe_lsof_fuser_fn is not None
+        ) and remaining_s > 0:
             external = _normalize_external_liveness(lsof_fuser(lock, remaining_s))
-        verdict = _combine_verdicts(proc_status, external, has_proc=_proc_root.exists())
+        verdict = _combine_verdicts(proc_status, external, has_proc=effective_proc_root.exists())
         if verdict == "unknown" and time.monotonic() - probe_start < probe_timeout_s:
             platform_reason = (
                 "/proc scan could not rule out every process (an uninspectable "
                 "process older than the lock may hold it)"
-                if _proc_root.exists()
+                if effective_proc_root.exists()
                 else "no /proc scan succeeded"
             )
             with suppress(Exception):
@@ -300,6 +310,10 @@ def _lock_has_no_live_holder(
         with suppress(AttributeError):
             future.cancel()
         return "unknown"
+
+
+#: Public observation seam for lock liveness probe.
+lock_has_no_live_holder = _lock_has_no_live_holder
 
 
 def _lock_identity(lock_path: Path) -> tuple[int, int, int] | None:
@@ -351,6 +365,10 @@ def _recover_stale_git_lock(
     return _reap_stale_lock(operation, lock_path, liveness_fn=liveness_fn, now_fn=now_fn)
 
 
+#: Public observation seam for stale git lock recovery.
+recover_stale_git_lock = _recover_stale_git_lock
+
+
 def _stale_age_or_none(
     operation: str,
     lock_path: Path,
@@ -396,7 +414,8 @@ def _reap_mutex(ralph_dir: Path) -> Iterator[None]:
     """
     with _reap_thread_lock:
         ralph_dir.mkdir(parents=True, exist_ok=True)
-        with (ralph_dir / "reap.mutex").open("a+b") as handle:
+        p = ralph_dir / "reap.mutex"
+        with p.open("a+b") as handle:  # filesystem-write-ok: flock mutex
             _flock(handle.fileno(), exclusive=True)
             try:
                 yield
@@ -758,10 +777,15 @@ def _run_git_operation_with_stale_lock_recovery[T](
             sleep(delay)
 
 
+#: Public seam for running git operations with bounded lock backoff.
+run_git_operation_with_stale_lock_recovery = _run_git_operation_with_stale_lock_recovery
+
+
 # Re-exported surface of the sibling modules that own the lock mechanisms.
 # Every name below was defined in this module before the split; keeping them
 # importable from ``ralph.git._lock_recovery`` preserves the public contract.
 __all__ = [
+    "LOCK_BACKOFF_S",
     "_CONFIG_LOCK_PATTERN",
     "_GIT_DIR_MARKERS",
     "_GIT_OPTS_WITH_ARG",
@@ -831,8 +855,11 @@ __all__ = [
     "git_dirs_from_git_dir",
     "git_lock_candidates",
     "is_lock_failure",
+    "lock_has_no_live_holder",
     "names_a_lock_file",
     "reap_known_stale_locks",
     "reap_stale_locks",
+    "recover_stale_git_lock",
     "retry_after_lock_failure",
+    "run_git_operation_with_stale_lock_recovery",
 ]

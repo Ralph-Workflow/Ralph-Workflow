@@ -261,8 +261,15 @@ __all__ = [
     "SuspicionClock",
     "VerdictKind",
     "assess",
+    "awake",
+    "cpu_busy",
     "default_liveness_config",
+    "evaluate_rules",
+    "io_active",
+    "output_recent",
+    "repetitive",
     "step_with_assessment",
+    "tree_active",
 ]
 
 # Unknown-signal policy (D5): an unreadable signal never extends a deadline.
@@ -329,7 +336,7 @@ LivenessVerdict = _LivenessVerdict
 # ---------------------------------------------------------------------------
 
 
-def _output_recent(o: float | None, c: LivenessConfig) -> float:
+def output_recent(o: float | None, c: LivenessConfig) -> float:
     """Linear ramp on the OutputRecent membership; 0.0 for unknown signals.
 
     See :mod:`ralph.process.manager._liveness_assessor` module docstring —
@@ -346,7 +353,10 @@ def _output_recent(o: float | None, c: LivenessConfig) -> float:
     return (c.output_recent_max_s - o) / (c.output_recent_max_s - c.output_recent_min_s)
 
 
-def _cpu_busy(c_val: float | None, c: LivenessConfig) -> float:
+_output_recent = output_recent
+
+
+def cpu_busy(c_val: float | None, c: LivenessConfig) -> float:
     if c_val is None:
         return 0.0
     if c_val <= c.cpu_busy_min:
@@ -356,7 +366,10 @@ def _cpu_busy(c_val: float | None, c: LivenessConfig) -> float:
     return (c_val - c.cpu_busy_min) / (c.cpu_busy_max - c.cpu_busy_min)
 
 
-def _io_active(io: float | None, c: LivenessConfig) -> float:
+_cpu_busy = cpu_busy
+
+
+def io_active(io: float | None, c: LivenessConfig) -> float:
     if io is None:
         return 0.0
     if io <= c.io_kbps_inactive:
@@ -366,7 +379,10 @@ def _io_active(io: float | None, c: LivenessConfig) -> float:
     return (io - c.io_kbps_inactive) / (c.io_kbps_active - c.io_kbps_inactive)
 
 
-def _tree_active(t: int | None, c: LivenessConfig) -> float:
+_io_active = io_active
+
+
+def tree_active(t: int | None, c: LivenessConfig) -> float:
     if t is None:
         return 0.0
     if t <= 0:
@@ -379,7 +395,10 @@ def _tree_active(t: int | None, c: LivenessConfig) -> float:
     return float(t) / float(threshold)
 
 
-def _repetitive(n: float | None, c: LivenessConfig) -> float:
+_tree_active = tree_active
+
+
+def repetitive(n: float | None, c: LivenessConfig) -> float:
     if n is None:
         return 0.0
     if n <= c.repetitive_max:
@@ -389,7 +408,10 @@ def _repetitive(n: float | None, c: LivenessConfig) -> float:
     return (c.repetitive_min - n) / (c.repetitive_min - c.repetitive_max)
 
 
-def _awake(w: float | None, c: LivenessConfig) -> float:
+_repetitive = repetitive
+
+
+def awake(w: float | None, c: LivenessConfig) -> float:
     if w is None:
         return 0.0
     if w <= c.awake_per_s_inactive:
@@ -397,6 +419,9 @@ def _awake(w: float | None, c: LivenessConfig) -> float:
     if w >= c.awake_per_s_active:
         return 1.0
     return (w - c.awake_per_s_inactive) / (c.awake_per_s_active - c.awake_per_s_inactive)
+
+
+_awake = awake
 
 
 # ---------------------------------------------------------------------------
@@ -411,7 +436,7 @@ _RULE_NAMES: tuple[str, ...] = ("R1", "R2", "R3", "R4", "R5", "R6", "R7")
 _SUSPICIOUS_RULES: frozenset[str] = frozenset({"R4", "R7"})
 
 
-def _evaluate_rules(
+def evaluate_rules(
     output_recent: float,
     cpu_busy: float,
     io_active: float,
@@ -459,6 +484,9 @@ def _evaluate_rules(
     if strongest_w <= 0.0:
         strongest_rule = ""
     return weights, strongest_rule
+
+
+_evaluate_rules = evaluate_rules
 
 
 _UNKNOWN_THRESHOLD: float = 0.05

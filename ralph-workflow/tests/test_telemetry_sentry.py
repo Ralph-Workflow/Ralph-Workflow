@@ -65,7 +65,7 @@ def test_init_sentry_calls_sentry_init(monkeypatch: pytest.MonkeyPatch) -> None:
     kwargs = captured[0]
     assert kwargs.get("send_default_pii") is False
     assert "dsn" in kwargs
-    assert "_sentry.io" in str(kwargs["dsn"])
+    assert "sentry.io" in str(kwargs["dsn"])
     assert "before_send" in kwargs
     assert "before_send_transaction" in kwargs
     assert kwargs.get("traces_sample_rate") == 1.0

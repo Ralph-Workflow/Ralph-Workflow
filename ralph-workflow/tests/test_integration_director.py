@@ -387,7 +387,9 @@ def test_director_unmerged_worktree_repeats_advance_rung(
     assert actions[1] is NextAction.REBUILD_ON_TARGET
     assert rungs[1] is EscalationRung.DISPATCH_RESOLVER
     assert actions[2] is NextAction.CONTINUE_WITH_INTEGRATION_PENDING
-    assert rungs[2] is EscalationRung.REBUILD_ON_TARGET
+    # The terminal action is non-chargeable and spends no escalation budget,
+    # so the durable rung does not advance past DISPATCH_RESOLVER.
+    assert rungs[2] is EscalationRung.DISPATCH_RESOLVER
 
 
 # ---------------------------------------------------------------------------

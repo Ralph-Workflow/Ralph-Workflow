@@ -13,6 +13,7 @@ import pytest
 
 from ralph.agents.invoke._workspace import WorkspaceMonitor
 from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
+from ralph.agents.invoke._workspace_seams import WorkspaceWatchSeams
 from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.workspace.fs import FsWorkspace
 
@@ -144,9 +145,9 @@ class _ActivityObserver:
     def __init__(self) -> None:
         self.registrations: list[tuple[str, bool]] = []
 
-    def schedule(self, event_handler: object, path: str, recursive: bool = False) -> None:
+    def schedule(self, event_handler: object, path: str, **kwargs: object) -> None:
         del event_handler
-        self.registrations.append((path, recursive))
+        self.registrations.append((path, bool(kwargs.get("recursive", False))))
 
     def start(self) -> None:
         pass
@@ -158,16 +159,12 @@ class _ActivityObserver:
         del timeout
 
 
-def test_unchanged_workspace_cycle_preserves_bytes_without_new_publication_or_watch_registration(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_unchanged_workspace_cycle_preserves_bytes_without_new_publication_or_watch_registration() -> (
+    None
+):
     """S-1: unchanged cycle leaves final bytes and activity boundaries unchanged."""
     backend = _ActivityBackend()
     observer = _ActivityObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: observer,
-    )
     workspace = FsWorkspace(Path("/virtual-ws"), backend=backend)
     monitor = WorkspaceMonitor(
         Path("/virtual-ws"),
@@ -175,6 +172,7 @@ def test_unchanged_workspace_cycle_preserves_bytes_without_new_publication_or_wa
         host_budget=8192,
         directory_counter=lambda *_, **__: 0,
         live_watch_total=0,
+        seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
     )
 
     monitor.start()
@@ -232,17 +230,12 @@ def test_byte_mode_publication_records_decoded_payload() -> None:
     assert backend.publications == [(result_path, "alpha")]
 
 
-def test_independent_monitors_for_one_workspace_share_one_recursive_registration(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_independent_monitors_for_one_workspace_share_one_recursive_registration() -> None:
     """S-2 regression: equivalent in-process consumers share one root watch."""
     first = _ActivityObserver()
     second = _ActivityObserver()
     observers = iter((first, second))
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: next(observers),
-    )
+    seams = WorkspaceWatchSeams(observer_factory=lambda: next(observers))
 
     first_monitor = WorkspaceMonitor(
         Path("/virtual-ws"),
@@ -250,6 +243,7 @@ def test_independent_monitors_for_one_workspace_share_one_recursive_registration
         host_budget=8192,
         directory_counter=lambda *_, **__: 0,
         live_watch_total=0,
+        seams=seams,
     )
     second_monitor = WorkspaceMonitor(
         Path("/virtual-ws"),
@@ -257,6 +251,7 @@ def test_independent_monitors_for_one_workspace_share_one_recursive_registration
         host_budget=8192,
         directory_counter=lambda *_, **__: 0,
         live_watch_total=0,
+        seams=seams,
     )
     first_monitor.start()
     second_monitor.start()

@@ -8,6 +8,8 @@ reaching into module internals:
 * :meth:`InvokeOptions.command_builder_override` replaces the argv builder.
 * :meth:`InvokeOptions.process_monitor_factory_override` replaces the
   process-monitor factory.
+* :meth:`InvokeOptions.workspace_monitor_factory_override` replaces the
+  workspace-monitor factory.
 * :meth:`InvokeOptions.upstream_env_applier_override` replaces the upstream
   MCP env projection used by the per-transport runtime resolvers.
 * :meth:`InvokeOptions.platform_override` replaces the host platform the
@@ -77,6 +79,18 @@ class _ProcessMonitorFactory(Protocol):
     ) -> ProcessMonitor | None: ...
 
 
+class _WorkspaceMonitorFactory(Protocol):
+    """Builds the workspace monitor for one agent invocation."""
+
+    def __call__(
+        self,
+        workspace_path: Path,
+        classifier: WorkspaceChangeClassifier | None = None,
+        *args: object,
+        **kwargs: object,
+    ) -> WorkspaceMonitor | None: ...
+
+
 class _UpstreamEnvApplier(Protocol):
     """Projects resolved upstream MCP servers into the runtime and server envs."""
 
@@ -95,6 +109,10 @@ _COMMAND_BUILDER_OVERRIDE: ContextVar[_CommandBuilder | None] = ContextVar(
 )
 _PROCESS_MONITOR_FACTORY_OVERRIDE: ContextVar[_ProcessMonitorFactory | None] = ContextVar(
     "ralph_invoke_process_monitor_factory_override",
+    default=None,
+)
+_WORKSPACE_MONITOR_FACTORY_OVERRIDE: ContextVar[_WorkspaceMonitorFactory | None] = ContextVar(
+    "ralph_invoke_workspace_monitor_factory_override",
     default=None,
 )
 _UPSTREAM_ENV_APPLIER_OVERRIDE: ContextVar[_UpstreamEnvApplier | None] = ContextVar(
@@ -214,6 +232,12 @@ class InvokeOptions:
     subagent_pid_registry: SubagentPidRegistry | None = None
     subagent_pid_source: SubagentPidSource | None = None
 
+    def __post_init__(self) -> None:
+        if self.workspace_monitor_factory is None:
+            override = _WORKSPACE_MONITOR_FACTORY_OVERRIDE.get()
+            if override is not None:
+                object.__setattr__(self, "workspace_monitor_factory", override)
+
     # ------------------------------------------------------------------
     # Scoped collaborator overrides (the invoke path's injection seam)
     # ------------------------------------------------------------------
@@ -260,6 +284,27 @@ class InvokeOptions:
             yield
         finally:
             _PROCESS_MONITOR_FACTORY_OVERRIDE.reset(token)
+
+    @classmethod
+    @contextmanager
+    def workspace_monitor_factory_override(
+        cls,
+        factory: _WorkspaceMonitorFactory | None,
+    ) -> Iterator[None]:
+        """Replace the workspace-monitor factory for the duration of the block.
+
+        Args:
+            factory: Callable invoked with the workspace path and optional
+                workspace change classifier; returns a WorkspaceMonitor or None.
+
+        Yields:
+            Nothing; the scope is the unit of installation.
+        """
+        token = _WORKSPACE_MONITOR_FACTORY_OVERRIDE.set(factory)
+        try:
+            yield
+        finally:
+            _WORKSPACE_MONITOR_FACTORY_OVERRIDE.reset(token)
 
     @classmethod
     @contextmanager

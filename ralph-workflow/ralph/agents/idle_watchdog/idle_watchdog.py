@@ -83,6 +83,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
@@ -174,7 +175,7 @@ from .waiting_status_kind import WaitingStatusKind
 from .watchdog_fire_reason import WatchdogFireReason
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from ralph.agents.clock import Clock
     from ralph.agents.execution_state import AgentExecutionState
@@ -736,6 +737,73 @@ class IdleWatchdog:
         needing to supply a full ``WaitingStatusListener``.
         """
         return self._last_subagent_progress_description
+
+    @property
+    def clock(self) -> Clock:
+        """The clock used for monotonic timing."""
+        return self._clock
+
+    @property
+    def config(self) -> TimeoutPolicy:
+        """The active timeout policy configuration."""
+        return self._config
+
+    @property
+    def last_progress_fingerprint(self) -> str | None:
+        """The fingerprint of the most recent progress report, or None."""
+        return self._last_progress_fingerprint
+
+    @property
+    def last_subagent_progress_emit_at(self) -> float | None:
+        """Timestamp of the most recent subagent progress waiting-status event."""
+        return self._last_subagent_progress_emit_at
+
+    @property
+    def has_active_deferral_throttles(self) -> bool:
+        """Whether any deferred-log throttle entries are currently active."""
+        return bool(
+            self._last_deferred_log_at
+            or self._last_any_deferred_log_at
+            or self._last_evidence_deferral_log_at
+        )
+
+    @property
+    def deferred_throttle_reasons(self) -> frozenset[str]:
+        """Fire reason keys currently tracked in the coarse deferral throttle map."""
+        return frozenset(self._last_any_deferred_log_at.keys())
+
+    @property
+    def subagent_output_count(self) -> int:
+        """Total lines of subagent output recorded during the current run."""
+        return self._subagent_output_count
+
+    @property
+    def subagent_output_captures(self) -> Mapping[str, SubagentOutputCapture]:
+        """Read-only view of active subagent output captures."""
+        return MappingProxyType(self._subagent_output_captures)
+
+    @property
+    def evicted_worker_tombstones(self) -> Mapping[str, None]:
+        """Read-only view of tombstoned evicted workers."""
+        return MappingProxyType(self._evicted_worker_tombstones)
+
+    def emit_waiting_status(
+        self,
+        kind: WaitingStatusKind,
+        *,
+        current_run_seconds: float,
+        idle_elapsed: float,
+        ceiling_seconds: float | None = None,
+        diagnostic: dict[str, str | int | float | bool | list[object]] | None = None,
+    ) -> None:
+        """Public seam for emitting waiting-status events without reaching into private methods."""
+        self._emit(
+            kind,
+            current_run_seconds=current_run_seconds,
+            idle_elapsed=idle_elapsed,
+            ceiling_seconds=ceiling_seconds,
+            diagnostic=diagnostic,
+        )
 
     def register_default_subagent_activity_listener(
         self,

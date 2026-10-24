@@ -38,6 +38,8 @@ from ralph.pipeline.operation_evidence import (
 from ralph.pipeline.operation_fact import _UNREADABLE
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
 
 __all__ = [

@@ -318,8 +318,9 @@ def observe_branch_sha(repo_root: Path | str, name: str) -> tuple[str | None, bo
     untouched.
     """
     repo_root_path = Path(repo_root)
+    ref_spec = name if name.startswith("refs/") else f"refs/heads/{name}"
     result = run_git(
-        ("rev-parse", "--verify", "--quiet", f"refs/heads/{name}"),
+        ("rev-parse", "--verify", "--quiet", ref_spec),
         cwd=repo_root_path,
         label="git-branch-sha",
     )

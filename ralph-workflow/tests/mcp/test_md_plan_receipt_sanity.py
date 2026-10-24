@@ -207,6 +207,7 @@ checks only the frontmatter ``status``; the body is free-form.
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_oversized_plan_returns_same_sanity_failure_without_a_receipt() -> None:
     workspace = MemoryWorkspace()
     session = MockSession("planning")

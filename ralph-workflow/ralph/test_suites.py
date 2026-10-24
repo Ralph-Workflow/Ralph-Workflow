@@ -1271,11 +1271,15 @@ def _run_shards(
                 f"xdist={shard_xdist_workers}, started at {monotonic() - started_at:.2f}s",
                 flush=True,
             )
+            shard_basetemp = basetemp_root / f"shard-{shard_index}"
+            shard_basetemp.mkdir(  # filesystem-write-ok: transient per-run shard basetemp directory
+                mode=0o700, parents=True, exist_ok=True
+            )
             processes.append(
                 spawner(
                     _shard_command(
                         manifest_path=manifest_path,
-                        basetemp=basetemp_root / f"shard-{shard_index}",
+                        basetemp=shard_basetemp,
                         marker_expression=marker_expression,
                         xdist_workers=shard_xdist_workers,
                     ),

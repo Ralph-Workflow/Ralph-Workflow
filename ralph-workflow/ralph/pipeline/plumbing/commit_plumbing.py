@@ -278,6 +278,65 @@ def _commit_pipeline_deps(
     return _apply_commit_deps_overrides(deps, materializer=materializer, registry=registry)
 
 
+def _resolve_effective_commit_deps(
+    *,
+    pipeline_deps: PipelineDeps | None,
+    pipeline_core: PipelineCore | None,
+    bridge_factory: BridgeFactory | None,
+    display_context: DisplayContext | None,
+    chain_config: CommitChainConfig,
+    pro_hooks: ProPipelineHooks | None,
+) -> tuple[PipelineDeps, DisplayContext]:
+    """Resolve effective pipeline deps and display context for commit plumbing."""
+    if pipeline_deps is not None:
+        effective_display = (
+            pipeline_deps.display_context if display_context is None else display_context
+        )
+        effective_pipeline_deps = _apply_commit_deps_overrides(
+            pipeline_deps,
+            materializer=None,
+            registry=chain_config.registry,
+        )
+        return effective_pipeline_deps, effective_display
+    if pipeline_core is not None:
+        effective_display = (
+            pipeline_core.display_context if display_context is None else display_context
+        )
+        effective_pipeline_deps = PipelineDeps(
+            core=pipeline_core,
+            bridge_factory=bridge_factory if bridge_factory is not None else build_session_bridge,
+        )
+        effective_pipeline_deps = _apply_commit_deps_overrides(
+            effective_pipeline_deps,
+            materializer=None,
+            registry=chain_config.registry,
+        )
+        return effective_pipeline_deps, effective_display
+    if display_context is None:
+        raise ValueError(
+            "display_context is required when pipeline_deps and pipeline_core are not provided"
+        )
+    effective_pipeline_deps = _commit_pipeline_deps(
+        cast(
+            "UnifiedConfig", chain_config.general_config
+        ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        display_context,
+        materializer=None,
+        registry=chain_config.registry,
+        pro_hooks=pro_hooks,
+    )
+    return effective_pipeline_deps, effective_pipeline_deps.display_context
+
+
+def _resolve_commit_evidence(repo_root: Path, fallback_diff: str) -> str | CommitEvidenceBundle:
+    """Resolve the commit evidence bundle or fallback diff for an agent attempt."""
+    if (repo_root / ".git").exists():
+        bundle = build_commit_evidence_bundle(repo_root)
+        if bundle.diff.strip():
+            return bundle
+    return fallback_diff
+
+
 def run_commit_plumbing(
     *,
     diff: str,
@@ -313,47 +372,16 @@ def run_commit_plumbing(
     module; recovery decisions are routed exclusively through the
     shared execution core.
     """
-    if pipeline_deps is not None:
-        if display_context is None:
-            display_context = pipeline_deps.display_context
-        effective_pipeline_deps = _apply_commit_deps_overrides(
-            pipeline_deps,
-            materializer=None,
-            registry=chain_config.registry,
-        )
-        effective_core = effective_pipeline_deps.core
-        effective_bridge_factory = effective_pipeline_deps.bridge_factory
-    elif pipeline_core is not None:
-        if display_context is None:
-            display_context = pipeline_core.display_context
-        effective_pipeline_deps = PipelineDeps(
-            core=pipeline_core,
-            bridge_factory=bridge_factory if bridge_factory is not None else build_session_bridge,
-        )
-        effective_pipeline_deps = _apply_commit_deps_overrides(
-            effective_pipeline_deps,
-            materializer=None,
-            registry=chain_config.registry,
-        )
-        effective_core = effective_pipeline_deps.core
-        effective_bridge_factory = effective_pipeline_deps.bridge_factory
-    else:
-        if display_context is None:
-            raise ValueError(
-                "display_context is required when pipeline_deps and pipeline_core are not provided"
-            )
-        effective_pipeline_deps = _commit_pipeline_deps(
-            cast(
-                "UnifiedConfig", chain_config.general_config
-            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-            display_context,
-            materializer=None,
-            registry=chain_config.registry,
-            pro_hooks=pro_hooks,
-        )
-        display_context = effective_pipeline_deps.display_context
-        effective_core = effective_pipeline_deps.core
-        effective_bridge_factory = effective_pipeline_deps.bridge_factory
+    effective_pipeline_deps, display_context = _resolve_effective_commit_deps(
+        pipeline_deps=pipeline_deps,
+        pipeline_core=pipeline_core,
+        bridge_factory=bridge_factory,
+        display_context=display_context,
+        chain_config=chain_config,
+        pro_hooks=pro_hooks,
+    )
+    effective_core = effective_pipeline_deps.core
+    effective_bridge_factory = effective_pipeline_deps.bridge_factory
 
     integration_verdict = prepare_commit_integration(
         repo_root,
@@ -398,9 +426,7 @@ def run_commit_plumbing(
             cfg = chain_config.registry.get(agent_name)
             if cfg is None:
                 continue
-            evidence = (
-                build_commit_evidence_bundle(repo_root) if (repo_root / ".git").exists() else diff
-            )
+            evidence = _resolve_commit_evidence(repo_root, diff)
             prompt = _commit_prompt_for_agent(
                 cfg,
                 evidence,

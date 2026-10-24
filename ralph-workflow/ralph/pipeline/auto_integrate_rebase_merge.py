@@ -64,7 +64,10 @@ if TYPE_CHECKING:
     from ralph.git.merge import MergeResult
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
-    from ralph.pipeline.integration_actions import AgentRunner, GitOps
+    from ralph.pipeline.integration_actions import (
+        AgentRunner,
+        GitOps,
+    )
     from ralph.pipeline.rebase_state import RebaseState
 
 #: ``RebaseNoOp`` reason recorded when the bounded retry deliberately

@@ -2121,7 +2121,7 @@ def _fire_in_stream_reason(
     assert verdict == WatchdogVerdict.FIRE, f"expected FIRE for {reason}; got {verdict}"
     assert watchdog.last_fire_reason == reason
 
-    fake_self = _FakeCheckFireSelf(_policy=watchdog._config, _clock=clock)
+    fake_self = _FakeCheckFireSelf(_policy=watchdog.config, _clock=clock)
     result = ProcessLineReader._check_fire(fake_self, watchdog, WatchdogVerdict.FIRE)
     assert result is not None
     pending_lines, wrapper = result
@@ -2736,7 +2736,7 @@ def _probe_cache_cap() -> int:
     monitor = _FakeProcessMonitorSubagentCaptureEviction(captures)
     watchdog, clock = _subagent_capture_eviction_make_watchdog(monitor)
     watchdog.poll_subagent_output(now=clock.monotonic())
-    return len(watchdog._subagent_output_captures)
+    return len(watchdog.subagent_output_captures)
 
 
 # === Helper: _probe_tombstone_cap (from test_subagent_capture_eviction.py) ===
@@ -2755,7 +2755,7 @@ def _probe_tombstone_cap() -> int:
     monitor = _FakeProcessMonitorSubagentCaptureEviction(captures)
     watchdog, clock = _subagent_capture_eviction_make_watchdog(monitor)
     watchdog.poll_subagent_output(now=clock.monotonic())
-    return len(watchdog._evicted_worker_tombstones)
+    return len(watchdog.evicted_worker_tombstones)
 
 
 # === Helper: _reader (from test_tool_result_routing.py) ===
@@ -3098,7 +3098,7 @@ def test_first_party_subagent_output_defers_no_output_deadline() -> None:
 
     verdict = wd.evaluate(classify_quiet=_activity_aware_active)
     assert verdict == WatchdogVerdict.CONTINUE
-    assert wd._subagent_output_count == 1
+    assert wd.subagent_output_count == 1
 
     clock.advance(2000.0)
     verdict = wd.evaluate(classify_quiet=_activity_aware_active)
@@ -3748,13 +3748,13 @@ def test_opencode_surfaces_real_extracted_progress_via_registry() -> None:
     fresh = watchdog.poll_subagent_output(now=clock.monotonic())
     assert fresh >= 1
     assert monitor.poll_count == 1
-    assert watchdog._subagent_output_count >= 1
+    assert watchdog.subagent_output_count >= 1
 
     clock.advance(0.01)
     registry.record_progress("child-A", phase="phase-2")
     fresh2 = watchdog.poll_subagent_output(now=clock.monotonic())
     assert fresh2 >= 1
-    assert watchdog._subagent_output_count >= 2
+    assert watchdog.subagent_output_count >= 2
 
 
 # === consolidated from test_cross_transport_subagent_visibility.py ===
@@ -3896,7 +3896,8 @@ def test_transport_strategy_surfaces_real_extraction_to_listener() -> None:
 
         assert watchdog.last_subagent_progress_description == _REAL_PROGRESS_LINE
 
-        clock = watchdog._clock
+        clock = watchdog.clock
+        assert isinstance(clock, FakeClock)
         clock.advance(61.0)
 
         def _waiting() -> AgentExecutionState:
@@ -3942,7 +3943,9 @@ def test_cross_transport_subagent_activity_sink_is_wired() -> None:
     watchdog.register_default_subagent_activity_listener(_listener)
 
     watchdog.record_subagent_work(description="first")
-    watchdog._clock.advance(61.0)
+    clock = watchdog.clock
+    assert isinstance(clock, FakeClock)
+    clock.advance(61.0)
 
     def _waiting() -> AgentExecutionState:
         return AgentExecutionState.WAITING_ON_CHILD
@@ -5239,7 +5242,7 @@ def test_subagent_output_first_party_deferral(tmp_path: Path) -> None:
 
     verdict = wd.evaluate(classify_quiet=_activity_aware_active)
     assert verdict == WatchdogVerdict.CONTINUE
-    assert wd._subagent_output_count >= 1
+    assert wd.subagent_output_count >= 1
 
     # Past TTL with no new lines -> fire.
     clock.advance(2000.0)
@@ -5657,6 +5660,7 @@ def test_evidence_deferral_throttle_is_per_channel() -> None:
     Black-box: drive ``evaluate()`` and verify the channel appears in
     the emitted evidence-summary channels.
     """
+    clock = FakeClock(start=0.0)
     watchdog = IdleWatchdog(
         TimeoutPolicy(
             idle_timeout_seconds=60.0,
@@ -5665,9 +5669,8 @@ def test_evidence_deferral_throttle_is_per_channel() -> None:
             watchdog_log_throttle_seconds=0.5,
             activity_evidence_ttl_seconds=180.0,
         ),
-        FakeClock(start=0.0),
+        clock,
     )
-    clock = watchdog._clock
 
     # First window: only mcp_tool is fresh (subagent is NOT yet set).
     # Advance past idle timeout and evaluate so the deferral path is
@@ -5986,56 +5989,119 @@ def test_record_invocation_start_resets_all_per_invocation_fields() -> None:
 
 # === consolidated from test_invocation_start_full_reset.py ===
 def test_record_invocation_start_resets_alive_by_signal() -> None:
-    """``_last_alive_by`` MUST be cleared on invocation_start.
+    """``last_alive_by`` MUST be cleared on invocation_start.
 
-    The pre-fix leak: ``_last_alive_by`` (assigned at
-    ``idle_watchdog.py:1260``) survived across invocations, so a
+    The pre-fix leak: ``_last_alive_by`` survived across invocations, so a
     reused watchdog could feed a stale ``alive_by`` value into the
-    ``IdleWatchdogKilledError.child_alive`` field on the next run's
-    fire.
+    ``IdleWatchdogKilledError.child_alive`` field on the next run's fire.
+
+    Black-box: drive a NO_PROGRESS_QUIET fire with an injected corroborator
+    reporting ``FRESH_HEARTBEAT_ONLY`` via the public fire path.
+    Verify the public ``last_alive_by`` property is set, then verify
+    ``record_invocation_start()`` clears it back to ``None``.
     """
-    watchdog, clock = _invocation_start_full_reset_make_watchdog()
-    # Manually populate ``_last_alive_by`` via the public fire path
-    # (the watchdog assigns it post-fire when the corroborator reports
-    # a non-None ``alive_by``).
-    clock.advance(40.0)
-    watchdog._last_alive_by = AliveBy.CPU_IDLE_WHILE_ALIVE
-    assert watchdog.last_alive_by == AliveBy.CPU_IDLE_WHILE_ALIVE
+    watchdog, clock = _stuck_job_heartbeat_ceiling_make_watchdog(
+        heartbeat_ceiling_seconds=10.0,
+        no_progress_quiet_seconds=None,
+        no_progress_quiet_minimum_invocation_seconds=None,
+        alive_by=AliveBy.FRESH_HEARTBEAT_ONLY,
+    )
+    watchdog.record_invocation_start()
+    clock.advance(11.0)
+    verdict = watchdog.evaluate(classify_quiet=_stuck_job_heartbeat_ceiling_waiting)
+    assert verdict == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.NO_PROGRESS_QUIET
+    assert watchdog.last_alive_by == AliveBy.FRESH_HEARTBEAT_ONLY
+
     watchdog.record_invocation_start()
     assert watchdog.last_alive_by is None, (
-        f"record_invocation_start MUST clear _last_alive_by; got {watchdog.last_alive_by!r}"
+        f"record_invocation_start MUST clear last_alive_by; got {watchdog.last_alive_by!r}"
     )
 
 
 # === consolidated from test_invocation_start_full_reset.py ===
 def test_record_invocation_start_resets_progress_fingerprint() -> None:
-    """``_last_progress_fingerprint`` MUST be cleared on invocation_start.
+    """Progress fingerprint MUST be cleared on invocation_start.
 
     The pre-fix leak: a fingerprint from the previous run would
     cause a same-fingerprint line in the new run to be skipped as
     a "repeat" when it is actually fresh.
+
+    Black-box: drive ``record_progress_report`` with a message in the
+    first invocation. In that same invocation, an identical message does
+    NOT reset the idle baseline (detected as repeat). After
+    ``record_invocation_start()``, the same message in the second invocation
+    IS treated as fresh progress (resets the idle baseline).
     """
-    watchdog, _clock = _invocation_start_full_reset_make_watchdog()
-    watchdog._last_progress_fingerprint = "previous-fingerprint"
+    watchdog, clock = _invocation_start_full_reset_make_watchdog()
     watchdog.record_invocation_start()
-    assert watchdog._last_progress_fingerprint is None, (
-        "record_invocation_start MUST clear _last_progress_fingerprint"
+    watchdog.record_progress_report("phase=alpha")
+    assert watchdog.last_progress_fingerprint is not None
+
+    # Within the same invocation, a repeat does NOT reset idle baseline
+    clock.advance(10.0)
+    assert watchdog.idle_elapsed_seconds(clock.monotonic()) == 10.0
+    watchdog.record_progress_report("phase=alpha")
+    assert watchdog.idle_elapsed_seconds(clock.monotonic()) == 10.0
+
+    # Reset for invocation 2
+    watchdog.record_invocation_start()
+    assert watchdog.last_progress_fingerprint is None, (
+        "record_invocation_start MUST clear last_progress_fingerprint"
+    )
+
+    # In invocation 2, the exact same message MUST be accepted as fresh progress
+    clock.advance(10.0)
+    assert watchdog.idle_elapsed_seconds(clock.monotonic()) == 10.0
+    watchdog.record_progress_report("phase=alpha")
+    assert watchdog.idle_elapsed_seconds(clock.monotonic()) == 0.0, (
+        "fresh progress report in new invocation MUST reset idle baseline"
     )
 
 
 # === consolidated from test_invocation_start_full_reset.py ===
 def test_record_invocation_start_resets_subagent_progress_emit_at() -> None:
-    """``_last_subagent_progress_emit_at`` MUST be cleared on invocation_start.
+    """Subagent progress emit cadence timestamp MUST be cleared on invocation_start.
 
     The pre-fix leak: the SUBAGENT_PROGRESS waiting-status emit
     cadence timestamp survived across invocations so the new run's
     first emit could be throttled by the previous run's emit time.
+
+    Black-box: drive a SUBAGENT_PROGRESS emission in invocation 1.
+    Within the 30s cadence window, further evaluations do NOT emit.
+    After ``record_invocation_start()``, a new invocation immediately
+    emits SUBAGENT_PROGRESS without being throttled by the prior run.
     """
-    watchdog, _clock = _invocation_start_full_reset_make_watchdog()
-    watchdog._last_subagent_progress_emit_at = 12345.0
+    watchdog, clock, captured = _waiting_subagent_progress_make_watchdog(
+        subagent_interval=30.0,
+        monitor_count=1,
+        idle_timeout=5.0,
+    )
     watchdog.record_invocation_start()
-    assert watchdog._last_subagent_progress_emit_at is None, (
-        "record_invocation_start MUST clear _last_subagent_progress_emit_at"
+    clock.advance(6.0)
+    # Invocation 1: emits SUBAGENT_PROGRESS
+    watchdog.evaluate(classify_quiet=_waiting_subagent_progress_waiting)
+    assert any(e.kind == WaitingStatusKind.SUBAGENT_PROGRESS for e in captured)
+    assert watchdog.last_subagent_progress_emit_at is not None
+
+    # Within the 30s throttle window, evaluate does NOT emit
+    captured.clear()
+    clock.advance(5.0)
+    watchdog.evaluate(classify_quiet=_waiting_subagent_progress_waiting)
+    assert not any(e.kind == WaitingStatusKind.SUBAGENT_PROGRESS for e in captured)
+
+    # Start invocation 2: cadence timestamp is reset
+    captured.clear()
+    watchdog.record_invocation_start()
+    assert watchdog.last_subagent_progress_emit_at is None, (
+        "record_invocation_start MUST clear last_subagent_progress_emit_at"
+    )
+
+    # Invocation 2: emits immediately despite only 11s having passed since Invocation 1 emit
+    clock.advance(6.0)
+    watchdog.evaluate(classify_quiet=_waiting_subagent_progress_waiting)
+    assert any(e.kind == WaitingStatusKind.SUBAGENT_PROGRESS for e in captured), (
+        "second invocation's first SUBAGENT_PROGRESS emit was suppressed by stale throttle"
     )
 
 
@@ -6048,41 +6114,73 @@ def test_record_invocation_start_resets_per_channel_timestamps() -> None:
     ``_last_workspace_event_at`` survived across invocations so the
     second run's deferral path could inherit stale "fresh" evidence
     from the first run.
+
+    Black-box: drive each channel via its public record method, verify
+    they are populated in ``last_evidence_summary()``, then verify
+    ``record_invocation_start()`` clears all non-stdout evidence timestamps.
     """
     watchdog, clock = _invocation_start_full_reset_make_watchdog()
     clock.advance(5.0)
-    watchdog.record_mcp_tool_call(now=clock.monotonic())
+    now = clock.monotonic()
+    watchdog.record_mcp_tool_call(now=now)
     watchdog.record_subagent_work(description="x")
-    watchdog.record_subagent_output(now=clock.monotonic())
+    watchdog.record_subagent_output(now=now)
     watchdog.record_workspace_event()
+
+    summary_before = watchdog.last_evidence_summary(now)
+    ts_before = {c.channel_name: c.last_at for c in summary_before.channels}
+    assert ts_before[ChannelName.MCP_TOOL] == 5.0
+    assert ts_before[ChannelName.SUBAGENT_LIVENESS] == 5.0
+    assert ts_before[ChannelName.SUBAGENT_OUTPUT] == 5.0
+    assert ts_before[ChannelName.WORKSPACE] == 5.0
+
     watchdog.record_invocation_start()
-    assert watchdog._last_mcp_tool_call_at is None
-    assert watchdog._last_subagent_progress_at is None
-    assert watchdog._last_subagent_output_at is None
-    assert watchdog._last_workspace_event_at is None
+
+    summary_after = watchdog.last_evidence_summary(now)
+    ts_after = {c.channel_name: c.last_at for c in summary_after.channels}
+    assert ts_after[ChannelName.MCP_TOOL] is None
+    assert ts_after[ChannelName.SUBAGENT_LIVENESS] is None
+    assert ts_after[ChannelName.SUBAGENT_OUTPUT] is None
+    assert ts_after[ChannelName.WORKSPACE] is None
 
 
 # === consolidated from test_invocation_start_full_reset.py ===
 def test_record_invocation_start_resets_cumulative_waiting() -> None:
-    """``_cumulative_waiting_on_child_seconds`` MUST reset to 0.0.
+    """``cumulative_waiting_on_child_seconds`` MUST reset to 0.0.
 
     The cumulative counter is per-invocation; a reused watchdog
     MUST NOT carry the prior run's cumulative budget into the next
     run because the CHILDREN_PERSIST_TOO_LONG fire compares the
     counter against the configured ceiling and a stale counter
     could push the watchdog over the threshold prematurely.
+
+    Black-box: drive a 50s WAITING_ON_CHILD run and transition out
+    via public activity to accumulate waiting time. Then verify
+    ``record_invocation_start()`` resets the cumulative counter to 0.0.
     """
-    watchdog, _clock = _invocation_start_full_reset_make_watchdog()
-    watchdog._cumulative_waiting_on_child_seconds = 250.0
+    watchdog, clock = _invocation_start_full_reset_make_watchdog()
     watchdog.record_invocation_start()
-    assert watchdog._cumulative_waiting_on_child_seconds == 0.0, (
+    watchdog.record_any_output()
+    # Advance past idle timeout (60s) to enter WAITING_ON_CHILD
+    clock.advance(61.0)
+    verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
+    assert verdict == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Accumulate 50s of waiting time, then exit waiting state via activity
+    clock.advance(50.0)
+    watchdog.record_activity()
+    assert watchdog.cumulative_waiting_on_child_seconds == 50.0
+
+    # Reset for next invocation
+    watchdog.record_invocation_start()
+    assert watchdog.cumulative_waiting_on_child_seconds == 0.0, (
         "record_invocation_start MUST reset cumulative_waiting_on_child_seconds"
     )
 
 
 # === consolidated from test_invocation_start_full_reset.py ===
 def test_record_invocation_start_resets_coarse_any_deferred_log_at() -> None:
-    """``_last_any_deferred_log_at`` MUST be cleared on invocation_start.
+    """Coarse deferral throttle map MUST be cleared on invocation_start.
 
     Pin for R6 per-invocation semantics: the coarse per-``fire_reason``
     throttle map shares the per-invocation reset semantics with the
@@ -6092,23 +6190,36 @@ def test_record_invocation_start_resets_coarse_any_deferred_log_at() -> None:
     previous run's coarse throttle timestamps and incorrectly
     suppress its first human-visible deferred-status log.
 
-    Pre-fix the coarse map survived across invocations (only the
-    per-tuple map and per-channel map were reset); the pin test at
-    :mod:`test_log_spam_throttle` proves the coarse map is populated
-    by ``_gate_fire`` but had no companion test for the reset path.
+    Black-box: drive the deferral path via ``evaluate_fire_gate`` with
+    fresh channel evidence so the coarse throttle map is populated,
+    then verify ``record_invocation_start()`` clears all tracked throttle reasons.
     """
-    watchdog, _clock = _invocation_start_full_reset_make_watchdog()
-    watchdog._last_any_deferred_log_at = {
-        "no_output_at_start": 1234.0,
-        "idle_timeout": 5678.0,
-    }
-    assert len(watchdog._last_any_deferred_log_at) == 2, (
-        "precondition: the coarse throttle map MUST be populated"
-    )
+    watchdog, clock = _invocation_start_full_reset_make_watchdog()
     watchdog.record_invocation_start()
-    assert watchdog._last_any_deferred_log_at == {}, (
-        f"record_invocation_start MUST reset _last_any_deferred_log_at;"
-        f" got {watchdog._last_any_deferred_log_at!r}"
+    clock.advance(10.0)
+    now = clock.monotonic()
+    watchdog.record_mcp_tool_call(now=now)
+
+    # Deferral path populates coarse throttle entries for both fire reasons
+    watchdog.evaluate_fire_gate(
+        WatchdogFireReason.NO_OUTPUT_AT_START,
+        now=now,
+        idle_elapsed=10.0,
+    )
+    watchdog.evaluate_fire_gate(
+        WatchdogFireReason.NO_OUTPUT_DEADLINE,
+        now=now,
+        idle_elapsed=10.0,
+    )
+    assert watchdog.deferred_throttle_reasons == {
+        WatchdogFireReason.NO_OUTPUT_AT_START.value,
+        WatchdogFireReason.NO_OUTPUT_DEADLINE.value,
+    }
+
+    watchdog.record_invocation_start()
+    assert watchdog.deferred_throttle_reasons == frozenset(), (
+        f"record_invocation_start MUST reset coarse deferral throttles;"
+        f" got {watchdog.deferred_throttle_reasons!r}"
     )
 
 
@@ -6130,25 +6241,17 @@ def test_second_invocation_starts_from_clean_baseline_no_stale_throttle() -> Non
     watchdog.record_mcp_tool_call(now=0.0)
     # First invocation: drive the deferral path so the throttle map is populated.
     assert watchdog.evaluate(classify_quiet=_active).name == "CONTINUE"
-    assert len(watchdog._last_evidence_deferral_log_at) > 0, (
+    assert watchdog.has_active_deferral_throttles, (
         "first invocation MUST populate the deferral throttle map"
     )
     # Reset and drive a second invocation.
     watchdog.record_invocation_start()
     clock.advance(0.1)
     # The throttle map MUST be empty after reset.
-    assert watchdog._last_evidence_deferral_log_at == {}, (
-        f"record_invocation_start MUST reset _last_evidence_deferral_log_at;"
-        f" got {watchdog._last_evidence_deferral_log_at!r}"
+    assert not watchdog.has_active_deferral_throttles, (
+        "record_invocation_start MUST reset all deferral throttle maps"
     )
-    assert watchdog._last_deferred_log_at == {}, (
-        f"record_invocation_start MUST reset _last_deferred_log_at;"
-        f" got {watchdog._last_deferred_log_at!r}"
-    )
-    assert watchdog._last_any_deferred_log_at == {}, (
-        f"record_invocation_start MUST reset _last_any_deferred_log_at;"
-        f" got {watchdog._last_any_deferred_log_at!r}"
-    )
+    assert watchdog.deferred_throttle_reasons == frozenset()
 
 
 # === consolidated from test_invocation_start_full_reset.py ===
@@ -6171,9 +6274,9 @@ def test_second_invocation_fingerprint_does_not_skip_fresh_lines() -> None:
     # ``phase=alpha`` as a repeat of the first invocation's
     # ``phase=alpha``).
     watchdog.record_progress_report("phase=alpha")
-    assert watchdog._last_progress_fingerprint == "phase=alpha", (
-        f"second invocation MUST update _last_progress_fingerprint;"
-        f" got {watchdog._last_progress_fingerprint!r}"
+    assert watchdog.last_progress_fingerprint == "phase=alpha", (
+        f"second invocation MUST update last_progress_fingerprint;"
+        f" got {watchdog.last_progress_fingerprint!r}"
     )
 
 
@@ -6309,23 +6412,19 @@ def test_gate_fire_throttle_is_per_key() -> None:
         == WatchdogVerdict.CONTINUE
     )
     # Both transitions MUST route through the coarse throttle (the
-    # kind label is preserved on ``_last_deferred_kind`` so
+    # kind label is preserved on ``last_deferred_kind`` so
     # operators can still see WHICH kind was deferred; the throttle
     # is on the LOG emission, not on the kind tracking).
-    assert hasattr(watchdog, "_last_any_deferred_log_at"), (
-        "IdleWatchdog MUST expose _last_any_deferred_log_at for the coarse single-key throttle"
-    )
-    coarse_map = watchdog._last_any_deferred_log_at
-    assert fire_reason.value in coarse_map, (
-        f"fire_reason key missing from coarse throttle map; keys={list(coarse_map)}"
+    assert fire_reason.value in watchdog.deferred_throttle_reasons, (
+        f"fire_reason key missing from coarse throttle reasons; keys={list(watchdog.deferred_throttle_reasons)}"
     )
     # The CURRENT kind label is preserved on the watchdog's
-    # ``_last_deferred_kind`` field -- the operator can still see
+    # ``last_deferred_kind`` property -- the operator can still see
     # which kind was deferred even when the coarse throttle
     # suppressed the log emission.
-    assert watchdog._last_deferred_kind == StuckKind.LOADING, (
-        f"expected _last_deferred_kind=LOADING (the most recent);"
-        f" got {watchdog._last_deferred_kind!r}"
+    assert watchdog.last_deferred_kind == StuckKind.LOADING, (
+        f"expected last_deferred_kind=LOADING (the most recent);"
+        f" got {watchdog.last_deferred_kind!r}"
     )
 
 
@@ -11406,7 +11505,7 @@ def test_dumb_kill_one_agent_reading_product_criteria() -> None:
         connectivity_state=None,
         evidence_summary=summary,
         classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD,
-        activity_evidence_ttl_seconds=wd._config.activity_evidence_ttl_seconds,
+        activity_evidence_ttl_seconds=wd.config.activity_evidence_ttl_seconds,
     )
     assert kind == StuckKind.LOADING, (
         f"classifier should still return LOADING for the live subagent;"
@@ -11702,7 +11801,7 @@ def test_classifier_consulted_live_callable_returns_loading() -> None:
         connectivity_state=None,
         evidence_summary=summary,
         classify_quiet=_smart_verdict_dumb_kills_waiting,
-        activity_evidence_ttl_seconds=wd._config.activity_evidence_ttl_seconds,
+        activity_evidence_ttl_seconds=wd.config.activity_evidence_ttl_seconds,
     )
     assert kind == StuckKind.LOADING
 
@@ -11733,7 +11832,7 @@ def test_classifier_consulted_live_callable_returns_transitioning() -> None:
         connectivity_state=None,
         evidence_summary=summary,
         classify_quiet=_resumable,
-        activity_evidence_ttl_seconds=wd._config.activity_evidence_ttl_seconds,
+        activity_evidence_ttl_seconds=wd.config.activity_evidence_ttl_seconds,
     )
     assert kind == StuckKind.TRANSITIONING
 
@@ -11764,7 +11863,9 @@ def test_stall_assessment_regression_fresh_watchdog_event_reports_not_stalled() 
     clock = FakeClock(start=0.0)
     watchdog = _stall_lifetime_watchdog(clock, events)
 
-    watchdog._emit(WaitingStatusKind.PROGRESS, current_run_seconds=0.0, idle_elapsed=0.0)
+    watchdog.emit_waiting_status(
+        WaitingStatusKind.PROGRESS, current_run_seconds=0.0, idle_elapsed=0.0
+    )
 
     assert events[-1].stall_active is False
 
@@ -12363,18 +12464,8 @@ def test_strictly_stuck_fires_when_alive_by_pure_descendant_stale() -> None:
         alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
     )
     wd.record_invocation_start()
-    # Pre-seed the strictly-stuck run-start to the clock origin so a
-    # single advance of 305 s yields a 305 s strictly-stuck run, well
-    # past the 300 s ceiling. This avoids depending on the production
-    # code's two-tick seed semantics and keeps the test focused on the
-    # ceiling behavior. Use ``setattr`` with the attribute name held
-    # in a local variable so mypy cannot narrow the access to a
-    # private-attribute assignment AND ruff B010 does not flag a
-    # setattr-with-constant-value call. The policy test for
-    # ``test_zero_test_file_suppressions`` rejects bare mypy
-    # suppression comments inside test files.
-    _run_started_attr = "_strictly_stuck_run_started_at"
-    setattr(wd, _run_started_attr, clock.monotonic())
+    # First tick seeds the strictly-stuck run start naturally via evaluate
+    wd.evaluate(classify_quiet=_strictly_stuck_ceiling_active)
     clock.advance(305.0)
     verdict = wd.evaluate(classify_quiet=_strictly_stuck_ceiling_active)
     assert verdict == WatchdogVerdict.FIRE, (
@@ -13782,13 +13873,13 @@ def test_subagent_capture_cache_is_hard_bounded_by_cap() -> None:
     # the public surface still reports every worker's lines), but
     # the cache ends at exactly ``cap`` entries and the 5 oldest-
     # inserted workers are moved to the tombstone.
-    assert len(watchdog._subagent_output_captures) == cap, (
+    assert len(watchdog.subagent_output_captures) == cap, (
         f"hard cap MUST enforce cache at exactly cap={cap}, "
-        f"got {len(watchdog._subagent_output_captures)}"
+        f"got {len(watchdog.subagent_output_captures)}"
     )
-    assert len(watchdog._evicted_worker_tombstones) == _OVERFLOW_DELTA, (
+    assert len(watchdog.evicted_worker_tombstones) == _OVERFLOW_DELTA, (
         f"the {_OVERFLOW_DELTA} evicted workers MUST be tombstoned, "
-        f"got {len(watchdog._evicted_worker_tombstones)}"
+        f"got {len(watchdog.evicted_worker_tombstones)}"
     )
 
     # Poll 2: the _OVERFLOW_DELTA oldest-inserted workers
@@ -13799,8 +13890,8 @@ def test_subagent_capture_cache_is_hard_bounded_by_cap() -> None:
     monitor.replace_captures(surviving)
     clock.advance(0.01)
     watchdog.poll_subagent_output(now=clock.monotonic())
-    assert len(watchdog._subagent_output_captures) == cap
-    assert len(watchdog._evicted_worker_tombstones) == 0, (
+    assert len(watchdog.subagent_output_captures) == cap
+    assert len(watchdog.evicted_worker_tombstones) == 0, (
         "tombstone MUST release entries for workers no longer in "
         "discovery (the eviction cooldown ended because the worker "
         "actually died)"
@@ -13813,10 +13904,10 @@ def test_subagent_capture_cache_is_hard_bounded_by_cap() -> None:
     # the boundary case where the last inserted survivor was
     # dropped despite still being alive).
     expected_survivors = {f"w-{i}" for i in range(_OVERFLOW_DELTA, first_count)}
-    assert expected_survivors == set(watchdog._subagent_output_captures.keys()), (
+    assert expected_survivors == set(watchdog.subagent_output_captures.keys()), (
         f"every cap survivor MUST be retained in the cache; "
-        f"missing={expected_survivors - set(watchdog._subagent_output_captures.keys())}, "
-        f"extra={set(watchdog._subagent_output_captures.keys()) - expected_survivors}"
+        f"missing={expected_survivors - set(watchdog.subagent_output_captures.keys())}, "
+        f"extra={set(watchdog.subagent_output_captures.keys()) - expected_survivors}"
     )
 
 
@@ -13831,10 +13922,10 @@ def test_subagent_capture_cache_does_not_evict_when_under_cap() -> None:
     watchdog, clock = _subagent_capture_eviction_make_watchdog(monitor)
     watchdog.poll_subagent_output(now=clock.monotonic())
 
-    assert len(watchdog._subagent_output_captures) == under_cap_count
-    assert len(watchdog._evicted_worker_tombstones) == 0
+    assert len(watchdog.subagent_output_captures) == under_cap_count
+    assert len(watchdog.evicted_worker_tombstones) == 0
     for index in range(under_cap_count):
-        assert f"keep-{index}" in watchdog._subagent_output_captures
+        assert f"keep-{index}" in watchdog.subagent_output_captures
 
 
 # === consolidated from test_subagent_capture_eviction.py ===
@@ -13856,14 +13947,14 @@ def test_subagent_capture_cache_eviction_skips_existing_workers() -> None:
     monitor = _FakeProcessMonitorSubagentCaptureEviction(primed)
     watchdog, clock = _subagent_capture_eviction_make_watchdog(monitor)
     watchdog.poll_subagent_output(now=clock.monotonic())
-    assert len(watchdog._subagent_output_captures) == cap
-    assert len(watchdog._evicted_worker_tombstones) == 0
+    assert len(watchdog.subagent_output_captures) == cap
+    assert len(watchdog.evicted_worker_tombstones) == 0
 
     # Same workers, second tick: no new workers, no eviction.
     clock.advance(0.01)
     watchdog.poll_subagent_output(now=clock.monotonic())
-    assert len(watchdog._subagent_output_captures) == cap
-    assert len(watchdog._evicted_worker_tombstones) == 0
+    assert len(watchdog.subagent_output_captures) == cap
+    assert len(watchdog.evicted_worker_tombstones) == 0
 
 
 # === consolidated from test_subagent_capture_eviction.py ===
@@ -13891,12 +13982,12 @@ def test_subagent_capture_cache_polls_all_workers_then_enforces_cap() -> None:
     # The watchdog records the total in the public counter.
     assert watchdog._subagent_output_count == first_count
     # The cache is HARD-bounded at ``cap`` after the polling pass.
-    assert len(watchdog._subagent_output_captures) == cap, (
-        f"hard cap MUST enforce cache at cap={cap}, got {len(watchdog._subagent_output_captures)}"
+    assert len(watchdog.subagent_output_captures) == cap, (
+        f"hard cap MUST enforce cache at cap={cap}, got {len(watchdog.subagent_output_captures)}"
     )
     # The _OVERFLOW_DELTA oldest-inserted workers were evicted into
     # the tombstone.
-    assert len(watchdog._evicted_worker_tombstones) == _OVERFLOW_DELTA
+    assert len(watchdog.evicted_worker_tombstones) == _OVERFLOW_DELTA
 
 
 # === consolidated from test_subagent_capture_eviction.py ===
@@ -13943,9 +14034,9 @@ def test_subagent_capture_tombstone_prevents_duplicate_output_after_eviction() -
         f"vs expected {expected_first}"
     )
     # Cache ends at exactly ``cap`` (hard bound enforced).
-    assert len(watchdog._subagent_output_captures) == cap
+    assert len(watchdog.subagent_output_captures) == cap
     # The _OVERFLOW_DELTA oldest-inserted workers are in the tombstone.
-    assert len(watchdog._evicted_worker_tombstones) == _OVERFLOW_DELTA
+    assert len(watchdog.evicted_worker_tombstones) == _OVERFLOW_DELTA
 
     # All first_count workers are still alive on poll 2.
     # A CORRECT implementation must skip the tombstoned workers
@@ -13959,13 +14050,13 @@ def test_subagent_capture_tombstone_prevents_duplicate_output_after_eviction() -
         f"tombstoned workers must be skipped); got {second_poll}"
     )
     # Cache is still at the cap.
-    assert len(watchdog._subagent_output_captures) == cap
+    assert len(watchdog.subagent_output_captures) == cap
     # Tombstone is still populated because the evicted workers are
     # still alive (the tombstone is the cooldown that suppresses
     # their re-addition; it cycles out when the workers actually
     # exit OR when the tombstone cap binds and evicts the oldest-
     # inserted).
-    assert len(watchdog._evicted_worker_tombstones) == _OVERFLOW_DELTA
+    assert len(watchdog.evicted_worker_tombstones) == _OVERFLOW_DELTA
 
 
 # === consolidated from test_subagent_capture_eviction.py ===
@@ -13988,7 +14079,7 @@ def test_subagent_capture_tombstone_cycles_out_when_worker_dies() -> None:
     monitor = _FakeProcessMonitorSubagentCaptureEviction(first_captures)
     watchdog, clock = _subagent_capture_eviction_make_watchdog(monitor)
     watchdog.poll_subagent_output(now=clock.monotonic())
-    assert len(watchdog._evicted_worker_tombstones) == _OVERFLOW_DELTA
+    assert len(watchdog.evicted_worker_tombstones) == _OVERFLOW_DELTA
 
     # Second poll: the _OVERFLOW_DELTA tombstoned workers are gone
     # from discovery. Their tombstone entries MUST be released.
@@ -13996,7 +14087,7 @@ def test_subagent_capture_tombstone_cycles_out_when_worker_dies() -> None:
     monitor.replace_captures(surviving)
     clock.advance(0.01)
     watchdog.poll_subagent_output(now=clock.monotonic())
-    assert len(watchdog._evicted_worker_tombstones) == 0, (
+    assert len(watchdog.evicted_worker_tombstones) == 0, (
         "tombstone MUST release entries when the worker actually exits (no longer in discovery)"
     )
 
@@ -14033,9 +14124,9 @@ def test_subagent_capture_tombstone_is_itself_bounded() -> None:
     watchdog, clock = _subagent_capture_eviction_make_watchdog(monitor)
     watchdog.poll_subagent_output(now=clock.monotonic())
 
-    assert len(watchdog._evicted_worker_tombstones) == tombstone_cap
+    assert len(watchdog.evicted_worker_tombstones) == tombstone_cap
     # The cap MUST still hold.
-    assert len(watchdog._subagent_output_captures) == cap
+    assert len(watchdog.subagent_output_captures) == cap
     # The tombstone MUST hold the MOST RECENTLY evicted workers
     # (FIFO: the oldest-inserted tombstone entries are dropped
     # first). ``first_count - cap = cap + 1`` workers were evicted
@@ -14043,7 +14134,7 @@ def test_subagent_capture_tombstone_is_itself_bounded() -> None:
     # 1 of those entries (w-0), leaving w-1..w-cap in the
     # tombstone.
     num_evicted = first_count - cap
-    tombstoned = list(watchdog._evicted_worker_tombstones.keys())
+    tombstoned = list(watchdog.evicted_worker_tombstones.keys())
     assert tombstoned == [f"w-{i}" for i in range(num_evicted - tombstone_cap, num_evicted)]
 
 
@@ -14299,7 +14390,7 @@ def test_register_default_subagent_activity_listener_invokes_listener_with_paylo
     watchdog.record_subagent_work(description="agent is reading foo.py")
     # Trigger an emit cycle; the listener should receive the event with the
     # subagent_activity field populated from the last recorded description.
-    watchdog._emit(
+    watchdog.emit_waiting_status(
         WaitingStatusKind.ENTERED,
         current_run_seconds=0.0,
         idle_elapsed=0.0,
@@ -14312,7 +14403,7 @@ def test_register_default_subagent_activity_listener_invokes_listener_with_paylo
 
     # A second emit without a new subagent activity description should still
     # forward the most recent description.
-    watchdog._emit(
+    watchdog.emit_waiting_status(
         WaitingStatusKind.ENTERED,
         current_run_seconds=1.0,
         idle_elapsed=1.0,
@@ -14325,7 +14416,7 @@ def test_register_default_subagent_activity_listener_invokes_listener_with_paylo
     # listener is not called for a fresh run.
     watchdog.record_invocation_start()
     captured.clear()
-    watchdog._emit(
+    watchdog.emit_waiting_status(
         WaitingStatusKind.ENTERED,
         current_run_seconds=0.0,
         idle_elapsed=0.0,

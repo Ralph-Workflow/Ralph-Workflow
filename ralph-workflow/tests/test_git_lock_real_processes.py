@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 import pytest
 
-from ralph.git import _lock_recovery as lr
+from ralph.git import lock_recovery as lr
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

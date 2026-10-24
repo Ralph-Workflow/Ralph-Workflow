@@ -20,6 +20,17 @@ from tests.test_pending_merge_commit_recovery import _commit, _git
 pytestmark = [pytest.mark.timeout_seconds(5)]
 
 
+@pytest.fixture(autouse=True)
+def _patch_lock_recovery_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ralph.git._lock_recovery._sleep_fn", lambda _s: None)
+    monkeypatch.setattr("ralph.git.operations._sleep_fn", lambda _s: None)
+    monkeypatch.setattr("ralph.git._lock_recovery._PROBE_TIMEOUT_S", 0.05)
+    monkeypatch.setattr("ralph.git._lock_liveness._PROBE_TIMEOUT_S", 0.05)
+    monkeypatch.setattr("ralph.git._lock_recovery._LIVE_HOLDER_POLL_S", 0.01)
+    monkeypatch.setattr("ralph.git._lock_recovery._LIVE_HOLDER_PATIENCE_S", 0.02)
+    monkeypatch.setattr("ralph.git._lock_recovery._LOCK_BACKOFF_S", (0.001,))
+
+
 @pytest.mark.parametrize("empty", [False, True])
 def test_completed_commit_is_not_replayed_while_clean_landing_receipt_waits(
     tmp_git_repo: Path,

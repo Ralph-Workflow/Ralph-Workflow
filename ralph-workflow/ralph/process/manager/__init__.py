@@ -17,6 +17,24 @@ from typing import TYPE_CHECKING, Final, Protocol, cast
 from ralph.process._spawn_env import child_env_for_spawn
 from ralph.process.manager._deadline_timeout_expired import DeadlineTimeoutExpired
 from ralph.process.manager._git_termination import is_git_name
+from ralph.process.manager._liveness_assessor import (
+    LivenessConfig,
+    LivenessVerdict,
+    LivenessWindow,
+    StallIntegrator,
+    SuspicionClock,
+    VerdictKind,
+    assess,
+    awake,
+    cpu_busy,
+    default_liveness_config,
+    evaluate_rules,
+    io_active,
+    output_recent,
+    repetitive,
+    step_with_assessment,
+    tree_active,
+)
 from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._managed_process import ManagedProcess
 from ralph.process.manager._managed_pty_process import ManagedPtyProcess
@@ -313,7 +331,10 @@ _set_defaults(
 
 __all__ = [
     "DeadlineTimeoutExpired",
+    "LivenessConfig",
     "LivenessResult",
+    "LivenessVerdict",
+    "LivenessWindow",
     "ManagedAsyncProcess",
     "ManagedProcess",
     "ManagedPtyProcess",
@@ -325,11 +346,24 @@ __all__ = [
     "ProcessTerminationError",
     "PtySpawnOptions",
     "SpawnOptions",
+    "StallIntegrator",
+    "SuspicionClock",
+    "VerdictKind",
     "_pm_state",
+    "assess",
+    "awake",
+    "cpu_busy",
     "death_preexec",
+    "default_liveness_config",
+    "evaluate_rules",
     "get_process_manager",
+    "io_active",
     "is_git_name",
+    "output_recent",
     "process_phase_scope",
+    "repetitive",
     "reset_process_manager",
+    "step_with_assessment",
+    "tree_active",
     "verify_process_liveness",
 ]

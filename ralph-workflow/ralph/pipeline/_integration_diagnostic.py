@@ -88,10 +88,16 @@ from ralph.pipeline._integration_diagnostic_evidence import (
     snapshot_has_unreadable,
 )
 from ralph.pipeline._integration_diagnostic_proof import (
+    _check_ancestry_proof,
     _check_atomic_transition_proof,
+    _check_clean_diff_proof,
+    _check_gitdir_markers_proof,
+    _check_head_match,
     _check_index_tree_proof,
+    _check_marker_ref_proof,
     _check_operation_completion_proof,
     _check_ownership_proof,
+    _check_worktree_match,
     _has_phase_proof,
 )
 from ralph.pipeline._integration_record_facts import (
@@ -140,9 +146,16 @@ __all__ = [
     "EVIDENCE_LEASE_SECONDS",
     "_bump_attempt",
     "_busy_refusal_state",
+    "_check_ancestry_proof",
     "_check_atomic_transition_proof",
+    "_check_clean_diff_proof",
+    "_check_gitdir_markers_proof",
+    "_check_head_match",
     "_check_index_tree_proof",
+    "_check_marker_ref_proof",
+    "_check_operation_completion_proof",
     "_check_ownership_proof",
+    "_check_worktree_match",
     "_complete_or_intervene",
     "_has_phase_proof",
     "_operation_root_for",

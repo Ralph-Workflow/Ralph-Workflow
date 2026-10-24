@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.git import _lock_recovery as lr
+from ralph.git import lock_recovery as lr
 from ralph.git._run_git_lock_recovery import git_subcommand, run_with_lock_recovery
 from ralph.git.git_run_result import GitRunResult
 

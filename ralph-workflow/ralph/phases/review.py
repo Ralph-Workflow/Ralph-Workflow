@@ -179,15 +179,6 @@ class ReviewCollaborators:
     exactly. Callers (and tests) may override any subset of the
     callbacks to drive :func:`handle_review` without touching the
     filesystem or a real Git repository.
-
-    Attributes:
-        read_baseline: Returns the recorded review baseline SHA, or
-            ``None`` when no baseline has been recorded yet.
-        has_new_commits: Returns ``True`` when commits landed after the
-            given baseline SHA.
-        current_head_sha: Returns the current workspace head SHA, or
-            ``None`` when it cannot be determined.
-        write_baseline: Records the given SHA as the new review baseline.
     """
 
     read_baseline: Callable[[PhaseContext], str | None] = _production_read_baseline

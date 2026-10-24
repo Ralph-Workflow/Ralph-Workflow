@@ -486,6 +486,10 @@ def _configure_repo_identity(repo: object) -> None:
         writer.set_value("gc", "auto", "0")
     finally:
         writer.release()
+    exclude_path = Path(repo.git_dir) / "info" / "exclude"
+    exclude_path.parent.mkdir(parents=True, exist_ok=True)
+    with exclude_path.open("a", encoding="utf-8") as f:
+        f.write(".agent/\n")
 
 
 @pytest.fixture(scope="session")

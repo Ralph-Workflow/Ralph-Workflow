@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 from git import GitCommandError
 
-from ralph.git import _lock_recovery as lr
+from ralph.git import lock_recovery as lr
 
 if TYPE_CHECKING:
     from pathlib import Path

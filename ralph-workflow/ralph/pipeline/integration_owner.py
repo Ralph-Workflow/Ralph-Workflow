@@ -166,19 +166,19 @@ MUTATION_CLASS_ACTIONS: Final[frozenset[NextAction]] = frozenset(
 #: can inspect the contract without reaching into a private name; it is
 #: a constant and MUST NOT be mutated at runtime.
 #:
-#: =============================  ==============================
-#: ``NextAction``                 ``IntegrationAction``
-#: =============================  ==============================
-#: ``COMMIT``                     ``CONTINUE_GIT_OPERATION``
-#: ``LAND``                       ``LAND_TARGET``
-#: ``REINTEGRATE``                ``REINTEGRATE_AGAINST_TARGET``
-#: ``RESUME_OWNED_OPERATION``     ``CONTINUE_GIT_OPERATION``
-#: ``REPAIR``                     ``RESOLVE_ACTIVE_OPERATION``
-#: ``DISPATCH_RESOLVER``          ``RESOLVE_ACTIVE_OPERATION``
-#: ``REBUILD_ON_TARGET``          ``REINTEGRATE_AGAINST_TARGET``
+#: =====================================  ==============================
+#: ``NextAction``                         ``IntegrationAction``
+#: =====================================  ==============================
+#: ``COMMIT``                             ``CONTINUE_GIT_OPERATION``
+#: ``LAND``                               ``LAND_TARGET``
+#: ``REINTEGRATE``                        ``REINTEGRATE_AGAINST_TARGET``
+#: ``RESUME_OWNED_OPERATION``             ``CONTINUE_GIT_OPERATION``
+#: ``REPAIR``                             ``RESOLVE_ACTIVE_OPERATION``
+#: ``DISPATCH_RESOLVER``                  ``RESOLVE_ACTIVE_OPERATION``
+#: ``REBUILD_ON_TARGET``                  ``REINTEGRATE_AGAINST_TARGET``
 #: ``CONTINUE_WITH_INTEGRATION_PENDING``  ``WAIT_FOR_BOUNDED_RETRY``
-#: ``WAIT_FOR_ENVIRONMENT``       ``WAIT_FOR_BOUNDED_RETRY``
-#: =============================  ==============================
+#: ``WAIT_FOR_ENVIRONMENT``               ``WAIT_FOR_BOUNDED_RETRY``
+#: =====================================  ==============================
 #:
 #: The two wait-shaped decisions share one action because neither asks
 #: the boundary to mutate anything: the escalation ladder is exhausted

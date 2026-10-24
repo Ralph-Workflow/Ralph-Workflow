@@ -9,19 +9,19 @@ from __future__ import annotations
 
 import pytest
 
-from ralph.process.manager._liveness_assessor import (
+from ralph.process.manager import (
     LivenessConfig,
     LivenessWindow,
     StallIntegrator,
-    _awake,
-    _cpu_busy,
-    _evaluate_rules,
-    _io_active,
-    _output_recent,
-    _repetitive,
-    _tree_active,
     assess,
+    awake,
+    cpu_busy,
     default_liveness_config,
+    evaluate_rules,
+    io_active,
+    output_recent,
+    repetitive,
+    tree_active,
 )
 
 # Defaults shared by every table test. We never mutate this; each test that
@@ -45,11 +45,11 @@ CFG: LivenessConfig = default_liveness_config()
     ],
 )
 def test_output_recent_breakpoints(o: float, expected: float) -> None:
-    assert _output_recent(o, CFG) == pytest.approx(expected)
+    assert output_recent(o, CFG) == pytest.approx(expected)
 
 
 def test_output_recent_unknown_signal() -> None:
-    assert _output_recent(None, CFG) == 0.0
+    assert output_recent(None, CFG) == 0.0
 
 
 @pytest.mark.parametrize(
@@ -63,11 +63,11 @@ def test_output_recent_unknown_signal() -> None:
     ],
 )
 def test_cpu_busy_breakpoints(c_val: float, expected: float) -> None:
-    assert _cpu_busy(c_val, CFG) == pytest.approx(expected)
+    assert cpu_busy(c_val, CFG) == pytest.approx(expected)
 
 
 def test_cpu_busy_unknown_signal() -> None:
-    assert _cpu_busy(None, CFG) == 0.0
+    assert cpu_busy(None, CFG) == 0.0
 
 
 @pytest.mark.parametrize(
@@ -81,11 +81,11 @@ def test_cpu_busy_unknown_signal() -> None:
     ],
 )
 def test_io_active_breakpoints(io: float, expected: float) -> None:
-    assert _io_active(io, CFG) == pytest.approx(expected)
+    assert io_active(io, CFG) == pytest.approx(expected)
 
 
 def test_io_active_unknown_signal() -> None:
-    assert _io_active(None, CFG) == 0.0
+    assert io_active(None, CFG) == 0.0
 
 
 @pytest.mark.parametrize(
@@ -97,11 +97,11 @@ def test_io_active_unknown_signal() -> None:
     ],
 )
 def test_tree_active_breakpoints(t: int, expected: float) -> None:
-    assert _tree_active(t, CFG) == pytest.approx(expected)
+    assert tree_active(t, CFG) == pytest.approx(expected)
 
 
 def test_tree_active_unknown_signal() -> None:
-    assert _tree_active(None, CFG) == 0.0
+    assert tree_active(None, CFG) == 0.0
 
 
 @pytest.mark.parametrize(
@@ -115,11 +115,11 @@ def test_tree_active_unknown_signal() -> None:
     ],
 )
 def test_repetitive_breakpoints(n: float, expected: float) -> None:
-    assert _repetitive(n, CFG) == pytest.approx(expected)
+    assert repetitive(n, CFG) == pytest.approx(expected)
 
 
 def test_repetitive_unknown_signal() -> None:
-    assert _repetitive(None, CFG) == 0.0
+    assert repetitive(None, CFG) == 0.0
 
 
 @pytest.mark.parametrize(
@@ -133,11 +133,11 @@ def test_repetitive_unknown_signal() -> None:
     ],
 )
 def test_awake_breakpoints(w: float, expected: float) -> None:
-    assert _awake(w, CFG) == pytest.approx(expected)
+    assert awake(w, CFG) == pytest.approx(expected)
 
 
 def test_awake_unknown_signal() -> None:
-    assert _awake(None, CFG) == 0.0
+    assert awake(None, CFG) == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -149,13 +149,13 @@ def test_evaluate_rules_all_zero_memberships_fires_only_r5() -> None:
     """When every membership reads 0, only R5 (idle) fires; strongest = R5.
 
     Distinct from the ``all-None`` semantics (D5 fail-closed via ``assess``):
-    the membership layer folds unknown → 0, so ``_evaluate_rules`` sees a
+    the membership layer folds unknown → 0, so ``evaluate_rules`` sees a
     known-zero trace, the NOTs all become 1, and the rule evaluator returns
     R5 with weight 1. The ``assess`` layer applies the per-rule gating that
     uses raw signal None-vs-known state, so an ``assess`` call with all-None
     inputs produces "unknown" verdict (see ``test_assess_every_signal_none_*``).
     """
-    weights, strongest = _evaluate_rules(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    weights, strongest = evaluate_rules(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     # All NOTs are (1 - 0) = 1, so R5 = min(1, 1, 1, 1, 1) = 1.
     assert weights[4] == pytest.approx(1.0)
     assert strongest == "R5"
@@ -168,7 +168,7 @@ def test_evaluate_rules_all_zero_memberships_fires_only_r5() -> None:
 
 def test_evaluate_rules_r1_when_recent_and_novel() -> None:
     """R1 fires alone when OutputRecent=1, Repetitive=0."""
-    weights, strongest = _evaluate_rules(1.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    weights, strongest = evaluate_rules(1.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     assert weights[0] == pytest.approx(1.0)
     assert weights[4] == pytest.approx(0.0)
     assert strongest == "R1"
@@ -181,19 +181,19 @@ def test_evaluate_rules_r5_min_over_zero_signals() -> None:
     idle (R5 fires at z=0); UNKNOWN absence cannot make the rule fire
     (D5 — fail closed).
     """
-    weights, _ = _evaluate_rules(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    weights, _ = evaluate_rules(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     assert weights[4] == pytest.approx(1.0)
 
 
 def test_evaluate_rules_not_inverts_membership() -> None:
     """NOT x = 1 - x is built into R5: OutputRecent=1 forces R5=0."""
-    weights, _ = _evaluate_rules(1.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    weights, _ = evaluate_rules(1.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     assert weights[4] == 0.0
 
 
 def test_evaluate_rules_min_with_mixed_signal() -> None:
     """R4: CpuBusy AND NOT OutputRecent AND NOT IoActive = min of three."""
-    weights, _ = _evaluate_rules(0.5, 1.0, 0.0, 0.0, 0.0, 0.0)
+    weights, _ = evaluate_rules(0.5, 1.0, 0.0, 0.0, 0.0, 0.0)
     assert weights[3] == pytest.approx(0.5)
 
 

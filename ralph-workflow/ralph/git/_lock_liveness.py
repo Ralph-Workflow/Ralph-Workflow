@@ -203,7 +203,11 @@ _HOST_INIT_MAX_START_S = 600.0
 def _pid1_started_at_boot() -> bool:
     """Return True when pid 1 is a host init that started within minutes of boot."""
     try:
-        stat_text = Path("/proc/1/stat").read_text(encoding="utf-8")
+        stat_text = Path(
+            "/proc/1/stat"
+        ).read_text(
+            encoding="utf-8"
+        )  # filesystem-read-ok: /proc is a virtual kernel process-metadata source, not workspace content
         start_ticks = int(stat_text.rsplit(")", 1)[1].split()[19])
         return start_ticks / os.sysconf("SC_CLK_TCK") < _HOST_INIT_MAX_START_S
     except (OSError, IndexError, ValueError):
@@ -221,12 +225,31 @@ def _not_host_pid_namespace() -> bool:
     is not a boot-time init, a container marker file, or a non-identity uid map.
     """
     try:
-        for line in Path("/proc/self/status").read_text(encoding="utf-8").splitlines():
+        for line in (
+            Path("/proc/self/status")
+            .read_text(  # filesystem-read-ok: /proc is a virtual kernel process-metadata source, not workspace content
+                encoding="utf-8"
+            )
+            .splitlines()
+        ):
             if line.startswith("NSpid:") and len(line.split()[1:]) > 1:
                 return True
-        if Path("/.dockerenv").exists() or Path("/run/.containerenv").exists():
+        if (
+            Path(
+                "/.dockerenv"
+            ).exists()  # filesystem-read-ok: system container marker probe outside workspace
+            or Path(
+                "/run/.containerenv"
+            ).exists()  # filesystem-read-ok: system container marker probe outside workspace
+        ):
             return True
-        uid_map = Path("/proc/self/uid_map").read_text(encoding="utf-8").split()
+        uid_map = (
+            Path("/proc/self/uid_map")
+            .read_text(  # filesystem-read-ok: /proc is a virtual kernel process-metadata source, not workspace content
+                encoding="utf-8"
+            )
+            .split()
+        )
         if uid_map[:3] != ["0", "0", "4294967295"]:
             return True
     except (OSError, IndexError):

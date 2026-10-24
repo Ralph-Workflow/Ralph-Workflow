@@ -9,7 +9,10 @@ from loguru import logger
 
 from ralph.agents.idle_watchdog import TimeoutPolicy, WaitingStatusListener
 from ralph.agents.idle_watchdog._timeout_profile import TimeoutProfile
-from ralph.agents.invoke._invoke_options import _INVOKE_OPTS_UNSET
+from ralph.agents.invoke._invoke_options import (
+    _INVOKE_OPTS_UNSET,
+    _WORKSPACE_MONITOR_FACTORY_OVERRIDE,
+)
 from ralph.agents.invoke._types import InvokeOptions
 from ralph.timeout_defaults import STUCK_JOB_SUB_CEILING_SECONDS
 
@@ -83,7 +86,11 @@ def build_invoke_options_from_config(
         activity_only_status_interval_seconds=rt.activity_only_status_interval_seconds,
         relay_activity_sink_register=rt.relay_activity_sink_register,
         relay_health_error=rt.relay_health_error,
-        workspace_monitor_factory=rt.workspace_monitor_factory,
+        workspace_monitor_factory=(
+            rt.workspace_monitor_factory
+            if rt.workspace_monitor_factory is not None
+            else _WORKSPACE_MONITOR_FACTORY_OVERRIDE.get()
+        ),
         drain_window_seconds=general_config.agent_idle_drain_window_seconds,
         max_waiting_on_child_seconds=general_config.agent_idle_max_waiting_on_child_seconds,
         idle_poll_interval_seconds=general_config.agent_idle_poll_interval_seconds,
