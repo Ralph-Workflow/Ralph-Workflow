@@ -47,6 +47,7 @@ from ralph.pipeline.integration_resolution import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
@@ -69,6 +70,7 @@ def phase_boundary_outcome(
     *,
     rebase_stop_resolver: RebaseStopResolver | None,
     readiness: TreeReadinessAssessment | None = None,
+    get_head_sha_fn: Callable[[Path | str], str] | None = None,
 ) -> tuple[bool, RebaseState | None]:
     """Return whether the target, cleanliness, or freshness gate ends this boundary."""
     if target is None:
@@ -79,9 +81,16 @@ def phase_boundary_outcome(
     if readiness is None:
         readiness = assess_tree_readiness(root)
     if not readiness.integration_ready:
-        return True, defer_dirty_boundary(config, root, target, readiness=readiness)
+        return True, defer_dirty_boundary(
+            config, root, target, readiness=readiness, get_head_sha_fn=get_head_sha_fn
+        )
     outcome = boundary_freshness_outcome(
-        config, root, target, state, rebase_stop_resolver=rebase_stop_resolver
+        config,
+        root,
+        target,
+        state,
+        rebase_stop_resolver=rebase_stop_resolver,
+        get_head_sha_fn=get_head_sha_fn,
     )
     return outcome is not None, outcome
 
@@ -93,13 +102,15 @@ def boundary_freshness_outcome(
     state: RebaseState,
     *,
     rebase_stop_resolver: RebaseStopResolver | None,
+    get_head_sha_fn: Callable[[Path | str], str] | None = None,
 ) -> RebaseState | None:
     """Return a freshness-gated no-commit boundary result, if the seam is done."""
     remote_record = pull_and_reconcile_target(
         config, root, target, rebase_stop_resolver=rebase_stop_resolver, prior=state
     )
     refresh = None if remote_sync_enabled(config) else _refresh_target(config, root, target)
-    if branch_sha(root, target) != get_head_sha(root):
+    head_reader = get_head_sha_fn or get_head_sha
+    if branch_sha(root, target) != head_reader(root):
         return None
     # The phase-boundary seam runs the reconciler on every clean
     # boundary (not just when an in-memory flag is set). The OLD
@@ -155,11 +166,17 @@ def boundary_freshness_outcome(
     return pending
 
 
-def target_is_ahead(root: Path, target_sha: str | None) -> bool:
+def target_is_ahead(
+    root: Path,
+    target_sha: str | None,
+    *,
+    get_head_sha_fn: Callable[[Path | str], str] | None = None,
+) -> bool:
     """Return whether the target carries commits HEAD does not have."""
     if target_sha is None:
         return False
-    return not is_ancestor(root, target_sha, get_head_sha(root))
+    head_reader = get_head_sha_fn or get_head_sha
+    return not is_ancestor(root, target_sha, head_reader(root))
 
 
 def defer_dirty_boundary(
@@ -168,6 +185,7 @@ def defer_dirty_boundary(
     target: str,
     *,
     readiness: TreeReadinessAssessment | None = None,
+    get_head_sha_fn: Callable[[Path | str], str] | None = None,
 ) -> RebaseState | None:
     """Defer dirty-boundary integration, recording only meaningful missed catch-up."""
     if readiness is None:
@@ -177,7 +195,7 @@ def defer_dirty_boundary(
         refresh = _refresh_target(config, root, target)
         BOUNDARY_REFRESH_THROTTLE.record_outcome(root, target, refresh)
     target_sha = branch_sha(root, target)
-    diverged = target_is_ahead(root, target_sha)
+    diverged = target_is_ahead(root, target_sha, get_head_sha_fn=get_head_sha_fn)
     if (
         diverged
         and refresh == REFRESH_SUPPRESSED

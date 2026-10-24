@@ -102,6 +102,8 @@ from ralph.git.subprocess_runner import GitRunOptions, run_git
 _PORCELAIN_STATUS_PREFIX_LEN = 3
 _REFLOG_DEST_PARTS = 2
 _RALPH_WORKFLOW_COAUTHOR_TRAILER = "Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
+_HEX_SHA_LENGTH = 40
+_PACKED_REF_PARTS = 2
 
 
 def _close_repo(repo: Repo | None) -> None:
@@ -996,6 +998,81 @@ def push(
         _close_repo(repo)
 
 
+def _is_hex_sha(candidate: str) -> bool:
+    return len(candidate) == _HEX_SHA_LENGTH and all(
+        c in "0123456789abcdefABCDEF" for c in candidate
+    )
+
+
+def _resolve_gitdir_paths(root: Path) -> tuple[Path | None, Path | None]:
+    dot_git = root / ".git"
+    gitdir: Path | None = None
+    if dot_git.is_dir():
+        gitdir = dot_git
+    elif dot_git.is_file():
+        text = dot_git.read_text(encoding="utf-8").strip()
+        if text.startswith("gitdir:"):
+            target = Path(text.split(":", 1)[1].strip())
+            gitdir = target if target.is_absolute() else (root / target).resolve()
+    elif (root / "HEAD").is_file() and ((root / "refs").is_dir() or (root / "objects").is_dir()):
+        gitdir = root
+
+    if gitdir is None:
+        return None, None
+
+    commondir: Path | None = None
+    commondir_file = gitdir / "commondir"
+    if commondir_file.is_file():
+        c_text = commondir_file.read_text(encoding="utf-8").strip()
+        c_target = Path(c_text)
+        commondir = c_target if c_target.is_absolute() else (gitdir / c_target).resolve()
+    return gitdir, commondir
+
+
+def _read_ref_from_disk(ref: str, search_dirs: list[Path]) -> str | None:
+    for d in search_dirs:
+        ref_path = d / ref
+        if ref_path.is_file():
+            val = ref_path.read_text(encoding="utf-8").strip()
+            if _is_hex_sha(val):
+                return val
+    for d in search_dirs:
+        packed = d / "packed-refs"
+        if not packed.is_file():
+            continue
+        for raw_line in packed.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if line.startswith("#") or line.startswith("^"):
+                continue
+            parts = line.split()
+            if len(parts) == _PACKED_REF_PARTS and parts[1] == ref and _is_hex_sha(parts[0]):
+                return parts[0]
+    return None
+
+
+def _read_head_sha_direct(repo_root: Path | str) -> str | None:
+    """Read current HEAD commit SHA directly from disk without spawning GitPython."""
+    try:
+        gitdir, commondir = _resolve_gitdir_paths(Path(repo_root))
+        if gitdir is None:
+            return None
+        head_file = gitdir / "HEAD"
+        if not head_file.is_file():
+            return None
+        content = head_file.read_text(encoding="utf-8").strip()
+        if _is_hex_sha(content):
+            return content
+        if not content.startswith("ref:"):
+            return None
+        ref = content.split(":", 1)[1].strip()
+        search_dirs = [gitdir]
+        if commondir is not None and commondir != gitdir:
+            search_dirs.append(commondir)
+        return _read_ref_from_disk(ref, search_dirs)
+    except Exception:
+        return None
+
+
 def get_head_sha(repo_root: Path | str) -> str:
     """Return current HEAD commit SHA.
 
@@ -1014,6 +1091,10 @@ def get_head_sha(repo_root: Path | str) -> str:
     as an opaque ``unexpected failure`` that named neither the operation
     nor the repository.
     """
+    direct_sha = _read_head_sha_direct(repo_root)
+    if direct_sha is not None:
+        return direct_sha
+
     repo: Repo | None = None
     try:
         repo = Repo(repo_root)

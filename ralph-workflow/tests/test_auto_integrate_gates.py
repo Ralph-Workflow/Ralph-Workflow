@@ -697,58 +697,62 @@ def test_unpatched_real_worktree_gates_agree(
 ) -> None:
     """WU-5: unpatched real-worktree tests proving resolution, boundary, and planning agree."""
     repo = _make_real_repo(tmp_path)
-    setup_state(repo, tmp_path)
-    cfg = _config()
+    try:
+        setup_state(repo, tmp_path)
+        cfg = _config()
 
-    # 1. Integration resolution
-    readiness = assess_tree_readiness(tmp_path)
-    verdict = inspect_integration_resolution(tmp_path, RebaseState())
-    assert readiness.integration_ready is expected_ready
-    assert verdict.integration_ready is expected_ready
+        # 1. Integration resolution
+        readiness = assess_tree_readiness(tmp_path)
+        verdict = inspect_integration_resolution(tmp_path, RebaseState())
+        assert readiness.integration_ready is expected_ready
+        assert verdict.integration_ready is expected_ready
 
-    # 2. Planning
-    planning_block = planning._record_staged_block(tmp_path, "main")
+        # 2. Planning
+        planning_block = planning._record_staged_block(tmp_path, "main")
 
-    # 3. Boundary
-    handled, outcome = boundary.phase_boundary_outcome(
-        cfg, tmp_path, "main", RebaseState(), rebase_stop_resolver=None
-    )
-
-    if expected_ready:
-        assert readiness.blocking_reasons == ()
-        assert verdict.blocking_reasons == ()
-        assert planning_block is None
-        assert worktree_is_clean(tmp_path) is True
-        assert handled is True
-        assert outcome is not None
-        # WU-1 / boundary seam contract: a clean worktree returns a handled
-        # record whose ``last_action`` is "skipped". The exact ``last_reason``
-        # depends on the remote-sync state of the test fixture:
-        #   - "no commits beyond target" -- no remote configured AND no work
-        #     to publish (the silent-skip path).
-        #   - "remote origin unreachable; recovery will retry" -- reconciler
-        #     observed REMOTE_REMOTE_UNREACHABLE; the boundary propagates
-        #     the transient-failure verdict (U1 / Bug B fix -- the OLD
-        #     ``"no commits beyond target"`` overwrite was the bug).
-        #   - "remote sync disabled by policy" -- auto_integrate_remote_enabled=False.
-        # What the test pins is the clean-state agreement between the three
-        # gates; not the verbatim prose.
-        assert outcome.last_action == "skipped"
-        assert outcome.last_reason in {
-            "no commits beyond target",
-            "remote origin unreachable; recovery will retry",
-            "remote sync disabled by policy",
-        }
-    else:
-        assert len(readiness.blocking_reasons) > 0
-        assert verdict.blocking_reasons[0] == readiness.blocking_reasons[0]
-        assert planning_block is not None
-        assert planning_block.last_action == "skipped"
-        assert planning_block.last_reason == readiness.blocking_reasons[0]
-        assert handled is True
-        assert outcome is None or (
-            outcome.last_action == "skipped" and "worktree not clean" in str(outcome.last_reason)
+        # 3. Boundary
+        handled, outcome = boundary.phase_boundary_outcome(
+            cfg, tmp_path, "main", RebaseState(), rebase_stop_resolver=None
         )
+
+        if expected_ready:
+            assert readiness.blocking_reasons == ()
+            assert verdict.blocking_reasons == ()
+            assert planning_block is None
+            assert worktree_is_clean(tmp_path) is True
+            assert handled is True
+            assert outcome is not None
+            # WU-1 / boundary seam contract: a clean worktree returns a handled
+            # record whose ``last_action`` is "skipped". The exact ``last_reason``
+            # depends on the remote-sync state of the test fixture:
+            #   - "no commits beyond target" -- no remote configured AND no work
+            #     to publish (the silent-skip path).
+            #   - "remote origin unreachable; recovery will retry" -- reconciler
+            #     observed REMOTE_REMOTE_UNREACHABLE; the boundary propagates
+            #     the transient-failure verdict (U1 / Bug B fix -- the OLD
+            #     ``"no commits beyond target"`` overwrite was the bug).
+            #   - "remote sync disabled by policy" -- auto_integrate_remote_enabled=False.
+            # What the test pins is the clean-state agreement between the three
+            # gates; not the verbatim prose.
+            assert outcome.last_action == "skipped"
+            assert outcome.last_reason in {
+                "no commits beyond target",
+                "remote origin unreachable; recovery will retry",
+                "remote sync disabled by policy",
+            }
+        else:
+            assert len(readiness.blocking_reasons) > 0
+            assert verdict.blocking_reasons[0] == readiness.blocking_reasons[0]
+            assert planning_block is not None
+            assert planning_block.last_action == "skipped"
+            assert planning_block.last_reason == readiness.blocking_reasons[0]
+            assert handled is True
+            assert outcome is None or (
+                outcome.last_action == "skipped"
+                and "worktree not clean" in str(outcome.last_reason)
+            )
+    finally:
+        repo.close()
 
 
 @pytest.mark.timeout_seconds(5)

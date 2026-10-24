@@ -220,7 +220,6 @@ class ProcessManager:
         async_process_factory: _AsyncProcessFactory | None = None,
         pty_process_factory: _PtyProcessFactory | None = None,
         psutil: _PsutilModuleLike | None = None,
-        clock: Callable[[], float] | None = None,
     ) -> None:
         self.policy = policy or ProcessManagerPolicy()
         # All ProcessManager dicts are bounded by the centralized process
@@ -244,7 +243,6 @@ class ProcessManager:
         self._termination_outcomes: dict[  # bounded-accumulator-ok: cleared
             int, list[dict[str, str]]
         ] = {}
-        self._clock: Callable[[], float] = clock if clock is not None else _time.monotonic
         self._stop_event: threading.Event = threading.Event()
         self._reaper_thread: threading.Thread | None = None
 

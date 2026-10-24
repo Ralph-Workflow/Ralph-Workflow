@@ -1,32 +1,23 @@
 """Pins E1.7: Ledger state continuity and per-child state continuity across child replacement.
 
-Testing-policy white-box exception (make-before-break restart):
+Testing-policy white-box exception (saturation dispatcher gauges):
 
-The cases marked ``# policy: white-box-exception`` below reach into the
-bridge's private restart machinery and into two private gauges. The private
-symbols involved are ``RestartAwareMcpBridge._perform_restart``, the
+The cases marked ``# policy: white-box-exception`` below inspect the
 saturation dispatcher's module-global ``_default_dispatch`` (with its
-``_lock`` and ``_inflight`` gauge fields) and ``McpServer._session`` /
-``McpServer._handle_resources_read``.
+``_lock`` and ``_inflight`` gauge fields).
 
 Quoted policy clause -- docs/ralph-workflow-policy/testing-policy.md,
 "Default requirements":
   "White-box tests that reach into private internals are permitted only
    when no observable surface can express the regression."
 
-Why no public observable expresses these regressions: the state-continuity
-cases must swap the child through the make-before-break restart driver with
-a CONTROLLED probe duration, so the ledger continuity across the swap can
-be observed. The public ``check_health_and_restart_if_needed()`` decides on
-its own health verdict and exposes neither the probe-duration budget nor the
-"old child already exited" branch these cases pin, and the restart's own
-verdict is published on no public surface. The saturation dispatcher has NO
-public accessor: its in-flight gauge (``_inflight`` under ``_lock``) is a
-module-global counter with no published getter, so "the gauge survived the
-child swap" cannot be read through any public surface. The resource-read
-handler is driven through the private ``McpServer._handle_resources_read``
-entry point because the public tool handler builds and transports a whole
-server request, which is not what these cases measure.
+Why no public observable expresses this regression: The saturation dispatcher
+has NO public accessor: its in-flight gauge (``_inflight`` under ``_lock``) is
+a module-global counter with no published getter, so "the gauge survived the
+child swap" cannot be read through any public surface. All bridge restarts and
+resource reads are exercised through the public
+``RestartAwareMcpBridge.check_health_and_restart_if_needed()`` and
+``McpServer.handle_request()`` surfaces.
 """
 
 from __future__ import annotations
@@ -97,6 +88,9 @@ class _FakeProcess:
 
     def poll(self) -> int | None:
         return self._poll_result
+
+    def mark_exited(self, code: int = 0) -> None:
+        self._poll_result = code
 
     def terminate(self, grace_period_s: float = 5.0) -> None:
         self.terminated = True
@@ -379,6 +373,12 @@ def test_e17_bridge_state_continuity_enumeration(tmp_path: pathlib.Path) -> None
         drain_entered.set()
         drain_can_finish.wait(timeout=2.0)
 
+    probe_should_fail = [False]
+
+    def probe_fn(endpoint: str, timeout: object) -> None:
+        if probe_should_fail[0]:
+            raise RuntimeError("probe failed")
+
     bridge = lifecycle.RestartAwareMcpBridge(
         old_inner,
         restart_fn=lambda: new_inner,
@@ -389,14 +389,20 @@ def test_e17_bridge_state_continuity_enumeration(tmp_path: pathlib.Path) -> None
         workspace_root=tmp_path,
         sleep_fn=controllable_sleep,
         tool_entries_fn=lambda endpoint, timeout: list(_CARRIED_TOOL_ENTRIES),
+        probe_fn=probe_fn,
+        contention_signal_producer=lambda: False,
     )
     # Seed the carried tool catalogue through the public baseline-capture path.
     bridge.capture_tool_hash_baseline()
     carried_tool_hash = compute_tool_set_hash(_CARRIED_TOOL_ENTRIES)
 
-    # Perform make-before-break restart
-    # policy: white-box-exception
-    restarted = bridge._perform_restart(process_exited=False, probe_duration_s=0.2)
+    # Perform make-before-break restart via public health check when probe fails
+    probe_should_fail[0] = True
+    restarted = False
+    for _ in range(5):
+        restarted = bridge.check_health_and_restart_if_needed()
+        if restarted:
+            break
     assert restarted is True
 
     # =======================================================================
@@ -481,9 +487,9 @@ def test_e17_wrap_up_flags_reset_safe_across_child_swap(tmp_path: pathlib.Path) 
         assert session_before_warning() is False
         assert session_warning_fired() is True
 
-        # Perform the swap. Bridge swaps _inner from old to new child.
-        # policy: white-box-exception
-        restarted = bridge._perform_restart(process_exited=False, probe_duration_s=0.2)
+        # Perform the swap via public health check when child has exited.
+        old_inner.process.terminate()
+        restarted = bridge.check_health_and_restart_if_needed()
         assert restarted is True
 
     # DISPOSITION (reset-safe): a fresh ContextVar is what the NEW child sees.
@@ -546,8 +552,8 @@ def test_e17_saturation_counters_reset_safe_across_child_swap(
         # Swap to the NEW child. The bridge MUST NOT mutate the
         # dispatcher's in-flight count during the swap (the swap is
         # at the ``_inner`` level, not at the dispatch wrapper).
-        # policy: white-box-exception
-        restarted = bridge._perform_restart(process_exited=False, probe_duration_s=0.2)
+        old_inner.process.terminate()
+        restarted = bridge.check_health_and_restart_if_needed()
         assert restarted is True
         # The OLD child's in-flight count is preserved across the
         # swap (the bridge does NOT touch it). In production, the
@@ -603,9 +609,9 @@ def test_e17_metrics_reset_safe_across_child_swap(tmp_path: pathlib.Path) -> Non
     assert baseline["post_header_failures"] >= 1
     assert baseline["terminal_frame_emissions"] >= 1
 
-    # Swap to the NEW child.
-    # policy: white-box-exception
-    restarted = bridge._perform_restart(process_exited=False, probe_duration_s=0.2)
+    # Swap to the NEW child via health check.
+    old_inner.process.terminate()
+    restarted = bridge.check_health_and_restart_if_needed()
     assert restarted is True
 
     # DISPOSITION (reset-safe): the NEW child starts a fresh
@@ -730,8 +736,8 @@ def test_e17_upstream_sessions_reset_safe_across_child_swap(
         run_id="run-e17-upstream",
         sleep_fn=lambda s: None,
     )
-    # policy: white-box-exception
-    restarted = bridge._perform_restart(process_exited=False, probe_duration_s=0.2)
+    old_inner.process.terminate()
+    restarted = bridge.check_health_and_restart_if_needed()
     assert restarted is True
     assert bridge.diagnostics().generation == 1
     assert bridge.process.pid == 2002
@@ -767,8 +773,11 @@ def test_e17_exec_resource_handle_reset_safe_across_child_swap(
     """ralph://exec/ handles issued by the OLD child are NOT replayable in the NEW child."""
     from ralph.mcp.server._json_rpc_request import JsonRpcRequest
     from ralph.mcp.server._mcp_server import McpServer
+    from ralph.mcp.server._server_state import ServerState
     from ralph.mcp.server.runtime_session import FileBackedSession
     from ralph.mcp.tools._exec_resource_uri import ExecResourceResolver
+    from ralph.mcp.tools.bridge._registry import build_ralph_tool_registry
+    from ralph.workspace.memory import MemoryWorkspace
 
     old_inner = _make_inner(tmp_path, poll_result=None, pid=1001)
     new_inner = _make_inner(tmp_path, poll_result=None, pid=2002)
@@ -832,17 +841,20 @@ def test_e17_exec_resource_handle_reset_safe_across_child_swap(
     # 3) Pin the OLD-can-replay contract via the real production
     #    entry point BEFORE the swap (proves the OLD URI is a valid,
     #    replayable resource in the OLD child).
-    handler_old = object.__new__(McpServer)
-    # policy: white-box-exception
-    handler_old._session = old_session
+    ws_old = MemoryWorkspace(tmp_path)
+    handler_old = McpServer(
+        session=old_session,
+        workspace=ws_old,
+        registry=build_ralph_tool_registry(old_session, ws_old),
+    )
     old_request = JsonRpcRequest(
         jsonrpc="2.0",
         method="resources/read",
         params={"uri": old_uri},
         msg_id=1,
     )
-    # policy: white-box-exception
-    old_response, _state_old = handler_old._handle_resources_read(old_request)
+    old_response, _state_old = handler_old.handle_request(old_request, ServerState.RUNNING)
+    assert old_response is not None
     assert old_response.error is None, (
         f"OLD child should replay {old_uri!r} via resources/read: {old_response.error}"
     )
@@ -863,8 +875,8 @@ def test_e17_exec_resource_handle_reset_safe_across_child_swap(
         run_id="run-e17-exec",
         sleep_fn=lambda s: None,
     )
-    # policy: white-box-exception
-    restarted = bridge._perform_restart(process_exited=False, probe_duration_s=0.2)
+    old_inner.process.terminate()
+    restarted = bridge.check_health_and_restart_if_needed()
     assert restarted is True
     assert bridge.diagnostics().generation == 1
 
@@ -874,17 +886,20 @@ def test_e17_exec_resource_handle_reset_safe_across_child_swap(
     #    ``-32602`` error (not None, not a silent miss, not an
     #    untyped crash). This is the typed-failure surface the agent
     #    relies on.
-    handler_new = object.__new__(McpServer)
-    # policy: white-box-exception
-    handler_new._session = new_session
+    ws_new = MemoryWorkspace(tmp_path)
+    handler_new = McpServer(
+        session=new_session,
+        workspace=ws_new,
+        registry=build_ralph_tool_registry(new_session, ws_new),
+    )
     new_request = JsonRpcRequest(
         jsonrpc="2.0",
         method="resources/read",
         params={"uri": old_uri},
         msg_id=2,
     )
-    # policy: white-box-exception
-    new_response, _state_new = handler_new._handle_resources_read(new_request)
+    new_response, _state_new = handler_new.handle_request(new_request, ServerState.RUNNING)
+    assert new_response is not None
     assert new_response.error is not None, (
         f"NEW child should return a structured error for OLD {old_uri!r}; "
         f"got result={new_response.result!r}"
@@ -904,12 +919,13 @@ def test_e17_exec_resource_handle_reset_safe_across_child_swap(
     # 6) The OLD child's resolver is preserved across the swap: the
     #    OLD URI is still replayable from the OLD session (the swap
     #    does not erase OLD's spill registry).
-    # policy: white-box-exception
-    post_old_response, _post_state = handler_old._handle_resources_read(old_request)
+    post_old_response, _post_state = handler_old.handle_request(old_request, ServerState.RUNNING)
+    assert post_old_response is not None
     assert post_old_response.error is None, (
         f"OLD child resolver was unexpectedly erased across the swap: "
         f"error={post_old_response.error!r}"
     )
+    assert isinstance(post_old_response.result, dict)
     post_old_first = post_old_response.result["contents"][0]
     assert _base64.b64decode(post_old_first["blob"]) == old_payload
 
@@ -926,7 +942,7 @@ def test_e17_repetition_tracker_carried_via_bridge_swap_with_fake_inners(
     after the swap (the on-disk state file is parent-owned). The
     tests at lines 234-320 pin the same contract via the in-process
     tracker pair; THIS test pins it through the bridge-level swap
-    (``_perform_restart``) using a :class:`_FakeProcess` for each
+    (``check_health_and_restart_if_needed``) using a :class:`_FakeProcess` for each
     inner — the swap itself is exercised but the subprocess is not a
     real OS child (see :class:`_FakeProcess` for the rationale).
 
@@ -955,8 +971,8 @@ def test_e17_repetition_tracker_carried_via_bridge_swap_with_fake_inners(
     assert old_tracker.observe(signature) is False
 
     # Swap to the NEW child via the production bridge-level swap path.
-    # policy: white-box-exception
-    restarted = bridge._perform_restart(process_exited=False, probe_duration_s=0.2)
+    old_inner.process.terminate()
+    restarted = bridge.check_health_and_restart_if_needed()
     assert restarted is True
 
     # NEW child observes the 3rd identical failure via the SAME
@@ -1043,8 +1059,8 @@ def test_e17_repetition_tracker_carried_across_real_subprocess_swap(
         # Swap to the NEW child. The bridge swaps the active inner; the
         # OLD real subprocess is shutdown by the bridge, the NEW real
         # subprocess is the promoted candidate.
-        # policy: white-box-exception
-        restarted = bridge._perform_restart(process_exited=False, probe_duration_s=0.2)
+        old_inner.process.terminate()
+        restarted = bridge.check_health_and_restart_if_needed()
         assert restarted is True
         assert bridge.process.pid == new_proc.pid, (
             f"bridge did not adopt real NEW subprocess: pid={bridge.process.pid}, "

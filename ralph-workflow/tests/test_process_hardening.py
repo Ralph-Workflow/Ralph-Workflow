@@ -54,7 +54,7 @@ if TYPE_CHECKING:
 # ``_pty_procs`` / ``_async_procs``, ``ProcessManager._reconcile_stale_entries``,
 # ``ProcessManager._mark_killed``, ``ProcessManager._reap_sync_and_mark`` /
 # ``_reap_async_in_sync_and_mark``, ``ProcessManager._kill_pgid``,
-# ``ProcessManager._clock``, the managed handle's ``_proc`` / ``_record``
+# the managed handle's ``_proc`` / ``_record``
 # fields and the fake psutil module's ``_processes`` registry.
 #
 # The cases marked ``# policy: white-box-frozen`` below assert on the
@@ -1335,48 +1335,6 @@ def test_zombie_reaper_disabled_by_policy() -> None:
     assert _reaper_thread_for(pm) is None, "a disabled reaper must not start a thread"
     pm.shutdown_all(grace_period_s=0.0)
     assert _reaper_thread_for(pm) is None
-
-
-def test_zombie_reaper_uses_injected_clock() -> None:
-    """Reaper loop uses self._clock for the wait interval."""
-    calls: list[float] = []
-    real_policy = ProcessManagerPolicy(
-        default_grace_period_s=0.1,
-        kill_followup_timeout_s=0.1,
-        log_events=False,
-        enable_zombie_reaper=True,
-        zombie_reaper_interval_s=0.05,
-    )
-    clock_value = [0.0]
-
-    def fake_clock() -> float:
-        clock_value[0] += 0.01
-        calls.append(clock_value[0])
-        return clock_value[0]
-
-    pm = ProcessManager(
-        policy=real_policy,
-        sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=0),
-        async_process_factory=make_sync_process_factory(itertools.count(100)),
-        psutil=None,
-        clock=fake_clock,
-    )
-    # policy: white-box-frozen -- the injected clock is stored by the
-    # ProcessManager constructor and has no public accessor and no
-    # behavioural effect of its own (the reaper waits on an Event, not on
-    # the clock), so no observable surface can express this wiring. The
-    # quoted policy clause lives in
-    # docs/ralph-workflow-policy/testing-policy.md ("Default requirements"):
-    # "White-box tests that reach into private internals are permitted only
-    # when no observable surface can express the regression."
-    # policy: white-box-frozen
-    assert pm._clock is fake_clock
-    pm.spawn([sys.executable, "-c", "pass"])
-    # Verify the clock is wired in (reaper uses Event.wait, not clock, but
-    # the call site sets self._clock for downstream uses).
-    # policy: white-box-frozen
-    assert pm._clock is fake_clock
-    pm.shutdown_all(grace_period_s=0.0)
 
 
 def test_process_manager_cleanup_orphans_kills_descendants() -> None:
