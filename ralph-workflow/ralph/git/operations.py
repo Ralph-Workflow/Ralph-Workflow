@@ -19,28 +19,26 @@ GitPython dispatch point; :func:`_queued_remote_push` covers
 than through the router.
 
 Stale Git Lock Recovery:
-Operations that mutate git state run through
-``_run_git_operation_with_stale_lock_recovery``. When encountering git lock
-contention (such as ``index.lock``, ``HEAD.lock``, or ``packed-refs.lock``),
-recovery uses an age-and-liveness gate:
+A lock file is removed only by ``ralph.git._lock_recovery`` and only when it is
+old enough (10s) AND provably has no live holder:
 
-* Conservative 10s age threshold (``_STALE_GIT_LOCK_AGE_SECONDS``):
-  Git lock files do NOT record the PID of the holding process (correcting
-  a false claim that Git writes holding PIDs into lock files). Because lock
-  files cannot identify their holder by content, locks younger than 10s
-  cannot be safely unlinked and are refused removal.
-* Negative liveness proof via OR predicate: verified across multiple
-  independent process signals (proc fd table, proc cwd in worktree/gitdirs,
-  proc environ GIT_DIR, lsof, and fuser). If any signal indicates a live
-  process or liveness cannot be verified ("unknown"), removal is refused
-  fail-closed.
-* Bounded 1s ThreadPoolExecutor probe: liveness checks run inside a worker
-  thread with a strict 1s timeout (``_PROBE_TIMEOUT_S``) to prevent
-  unbounded hangs.
-* Bounded backoff: when a lock cannot be unlinked due to contention, retries
-  with bounded backoff (0.2s, 0.5s, 1.0s; total ≤ 1.7s) before re-raising.
-* Reducer integration: persistent failures trigger in-place reducer retry
-  when policy defines no recovery phase, preserving the validated commit message.
+* An open fd on the lock -- matched by path or by (dev, inode), so a bind mount
+  or symlinked checkout does not hide it -- is the one positive proof of a holder.
+* A process whose fd table cannot be read is ruled out only by a sound fact: none
+  of its uids is the lock owner's, or it is an infrastructure daemon that is not a
+  git client. Anything else stays "unknown" until the lock outlives
+  ``_UNPROVABLE_LOCK_CEILING_S`` (no git operation holds a lock that long).
+* ``lsof``/``fuser`` can only veto ("live"); their silence proves nothing on a
+  ``/proc`` platform. A nested pid namespace (container, bwrap) is never trusted.
+* The path must be a real git lock inside a real git dir (no symlinks, no
+  ``..``, no Ralph-owned locks), and the file is re-verified (same inode) and
+  moved aside under a cross-process mutex before it is unlinked.
+
+Every ``run_git`` and ``repo.git.*`` call gets the same treatment: provably dead
+locks are cleared before the command runs, and a lock failure is cleared or
+waited out (without holding the repository's queue lock) and the command is
+repeated only if it is safe to repeat. Contention that outlives a call is retried
+in place by the reducer and never ends the run.
 """
 
 from __future__ import annotations
@@ -66,6 +64,7 @@ from ralph.git._lock_recovery import (
 )
 from ralph.git._lock_recovery import (
     _PROBE_TIMEOUT_S,
+    _lock_base_dir,
 )
 from ralph.git._lock_recovery import (
     _STALE_GIT_LOCK_AGE_SECONDS as _BASE_STALE_GIT_LOCK_AGE_SECONDS,
@@ -237,14 +236,22 @@ def _recover_stale_git_lock(
 def _run_git_operation_with_stale_lock_recovery[T](
     operation: str,
     action: Callable[[], T],
+    repo_root: Path | str | None = None,
 ) -> T:
-    return _base_run_git_operation_with_stale_lock_recovery(
-        operation,
-        action,
-        recover_fn=_recover_stale_git_lock,
-        sleep_fn=_sleep_fn,
-        holder_fn=_find_lock_holder,
-    )
+    # git prints a lock path relative to the cwd it ran in (the repo root);
+    # tell the recovery where that is so a relative path is never resolved
+    # against Ralph's own working directory.
+    token = _lock_base_dir.set(Path(repo_root).resolve() if repo_root is not None else None)
+    try:
+        return _base_run_git_operation_with_stale_lock_recovery(
+            operation,
+            action,
+            recover_fn=_recover_stale_git_lock,
+            sleep_fn=_sleep_fn,
+            holder_fn=_find_lock_holder,
+        )
+    finally:
+        _lock_base_dir.reset(token)
 
 
 def _append_ralph_workflow_coauthor_trailer(message: str) -> str:
@@ -572,7 +579,7 @@ def stage_all(repo_root: Path | str) -> None:
             # are serialized instead of interleaving on ``.git/index``.
             _ = _queued_git_call(repo_root, active_repo, "add", kwargs={"A": True})
 
-        _run_git_operation_with_stale_lock_recovery("stage_all", _stage)
+        _run_git_operation_with_stale_lock_recovery("stage_all", _stage, repo_root)
         logger.debug("Staged all changes in {}", repo_root)
     except Exception as exc:
         raise GitOperationError("stage_all", str(exc)) from exc
@@ -600,7 +607,7 @@ def stage_files(repo_root: Path | str, files: list[str]) -> None:
             # with a sibling stage or a concurrent ``git status``/``git commit``.
             _ = _queued_git_call(repo_root, active_repo, "add", ("--all", "--", *files))
 
-        _run_git_operation_with_stale_lock_recovery("stage_files", _stage)
+        _run_git_operation_with_stale_lock_recovery("stage_files", _stage, repo_root)
         logger.debug("Staged {} selected paths in {}", len(files), repo_root)
     except Exception as exc:
         raise GitOperationError("stage_files", str(exc)) from exc
@@ -858,6 +865,7 @@ def create_commit(
             commit = _run_git_operation_with_stale_lock_recovery(
                 "create_commit",
                 lambda: repo.index.commit(message, author=actor, committer=actor),
+                repo_root,
             )
             return CommitCreationResult.created(commit.hexsha)
         author_name, author_email = _resolve_commit_identity(repo, author_name, author_email)
@@ -917,6 +925,7 @@ def create_commit(
                 Path(repo.git_dir) / "hooks",
                 {"GIT_REFLOG_ACTION": "ralph create_commit"},
             ),
+            repo_root,
         )
         if result.status is CommitCreationStatus.CREATED:
             logger.info(

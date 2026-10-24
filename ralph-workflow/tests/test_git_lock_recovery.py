@@ -108,7 +108,8 @@ def test_recover_stale_git_lock_recovers_when_holder_is_dead(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A 60s-old lock with dead holder IS unlinked (both age and liveness met)."""
-    lock_path = tmp_path / "index.lock"
+    (tmp_path / ".git").mkdir()
+    lock_path = tmp_path / ".git" / "index.lock"
     lock_path.write_bytes(b"binary index content\x00")
     stale_time = time.time() - 60
     os.utime(lock_path, (stale_time, stale_time))
@@ -401,10 +402,10 @@ def test_liveness_probe_proc_less_returns_unknown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """On /proc-less platform, probe returns 'unknown' and refuses to unlink with logged reason."""
-    lock_path = tmp_path / "index.lock"
-    lock_path.write_text("stale", encoding="utf-8")
     gitdir = tmp_path / ".git"
     gitdir.mkdir()
+    lock_path = gitdir / "index.lock"
+    lock_path.write_text("stale", encoding="utf-8")
 
     unreadable_proc = tmp_path / "proc"
     unreadable_proc.mkdir()
@@ -629,50 +630,67 @@ class TestLockBackoff:
         assert _LOCK_BACKOFF_S == (0.2, 0.5, 1.0)
 
 
-def test_liveness_probe_unreadable_non_git_fd_fails_closed(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Non-git process with unreadable fd table returns 'unknown' and refuses unlink."""
-    repo_dir = tmp_path / "repo"
-    repo_dir.mkdir()
-    gitdir = repo_dir / ".git"
-    gitdir.mkdir()
-    lock_path = gitdir / "index.lock"
-    lock_path.write_text("stale", encoding="utf-8")
-
+def _fake_proc_with_unreadable_fd(tmp_path: Path, comm: str, cmdline: bytes) -> tuple[Path, Path]:
     fake_proc = tmp_path / "proc"
     fake_proc.mkdir()
     pid_dir = fake_proc / "77"
     pid_dir.mkdir()
-    (pid_dir / "comm").write_text("rsync\n", encoding="utf-8")
-    (pid_dir / "cmdline").write_bytes(b"/usr/bin/rsync\x00-av\x00")
+    (pid_dir / "comm").write_text(f"{comm}\n", encoding="utf-8")
+    (pid_dir / "cmdline").write_bytes(cmdline)
     fd_dir = pid_dir / "fd"
     fd_dir.mkdir()
     fd_dir.chmod(0o000)
+    return fake_proc, fd_dir
 
-    def fake_run(*args: object, **kwargs: object) -> SimpleNamespace:
-        return SimpleNamespace(returncode=1, stdout=b"")
 
-    monkeypatch.setattr("ralph.git._lock_recovery.subprocess.run", fake_run)
+def test_liveness_probe_unreadable_non_git_fd_does_not_veto_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-git process with an unreadable fd table cannot be a git lock holder.
 
+    systemd/sshd privsep/sandboxed helpers are on every host; if they vetoed
+    recovery, "dead" would be unprovable and an orphaned lock permanent.
+    """
+    gitdir = tmp_path / "repo" / ".git"
+    gitdir.mkdir(parents=True)
+    lock_path = gitdir / "index.lock"
+    lock_path.write_text("stale", encoding="utf-8")
+    fake_proc, fd_dir = _fake_proc_with_unreadable_fd(
+        tmp_path, "rsync", b"/usr/bin/rsync\x00-av\x00"
+    )
+    monkeypatch.setattr(
+        "ralph.git._lock_recovery.subprocess.run",
+        lambda *a, **k: SimpleNamespace(returncode=1, stdout=b""),
+    )
     try:
-        result = _lock_has_no_live_holder(lock_path, gitdir, _proc_root=fake_proc)
-        assert result == "unknown", (
-            "Unreadable fd inspection on ANY process (even non-git) must return 'unknown'"
-        )
+        # A fresh lock may still be a git client's: unreadable stays unknown.
+        assert _lock_has_no_live_holder(lock_path, gitdir, _proc_root=fake_proc) == "unknown"
+        # Once the lock has outlived any git operation Ralph would wait on, a
+        # proven non-git process with an unreadable fd table cannot be it.
+        long_ago = time.time() - 10_000
+        os.utime(lock_path, (long_ago, long_ago))
+        assert _lock_has_no_live_holder(lock_path, gitdir, _proc_root=fake_proc) == "dead"
+    finally:
+        fd_dir.chmod(0o755)
 
-        stale_time = time.time() - 60
-        os.utime(lock_path, (stale_time, stale_time))
-        monkeypatch.setattr(
-            "ralph.git.operations._lock_has_no_live_holder",
-            _fake_unknown,
-        )
-        error = _make_index_lock_error(lock_path)
-        assert _recover_stale_git_lock("stage_all", error) is False, (
-            "Stale lock must NOT be unlinked when non-git process fd inspection is unknown"
-        )
-        assert lock_path.exists(), "Lock file must remain on disk"
+
+def test_liveness_probe_unreadable_git_fd_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A git process whose state cannot be inspected keeps the lock (unknown)."""
+    gitdir = tmp_path / "repo" / ".git"
+    gitdir.mkdir(parents=True)
+    lock_path = gitdir / "index.lock"
+    lock_path.write_text("stale", encoding="utf-8")
+    fake_proc, fd_dir = _fake_proc_with_unreadable_fd(tmp_path, "git", b"/usr/bin/git\x00add\x00")
+    monkeypatch.setattr(
+        "ralph.git._lock_recovery.subprocess.run",
+        lambda *a, **k: SimpleNamespace(returncode=1, stdout=b""),
+    )
+    try:
+        assert _lock_has_no_live_holder(lock_path, gitdir, _proc_root=fake_proc) == "unknown"
     finally:
         fd_dir.chmod(0o755)
 
@@ -947,15 +965,19 @@ def _make_fake_proc(root: Path, pid: str, comm: str = "git") -> Path:
     return p
 
 
-def test_systemd_unreadable_descriptors_returns_unknown(tmp_path: Path) -> None:
-    """systemd/init with unreadable descriptors returns unknown (fails closed, not dead)."""
+def test_systemd_unreadable_descriptors_does_not_veto_recovery(tmp_path: Path) -> None:
+    """systemd/init with unreadable descriptors is not git, so it cannot veto recovery."""
     gitdir = tmp_path / ".git"
     gitdir.mkdir()
     pid_dir = _make_fake_proc(tmp_path, "1", "systemd")
     (pid_dir / "fd").chmod(0o000)
+    lock = gitdir / "index.lock"
+    lock.write_text("stale", encoding="utf-8")
+    long_ago = time.time() - 10_000
+    os.utime(lock, (long_ago, long_ago))
     try:
-        res = _lock_has_no_live_holder(gitdir / "index.lock", gitdir, _proc_root=tmp_path / "proc")
-        assert res == "unknown"
+        res = _lock_has_no_live_holder(lock, gitdir, _proc_root=tmp_path / "proc")
+        assert res == "dead"
     finally:
         (pid_dir / "fd").chmod(0o755)
 

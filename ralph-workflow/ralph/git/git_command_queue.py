@@ -43,15 +43,28 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard
+from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard, TypeVar
 
 from git import Repo
+from git.exc import GitCommandError
 
-from ralph.git.git_run_result import GitRunResult
+from ralph.git._lock_recovery import (
+    git_dirs_from_git_dir,
+    is_lock_failure,
+    reap_known_stale_locks,
+    reap_stale_locks,
+    retry_after_lock_failure,
+)
+from ralph.git._run_git_lock_recovery import (
+    is_ref_writing,
+    is_safe_to_repeat,
+    run_with_lock_recovery,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
+    from ralph.git.git_run_result import GitRunResult
     from ralph.git.subprocess_runner import GitRunOptions
 
 
@@ -411,27 +424,73 @@ def route_git_method(
     """
     queue = get_queue_for_repo(repo)
     call_kwargs: Mapping[str, object] = kwargs if kwargs is not None else {}
-    with queue.execute_lock:
-        git_attr = repo.git
-        if git_attr is None:
-            queue.record_outcome("error")
-            msg = f"repo {repo!r} has no .git attribute"
-            raise AttributeError(msg)
-        try:
-            method: object = getattr(git_attr, method_name)
-        except AttributeError as exc:
-            queue.record_outcome("error")
-            raise AttributeError(f"repo.git has no method named {method_name!r}") from exc
-        try:
-            if not _is_git_method(method):
-                raise TypeError(f"repo.git attribute {method_name!r} is not callable")
-            result = method(*args, **call_kwargs)
-        except BaseException as exc:
-            queue.record_outcome(_classify_exception(exc))
-            raise
-        else:
-            queue.record_outcome("success")
-            return result
+    subcommand = method_name.replace("_", "-")
+    dirs = git_dirs_from_git_dir(Path(str(repo.git_dir))) if hasattr(repo, "git_dir") else None
+    operation = f"repo.git.{method_name}"
+
+    def attempt(*, preflight: bool) -> tuple[object, GitCommandError | None]:
+        with queue.execute_lock:
+            if preflight and dirs is not None:
+                if is_ref_writing(subcommand):
+                    reap_stale_locks(dirs[0], dirs[1], operation=operation)
+                else:
+                    reap_known_stale_locks(dirs[0], dirs[1], operation=operation)
+            return _dispatch_git_method(queue, repo, method_name, args, call_kwargs)
+
+    first_result, first_error = attempt(preflight=True)
+    if first_error is None:
+        return first_result
+    text = str(first_error)
+    if dirs is None or not is_lock_failure(text):
+        raise first_error
+    # The wait for a held lock happens without the queue lock, so other git work
+    # on this repository is not frozen behind it.
+    if not is_safe_to_repeat(subcommand):
+        reap_stale_locks(dirs[0], dirs[1], operation=operation)
+        raise first_error
+    cwd = Path(str(repo.working_dir)) if getattr(repo, "working_dir", None) else dirs[0]
+    if not retry_after_lock_failure(dirs[0], dirs[1], text, cwd=cwd, operation=operation):
+        raise first_error
+    second_result, second_error = attempt(preflight=False)
+    if second_error is not None:
+        raise first_error
+    return second_result
+
+
+def _dispatch_git_method(
+    queue: GitCommandQueue,
+    repo: GitMethodRepo,
+    method_name: str,
+    args: Sequence[object],
+    call_kwargs: Mapping[str, object],
+) -> tuple[object, GitCommandError | None]:
+    """Run one ``repo.git.<method_name>`` call; the caller holds the queue lock.
+
+    A ``GitCommandError`` is returned (not raised) so the caller can decide
+    whether it is a lock to recover from; any other exception propagates.
+    """
+    git_attr = repo.git
+    if git_attr is None:
+        queue.record_outcome("error")
+        msg = f"repo {repo!r} has no .git attribute"
+        raise AttributeError(msg)
+    try:
+        method: object = getattr(git_attr, method_name)
+    except AttributeError as exc:
+        queue.record_outcome("error")
+        raise AttributeError(f"repo.git has no method named {method_name!r}") from exc
+    try:
+        if not _is_git_method(method):
+            raise TypeError(f"repo.git attribute {method_name!r} is not callable")
+        result = method(*args, **call_kwargs)
+    except GitCommandError as exc:
+        queue.record_outcome(_classify_exception(exc))
+        return None, exc
+    except BaseException as exc:
+        queue.record_outcome(_classify_exception(exc))
+        raise
+    queue.record_outcome("success")
+    return result, None
 
 
 def _classify_exception(exc: BaseException) -> Literal["timeout", "error"]:
@@ -448,6 +507,9 @@ def _classify_exception(exc: BaseException) -> Literal["timeout", "error"]:
 # ---------------------------------------------------------------------------
 # Adapter for :func:`run_git` subprocess callers
 # ---------------------------------------------------------------------------
+
+
+_T = TypeVar("_T")
 
 
 def route_run_git(
@@ -479,17 +541,20 @@ def route_run_git(
         raise TypeError("ralph.git.subprocess_runner._spawn_git is not callable")
 
     queue = get_queue_for_repo(cwd if cwd is not None else Path.cwd())
-    with queue.execute_lock:
-        try:
-            result = spawn_git(args, cwd=cwd, label=label, options=options)
-            if not isinstance(result, GitRunResult):
-                raise TypeError("_spawn_git returned a non-GitRunResult value")
-        except BaseException as exc:
-            queue.record_outcome(_classify_exception(exc))
-            raise
-        else:
+
+    def under_queue(call: Callable[[], _T]) -> _T:
+        # One attempt at a time holds the queue lock. Lock recovery waits between
+        # attempts, so a held git lock never freezes every other git call here.
+        with queue.execute_lock:
+            try:
+                outcome = call()
+            except BaseException as exc:
+                queue.record_outcome(_classify_exception(exc))
+                raise
             queue.record_outcome("success")
-            return result
+            return outcome
+
+    return run_with_lock_recovery(under_queue, spawn_git, args, cwd, label, options)
 
 
 # ---------------------------------------------------------------------------

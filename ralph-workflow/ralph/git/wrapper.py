@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 
 from git import GitCommandError, Repo
 
@@ -11,20 +10,41 @@ from ralph.git.git_command_queue import (
     WorktreeLease,
     WorktreeLeaseHolder,
     begin_agent_lease,
-    route_git_method,
     try_acquire_lease,
 )
 from ralph.git.git_command_queue import (
     end_agent_lease as _end_worktree_lease,
 )
+from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
 
-#: Bound each GitPython subprocess (``repo.git.*``) so a held .git lock or a
-#: pathological filesystem cannot wedge an agent-phase setup/teardown forever.
-#: GitPython kills the git child after this many seconds.
+#: Bound each ``git config`` call so a pathological filesystem cannot wedge an
+#: agent-phase setup/teardown forever. These run through ``run_git`` (queue
+#: serialized, process-manager supervised) rather than GitPython's
+#: ``kill_after_timeout``, which SIGKILLs git with no chance to remove its own
+#: ``config.lock`` and would orphan it.
 _GIT_OP_TIMEOUT_SECONDS = GIT_SUBPROCESS_TIMEOUT_SECONDS
+
+
+def _git_config(repo: Repo, *args: str) -> str:
+    """Run ``git config <args>`` with a graceful, queue-serialized, bounded subprocess.
+
+    Raises :class:`GitCommandError` (with ``status`` set) on a non-zero exit,
+    matching what the GitPython dispatch raised so callers' status handling holds.
+    """
+    cwd = Path(repo.working_tree_dir or repo.git_dir)
+    result = run_git(
+        ["config", *args],
+        cwd=cwd,
+        label="hooks-config",
+        options=GitRunOptions(timeout=_GIT_OP_TIMEOUT_SECONDS),
+    )
+    if result.returncode != 0:
+        raise GitCommandError(["git", "config", *args], result.returncode, stderr=result.stderr)
+    return result.stdout
+
 
 MARKER_FILENAME = "no_agent_commit"
 TRACK_FILENAME = "git-wrapper-dir.txt"
@@ -353,25 +373,12 @@ def _capture_head_oid(repo: Repo, ralph_dir: Path) -> None:
 def _set_hooks_path(repo: Repo, ralph_dir: Path) -> None:
     hooks_dir = ralph_dir / HOOKS_DIR_NAME
     hooks_dir.mkdir(parents=True, exist_ok=True)
-    route_git_method(
-        repo,
-        "config",
-        ("--local", "core.hooksPath", str(hooks_dir)),
-        {"kill_after_timeout": _GIT_OP_TIMEOUT_SECONDS},
-    )
+    _git_config(repo, "--local", "core.hooksPath", str(hooks_dir))
 
 
 def _read_hooks_path(repo: Repo) -> str | None:
     try:
-        value = cast(  # cast-policy: seam: structural boundary (git config read; CLI returns plain text)
-            "str",
-            route_git_method(
-                repo,
-                "config",
-                ("--local", "--get", "core.hooksPath"),
-                {"kill_after_timeout": _GIT_OP_TIMEOUT_SECONDS},
-            ),
-        )
+        value = _git_config(repo, "--local", "--get", "core.hooksPath")
     except GitCommandError as exc:
         if exc.status == 1:
             return None
@@ -407,12 +414,7 @@ def _restore_hooks_path(repo: Repo, ralph_dir: Path) -> None:
     if lines[0] == "missing":
         _unset_hooks_path(repo)
     elif lines[0] == "value" and len(lines) > 1:
-        route_git_method(
-            repo,
-            "config",
-            ("--local", "core.hooksPath", lines[1]),
-            {"kill_after_timeout": _GIT_OP_TIMEOUT_SECONDS},
-        )
+        _git_config(repo, "--local", "core.hooksPath", lines[1])
 
     state_path.unlink()
 
@@ -420,12 +422,7 @@ def _restore_hooks_path(repo: Repo, ralph_dir: Path) -> None:
 def _unset_hooks_path(repo: Repo) -> None:
     missing_key_status = 5
     try:
-        route_git_method(
-            repo,
-            "config",
-            ("--local", "--unset-all", "core.hooksPath"),
-            {"kill_after_timeout": _GIT_OP_TIMEOUT_SECONDS},
-        )
+        _git_config(repo, "--local", "--unset-all", "core.hooksPath")
     except GitCommandError as exc:
         if exc.status == missing_key_status:
             return
