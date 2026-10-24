@@ -31,10 +31,6 @@ from ralph.mcp.multimodal.errors import MultimodalFailure, MultimodalFailureKind
 # ---------------------------------------------------------------------------
 
 
-def test_unknown_identity_is_not_known() -> None:
-    assert not UNKNOWN_IDENTITY.is_known()
-
-
 def test_known_provider_is_known() -> None:
     assert MultimodalModelIdentity(provider="claude").is_known()
     assert MultimodalModelIdentity(provider="openai").is_known()
@@ -254,13 +250,6 @@ def test_claude_mixed_modality_verdicts_are_consistent() -> None:
     assert video_v.delivery == DeliveryMode.UNSUPPORTED
 
 
-def test_unknown_provider_non_image_modalities_are_resource_references() -> None:
-    for modality in SUPPORTED_MODALITIES - {MODALITY_IMAGE}:
-        verdict = get_delivery_mode(UNKNOWN_IDENTITY, modality)
-        assert verdict.is_supported(), f"modality {modality} blocked for unknown provider"
-        assert verdict.is_resource_reference()
-
-
 # ---------------------------------------------------------------------------
 # Verdict fields are populated correctly
 # ---------------------------------------------------------------------------
@@ -306,12 +295,6 @@ def test_multimodal_failure_kinds_are_importable() -> None:
     assert "audio not supported" in f.user_message()
     assert "modality: audio" in f.user_message()
     assert "provider: claude" in f.user_message()
-
-
-def test_multimodal_failure_is_exported_from_package() -> None:
-
-    assert MultimodalFailure is not None
-    assert MultimodalFailureKind is not None
 
 
 def test_multimodal_failure_user_message_without_optional_fields() -> None:

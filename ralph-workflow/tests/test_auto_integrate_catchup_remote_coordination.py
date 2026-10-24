@@ -14,6 +14,7 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_ORIGIN_AHEAD,
     REFRESH_UNREACHABLE,
 )
+from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -48,9 +49,22 @@ def _open_local_gates(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     monkeypatch.setattr(catchup, "worktree_lookup", lambda _root, _target: ("not-found", None))
 
     def _observe(_root: Path, branch: str) -> tuple[str | None, bool]:
-        return ("b" * 40 if branch == "main" else "a" * 40), True
+        if branch == "main":
+            return "b" * 40, True
+        return f"a{len(checkout_merges):039d}", True
 
     monkeypatch.setattr(catchup, "observe_branch_sha", _observe)
+    monkeypatch.setattr(catchup, "is_lease_held", lambda _root: False)
+    monkeypatch.setattr(catchup, "try_acquire_lease", lambda _root, holder=None: object())
+    monkeypatch.setattr(catchup, "end_agent_lease", lambda _lease: None)
+    monkeypatch.setattr(
+        catchup,
+        "_repository_ledger",
+        lambda repo_root: AttemptLedger(
+            repo_root,
+            ledger_path=repo_root / ".agent" / "integration_attempt_ledger.json",
+        ),
+    )
     monkeypatch.setattr(
         catchup,
         "fast_forward_via_worktree",
@@ -125,7 +139,7 @@ def test_target_advance_refusal_does_not_touch_checkout(
 
     outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path)
 
-    assert outcome == catchup.CATCHUP_REFUSED
+    assert outcome.startswith(catchup.CATCHUP_DEFEDITELY_FAILED)
     assert checkout_merges == []
 
 

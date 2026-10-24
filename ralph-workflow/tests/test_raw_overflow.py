@@ -13,10 +13,11 @@ Quoted policy clause -- docs/ralph-workflow-policy/testing-policy.md,
 
 Why no public observable expresses this regression: the regression is the
 CLOSE EVENT performed by the ``weakref.finalize`` callback AFTER the owner
-has been collected. The owner is gone by then, so the public ``is_open``
-read cannot be taken (it needs a live instance), and the buffered handle
-itself has no public accessor; the shared one-element box is the only place
-where the finalizer's effect stays observable after the collection. The
+has been collected. The owner is gone by then, so the writer's own public
+readings (``size_bytes``, ``is_disabled``) can no longer be taken (they
+need a live instance), and the buffered handle itself has no public
+accessor; the shared one-element box is the only place where the
+finalizer's effect stays observable after the collection. The
 condensed-log registry is a private per-display registry with no public
 getter.
 """
@@ -370,8 +371,8 @@ async def test_executor_drop_unit_closes_raw_log(tmp_path: Path) -> None:
     Black-box: the executor is built through its PUBLIC constructor and
     driven through the PUBLIC ``run()`` with an injected fake process
     manager, so no real subprocess is spawned and no private attribute is
-    touched. The assertions read observable state only -- the capture's
-    public ``is_open`` flag and the bytes on disk.
+    touched. The assertions read observable state only -- the bytes the
+    writer counted, and the bytes on disk.
     """
     from ralph.display.activity_router import ActivityRouter
     from ralph.display.raw_overflow import get_or_create_raw_overflow_log
@@ -432,18 +433,19 @@ async def test_executor_drop_unit_closes_raw_log(tmp_path: Path) -> None:
         on_status=lambda _status: None,
     )
 
-    # The run appended the agent's line to the capture and left its
-    # buffered handle open -- the bytes are still in the buffer.
-    assert capture.is_open is True, "the run must leave the capture's buffered handle open"
+    # The run appended the agent's line to the capture and left it
+    # BUFFERED -- the bytes are still in the writer's buffer, so the
+    # capture file on disk is still empty. That empty file IS the
+    # observable proof the writer still holds its buffered handle open.
+    assert capture.size_bytes > 0, "the run must have appended the agent's line to the capture"
     assert capture_path.read_text(encoding="utf-8") == "", (
         "the agent's line must still be buffered, not on disk, before the unit is dropped"
     )
 
     executor.drop_unit("unit-x")
 
-    # drop_unit closed the capture ...
-    assert capture.is_open is False, "drop_unit must close the unit's raw capture"
-    # ... and that close flushed the buffered tail to disk.
+    # drop_unit closed the capture, and that close flushed the buffered
+    # tail to disk.
     assert "pending line\n" in capture_path.read_text(encoding="utf-8")
 
 
@@ -479,14 +481,16 @@ def test_weakref_finalize_closes_handle_on_gc(tmp_path: Path) -> None:
     log = RawOverflowLog(tmp_path, "u1")
     assert log.append("survive until GC\n") is True
     log.flush()
-    # The handle is now open and buffered. Confirm the buffered
-    # writer is live (it must be, since ``append`` returned True).
-    assert log.is_open is True
+    path = log.path
+    # The handle is open and buffered: ``append`` reported success only
+    # after writing THROUGH a live handle, and the explicit flush pushed
+    # those bytes to disk.
+    assert log.size_bytes == len(b"survive until GC\n")
+    assert path.read_bytes() == b"survive until GC\n"
 
     # Capture a WEAK reference so we can read the post-finalize
     # state without keeping the instance alive ourselves.
     weak_log: weakref.ref[RawOverflowLog] = weakref.ref(log)
-    path = log.path
     del log
 
     # The instance has been collected; ``weak_log()`` resolves to
@@ -504,9 +508,12 @@ def test_weakref_finalize_closes_handle_on_gc(tmp_path: Path) -> None:
     fresh = RawOverflowLog(tmp_path, "u1")
     try:
         assert fresh is not None
-        # A fresh writer has written nothing and holds no open handle.
+        # A fresh writer has written nothing and holds no open handle:
+        # the capture on disk still holds EXACTLY the previous writer's
+        # payload, so the fresh writer neither appended to it nor
+        # truncated it.
         assert fresh.size_bytes == 0
-        assert fresh.is_open is False
+        assert path.read_bytes() == b"survive until GC\n"
     finally:
         fresh.close()
 
@@ -573,10 +580,14 @@ def test_close_all_raw_overflow_logs_closes_all_handles(tmp_path: Path) -> None:
 
     # A subsequent append on the now-disabled instance must be a
     # no-op (the close_all path also called ``disable()``).
-    # PUBLIC observation of the same contract: a closed (or released)
-    # buffered handle is exactly "the writer holds no open handle".
-    assert log_a.is_open is False, "close_all_raw_overflow_logs must close every buffered handle"
-    assert log_b.is_open is False
+    # PUBLIC observation of the same contract: a disabled writer holds
+    # no open handle and accepts no further bytes.
+    assert log_a.is_disabled is True, (
+        "close_all_raw_overflow_logs must release every buffered handle"
+    )
+    assert log_b.is_disabled is True
+    assert log_a.append("after-close-all\n") is False
+    assert log_b.append("after-close-all\n") is False
 
     log_a.close()
     log_b.close()
@@ -645,7 +656,9 @@ def test_long_thinking_emits_one_close_line_no_checkpoints_handle_closed(
     # policy: white-box-exception
     overflow = pd._condensed_logs.get(unit_id)
     assert overflow is not None
-    assert overflow.is_open is True, (
+    # The writer counted the bytes it buffered, so the append path ran
+    # and the buffered handle is open at this point.
+    assert overflow.size_bytes > 0, (
         "fixture must trigger the raw-overflow append path so the "
         "buffered handle is open at this point"
     )
@@ -656,7 +669,10 @@ def test_long_thinking_emits_one_close_line_no_checkpoints_handle_closed(
 
     pd.drop_unit(unit_id)
 
-    assert overflow.is_open is False
+    # drop_unit released the capture: the writer is disabled, so it
+    # holds no open handle and accepts no further bytes.
+    assert overflow.is_disabled is True
+    assert overflow.append("after-drop\n") is False
 
 
 def test_cap_warning_is_emitted_once_per_file(tmp_path: Path) -> None:

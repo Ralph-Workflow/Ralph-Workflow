@@ -7,12 +7,16 @@ snapshot.  The probe-outcome classification rule itself is published as
 ``ralph.mcp.bridge_diagnostics.classify_probe_failure`` and is the exact
 function the lifecycle delegates to, so the classifier cases below cannot
 drift from production behaviour.
+
+Every session file these cases create is owned by pytest's ``tmp_path``
+fixture: the helpers take the fixture-owned directory as an argument, so
+no unmanaged directory is created on the host and no case leaves state
+behind after the test session ends.
 """
 
 from __future__ import annotations
 
 import pathlib
-import tempfile
 import urllib.error
 from datetime import timedelta
 
@@ -51,14 +55,19 @@ class _FakeProcess:
 
 
 def _make_inner(
+    tmp_path: pathlib.Path,
     poll_result: int | None = None,
     pid: int = 9999,
     endpoint: str = "http://127.0.0.1:9100/mcp",
-    session_file: pathlib.Path | None = None,
 ) -> StandaloneMcpProcess:
-    if session_file is None:
-        session_file = pathlib.Path(tempfile.mkdtemp()) / "session.json"
-        session_file.write_text("{}", encoding="utf-8")
+    """Build an inner process whose session file is owned by ``tmp_path``.
+
+    The session file lives inside pytest's ``tmp_path`` fixture, so the
+    directory is torn down with the test session instead of leaking an
+    unmanaged directory onto the host.
+    """
+    session_file = tmp_path / f"session_{pid}.json"
+    session_file.write_text("{}", encoding="utf-8")
     return StandaloneMcpProcess(
         endpoint=endpoint,
         process=_FakeProcess(poll_result=poll_result, pid=pid),
@@ -67,6 +76,7 @@ def _make_inner(
 
 
 def _probe_bridge(
+    tmp_path: pathlib.Path,
     probe_fn: object,
     *,
     contended: bool,
@@ -77,8 +87,8 @@ def _probe_bridge(
     if clock_fn is not None:
         kwargs["clock_fn"] = clock_fn
     return lifecycle.RestartAwareMcpBridge(
-        _make_inner(poll_result=None, pid=1001),
-        restart_fn=_make_inner,
+        _make_inner(tmp_path, poll_result=None, pid=1001),
+        restart_fn=lambda: _make_inner(tmp_path),
         restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
         run_id="test-run",
         probe_fn=probe_fn,
@@ -120,25 +130,25 @@ def _saturated_probe(endpoint: str, timeout: timedelta) -> None:
     raise RuntimeError("_saturated_dispatch: server saturated: try again later (code=-32001)")
 
 
-def test_probe_timeout_deferred_under_fresh_contention() -> None:
+def test_probe_timeout_deferred_under_fresh_contention(tmp_path: pathlib.Path) -> None:
     """TimeoutError probe failure IS deferred when fresh contention is present."""
-    bridge = _probe_bridge(_timing_out_probe, contended=True)
+    bridge = _probe_bridge(tmp_path, _timing_out_probe, contended=True)
     restarted = bridge.check_health_and_restart_if_needed()
     assert restarted is False
     assert bridge.restart_count == 0
     assert bridge.diagnostics().deferred_probe_failures == 1
 
 
-def test_probe_connection_reset_not_deferred_under_contention() -> None:
+def test_probe_connection_reset_not_deferred_under_contention(tmp_path: pathlib.Path) -> None:
     """ConnectionResetError is a real failure and must NOT be deferred even with contention."""
-    bridge = _probe_bridge(_reset_probe, contended=True)
+    bridge = _probe_bridge(tmp_path, _reset_probe, contended=True)
     for _ in range(3):
         bridge.check_health_and_restart_if_needed()
     assert bridge.diagnostics().deferred_probe_failures == 0
     assert bridge.restart_count == 1
 
 
-def test_probe_reset_plus_overrun_not_deferred() -> None:
+def test_probe_reset_plus_overrun_not_deferred(tmp_path: pathlib.Path) -> None:
     """Reset co-occurring with probe overrun is NOT deferred (reset trumps overrun)."""
     clock = [1000.0]
 
@@ -146,23 +156,23 @@ def test_probe_reset_plus_overrun_not_deferred() -> None:
         clock[0] += 15.0  # overrun past the 5 s base probe timeout
         raise ConnectionResetError("Connection reset after delay")
 
-    bridge = _probe_bridge(reset_with_delay, contended=True, clock_fn=lambda: clock[0])
+    bridge = _probe_bridge(tmp_path, reset_with_delay, contended=True, clock_fn=lambda: clock[0])
     for _ in range(3):
         bridge.check_health_and_restart_if_needed()
     assert bridge.diagnostics().deferred_probe_failures == 0
     assert bridge.restart_count == 1
 
 
-def test_probe_malformed_response_not_deferred() -> None:
+def test_probe_malformed_response_not_deferred(tmp_path: pathlib.Path) -> None:
     """Malformed response error is NOT deferred even under fresh contention."""
-    bridge = _probe_bridge(_malformed_probe, contended=True)
+    bridge = _probe_bridge(tmp_path, _malformed_probe, contended=True)
     for _ in range(3):
         bridge.check_health_and_restart_if_needed()
     assert bridge.diagnostics().deferred_probe_failures == 0
     assert bridge.restart_count == 1
 
 
-def test_confirm_before_replace_defers_on_confirm_success() -> None:
+def test_confirm_before_replace_defers_on_confirm_success(tmp_path: pathlib.Path) -> None:
     """When ordinary probe times out but confirm probe succeeds, failure is deferred."""
     call_count = 0
 
@@ -172,7 +182,7 @@ def test_confirm_before_replace_defers_on_confirm_success() -> None:
         if call_count <= 3:
             raise TimeoutError("ordinary probe timed out")
 
-    bridge = _probe_bridge(probe_fn, contended=False)
+    bridge = _probe_bridge(tmp_path, probe_fn, contended=False)
     restarted = bridge.check_health_and_restart_if_needed()
     restarted = bridge.check_health_and_restart_if_needed()
     restarted = bridge.check_health_and_restart_if_needed()
@@ -181,22 +191,22 @@ def test_confirm_before_replace_defers_on_confirm_success() -> None:
     assert bridge.diagnostics().deferred_probe_failures == 1
 
 
-def test_confirm_before_replace_replaces_on_confirm_failure() -> None:
+def test_confirm_before_replace_replaces_on_confirm_failure(tmp_path: pathlib.Path) -> None:
     """When ordinary probe times out AND confirm probe fails, replacement proceeds."""
-    bridge = _probe_bridge(_timing_out_probe, contended=False)
+    bridge = _probe_bridge(tmp_path, _timing_out_probe, contended=False)
     for _ in range(3):
         bridge.check_health_and_restart_if_needed()
     assert bridge.restart_count == 1
 
 
-def test_confirm_skipped_when_deferral_ceiling_reached() -> None:
+def test_confirm_skipped_when_deferral_ceiling_reached(tmp_path: pathlib.Path) -> None:
     """When deferral ceiling is reached, confirm probe is skipped and restart forced.
 
     The ceiling is reached through the public health-check path: every
     contended timeout defers the replacement and advances the deferral
     counter, so the bridge reaches the ceiling on its own.
     """
-    bridge = _probe_bridge(_timing_out_probe, contended=True)
+    bridge = _probe_bridge(tmp_path, _timing_out_probe, contended=True)
     ceiling = bridge.diagnostics().probe_deferral_count_ceiling
     for _ in range(ceiling):
         assert bridge.check_health_and_restart_if_needed() is False
@@ -246,25 +256,25 @@ def test_probe_classifier_overrun_only_outcome_is_deferred() -> None:
     assert classify_probe_failure(None, overrun=False) == "fatal"
 
 
-def test_probe_runtime_error_does_not_defer_under_contention() -> None:
+def test_probe_runtime_error_does_not_defer_under_contention(tmp_path: pathlib.Path) -> None:
     """End-to-end: a generic RuntimeError probe never defers the replacement."""
-    bridge = _probe_bridge(_generic_runtime_error_probe, contended=True)
+    bridge = _probe_bridge(tmp_path, _generic_runtime_error_probe, contended=True)
     for _ in range(3):
         bridge.check_health_and_restart_if_needed()
     assert bridge.diagnostics().deferred_probe_failures == 0
     assert bridge.restart_count == 1
 
 
-def test_probe_http_501_does_not_defer_under_contention() -> None:
+def test_probe_http_501_does_not_defer_under_contention(tmp_path: pathlib.Path) -> None:
     """End-to-end: HTTP 501 probe never defers even under fresh contention."""
-    bridge = _probe_bridge(_http_501_probe, contended=True)
+    bridge = _probe_bridge(tmp_path, _http_501_probe, contended=True)
     for _ in range(3):
         bridge.check_health_and_restart_if_needed()
     assert bridge.diagnostics().deferred_probe_failures == 0
     assert bridge.restart_count == 1
 
 
-def test_probe_connection_reset_plus_overrun_does_not_defer() -> None:
+def test_probe_connection_reset_plus_overrun_does_not_defer(tmp_path: pathlib.Path) -> None:
     """End-to-end: ConnectionResetError co-occurring with overrun=False under contention."""
     clock = [1000.0]
 
@@ -272,25 +282,27 @@ def test_probe_connection_reset_plus_overrun_does_not_defer() -> None:
         clock[0] += 15.0
         raise ConnectionResetError("Connection reset after delay")
 
-    bridge = _probe_bridge(reset_with_overrun, contended=True, clock_fn=lambda: clock[0])
+    bridge = _probe_bridge(tmp_path, reset_with_overrun, contended=True, clock_fn=lambda: clock[0])
     for _ in range(3):
         bridge.check_health_and_restart_if_needed()
     assert bridge.diagnostics().deferred_probe_failures == 0
     assert bridge.restart_count == 1
 
 
-def test_probe_timeout_class_deferral_counter_increments_under_contention() -> None:
+def test_probe_timeout_class_deferral_counter_increments_under_contention(
+    tmp_path: pathlib.Path,
+) -> None:
     """End-to-end: TimeoutError probe IS deferred; the deferral counter increments."""
-    bridge = _probe_bridge(_timing_out_probe, contended=True)
+    bridge = _probe_bridge(tmp_path, _timing_out_probe, contended=True)
     restarted = bridge.check_health_and_restart_if_needed()
     assert restarted is False
     assert bridge.restart_count == 0
     assert bridge.diagnostics().deferred_probe_failures == 1
 
 
-def test_probe_saturated_dispatch_response_is_busy_not_a_failure() -> None:
+def test_probe_saturated_dispatch_response_is_busy_not_a_failure(tmp_path: pathlib.Path) -> None:
     """A ``_saturated_dispatch`` outcome classifies as busy, not a failure."""
-    bridge = _probe_bridge(_saturated_probe, contended=True)
+    bridge = _probe_bridge(tmp_path, _saturated_probe, contended=True)
     for _ in range(3):
         bridge.check_health_and_restart_if_needed()
     diagnostics = bridge.diagnostics()

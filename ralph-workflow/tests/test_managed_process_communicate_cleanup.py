@@ -1,12 +1,19 @@
-"""Tests for ManagedProcess.communicate_and_cleanup."""
+"""Tests for ManagedProcess.communicate_and_cleanup.
+
+Every case configures the spawned process through the PUBLIC
+``ProcessManager(sync_process_factory=...)`` seam: the test hands the
+manager a process double whose ``communicate`` runs a test-owned script.
+Nothing in this file reaches into a spawned handle's private process
+attribute -- the manager owns the handle, the test owns the double.
+"""
 
 from __future__ import annotations
 
 import io
-import itertools
 import subprocess
 import sys
 import threading
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import pytest
@@ -26,7 +33,6 @@ from ralph.testing.fake_process import (
     FakePsutilProcess,
     ProcessState,
     ProcessStreams,
-    make_sync_process_factory,
 )
 
 if TYPE_CHECKING:
@@ -38,6 +44,70 @@ _FAST_POLICY = ProcessManagerPolicy(
     log_events=False,
     enable_zombie_reaper=False,
 )
+
+#: A ``communicate`` script: the test-owned behaviour the spawned process
+#: double runs when the manager drains it. It receives the same keyword
+#: arguments ``ManagedProcess.communicate`` passes to
+#: ``Popen.communicate``.
+_CommunicateScript = Callable[..., tuple[bytes, bytes]]
+
+
+def _default_script(
+    input: bytes | None = None,
+    timeout: float | None = None,
+) -> tuple[bytes, bytes]:
+    """Return the canned output used by the cases that only need a drain."""
+    del input, timeout
+    return b"ok", b""
+
+
+def _timeout_script(
+    input: bytes | None = None,
+    timeout: float | None = None,
+) -> tuple[bytes, bytes]:
+    """Fail the drain the way a wedged child does."""
+    del input, timeout
+    raise subprocess.TimeoutExpired(cmd=[sys.executable], timeout=0.1)
+
+
+class _ScriptedPopen(FakePopen):
+    """A ``FakePopen`` whose ``communicate`` runs a test-supplied script.
+
+    The script is bound into the double BEFORE the manager spawns it, so
+    the test configures the process through the PUBLIC
+    ``ProcessManager(sync_process_factory=...)`` seam instead of reaching
+    into the spawned handle's private process attribute. The manager
+    owns the handle; the test owns the double.
+    """
+
+    # OpenCode's prompt is delivered on stdin, so a process fake must
+    # satisfy the ``_SyncProcessLike`` protocol's ``stdin`` member.
+    stdin = None
+
+    def __init__(self, script: _CommunicateScript, *, returncode: int | None = 0) -> None:
+        super().__init__(pid=1, state=ProcessState(returncode=returncode))
+        self._script = script
+
+    def communicate(
+        self,
+        input: bytes | None = None,
+        timeout: float | None = None,
+    ) -> tuple[bytes, bytes]:
+        return self._script(input=input, timeout=timeout)
+
+
+def _scripted_process_factory(
+    script: _CommunicateScript,
+    *,
+    returncode: int | None = 0,
+) -> Callable[[Sequence[str], SpawnOptions], _ScriptedPopen]:
+    """Return a ``sync_process_factory`` that yields a scripted double."""
+
+    def factory(command: Sequence[str], opts: SpawnOptions) -> _ScriptedPopen:
+        del command, opts
+        return _ScriptedPopen(script, returncode=returncode)
+
+    return factory
 
 
 class TreeProcess(FakePsutilProcess):
@@ -94,11 +164,22 @@ class TreeProcess(FakePsutilProcess):
 def _make_handle(
     *,
     fake_psutil: FakePsutil | None,
+    script: _CommunicateScript | None = None,
     returncode: int | None = 0,
 ) -> ManagedProcess:
+    """Spawn a managed process whose ``communicate`` runs ``script``.
+
+    The script is bound into the process double by the PUBLIC
+    ``sync_process_factory`` seam, so the test never mutates the spawned
+    handle's private process attribute: the manager owns the handle,
+    the test owns the double it handed over.
+    """
     pm = ProcessManager(
         policy=_FAST_POLICY,
-        sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=returncode),
+        sync_process_factory=_scripted_process_factory(
+            script if script is not None else _default_script,
+            returncode=returncode,
+        ),
         psutil=fake_psutil,
     )
     return pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="test:managed-process"))
@@ -123,7 +204,6 @@ def test_cleans_snapshot_survivors_and_late_spawns() -> None:
         2001: late_spawn,
         3001: second_level,
     }
-    handle = _make_handle(fake_psutil=fake_psutil)
 
     def communicate(
         input: bytes | None = None,
@@ -134,7 +214,7 @@ def test_cleans_snapshot_survivors_and_late_spawns() -> None:
         late_spawn._direct_children = [second_level]
         return b"out", b"err"
 
-    handle._proc.communicate = communicate
+    handle = _make_handle(fake_psutil=fake_psutil, script=communicate)
 
     stdout, stderr = handle.communicate_and_cleanup()
 
@@ -154,8 +234,10 @@ def test_missing_root_still_returns_output() -> None:
             raise self.NoSuchProcess
 
     fake_psutil = MissingRootPsutil()
-    handle = _make_handle(fake_psutil=fake_psutil)
-    handle._proc.communicate = lambda input=None, timeout=None: (b"ok", b"err")
+    handle = _make_handle(
+        fake_psutil=fake_psutil,
+        script=lambda input=None, timeout=None: (b"ok", b"err"),
+    )
 
     stdout, stderr = handle.communicate_and_cleanup()
 
@@ -180,7 +262,6 @@ def test_process_observer_regression_permission_error_does_not_escape_thread(
 
     fake_psutil = FakePsutil()
     fake_psutil._processes = {1: PermissionDeniedRoot(pid=1)}
-    handle = _make_handle(fake_psutil=fake_psutil)
     thread_errors: list[BaseException | None] = []
     monkeypatch.setattr(
         threading,
@@ -196,7 +277,7 @@ def test_process_observer_regression_permission_error_does_not_escape_thread(
         assert attempted.wait(timeout=0.5)
         return b"ok", b""
 
-    handle._proc.communicate = communicate
+    handle = _make_handle(fake_psutil=fake_psutil, script=communicate)
     stdout, stderr = handle.communicate_and_cleanup()
 
     assert stdout == b"ok"
@@ -225,7 +306,6 @@ def test_process_observer_regression_keeps_child_seen_before_permission_error() 
     root = PermissionDeniedAfterObservationRoot()
     fake_psutil = FakePsutil()
     fake_psutil._processes = {1: root, child.pid: child}
-    handle = _make_handle(fake_psutil=fake_psutil)
 
     def communicate(
         input: bytes | None = None,
@@ -235,7 +315,7 @@ def test_process_observer_regression_keeps_child_seen_before_permission_error() 
         assert observed.wait(timeout=0.5)
         return b"ok", b""
 
-    handle._proc.communicate = communicate
+    handle = _make_handle(fake_psutil=fake_psutil, script=communicate)
     stdout, stderr = handle.communicate_and_cleanup()
 
     assert stdout == b"ok"
@@ -248,7 +328,6 @@ def test_kills_root_late_spawn_descendants() -> None:
     root = TreeProcess(pid=1)
     fake_psutil = FakePsutil()
     fake_psutil._processes = {1: root, 2001: late_spawn}
-    handle = _make_handle(fake_psutil=fake_psutil)
 
     def communicate(
         input: bytes | None = None,
@@ -259,7 +338,7 @@ def test_kills_root_late_spawn_descendants() -> None:
         root._recursive_children = [late_spawn]
         return b"ok", b""
 
-    handle._proc.communicate = communicate
+    handle = _make_handle(fake_psutil=fake_psutil, script=communicate)
 
     stdout, stderr = handle.communicate_and_cleanup()
 
@@ -286,7 +365,6 @@ def test_kills_all_snapshot_descendants() -> None:
         1003: child_three,
     }
     handle = _make_handle(fake_psutil=fake_psutil)
-    handle._proc.communicate = lambda input=None, timeout=None: (b"ok", b"")
 
     stdout, stderr = handle.communicate_and_cleanup()
 
@@ -303,7 +381,6 @@ def test_kills_descendants_of_snapshot_survivors() -> None:
     root = TreeProcess(pid=1, direct_children=[child], recursive_children=[child])
     fake_psutil = FakePsutil()
     fake_psutil._processes = {1: root, 1001: child, 2001: grandchild}
-    handle = _make_handle(fake_psutil=fake_psutil)
 
     def communicate(
         input: bytes | None = None,
@@ -313,7 +390,7 @@ def test_kills_descendants_of_snapshot_survivors() -> None:
         child._direct_children = [grandchild]
         return b"ok", b""
 
-    handle._proc.communicate = communicate
+    handle = _make_handle(fake_psutil=fake_psutil, script=communicate)
 
     stdout, stderr = handle.communicate_and_cleanup()
 
@@ -335,7 +412,6 @@ def test_kills_second_level_late_spawn_descendants() -> None:
         2001: grandchild,
         3001: great_grandchild,
     }
-    handle = _make_handle(fake_psutil=fake_psutil)
 
     def communicate(
         input: bytes | None = None,
@@ -346,7 +422,7 @@ def test_kills_second_level_late_spawn_descendants() -> None:
         grandchild._direct_children = [great_grandchild]
         return b"ok", b""
 
-    handle._proc.communicate = communicate
+    handle = _make_handle(fake_psutil=fake_psutil, script=communicate)
 
     stdout, stderr = handle.communicate_and_cleanup()
 
@@ -360,7 +436,6 @@ def test_kills_second_level_late_spawn_descendants() -> None:
 def test_marks_process_as_exited() -> None:
     fake_psutil = FakePsutil()
     handle = _make_handle(fake_psutil=fake_psutil)
-    handle._proc.communicate = lambda input=None, timeout=None: (b"ok", b"")
 
     stdout, stderr = handle.communicate_and_cleanup()
 
@@ -371,7 +446,6 @@ def test_marks_process_as_exited() -> None:
 
 def test_handles_no_psutil_gracefully() -> None:
     handle = _make_handle(fake_psutil=None)
-    handle._proc.communicate = lambda input=None, timeout=None: (b"ok", b"")
 
     stdout, stderr = handle.communicate_and_cleanup()
 
@@ -437,7 +511,6 @@ def test_already_dead_descendants_are_ignored() -> None:
         1002: dead_child,
     }
     handle = _make_handle(fake_psutil=fake_psutil)
-    handle._proc.communicate = lambda input=None, timeout=None: (b"ok", b"")
 
     stdout, stderr = handle.communicate_and_cleanup()
 
@@ -457,10 +530,7 @@ def test_timeout_kills_snapshot_descendants() -> None:
     )
     fake_psutil = FakePsutil()
     fake_psutil._processes = {1: root, 1001: live_child}
-    handle = _make_handle(fake_psutil=fake_psutil)
-    handle._proc.communicate = lambda input=None, timeout=None: (_ for _ in ()).throw(
-        subprocess.TimeoutExpired(cmd=[sys.executable], timeout=0.1)
-    )
+    handle = _make_handle(fake_psutil=fake_psutil, script=_timeout_script)
 
     with pytest.raises(subprocess.TimeoutExpired):
         handle.communicate_and_cleanup(cleanup_grace_period_s=0.0)
@@ -627,21 +697,24 @@ def test_streaming_process_still_stops_at_the_absolute_hard_deadline() -> None:
 
 def test_timeout_still_terminates_root(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_psutil = FakePsutil()
-    handle = _make_handle(fake_psutil=fake_psutil)
-    handle._proc.communicate = lambda input=None, timeout=None: (_ for _ in ()).throw(
-        subprocess.TimeoutExpired(cmd=[sys.executable], timeout=0.1)
-    )
+    handle = _make_handle(fake_psutil=fake_psutil, script=_timeout_script)
     seen: list[float | None] = []
-    monkeypatch.setattr(
-        handle,
-        "terminate",
-        lambda grace_period_s=None: seen.append(grace_period_s),
-    )
+    real_terminate = handle.terminate
+
+    def _spy_terminate(grace_period_s: float | None = None) -> None:
+        seen.append(grace_period_s)
+        real_terminate(grace_period_s=grace_period_s)
+
+    monkeypatch.setattr(handle, "terminate", _spy_terminate)
 
     with pytest.raises(subprocess.TimeoutExpired):
         handle.communicate_and_cleanup(cleanup_grace_period_s=0.25)
 
     assert seen == [0.25]
+    # The spy called through, so the root really was terminated: the
+    # public record reports the terminal status the timeout handler
+    # produced.
+    assert handle.record.status == ProcessStatus.KILLED
 
 
 # ---------------------------------------------------------------------------
@@ -681,7 +754,6 @@ def test_successful_call_takes_exactly_one_recursive_tree_scan() -> None:
     fake_psutil = FakePsutil()
     fake_psutil._processes = {1: root}
     handle = _make_handle(fake_psutil=fake_psutil)
-    handle._proc.communicate = lambda input=None, timeout=None: (b"ok", b"")
 
     stdout, stderr = handle.communicate_and_cleanup()
 
@@ -706,7 +778,6 @@ def test_single_scan_still_reaps_a_descendant_spawned_while_running() -> None:
     root = _CountingTreeProcess(pid=1, scans=scans)
     fake_psutil = FakePsutil()
     fake_psutil._processes = {1: root, 2001: late_spawn}
-    handle = _make_handle(fake_psutil=fake_psutil)
 
     def communicate(
         input: bytes | None = None,
@@ -717,7 +788,7 @@ def test_single_scan_still_reaps_a_descendant_spawned_while_running() -> None:
         root._recursive_children = [late_spawn]
         return b"ok", b""
 
-    handle._proc.communicate = communicate
+    handle = _make_handle(fake_psutil=fake_psutil, script=communicate)
 
     stdout, _stderr = handle.communicate_and_cleanup()
 

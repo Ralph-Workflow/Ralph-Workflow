@@ -24,7 +24,7 @@ import threading
 import time
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 if sys.platform != "win32":
     import fcntl
@@ -122,7 +122,9 @@ _STALE_GIT_LOCK_AGE_SECONDS = 10.0
 #: bounded recovery budget; only a lock that outlives a holder's own ceiling
 #: is treated as contention to surface.
 _LIVE_HOLDER_PATIENCE_S = GIT_SUBPROCESS_TIMEOUT_SECONDS + GIT_TERMINATE_GRACE_SECONDS
+LIVE_HOLDER_PATIENCE_S: Final[float] = _LIVE_HOLDER_PATIENCE_S
 _LIVE_HOLDER_POLL_S = 3.0
+LIVE_HOLDER_POLL_S: Final[float] = _LIVE_HOLDER_POLL_S
 
 
 # Bounded backoff constants for git lock contention retry
@@ -792,6 +794,8 @@ run_git_operation_with_stale_lock_recovery = _run_git_operation_with_stale_lock_
 # Every name below was defined in this module before the split; keeping them
 # importable from ``ralph.git._lock_recovery`` preserves the public contract.
 __all__ = [
+    "LIVE_HOLDER_PATIENCE_S",
+    "LIVE_HOLDER_POLL_S",
     "LOCK_BACKOFF_S",
     "PROBE_MAX_WORKERS",
     "_CONFIG_LOCK_PATTERN",

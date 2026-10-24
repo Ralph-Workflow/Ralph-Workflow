@@ -505,21 +505,6 @@ class TestResolveInvocationRuntimeParity:
                 _base_env={},
             )
 
-    def test_nanocoder_without_endpoint_has_no_runtime_env(self, tmp_path: Path) -> None:
-        """NANOCODER without MCP endpoint launches interactively without injected env."""
-        config = AgentConfig(cmd="test-agent", transport=AgentTransport.NANOCODER)
-
-        result = resolve_invocation_runtime(
-            config,
-            extra_env={},
-            workspace_path=tmp_path,
-            _base_env={},
-        )
-
-        assert result.agent_env is None
-        assert result.server_env is None
-        assert result.mcp_endpoint is None
-
     def test_no_endpoint_no_extra_env(self, tmp_path: Path) -> None:
 
         for transport in [

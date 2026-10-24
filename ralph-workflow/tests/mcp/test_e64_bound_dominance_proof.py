@@ -34,7 +34,6 @@ a behavioural regression.
 from __future__ import annotations
 
 import pathlib
-import tempfile
 
 from ralph.mcp.bridge_diagnostics import bound_dominates
 from ralph.mcp.server import lifecycle
@@ -77,9 +76,14 @@ class _LiveProcess:
         return 0
 
 
-def _bridge() -> lifecycle.RestartAwareMcpBridge:
-    """Return a bridge whose public diagnostics snapshot carries the bounds."""
-    session_file = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+def _bridge(tmp_path: pathlib.Path) -> lifecycle.RestartAwareMcpBridge:
+    """Return a bridge whose public diagnostics snapshot carries the bounds.
+
+    The session file lives inside pytest's ``tmp_path`` fixture, so the
+    directory is torn down with the test session instead of leaking an
+    unmanaged directory onto the host.
+    """
+    session_file = tmp_path / "session.json"
     session_file.write_text("{}", encoding="utf-8")
     inner = lifecycle.StandaloneMcpProcess(
         endpoint="http://127.0.0.1:9100/mcp",
@@ -110,9 +114,9 @@ def test_e64_dominance_predicate_rejects_a_bound_that_drops_a_stage() -> None:
     assert bound_dominates(9.0, (5.0, 1.0, 1.0, 0.5)) is True
 
 
-def test_e64_bound_a_dominates_every_stage_it_is_composed_of() -> None:
+def test_e64_bound_a_dominates_every_stage_it_is_composed_of(tmp_path: pathlib.Path) -> None:
     """Bound (i) must dominate the sum of its per-attempt stage durations."""
-    diagnostics = _bridge().diagnostics()
+    diagnostics = _bridge(tmp_path).diagnostics()
     components = diagnostics.bound_a_components_s
     assert components == (2.0, 30.0, 12.0)
     assert bound_dominates(
@@ -120,15 +124,15 @@ def test_e64_bound_a_dominates_every_stage_it_is_composed_of() -> None:
     )
 
 
-def test_e64_bound_b_dominates_every_stage_it_is_composed_of() -> None:
+def test_e64_bound_b_dominates_every_stage_it_is_composed_of(tmp_path: pathlib.Path) -> None:
     """Bound (ii) must dominate the sum of its per-stage durations."""
-    diagnostics = _bridge().diagnostics()
+    diagnostics = _bridge(tmp_path).diagnostics()
     components = diagnostics.bound_b_components_s
     assert components == (5.0, 1.0, 1.0, 0.5, 12.0)
     assert bound_dominates(diagnostics.candidate_delay_bound_alive_child_s, components)
 
 
-def test_e64_cleanup_term_is_derived_from_the_real_shutdown_bounds() -> None:
+def test_e64_cleanup_term_is_derived_from_the_real_shutdown_bounds(tmp_path: pathlib.Path) -> None:
     """The teardown term must track the constants the teardown path actually uses.
 
     This is the acceptance-review fix: the previous inventory declared only
@@ -137,7 +141,7 @@ def test_e64_cleanup_term_is_derived_from_the_real_shutdown_bounds() -> None:
     constants means a future drift in either the process-manager policy or the
     standalone shutdown fails here instead of silently under-reporting.
     """
-    diagnostics = _bridge().diagnostics()
+    diagnostics = _bridge(tmp_path).diagnostics()
     expected_cleanup = (
         SHUTDOWN_TERMINATE_GRACE_S
         + ProcessManagerPolicy.kill_followup_timeout_s
@@ -148,14 +152,16 @@ def test_e64_cleanup_term_is_derived_from_the_real_shutdown_bounds() -> None:
     assert expected_cleanup in diagnostics.bound_b_components_s
 
 
-def test_e64_import_time_check_rejects_a_bound_that_drops_the_cleanup_term() -> None:
+def test_e64_import_time_check_rejects_a_bound_that_drops_the_cleanup_term(
+    tmp_path: pathlib.Path,
+) -> None:
     """Dropping the teardown term must make the dominance predicate fail.
 
     Without this, a bound computed over the shortened component list would
     still be positive and would pass the import-time ``if``/``raise`` gate
     while under-reporting the real worst case.
     """
-    diagnostics = _bridge().diagnostics()
+    diagnostics = _bridge(tmp_path).diagnostics()
     cleanup = diagnostics.failed_attempt_cleanup_s
     under_counted_a = diagnostics.worst_case_terminal_exhaustion_dead_child_s / 20.0 - cleanup
     assert bound_dominates(under_counted_a, diagnostics.bound_a_components_s) is False
@@ -176,9 +182,9 @@ def test_e64_import_time_check_rejects_a_bound_that_drops_the_cleanup_term() -> 
     )
 
 
-def test_e64_bounds_match_independently_recomputed_numbers() -> None:
+def test_e64_bounds_match_independently_recomputed_numbers(tmp_path: pathlib.Path) -> None:
     """Pin both bounds against hand arithmetic, not a mirror of the module expression."""
-    diagnostics = _bridge().diagnostics()
+    diagnostics = _bridge(tmp_path).diagnostics()
     assert McpRestartPolicy.max_restarts == 20
     assert McpRestartPolicy.cooldown_seconds == 2.0
     assert diagnostics.preflight_deadline_s == 30.0

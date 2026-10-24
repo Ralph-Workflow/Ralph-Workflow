@@ -401,6 +401,18 @@ def test_unreachable_then_reachable_auto_pushes(
         "ralph.pipeline.auto_integrate_catchup.resolve_integration_target",
         _resolve_target,
     )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_catchup.is_lease_held",
+        lambda _root: False,
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_catchup.try_acquire_lease",
+        lambda _root, holder=None: object(),
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate_catchup.end_agent_lease",
+        lambda _lease: None,
+    )
 
     unreachable = _UnreachableRemoteClient()
     config = UnifiedConfig(

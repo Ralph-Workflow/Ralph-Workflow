@@ -589,20 +589,6 @@ class ProcessManager:
         if descendant_pid not in self._descendants[parent_pid]:
             self._descendants[parent_pid].append(descendant_pid)
 
-    def registered_descendants(self, parent_pid: int) -> tuple[int, ...]:
-        """Return the descendant PIDs currently registered for ``parent_pid``.
-
-        Mirrors the :meth:`register_descendant` write API: the returned tuple
-        is empty when no descendant is registered (or when the registry entry
-        was already consumed by a termination).
-        """
-        return tuple(self._descendants.get(parent_pid, ()))
-
-    def zombie_reaper_running(self) -> bool:
-        """Return whether the background zombie reaper thread is running."""
-        thread = self._reaper_thread
-        return thread is not None and thread.is_alive()
-
     def _terminate_registered_descendants(
         self,
         record: ProcessRecord,

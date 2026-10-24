@@ -12,6 +12,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal
 
 from ralph.git._lock_recovery import (
+    LIVE_HOLDER_PATIENCE_S,
+    LIVE_HOLDER_POLL_S,
     LOCK_BACKOFF_S,
     PROBE_MAX_WORKERS,
     ProbeExecutorStatus,
@@ -115,6 +117,8 @@ def pid_has_gitdir_environ(
 
 
 __all__ = [
+    "LIVE_HOLDER_PATIENCE_S",
+    "LIVE_HOLDER_POLL_S",
     "LOCK_BACKOFF_S",
     "PROBE_MAX_WORKERS",
     "ProbeExecutorStatus",

@@ -21,6 +21,13 @@ the checkpoint reload keeps the intervention projection, and the
 visible label is intervention -- never evidence diagnosis or conflict
 resolution. The record file bytes are preserved untouched throughout.
 
+The ``PermissionError`` backend read failure is driven through the
+entry points that can THREAD the failing backend into the production
+seam -- startup recovery, the phase-boundary loop, the cooldown
+executor and the terminal authority. The commit and parallel-join
+seams have no backend seam to thread, so for that cause they reach the
+SAME startup recovery producer and are covered by the startup case.
+
 The ABSENT case is the proceeding control.
 """
 
@@ -541,29 +548,6 @@ def test_phase_boundary_entry_point_reports_intervention_on_backend_read_failure
 
 
 # --------------------------------------------------------------------------
-# Backend read failure driven through the commit entry point seam.
-# --------------------------------------------------------------------------
-
-
-def test_commit_entry_point_reports_intervention_on_backend_read_failure(
-    workspace_root: Path,
-) -> None:
-    record_file = _record_file(workspace_root)
-    record_file.parent.mkdir(parents=True, exist_ok=True)
-    record_file.write_bytes(b'{"phase": "integrating", "target": "main"}')
-    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
-
-    recovered = recover_incomplete_integration(
-        WorkspaceScope(workspace_root),
-        backend=_FailingReadBackend(record_file),
-    )
-    assert recovered is not None
-    assert recovered.last_outcome.value == "diagnostic_intervention_required"
-    assert recovered.last_decision == INTERVENTION.value
-    _assert_intervention(workspace_root, recovered, b'{"phase": "integrating", "target": "main"}')
-
-
-# --------------------------------------------------------------------------
 # Backend read failure driven through the cooldown entry point seam.
 # --------------------------------------------------------------------------
 
@@ -612,29 +596,6 @@ def test_cooldown_entry_point_reports_intervention_on_backend_read_failure(
     reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
     assert reloaded is not None
     assert reloaded.rebase.last_decision == INTERVENTION.value
-
-
-# --------------------------------------------------------------------------
-# Backend read failure driven through the parallel-join entry point seam.
-# --------------------------------------------------------------------------
-
-
-def test_parallel_join_entry_point_reports_intervention_on_backend_read_failure(
-    workspace_root: Path,
-) -> None:
-    record_file = _record_file(workspace_root)
-    record_file.parent.mkdir(parents=True, exist_ok=True)
-    record_file.write_bytes(b'{"phase": "integrating", "target": "main"}')
-    from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
-
-    recovered = recover_incomplete_integration(
-        WorkspaceScope(workspace_root),
-        backend=_FailingReadBackend(record_file),
-    )
-    assert recovered is not None
-    assert recovered.last_outcome.value == "diagnostic_intervention_required"
-    assert recovered.last_decision == INTERVENTION.value
-    _assert_intervention(workspace_root, recovered, b'{"phase": "integrating", "target": "main"}')
 
 
 # --------------------------------------------------------------------------

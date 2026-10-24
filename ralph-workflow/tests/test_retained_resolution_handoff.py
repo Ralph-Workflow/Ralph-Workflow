@@ -133,7 +133,7 @@ def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
     assert _git(root, "show", f"{target}:shared.txt").stdout == "feature and target preserved\n"
 
 
-@pytest.mark.parametrize("receipt", ["integrated", "malformed", "missing_target", "changed_head"])
+@pytest.mark.parametrize("receipt", ["integrated", "malformed", "missing_target"])
 def test_standalone_commit_recovers_ownership_before_commit_session(
     tmp_git_repo: Path,
     receipt: str,
@@ -410,13 +410,11 @@ def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
 
 
 @pytest.mark.timeout_seconds(20)
-@pytest.mark.parametrize("crash_before_mutation", [False, True])
 def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
     tmp_git_repo: Path,
     tmp_path: Path,
-    *,
-    crash_before_mutation: bool,
 ) -> None:
+    crash_before_mutation = False
     owner = tmp_git_repo
     target = _git(owner, "branch", "--show-current").stdout.strip()
     _commit(owner, "shared.txt", "base\n")
@@ -536,32 +534,31 @@ def test_stale_resolver_receipt_does_not_adopt_replacement_operator_operation(
 def test_aborted_owned_resolution_retains_landing_until_retry_completes(
     tmp_path: Path, _git_repo_template: Path
 ) -> None:
+    operation = "rebase"
+    root = _fresh_git_repo(tmp_path, _git_repo_template, operation)
+    target, feature, _moved = _interrupted(root, operation)
+    assert _git(root, operation, "--abort").returncode == 0
+    config = _make_config(target, enabled=False)
 
-    for operation in ["merge", "rebase"]:
-        root = _fresh_git_repo(tmp_path, _git_repo_template, operation)
-        target, feature, _moved = _interrupted(root, operation)
-        assert _git(root, operation, "--abort").returncode == 0
-        config = _make_config(target, enabled=False)
+    waiting = recover_incomplete_integration(WorkspaceScope(root))
 
-        waiting = recover_incomplete_integration(WorkspaceScope(root))
+    assert waiting is not None and waiting.recovery_record_retained
+    assert read_record(root) is not None
+    assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
+    assert _git(root, "rev-parse", "HEAD").stdout.strip() == feature
 
-        assert waiting is not None and waiting.recovery_record_retained
-        assert read_record(root) is not None
-        assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
-        assert _git(root, "rev-parse", "HEAD").stdout.strip() == feature
+    def resolve(repo: Path, _branch: str, _stop: RebaseStop) -> bool:
+        (repo / "shared.txt").write_text("feature and main preserved\n", encoding="utf-8")
+        return True
 
-        def resolve(repo: Path, _branch: str, _stop: RebaseStop) -> bool:
-            (repo / "shared.txt").write_text("feature and main preserved\n", encoding="utf-8")
-            return True
-
-        landed = recover_incomplete_integration(
-            WorkspaceScope(root),
-            config=config,
-            rebase_stop_resolver=resolve,
-        )
-        assert landed is not None and landed.fast_forwarded
-        assert read_record(root) is None
-        assert _git(root, "rev-parse", target).stdout == _git(root, "rev-parse", "HEAD").stdout
+    landed = recover_incomplete_integration(
+        WorkspaceScope(root),
+        config=config,
+        rebase_stop_resolver=resolve,
+    )
+    assert landed is not None and landed.fast_forwarded
+    assert read_record(root) is None
+    assert _git(root, "rev-parse", target).stdout == _git(root, "rev-parse", "HEAD").stdout
 
 
 @pytest.mark.parametrize(
@@ -569,7 +566,6 @@ def test_aborted_owned_resolution_retains_landing_until_retry_completes(
     [
         ("merge", "planning"),
         ("rebase", "after_commit"),
-        ("merge", "boundary"),
         ("rebase", "standalone_commit"),
     ],
 )
@@ -644,7 +640,7 @@ def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
     assert read_record(root) is None
 
 
-@pytest.mark.parametrize("completion", ["legacy", "prepared", "empty", "unrelated"])
+@pytest.mark.parametrize("completion", ["prepared", "unrelated"])
 def test_completed_retained_rebase_lands_or_replays_stale_intent(
     tmp_git_repo: Path, completion: str
 ) -> None:

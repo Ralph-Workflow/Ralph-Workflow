@@ -74,8 +74,8 @@ if TYPE_CHECKING:
 #
 # Everything that CAN be observed publicly is asserted publicly: the
 # terminal status / cause of the record, the process-manager termination
-# outcome, and the registered-descendant registry (via
-# ``ProcessManager.registered_descendants``).
+# outcome, and the EFFECT of the registered-descendant registry (the
+# registered descendant is terminated with its parent, exactly once).
 POLICY_WHITE_BOX_EXCEPTION = (
     "White-box tests that reach into private internals are permitted only when "
     "no observable surface can express the regression."
@@ -762,19 +762,6 @@ def test_cleanup_after_abnormal_exit() -> None:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_register_descendant_adds_to_registry() -> None:
-    """register_descendant adds PID to _descendants and cleanup removes it."""
-    pm = _make_pm()
-    handle = pm.spawn([sys.executable, "-c", "pass"])
-
-    pm.register_descendant(handle.pid, 99999)
-    assert 99999 in pm.registered_descendants(handle.pid)
-
-    handle.terminate(grace_period_s=0.1)
-    # After termination, descendant registry cleaned
-    assert pm.registered_descendants(handle.pid) == ()
-
-
 class _TrackedDescendant(FakePsutilProcess):
     """FakePsutilProcess subclass that records every terminate/kill call.
 
@@ -800,6 +787,56 @@ class _TrackedDescendant(FakePsutilProcess):
         self._killed = True
 
 
+class _NoChildrenRoot(FakePsutilProcess):
+    """A parent process whose psutil tree walk finds no children."""
+
+    def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
+        return []
+
+
+def test_register_descendant_adds_to_registry() -> None:
+    """``register_descendant`` stores the PID; the parent's teardown reaps it.
+
+    The registry's CONTENTS are private state, so the observable
+    contract is the EFFECT: a registered descendant is a PID the manager
+    signals when the parent dies. (The former
+    ``ProcessManager.registered_descendants`` accessor was a test-only
+    window onto the private registry and has been removed.)
+
+    The other half of the contract -- the registry entry is CONSUMED, so
+    a second teardown does not re-signal the descendant -- is pinned by
+    ``test_register_descendant_registry_consumed_once_on_terminate``.
+    """
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
+    parent_pid = 1
+    descendant_pid = 99999
+
+    parent_proc = _NoChildrenRoot(pid=parent_pid)
+    descendant_proc = _TrackedDescendant(pid=descendant_pid)
+    fake_psutil = FakePsutil()
+    # policy: white-box-frozen
+    fake_psutil._processes = {
+        parent_pid: parent_proc,
+        descendant_pid: descendant_proc,
+    }
+
+    pm = _make_pm(sync_factory=sync_factory, psutil_mod=fake_psutil)
+    handle = pm.spawn([sys.executable, "-c", "pass"])
+
+    pm.register_descendant(handle.pid, descendant_pid)
+    # Registration on its own signals nothing.
+    assert descendant_proc.terminate_calls == 0
+    assert descendant_proc.kill_calls == 0
+
+    handle.terminate(grace_period_s=0.05)
+
+    # The registered descendant was reaped with its parent: that is the
+    # observable proof the PID was stored under the parent's key.
+    assert descendant_proc.terminate_calls >= 1
+    assert descendant_proc.kill_calls >= 1
+    assert handle.record.status == ProcessStatus.KILLED
+
+
 def test_register_descendant_terminates_grandchild_hidden_from_psutil_tree() -> None:
     """A registered descendant is terminated with its parent.
 
@@ -817,19 +854,18 @@ def test_register_descendant_terminates_grandchild_hidden_from_psutil_tree() -> 
        counts ``terminate()`` / ``kill()`` calls) for the parent.
     3. Calls ``handle.terminate()`` on the parent.
     4. Asserts the tracked descendant received BOTH a graceful
-       ``terminate()`` and a force ``kill()`` and that the
-       registry entry was consumed (no stale entries remain).
+       ``terminate()`` and a force ``kill()``.
+
+    The registry's contents are private state, so the observable proof
+    that the PID was stored is the descendant actually being signalled.
+    The "the entry is consumed, so a second teardown does not re-signal"
+    contract is pinned by
+    ``test_register_descendant_registry_consumed_once_on_terminate``.
     """
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     parent_pid = 1
     descendant_pid = 99999
-
-    class _NoChildrenRoot(FakePsutilProcess):
-        """A parent that has no psutil children (re-sessioned grandchild)."""
-
-        def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
-            return []
 
     parent_proc = _NoChildrenRoot(pid=parent_pid)
     descendant_proc = _TrackedDescendant(pid=descendant_pid)
@@ -843,12 +879,9 @@ def test_register_descendant_terminates_grandchild_hidden_from_psutil_tree() -> 
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=fake_psutil)
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    # policy: white-box-frozen
-    handle._record.pid = parent_pid
 
     # Register the re-sessioned grandchild BEFORE terminating the parent.
     pm.register_descendant(parent_pid, descendant_pid)
-    assert descendant_pid in pm.registered_descendants(parent_pid)
 
     # Sanity: the descendant is INVISIBLE to the psutil tree walk
     # (this is the scenario the registry has to cover).
@@ -868,8 +901,6 @@ def test_register_descendant_terminates_grandchild_hidden_from_psutil_tree() -> 
     )
     # Parent record transitioned to KILLED.
     assert handle.record.status == ProcessStatus.KILLED
-    # Registry entry consumed (no stale entries remain for parent_pid).
-    assert pm.registered_descendants(parent_pid) == ()
 
 
 def test_register_descendant_registry_consumed_once_on_terminate() -> None:
@@ -887,11 +918,7 @@ def test_register_descendant_registry_consumed_once_on_terminate() -> None:
     parent_pid = 1
     descendant_pid = 88888
 
-    class _NoChildrenRoot2(FakePsutilProcess):
-        def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
-            return []
-
-    parent_proc = _NoChildrenRoot2(pid=parent_pid)
+    parent_proc = _NoChildrenRoot(pid=parent_pid)
     descendant_proc = _TrackedDescendant(pid=descendant_pid)
     fake_psutil = FakePsutil()
     # policy: white-box-frozen
@@ -903,8 +930,6 @@ def test_register_descendant_registry_consumed_once_on_terminate() -> None:
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=fake_psutil)
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    # policy: white-box-frozen
-    handle._record.pid = parent_pid
 
     pm.register_descendant(parent_pid, descendant_pid)
     handle.terminate(grace_period_s=0.05)
@@ -933,11 +958,7 @@ def test_register_descendant_multiple_descendants_all_terminated() -> None:
     parent_pid = 1
     descendant_pids = [70001, 70002, 70003]
 
-    class _NoChildrenRoot3(FakePsutilProcess):
-        def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
-            return []
-
-    parent_proc = _NoChildrenRoot3(pid=parent_pid)
+    parent_proc = _NoChildrenRoot(pid=parent_pid)
     descendants = [_TrackedDescendant(pid=pid) for pid in descendant_pids]
     fake_psutil = FakePsutil()
     # policy: white-box-frozen
@@ -946,8 +967,6 @@ def test_register_descendant_multiple_descendants_all_terminated() -> None:
     pm = _make_pm(sync_factory=sync_factory, psutil_mod=fake_psutil)
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    # policy: white-box-frozen
-    handle._record.pid = parent_pid
 
     for descendant_pid in descendant_pids:
         pm.register_descendant(parent_pid, descendant_pid)
@@ -1167,6 +1186,29 @@ def test_list_records_includes_terminal_after_purge_on_init_false() -> None:
 # Zombie reaper and orphan cleanup tests
 # ---------------------------------------------------------------------------
 
+#: The name the ProcessManager gives its background zombie-reaper thread.
+#: The reaper is a real OS thread, so its liveness is observable through
+#: the standard library's thread registry -- no test-only accessor on the
+#: manager is needed (the former
+#: ``ProcessManager.zombie_reaper_running`` was exactly that and has been
+#: removed).
+_REAPER_THREAD_NAME_PREFIX = "ProcessManager-zombie-reaper-"
+
+
+def _reaper_thread_for(pm: ProcessManager) -> threading.Thread | None:
+    """Return the live zombie-reaper thread belonging to ``pm``, if any.
+
+    PUBLIC observation: ``threading.enumerate()`` lists every live thread,
+    and the manager names its reaper ``<prefix><manager id>``, so the
+    thread that belongs to THIS manager is identified without touching the
+    manager's private state.
+    """
+    wanted = f"{_REAPER_THREAD_NAME_PREFIX}{id(pm)}"
+    for thread in threading.enumerate():
+        if thread.name == wanted:
+            return thread
+    return None
+
 
 def test_zombie_reaper_starts_on_first_spawn_and_stops_on_shutdown() -> None:
     """Reaper thread starts on first spawn and stops on shutdown_all."""
@@ -1183,12 +1225,13 @@ def test_zombie_reaper_starts_on_first_spawn_and_stops_on_shutdown() -> None:
         async_process_factory=make_sync_process_factory(itertools.count(100)),
         psutil=None,
     )
-    assert pm.zombie_reaper_running() is False
+    assert _reaper_thread_for(pm) is None, "no reaper may run before the first spawn"
     pm.spawn([sys.executable, "-c", "pass"])
-    assert pm.zombie_reaper_running() is True
-    assert pm.zombie_reaper_running() is True
+    reaper = _reaper_thread_for(pm)
+    assert reaper is not None, "the first spawn must start the background reaper"
+    assert reaper.is_alive()
     pm.shutdown_all(grace_period_s=0.0)
-    assert pm.zombie_reaper_running() is False
+    assert _reaper_thread_for(pm) is None, "shutdown_all must stop the background reaper"
 
 
 def test_zombie_reaper_marks_zombie_records_as_killed() -> None:
@@ -1265,9 +1308,9 @@ def test_zombie_reaper_disabled_by_policy() -> None:
         async_process_factory=make_sync_process_factory(itertools.count(100)),
     )
     pm.spawn([sys.executable, "-c", "pass"])
-    assert pm.zombie_reaper_running() is False
+    assert _reaper_thread_for(pm) is None, "a disabled reaper must not start a thread"
     pm.shutdown_all(grace_period_s=0.0)
-    assert pm.zombie_reaper_running() is False
+    assert _reaper_thread_for(pm) is None
 
 
 def test_zombie_reaper_uses_injected_clock() -> None:
