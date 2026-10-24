@@ -116,12 +116,10 @@ def _can_rule_out_non_git_process(proc_root: Path, pid_str: str) -> bool:
     git_binary = shutil.which("git")
     if git_binary is not None:
         with suppress(OSError):
-            git_stat = Path(
-                git_binary
-            ).stat()  # filesystem-read-ok: stat git executable to resolve identity
-            exe_stat = (
-                proc_root / pid_str / "exe"
-            ).stat()  # filesystem-read-ok: stat procfs exe symlink to compare st_dev and st_ino
+            # filesystem-read-ok: stat git executable to resolve identity
+            git_stat = Path(git_binary).stat()
+            # filesystem-read-ok: stat procfs exe symlink to compare st_dev and st_ino
+            exe_stat = (proc_root / pid_str / "exe").stat()
             if (git_stat.st_dev, git_stat.st_ino) == (exe_stat.st_dev, exe_stat.st_ino):
                 return False
     return bool(names)

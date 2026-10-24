@@ -193,14 +193,15 @@ def _lock_has_no_live_holder(
     on ``TimeoutError`` or error, the helper returns "unknown" (fail-closed).
 
     Liveness OR-predicate (independently sufficient):
-      (i) ``/proc/<pid>/fd/*`` contains the lock path
-     (ii) ``/proc/<pid>/cwd`` is the per-worktree private gitdir,
-          the common gitdir, the worktree top level, the main-repo
-          top level, or any path under ``gitdir_common/worktrees/``
-    (iii) ``/proc/<pid>/environ`` has ``GIT_DIR`` matching ``gitdir``
-          or ``gitdir_common``
-     (iv) ``lsof -F pL <lock_path>`` returns 0 with ``p<PID>`` lines
-      (v) ``fuser`` fallback
+
+    * ``/proc/<pid>/fd/*`` contains the lock path
+    * ``/proc/<pid>/cwd`` is the per-worktree private gitdir,
+      the common gitdir, the worktree top level, the main-repo
+      top level, or any path under ``gitdir_common/worktrees/``
+    * ``/proc/<pid>/environ`` has ``GIT_DIR`` matching ``gitdir``
+      or ``gitdir_common``
+    * ``lsof -F pL <lock_path>`` returns 0 with ``p<PID>`` lines
+    * ``fuser`` fallback
 
     Returns:
         "live"  -- a live process is holding or using the lock; refuse
@@ -340,16 +341,17 @@ def _recover_stale_git_lock(
     """Recover from a transient Git lock-file error using an age-and-liveness gate.
 
     A lock is removed only when both conditions are met:
-      (a) Conservative age check: the lock must be older than
-          ``_STALE_GIT_LOCK_AGE_SECONDS`` (10 s). Git lock files do NOT
-          record the PID of the holding process (correcting a false PID claim);
-          age alone is not proof of staleness, but locks younger than 10s are
-          refused removal to protect potentially live operations.
-      (b) Negative liveness proof: verified via :func:`_lock_has_no_live_holder`
-          using an OR-predicate across multiple process signals (fd table,
-          cwd, environ, lsof, fuser). The lock is unlinked ONLY when liveness
-          is affirmatively proven "dead". If any check signals "live" or
-          liveness is "unknown" (timeout or error), removal is refused fail-closed.
+
+    * Conservative age check: the lock must be older than
+      ``_STALE_GIT_LOCK_AGE_SECONDS`` (10 s). Git lock files do NOT
+      record the PID of the holding process (correcting a false PID claim);
+      age alone is not proof of staleness, but locks younger than 10s are
+      refused removal to protect potentially live operations.
+    * Negative liveness proof: verified via :func:`_lock_has_no_live_holder`
+      using an OR-predicate across multiple process signals (fd table,
+      cwd, environ, lsof, fuser). The lock is unlinked ONLY when liveness
+      is affirmatively proven "dead". If any check signals "live" or
+      liveness is "unknown" (timeout or error), removal is refused fail-closed.
 
     Args:
         operation: Human-readable operation name for log messages.
@@ -360,9 +362,9 @@ def _recover_stale_git_lock(
             be exercised without mutating filesystem timestamps.
 
     Returns:
-        True  -- lock removed or already gone (caller can retry).
-        False -- lock is live, too young, or unprovable (caller
-                 surfaces the contention).
+        True when the lock was removed or already gone (caller can retry).
+        False when the lock is live, too young, or unprovable (caller
+        surfaces the contention).
     """
     lock_path = _parse_lock_path_from_error(str(error))
     if lock_path is None:

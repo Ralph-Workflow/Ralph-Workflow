@@ -151,6 +151,7 @@ def test_conflict_failures_call_recovery_controller_handle(
         return original(self, state, raw_failure, context)
 
     monkeypatch.setattr(RecoveryController, "handle", _spy)
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
 
@@ -243,6 +244,7 @@ def test_invoke_resolution_agent_keeps_chain_retry_budget(
 def test_launch_failure_is_not_collapsed_to_candidate_declined(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
     session = ResolutionSession()

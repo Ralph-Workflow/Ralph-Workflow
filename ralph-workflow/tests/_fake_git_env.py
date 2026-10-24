@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.integration_actions import AgentRunner, Clock, GitOps
 
 
-class FaultKind(Enum):
+class _FaultKind(Enum):
     """Named failure modes from the integration adversity catalogue."""
 
     NONE = auto()
@@ -38,7 +38,10 @@ class FaultKind(Enum):
     STALE_LOCK = auto()
 
 
-class FakeClock:
+FaultKind = _FaultKind
+
+
+class _FakeClock:
     """Monotonic fake clock for deterministic, fast-forwarded timing."""
 
     def __init__(self, initial_time: float = 1000.0) -> None:
@@ -77,13 +80,13 @@ class SimulatedGitEnvironment:
 
         self.calls: list[str] = []
         self.dispatches: list[str] = []
-        self.active_faults: list[FaultKind] = []
-        self.clock = FakeClock()
+        self.active_faults: list[_FaultKind] = []
+        self.clock = _FakeClock()
 
-    def set_faults(self, faults: list[FaultKind]) -> None:
+    def set_faults(self, faults: list[_FaultKind]) -> None:
         self.active_faults = list(faults)
 
-    def pop_fault(self, kind: FaultKind) -> bool:
+    def pop_fault(self, kind: _FaultKind) -> bool:
         if kind in self.active_faults:
             self.active_faults.remove(kind)
             return True
@@ -104,7 +107,7 @@ class SimulatedGitEnvironment:
         return not (in_target or in_head or in_backups)
 
 
-class FakeGitOps:
+class _FakeGitOps:
     """GitOps implementation driven by SimulatedGitEnvironment."""
 
     def __init__(self, env: SimulatedGitEnvironment) -> None:
@@ -235,7 +238,7 @@ class FakeGitOps:
         return True
 
 
-class FakeAgentRunner:
+class _FakeAgentRunner:
     """AgentRunner implementation driven by SimulatedGitEnvironment."""
 
     def __init__(self, env: SimulatedGitEnvironment, *, can_resolve: bool = True) -> None:
@@ -271,7 +274,7 @@ def make_fake_environment(
         feature_branch=feature_branch,
         remote_sha=remote_sha,
     )
-    git_ops: GitOps = FakeGitOps(env)
-    agent_runner: AgentRunner = FakeAgentRunner(env)
+    git_ops: GitOps = _FakeGitOps(env)
+    agent_runner: AgentRunner = _FakeAgentRunner(env)
     clock: Clock = env.clock
     return env, git_ops, agent_runner, clock

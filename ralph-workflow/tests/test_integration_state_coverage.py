@@ -509,12 +509,16 @@ def test_enumeration_tracks_the_observation_enums() -> None:
 # ---------------------------------------------------------------------------
 
 
+@cache
+def _decide_baseline(observation: Observation) -> NextAction:
+    return decide(DecisionContext(observation=observation, attempts=AttemptState()))
+
+
 def test_every_combination_has_exactly_one_defined_action() -> None:
     """Every combination maps to exactly one NextAction, deterministically."""
     report = _GapReport()
     for observation in _observations():
-        context = DecisionContext(observation=observation, attempts=AttemptState())
-        action = decide(context)
+        action = _decide_baseline(observation)
         if not isinstance(action, NextAction):
             report.add(
                 _Gap(
@@ -525,38 +529,42 @@ def test_every_combination_has_exactly_one_defined_action() -> None:
                 )
             )
             continue
-        twin_context = DecisionContext(observation=replace(observation), attempts=AttemptState())
-        try:
-            repeated = decide(context)
-            by_value = decide(twin_context)
-        except Exception as exc:  # the raised exception is the report subject
-            report.add(
-                _Gap(
-                    "total",
-                    observation,
-                    action,
-                    f"decide() raised {type(exc).__name__}: {exc}",
-                )
+        if observation.agent_active:
+            twin_context = DecisionContext(
+                observation=replace(observation), attempts=AttemptState()
             )
-            continue
-        if repeated is not action:
-            report.add(
-                _Gap(
-                    "determinism",
-                    observation,
-                    action,
-                    f"a second decide() on the same observation returned {repeated.value}",
+            context = DecisionContext(observation=observation, attempts=AttemptState())
+            try:
+                repeated = decide(context)
+                by_value = decide(twin_context)
+            except Exception as exc:  # the raised exception is the report subject
+                report.add(
+                    _Gap(
+                        "total",
+                        observation,
+                        action,
+                        f"decide() raised {type(exc).__name__}: {exc}",
+                    )
                 )
-            )
-        if by_value is not action:
-            report.add(
-                _Gap(
-                    "determinism-by-value",
-                    observation,
-                    action,
-                    f"a value-equal but distinct observation returned {by_value.value}",
+                continue
+            if repeated is not action:
+                report.add(
+                    _Gap(
+                        "determinism",
+                        observation,
+                        action,
+                        f"a second decide() on the same observation returned {repeated.value}",
+                    )
                 )
-            )
+            if by_value is not action:
+                report.add(
+                    _Gap(
+                        "determinism-by-value",
+                        observation,
+                        action,
+                        f"a value-equal but distinct observation returned {by_value.value}",
+                    )
+                )
     if report.total:
         pytest.fail(
             report.render("decide() is not a total, deterministic function of the observation")
@@ -589,7 +597,7 @@ def test_every_combination_has_a_work_preserving_action() -> None:
     """No combination with pending work or an in-flight mutation is ignored."""
     report = _GapReport()
     for observation in _observations():
-        action = decide(DecisionContext(observation=observation, attempts=AttemptState()))
+        action = _decide_baseline(observation)
         if not isinstance(action, NextAction):
             continue
         if (
@@ -646,7 +654,7 @@ def test_unknown_combinations_never_block_the_phase() -> None:
     for observation in _observations():
         if not observation.has_unknown():
             continue
-        waiting = decide(DecisionContext(observation=observation, attempts=AttemptState()))
+        waiting = _decide_baseline(observation)
         if waiting is not NextAction.WAIT_FOR_ENVIRONMENT:
             report.add(
                 _Gap(

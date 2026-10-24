@@ -277,22 +277,27 @@ def test_attempt_ledger_rung_monotone_after_terminal(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_attempt_ledger_repeat_counts_bounded_by_cap(tmp_path: Path) -> None:
+def test_attempt_ledger_repeat_counts_bounded_by_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Pushing past the cap keeps the most-recent ``REPEAT_CAP`` keys only."""
-    from ralph.pipeline.integration_attempt_ledger import REPEAT_CAP
+    import ralph.pipeline.integration_attempt_ledger as ledger_mod
+
+    test_cap = 10
+    monkeypatch.setattr(ledger_mod, "REPEAT_CAP", test_cap)
 
     ledger = AttemptLedger(tmp_path, repeat_threshold=9999)
-    for index in range(REPEAT_CAP + 50):
+    for index in range(test_cap + 5):
         ledger.with_attempt(f"sig-{index}", "wait", is_unknown=False)
 
     persisted = AttemptLedger(tmp_path).read()
 
-    assert len(persisted.repeat_counts) == REPEAT_CAP
-    # FIFO eviction — the first ``50`` keys must be gone, the most
-    # recent ``REPEAT_CAP`` keys must survive.
+    assert len(persisted.repeat_counts) == test_cap
+    # FIFO eviction — the first ``5`` keys must be gone, the most
+    # recent ``test_cap`` keys must survive.
     assert ("sig-0", "wait") not in persisted.repeat_counts
-    assert ("sig-49", "wait") not in persisted.repeat_counts
-    last_index = REPEAT_CAP + 49
+    assert ("sig-4", "wait") not in persisted.repeat_counts
+    last_index = test_cap + 4
     assert (f"sig-{last_index}", "wait") in persisted.repeat_counts
 
 

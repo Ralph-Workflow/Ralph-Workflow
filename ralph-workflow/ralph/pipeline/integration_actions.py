@@ -413,9 +413,8 @@ class _SystemClock:
 
     def sleep(self, seconds: float) -> None:
         """Pause execution for ``seconds``."""
-        time.sleep(
-            seconds
-        )  # filesystem-poll-ok: real wall-clock sleep implementation of injected Clock protocol
+        # filesystem-poll-ok: real wall-clock sleep implementation of injected Clock protocol
+        time.sleep(seconds)
 
 
 _DEFAULT_GIT_OPS = _ProductionGitOps()

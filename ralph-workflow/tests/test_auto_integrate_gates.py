@@ -627,8 +627,12 @@ def test_all_gates_agree_on_clean_and_blocked_truth(
 
 def _make_real_repo(repo_root: Path) -> Repo:
     repo = Repo.init(repo_root)
-    repo.config_writer().set_value("user", "name", "Test Committer").release()
-    repo.config_writer().set_value("user", "email", "test@example.com").release()
+    writer = repo.config_writer()
+    writer.set_value("user", "name", "Test Committer")
+    writer.set_value("user", "email", "test@example.com")
+    writer.set_value("gc", "auto", "0")
+    writer.set_value("core", "fsync", "none")
+    writer.release()
     actor = Actor("Test Committer", "test@example.com")
     tracked_file = repo_root / "tracked.txt"
     tracked_file.write_text("initial tracked content\n", encoding="utf-8")

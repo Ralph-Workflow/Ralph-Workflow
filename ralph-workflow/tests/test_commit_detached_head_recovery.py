@@ -8,6 +8,7 @@ failed_terminal or reports completed for a failed commit.
 from __future__ import annotations
 
 import shutil
+from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -98,6 +99,7 @@ def _make_commit_artifact(repo_root: Path, message: str) -> Path:
     return artifact_path
 
 
+@cache
 def _load_pipeline_policy() -> PipelinePolicy:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     return load_policy(defaults_dir).pipeline

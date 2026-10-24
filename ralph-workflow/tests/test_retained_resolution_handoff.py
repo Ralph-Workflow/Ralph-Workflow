@@ -418,6 +418,7 @@ def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
     return target, feature, main
 
 
+@pytest.mark.timeout_seconds(20)
 @pytest.mark.parametrize("crash_before_mutation", [False, True])
 def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
     tmp_git_repo: Path,
@@ -775,9 +776,6 @@ def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
     (root / "unrelated.txt").write_text("unfinished user work\n", encoding="utf-8")
     from rich.console import Console
 
-    from ralph.agents.registry import AgentRegistry
-    from ralph.config.models import AgentConfig
-    from ralph.display.context import make_display_context
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.auto_integrate_agent import (
         build_agent_conflict_resolver,
@@ -786,7 +784,6 @@ def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
     from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
     from ralph.pipeline.events import PipelineEvent
     from ralph.policy.loader import load_policy
-    from tests._pipeline_deps_factory import make_test_pipeline_deps
 
     calls: list[str] = []
 
@@ -815,24 +812,17 @@ def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
     deps = make_test_pipeline_deps(context)
     scope = WorkspaceScope(root)
     display = ParallelDisplay(context)
-    merge_resolver = build_agent_conflict_resolver(
-        config=config,
-        pipeline_deps=deps,
-        workspace_scope=scope,
-        policy_bundle=policy,
-        registry=registry,
-        display=display,
-        display_context=context,
-    )
-    rebase_resolver = build_agent_rebase_stop_resolver(
-        config=config,
-        pipeline_deps=deps,
-        workspace_scope=scope,
-        policy_bundle=policy,
-        registry=registry,
-        display=display,
-        display_context=context,
-    )
+    resolver_kw = {
+        "config": config,
+        "pipeline_deps": deps,
+        "workspace_scope": scope,
+        "policy_bundle": policy,
+        "registry": registry,
+        "display": display,
+        "display_context": context,
+    }
+    merge_resolver = build_agent_conflict_resolver(**resolver_kw)
+    rebase_resolver = build_agent_rebase_stop_resolver(**resolver_kw)
     if legacy:
         from ralph.pipeline.parallel.worker_runtime import run_worker_auto_integration
 
@@ -869,14 +859,12 @@ def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
 ) -> None:
     from rich.console import Console
 
-    from ralph.display.context import make_display_context
     from ralph.pipeline._pending_merge_repair import repair_pending_merge
     from ralph.pipeline._pending_rebase_continue import prepare_pending_rebase
     from ralph.pipeline.auto_integrate_record import clear_record
     from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
     from ralph.pipeline.events import PipelineEvent
     from ralph.policy.models import PolicyBundle
-    from tests._pipeline_deps_factory import make_test_pipeline_deps
 
     owner = tmp_git_repo
     target, _, _ = _interrupted(owner, "rebase")
@@ -917,13 +905,12 @@ def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr("ralph.pipeline.effect_executor.execute_agent_effect", execute)
+    deps = make_test_pipeline_deps(make_display_context(console=Console(file=StringIO())))
     assert repair_pending_merge(
         controller=make_resolver_controller(),
         workspace_scope=WorkspaceScope(feature),
         config=UnifiedConfig(),
-        pipeline_deps=make_test_pipeline_deps(
-            make_display_context(console=Console(file=StringIO()))
-        ),
+        pipeline_deps=deps,
         policy_bundle=PolicyBundle.model_construct(),
         display=None,
         display_context=None,
@@ -942,11 +929,13 @@ def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
 
 def test_stale_resolution_modules_do_not_use_legacy_decider_or_terminal_proof_text() -> None:
     """The stale-intent replay path has one owner and no proof-withholding outcome."""
-    from ralph.pipeline import (
-        _integration_continuation,
-        _owned_landing_reintegration,
-        auto_integrate_recovery_record,
+    import importlib
+
+    _integration_continuation = importlib.import_module("ralph.pipeline._integration_continuation")
+    _owned_landing_reintegration = importlib.import_module(
+        "ralph.pipeline._owned_landing_reintegration"
     )
+    from ralph.pipeline import auto_integrate_recovery_record
 
     for module in (
         _integration_continuation,
@@ -963,8 +952,10 @@ def test_stale_resolution_replay_clears_intent_and_retries_auto_rebase(
     tmp_path: Path,
 ) -> None:
     """A record Git disproves is snapshotted, cleared, and replayed at auto rebase."""
+    import importlib
+
+    owned = importlib.import_module("ralph.pipeline._owned_landing_reintegration")
     from ralph.git.merge import UnmergedPathsObservation
-    from ralph.pipeline import _owned_landing_reintegration as owned
     from ralph.pipeline._integration_action import RebaseOutcomeKind
     from ralph.pipeline.integration_observation import InProgressKind, Reading
 

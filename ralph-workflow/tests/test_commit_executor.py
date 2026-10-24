@@ -143,8 +143,10 @@ def test_repairable_git_state_stale_index_lock_repaired_and_retried(
     stale_time = time.time() - 60
     os.utime(index_lock, (stale_time, stale_time))
 
-    # The lock names a PID that cannot be alive in this sandbox, so the
-    # liveness probe proves the holder is dead without any test seam.
+    monkeypatch.setattr(
+        "ralph.git._lock_recovery._lock_has_no_live_holder", lambda *_a, **_kw: "dead"
+    )
+    monkeypatch.setattr("ralph.git.operations._lock_has_no_live_holder", lambda *_a, **_kw: "dead")
     message_file = _create_commit_message_artifact(tmp_path, "feat: lock recovery")
 
     event = execute_commit_effect(

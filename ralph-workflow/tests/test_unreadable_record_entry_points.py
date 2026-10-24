@@ -69,7 +69,7 @@ from ralph.policy.models import (
 )
 from ralph.workspace.scope import WorkspaceScope
 
-pytestmark = pytest.mark.subprocess_e2e
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 UNREADABLE_CAUSES: tuple[str, ...] = ("corrupt_json", "unsupported_schema")
 INTERVENTION = PhaseDecision.REPORT_INTERVENTION_REQUIRED

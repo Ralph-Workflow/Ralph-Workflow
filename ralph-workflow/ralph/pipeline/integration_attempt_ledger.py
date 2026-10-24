@@ -738,7 +738,7 @@ class AttemptLedger:
     def _clamp_repeats(
         repeats: OrderedDict[tuple[str, str], int],
         *,
-        cap: int = REPEAT_CAP,
+        cap: int | None = None,
         saturated: int = 0,
     ) -> tuple[OrderedDict[tuple[str, str], int], int]:
         """Clamp ``repeats`` to ``cap`` entries, folding evictions into ``saturated``.
@@ -748,7 +748,8 @@ class AttemptLedger:
         aggregate — otherwise an evicted entry would restore budget the
         next time it is written under a different key order.
         """
-        while len(repeats) > cap:
+        effective_cap = cap if cap is not None else REPEAT_CAP
+        while len(repeats) > effective_cap:
             _evicted_key, evicted_count = repeats.popitem(last=False)
             saturated = _saturating_add(saturated, evicted_count)
         return repeats, saturated

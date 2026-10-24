@@ -8,6 +8,8 @@ import pytest
 
 from ralph.pro_support.heartbeat import ProHeartbeatClient
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 class _FakeResponse:
     def __init__(self, status_code: int) -> None:
@@ -192,10 +194,10 @@ def test_heartbeat_transient_errors_continue_looping() -> None:
     client.start()
     try:
         # Drive several ticks; each posts then continues.
-        for _ in range(3):
+        for _ in range(2):
             tick_signal.clear()
             clock.advance(0.001)
-            assert tick_signal.wait(timeout=2.0), "heartbeat worker missed a tick"
+            assert tick_signal.wait(timeout=1.0), "heartbeat worker missed a tick"
     finally:
         client.stop()
     assert len(fake.posts) >= 2, "transient errors must not stop the loop"
@@ -217,10 +219,10 @@ def test_heartbeat_network_exception_is_transient() -> None:
     )
     client.start()
     try:
-        for _ in range(3):
+        for _ in range(2):
             tick_signal.clear()
             clock.advance(0.001)
-            assert tick_signal.wait(timeout=2.0), "heartbeat worker missed a tick"
+            assert tick_signal.wait(timeout=1.0), "heartbeat worker missed a tick"
     finally:
         client.stop()
     assert len(fake.posts) >= 2

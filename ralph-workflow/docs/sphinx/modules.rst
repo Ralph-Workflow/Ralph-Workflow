@@ -3276,6 +3276,13 @@ ralph.git.wrapper
    :members:
    :show-inheritance:
 
+ralph.git.lock_recovery
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.lock_recovery
+   :members:
+   :show-inheritance:
+
 ----
 
 Workspace

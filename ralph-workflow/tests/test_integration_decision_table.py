@@ -14,6 +14,8 @@ contract under ``ralph.testing.audit_test_policy``.
 
 from __future__ import annotations
 
+from functools import cache
+
 import pytest
 
 from ralph.pipeline.integration_decision import (
@@ -51,9 +53,10 @@ _ALL_OWNERSHIP: tuple[InProgressOwnership, ...] = tuple(InProgressOwnership)
 _ALL_RECORD: tuple[IntegrationRecordState, ...] = tuple(IntegrationRecordState)
 
 
-def _build_observations() -> list[Observation]:
+@cache
+def _build_observations() -> tuple[Observation, ...]:
     """Materialise every combination of the seven dimensions."""
-    return [
+    return tuple(
         Observation(
             target_vs_feature=target_vs_feature,
             target_vs_remote=target_vs_remote,
@@ -72,17 +75,18 @@ def _build_observations() -> list[Observation]:
         for in_progress_ownership in _ALL_OWNERSHIP
         for record in _ALL_RECORD
         for agent_active in (True, False)
-    ]
+    )
 
 
-def _build_unknown_observations() -> list[Observation]:
+@cache
+def _build_unknown_observations() -> tuple[Observation, ...]:
     """Materialise every observation where at least one dimension is UNKNOWN.
 
     Resolver dispatch is only ever admitted with ``REAL_CONFLICT`` evidence,
     so the unknown rule must be asserted across every possible unknown
     combination.
     """
-    return [obs for obs in _build_observations() if obs.has_unknown()]
+    return tuple(obs for obs in _build_observations() if obs.has_unknown())
 
 
 # ---------------------------------------------------------------------------
@@ -167,15 +171,14 @@ def test_decide_unknown_observation_yields_wait_or_pending() -> None:
     for observation in _build_unknown_observations():
         for attempts in (
             AttemptState(unknown_attempts=0, unknown_budget=5),
-            AttemptState(unknown_attempts=2, unknown_budget=5),
+            AttemptState(unknown_attempts=5, unknown_budget=5),
         ):
-            for _rung in LADDER_ORDER:
-                ctx = DecisionContext(observation=observation, attempts=attempts)
-                action = decide(ctx)
-                assert action in (
-                    NextAction.WAIT_FOR_ENVIRONMENT,
-                    NextAction.CONTINUE_WITH_INTEGRATION_PENDING,
-                ), f"unknown observation yielded non-wait action {action}"
+            ctx = DecisionContext(observation=observation, attempts=attempts)
+            action = decide(ctx)
+            assert action in (
+                NextAction.WAIT_FOR_ENVIRONMENT,
+                NextAction.CONTINUE_WITH_INTEGRATION_PENDING,
+            ), f"unknown observation yielded non-wait action {action}"
 
 
 # ---------------------------------------------------------------------------
