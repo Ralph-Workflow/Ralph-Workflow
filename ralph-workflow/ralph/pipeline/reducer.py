@@ -1430,6 +1430,10 @@ def _handle_commit_skipped(
 
 
 _MAX_COMMIT_RECOVERY_ATTEMPTS = 3
+#: Pause before re-running a commit that a git lock blocked. The in-call recovery
+#: already waits on a live holder; this keeps a lock that cannot be cleared from
+#: spinning the loop hot while the holder (or an operator) finishes.
+_LOCK_RETRY_DELAY_MS = 5_000
 
 
 def _is_repairable_git_failure(reason: str | None) -> bool:
@@ -1518,6 +1522,62 @@ def _recoverable_git_failure_default_target(
     return state.phase
 
 
+def _route_lock_contention_in_place(
+    state: PipelineState,
+    cleared_state: PipelineState,
+    policy: PipelinePolicy,
+    last_error: str | None,
+    failure_reason: str,
+    routing_timing: RoutingTiming | None,
+) -> tuple[PipelineState, list[Effect]] | None:
+    """Re-run the commit in place when a git lock blocked it; never end the run for it.
+
+    A lock is not something a recovery agent can release and not a reason to stop
+    the workflow: it is held by a live operation (which finishes), or it is an
+    orphan the next attempt clears. So lock contention neither consumes the
+    bounded agent-recovery budget nor routes to ``failed_terminal``; the commit
+    is retried in place with the validated message preserved, after a pause.
+    ``recovery_epoch`` is clamped at the cap so it stays a diagnostic.
+    Returns ``None`` when the failure is not lock contention (or there is no
+    in-place target), leaving the ordinary budgeted routing to apply.
+    """
+    from ralph.git._lock_recovery import names_a_lock_file
+
+    # Only a message that names a specific lock file is contention that waiting can
+    # resolve. "cannot lock ref" alone also reports permanent ref-name conflicts,
+    # which must keep the capped path instead of retrying forever.
+    if not names_a_lock_file(last_error or ""):
+        return None
+    # The failure arrived in the commit phase itself: that is where it is retried,
+    # whether or not the policy also declares an (agent) recovery phase -- an
+    # agent cannot release a lock, so routing there would only burn a cycle.
+    in_place_target = cleared_state.phase
+    logger.bind(component="policy.routing").warning(
+        "Git lock blocked the commit; retrying {} in place after {}ms without consuming "
+        "the recovery budget (recovery_epoch={}/{}): {}",
+        in_place_target,
+        _LOCK_RETRY_DELAY_MS,
+        cleared_state.recovery_epoch,
+        _MAX_COMMIT_RECOVERY_ATTEMPTS,
+        failure_reason,
+    )
+    advanced_state, target = _prepare_phase_advance(
+        cleared_state, in_place_target, policy, routing_timing=routing_timing
+    )
+    advanced = progress.advance_phase(advanced_state, target, policy=policy)
+    updates: dict[str, object] = {
+        "commit": state.commit,
+        "last_error": failure_reason,
+        "recovery_epoch": min(cleared_state.recovery_epoch + 1, _MAX_COMMIT_RECOVERY_ATTEMPTS),
+        "pending_cycle_outcome": None,
+        "last_execution_result_status": "failed",
+        "last_retry_delay_ms": _LOCK_RETRY_DELAY_MS,
+    }
+    if target == in_place_target:
+        updates["previous_phase"] = state.previous_phase
+    return advanced.copy_with(**updates), []
+
+
 def _handle_commit_failure(
     state: PipelineState,
     policy: PipelinePolicy | None,
@@ -1554,6 +1614,11 @@ def _handle_commit_failure(
 
     if _is_repairable_git_failure(last_error):
         failure_reason = last_error or commit_failure_reason(state)
+        lock_retry = _route_lock_contention_in_place(
+            state, cleared_state, policy, last_error, failure_reason, routing_timing
+        )
+        if lock_retry is not None:
+            return lock_retry
         if cleared_state.recovery_epoch >= _MAX_COMMIT_RECOVERY_ATTEMPTS:
             from ralph.pipeline._retry_progress_guard import RetryProgressGuard
 

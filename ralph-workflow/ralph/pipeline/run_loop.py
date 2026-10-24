@@ -754,6 +754,31 @@ def _push_status_bar_if_changed(
     return last_sig
 
 
+def _sweep_orphaned_git_locks(workspace_scope: WorkspaceScope) -> None:
+    """Clear git locks orphaned by a crashed previous run before any phase runs.
+
+    A ``kill -9``, OOM kill or power loss cannot be made graceful, so a run
+    must start from a repository whose dead locks are gone. Each lock passes the
+    same age + proven-no-live-holder + unchanged-identity gate as in-call
+    recovery; a held or unprovable lock is left alone. Never blocks startup.
+    """
+    try:
+        from ralph.git._lock_recovery import reap_stale_locks
+        from ralph.pipeline._auto_integrate_recovery_git_state import (
+            common_git_dir,
+            rebase_bookkeeping_dir,
+        )
+
+        root = workspace_scope.root
+        git_dir = rebase_bookkeeping_dir(root)
+        if git_dir is None:
+            return
+        for lock in reap_stale_locks(git_dir, common_git_dir(root), operation="startup-sweep"):
+            logger.info("startup sweep removed orphaned git lock: {}", lock)
+    except Exception as sweep_exc:
+        logger.warning("startup git-lock sweep failed: {}", sweep_exc)
+
+
 def _run_auto_integrate_recovery_preamble(
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig | None = None,
@@ -779,6 +804,7 @@ def _run_auto_integrate_recovery_preamble(
     sees the recovered / skipped / restored verdict in the next
     receipt.
     """
+    _sweep_orphaned_git_locks(workspace_scope)
     try:
         from ralph.pipeline.auto_integrate import recover_incomplete_integration
 

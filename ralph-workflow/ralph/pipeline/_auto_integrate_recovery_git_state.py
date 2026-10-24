@@ -60,6 +60,18 @@ def rebase_bookkeeping_dir(root: Path) -> Path | None:
     return git_dir
 
 
+def common_git_dir(root: Path) -> Path | None:
+    """Return the shared git dir (``git rev-parse --git-common-dir``), or None."""
+    try:
+        result = run_git(("rev-parse", "--git-common-dir"), cwd=root, label="git-common-dir")
+    except OSError:
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    common = Path(result.stdout.strip())
+    return common if common.is_absolute() else (root / common).resolve()
+
+
 def common_dir_lock_paths(root: Path) -> tuple[Path, ...]:
     """Return shared ref-lock paths without guessing linked-worktree layout."""
     try:

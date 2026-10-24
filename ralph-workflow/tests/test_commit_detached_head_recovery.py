@@ -723,8 +723,9 @@ def test_persistent_repairable_failure_without_recovery_phase_stops_at_retry_cap
 ) -> None:
     """O1 retry risk: Persistent repairable Git failure under policy without cleanup/recovery.
 
-    Verifies that when a persistent repairable Git failure (such as index.lock
-    contention or detached HEAD error) occurs under a policy defining neither
+    Verifies that when a persistent repairable Git failure (such as unmerged
+    paths or a detached HEAD error; NOT git lock contention, which waits and never
+    ends the run) occurs under a policy defining neither
     ``commit_recovery`` nor ``commit_cleanup``:
     1. Retries in-place up to the bounded ``_MAX_COMMIT_RECOVERY_ATTEMPTS`` cap.
     2. Once the counter is exhausted, does NOT cycle in-place indefinitely.
@@ -768,13 +769,14 @@ def test_persistent_repairable_failure_without_recovery_phase_stops_at_retry_cap
         commit=initial_commit,
         recovery_epoch=0,
         pending_cycle_outcome="completed",
-        last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
+        last_error="GitOperationError: unmerged paths remain in the index",
     )
 
     # Inject persistent repairable Git failure at the real effect/reducer boundary:
-    # A persistent index.lock contention error
+    # A persistent non-lock repairable error (lock contention never terminates, see
+    # tests/pipeline/test_reducer_lock_retry.py)
     effect = CommitEffect(message_file=str(message_file))
-    lock_err = "GitOperationError: Unable to create '.git/index.lock': File exists"
+    lock_err = "GitOperationError: unmerged paths remain in the index"
 
     def failing_stage_all(_root: Path | str) -> None:
         raise RuntimeError(lock_err)
@@ -857,9 +859,9 @@ def test_persistent_repairable_failure_stops_even_with_workflow_fallback() -> No
         previous_phase="development",
         recovery_epoch=3,  # exhausted
         pending_cycle_outcome="completed",
-        last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
+        last_error="GitOperationError: unmerged paths remain in the index",
     )
-    set_last_commit_error("GitOperationError: Unable to create '.git/index.lock': File exists")
+    set_last_commit_error("GitOperationError: unmerged paths remain in the index")
     try:
         next_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy_with_fallback)
         assert next_state.phase == policy_with_fallback.recovery.failed_route

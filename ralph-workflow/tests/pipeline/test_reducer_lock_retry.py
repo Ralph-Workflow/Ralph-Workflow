@@ -359,3 +359,27 @@ def test_valid_message_preserved_through_failure_then_success(tmp_path: Path) ->
         "The validated multiline message must reach the second (successful) commit "
         "unchanged; the message file is the durable source of truth across retries"
     )
+
+
+def test_persistent_lock_contention_never_reaches_failed_terminal_and_pauses() -> None:
+    """A lock is waited out, not fatal: no recovery budget burn, no terminal, a pause between tries."""
+    from ralph.pipeline.reducer import _LOCK_RETRY_DELAY_MS
+
+    policy = _load_pipeline_policy()
+    err = "GitOperationError: Git stage_all failed: fatal: Unable to create '/r/.git/index.lock': File exists."
+    state = PipelineState(
+        phase="development_commit",
+        recovery_epoch=0,
+        pending_cycle_outcome="completed",
+        last_error=err,
+    )
+    try:
+        for _ in range(_MAX_COMMIT_RECOVERY_ATTEMPTS * 4):
+            set_last_commit_error(err)
+            state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy)
+            assert state.phase != policy.recovery.failed_route
+            assert state.recovery_epoch <= _MAX_COMMIT_RECOVERY_ATTEMPTS
+            assert state.last_retry_delay_ms == _LOCK_RETRY_DELAY_MS
+            state = state.copy_with(last_retry_delay_ms=0, pending_cycle_outcome="completed")
+    finally:
+        set_last_commit_error(None)

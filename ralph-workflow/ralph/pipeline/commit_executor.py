@@ -17,6 +17,7 @@ from ralph.display.parallel_display import (
     get_display_context,
     resolve_active_display,
 )
+from ralph.git._lock_recovery import reap_stale_locks
 from ralph.git.commit_cleanup import (
     add_to_git_exclude,
     is_recognized_secret_path,
@@ -43,13 +44,11 @@ from ralph.phases.required_artifacts import (
     resolve_phase_required_artifact,
 )
 from ralph.pipeline._auto_integrate_recovery_git_state import (
-    common_dir_lock_paths,
+    common_git_dir,
     detached_branch_name,
     detached_head_no_state,
-    lock_holder_is_dead,
     reattach_head_to_branch,
     rebase_bookkeeping_dir,
-    remove_path,
 )
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import CommitResidualEvent, Event, PipelineEvent
@@ -509,21 +508,13 @@ def _attempt_repair_git_state(repo_root: Path, **opts: object) -> bool:
 
     git_dir = rebase_bookkeeping_dir(repo_root) or (repo_root / ".git")
     if git_dir.is_dir():
-        index_lock = git_dir / "index.lock"
-        if index_lock.exists() and lock_holder_is_dead(index_lock, gitdir=git_dir):
-            logger.info("Removing stale index.lock: {}", index_lock)
-            remove_path(index_lock)
+        # One gate for every lock git could have orphaned (private + common dir,
+        # refs, reflogs, submodules): old enough, provably no live holder, and
+        # still the same file when it is removed.
+        common_dir = common_git_dir(repo_root)
+        for lock_path in reap_stale_locks(git_dir, common_dir, operation="commit-repair"):
+            logger.info("Removed stale git lock: {}", lock_path)
             repaired = True
-        head_lock = git_dir / "HEAD.lock"
-        if head_lock.exists() and lock_holder_is_dead(head_lock, gitdir=git_dir):
-            logger.info("Removing stale HEAD.lock: {}", head_lock)
-            remove_path(head_lock)
-            repaired = True
-        for lock_path in common_dir_lock_paths(repo_root):
-            if lock_path.exists() and lock_holder_is_dead(lock_path, gitdir=git_dir):
-                logger.info("Removing stale common dir lock: {}", lock_path)
-                remove_path(lock_path)
-                repaired = True
     return repaired
 
 
@@ -536,16 +527,20 @@ def _perform_commit_creation(
     repair_opts: Mapping[str, object],
 ) -> str:
     """Attempt commit creation with repairable git state retry, returning commit sha."""
-    expected_head = get_head_sha(repo_root)
-    _stage_commit_scope(repo_root, payload, stage_all_fn)
+
+    def _stage_and_create() -> CommitCreationResult:
+        # Staging is inside the repair-and-retry too: ``git add -A`` is where an
+        # orphaned index.lock is first hit, so it must reach the same repair.
+        head = get_head_sha(repo_root)
+        _stage_commit_scope(repo_root, payload, stage_all_fn)
+        return create_commit_fn(str(repo_root), message, expected_head=head)
+
     try:
-        result = create_commit_fn(str(repo_root), message, expected_head=expected_head)
+        result = _stage_and_create()
     except Exception:
         if _attempt_repair_git_state(repo_root, **repair_opts):
             logger.info("Retrying commit creation after git state repair")
-            expected_head = get_head_sha(repo_root)
-            _stage_commit_scope(repo_root, payload, stage_all_fn)
-            result = create_commit_fn(str(repo_root), message, expected_head=expected_head)
+            result = _stage_and_create()
         else:
             raise
     if result.status is not CommitCreationStatus.CREATED or result.sha is None:
