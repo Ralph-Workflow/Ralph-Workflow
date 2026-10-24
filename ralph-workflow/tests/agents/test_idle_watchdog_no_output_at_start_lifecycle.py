@@ -579,8 +579,8 @@ class TestSafeCorroborateFailsClosed:
         watchdog = IdleWatchdog(config, clock, corroborator=lambda: None)
         watchdog.record_invocation_start()
 
-        snapshot = watchdog._safe_corroborate()
-        assert snapshot is not None, "_safe_corroborate MUST normalize None to an empty snapshot"
+        snapshot = watchdog.safe_corroborate()
+        assert snapshot is not None, "safe_corroborate MUST normalize None to an empty snapshot"
         assert isinstance(snapshot, CorroborationSnapshot)
         assert snapshot.alive_by is None
         # scoped_child_active is None by default (Optional[bool]); the
@@ -605,7 +605,7 @@ class TestSafeCorroborateFailsClosed:
 
         for bogus_value in ("not a snapshot", 42, {"alive_by": "OS_DESCENDANT"}, []):
             watchdog = IdleWatchdog(config, clock, corroborator=lambda value=bogus_value: value)
-            snapshot = watchdog._safe_corroborate()
+            snapshot = watchdog.safe_corroborate()
             assert isinstance(snapshot, CorroborationSnapshot), (
                 f"non-snapshot return {bogus_value!r} MUST normalize to empty"
                 f" CorroborationSnapshot, got {snapshot!r}"

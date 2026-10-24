@@ -26,9 +26,9 @@ scoped ``unittest.mock.patch`` so the restoration is automatic.
 from __future__ import annotations
 
 import concurrent.futures
-import os
 import sys
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn
 from unittest import mock
@@ -52,13 +52,15 @@ from ralph.mcp.server._pre_serve_overrun import (
     PRE_SERVE_OVERRUN_EXIT_CODE,
     SESSION_OVERRUN_EXIT_CODE,
     StageEventRecorder,
+    exit_handler_override,
     fail_closed_pre_serve_overrun,
+    run_pre_serve_bounded,
     stage_recorder_override,
 )
 from ralph.mcp.server._publish_catalog_bounded import publish_tool_catalog_bounded
 from ralph.mcp.server._start_stage_tracker import read_last_stage
 from ralph.mcp.server._start_stage_tracker import record as real_record_stage
-from ralph.mcp.tools.bridge import build_ralph_tool_registry
+from ralph.mcp.tools.bridge import ToolBridge, build_ralph_tool_registry
 
 if TYPE_CHECKING:
     from ralph.mcp.server.runtime import McpServerExtras
@@ -113,7 +115,7 @@ def test_overrun_with_stalled_stage_recording_exits_promptly(tmp_path: Path) -> 
 
     try:
         with (
-            mock.patch.object(os, "_exit", _mock_exit),
+            exit_handler_override(_mock_exit),
             pytest.raises(_ExitInterceptedError) as exc_info,
         ):
             fail_closed_pre_serve_overrun(
@@ -143,7 +145,7 @@ def test_overrun_with_stalled_stdio_flush_exits_promptly(tmp_path: Path) -> None
 
     try:
         with (
-            mock.patch.object(os, "_exit", _mock_exit),
+            exit_handler_override(_mock_exit),
             mock.patch.object(sys.stdout, "flush", stalled_flush),
             pytest.raises(_ExitInterceptedError) as exc_info,
         ):
@@ -168,7 +170,7 @@ def test_overrun_with_failing_stage_recording_suppresses_error_and_exits(tmp_pat
         raise OSError("Hostile filesystem / disk read-only error")
 
     with (
-        mock.patch.object(os, "_exit", _mock_exit),
+        exit_handler_override(_mock_exit),
         pytest.raises(_ExitInterceptedError) as exc_info,
     ):
         fail_closed_pre_serve_overrun(
@@ -186,7 +188,7 @@ def test_overrun_with_failing_stage_recording_suppresses_error_and_exits(tmp_pat
 def test_overrun_clean_path_records_stage_and_exits(tmp_path: Path) -> None:
     """Under normal filesystem operation, stage is recorded and exit code is honored."""
     with (
-        mock.patch.object(os, "_exit", _mock_exit),
+        exit_handler_override(_mock_exit),
         pytest.raises(_ExitInterceptedError) as exc_info,
     ):
         fail_closed_pre_serve_overrun(
@@ -298,7 +300,7 @@ def test_hung_session_from_env_fails_closed_before_preflight_minus_safety(tmp_pa
 
     with (
         mock.patch.object(concurrent.futures.Future, "result", mock_future_result),
-        mock.patch.object(os, "_exit", _mock_exit),
+        exit_handler_override(_mock_exit),
         pytest.raises(_ExitInterceptedError) as exc_info,
     ):
         runtime_mod.run_standalone_server(tmp_path, env={})
@@ -316,30 +318,19 @@ def test_hung_session_from_env_fails_closed_before_preflight_minus_safety(tmp_pa
 
 def test_pre_serve_io_taking_1_5s_succeeds(tmp_path: Path) -> None:
     """Pre-serve I/O taking 1.5s succeeds under the real remaining startup deadline."""
-    session = AgentSession(
-        session_id="test-session-preserve",
-        run_id="test-run",
-        drain="standalone",
-        capabilities={"mcp"},
-    )
-
     captured_timeouts: list[float | None] = []
     t0 = mcp_startup_now()
 
-    with (
-        mock.patch(
-            "ralph.mcp.server.runtime.load_mcp_config",
-            lambda *args, **kwargs: McpConfig(),
-        ),
-        mock.patch.object(
-            concurrent.futures.Future, "result", _spy_future_result(captured_timeouts)
-        ),
+    def do_pre_serve() -> tuple[Path, McpConfig]:
+        return (tmp_path, McpConfig())
+
+    with mock.patch.object(
+        concurrent.futures.Future, "result", _spy_future_result(captured_timeouts)
     ):
-        ws, cfg = runtime_mod._poll_bounded_pre_serve(
-            workspace_root=tmp_path,
-            effective_session=session,
-            workspace=None,
-            extras=runtime_mod.McpServerExtras(),
+        ws, cfg = run_pre_serve_bounded(
+            tmp_path,
+            do_pre_serve,
+            stage="config_loading",
             env_map={},
             t0=t0,
         )
@@ -361,24 +352,19 @@ def test_pre_serve_future_timeout_uses_remaining_headroom_not_one_second_cap(
     tmp_path: Path,
 ) -> None:
     """Pre-serve Future.result timeout uses remaining headroom (~28s), not the old 1s cap."""
-    session = AgentSession(
-        session_id="test-session-preserve-cap",
-        run_id="test-run",
-        drain="standalone",
-        capabilities={"mcp"},
-    )
-
     captured_timeouts: list[float | None] = []
     t0 = mcp_startup_now()
+
+    def do_pre_serve() -> tuple[Path, McpConfig]:
+        return (tmp_path, McpConfig())
 
     with mock.patch.object(
         concurrent.futures.Future, "result", _spy_future_result(captured_timeouts)
     ):
-        ws, cfg = runtime_mod._poll_bounded_pre_serve(
-            workspace_root=tmp_path,
-            effective_session=session,
-            workspace=None,
-            extras=runtime_mod.McpServerExtras(mcp_config=McpConfig()),
+        ws, cfg = run_pre_serve_bounded(
+            tmp_path,
+            do_pre_serve,
+            stage="config_loading",
             env_map={},
             t0=t0,
         )
@@ -467,11 +453,28 @@ def test_runtime_read_timeout_selection_slow_read_succeeds_with_configured_400ms
     )
 
     captured_kwargs: list[dict[str, object]] = []
-    real_build = runtime_mod.build_ralph_tool_registry
 
-    def spy_build(*args: object, **kwargs: object) -> object:
-        captured_kwargs.append(kwargs)
-        return real_build(*args, **kwargs)
+    def spy_build(
+        session: object,
+        workspace: object,
+        *,
+        upstream_registry: object = None,
+        mcp_config: McpConfig | None = None,
+        t0: float | None = None,
+        budget_s: float | None = None,
+        timeout_s: float | None = None,
+        clock_fn: Callable[[], float] | None = None,
+    ) -> ToolBridge:
+        captured_kwargs.append({"timeout_s": timeout_s})
+        return build_ralph_tool_registry(
+            session,
+            workspace,
+            mcp_config=mcp_config,
+            t0=t0,
+            budget_s=budget_s,
+            timeout_s=timeout_s,
+            clock_fn=clock_fn,
+        )
 
     slow_ws = FsWorkspace(tmp_path)
     env_map = {"RALPH_MCP_REGISTRY_READ_TIMEOUT_MS": "400"}
@@ -565,7 +568,7 @@ def test_blocked_stage_recorder_fails_closed_before_preflight_with_headroom(
 
     with (
         stage_recorder_override(blocked_record),
-        mock.patch.object(os, "_exit", _mock_exit),
+        exit_handler_override(_mock_exit),
         pytest.raises(_ExitInterceptedError) as exc_info,
     ):
         runtime_mod.run_standalone_server(tmp_path, env={})
@@ -632,3 +635,29 @@ def test_slow_stage_recorder_succeeds_without_premature_failure(tmp_path: Path) 
     assert write_timeouts[0] > 1.0
     # The stage marker also reached the on-disk stage file.
     assert read_last_stage(tmp_path) == "session_ready"
+
+
+def test_pre_serve_bounded_timeout_fails_closed_with_overrun(tmp_path: Path) -> None:
+    """run_pre_serve_bounded times out when action stalls, triggering fail-closed overrun."""
+
+    def hung_action() -> None:
+        raise concurrent.futures.TimeoutError("Stalled pre-serve I/O")
+
+    with (
+        exit_handler_override(_mock_exit),
+        mock.patch.object(
+            concurrent.futures.Future,
+            "result",
+            side_effect=concurrent.futures.TimeoutError("Stalled pre-serve I/O"),
+        ),
+        pytest.raises(_ExitInterceptedError) as exc_info,
+    ):
+        run_pre_serve_bounded(
+            tmp_path,
+            hung_action,
+            stage="config_loading",
+            env_map={},
+            t0=mcp_startup_now(),
+        )
+
+    assert exc_info.value.code == PRE_SERVE_OVERRUN_EXIT_CODE

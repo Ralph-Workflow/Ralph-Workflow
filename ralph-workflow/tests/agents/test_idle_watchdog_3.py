@@ -129,7 +129,7 @@ def test_no_false_kill_on_mcp_tool_activity() -> None:
     assert verdict == WatchdogVerdict.CONTINUE, (
         f"expected CONTINUE (deferred via mcp_tool channel), got {verdict}"
     )
-    assert wd._channel_evidence_active(clock.monotonic()) is True
+    assert wd.channel_evidence_active(clock.monotonic()) is True
 
     # Now wait past the TTL with no new activity -> FIRE
     clock.advance(2000.0)
@@ -587,8 +587,8 @@ def test_workspace_monitor_to_watchdog_integration(tmp_path: Path) -> None:
         classifier=_default_classifier(),
     )
     # Pre-condition: watchdog has not observed any workspace activity yet.
-    assert wd._last_workspace_event_at is None
-    assert wd._workspace_event_count_internal == 0
+    assert wd.last_workspace_event_at is None
+    assert wd.workspace_event_count == 0
     # Wire the production-style 2-arg callback so the watchdog receives
     # the real (kind, weight) classification instead of the OTHER default.
     monitor.set_on_event(lambda kind, weight: wd.record_workspace_event(kind=kind, weight=weight))
@@ -596,8 +596,8 @@ def test_workspace_monitor_to_watchdog_integration(tmp_path: Path) -> None:
     clock.advance(100.5)
     monitor.record_event("/tmp/foo.py")
     # The watchdog's per-channel state must now reflect the event.
-    assert wd._last_workspace_event_at == 100.5
-    assert wd._workspace_event_count_internal == 1
+    assert wd.last_workspace_event_at == 100.5
+    assert wd.workspace_event_count == 1
     # The per-kind counter must reflect the real classification (source),
     # not the OTHER default that the legacy 0-arg binding would yield.
     assert wd.workspace_kind_counts == {"source": 1}
@@ -724,7 +724,7 @@ def test_recorders_do_not_mutate_last_activity() -> None:
     existing log without perturbing it.
     """
     wd, clock = _make_watchdog()
-    baseline = wd._last_activity
+    baseline = wd.last_activity
     # Move the clock forward so a record_activity() call produces a
     # strictly different timestamp; otherwise the FakeClock returns the
     # same value and the comparison would trivially succeed.
@@ -732,11 +732,11 @@ def test_recorders_do_not_mutate_last_activity() -> None:
     wd.record_mcp_tool_call()
     wd.record_subagent_work()
     wd.record_workspace_event()
-    assert wd._last_activity == baseline
+    assert wd.last_activity == baseline
     # stdout activity DOES move the baseline.
     wd.record_activity()
-    assert wd._last_activity != baseline
-    assert wd._last_activity > baseline
+    assert wd.last_activity != baseline
+    assert wd.last_activity > baseline
 
 
 # ---------------------------------------------------------------------------
@@ -796,27 +796,27 @@ def test_recorders_accept_custom_now_timestamp() -> None:
     wd.record_mcp_tool_call(now=42.0)
     wd.record_subagent_work(now=43.0)
     wd.record_workspace_event(now=44.0)
-    assert wd._last_mcp_tool_call_at == 42.0
-    assert wd._last_subagent_progress_at == 43.0
-    assert wd._last_workspace_event_at == 44.0
-    assert wd._mcp_tool_call_count == 1
-    assert wd._subagent_progress_count == 1
-    assert wd._workspace_event_count_internal == 1
+    assert wd.last_mcp_tool_call_at == 42.0
+    assert wd.last_subagent_progress_at == 43.0
+    assert wd.last_workspace_event_at == 44.0
+    assert wd.mcp_tool_call_count == 1
+    assert wd.subagent_progress_count == 1
+    assert wd.workspace_event_count == 1
 
 
 # ---------------------------------------------------------------------------
-# (p) Verify _handle_evidence_deferral exists and is callable
+# (p) Verify handle_evidence_deferral exists and is callable
 # ---------------------------------------------------------------------------
 
 
 def test_handle_evidence_deferral_returns_continue() -> None:
-    """``_handle_evidence_deferral`` is the private verdict-hook method
+    """``handle_evidence_deferral`` is the verdict-hook method
     the watchdog consults when the idle deadline has elapsed but a
     non-stdout channel is still fresh. It returns CONTINUE.
     """
     wd, clock = _make_watchdog()
     wd.record_mcp_tool_call()
-    verdict = wd._handle_evidence_deferral(clock.monotonic(), 0.5)
+    verdict = wd.handle_evidence_deferral(clock.monotonic(), 0.5)
     assert verdict == WatchdogVerdict.CONTINUE
 
 
@@ -865,7 +865,7 @@ def test_handle_evidence_deferral_debug_log_names_channel_age() -> None:
 
     handler_id = loguru_logger.add(_sink, level="DEBUG")
     try:
-        wd._handle_evidence_deferral(clock.monotonic(), 50.0)
+        wd.handle_evidence_deferral(clock.monotonic(), 50.0)
     finally:
         loguru_logger.remove(handler_id)
 
@@ -892,7 +892,7 @@ def test_handle_evidence_deferral_debug_log_age_differs_from_idle_elapsed() -> N
         stdout last_at remains t=0, so stdout age = 60s)
       - advance 55s (total elapsed = 115s; mcp_tool age = 55s,
         stdout age = 115s; both fresh under 1000s TTL)
-      - _handle_evidence_deferral with idle_elapsed=115.0
+      - handle_evidence_deferral with idle_elapsed=115.0
 
     Expected log: ``channel=mcp_tool age=55.0s idle_elapsed=115.0s``.
     The 'age=' value (55.0) must DIFFER from the 'idle_elapsed=' value
@@ -912,7 +912,7 @@ def test_handle_evidence_deferral_debug_log_age_differs_from_idle_elapsed() -> N
 
     handler_id = loguru_logger.add(_sink, level="DEBUG")
     try:
-        wd._handle_evidence_deferral(clock.monotonic(), 115.0)
+        wd.handle_evidence_deferral(clock.monotonic(), 115.0)
     finally:
         loguru_logger.remove(handler_id)
 
@@ -935,7 +935,7 @@ def test_handle_evidence_deferral_debug_log_age_differs_from_idle_elapsed() -> N
 
 
 def test_build_evidence_summary_diag_returns_freshest_age() -> None:
-    """``_build_evidence_summary_diag`` now returns a 2-tuple
+    """``build_evidence_summary_diag`` now returns a 2-tuple
     ``(diag, freshest_age)`` so the verdict hook can name the
     channel age that is doing the deferral.
 
@@ -951,7 +951,7 @@ def test_build_evidence_summary_diag_returns_freshest_age() -> None:
     wd.record_mcp_tool_call()  # at t=60 (stdout stays at t=0)
     clock.advance(55.0)  # total elapsed = 115s
 
-    diag, freshest_age = wd._build_evidence_summary_diag(clock.monotonic())
+    diag, freshest_age = wd.build_evidence_summary_diag(clock.monotonic())
     assert isinstance(diag, dict)
     assert "evidence_summary" in diag
     assert diag["active_channel"] == "mcp_tool"
@@ -965,6 +965,6 @@ def test_build_evidence_summary_diag_returns_freshest_age() -> None:
     wd2, clock2 = _make_watchdog(activity_ttl=10.0)
     wd2.record_activity()  # at t=0
     clock2.advance(20.0)  # past idle AND past the 10s TTL
-    diag2, freshest_age2 = wd2._build_evidence_summary_diag(clock2.monotonic())
+    diag2, freshest_age2 = wd2.build_evidence_summary_diag(clock2.monotonic())
     assert diag2["active_channel"] == "none"
     assert freshest_age2 is None

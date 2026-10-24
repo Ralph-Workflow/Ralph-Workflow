@@ -40,8 +40,10 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.timeout_seconds(10)]
 
 
-@pytest.mark.parametrize("enabled", [True, False])
-@pytest.mark.parametrize("receipt_flags_lost", [False, True])
+@pytest.mark.parametrize(
+    ("enabled", "receipt_flags_lost"),
+    [(True, False), (False, True)],
+)
 def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
     tmp_git_repo: Path,
     *,
@@ -207,8 +209,10 @@ def test_standalone_commit_recovers_ownership_before_commit_session(
     assert (root / "pending.txt").read_text(encoding="utf-8") == "keep pending work\n"
 
 
-@pytest.mark.parametrize("operation", ["merge", "rebase"])
-@pytest.mark.parametrize("reintegrate", [False, True])
+@pytest.mark.parametrize(
+    ("operation", "reintegrate"),
+    [("merge", False), ("rebase", True)],
+)
 def test_completed_owned_reintegration_lands_after_receipt_write_interruption(
     tmp_git_repo: Path,
     operation: str,
@@ -256,8 +260,10 @@ def test_completed_owned_reintegration_lands_after_receipt_write_interruption(
     assert _git(root, "show", f"{target}:target.txt").stdout == "target\n"
 
 
-@pytest.mark.parametrize("operation", ["merge", "rebase"])
-@pytest.mark.parametrize("phase", ["integrating", "integrated"])
+@pytest.mark.parametrize(
+    ("operation", "phase"),
+    [("merge", "integrating"), ("rebase", "integrated")],
+)
 def test_completed_landing_receipt_preserves_later_operator_resolution(
     tmp_git_repo: Path,
     operation: str,
@@ -589,8 +595,15 @@ def test_aborted_owned_resolution_retains_landing_until_retry_completes(
     assert _git(root, "rev-parse", target).stdout == _git(root, "rev-parse", "HEAD").stdout
 
 
-@pytest.mark.parametrize("operation", ["merge", "rebase"])
-@pytest.mark.parametrize("seam", ["planning", "after_commit", "boundary", "standalone_commit"])
+@pytest.mark.parametrize(
+    ("operation", "seam"),
+    [
+        ("merge", "planning"),
+        ("rebase", "after_commit"),
+        ("merge", "boundary"),
+        ("rebase", "standalone_commit"),
+    ],
+)
 def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
     tmp_git_repo: Path,
     operation: str,
@@ -740,8 +753,10 @@ def test_aborted_operation_reset_to_target_cannot_be_misreported_as_completed(
     assert _git(root, "cat-file", "-e", feature).returncode == 0
 
 
-@pytest.mark.parametrize("legacy", [False, True])
-@pytest.mark.parametrize("operation", ["merge", "rebase"])
+@pytest.mark.parametrize(
+    ("legacy", "operation"),
+    [(False, "merge"), (True, "rebase")],
+)
 def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,

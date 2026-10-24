@@ -1548,6 +1548,10 @@ def _route_lock_contention_in_place(
     # which must keep the capped path instead of retrying forever.
     if not names_a_lock_file(last_error or ""):
         return None
+    # When policy defines a commit recovery or cleanup phase, delegate to that phase
+    # instead of retrying in place.
+    if _resolve_commit_recovery_phase(cleared_state, policy) is not None:
+        return None
     # The failure arrived in the commit phase itself: that is where it is retried,
     # whether or not the policy also declares an (agent) recovery phase -- an
     # agent cannot release a lock, so routing there would only burn a cycle.
@@ -1654,11 +1658,19 @@ def _handle_commit_failure(
             advanced_state, target = _prepare_phase_advance(
                 cleared_state, recovery_phase, policy, routing_timing=routing_timing
             )
+            recovery_updates: dict[str, object] = {
+                "commit": state.commit,
+                "last_error": failure_reason,
+                "recovery_epoch": cleared_state.recovery_epoch + 1,
+                "pending_cycle_outcome": None,
+                "last_execution_result_status": "failed",
+            }
+            from ralph.git._lock_recovery import names_a_lock_file
+
+            if names_a_lock_file(last_error or ""):
+                recovery_updates["last_retry_delay_ms"] = LOCK_RETRY_DELAY_MS
             new_state = progress.advance_phase(advanced_state, target, policy=policy).copy_with(
-                last_error=failure_reason,
-                recovery_epoch=cleared_state.recovery_epoch + 1,
-                pending_cycle_outcome=None,
-                last_execution_result_status="failed",
+                **recovery_updates
             )
             return new_state, []
 

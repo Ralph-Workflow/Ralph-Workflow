@@ -44,9 +44,15 @@ class _FakeRegistry:
     """A registry whose dispatch always succeeds with a fixed text result."""
 
     def dispatch(
-        self, tool_name: str, arguments: dict[str, object], *, host_session: object
+        self,
+        tool_name: str,
+        arguments: dict[str, object],
+        *,
+        host_session: object,
+        workspace: object = None,
+        **kwargs: object,
     ) -> ToolResult:
-        del tool_name, arguments, host_session
+        del tool_name, arguments, host_session, workspace, kwargs
         return ToolResult(content=[ToolContent.text_content("ok")], is_error=False)
 
     def list_definitions(self) -> list[object]:

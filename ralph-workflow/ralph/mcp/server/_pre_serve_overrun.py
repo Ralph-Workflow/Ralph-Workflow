@@ -41,6 +41,7 @@ StageEventRecorder`` keeps working unchanged.
 
 from __future__ import annotations
 
+import concurrent.futures
 import contextlib
 import errno
 import os
@@ -55,7 +56,9 @@ from loguru import logger
 
 from ralph.mcp.protocol._startup_timeouts import (
     mcp_overrun_diagnostic_timeout_seconds,
+    mcp_pre_serve_timeout_seconds,
     mcp_real_startup_deadline_from_env,
+    mcp_startup_now,
 )
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._pre_serve_overrun_events import StageEventRecorder
@@ -93,6 +96,29 @@ class StageRecorder(Protocol):
     def __call__(self, root: Path, stage: str, *, timeout_s: float | None = None) -> None: ...
 
 
+class ExitHandler(Protocol):
+    """Callable invoked to terminate execution when an overrun forces process exit."""
+
+    def __call__(self, exit_code: int, /) -> object: ...
+
+
+class OverrunHandler(Protocol):
+    """Callable that handles a pre-serve overrun condition."""
+
+    def __call__(
+        self,
+        workspace_root: Path,
+        *,
+        stage: str,
+        elapsed_s: float,
+        budget_s: float,
+        exit_code: int,
+        diagnostic_timeout_s: float | None = None,
+        stage_recorder: StageRecorder | None = None,
+        exit_fn: ExitHandler | None = None,
+    ) -> object: ...
+
+
 #: Stage recorder registered for the current context. ``None`` means the
 #: on-disk stage tracker is used. A ``ContextVar`` (not a module-level
 #: global) keeps concurrent agent runs and parallel test tasks from
@@ -100,6 +126,70 @@ class StageRecorder(Protocol):
 _stage_recorder: ContextVar[StageRecorder | None] = ContextVar(
     "ralph_mcp_stage_recorder", default=None
 )
+
+_exit_handler: ContextVar[ExitHandler | None] = ContextVar("ralph_mcp_exit_handler", default=None)
+
+_overrun_handler: ContextVar[OverrunHandler | None] = ContextVar(
+    "ralph_mcp_overrun_handler", default=None
+)
+
+
+def set_exit_handler(handler: ExitHandler | None) -> Token[ExitHandler | None]:
+    """Register the overrun exit handler for the current context."""
+    return _exit_handler.set(handler)
+
+
+def get_exit_handler() -> ExitHandler | None:
+    """Return the registered overrun exit handler, or ``None``."""
+    return _exit_handler.get()
+
+
+def reset_exit_handler(token: Token[ExitHandler | None]) -> None:
+    """Restore the exit handler to a previous value."""
+    _exit_handler.reset(token)
+
+
+@contextmanager
+def exit_handler_override(handler: ExitHandler | None) -> Iterator[None]:
+    """Temporarily register ``handler`` as the overrun exit handler.
+
+    The registration is scoped to the ``with`` block: on exit the previous
+    handler is restored, so tests and callers never leak exit interceptors.
+    """
+    token = set_exit_handler(handler)
+    try:
+        yield
+    finally:
+        reset_exit_handler(token)
+
+
+def set_overrun_handler(handler: OverrunHandler | None) -> Token[OverrunHandler | None]:
+    """Register the pre-serve overrun handler for the current context."""
+    return _overrun_handler.set(handler)
+
+
+def get_overrun_handler() -> OverrunHandler | None:
+    """Return the registered pre-serve overrun handler, or ``None``."""
+    return _overrun_handler.get()
+
+
+def reset_overrun_handler(token: Token[OverrunHandler | None]) -> None:
+    """Restore the overrun handler to a previous value."""
+    _overrun_handler.reset(token)
+
+
+@contextmanager
+def overrun_handler_override(handler: OverrunHandler | None) -> Iterator[None]:
+    """Temporarily register ``handler`` as the pre-serve overrun handler.
+
+    The registration is scoped to the ``with`` block: on exit the previous
+    handler is restored, so tests and callers never leak overrun handlers.
+    """
+    token = set_overrun_handler(handler)
+    try:
+        yield
+    finally:
+        reset_overrun_handler(token)
 
 
 def set_stage_recorder(recorder: StageRecorder | None) -> Token[StageRecorder | None]:
@@ -164,6 +254,7 @@ def fail_closed_pre_serve_overrun(
     exit_code: int,
     diagnostic_timeout_s: float | None = None,
     stage_recorder: StageRecorder | None = None,
+    exit_fn: ExitHandler | None = None,
 ) -> NoReturn:
     """Force-exit the child when a bounded pre-serve operation cannot complete in time.
 
@@ -188,10 +279,26 @@ def fail_closed_pre_serve_overrun(
         stage_recorder: Recorder used to persist the stage marker. ``None``
             (the production default) resolves the context-registered recorder
             and falls back to the on-disk stage tracker.
+        exit_fn: Override callable to invoke on exit. ``None`` (the production
+            default) resolves the context-registered exit handler or ``os._exit``.
 
-    The function does not return: ``os._exit`` terminates the
+    The function does not return: ``os._exit`` (or ``exit_fn``) terminates the
     process before any Python cleanup runs.
     """
+    registered_overrun = get_overrun_handler()
+    if registered_overrun is not None:
+        registered_overrun(
+            workspace_root,
+            stage=stage,
+            elapsed_s=elapsed_s,
+            budget_s=budget_s,
+            exit_code=exit_code,
+            diagnostic_timeout_s=diagnostic_timeout_s,
+            stage_recorder=stage_recorder,
+            exit_fn=exit_fn,
+        )
+        sys.exit(exit_code)
+
     err = McpServerError(
         f"pre-serve overrun at stage {stage!r} after {elapsed_s:.3f}s "
         f"(budget={budget_s:.3f}s); worker thread is wedged on real I/O "
@@ -231,7 +338,9 @@ def fail_closed_pre_serve_overrun(
     )
     diag_thread.start()
     diag_thread.join(timeout=max(0.0, timeout_s))
-    os._exit(exit_code)
+    target_exit = exit_fn or get_exit_handler() or os._exit
+    target_exit(exit_code)
+    sys.exit(exit_code)
 
 
 def stage_overrun_exit_code(stage: str) -> int:
@@ -343,16 +452,91 @@ def log_and_record_stage(
         raise exc
 
 
+def run_pre_serve_bounded[T](
+    workspace_root: Path,
+    action: Callable[[], T],
+    *,
+    stage: str = "config_loading",
+    env_map: Mapping[str, str] | None = None,
+    t0: float | None = None,
+    clock_fn: Callable[[], float] | None = None,
+    timeout_s: float | None = None,
+    exit_code: int | None = None,
+    stage_recorder: StageRecorder | None = None,
+    exit_fn: ExitHandler | None = None,
+) -> T:
+    """Execute a synchronous pre-serve operation within the remaining startup deadline.
+
+    Runs ``action`` in a single-worker ``ThreadPoolExecutor``. If ``action``
+    does not complete before the effective timeout (by default the remaining real
+    startup deadline from :func:`mcp_pre_serve_timeout_seconds`), fails closed
+    via :func:`fail_closed_pre_serve_overrun` with the distinct overrun exit code
+    for ``stage``.
+
+    Args:
+        workspace_root: Workspace root where overrun diagnostics and stage markers are written.
+        action: Synchronous callable to execute.
+        stage: Startup stage attribution for diagnostics (default: "config_loading").
+        env_map: Environment mapping determining deadline envelopes.
+        t0: Monotonic timestamp marking the start of the startup window.
+        clock_fn: Clock callable returning monotonic seconds.
+        timeout_s: Explicit timeout in seconds; defaults to remaining real startup deadline.
+        exit_code: Specific exit code on timeout; defaults to ``stage_overrun_exit_code(stage)``.
+        stage_recorder: Recorder for stage markers; falls back to context registration.
+        exit_fn: Exit callable on overrun; falls back to context registration or ``os._exit``.
+
+    Returns:
+        The result of ``action()``.
+    """
+    clk = clock_fn if clock_fn is not None else mcp_startup_now
+    eff_env = os.environ if env_map is None else env_map
+    eff_t0 = t0 if t0 is not None else clk()
+    remaining_s = mcp_pre_serve_timeout_seconds(eff_env, t0=eff_t0, clock_fn=clk)
+    effective_timeout_s = timeout_s if timeout_s is not None else remaining_s
+    eff_exit_code = exit_code if exit_code is not None else stage_overrun_exit_code(stage)
+
+    ex: concurrent.futures.ThreadPoolExecutor | None = None
+    try:
+        ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = ex.submit(action)
+        return future.result(timeout=effective_timeout_s)
+    except concurrent.futures.TimeoutError:
+        elapsed = clk() - eff_t0
+        fail_closed_pre_serve_overrun(
+            workspace_root,
+            stage=stage,
+            elapsed_s=elapsed,
+            budget_s=effective_timeout_s,
+            exit_code=eff_exit_code,
+            stage_recorder=stage_recorder,
+            exit_fn=exit_fn,
+        )
+    finally:
+        if ex is not None:
+            ex.shutdown(wait=False)
+
+
 __all__ = [
     "CATALOG_PUBLISH_OVERRUN_EXIT_CODE",
     "PRE_SERVE_OVERRUN_EXIT_CODE",
     "SESSION_OVERRUN_EXIT_CODE",
+    "ExitHandler",
+    "OverrunHandler",
     "StageEventRecorder",
     "StageRecorder",
+    "exit_handler_override",
     "fail_closed_pre_serve_overrun",
+    "get_exit_handler",
+    "get_overrun_handler",
     "get_stage_recorder",
     "log_and_record_stage",
+    "overrun_handler_override",
+    "reset_exit_handler",
+    "reset_overrun_handler",
     "reset_stage_recorder",
+    "run_pre_serve_bounded",
+    "set_exit_handler",
+    "set_overrun_handler",
     "set_stage_recorder",
     "stage_overrun_exit_code",
     "stage_recorder_override",

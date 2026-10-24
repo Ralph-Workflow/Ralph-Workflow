@@ -18,11 +18,14 @@ from typing import Literal
 import pytest
 
 from ralph.git._lock_recovery import (
-    _PROBE_MAX_WORKERS,
-    _get_probe_executor,
     _pid_has_gitdir_environ,
     _pid_in_repo_cwd,
-    _reset_probe_executor,
+)
+from ralph.git.lock_recovery import (
+    ProbeExecutorStatus,
+    probe_executor_status,
+    probe_pool_capacity,
+    reset_probe_executor,
 )
 from ralph.git.operations import (
     _lock_has_no_live_holder,
@@ -377,7 +380,7 @@ def test_probe_worker_lifecycle_under_repeated_timeouts_no_accumulation(
     monkeypatch.setattr("ralph.git.operations._probe_lsof_fuser", hung_lsof)
 
     # Reset executor to clean slate
-    _reset_probe_executor()
+    reset_probe_executor()
 
     try:
         # Execute 6 probe calls with timeouts
@@ -390,14 +393,31 @@ def test_probe_worker_lifecycle_under_repeated_timeouts_no_accumulation(
             )
             assert res == "unknown", "Timed out probe must return 'unknown'"
 
-        executor = _get_probe_executor()
-        # Workers must not accumulate beyond the bounded pool size (_PROBE_MAX_WORKERS = 4)
-        assert len(executor._threads) <= _PROBE_MAX_WORKERS, (
-            f"Thread pool accumulated {len(executor._threads)} threads, exceeding cap {_PROBE_MAX_WORKERS}"
+        status = probe_executor_status()
+        # Workers must not accumulate beyond the bounded pool size (capacity = 4)
+        assert status.worker_count <= probe_pool_capacity(), (
+            f"Thread pool accumulated {status.worker_count} threads, exceeding cap {probe_pool_capacity()}"
         )
+        assert status.healthy, f"Probe executor status unhealthy: {status}"
+        assert status.is_initialized
+        assert status.capacity == probe_pool_capacity()
     finally:
         gate.set()
-        _reset_probe_executor()
+        reset_probe_executor()
+
+
+def test_probe_executor_status_inspection() -> None:
+    """Probe executor status exposes capacity, worker count, health, and initialization state."""
+    reset_probe_executor()
+    try:
+        initial = probe_executor_status()
+        assert isinstance(initial, ProbeExecutorStatus)
+        assert initial.capacity == probe_pool_capacity()
+        assert initial.worker_count == 0
+        assert not initial.is_initialized
+        assert initial.healthy
+    finally:
+        reset_probe_executor()
 
 
 def test_liveness_probe_zombie_process_treated_as_dead(

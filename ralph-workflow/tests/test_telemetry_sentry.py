@@ -25,10 +25,10 @@ from ralph.runtime.environment import RuntimeEnvironment
 from ralph.telemetry import _agent_config_payload as _sentry_payload
 from ralph.telemetry import _sentry
 from ralph.telemetry._sentry import (
-    _scrub_event,
-    _scrub_obj,
     init_sentry,
     is_telemetry_disabled,
+    scrub_event,
+    scrub_obj,
 )
 from tests._support.typed_accessors import (
     must_mapping,
@@ -277,7 +277,7 @@ def test_scrub_obj_replaces_home_prefix_in_string(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", fake_home)
 
     data: dict[str, object] = {"path": f"{fake_home}/projects"}
-    _scrub_obj(data)
+    scrub_obj(data)
 
     assert data["path"] == "~/projects"
 
@@ -287,7 +287,7 @@ def test_scrub_obj_handles_nested_dicts(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", fake_home)
 
     data: dict[str, object] = {"outer": {"inner": f"{fake_home}/x"}}
-    _scrub_obj(data)
+    scrub_obj(data)
 
     outer = data["outer"]
     assert isinstance(outer, dict)
@@ -299,7 +299,7 @@ def test_scrub_obj_handles_lists(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", fake_home)
 
     lst: list[object] = [f"{fake_home}/a", f"{fake_home}/b"]
-    _scrub_obj(lst)
+    scrub_obj(lst)
 
     assert lst[0] == "~/a"
     assert lst[1] == "~/b"
@@ -310,7 +310,7 @@ def test_scrub_obj_ignores_non_string_values(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", fake_home)
 
     data: dict[str, object] = {"n": 42, "b": True, "x": None}
-    _scrub_obj(data)
+    scrub_obj(data)
 
     assert data["n"] == 42
     assert data["b"] is True
@@ -319,10 +319,29 @@ def test_scrub_obj_ignores_non_string_values(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_scrub_event_removes_server_name() -> None:
     event: dict[str, object] = {"server_name": "myhost.local", "message": "test"}
-    result = _scrub_event(event, {})
+    result = scrub_event(event, {})
     assert isinstance(result, dict)
     assert "server_name" not in result
     assert result.get("message") == "test"
+
+
+def test_scrub_public_api_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_home = "/fake/home/publicuser"
+    monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", fake_home)
+
+    data: dict[str, object] = {
+        "server_name": "internal.corp",
+        "home_path": f"{fake_home}/file.py",
+    }
+    result = scrub_event(data)
+    assert isinstance(result, dict)
+    res_dict = cast("dict[str, object]", result)
+    assert "server_name" not in res_dict
+    assert res_dict["home_path"] == "~/file.py"
+
+    obj: dict[str, object] = {"nested": [f"{fake_home}/doc.txt"]}
+    _sentry.scrub_object(obj)
+    assert obj["nested"] == ["~/doc.txt"]
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +399,7 @@ def test_scrub_obj_redacts_extra_scrub_prefix(
     monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", "/nonexistent/home")
 
     data: dict[str, object] = {"path": "/Volumes/x/project/file.py"}
-    _sentry._scrub_obj(data)
+    scrub_obj(data)
     assert data["path"] == "<redacted>/project/file.py"
 
 
@@ -397,7 +416,7 @@ def test_scrub_obj_redacts_each_extra_prefix(
         "b": "/tmp/argv1/some/arg",
         "c": "/var/log/other.txt",
     }
-    _sentry._scrub_obj(data)
+    scrub_obj(data)
     assert data["a"] == "<redacted>/proj/x.py"
     assert data["b"] == "<redacted>/some/arg"
     assert data["c"] == "/var/log/other.txt"
@@ -411,7 +430,7 @@ def test_scrub_obj_home_prefix_still_maps_to_tilde(
     monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", fake_home)
 
     data: dict[str, object] = {"path": f"{fake_home}/projects"}
-    _sentry._scrub_obj(data)
+    scrub_obj(data)
     assert data["path"] == "~/projects"
 
 
@@ -422,7 +441,7 @@ def test_scrub_obj_handles_nested_dicts_with_extra_prefix(
     monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", "/nonexistent/home")
 
     data: dict[str, object] = {"outer": {"inner": "/Volumes/x/y"}}
-    _sentry._scrub_obj(data)
+    scrub_obj(data)
     outer = data["outer"]
     assert isinstance(outer, dict)
     assert outer["inner"] == "<redacted>/y"
@@ -435,7 +454,7 @@ def test_scrub_obj_handles_lists_with_extra_prefix(
     monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", "/nonexistent/home")
 
     lst: list[object] = ["/Volumes/x/a", "/Volumes/x/b"]
-    _sentry._scrub_obj(lst)
+    scrub_obj(lst)
     assert lst[0] == "<redacted>/a"
     assert lst[1] == "<redacted>/b"
 
@@ -463,7 +482,7 @@ def test_scrub_event_drops_abs_path_in_frames() -> None:
             ]
         }
     }
-    result = _scrub_event(event, {})
+    result = scrub_event(event, {})
     assert isinstance(result, dict)
     exc = result["exception"]
     assert isinstance(exc, dict)
@@ -495,7 +514,7 @@ def test_scrub_event_basenames_absolute_filename() -> None:
             ]
         }
     }
-    result = _scrub_event(event, {})
+    result = scrub_event(event, {})
     assert isinstance(result, dict)
     exc = result["exception"]
     assert isinstance(exc, dict)
@@ -533,7 +552,7 @@ def test_scrub_event_basenames_relative_filename() -> None:
             ]
         }
     }
-    result = _scrub_event(event, {})
+    result = scrub_event(event, {})
     assert isinstance(result, dict)
     exc = result["exception"]
     assert isinstance(exc, dict)
@@ -563,7 +582,7 @@ def test_scrub_event_basenames_windows_relative_filename() -> None:
             ]
         }
     }
-    result = _scrub_event(event, {})
+    result = scrub_event(event, {})
     assert isinstance(result, dict)
     exc = result["exception"]
     assert isinstance(exc, dict)
@@ -598,7 +617,7 @@ def test_scrub_event_preserves_bare_module_name() -> None:
             ]
         }
     }
-    result = _scrub_event(event, {})
+    result = scrub_event(event, {})
     assert isinstance(result, dict)
     exc = result["exception"]
     assert isinstance(exc, dict)
@@ -628,7 +647,7 @@ def test_scrub_event_drops_server_name_alongside_frame_scrubbing() -> None:
             ]
         },
     }
-    result = _scrub_event(event, {})
+    result = scrub_event(event, {})
     assert isinstance(result, dict)
     assert "server_name" not in result
     exc = result["exception"]
@@ -729,7 +748,7 @@ def test_scrub_event_basenames_windows_absolute_filename() -> None:
             ]
         }
     }
-    result = _scrub_event(event, {})
+    result = scrub_event(event, {})
     assert isinstance(result, dict)
     exc = result["exception"]
     assert isinstance(exc, dict)
@@ -762,7 +781,7 @@ def test_scrub_event_basenames_windows_unc_filename() -> None:
             ]
         }
     }
-    result = _scrub_event(event, {})
+    result = scrub_event(event, {})
     assert isinstance(result, dict)
     exc = result["exception"]
     assert isinstance(exc, dict)
@@ -1379,7 +1398,7 @@ def test_scrub_event_redacts_prompt_like_string_anywhere_in_event(
 ) -> None:
     """Regression: prompt-shaped strings must not survive the scrubber.
 
-    ``_scrub_event`` must scrub the entire event payload via ``_scrub_obj``
+    ``scrub_event`` must scrub the entire event payload via ``scrub_obj``
     so any string field (request bodies, exception values, breadcrumbs,
     extra/context blobs) carrying prompt-like text is redacted regardless
     of which key it lives under. The scrubber cannot enumerate every key,
@@ -1404,7 +1423,7 @@ def test_scrub_event_redacts_prompt_like_string_anywhere_in_event(
             ],
         },
     }
-    result = _scrub_event(event, {})
+    result = scrub_event(event, {})
     assert isinstance(result, dict)
     extra = result["extra"]
     assert isinstance(extra, dict)

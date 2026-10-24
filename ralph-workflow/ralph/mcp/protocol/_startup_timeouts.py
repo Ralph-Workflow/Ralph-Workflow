@@ -101,7 +101,9 @@ from __future__ import annotations
 
 import os
 import time as _time_module
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar, Token
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -343,6 +345,45 @@ def mcp_pre_serve_budget_from_env(env: Mapping[str, str] | None = None) -> timed
     return timedelta(seconds=_PRE_SERVE_BUDGET_S)
 
 
+def mcp_pre_serve_timeout_seconds(
+    env: Mapping[str, str] | None = None,
+    *,
+    t0: float | None = None,
+    clock_fn: ClockFn | None = None,
+) -> float:
+    """Return the operational pre-serve timeout in seconds.
+
+    Pre-serve critical path operations (allowed_roots access, workspace
+    construction, configuration loading) are bounded operationally by the
+    remaining real startup deadline (:func:`mcp_real_startup_deadline_from_env`),
+    ensuring slow-but-successful pre-serve operations can use available headroom
+    without premature termination while still failing closed before supervisor
+    preflight timeout.
+
+    Args:
+        env: Environment mapping used to compute preflight and probe safety.
+        t0: Startup timestamp anchor; defaults to ``clock_fn()`` or ``mcp_startup_now()``.
+        clock_fn: Monotonic clock callable; defaults to registered context clock or ``mcp_startup_now``.
+
+    Returns:
+        Remaining seconds available for pre-serve operations (>= 0.0).
+    """
+    clk = clock_fn if clock_fn is not None else mcp_startup_now
+    eff_t0 = t0 if t0 is not None else clk()
+    real_deadline_s = mcp_real_startup_deadline_from_env(env)
+    return max(0.0, real_deadline_s - (clk() - eff_t0))
+
+
+def mcp_pre_serve_timeout_from_env(
+    env: Mapping[str, str] | None = None,
+    *,
+    t0: float | None = None,
+    clock_fn: ClockFn | None = None,
+) -> float:
+    """Return :func:`mcp_pre_serve_timeout_seconds` as seconds."""
+    return mcp_pre_serve_timeout_seconds(env, t0=t0, clock_fn=clock_fn)
+
+
 def mcp_overrun_diagnostic_timeout_from_env(
     env: Mapping[str, str] | None = None,
 ) -> timedelta:
@@ -524,6 +565,50 @@ def record_stage_elapsed(
     return budget_s
 
 
+#: Monotonic clock registered for the current context. ``None`` means
+#: the module-level monotonic clock (_time_module.monotonic) is used.
+_startup_clock: ContextVar[ClockFn | None] = ContextVar("ralph_mcp_startup_clock", default=None)
+
+
+def set_startup_clock(clock: ClockFn | None) -> Token[ClockFn | None]:
+    """Register the monotonic clock callable for the current context.
+
+    Args:
+        clock: Callable returning elapsed monotonic seconds since an arbitrary
+            origin. ``None`` clears the registration and restores the default clock.
+
+    Returns:
+        A Token that can be passed to :func:`reset_startup_clock` to restore
+        the previous clock.
+    """
+    return _startup_clock.set(clock)
+
+
+def get_startup_clock() -> ClockFn | None:
+    """Return the registered startup monotonic clock, or ``None``."""
+    return _startup_clock.get()
+
+
+def reset_startup_clock(token: Token[ClockFn | None]) -> None:
+    """Restore the startup monotonic clock to a previous value."""
+    _startup_clock.reset(token)
+
+
+@contextmanager
+def startup_clock_override(clock: ClockFn | None) -> Iterator[None]:
+    """Temporarily register ``clock`` as the startup monotonic clock.
+
+    The registration is scoped to the ``with`` block: on exit the previous
+    clock is restored, so tests and callers never leak mock clocks into
+    adjacent operations.
+    """
+    token = set_startup_clock(clock)
+    try:
+        yield
+    finally:
+        reset_startup_clock(token)
+
+
 def mcp_startup_now() -> float:
     """Return the current startup monotonic timestamp in seconds.
 
@@ -531,10 +616,12 @@ def mcp_startup_now() -> float:
     against. Production call sites omit the ``clock_fn`` argument of
     :func:`check_real_startup_deadline`, which makes the deadline helpers use
     this clock; callers that need a deterministic timeline (tests, replayed
-    diagnostics) inject their own clock instead of patching
-    ``time.monotonic``.
+    diagnostics) inject their own clock via :func:`startup_clock_override` or
+    explicit parameter instead of patching ``time.monotonic``.
     """
-
+    clk = get_startup_clock()
+    if clk is not None:
+        return clk()
     return _time_module.monotonic()
 
 
@@ -739,12 +826,15 @@ __all__ = [
     "_check_cumulative_startup_deadline",
     "_check_real_startup_deadline",
     "check_real_startup_deadline",
+    "get_startup_clock",
     "mcp_boot_allowance_from_env",
     "mcp_discovery_budget_from_env",
     "mcp_max_upstreams_at_defaults",
     "mcp_overrun_diagnostic_timeout_from_env",
     "mcp_overrun_diagnostic_timeout_seconds",
     "mcp_pre_serve_budget_from_env",
+    "mcp_pre_serve_timeout_from_env",
+    "mcp_pre_serve_timeout_seconds",
     "mcp_preflight_timeout_from_env",
     "mcp_probe_budget_share",
     "mcp_probe_safety_s",
@@ -759,5 +849,8 @@ __all__ = [
     "read_overruns",
     "record_overrun",
     "record_stage_elapsed",
+    "reset_startup_clock",
+    "set_startup_clock",
+    "startup_clock_override",
     "upstream_call_timeout_seconds",
 ]

@@ -345,13 +345,13 @@ def test_drain_window_defers_when_children_reappear() -> None:
     clock.advance(10.0)
     result = watchdog.evaluate(classify_quiet=_active)
     assert result == WatchdogVerdict.CONTINUE  # drain entered
-    assert watchdog._in_drain_window is True
+    assert watchdog.in_drain_window is True
 
     # (b) Advance 0.2s -> inside drain window. classify=WAITING -> abandon drain.
     clock.advance(0.2)
     result = watchdog.evaluate(classify_quiet=_waiting)
     assert result == WatchdogVerdict.WAITING_ON_CHILD  # not FIRE
-    assert watchdog._in_drain_window is False  # drain abandoned
+    assert watchdog.in_drain_window is False  # drain abandoned
 
     # (c) Advance 5s -> back to ACTIVE -> re-enter drain.
     clock.advance(5.0)

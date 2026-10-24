@@ -320,7 +320,7 @@ def test_fire_log_carries_per_kind_breakdown_in_extra(tmp_path: Path) -> None:
 
     handler_id = loguru_logger.add(_sink, level="WARNING")
     try:
-        wd._handle_active_branch(clock.monotonic())
+        wd.handle_active_branch(clock.monotonic())
     finally:
         loguru_logger.remove(handler_id)
 

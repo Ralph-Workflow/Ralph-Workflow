@@ -78,6 +78,9 @@ def _make_clone(bare: Path, path: Path, main: str, *, branch: str) -> Path:
     assert _run(path, "fetch", "origin", main).returncode == 0
     assert _run(path, "checkout", "-b", main, f"origin/{main}").returncode == 0
     assert _run(path, "checkout", "-b", branch).returncode == 0
+    info_exclude = path / ".git" / "info" / "exclude"
+    info_exclude.parent.mkdir(parents=True, exist_ok=True)
+    info_exclude.write_text(".agent/\n", encoding="utf-8")
     return path
 
 

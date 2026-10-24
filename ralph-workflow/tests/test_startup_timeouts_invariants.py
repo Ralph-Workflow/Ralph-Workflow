@@ -29,6 +29,7 @@ import threading
 import time
 from datetime import timedelta
 from pathlib import Path
+from typing import NoReturn
 from unittest import mock
 
 import pytest
@@ -40,11 +41,13 @@ from ralph.mcp.protocol._startup_timeouts import (
     _PROBE_SAFETY_S,
     _check_real_startup_deadline,
     mcp_discovery_budget_from_env,
+    mcp_pre_serve_timeout_seconds,
     mcp_preflight_timeout_from_env,
     mcp_real_startup_deadline_from_env,
     mcp_upstream_probe_timeout_from_env,
     mcp_upstream_probe_timeout_seconds,
     record_stage_elapsed,
+    startup_clock_override,
 )
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server._start_stage_tracker import (
@@ -458,9 +461,6 @@ class TestDiagnosticStageContract:
             return clock_val
 
         monkeypatch.setattr(runtime_mod, "_clock", fake_clock)
-        monkeypatch.setattr(
-            "ralph.mcp.protocol._startup_timeouts._time_module.monotonic", fake_clock
-        )
 
         fake_sid = "fake-spawn-wu1-prod"
         monkeypatch.setattr(
@@ -503,7 +503,8 @@ class TestDiagnosticStageContract:
 
         monkeypatch.setattr(standalone_mod._StandaloneHttpServer, "run", mock_server_run)
 
-        runtime_mod.run_standalone_server(tmp_path, env={})
+        with startup_clock_override(fake_clock):
+            runtime_mod.run_standalone_server(tmp_path, env={})
 
         assert on_ready_executed is True
         assert read_last_stage(tmp_path, spawn_id=fake_sid) == "ready_to_serve"
@@ -523,7 +524,12 @@ class TestDiagnosticStageContract:
         import concurrent.futures
 
         import ralph.mcp.server._publish_catalog_bounded as pub_mod
-        from ralph.mcp.server._pre_serve_overrun import CATALOG_PUBLISH_OVERRUN_EXIT_CODE
+        from ralph.mcp.server._pre_serve_overrun import (
+            CATALOG_PUBLISH_OVERRUN_EXIT_CODE,
+            ExitHandler,
+            StageRecorder,
+            overrun_handler_override,
+        )
 
         clock_val = 100.0
 
@@ -536,26 +542,29 @@ class TestDiagnosticStageContract:
         captured_exit_code: list[int] = []
 
         def mock_fail_closed(
-            root: Path,
+            workspace_root: Path,
             *,
             stage: str,
             elapsed_s: float,
             budget_s: float,
             exit_code: int,
             diagnostic_timeout_s: float | None = None,
-        ) -> None:
+            stage_recorder: StageRecorder | None = None,
+            exit_fn: ExitHandler | None = None,
+        ) -> NoReturn:
             captured_budget.append(budget_s)
             captured_exit_code.append(exit_code)
             raise RuntimeError(f"fail_closed_pre_serve_overrun({exit_code})")
-
-        monkeypatch.setattr(pub_mod, "fail_closed_pre_serve_overrun", mock_fail_closed)
 
         def mock_submit_timeout(*args: object, **kwargs: object) -> None:
             raise concurrent.futures.TimeoutError("Stalled catalog publish")
 
         monkeypatch.setattr(concurrent.futures.Future, "result", mock_submit_timeout)
 
-        with pytest.raises(RuntimeError) as exc_info:
+        with (
+            overrun_handler_override(mock_fail_closed),
+            pytest.raises(RuntimeError) as exc_info,
+        ):
             pub_mod.publish_tool_catalog_bounded(
                 workspace_root=tmp_path,
                 catalog={},
@@ -598,3 +607,68 @@ class TestDiagnosticStageContract:
             assert not stall_event.is_set()
         finally:
             stall_event.set()
+
+
+class TestPreServeTimeoutAndOverrunSeams:
+    """Validate public composition seams on _startup_timeouts and _pre_serve_overrun."""
+
+    def test_pre_serve_timeout_seconds_defaults_to_real_deadline(self) -> None:
+        """mcp_pre_serve_timeout_seconds returns 28.0s at t0=0.0 with default env."""
+        timeout_s = mcp_pre_serve_timeout_seconds({}, t0=0.0, clock_fn=lambda: 0.0)
+        assert timeout_s == 28.0
+
+    def test_pre_serve_timeout_seconds_decreases_with_elapsed(self) -> None:
+        """Elapsed monotonic time reduces the remaining pre-serve headroom."""
+        timeout_s = mcp_pre_serve_timeout_seconds({}, t0=0.0, clock_fn=lambda: 5.5)
+        assert timeout_s == pytest.approx(22.5)
+
+    def test_pre_serve_timeout_seconds_floors_at_zero(self) -> None:
+        """When elapsed time exceeds deadline, remaining timeout floors at 0.0."""
+        timeout_s = mcp_pre_serve_timeout_seconds({}, t0=0.0, clock_fn=lambda: 35.0)
+        assert timeout_s == 0.0
+
+    def test_startup_clock_override_scopes_and_restores(self) -> None:
+        """startup_clock_override replaces the clock only within the context."""
+        from ralph.mcp.protocol._startup_timeouts import (
+            get_startup_clock,
+            mcp_startup_now,
+            startup_clock_override,
+        )
+
+        assert get_startup_clock() is None
+        with startup_clock_override(lambda: 42.0):
+            assert get_startup_clock() is not None
+            assert mcp_startup_now() == 42.0
+        assert get_startup_clock() is None
+
+    def test_exit_handler_override_scopes_and_restores(self) -> None:
+        """exit_handler_override replaces the exit handler only within the context."""
+        from ralph.mcp.server._pre_serve_overrun import (
+            exit_handler_override,
+            get_exit_handler,
+        )
+
+        assert get_exit_handler() is None
+
+        def custom_exit(code: int) -> NoReturn:
+            raise RuntimeError(f"exit({code})")
+
+        with exit_handler_override(custom_exit):
+            assert get_exit_handler() is custom_exit
+        assert get_exit_handler() is None
+
+    def test_overrun_handler_override_scopes_and_restores(self) -> None:
+        """overrun_handler_override replaces the overrun handler only within the context."""
+        from ralph.mcp.server._pre_serve_overrun import (
+            get_overrun_handler,
+            overrun_handler_override,
+        )
+
+        assert get_overrun_handler() is None
+
+        def custom_overrun(*args: object, **kwargs: object) -> NoReturn:
+            raise RuntimeError("overrun")
+
+        with overrun_handler_override(custom_overrun):
+            assert get_overrun_handler() is custom_overrun
+        assert get_overrun_handler() is None

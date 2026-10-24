@@ -200,11 +200,11 @@ def test_record_mcp_tool_call_does_not_mutate_last_activity() -> None:
     wd, clock = _make_watchdog()
     wd.record_activity()
     clock.advance(1.0)
-    baseline = wd._last_activity
+    baseline = wd.last_activity
     now = clock.monotonic()
     wd.record_mcp_tool_call(now=now)
-    assert wd._last_activity == baseline
-    assert wd._last_mcp_tool_call_at == now
+    assert wd.last_activity == baseline
+    assert wd.last_mcp_tool_call_at == now
 
 
 def test_record_subagent_work_does_not_mutate_last_activity() -> None:
@@ -213,11 +213,11 @@ def test_record_subagent_work_does_not_mutate_last_activity() -> None:
     wd, clock = _make_watchdog()
     wd.record_activity()
     clock.advance(1.0)
-    baseline = wd._last_activity
+    baseline = wd.last_activity
     now = clock.monotonic()
     wd.record_subagent_work(now=now)
-    assert wd._last_activity == baseline
-    assert wd._last_subagent_progress_at == now
+    assert wd.last_activity == baseline
+    assert wd.last_subagent_progress_at == now
 
 
 def test_record_workspace_event_weight_zero_does_not_advance_channel() -> None:
@@ -240,7 +240,7 @@ def test_record_workspace_event_source_weight_advances_channel() -> None:
     now = clock.monotonic()
     wd.record_workspace_event(kind=WorkspaceChangeKind.SOURCE, weight=1.0, now=now)
     assert wd.workspace_kind_counts == {"source": 1}
-    assert wd._last_workspace_event_at == now
+    assert wd.last_workspace_event_at == now
     summary = wd.last_evidence_summary(now)
     workspace_summary = summary.channels[-1]
     assert workspace_summary.channel_name == ChannelName.WORKSPACE
@@ -410,9 +410,9 @@ def test_record_subagent_work_description_does_not_mutate_last_activity() -> Non
     wd, _clock = _make_watchdog()
     wd.record_activity()
     _clock.advance(1.0)
-    baseline = wd._last_activity
+    baseline = wd.last_activity
     wd.record_subagent_work(description="anything goes here")
-    assert wd._last_activity == baseline
+    assert wd.last_activity == baseline
 
 
 # ---------------------------------------------------------------------------

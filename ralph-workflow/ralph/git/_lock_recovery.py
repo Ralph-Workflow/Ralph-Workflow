@@ -50,6 +50,8 @@ from ralph.git._lock_liveness import (
     _PROBE_MAX_WORKERS,
     _PROBE_THREAD_NAME_PREFIX,
     _PROBE_TIMEOUT_S,
+    PROBE_MAX_WORKERS,
+    ProbeExecutorStatus,
     _combine_verdicts,
     _get_probe_executor,
     _normalize_external_liveness,
@@ -59,6 +61,9 @@ from ralph.git._lock_liveness import (
     _reset_probe_executor,
     _resolve_repo_identity,
     _scan_proc,
+    probe_executor_status,
+    probe_pool_capacity,
+    reset_probe_executor,
 )
 from ralph.git._lock_paths import (
     _CONFIG_LOCK_PATTERN,
@@ -786,6 +791,7 @@ run_git_operation_with_stale_lock_recovery = _run_git_operation_with_stale_lock_
 # importable from ``ralph.git._lock_recovery`` preserves the public contract.
 __all__ = [
     "LOCK_BACKOFF_S",
+    "PROBE_MAX_WORKERS",
     "_CONFIG_LOCK_PATTERN",
     "_GIT_DIR_MARKERS",
     "_GIT_OPTS_WITH_ARG",
@@ -802,6 +808,7 @@ __all__ = [
     "_STALE_GIT_LOCK_AGE_SECONDS",
     "_STRUCTURAL_LOCK_DIRS",
     "_UNPROVABLE_LOCK_CEILING_S",
+    "ProbeExecutorStatus",
     "_can_rule_out_non_git_process",
     "_check_git_liveness",
     "_check_pid_liveness",
@@ -857,9 +864,12 @@ __all__ = [
     "is_lock_failure",
     "lock_has_no_live_holder",
     "names_a_lock_file",
+    "probe_executor_status",
+    "probe_pool_capacity",
     "reap_known_stale_locks",
     "reap_stale_locks",
     "recover_stale_git_lock",
+    "reset_probe_executor",
     "retry_after_lock_failure",
     "run_git_operation_with_stale_lock_recovery",
 ]

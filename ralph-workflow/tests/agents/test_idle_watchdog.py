@@ -13980,7 +13980,7 @@ def test_subagent_capture_cache_polls_all_workers_then_enforces_cap() -> None:
     # Every discovered worker's capture is read once (one line each).
     assert fresh == first_count
     # The watchdog records the total in the public counter.
-    assert watchdog._subagent_output_count == first_count
+    assert watchdog.subagent_output_count == first_count
     # The cache is HARD-bounded at ``cap`` after the polling pass.
     assert len(watchdog.subagent_output_captures) == cap, (
         f"hard cap MUST enforce cache at cap={cap}, got {len(watchdog.subagent_output_captures)}"

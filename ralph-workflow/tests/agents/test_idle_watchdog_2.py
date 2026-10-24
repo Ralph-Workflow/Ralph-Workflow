@@ -217,7 +217,7 @@ def test_no_progress_ceiling_fires_on_fresh_heartbeat_only() -> None:
     def _corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(alive_by="fresh_heartbeat_only", scoped_child_active=True)
 
-    watchdog = IdleWatchdog(watchdog._config, clock, corroborator=_corroborator)
+    watchdog = IdleWatchdog(watchdog.config, clock, corroborator=_corroborator)
 
     # Advance past idle deadline to enter WAITING_ON_CHILD.
     clock.advance(1.5)
@@ -245,7 +245,7 @@ def test_no_progress_ceiling_fires_on_stale_label_only() -> None:
     def _corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(alive_by="stale_label_only", scoped_child_active=True)
 
-    watchdog = IdleWatchdog(watchdog._config, clock, corroborator=_corroborator)
+    watchdog = IdleWatchdog(watchdog.config, clock, corroborator=_corroborator)
 
     clock.advance(1.5)
     result = watchdog.evaluate(classify_quiet=_waiting)
@@ -273,7 +273,7 @@ def test_no_progress_ceiling_fires_on_os_descendant_only() -> None:
         )
         return snap
 
-    watchdog = IdleWatchdog(watchdog._config, clock, corroborator=_corroborator)
+    watchdog = IdleWatchdog(watchdog.config, clock, corroborator=_corroborator)
 
     clock.advance(1.5)
     result = watchdog.evaluate(classify_quiet=_waiting)
@@ -303,7 +303,7 @@ def test_full_ceiling_preserved_with_fresh_progress() -> None:
     def _corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(alive_by="fresh_progress", scoped_child_active=True)
 
-    watchdog = IdleWatchdog(watchdog._config, clock, corroborator=_corroborator)
+    watchdog = IdleWatchdog(watchdog.config, clock, corroborator=_corroborator)
 
     clock.advance(1.5)
     result = watchdog.evaluate(classify_quiet=_waiting)
@@ -336,7 +336,7 @@ def test_full_ceiling_preserved_when_no_progress_ceiling_disabled() -> None:
     def _corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(alive_by="fresh_heartbeat_only", scoped_child_active=True)
 
-    watchdog = IdleWatchdog(watchdog._config, clock, corroborator=_corroborator)
+    watchdog = IdleWatchdog(watchdog.config, clock, corroborator=_corroborator)
 
     clock.advance(1.5)
     result = watchdog.evaluate(classify_quiet=_waiting)
@@ -365,7 +365,7 @@ def test_full_ceiling_preserved_when_alive_by_is_none() -> None:
         # alive_by=None means we can't determine progress — use full ceiling.
         return CorroborationSnapshot(scoped_child_active=True)
 
-    watchdog = IdleWatchdog(watchdog._config, clock, corroborator=_corroborator)
+    watchdog = IdleWatchdog(watchdog.config, clock, corroborator=_corroborator)
 
     clock.advance(1.5)
     result = watchdog.evaluate(classify_quiet=_waiting)
@@ -399,7 +399,7 @@ def test_hard_stop_diagnostic_includes_effective_ceiling_classification() -> Non
         return CorroborationSnapshot(alive_by="fresh_heartbeat_only", scoped_child_active=True)
 
     watchdog = IdleWatchdog(
-        watchdog._config, clock, listener=events.append, corroborator=_corroborator
+        watchdog.config, clock, listener=events.append, corroborator=_corroborator
     )
 
     clock.advance(1.5)
@@ -716,10 +716,10 @@ def test_safe_corroborate_bypasses_cache_outside_evaluate() -> None:
     # Two consecutive bypass-path calls: each MUST invoke the corroborator
     # and return the corresponding fresh value. A stale cache would return
     # the FIRST ``alive_by`` on the second call (the original bug).
-    first = watchdog._safe_corroborate()
-    second = watchdog._safe_corroborate()
+    first = watchdog.safe_corroborate()
+    second = watchdog.safe_corroborate()
     assert call_count == 2, (
-        f"Outside evaluate(), _safe_corroborate() must call the corroborator "
+        f"Outside evaluate(), safe_corroborate() must call the corroborator "
         f"each time. Got call_count={call_count}; a stale cache would be 1."
     )
     assert first.alive_by == "fresh_progress", (
@@ -733,7 +733,7 @@ def test_safe_corroborate_bypasses_cache_outside_evaluate() -> None:
 
     # A third bypass-path call: still bypassing the cache, returning the
     # third fresh value (further pins the per-call freshness contract).
-    third = watchdog._safe_corroborate()
+    third = watchdog.safe_corroborate()
     assert call_count == 3
     assert third.alive_by == "os_descendant_only_stale_progress", (
         f"Third bypass-path call: expected "
@@ -742,10 +742,10 @@ def test_safe_corroborate_bypasses_cache_outside_evaluate() -> None:
 
     # The cache field MUST remain None outside ``evaluate()`` so the next
     # bypass-path call cannot accidentally hit a stale snapshot.
-    assert watchdog._tick_corroboration is None, (
-        "Outside evaluate(), _tick_corroboration must remain None. A non-None "
+    assert watchdog.tick_corroboration is None, (
+        "Outside evaluate(), tick_corroboration must remain None. A non-None "
         "value here means the bypass path poisoned the cache, and the next "
-        "_safe_corroborate() call (still outside evaluate()) would return the "
+        "safe_corroborate() call (still outside evaluate()) would return the "
         "stale snapshot."
     )
 
@@ -759,23 +759,23 @@ def test_safe_corroborate_bypasses_cache_outside_evaluate() -> None:
         f"(tick-scoped reuse), got call_count={call_count}."
     )
 
-    # After ``evaluate()`` returns, ``_evaluate_tick_active`` MUST be False
+    # After ``evaluate()`` returns, ``evaluate_tick_active`` MUST be False
     # so a subsequent bypass-path call is again routed to the raw
     # corroborator rather than the now-stale tick cache.
-    assert watchdog._evaluate_tick_active is False, (
-        "evaluate() must reset _evaluate_tick_active to False in its finally "
+    assert watchdog.evaluate_tick_active is False, (
+        "evaluate() must reset evaluate_tick_active to False in its finally "
         "block. A True value here means the tick cache is still 'active' "
         "after evaluate() returned, which would poison the next bypass-path "
         "call with the tick's stale snapshot."
     )
-    assert watchdog._tick_corroboration is None, (
-        "evaluate() must reset _tick_corroboration to None in its finally "
+    assert watchdog.tick_corroboration is None, (
+        "evaluate() must reset tick_corroboration to None in its finally "
         "block so the next bypass-path call cannot hit a stale snapshot."
     )
 
     # Bypass-path call AFTER evaluate(): must observe the corroborator's
     # NEXT fresh value, not the snapshot captured during the previous tick.
-    fourth = watchdog._safe_corroborate()
+    fourth = watchdog.safe_corroborate()
     assert call_count == 2, (
         f"Bypass-path call AFTER evaluate() must invoke the corroborator "
         f"(call_count=2), got call_count={call_count}."

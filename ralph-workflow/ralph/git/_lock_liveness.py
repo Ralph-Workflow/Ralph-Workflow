@@ -18,6 +18,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -29,11 +30,31 @@ from ralph.git._lock_proc_inspect import _check_pid_liveness, _list_pids
 #: a lock has already blocked git for at least the staleness floor.
 _PROBE_TIMEOUT_S = 5.0
 _PROBE_MAX_WORKERS: int = 4
+PROBE_MAX_WORKERS: int = _PROBE_MAX_WORKERS
 
 #: Thread-name prefix of the bounded probe pool. It is a named constant so a
 #: test can observe the pool's worker count through ``threading.enumerate()``
 #: instead of reaching into a private attribute of the executor object.
 _PROBE_THREAD_NAME_PREFIX = "ralph-git-lock-probe"
+
+
+@dataclass(frozen=True)
+class ProbeExecutorStatus:
+    """Status and health inspection snapshot of the bounded lock-probe thread pool."""
+
+    max_workers: int
+    worker_count: int
+    is_initialized: bool
+
+    @property
+    def capacity(self) -> int:
+        """Maximum worker capacity of the probe thread pool."""
+        return self.max_workers
+
+    @property
+    def healthy(self) -> bool:
+        """True if worker thread count does not exceed maximum pool capacity."""
+        return self.worker_count <= self.max_workers
 
 
 class _ProbeExecutorHolder:
@@ -63,20 +84,50 @@ class _ProbeExecutorHolder:
                 self._executor.shutdown(wait=False, cancel_futures=True)
                 self._executor = None
 
+    def status(self) -> ProbeExecutorStatus:
+        with self._lock:
+            if self._executor is None:
+                return ProbeExecutorStatus(
+                    max_workers=self._max_workers,
+                    worker_count=0,
+                    is_initialized=False,
+                )
+            count = sum(
+                1 for t in threading.enumerate() if t.name.startswith(_PROBE_THREAD_NAME_PREFIX)
+            )
+            return ProbeExecutorStatus(
+                max_workers=self._max_workers,
+                worker_count=count,
+                is_initialized=True,
+            )
+
 
 _probe_pool = _ProbeExecutorHolder()
+
+
+def probe_pool_capacity() -> int:
+    """Return the bounded maximum worker capacity of the probe thread pool."""
+    return _PROBE_MAX_WORKERS
+
+
+def probe_executor_status() -> ProbeExecutorStatus:
+    """Return health and status inspection for the probe thread pool."""
+    return _probe_pool.status()
 
 
 def _get_probe_executor() -> ThreadPoolExecutor:
     return _probe_pool.get()
 
 
-def _reset_probe_executor() -> None:
+def reset_probe_executor() -> None:
     """Test seam and interpreter-exit cleanup for the probe executor."""
     _probe_pool.reset()
 
 
-atexit.register(_reset_probe_executor)
+_reset_probe_executor = reset_probe_executor
+
+
+atexit.register(reset_probe_executor)
 
 
 def _normalize_external_liveness(

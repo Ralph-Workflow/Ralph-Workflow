@@ -56,6 +56,7 @@ def _install_seams(
         lambda *, root, **_kwargs: root / "resolution-prompt.md",
     )
     monkeypatch.setattr(driver_module, "_restore_status_bar", lambda *_args: None)
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
 
 
 def test_transport_loop_detected_is_a_typed_attempt_failure() -> None:

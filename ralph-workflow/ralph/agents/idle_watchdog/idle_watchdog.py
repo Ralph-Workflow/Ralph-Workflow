@@ -787,6 +787,76 @@ class IdleWatchdog:
         """Read-only view of tombstoned evicted workers."""
         return MappingProxyType(self._evicted_worker_tombstones)
 
+    @property
+    def subagent_progress_count(self) -> int:
+        """Total subagent progress events recorded during the current run."""
+        return self._subagent_progress_count
+
+    @property
+    def last_subagent_progress_at(self) -> float | None:
+        """Timestamp of the most recent recorded subagent progress event."""
+        return self._last_subagent_progress_at
+
+    @property
+    def in_drain_window(self) -> bool:
+        """Whether the watchdog is currently inside an output drain window."""
+        return self._in_drain_window
+
+    @property
+    def last_activity(self) -> float:
+        """Monotonic timestamp of the most recent stdout activity."""
+        return self._last_activity
+
+    @property
+    def last_mcp_tool_call_at(self) -> float | None:
+        """Timestamp of the most recent recorded MCP tool call."""
+        return self._last_mcp_tool_call_at
+
+    @property
+    def mcp_tool_call_count(self) -> int:
+        """Total MCP tool calls recorded during the current run."""
+        return self._mcp_tool_call_count
+
+    @property
+    def last_workspace_event_at(self) -> float | None:
+        """Timestamp of the most recent recorded workspace change event."""
+        return self._last_workspace_event_at
+
+    @property
+    def workspace_event_count(self) -> int:
+        """Total workspace events recorded during the current run."""
+        return self._workspace_event_count_internal
+
+    @property
+    def evaluate_tick_active(self) -> bool:
+        """Whether evaluate() is currently actively running a tick."""
+        return self._evaluate_tick_active
+
+    @property
+    def tick_corroboration(self) -> CorroborationSnapshot | None:
+        """Snapshot cached for the active evaluate() tick, if any."""
+        return self._tick_corroboration
+
+    def safe_corroborate(self) -> CorroborationSnapshot:
+        """Call the corroborator safely, returning an empty snapshot on None or error."""
+        return self._safe_corroborate()
+
+    def channel_evidence_active(self, now: float) -> bool:
+        """Return True when any quality-filtered channel is fresher than the TTL."""
+        return self._channel_evidence_active(now)
+
+    def handle_evidence_deferral(self, now: float, idle_elapsed: float) -> WatchdogVerdict:
+        """Evaluate deferral when idle deadline elapsed but evidence channel is fresh."""
+        return self._handle_evidence_deferral(now, idle_elapsed)
+
+    def handle_active_branch(self, now: float) -> WatchdogVerdict:
+        """Execute the active fire branch at monotonic time now."""
+        return self._handle_active_branch(now)
+
+    def build_evidence_summary_diag(self, now: float) -> tuple[dict[str, object], float | None]:
+        """Build diagnostic summary across channels and return (diagnostic, freshest_age)."""
+        return self._build_evidence_summary_diag(now)
+
     def emit_waiting_status(
         self,
         kind: WaitingStatusKind,

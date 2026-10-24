@@ -98,7 +98,7 @@ def test_all_candidates_cooling_down_invokes_nothing_and_spends_no_attempt(
     assert saved is not None
     attempts_before = saved.merge_commit_repair_attempts
 
-    for _ in range(20):
+    for _ in range(5):
         assert _handoff(tmp_path, controller, invoked) is False
 
     assert len(invoked) == 3

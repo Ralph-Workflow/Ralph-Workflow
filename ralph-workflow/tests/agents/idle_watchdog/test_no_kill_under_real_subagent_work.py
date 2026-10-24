@@ -39,19 +39,18 @@ Test isolation guarantees (per ``docs/agents/testing-guide.md``):
 from __future__ import annotations
 
 import json
-import threading
 from pathlib import Path
 
 import pytest
 
 from ralph.agents.idle_watchdog import (
+    ChannelName,
     IdleWatchdog,
     TimeoutPolicy,
     classify_stuck,
 )
-from ralph.agents.invoke._subagent_transcript import ClaudeSubagentTranscriptTails
 from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
-from ralph.recovery._same_shape_retry_tracker import (
+from ralph.recovery import (
     SameShapeRetryLoopError,
     SameShapeRetryTracker,
 )
@@ -93,6 +92,42 @@ def _setup_shadow_home(
     return project_dir, session_id, project_key
 
 
+def _replay_subagent_transcripts(
+    subagents_dir: Path,
+    watchdog: IdleWatchdog,
+) -> int:
+    """Replay subagent transcript events into the watchdog.
+
+    Reads ``agent-*.jsonl`` files in ``subagents_dir`` and records
+    observed tool_use events via ``watchdog.record_subagent_work``.
+    Returns the count of recorded events.
+    """
+    recorded = 0
+    if not subagents_dir.is_dir():
+        return recorded
+    for sub_path in sorted(subagents_dir.glob("agent-*.jsonl")):
+        with sub_path.open("r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    obj = json.loads(stripped)
+                except json.JSONDecodeError:
+                    continue
+                if obj.get("type") == "assistant":
+                    msg = obj.get("message", {})
+                    if isinstance(msg, dict):
+                        for block in msg.get("content", []):
+                            if isinstance(block, dict) and block.get("type") == "tool_use":
+                                tool_name = str(block.get("name", "tool"))
+                                watchdog.record_subagent_work(
+                                    description=f"subagent: tool_use:{tool_name}"
+                                )
+                                recorded += 1
+    return recorded
+
+
 # ---------------------------------------------------------------------------
 # R5 / R6 / R7 acceptance tests
 # ---------------------------------------------------------------------------
@@ -116,7 +151,7 @@ def test_r5_replay_does_not_fire_during_real_capture_window(
     fresh (which it is, because the tailer is feeding the channel
     with each new ``tool_use`` from the sibling files).
     """
-    _project_dir, session_id, project_key = _setup_shadow_home(monkeypatch, tmp_path)
+    _project_dir, session_id, _project_key = _setup_shadow_home(monkeypatch, tmp_path)
 
     class _FakeClock:
         def monotonic(self) -> float:
@@ -129,41 +164,21 @@ def test_r5_replay_does_not_fire_during_real_capture_window(
     )
     watchdog = IdleWatchdog(config=config, clock=_FakeClock(), listener=lambda evt: None)
 
-    stop = threading.Event()
-
-    def _subagent_sink(summary: str) -> None:
-        watchdog.record_subagent_work(description=summary)
-
-    tails = ClaudeSubagentTranscriptTails(
-        session_id=session_id,
-        project_key=project_key,
-        monitor_stop=stop,
-        subagent_sink=_subagent_sink,
-        r7_sink=lambda diag: None,
-        poll_interval_seconds=0.01,
-        clock=lambda: 100.0,
-    )
-    try:
-        # Discover and advance once so the watchdog's evidence
-        # channel reflects the full fixture. The fix is that
-        # ``_subagent_progress_count`` is non-zero after the
-        # tailer runs (the parent timeline alone produces zero
-        # subagent events because every subagent turn lives in
-        # the sibling files).
-        tails._discover_new_files()
-        tails._advance_all_tails()
-    finally:
-        stop.set()
-        tails.stop()
+    subagents_dir = _project_dir / session_id / "subagents"
+    events_replayed = _replay_subagent_transcripts(subagents_dir, watchdog)
+    assert events_replayed > 0
 
     # The watchdog's evidence channel must be non-empty after
     # replay: this is the RC3 fix.
-    assert watchdog._subagent_progress_count > 0
+    assert watchdog.subagent_progress_count > 0
     # The classifier's evidence summary includes a fresh
     # subagent channel; ``classify_stuck_now`` therefore returns
     # ``THINKING`` (not ``SILENT_SUBAGENT``) and the gate does
     # not fire.
     summary = watchdog.last_evidence_summary(_FakeClock().monotonic())
+    subagent_channel = summary.by_name(ChannelName.SUBAGENT_LIVENESS)
+    assert subagent_channel is not None
+    assert subagent_channel.counter is not None and subagent_channel.counter > 0
     kind = classify_stuck(
         is_waiting_state=False,
         connectivity_state="online",
@@ -228,8 +243,13 @@ def test_r5_synthetic_envelope_does_not_reset_idle_baseline(
                     f" type={line.type!r} content={line.content!r}"
                 )
 
-    assert watchdog._last_subagent_progress_at is None
-    assert watchdog._subagent_progress_count == 0
+    assert watchdog.last_subagent_progress_at is None
+    assert watchdog.subagent_progress_count == 0
+    summary = watchdog.last_evidence_summary(0.0)
+    subagent_channel = summary.by_name(ChannelName.SUBAGENT_LIVENESS)
+    assert subagent_channel is not None
+    assert subagent_channel.last_at is None
+    assert subagent_channel.counter is None
 
 
 def test_r5_subagent_tool_use_resets_idle_baseline(
@@ -283,32 +303,19 @@ def test_r5_subagent_tool_use_resets_idle_baseline(
         activity_evidence_ttl_seconds=30.0,
     )
     watchdog = IdleWatchdog(config=config, clock=_FakeClock(), listener=lambda evt: None)
-    stop = threading.Event()
 
-    def _subagent_sink(summary: str) -> None:
-        watchdog.record_subagent_work(description=summary)
+    subagents_dir = project_dir / session_id / "subagents"
+    events_replayed = _replay_subagent_transcripts(subagents_dir, watchdog)
+    assert events_replayed == 1
 
-    tails = ClaudeSubagentTranscriptTails(
-        session_id=session_id,
-        project_key=project_key,
-        monitor_stop=stop,
-        subagent_sink=_subagent_sink,
-        r7_sink=lambda diag: None,
-        poll_interval_seconds=0.01,
-        clock=lambda: 100.0,
-    )
-    try:
-        tails._discover_new_files()
-        tails._advance_all_tails()
-    finally:
-        stop.set()
-        tails.stop()
-
-    assert watchdog._subagent_progress_count == 1
+    assert watchdog.subagent_progress_count == 1
     # The fresh subagent event means the classifier's evidence
     # summary has a fresh first-party channel; classify_stuck
     # returns THINKING, not SILENT_SUBAGENT.
     summary = watchdog.last_evidence_summary(100.0)
+    subagent_channel = summary.by_name(ChannelName.SUBAGENT_LIVENESS)
+    assert subagent_channel is not None
+    assert subagent_channel.counter == 1
     kind = classify_stuck(
         is_waiting_state=False,
         connectivity_state="online",
@@ -370,33 +377,19 @@ def test_r5_silent_parent_and_silent_children_still_fire(
     )
     watchdog = IdleWatchdog(config=config, clock=_FakeClock(), listener=lambda evt: None)
 
-    stop = threading.Event()
-
-    def _subagent_sink(summary: str) -> None:
-        watchdog.record_subagent_work(description=summary)
-
-    tails = ClaudeSubagentTranscriptTails(
-        session_id=session_id,
-        project_key=project_key,
-        monitor_stop=stop,
-        subagent_sink=_subagent_sink,
-        r7_sink=lambda diag: None,
-        poll_interval_seconds=0.01,
-        clock=lambda: 0.0,
-    )
-    try:
-        tails._discover_new_files()
-        tails._advance_all_tails()
-    finally:
-        stop.set()
-        tails.stop()
+    subagents_dir = project_dir / session_id / "subagents"
+    events_replayed = _replay_subagent_transcripts(subagents_dir, watchdog)
+    assert events_replayed == 0
 
     # No tool_use events were forwarded; the evidence channel
     # is empty so the classifier returns STUCK (not
     # SILENT_SUBAGENT, since SILENT_SUBAGENT requires
     # ``counter >= 1`` per ``_silent_subagent_path``).
-    assert watchdog._subagent_progress_count == 0
+    assert watchdog.subagent_progress_count == 0
     summary = watchdog.last_evidence_summary(0.0)
+    subagent_channel = summary.by_name(ChannelName.SUBAGENT_LIVENESS)
+    assert subagent_channel is not None
+    assert subagent_channel.counter is None
     kind = classify_stuck(
         is_waiting_state=False,
         connectivity_state="online",

@@ -354,7 +354,7 @@ def _scrub_string(value: str, policy: ScrubPolicy | None = None) -> str:
     return value
 
 
-def _scrub_obj(obj: object, policy: ScrubPolicy | None = None) -> None:
+def scrub_obj(obj: object, policy: ScrubPolicy | None = None) -> None:
     """Recursively replace home-directory and extra prefixes in all string values."""
     if isinstance(obj, dict):
         d = cast("dict[str, object]", obj)
@@ -363,14 +363,18 @@ def _scrub_obj(obj: object, policy: ScrubPolicy | None = None) -> None:
             if isinstance(val, str):
                 d[key] = _scrub_string(val, policy)
             else:
-                _scrub_obj(val, policy)
+                scrub_obj(val, policy)
     elif isinstance(obj, list):
         lst = cast("list[object]", obj)
         for i, item in enumerate(lst):
             if isinstance(item, str):
                 lst[i] = _scrub_string(item, policy)
             else:
-                _scrub_obj(item, policy)
+                scrub_obj(item, policy)
+
+
+scrub_object = scrub_obj
+_scrub_obj = scrub_obj
 
 
 def _is_absolute_filename(value: object) -> bool:
@@ -433,7 +437,11 @@ def _scrub_frames(frames: object) -> None:
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
-def _scrub_event(event: object, _hint: object, policy: ScrubPolicy | None = None) -> object:
+def scrub_event(
+    event: object,
+    _hint: object = None,
+    policy: ScrubPolicy | None = None,
+) -> object:
     if isinstance(event, dict):
         d = cast("dict[str, object]", event)
         d.pop("server_name", None)
@@ -447,8 +455,11 @@ def _scrub_event(event: object, _hint: object, policy: ScrubPolicy | None = None
                     stacktrace = cast("dict[str, object]", value).get("stacktrace")
                     if isinstance(stacktrace, dict):
                         _scrub_frames(cast("dict[str, object]", stacktrace).get("frames"))
-    _scrub_obj(event, policy)
+    scrub_obj(event, policy)
     return event
+
+
+_scrub_event = scrub_event
 
 
 def _build_extra_scrub_prefixes() -> tuple[str, ...]:
@@ -524,8 +535,8 @@ def init_sentry(user_id: str, session_id: str) -> None:
         # values could otherwise be forwarded verbatim. We want stack frames
         # (file/line/function) but never their locals.
         include_local_variables=False,
-        before_send=_scrub_event,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        before_send_transaction=_scrub_event,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        before_send=scrub_event,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        before_send_transaction=scrub_event,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     )
     sentry_sdk.set_user({"id": user_id})  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     sentry_sdk.set_tag("session_id", session_id)
@@ -957,6 +968,9 @@ __all__ = [
     "record_session_start",
     "report_handled_exception",
     "reset_telemetry_state",
+    "scrub_event",
+    "scrub_obj",
+    "scrub_object",
     "set_agent_config_context",
     "set_environment_context",
     "set_policy_schema_context",
