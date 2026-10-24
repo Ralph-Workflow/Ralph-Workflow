@@ -3,7 +3,9 @@
 Contract: ``run_loop.py`` and ``runner.py`` must not write
 ``RebaseState.last_decision`` directly (assignment or ``model_copy(update=...)``).
 The reducer (``ralph/pipeline/reducer.py``) is the only writer; both modules
-must instead consult the typed authorities ``next_integration_action`` and
+must instead consult the typed authorities: the single integration owner
+(:func:`ralph.pipeline.integration_owner.decide_integration`, reached through
+:func:`ralph.pipeline._integration_owner_seam.decide_seam_action`) and
 ``decide_phase_transition``.
 """
 
@@ -59,14 +61,42 @@ def test_no_direct_last_decision_writers() -> None:
 def test_authority_calls_present() -> None:
     run_loop = _TARGETS[0].read_text(encoding="utf-8")
     runner = _TARGETS[1].read_text(encoding="utf-8")
-    assert "next_integration_action(" in run_loop
+    assert "decide_seam_action(" in run_loop
     assert "decide_phase_transition(" in run_loop
-    assert "next_integration_action(" in runner
+    assert "decide_seam_action(" in runner
     assert "decide_phase_transition(" in runner
-    assert "from ralph.pipeline._integration_action import" in run_loop
-    assert "from ralph.pipeline._integration_action import" in runner
+    assert "from ralph.pipeline._integration_owner_seam import" in run_loop
+    assert "from ralph.pipeline._integration_owner_seam import" in runner
     assert "from ralph.pipeline._pipeline_state_machine import" in run_loop
     assert "from ralph.pipeline._pipeline_state_machine import" in runner
+
+
+def test_the_retired_per_seam_decider_is_gone() -> None:
+    """The single owner replaced the hand-rolled per-seam decider.
+
+    ``next_integration_action`` re-derived the integration rung from a
+    durable record inside each seam. The owner
+    (:mod:`ralph.pipeline.integration_owner`) now decides the mutation
+    ladder and the seams overlay the durable record facts, so no seam
+    may call the retired decider any more.
+    """
+    for path in _TARGETS:
+        source = path.read_text(encoding="utf-8")
+        assert "next_integration_action(" not in source, (
+            f"{path.name} must ask the single owner, not the retired per-seam decider"
+        )
+
+
+def test_the_run_loop_has_no_hand_rolled_block_decider() -> None:
+    """The run loop's blocking seam must not keep a private record decider.
+
+    ``_resolve_record_for_block`` decided the busy / unreadable record
+    outcome with a private table. The canonical record-fact helper
+    (``busy_refusal_outcome``) owns that verdict now.
+    """
+    run_loop = _TARGETS[0].read_text(encoding="utf-8")
+    assert "_resolve_record_for_block" not in run_loop
+    assert "busy_refusal_outcome" in run_loop
 
 
 def test_run_loop_no_prose_compare_on_last_decision() -> None:

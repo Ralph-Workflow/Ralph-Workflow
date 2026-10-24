@@ -114,12 +114,15 @@ def _install_pdeathsig(signal_number: int = _SIGKILL) -> None:
         os._exit(0)
 
 
-def _death_preexec(command: Sequence[str]) -> Callable[[], None]:
+def death_preexec(command: Sequence[str]) -> functools.partial[None]:
     """Parent-death setup for a child: git gets SIGTERM, everything else SIGKILL.
 
     Git removes its lock files from a SIGTERM handler and always exits; SIGKILL
     would leave them behind. Every spawn factory goes through here so the choice
     cannot drift between the sync and async paths.
+
+    The returned partial carries the chosen signal number as its single bound
+    argument, which is what the parent-death setup installs in the child.
     """
     death_signal = _SIGTERM if Path(command[0]).name == "git" else _SIGKILL
     return functools.partial(_install_pdeathsig, death_signal)
@@ -220,7 +223,7 @@ def _default_sync_process_factory(
             pass_fds=opts.pass_fds,
         )
     preexec: Callable[[], None] | None = (
-        _death_preexec(command) if on_linux and on_main_thread else None
+        death_preexec(command) if on_linux and on_main_thread else None
     )
     popen_ctor: _PopenConstructor = subprocess.Popen
     return popen_ctor(
@@ -272,7 +275,7 @@ async def _default_async_process_factory(
 ) -> _AsyncProcessLike:
     child_env = child_env_for_spawn(env, cwd=cwd)
     preexec: Callable[[], None] | None = (
-        _death_preexec(command)
+        death_preexec(command)
         if sys.platform.startswith("linux")
         and threading.current_thread() is threading.main_thread()
         else None
@@ -322,6 +325,7 @@ __all__ = [
     "PtySpawnOptions",
     "SpawnOptions",
     "_pm_state",
+    "death_preexec",
     "get_process_manager",
     "process_phase_scope",
     "reset_process_manager",

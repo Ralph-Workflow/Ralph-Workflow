@@ -23,11 +23,14 @@ per-test ``tmp_path``. This is the ``audit_test_policy`` contract.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from ralph.git.git_run_result import GitRunResult
+from ralph.pipeline import integration_director
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     RecordReadOutcome,
@@ -48,9 +51,15 @@ from ralph.pipeline.integration_director import (
     observe,
 )
 from ralph.pipeline.integration_observation import (
+    HeadState,
+    InProgressKind,
+    InProgressOwnership,
     Observation,
+    Reading,
     TargetVsFeature,
+    TargetVsRemote,
     WorktreeState,
+    read_in_progress_kind,
 )
 from ralph.pipeline.operation_evidence import identity_fingerprint
 
@@ -67,14 +76,18 @@ class _ProbeOverrides:
 
     def __init__(self) -> None:
         self.porcelain: str = ""
-        self.rebase_active: bool = False
-        self.merge_verdict: str = "none"
+        self.head_state: Reading[HeadState] = Reading.known(HeadState.ATTACHED)
+        self.in_progress: Reading[InProgressKind] = Reading.known(InProgressKind.NONE)
+        self.merge_base: tuple[str | None, bool] = ("deadbeef" * 5, True)
         self.head_sha: str = "deadbeef" * 5
         self.repo_clean: bool = True
         self.branch_shas: dict[str, str | None] = {DEFAULT_TARGET_BRANCH: "deadbeef" * 5}
         self.remote_probe: tuple[str | None, bool] = ("deadbeef" * 5, True)
         self.record_disposition: RecordReadOutcomeDisposition = RecordReadOutcomeDisposition.ABSENT
         self.record_phase: str = ""
+        self.record_resolving_rebase: bool = False
+        self.record_resolving_merge: bool = False
+        self.record_owning_worktree: str | None = None
 
 
 def _install_probe_overrides(
@@ -103,13 +116,17 @@ def _install_probe_overrides(
             stderr="",
         )
 
-    def _fake_rebase(root: Path) -> bool:
-        if overrides.rebase_active is True and overrides.rebase_active == "__raise__":
-            raise OSError("rebase probe failed")
-        return overrides.rebase_active
+    def _fake_head_state(root: Path) -> Reading[HeadState]:
+        del root
+        return overrides.head_state
 
-    def _fake_merge(root: Path) -> str:
-        return overrides.merge_verdict
+    def _fake_in_progress(root: Path) -> Reading[InProgressKind]:
+        del root
+        return overrides.in_progress
+
+    def _fake_merge_base(root: Path, left: str, right: str) -> tuple[str | None, bool]:
+        del root, left, right
+        return overrides.merge_base
 
     def _fake_repo_clean(root: Path) -> bool:
         return overrides.repo_clean
@@ -142,6 +159,11 @@ def _install_probe_overrides(
             record = IntegrationRecord(
                 phase=overrides.record_phase or "integrating",
                 target=DEFAULT_TARGET_BRANCH,
+                pre_feature_sha=overrides.head_sha,
+                pre_target_sha=overrides.branch_shas.get(DEFAULT_TARGET_BRANCH),
+                resolving_rebase=overrides.record_resolving_rebase,
+                resolving_merge=overrides.record_resolving_merge,
+                owning_worktree=overrides.record_owning_worktree,
             )
             return RecordReadOutcome(
                 disposition=RecordReadOutcomeDisposition.PRESENT,
@@ -155,16 +177,23 @@ def _install_probe_overrides(
 
     del tmp_path  # unused; kept for signature parity with test arguments.
     monkeypatch.setattr("ralph.git.subprocess_runner.run_git", _fake_run_git)
-    monkeypatch.setattr("ralph.pipeline.integration_director.rebase_in_progress", _fake_rebase)
-    monkeypatch.setattr("ralph.pipeline.integration_director.merge_state", _fake_merge)
-    monkeypatch.setattr("ralph.pipeline.integration_director.is_repo_clean", _fake_repo_clean)
-    monkeypatch.setattr("ralph.pipeline.integration_director.get_head_sha", _fake_get_head)
+    monkeypatch.setattr(integration_director, "read_head_state", _fake_head_state)
     monkeypatch.setattr(
-        "ralph.pipeline.integration_director.observe_branch_sha",
+        integration_director,
+        "read_in_progress_kind",
+        _fake_in_progress,
+    )
+    monkeypatch.setattr(integration_director, "read_merge_base", _fake_merge_base)
+    monkeypatch.setattr(integration_director, "is_repo_clean", _fake_repo_clean)
+    monkeypatch.setattr(integration_director, "get_head_sha", _fake_get_head)
+    monkeypatch.setattr(
+        integration_director,
+        "observe_branch_sha",
         _fake_branch_sha,
     )
     monkeypatch.setattr(
-        "ralph.pipeline.integration_director.read_record_outcome",
+        integration_director,
+        "read_record_outcome",
         _fake_record_outcome,
     )
 
@@ -175,13 +204,42 @@ def _install_probe_overrides(
 
 
 def _default_director(
-    tmp_path: Path, overrides: _ProbeOverrides, **kwargs: object
+    tmp_path: Path,
+    overrides: _ProbeOverrides,
+    *,
+    target: str = DEFAULT_TARGET_BRANCH,
+    remote: str = DEFAULT_REMOTE,
+    agent_active: bool = False,
+    remote_probe: Callable[[Path, str, str], tuple[str | None, bool]] | None = None,
+    merge_base_probe: Callable[[Path, str, str], tuple[str | None, bool]] | None = None,
+    head_probe: Callable[[Path], Reading[HeadState]] | None = None,
+    in_progress_probe: Callable[[Path], Reading[InProgressKind]] | None = None,
+    unknown_budget: int = 3,
+    repeat_threshold: int = 2,
 ) -> IntegrationDirector:
-    """Build a director that wires the test's ``remote_probe`` override."""
-    kwargs.setdefault("target", DEFAULT_TARGET_BRANCH)
-    kwargs.setdefault("remote", DEFAULT_REMOTE)
-    kwargs.setdefault("remote_probe", lambda _root, _remote, _target: overrides.remote_probe)
-    return IntegrationDirector(tmp_path, **kwargs)
+    """Build a director with in-memory versions of every observation probe."""
+    return IntegrationDirector(
+        tmp_path,
+        target=target,
+        remote=remote,
+        agent_active=agent_active,
+        remote_probe=(
+            remote_probe
+            if remote_probe is not None
+            else lambda _root, _remote, _target: overrides.remote_probe
+        ),
+        merge_base_probe=(
+            merge_base_probe
+            if merge_base_probe is not None
+            else lambda _root, _left, _right: overrides.merge_base
+        ),
+        head_probe=head_probe if head_probe is not None else lambda _root: overrides.head_state,
+        in_progress_probe=(
+            in_progress_probe if in_progress_probe is not None else lambda _root: overrides.in_progress
+        ),
+        unknown_budget=unknown_budget,
+        repeat_threshold=repeat_threshold,
+    )
 
 
 def test_director_landed_work_short_circuits_to_land_and_releases_record(
@@ -300,7 +358,7 @@ def test_director_unmerged_worktree_dispatches_resolver_first(
     # ``UU`` as unmerged in isolation; force a rebase-active flag
     # instead, which the projection short-circuits to UNMERGED
     # before the porcelain classifier.
-    overrides.rebase_active = True
+    overrides.in_progress = Reading.known(InProgressKind.REBASE)
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
 
     director = _default_director(tmp_path, overrides)
@@ -313,7 +371,7 @@ def test_director_unmerged_worktree_repeats_advance_rung(
 ) -> None:
     """A repeated unmerged signature advances exactly one rung per cycle."""
     overrides = _ProbeOverrides()
-    overrides.rebase_active = True
+    overrides.in_progress = Reading.known(InProgressKind.REBASE)
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
 
     director = _default_director(tmp_path, overrides, repeat_threshold=1)
@@ -478,3 +536,223 @@ def test_director_decide_and_act_does_not_raise_under_observation_unknown(
     assert isinstance(decision.observation, Observation)
     assert isinstance(decision.attempts, AttemptLedgerState)
     assert isinstance(decision.release_applied, bool)
+
+
+# ---------------------------------------------------------------------------
+# Complete observation projection: ancestry, HEAD, operation kind, ownership.
+# ---------------------------------------------------------------------------
+
+_TARGET_SHA = "a" * 40
+_FEATURE_SHA = "b" * 40
+_REMOTE_SHA = "c" * 40
+_MERGE_BASE_SHA = "d" * 40
+
+
+@pytest.mark.parametrize(
+    ("target_sha", "feature_sha", "merge_base", "expected"),
+    [
+        (_TARGET_SHA, _TARGET_SHA, _MERGE_BASE_SHA, TargetVsFeature.EQUAL),
+        (_TARGET_SHA, _FEATURE_SHA, _TARGET_SHA, TargetVsFeature.BEHIND),
+        (_TARGET_SHA, _FEATURE_SHA, _FEATURE_SHA, TargetVsFeature.AHEAD),
+        (_TARGET_SHA, _FEATURE_SHA, _MERGE_BASE_SHA, TargetVsFeature.DIVERGED),
+    ],
+)
+def test_director_projects_target_vs_feature_ancestry(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    target_sha: str,
+    feature_sha: str,
+    merge_base: str,
+    expected: TargetVsFeature,
+) -> None:
+    """The target/feature axis preserves equal, behind, ahead, and diverged ancestry."""
+    overrides = _ProbeOverrides()
+    overrides.branch_shas = {DEFAULT_TARGET_BRANCH: target_sha}
+    overrides.head_sha = feature_sha
+    overrides.merge_base = (merge_base, True)
+    _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
+
+    observation = _default_director(tmp_path, overrides).observe()
+
+    assert observation.target_vs_feature is expected
+
+
+@pytest.mark.parametrize(
+    ("remote_sha", "merge_base", "expected"),
+    [
+        (_TARGET_SHA, _MERGE_BASE_SHA, TargetVsRemote.EQUAL),
+        (_REMOTE_SHA, _TARGET_SHA, TargetVsRemote.BEHIND),
+        (_REMOTE_SHA, _REMOTE_SHA, TargetVsRemote.AHEAD),
+        (_REMOTE_SHA, _MERGE_BASE_SHA, TargetVsRemote.DIVERGED),
+    ],
+)
+def test_director_projects_target_vs_remote_ancestry(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    remote_sha: str,
+    merge_base: str,
+    expected: TargetVsRemote,
+) -> None:
+    """The target/remote axis preserves equal, behind, ahead, and diverged ancestry."""
+    overrides = _ProbeOverrides()
+    overrides.branch_shas = {DEFAULT_TARGET_BRANCH: _TARGET_SHA}
+    overrides.remote_probe = (remote_sha, True)
+    overrides.merge_base = (merge_base, True)
+    _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
+
+    observation = _default_director(tmp_path, overrides).observe()
+
+    assert observation.target_vs_remote is expected
+
+
+def test_director_reports_detached_head_from_head_probe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The HEAD dimension reports a detached checkout instead of collapsing to attached."""
+    overrides = _ProbeOverrides()
+    overrides.head_state = Reading.known(HeadState.DETACHED)
+    _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
+
+    observation = _default_director(tmp_path, overrides).observe()
+
+    assert observation.head is HeadState.DETACHED
+
+
+def test_director_reports_cherry_pick_in_progress(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A cherry-pick is projected as its own in-progress operation kind."""
+    overrides = _ProbeOverrides()
+    overrides.in_progress = Reading.known(InProgressKind.CHERRY_PICK)
+    _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
+
+    observation = _default_director(tmp_path, overrides).observe()
+
+    assert observation.in_progress_kind is InProgressKind.CHERRY_PICK
+
+
+def test_director_reports_owned_operation_when_record_claims_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A matching record claim in the current worktree proves operation ownership."""
+    overrides = _ProbeOverrides()
+    overrides.in_progress = Reading.known(InProgressKind.REBASE)
+    overrides.record_disposition = RecordReadOutcomeDisposition.PRESENT
+    overrides.record_resolving_rebase = True
+    overrides.record_owning_worktree = str(tmp_path)
+    _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
+
+    observation = _default_director(tmp_path, overrides).observe()
+
+    assert observation.in_progress_ownership is InProgressOwnership.OWNED
+
+
+def test_director_reports_foreign_operation_when_record_does_not_claim_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An operation with no matching record claim is foreign, not silently owned."""
+    overrides = _ProbeOverrides()
+    overrides.in_progress = Reading.known(InProgressKind.REBASE)
+    _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
+
+    observation = _default_director(tmp_path, overrides).observe()
+
+    assert observation.in_progress_ownership is InProgressOwnership.FOREIGN
+
+
+def test_director_reports_foreign_operation_owned_by_another_worktree(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A record held by another worktree cannot claim the operation locally."""
+    overrides = _ProbeOverrides()
+    overrides.in_progress = Reading.known(InProgressKind.REBASE)
+    overrides.record_disposition = RecordReadOutcomeDisposition.PRESENT
+    overrides.record_resolving_rebase = True
+    overrides.record_owning_worktree = str(tmp_path / "other-worktree")
+    _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
+
+    observation = _default_director(tmp_path, overrides).observe()
+
+    assert observation.in_progress_ownership is InProgressOwnership.FOREIGN
+
+
+def test_director_unreadable_operation_probe_is_unknown_and_never_blocks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An unreadable operation probe is unknown evidence and never an operation."""
+    overrides = _ProbeOverrides()
+    overrides.record_disposition = RecordReadOutcomeDisposition.BUSY
+    _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
+
+    def _unreadable_operation(_root: Path) -> Reading[InProgressKind]:
+        raise OSError("operation probe failed")
+
+    decision = _default_director(
+        tmp_path,
+        overrides,
+        in_progress_probe=_unreadable_operation,
+    ).decide_and_act()
+
+    assert decision.observation.in_progress_kind is InProgressKind.NONE
+    assert decision.observation.in_progress_ownership is InProgressOwnership.UNKNOWN
+    assert decision.action is NextAction.WAIT_FOR_ENVIRONMENT
+    assert decision.action not in (NextAction.DISPATCH_RESOLVER, NextAction.REPAIR)
+
+
+def test_director_unreadable_merge_base_probe_is_unknown_and_never_blocks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An unreadable ancestry probe is unknown and cannot become a blocking verdict."""
+    overrides = _ProbeOverrides()
+    overrides.head_sha = _FEATURE_SHA
+    _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
+
+    def _unreadable_merge_base(_root: Path, _left: str, _right: str) -> tuple[str | None, bool]:
+        raise OSError("merge-base probe failed")
+
+    decision = _default_director(
+        tmp_path,
+        overrides,
+        merge_base_probe=_unreadable_merge_base,
+    ).decide_and_act()
+
+    assert decision.observation.target_vs_feature is TargetVsFeature.UNKNOWN
+    assert decision.action is NextAction.WAIT_FOR_ENVIRONMENT
+    assert decision.action not in (NextAction.DISPATCH_RESOLVER, NextAction.REPAIR)
+
+
+@pytest.mark.parametrize(
+    ("marker_name", "expected"),
+    [
+        (None, InProgressKind.NONE),
+        ("MERGE_HEAD", InProgressKind.MERGE),
+        ("CHERRY_PICK_HEAD", InProgressKind.CHERRY_PICK),
+        ("rebase-merge", InProgressKind.REBASE),
+        ("rebase-apply", InProgressKind.REBASE),
+    ],
+)
+def test_read_in_progress_kind_detects_authoritative_git_markers(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    marker_name: str | None,
+    expected: InProgressKind,
+) -> None:
+    """Git's operation markers select the complete in-progress kind vocabulary."""
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    if marker_name is not None:
+        marker = git_dir / marker_name
+        if marker_name.startswith("rebase-"):
+            marker.mkdir()
+        else:
+            marker.write_text("state\n", encoding="utf-8")
+
+    def _fake_run_git(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(returncode=0, stdout=str(git_dir), stderr="")
+
+    monkeypatch.setattr(
+        "ralph.pipeline.integration_observation.run_git",
+        _fake_run_git,
+    )
+
+    assert read_in_progress_kind(tmp_path) == Reading.known(expected)

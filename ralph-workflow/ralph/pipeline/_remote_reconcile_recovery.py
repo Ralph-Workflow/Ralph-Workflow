@@ -1,4 +1,29 @@
-"""Resume target reconciliation in its owning worktree without moving the feature."""
+"""Resume target reconciliation in its owning worktree without moving the feature.
+
+Decision ownership
+-------------------
+
+The **mutation ladder** -- which integration rung the boundary must climb
+next -- is decided by the single owner
+:func:`ralph.pipeline.integration_owner.decide_integration`. This module
+asks the owner and acts on its verdict; it never re-derives the rung from
+the durable record.
+
+The **record facts the pure observation table cannot express** stay with
+the seam:
+
+* the durable record's identity -- the resolving / pending-continuation
+  flags, the pre-integration feature SHA, the owning worktree -- is
+  intent and ownership the observation table never reads.
+* the completion / publication verdicts (``COMPLETE_WITH_PROOF``,
+  ``PUBLISH_AFTER_LANDING``) are derived from the record's landing proof,
+  and the busy refusal (``WAIT_FOR_BOUNDED_RETRY`` /
+  ``REQUIRE_INTERVENTION``) is derived from the persisted retry deadline.
+
+The split is deliberate: the owner decides *what to do to the integration
+state*, the record facts decide *whether the obligation is already
+finished*.
+"""
 
 from __future__ import annotations
 
@@ -11,12 +36,12 @@ from ralph.git.merge_obstructions import ancestry_state
 from ralph.git.operations import get_head_sha, is_repo_clean
 from ralph.git.rebase.rebase import RebaseNoOp, RebaseSuccess, rebase_onto
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
+from ralph.pipeline._auto_integrate_config import configured_target as _configured_target
 from ralph.pipeline._commit_completion_authority import complete_commit
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._integration_action import (
     IntegrationAction,
     RebaseOutcomeKind,
-    next_integration_action,
 )
 from ralph.pipeline._integration_continuation import (
     _legacy_completed_rebase,
@@ -35,7 +60,14 @@ from ralph.pipeline.auto_integrate_record import (
     write_record,
 )
 from ralph.pipeline.auto_integrate_record_store import apply_record_transition
+from ralph.pipeline.auto_integrate_remote_constants import remote_target_name as _remote_target_name
 from ralph.pipeline.auto_integrate_transaction import integration_transaction
+from ralph.pipeline.integration_director import (
+    DEFAULT_REMOTE,
+    DEFAULT_TARGET_BRANCH,
+    IntegrationDirector,
+)
+from ralph.pipeline.integration_owner import decide_integration
 from ralph.pipeline.integration_resolution import retained_integration_reason
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
@@ -242,9 +274,8 @@ def _continue_target_record(
             resolving_merge=merge_state(owner) == MERGE_STATE_IN_PROGRESS,
         )
         write_record(root, record)
-    elif (
-        next_integration_action(record) == IntegrationAction.REINTEGRATE_AGAINST_TARGET
-        and not record.rebase_continue_pending
+    elif not record.rebase_continue_pending and _owner_reenters_against_target(
+        root, record, config
     ):
         completed = _legacy_completed_rebase(
             owner,
@@ -266,6 +297,59 @@ def _continue_target_record(
             owner, record, config, conflict_resolver, rebase_stop_resolver
         )
     )
+
+
+#: The owner's actions under which the retained target reconciliation is
+#: re-entered against the target.
+#:
+#: ``RESOLVE_ACTIVE_OPERATION`` is the owner's repair rung: the durable
+#: record claims an integration that Git does not show, so the intent is
+#: stale and the boundary drops the stale flags and re-enters at step 1
+#: (the automatic rebase). ``REINTEGRATE_AGAINST_TARGET`` asks for the
+#: re-integration directly. Every other action leaves the retained
+#: resolution to the path that owns it (``CONTINUE_GIT_OPERATION`` resumes
+#: the owned operation, ``WAIT_FOR_BOUNDED_RETRY`` authorises no
+#: mutation).
+_REENTRY_ACTIONS: frozenset[IntegrationAction] = frozenset(
+    {
+        IntegrationAction.RESOLVE_ACTIVE_OPERATION,
+        IntegrationAction.REINTEGRATE_AGAINST_TARGET,
+    }
+)
+
+
+def _owner_reenters_against_target(
+    root: Path,
+    record: IntegrationRecord,
+    config: UnifiedConfig | None,
+) -> bool:
+    """Ask the single owner whether the integration must be re-entered.
+
+    ``root`` is the workspace that holds the durable record (and anchors
+    the durable attempt ledger). The in-flight Git operation lives in the
+    owning worktree and is re-derived from Git by the caller before the
+    owner is asked, so the observation never has to guess it.
+
+    The observation is built by the director -- the one observation owner
+    -- against the CONFIGURED target and remote (``main`` and ``origin``
+    are defaults only), and the owner then decides on it.
+    """
+    target = _configured_target(config) if config is not None else record.target
+    remote = _remote_target_name(config) if config is not None else DEFAULT_REMOTE
+    observation = IntegrationDirector(
+        root,
+        target=target or DEFAULT_TARGET_BRANCH,
+        remote=remote or DEFAULT_REMOTE,
+        agent_active=False,
+    ).observe()
+    action, _reason = decide_integration(
+        root,
+        record=record,
+        agent_active=False,
+        ledger_path=None,
+        observation=observation,
+    )
+    return action in _REENTRY_ACTIONS
 
 
 def _start_saved_target_action(

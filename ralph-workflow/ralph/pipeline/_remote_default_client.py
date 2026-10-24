@@ -1,4 +1,10 @@
-"""Default remote client delegating to live Git operations."""
+"""Default remote client delegating to live Git operations.
+
+The client is the PRODUCTION implementation of the remote tier: it
+implements the :class:`~ralph.pipeline.integration_remote_actions.RemoteOps`
+protocol the integration pipeline injects, so the same adapter serves
+the runtime and any test that substitutes a fault-injecting double.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +17,7 @@ from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_UNREACHABLE,
 )
+from ralph.pipeline.integration_remote_actions import RemoteOps
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -28,8 +35,16 @@ def _remote_tracking_sha(repo_root: Path, target: str, remote: str) -> str | Non
     return result.stdout.strip() or None
 
 
-class _DefaultRemoteClient:
-    """Default production implementation delegating to live Git operations."""
+class _DefaultRemoteClient(RemoteOps):
+    """Default production implementation delegating to live Git operations.
+
+    Implements the :class:`~ralph.pipeline.integration_remote_actions.RemoteOps`
+    protocol explicitly: the client is ONE implementation of the remote
+    tier, and the protocol is the narrow seam the integration pipeline
+    injects. Every failure stays fail-open -- an unreadable remote is
+    reported as ``REFRESH_UNREACHABLE`` / an ``UNREACHABLE`` push
+    result, never as a proven negative.
+    """
 
     def refresh_target(
         self,

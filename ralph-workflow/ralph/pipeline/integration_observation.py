@@ -32,6 +32,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS, parse_porcelain_z, unmerged_paths_z
@@ -39,7 +40,6 @@ from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 
 class ReadingVariant(Enum):
@@ -483,6 +483,92 @@ def read_head_state(root: Path) -> Reading[HeadState]:
     return Reading[HeadState].unknown(f"git symbolic-ref HEAD unreadable: exit={result.returncode}")
 
 
+def read_merge_base(root: Path, left: str, right: str) -> tuple[str | None, bool]:
+    """Read the merge base between two commits without losing failure semantics.
+
+    The boolean distinguishes the three answers the ancestry projection needs:
+
+    * ``(sha, True)`` — Git found a common ancestor.
+    * ``(None, True)`` — Git proved the commits have no common ancestor.
+    * ``(None, False)`` — Git could not answer, so the relationship is unknown.
+
+    A failed probe must never be collapsed into "no common ancestor": the
+    first is a divergence fact, while the second is an environmental
+    unknown that must back off and re-observe.
+    """
+    try:
+        result = run_git(
+            (*COMMIT_PIN_CONFIG_ARGS, "merge-base", left, right),
+            cwd=root,
+            label="integration-observation-merge-base",
+        )
+    except Exception:
+        return None, False
+    if result.returncode == 0:
+        return result.stdout.strip() or None, True
+    if result.returncode == 1:
+        return None, True
+    return None, False
+
+
+def _marker_present(path: Path) -> bool:
+    """Return whether ``path`` exists, propagating unreadable-stat failures."""
+    try:
+        path.stat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _read_operation_markers(git_dir: Path) -> Reading[InProgressKind]:
+    """Classify the operation markers inside one worktree's git directory."""
+    try:
+        if _marker_present(git_dir / "rebase-merge") or _marker_present(git_dir / "rebase-apply"):
+            return Reading.known(InProgressKind.REBASE)
+        if _marker_present(git_dir / "MERGE_HEAD"):
+            return Reading.known(InProgressKind.MERGE)
+        if _marker_present(git_dir / "CHERRY_PICK_HEAD"):
+            return Reading.known(InProgressKind.CHERRY_PICK)
+    except OSError as exc:
+        return Reading[InProgressKind].unknown(
+            f"in-progress marker unreadable: {exc or type(exc).__name__}"
+        )
+    return Reading.known(InProgressKind.NONE)
+
+
+def read_in_progress_kind(root: Path) -> Reading[InProgressKind]:
+    """Read the authoritative Git marker for an in-progress operation.
+
+    Git records an unfinished operation in the per-worktree git directory:
+    ``rebase-merge/`` / ``rebase-apply/`` for a rebase, ``MERGE_HEAD``
+    for a merge, and ``CHERRY_PICK_HEAD`` for a cherry-pick. The probe
+    reads the per-worktree git directory so a sibling worktree's markers
+    are never mistaken for this worktree's state.
+
+    A failed git query or an unreadable marker is
+    :meth:`Reading.unknown`; it is never positive evidence that an
+    operation exists.
+    """
+    try:
+        result = run_git(
+            (*COMMIT_PIN_CONFIG_ARGS, "rev-parse", "--absolute-git-dir"),
+            cwd=root,
+            label="integration-observation-git-dir",
+        )
+    except Exception as exc:
+        return Reading[InProgressKind].unknown(
+            f"git directory unreadable: {exc or type(exc).__name__}"
+        )
+    if result.returncode != 0:
+        return Reading[InProgressKind].unknown(
+            f"git directory unreadable: exit={result.returncode}"
+        )
+    git_dir_raw = result.stdout.strip()
+    if not git_dir_raw:
+        return Reading[InProgressKind].unknown("git directory unreadable: empty path")
+    return _read_operation_markers(Path(git_dir_raw))
+
+
 def read_worktree(root: Path) -> Reading[WorktreeVerdict]:
     """Observe the worktree and classify it through the one classifier."""
     porcelain = read_worktree_porcelain(root)
@@ -506,6 +592,8 @@ __all__ = [
     "WorktreeVerdict",
     "classify_worktree",
     "read_head_state",
+    "read_in_progress_kind",
+    "read_merge_base",
     "read_worktree",
     "read_worktree_porcelain",
     "reading_from_callable",

@@ -137,16 +137,16 @@ def test_shutdown_all_gives_several_stuck_gits_one_shared_window(
 
 
 def test_git_children_get_sigterm_as_their_parent_death_signal() -> None:
-    from ralph.process.manager import _death_preexec
+    from ralph.process.manager import death_preexec
 
-    assert _death_preexec(["/usr/bin/git", "add"]).args == (15,)  # type: ignore[attr-defined]
-    assert _death_preexec(["/usr/bin/sleep", "1"]).args == (9,)  # type: ignore[attr-defined]
+    assert death_preexec(["/usr/bin/git", "add"]).args == (15,)
+    assert death_preexec(["/usr/bin/sleep", "1"]).args == (9,)
 
 
 def test_look_alikes_of_git_do_not_trigger_the_floor() -> None:
-    from ralph.process.manager._git_termination import _is_git_name
+    from ralph.process.manager._git_termination import is_git_name
 
-    assert _is_git_name("git")
-    assert _is_git_name("git-remote-https")
-    assert not _is_git_name("gitlab-runner")
-    assert not _is_git_name("gitstatusd")
+    assert is_git_name("git")
+    assert is_git_name("git-remote-https")
+    assert not is_git_name("gitlab-runner")
+    assert not is_git_name("gitstatusd")

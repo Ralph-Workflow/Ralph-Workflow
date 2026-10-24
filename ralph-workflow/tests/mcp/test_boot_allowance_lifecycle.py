@@ -9,7 +9,6 @@ host pressure a healthy, still-booting child was killed with
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -18,8 +17,8 @@ import pytest
 from ralph.mcp.protocol._startup_timeouts import mcp_boot_allowance_from_env
 from ralph.mcp.protocol.env import MCP_BOOT_ALLOWANCE_MS_ENV
 from ralph.mcp.server import lifecycle
+from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.server._start_stage_tracker import stage_file_path
-from ralph.mcp.server.lifecycle import StandaloneMcpProcess
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -30,15 +29,25 @@ ENVELOPE_S = 0.5  # preflight_timeout 1s -> envelope 0.5s
 
 
 class _Process:
-    """A child that never boots: it stays alive so the wait loop must time it out."""
+    """Minimal ``ProcessLike`` stand-in: a child that never exits on its own.
 
-    pid = 0  # not a real pid: psutil lookup is best-effort
+    ``pid`` is not a real pid, so the psutil lookup behind the startup
+    diagnostics stays best-effort.
+    """
+
+    def __init__(self) -> None:
+        self.terminations = 0
+
+    @property
+    def pid(self) -> int:
+        return 0
 
     def poll(self) -> int | None:
         return None
 
     def terminate(self, grace_period_s: float = 5.0) -> None:
         del grace_period_s
+        self.terminations += 1
 
     def wait(self, timeout: float | None = None) -> int | None:
         del timeout
@@ -48,22 +57,19 @@ class _Process:
         """The teardown path terminates the child; it never kills it directly."""
 
 
-@dataclass
-class _Bridge(StandaloneMcpProcess):
-    """A real standalone MCP process whose teardown is counted for the assertions."""
+def _bridge(root: Path, process: _Process) -> StandaloneMcpProcess:
+    """A real ``StandaloneMcpProcess`` around the fake child.
 
-    shutdowns: int = 0
-
-    def shutdown(self) -> None:
-        self.shutdowns += 1
-        super().shutdown()
-
-
-def _bridge(tmp_path: Path) -> _Bridge:
-    return _Bridge(
+    The production wait loop only ever touches the bridge's child process and
+    its ``shutdown()``, so the test drives the real dataclass instead of a
+    hand-rolled stand-in.
+    """
+    session_file = root / "session.json"
+    session_file.write_text("{}", encoding="utf-8")
+    return StandaloneMcpProcess(
         endpoint="http://127.0.0.1:1/mcp",
-        process=_Process(),
-        session_file=tmp_path / "session.json",
+        process=process,
+        session_file=session_file,
     )
 
 
@@ -126,7 +132,7 @@ class _TickClock:
 def _await(
     tmp_path: Path,
     deps: lifecycle.LifecycleDeps,
-    bridge: _Bridge,
+    bridge: StandaloneMcpProcess,
     clock: _TickClock | None = None,
 ) -> lifecycle.McpServerError | None:
     tick = clock or _TickClock()
@@ -158,7 +164,8 @@ def _write_stage(tmp_path: Path, value: str = "env_loaded") -> None:
 def test_child_that_never_boots_fails_with_a_boot_specific_error(tmp_path: Path) -> None:
     release = threading.Event()
     budgets: list[timedelta] = []
-    bridge = _bridge(tmp_path)
+    process = _Process()
+    bridge = _bridge(tmp_path, process)
     try:
         err = _await(
             tmp_path,
@@ -172,7 +179,7 @@ def test_child_that_never_boots_fails_with_a_boot_specific_error(tmp_path: Path)
     assert err.restart_reason == "boot_deadline_exceeded"
     assert "boot allowance" in str(err)
     assert err.last_stage == "last_stage_unknown"
-    assert bridge.shutdowns == 1
+    assert process.terminations == 1
 
 
 def test_booted_child_is_judged_by_the_envelope_from_its_first_stage(tmp_path: Path) -> None:
@@ -183,7 +190,7 @@ def test_booted_child_is_judged_by_the_envelope_from_its_first_stage(tmp_path: P
         err = _await(
             tmp_path,
             _deps(boot_allowance_s=30.0, preflight_release=release, seen_budgets=budgets),
-            _bridge(tmp_path),
+            _bridge(tmp_path, _Process()),
         )
     finally:
         release.set()
@@ -204,7 +211,7 @@ def test_slow_boot_longer_than_the_envelope_still_becomes_ready(tmp_path: Path) 
     err = _await(
         tmp_path,
         _deps(boot_allowance_s=10.0, preflight_release=release, seen_budgets=budgets),
-        _bridge(tmp_path),
+        _bridge(tmp_path, _Process()),
         clock,
     )
 
@@ -218,7 +225,7 @@ def test_preflight_budget_is_extended_by_the_boot_allowance(tmp_path: Path) -> N
     _await(
         tmp_path,
         _deps(boot_allowance_s=7.0, preflight_release=release, seen_budgets=budgets),
-        _bridge(tmp_path),
+        _bridge(tmp_path, _Process()),
     )
     assert budgets == [timedelta(seconds=8)]
 
@@ -230,7 +237,7 @@ def test_no_boot_allowance_keeps_the_spawn_anchored_deadline(tmp_path: Path) -> 
         err = _await(
             tmp_path,
             _deps(boot_allowance_s=None, preflight_release=release, seen_budgets=budgets),
-            _bridge(tmp_path),
+            _bridge(tmp_path, _Process()),
         )
     finally:
         release.set()

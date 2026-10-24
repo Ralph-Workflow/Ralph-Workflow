@@ -12,9 +12,9 @@ The director performs three steps on every invocation:
 
 1. **Observe** - build a frozen
    :class:`~ralph.pipeline.integration_observation.Observation` from
-   live probes. Each probe (``porcelain``, ``rebase_state``,
-   ``merge_state``, target/feature/remote refs, in-progress kind and
-   ownership, record disposition) lifts exceptions into
+   live probes. Each probe (``porcelain``, merge-base ancestry,
+   HEAD state, in-progress kind and ownership, target/feature/remote
+   refs, record disposition) lifts exceptions into
    :class:`~ralph.pipeline.integration_observation.Reading.Unknown`
    via :func:`reading_from_callable` so an environmental failure never
    produces a blocking verdict. The seven
@@ -42,31 +42,20 @@ fresh state in the same observation cycle.
 
 from __future__ import annotations
 
-import contextlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Literal
 
-from ralph.git.merge import (
-    MERGE_STATE_IN_PROGRESS,
-    MERGE_STATE_UNKNOWN,
-    merge_state,
-    observe_branch_sha,
-)
+from ralph.git.merge import observe_branch_sha
 from ralph.git.operations import get_head_sha, is_repo_clean
-from ralph.git.rebase.rebase import rebase_in_progress
+from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline.auto_integrate_record import (
     RecordReadOutcomeDisposition,
     clear_record,
     read_record_outcome,
     record_path,
 )
-from ralph.pipeline.integration_attempt_ledger import (
-    AttemptLedger,
-    AttemptLedgerState,
-)
 from ralph.pipeline.integration_decision import (
-    AttemptState,
     DecisionContext,
     NextAction,
     decide,
@@ -81,11 +70,21 @@ from ralph.pipeline.integration_observation import (
     TargetVsFeature,
     TargetVsRemote,
     WorktreeState,
+    read_head_state,
+    read_in_progress_kind,
+    read_merge_base,
     reading_from_callable,
+)
+from ralph.pipeline.integration_owner import (
+    charge_integration_attempt,
+    load_integration_attempts,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord
+    from ralph.pipeline.integration_attempt_ledger import AttemptLedgerState
 
 
 DEFAULT_TARGET_BRANCH: Final[str] = "main"
@@ -95,6 +94,11 @@ DEFAULT_REMOTE: Final[str] = "origin"
 """Default remote name; production wires configured values explicitly."""
 
 _PROBE_REASON_MAX_LEN: Final[int] = 120
+
+#: The record read reports an unsupported schema when the on-disk record
+#: uses a shape this build does not understand - the durable evidence of
+#: a record written by an older Ralph version.
+_UNSUPPORTED_SCHEMA_REASON: Final[str] = "unsupported_schema"
 
 __all__ = [
     "DEFAULT_REMOTE",
@@ -149,11 +153,6 @@ def _read_porcelain(root: Path) -> Reading[str]:
     return reading_from_callable(_probe)
 
 
-def _read_rebase_active(root: Path) -> Reading[bool]:
-    """Lift :func:`rebase_in_progress` into :class:`Reading`."""
-    return reading_from_callable(lambda: bool(rebase_in_progress(root)))
-
-
 def _read_branch_sha(root: Path, ref: str) -> tuple[str | None, bool]:
     """Read ``refs/heads/<ref>`` distinguishing absent from unreadable."""
     try:
@@ -165,6 +164,56 @@ def _read_branch_sha(root: Path, ref: str) -> tuple[str | None, bool]:
 def _read_head_sha(root: Path) -> Reading[str]:
     """Lift :func:`get_head_sha` into :class:`Reading`."""
     return reading_from_callable(lambda: get_head_sha(root))
+
+
+def _read_head_state(
+    root: Path,
+    head_probe: Callable[[Path], Reading[HeadState]] | None,
+) -> Reading[HeadState]:
+    """Read the attached/detached HEAD state through an injectable probe."""
+    probe = head_probe if head_probe is not None else read_head_state
+    try:
+        result = probe(root)
+    except Exception as exc:
+        return Reading.unknown(f"head probe failed: {exc or type(exc).__name__}")
+    if not result.is_known_good:
+        return Reading.unknown(result.reason or "head probe did not answer")
+    value = result.value
+    if value not in (HeadState.ATTACHED, HeadState.DETACHED):
+        return Reading.unknown("head probe returned an invalid state")
+    return Reading.known(value)
+
+
+def _read_in_progress_kind(
+    root: Path,
+    in_progress_probe: Callable[[Path], Reading[InProgressKind]] | None,
+) -> Reading[InProgressKind]:
+    """Read the operation kind through an injectable Git-marker probe."""
+    probe = in_progress_probe if in_progress_probe is not None else read_in_progress_kind
+    try:
+        result = probe(root)
+    except Exception as exc:
+        return Reading.unknown(f"in-progress probe failed: {exc or type(exc).__name__}")
+    if not result.is_known_good:
+        return Reading.unknown(result.reason or "in-progress probe did not answer")
+    value = result.value
+    if value not in tuple(InProgressKind):
+        return Reading.unknown("in-progress probe returned an invalid kind")
+    return Reading.known(value)
+
+
+def _read_merge_base(
+    root: Path,
+    left: str,
+    right: str,
+    merge_base_probe: Callable[[Path, str, str], tuple[str | None, bool]] | None,
+) -> tuple[str | None, bool]:
+    """Read a merge base while preserving unreadable-versus-no-base semantics."""
+    probe = merge_base_probe if merge_base_probe is not None else read_merge_base
+    try:
+        return probe(root, left, right)
+    except Exception:
+        return None, False
 
 
 def _read_repo_clean(root: Path) -> bool:
@@ -197,12 +246,20 @@ def _read_remote_sha(
     return _read_branch_sha(root, ref_path)
 
 
-def _read_durable_record(root: Path) -> tuple[Reading[RecordReadOutcomeDisposition], str | None]:
+def _read_durable_record(
+    root: Path,
+) -> tuple[
+    Reading[RecordReadOutcomeDisposition],
+    IntegrationRecord | None,
+    str | None,
+]:
     """Read the durable integration record for the observation.
 
     Returns the typed disposition (lifted into :class:`Reading` so a
-    raised read becomes ``Unknown``) plus the human-readable reason
-    the integration-resolution helper would surface to dispatch.
+    raised read becomes ``Unknown``), the loaded record used to prove
+    operation ownership and to project the record state, and the
+    unreadable reason (when the disposition says the record could not
+    be parsed).
     """
     try:
         outcome = read_record_outcome(root)
@@ -210,37 +267,13 @@ def _read_durable_record(root: Path) -> tuple[Reading[RecordReadOutcomeDispositi
         return (
             Reading.unknown(_brief_reason(str(exc) or type(exc).__name__)),
             None,
+            None,
         )
-    return Reading.known(outcome.disposition), _outcome_reason(outcome)
-
-
-def _outcome_reason(outcome: object) -> str | None:
-    """Return a brief reason string for ``outcome``; ``None`` when absent."""
-    reason_obj: object = _safe_attr(outcome, "unreadable_reason")
-    if isinstance(reason_obj, str) and reason_obj:
-        return _brief_reason(reason_obj)
-    disposition = _safe_attr(outcome, "disposition")
-    if disposition is RecordReadOutcomeDisposition.UNREADABLE:
-        return "unreadable durable integration record"
-    if disposition is RecordReadOutcomeDisposition.BUSY:
-        return "transient lock contention on the durable record"
-    record_obj: object = _safe_attr(outcome, "record")
-    if record_obj is not None:
-        phase = _safe_attr(record_obj, "phase")
-        if isinstance(phase, str) and phase:
-            return phase
-    return None
-
-
-def _safe_attr(obj: object, name: str) -> object:
-    """Best-effort attribute lookup; returns ``None`` on missing or raised."""
-    if obj is None:
-        return None
-    try:
-        result: object = getattr(obj, name)
-    except AttributeError:
-        return None
-    return result
+    return (
+        Reading.known(outcome.disposition),
+        outcome.record,
+        outcome.unreadable_reason,
+    )
 
 
 def _brief_reason(reason: str | None) -> str:
@@ -256,42 +289,102 @@ def _brief_reason(reason: str | None) -> str:
 # ---------------------------------------------------------------------------
 
 
+type _AncestryRelation = Literal["equal", "behind", "ahead", "diverged", "unknown"]
+
+_TARGET_VS_FEATURE_BY_RELATION: Final[dict[str, TargetVsFeature]] = {
+    "equal": TargetVsFeature.EQUAL,
+    "behind": TargetVsFeature.BEHIND,
+    "ahead": TargetVsFeature.AHEAD,
+    "diverged": TargetVsFeature.DIVERGED,
+    "unknown": TargetVsFeature.UNKNOWN,
+}
+_TARGET_VS_REMOTE_BY_RELATION: Final[dict[str, TargetVsRemote]] = {
+    "equal": TargetVsRemote.EQUAL,
+    "behind": TargetVsRemote.BEHIND,
+    "ahead": TargetVsRemote.AHEAD,
+    "diverged": TargetVsRemote.DIVERGED,
+    "unknown": TargetVsRemote.UNKNOWN,
+}
+
+
+def _project_known_ancestry(
+    root: Path,
+    left: str,
+    right: str,
+    merge_base_probe: Callable[[Path, str, str], tuple[str | None, bool]] | None,
+) -> _AncestryRelation:
+    """Classify two readable commit ids from their merge base."""
+    if left == right:
+        return "equal"
+    merge_base, query_ok = _read_merge_base(
+        root,
+        left,
+        right,
+        merge_base_probe,
+    )
+    if not query_ok:
+        return "unknown"
+    if merge_base == left:
+        return "behind"
+    if merge_base == right:
+        return "ahead"
+    return "diverged"
+
+
 def _project_target_vs_feature(
+    root: Path,
     target_sha: tuple[str | None, bool],
     feature: Reading[str],
+    merge_base_probe: Callable[[Path, str, str], tuple[str | None, bool]] | None,
 ) -> TargetVsFeature:
     """Project the (target, feature) SHA pair into the closed enum.
 
-    When either side is unreadable the result is
-    :attr:`TargetVsFeature.UNKNOWN` so the observation-driven decision
-    routes it through the environment-wait path instead of dispatching
-    the resolver.
+    The enum is oriented from the target's point of view: ``BEHIND``
+    means the target is an ancestor of the feature, ``AHEAD`` means the
+    feature is an ancestor of the target, and ``DIVERGED`` means both
+    moved independently. An unreadable ref or merge-base probe is
+    :attr:`TargetVsFeature.UNKNOWN`, never a guessed relationship.
     """
     target_value, target_query_ok = target_sha
     feature_sha = feature.value if feature.is_known_good else None
     if not target_query_ok or target_value is None or feature_sha is None:
         return TargetVsFeature.UNKNOWN
-    if target_value == feature_sha:
-        return TargetVsFeature.EQUAL
-    return TargetVsFeature.UNKNOWN
+    relation = _project_known_ancestry(
+        root,
+        target_value,
+        feature_sha,
+        merge_base_probe,
+    )
+    return _TARGET_VS_FEATURE_BY_RELATION[relation]
 
 
 def _project_target_vs_remote(
+    root: Path,
     remote_sha: tuple[str | None, bool],
     target_sha: tuple[str | None, bool],
+    merge_base_probe: Callable[[Path, str, str], tuple[str | None, bool]] | None,
 ) -> TargetVsRemote:
-    """Project the (target, remote) SHA pair into the closed enum."""
+    """Project the (target, remote) SHA pair into the closed enum.
+
+    The orientation matches :func:`_project_target_vs_feature`: target
+    ``BEHIND`` means the remote is ahead, target ``AHEAD`` means the
+    local target is ahead, and ``DIVERGED`` means neither contains the
+    other. An unavailable remote remains ``UNREACHABLE``; an
+    unreadable ancestry probe is ``UNKNOWN``.
+    """
     remote_value, remote_query_ok = remote_sha
     target_value, target_query_ok = target_sha
-    if not target_query_ok or target_value is None:
-        return TargetVsRemote.UNKNOWN
     if not remote_query_ok:
         return TargetVsRemote.UNREACHABLE
-    if remote_value is None:
+    if not target_query_ok or target_value is None or remote_value is None:
         return TargetVsRemote.UNKNOWN
-    if remote_value == target_value:
-        return TargetVsRemote.EQUAL
-    return TargetVsRemote.UNKNOWN
+    relation = _project_known_ancestry(
+        root,
+        target_value,
+        remote_value,
+        merge_base_probe,
+    )
+    return _TARGET_VS_REMOTE_BY_RELATION[relation]
 
 
 _PORCELAIN_CODE_LEN = 2
@@ -302,22 +395,25 @@ _PORCELAIN_WORKTREE_STATUSES = frozenset({"M", "D", "T"})
 
 def _project_worktree(
     porcelain: Reading[str],
-    merge_verdict: str,
+    in_progress_kind: InProgressKind,
     repo_clean: bool,
-    rebase_active: bool,
 ) -> WorktreeState:
     """Project the worktree probes into :class:`WorktreeState`.
 
-    An in-progress rebase or merge short-circuits to ``UNMERGED``
+    A known in-progress Git operation short-circuits to ``UNMERGED``
     because conflict markers or unmerged index entries are present in
-    either case. A readable porcelain with content is dispatched via
-    the per-line classification; ``M `` in the second column beats
-    ``A `` in the first column when both are present, and untracked
-    ``?? `` lines map to ``UNTRACKED``.
+    the states the integration boundary resumes. An unreadable
+    operation probe is projected as ``NONE`` by the caller and therefore
+    never becomes evidence of an unmerged tree. A readable porcelain
+    with content is dispatched via the per-line classification; ``M ``
+    in the second column beats ``A `` in the first column when both are
+    present, and untracked ``?? `` lines map to ``UNTRACKED``.
     """
-    if rebase_active:
-        return WorktreeState.UNMERGED
-    if merge_verdict == MERGE_STATE_IN_PROGRESS:
+    if in_progress_kind in (
+        InProgressKind.REBASE,
+        InProgressKind.MERGE,
+        InProgressKind.CHERRY_PICK,
+    ):
         return WorktreeState.UNMERGED
     if not porcelain.is_known_good:
         return WorktreeState.UNKNOWN
@@ -371,70 +467,171 @@ def _classify_porcelain(
     }
 
 
-def _project_head(detached: Reading[bool]) -> HeadState:
+def _project_head(head_state: Reading[HeadState]) -> HeadState:
     """Project the HEAD probe into :class:`HeadState`."""
-    if not detached.is_known_good:
+    if not head_state.is_known_good:
         return HeadState.UNKNOWN
-    return HeadState.DETACHED if detached.value else HeadState.ATTACHED
+    value = head_state.value
+    if value in (HeadState.ATTACHED, HeadState.DETACHED):
+        return value
+    return HeadState.UNKNOWN
 
 
-def _project_head_detached(head_sha_reading: Reading[str]) -> Reading[bool]:
-    """Translate a HEAD-SHA reading into a detached-state reading.
+def _record_claims_kind(record: IntegrationRecord, kind: InProgressKind) -> bool:
+    """Return whether the durable record claims the observed operation kind."""
+    claimed = classify_git_operation(record)
+    if kind is InProgressKind.REBASE:
+        return claimed in (
+            GitOperationKind.RESOLVING_REBASE,
+            GitOperationKind.AWAITING_CONTINUE,
+        )
+    if kind is InProgressKind.MERGE:
+        return claimed in (
+            GitOperationKind.RESOLVING_MERGE,
+            GitOperationKind.AWAITING_MERGE_COMMIT,
+        )
+    return False
 
-    A real detached probe (an explicit ``HEAD`` ref query) is not
-    exposed at the level the director probes, so the conservative
-    answer is ``attached`` (``False``). The reading is still wrapped
-    in :class:`Reading` so the projection path stays uniform — tests
-    can substitute a real probe by overriding ``read_head_sha``.
-    """
-    if not head_sha_reading.is_known_good:
-        return Reading.unknown("head probe")
-    return Reading.known(False)
+
+def _record_owned_here(root: Path, record: IntegrationRecord) -> bool:
+    """Return whether the record's owning worktree is the observed worktree."""
+    owner = record.owning_worktree
+    if owner is None or not owner.strip():
+        return True
+    try:
+        return Path(owner).resolve() == root.resolve()
+    except (OSError, RuntimeError):
+        return False
+
+
+def _project_operation_ownership(
+    root: Path,
+    kind: InProgressKind,
+    disposition: Reading[RecordReadOutcomeDisposition],
+    record: IntegrationRecord | None,
+) -> InProgressOwnership:
+    """Project durable-record evidence into operation ownership."""
+    if disposition.is_unknown:
+        return InProgressOwnership.UNKNOWN
+    disposition_value = disposition.value
+    if disposition_value in (
+        RecordReadOutcomeDisposition.BUSY,
+        RecordReadOutcomeDisposition.UNREADABLE,
+    ):
+        return InProgressOwnership.UNKNOWN
+    if record is None:
+        return InProgressOwnership.FOREIGN
+    if not _record_claims_kind(record, kind):
+        return InProgressOwnership.FOREIGN
+    if not _record_owned_here(root, record):
+        return InProgressOwnership.FOREIGN
+    return InProgressOwnership.OWNED
 
 
 def _project_in_progress(
-    rebase_active: Reading[bool],
-    merge_verdict: str,
+    root: Path,
+    probe: Reading[InProgressKind],
+    disposition: Reading[RecordReadOutcomeDisposition],
+    record: IntegrationRecord | None,
 ) -> tuple[InProgressKind, InProgressOwnership]:
-    """Project the in-progress probes into the kind/ownership pair.
+    """Project the operation probe and durable record into kind/ownership.
 
-    Ownership defaults to :attr:`InProgressOwnership.OWNED` because
-    the integration boundary owns every rebase / merge it observes;
-    the conservative default lets the decision table reach
-    ``RESUME_OWNED_OPERATION`` instead of bypassing the ladder. An
-    unreadable merge probe maps to ``UNKNOWN`` so the ladder reaches
-    the environment-wait path.
+    An unreadable operation probe is ``NONE`` plus
+    :attr:`InProgressOwnership.UNKNOWN`: it is never evidence that an
+    operation exists and never blocks the integration boundary. For a
+    known operation, ownership is proved only when the durable record
+    claims the same kind and names this worktree (or predates explicit
+    worktree ownership). A missing claim, a different claimed kind, or
+    another worktree's owner is foreign.
     """
-    if rebase_active.is_known_good and rebase_active.value:
-        return InProgressKind.REBASE, InProgressOwnership.OWNED
-    if merge_verdict == MERGE_STATE_IN_PROGRESS:
-        return InProgressKind.MERGE, InProgressOwnership.OWNED
-    if merge_verdict == MERGE_STATE_UNKNOWN:
-        return InProgressKind.MERGE, InProgressOwnership.UNKNOWN
-    return InProgressKind.NONE, InProgressOwnership.OWNED
+    if not probe.is_known_good:
+        return InProgressKind.NONE, InProgressOwnership.UNKNOWN
+    kind = probe.value
+    if kind is None or kind not in tuple(InProgressKind):
+        return InProgressKind.NONE, InProgressOwnership.UNKNOWN
+    if kind is InProgressKind.NONE:
+        return InProgressKind.NONE, InProgressOwnership.OWNED
+    ownership = _project_operation_ownership(root, kind, disposition, record)
+    return kind, ownership
+
+
+def _record_agrees_with_observation(
+    record: IntegrationRecord,
+    in_progress_kind: InProgressKind,
+    target_vs_feature: TargetVsFeature,
+) -> bool:
+    """Return whether the durable record contradicts the observed Git state.
+
+    Git outranks the record: a record that claims something the
+    observation does not show is stale intent, not a fact. The two
+    claims a record makes are checked:
+
+    * an ``integrated`` record claims the replay finished, so the
+      feature must be contained in the target;
+    * an ``integrating`` record claims a replay is in flight, so Git
+      must show the operation the record claims.
+    """
+    if record.phase == "integrated":
+        return target_vs_feature in (
+            TargetVsFeature.EQUAL,
+            TargetVsFeature.AHEAD,
+        )
+    if in_progress_kind is InProgressKind.NONE:
+        return False
+    return _record_claims_kind(record, in_progress_kind)
 
 
 def _present_disposition_state(
-    reason: str | None,
+    root: Path,
+    record: IntegrationRecord | None,
+    *,
+    target: str,
+    in_progress_kind: InProgressKind,
+    target_vs_feature: TargetVsFeature,
 ) -> IntegrationRecordState:
-    """Map a ``PRESENT`` disposition into the closed record enum."""
-    if isinstance(reason, str) and reason == "consistent":
-        return IntegrationRecordState.CONSISTENT
-    return IntegrationRecordState.STALE
+    """Map a ``PRESENT`` disposition into the closed record enum.
+
+    A present record is projected by what it says about the workspace,
+    never by the mere fact that it exists:
+
+    * a record another worktree owns is :attr:`IntegrationRecordState.FOREIGN`;
+    * a record about another target, or one whose claims the observed
+      Git state contradicts, is :attr:`IntegrationRecordState.STALE`
+      (stale intent);
+    * a record that agrees with the observation is
+      :attr:`IntegrationRecordState.CONSISTENT`.
+    """
+    if record is None:
+        return IntegrationRecordState.STALE
+    if not _record_owned_here(root, record):
+        return IntegrationRecordState.FOREIGN
+    if record.target != target:
+        return IntegrationRecordState.STALE
+    if not _record_agrees_with_observation(record, in_progress_kind, target_vs_feature):
+        return IntegrationRecordState.STALE
+    return IntegrationRecordState.CONSISTENT
 
 
 def _project_record(
     disposition: Reading[RecordReadOutcomeDisposition],
-    reason: str | None,
+    record: IntegrationRecord | None,
+    unreadable_reason: str | None,
+    *,
+    root: Path,
+    target: str,
+    in_progress_kind: InProgressKind,
+    target_vs_feature: TargetVsFeature,
 ) -> IntegrationRecordState:
     """Project the durable-record probes into :class:`IntegrationRecordState`.
 
     The mapping is conservative: a non-absent record with a retained
     reason is treated as :attr:`IntegrationRecordState.STALE` so the
     decision table can consult the durable-receipt kind without ever
-    reading it as a fact. A ``PRESENT`` disposition with a
-    ``consistent`` phase maps to
-    :attr:`IntegrationRecordState.CONSISTENT`.
+    reading it as a fact. An unreadable record whose SCHEMA this build
+    does not understand is
+    :attr:`IntegrationRecordState.OLDER_VERSION` (the record predates
+    this build); an unreadable record that is merely corrupt stays
+    :attr:`IntegrationRecordState.UNREADABLE`.
     """
     if disposition.is_unknown:
         return IntegrationRecordState.UNREADABLE
@@ -442,11 +639,19 @@ def _project_record(
     if value is RecordReadOutcomeDisposition.ABSENT:
         return IntegrationRecordState.NONE
     if value is RecordReadOutcomeDisposition.UNREADABLE:
+        if unreadable_reason == _UNSUPPORTED_SCHEMA_REASON:
+            return IntegrationRecordState.OLDER_VERSION
         return IntegrationRecordState.UNREADABLE
     if value is RecordReadOutcomeDisposition.BUSY:
         return IntegrationRecordState.STALE
     if value is RecordReadOutcomeDisposition.PRESENT:
-        return _present_disposition_state(reason)
+        return _present_disposition_state(
+            root,
+            record,
+            target=target,
+            in_progress_kind=in_progress_kind,
+            target_vs_feature=target_vs_feature,
+        )
     return IntegrationRecordState.STALE
 
 
@@ -462,30 +667,43 @@ def _build_observation(
     remote: str,
     agent_active: bool,
     remote_probe: Callable[[Path, str, str], tuple[str | None, bool]] | None,
+    merge_base_probe: Callable[[Path, str, str], tuple[str | None, bool]] | None,
+    head_probe: Callable[[Path], Reading[HeadState]] | None,
+    in_progress_probe: Callable[[Path], Reading[InProgressKind]] | None,
 ) -> Observation:
     """Assemble the seven-dimension :class:`Observation` for ``root``.
 
-    Each probe is lifted through :func:`reading_from_callable` so an
+    Each probe is lifted into a three-valued reading so an
     environmental failure never reaches the decision table as a fact;
     the ``UNKNOWN`` enum members route the verdict to
     :attr:`NextAction.WAIT_FOR_ENVIRONMENT` per decision-table rule 1.
     """
     porcelain = _read_porcelain(root)
-    merge_verdict = merge_state(root)
-    rebase = _read_rebase_active(root)
-    in_progress_kind, in_progress_ownership = _project_in_progress(rebase, merge_verdict)
-    head = _project_head(_project_head_detached(_read_head_sha(root)))
+    in_progress_reading = _read_in_progress_kind(root, in_progress_probe)
+    head = _project_head(_read_head_state(root, head_probe))
     repo_clean = _read_repo_clean(root)
+
+    disposition, durable_record, unreadable_reason = _read_durable_record(root)
+    in_progress_kind, in_progress_ownership = _project_in_progress(
+        root,
+        in_progress_reading,
+        disposition,
+        durable_record,
+    )
     worktree = _project_worktree(
         porcelain,
-        merge_verdict,
+        in_progress_kind,
         repo_clean,
-        bool(rebase.value) if rebase.is_known_good else False,
     )
 
     target_sha = _read_branch_sha(root, target)
     feature = _read_head_sha(root)
-    target_vs_feature = _project_target_vs_feature(target_sha, feature)
+    target_vs_feature = _project_target_vs_feature(
+        root,
+        target_sha,
+        feature,
+        merge_base_probe,
+    )
 
     remote_sha = _read_remote_sha(
         root,
@@ -493,9 +711,13 @@ def _build_observation(
         target,
         remote_probe=remote_probe,
     )
-    target_vs_remote = _project_target_vs_remote(remote_sha, target_sha)
+    target_vs_remote = _project_target_vs_remote(
+        root,
+        remote_sha,
+        target_sha,
+        merge_base_probe,
+    )
 
-    disposition, reason = _read_durable_record(root)
     record = _project_record(disposition, reason)
 
     return Observation(
@@ -508,19 +730,6 @@ def _build_observation(
         record=record,
         agent_active=agent_active,
     )
-
-
-def _is_detached(head_sha: str) -> bool:
-    """A tiny helper that maps an arbitrary HEAD SHA to a coarse attached answer.
-
-    The director never has access to a full ``HEAD``-vs-ref probe
-    without an extra shell out; the conservative answer is ``False``
-    (= attached) so the decision table does not penalise a warm tree.
-    A test that drives :class:`HeadState.DETACHED` overrides
-    :func:`observe`'s plumbing directly.
-    """
-    del head_sha
-    return False
 
 
 # ---------------------------------------------------------------------------
@@ -546,6 +755,9 @@ class IntegrationDirector:
         remote: str = DEFAULT_REMOTE,
         agent_active: bool = False,
         remote_probe: Callable[[Path, str, str], tuple[str | None, bool]] | None = None,
+        merge_base_probe: Callable[[Path, str, str], tuple[str | None, bool]] | None = None,
+        head_probe: Callable[[Path], Reading[HeadState]] | None = None,
+        in_progress_probe: Callable[[Path], Reading[InProgressKind]] | None = None,
         unknown_budget: int = 3,
         repeat_threshold: int = 2,
     ) -> None:
@@ -567,6 +779,17 @@ class IntegrationDirector:
                 accepts ``(root, remote, target)`` and returns
                 ``(sha, ok)``. ``None`` means use the production
                 probe chain.
+            merge_base_probe: Optional ancestry probe override;
+                accepts ``(root, left, right)`` and returns
+                ``(base_sha, ok)``. ``base_sha=None`` with ``ok=True``
+                proves that no common ancestor exists; ``ok=False``
+                reports an unreadable probe.
+            head_probe: Optional attached/detached HEAD probe override;
+                accepts ``(root)`` and returns a
+                :class:`~ralph.pipeline.integration_observation.Reading`.
+            in_progress_probe: Optional operation-kind probe override;
+                accepts ``(root)`` and returns a
+                :class:`~ralph.pipeline.integration_observation.Reading`.
             unknown_budget: Default unknown-attempt budget.
             repeat_threshold: Default repeat-count threshold.
         """
@@ -579,6 +802,9 @@ class IntegrationDirector:
         self._remote = remote
         self._agent_active = agent_active
         self._remote_probe = remote_probe
+        self._merge_base_probe = merge_base_probe
+        self._head_probe = head_probe
+        self._in_progress_probe = in_progress_probe
         self._unknown_budget = unknown_budget
         self._repeat_threshold = repeat_threshold
 
@@ -595,6 +821,9 @@ class IntegrationDirector:
             remote=self._remote,
             agent_active=self._agent_active,
             remote_probe=self._remote_probe,
+            merge_base_probe=self._merge_base_probe,
+            head_probe=self._head_probe,
+            in_progress_probe=self._in_progress_probe,
         )
 
     def observe_durable_record(self) -> Reading[RecordReadOutcomeDisposition]:
@@ -604,7 +833,7 @@ class IntegrationDirector:
         director consumed without having to read :func:`observe` and
         fish the dimension out of the seven-dimension snapshot.
         """
-        disposition, _reason = _read_durable_record(self._root)
+        disposition, _reason, _record = _read_durable_record(self._root)
         return disposition
 
     def decide_and_act(
@@ -613,7 +842,14 @@ class IntegrationDirector:
         *,
         ledger_path: Path | None = None,
     ) -> DirectorDecision:
-        """Observe once, load the ledger, decide, persist, return verdict.
+        """Observe once, delegate the charge, release containment, return verdict.
+
+        The durable attempt ledger is read and charged through
+        :mod:`ralph.pipeline.integration_owner` - the single charge
+        boundary. The director never writes the ledger itself, so
+        exactly ONE persisted charge exists per mutation-class
+        decision, whether the decision came from here or from the
+        owner's own verdict seam.
 
         Args:
             root: Reserved for caller symmetry; ``None`` reuses the
@@ -625,33 +861,39 @@ class IntegrationDirector:
         Returns:
             A frozen :class:`DirectorDecision` carrying the next
             :class:`NextAction`, the live :class:`Observation`, the
-            ledger state that backed the decision, and whether the
-            containment release fired this cycle.
+            charged ledger state, and whether the containment release
+            fired this cycle.
         """
         del root  # reserved for caller symmetry; the bound root is canonical.
         observation = self.observe()
-        ledger = AttemptLedger(
+        decision_attempts = load_integration_attempts(
             self._root,
             ledger_path=ledger_path,
             unknown_budget=self._unknown_budget,
             repeat_threshold=self._repeat_threshold,
         )
-        attempts = ledger.read()
-        decision_attempts = self._to_attempt_state(attempts)
         record_disposition = self.observe_durable_record()
         action = (
             NextAction.REPAIR
-            if record_disposition.value is RecordReadOutcomeDisposition.BUSY
+            if (
+                record_disposition.value is RecordReadOutcomeDisposition.BUSY
+                and not observation.has_unknown()
+            )
             else decide(DecisionContext(observation=observation, attempts=decision_attempts))
         )
+        charged = charge_integration_attempt(
+            self._root,
+            observation=observation,
+            next_action=action,
+            ledger_path=ledger_path,
+            unknown_budget=self._unknown_budget,
+            repeat_threshold=self._repeat_threshold,
+        )
         release_applied = self._maybe_release_containment(observation)
-        next_attempts = self._bump_attempts(attempts, observation, action)
-        with contextlib.suppress(OSError):
-            ledger.persist(next_attempts)
         return DirectorDecision(
             action=action,
             observation=observation,
-            attempts=next_attempts,
+            attempts=charged,
             release_applied=release_applied,
         )
 
@@ -691,60 +933,6 @@ class IntegrationDirector:
         except (OSError, RuntimeError):
             return False
         return existed and not path.exists()
-
-    def _bump_attempts(
-        self,
-        current: AttemptLedgerState,
-        observation: Observation,
-        action: NextAction,
-    ) -> AttemptLedgerState:
-        """Apply the durable ladder bump for ``(observation, action)``.
-
-        Reuses the same bump rules as
-        :class:`~ralph.pipeline.integration_decision.AttemptState.with_attempt`
-        so the ledger-rewritten value matches the in-memory dataclass;
-        the result is then re-projected onto
-        :class:`AttemptLedgerState` (the cursor for the durable ledger
-        file). An unknown observation is conservatively marked as an
-        environment wait so the unknown-attempt budget advances under
-        every observation the decision table would otherwise classify
-        ``WAIT_FOR_ENVIRONMENT``.
-        """
-        view = self._to_attempt_state(current)
-        is_unknown = action is NextAction.WAIT_FOR_ENVIRONMENT or observation.has_unknown()
-        bumped = view.with_attempt(observation, action, is_unknown=is_unknown)
-        return AttemptLedgerState(
-            rung=bumped.rung,
-            repeat_counts=bumped.repeat_counts,
-            unknown_attempts=bumped.unknown_attempts,
-            unknown_budget=bumped.unknown_budget,
-            repeat_threshold=bumped.repeat_threshold,
-        )
-
-    @staticmethod
-    def _to_attempt_state(state: AttemptLedgerState) -> AttemptState:
-        """Project the durable ledger state onto the in-memory dataclass.
-
-        :class:`AttemptLedgerState` is the persisted shape (carries a
-        ``version`` field); :class:`AttemptState` is the in-memory
-        shape the decision table consumes. The two share field names
-        and semantics, so the projection is a per-field copy.
-        """
-        return AttemptState(
-            rung=state.rung,
-            repeat_counts=state.repeat_counts,
-            unknown_attempts=state.unknown_attempts,
-            unknown_budget=state.unknown_budget,
-            repeat_threshold=state.repeat_threshold,
-        )
-
-
-def _feature_sha_safe(root: Path) -> str | None:
-    """Read ``HEAD`` for the containment verdict; return ``None`` on failure."""
-    try:
-        return get_head_sha(root)
-    except Exception:
-        return None
 
 
 def observe(root: Path) -> Observation:

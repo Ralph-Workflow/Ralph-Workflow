@@ -9,7 +9,14 @@ Helper modules:
 
 * :mod:`ralph.pipeline.auto_integrate_remote_constants`: shared timeout,
   interval, and outcome-string constants.
-* :mod:`ralph.pipeline.auto_integrate_remote_client`: the production
+* :mod:`ralph.pipeline.integration_remote_actions`: the narrow
+  :class:`RemoteOps` protocol for the remote tier plus the accessor
+  (:func:`default_remote_ops`) for the production adapter. Every remote
+  call this module makes -- the freshness refresh, the remote-tracking
+  read, and the push -- goes through that one injected seam.
+* :mod:`ralph.pipeline._remote_default_client`: the production
+  :class:`_DefaultRemoteClient` this module injects by default.
+* :mod:`ralph.pipeline.auto_integrate_remote_client`: the pull-side
   :class:`_DefaultRemoteClient`, the per-(root, remote, target) pull
   throttle, and the pull-side entry point
   (:func:`pull_and_reconcile_target`).
@@ -36,7 +43,6 @@ from ralph.git.merge import branch_sha, is_ancestor
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._publication_state_machine import PublicationDecision
 from ralph.pipeline._remote_default_client import (
-    _DEFAULT_REMOTE_CLIENT,
     _DefaultRemoteClient,
 )
 from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
@@ -98,6 +104,7 @@ from ralph.pipeline.auto_integrate_sync import (
     REFRESH_UNREACHABLE,
     refresh_target_from_remote,
 )
+from ralph.pipeline.integration_remote_actions import RemoteOps, default_remote_ops
 from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
@@ -130,6 +137,7 @@ __all__ = [
     "_DEFAULT_REMOTE_CLIENT",
     "_REMOTE_PULL_THROTTLE",
     "RemoteClient",
+    "RemoteOps",
     "RemoteSyncStatus",
     "_DefaultRemoteClient",
     "_PushOutcome",
@@ -158,6 +166,13 @@ __all__ = [
     "resolver_attempt_limit",
     "start_conflict_attempt",
 ]
+
+
+#: The production remote-tier adapter. It is resolved through the
+#: protocol module's accessor so the default adapter is bound in
+#: exactly ONE place, while the module attribute itself stays
+#: replaceable (a test can substitute a fault-injecting double here).
+_DEFAULT_REMOTE_CLIENT: RemoteOps = default_remote_ops()
 
 
 # ----- Throttle ----------------------------------------------------------
@@ -261,7 +276,7 @@ _STALE_REFRESH_OUTCOMES: frozenset[str] = frozenset(
 
 
 def _read_remote_tracking_sha(
-    client: RemoteClient,
+    client: RemoteOps,
     repo_root: Path,
     target: str,
     remote: str,
@@ -306,7 +321,7 @@ def _observe_remote_target_sha(
     target: str,
     *,
     remote: str,
-    remote_client: RemoteClient | None = None,
+    remote_client: RemoteOps | None = None,
     local_sha: str | None = None,
 ) -> tuple[str | None, str]:
     """Observe ``<remote>/<target>`` and the refresh status without raising.
@@ -416,7 +431,7 @@ def _dispatch_ref_comparison(
     local_sha: str,
     remote_sha: str,
     base_state: RebaseState,
-    remote_client: RemoteClient | None,
+    remote_client: RemoteOps | None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
 ) -> RebaseState:
     """Apply the local/remote ancestor verdict and dispatch to the right helper.
@@ -568,7 +583,7 @@ def _handle_no_remote_branch(
     target: str,
     base_state: RebaseState,
     chosen_remote: str,
-    client: RemoteClient,
+    client: RemoteOps,
     rebase_stop_resolver: RebaseStopResolver | None,
 ) -> RebaseState:
     """Handle the no-remote-branch case: push first, recover on non-fast-forward.
@@ -606,7 +621,7 @@ def reconcile_remote_publication(
     target: str,
     *,
     remote: str | None = None,
-    remote_client: RemoteClient | None = None,
+    remote_client: RemoteOps | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     source_state: RebaseState | None = None,
 ) -> RebaseState:
@@ -631,6 +646,15 @@ def reconcile_remote_publication(
     retries (AC8). Never raises; never reverts a local landing.
 
     Args:
+        remote_client: The injected remote tier -- a
+            :class:`~ralph.pipeline.integration_remote_actions.RemoteOps`
+            implementation. ``None`` selects the production adapter
+            (live Git operations). Every remote call this function
+            makes -- the freshness refresh, the remote-tracking read,
+            and the push -- goes through that one seam, so a
+            fault-injecting double can simulate an unreachable remote,
+            a non-fast-forward rejection, or a remote that advanced
+            underneath the caller without a network.
         source_state: The caller's pre-reconcile :class:`RebaseState`.
             When provided, the returned ``RebaseState`` carries the
             caller's ``fast_forwarded`` flag and other durable signals
@@ -763,7 +787,7 @@ def refresh_observation_record(
     *,
     target: str,
     remote: str,
-    remote_client: RemoteClient | None = None,
+    remote_client: RemoteOps | None = None,
 ) -> RebaseState:
     """Re-render the publication record from the CURRENT live observation.
 

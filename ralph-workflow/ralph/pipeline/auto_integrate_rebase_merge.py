@@ -39,6 +39,12 @@ from ralph.pipeline.auto_integrate_outcome import (
     record_conflict,
     record_rebase_outcome,
 )
+from ralph.pipeline.integration_actions import (
+    AgentRunner,
+    GitOps,
+    default_agent_runner,
+    default_git_ops,
+)
 from ralph.pipeline.auto_integrate_record import clear_record, read_record, set_resolving_rebase
 from ralph.pipeline.auto_integrate_recovery import (
     TerminalStateViolationError,
@@ -130,6 +136,8 @@ def run_rebase_or_merge(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
     conflict_resolution_config: ConflictResolutionConfig | None = None,
+    git_ops: GitOps | None = None,
+    agent_runner: AgentRunner | None = None,
 ) -> RebaseRunResult:
     """Drive rebase_onto, resolving conflicts in place before any fallback.
 
@@ -164,7 +172,15 @@ def run_rebase_or_merge(
     the abort-and-endpoint-merge fallback is considered at all.
     ``display`` is used only to own the resolution footer for the whole
     loop; it is optional and never required for correctness.
+
+    ``git_ops`` and ``agent_runner`` are the injected MUTATION seams:
+    the rebase, its abort and the resolver dispatch run through them,
+    so a fault-injecting double can drive the whole attempt without a
+    repository. The routing decisions above stay here -- they are
+    decisions, not mutations.
     """
+    ops = git_ops if git_ops is not None else default_git_ops()
+    runner = agent_runner if agent_runner is not None else default_agent_runner()
     if prefer_merge or force_endpoint_merge:
         return _endpoint_merge_result(
             root,
@@ -190,7 +206,7 @@ def run_rebase_or_merge(
     # Untracked leftovers identical to the target would make the rebase
     # refuse its checkout; clear them so the rebase is actually tried.
     clear_untracked_merge_obstructions(root, target)
-    rebase_outcome = rebase_onto(target, repo_root=root)
+    rebase_outcome = ops.rebase_onto(root, target)
     if not isinstance(rebase_outcome, (RebaseConflicts, RebaseFailed)):
         return RebaseRunResult(
             rebase_outcome=rebase_outcome,
@@ -206,6 +222,7 @@ def run_rebase_or_merge(
             rebase_stop_resolver,
             display,
             conflict_resolution_config,
+            runner,
         )
         if resolved is not None:
             return resolved
@@ -213,9 +230,9 @@ def run_rebase_or_merge(
         # of the whole branch, not a commit-by-commit replay), and it is
         # the last way to land the target: it keeps the resolver, or a
         # conflicted merge would abort and leave the branch behind.
-        return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver)
+        return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver, ops)
 
-    return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver)
+    return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver, ops)
 
 
 def _range_routing_reason(root: Path, target: str) -> str | None:
@@ -377,6 +394,7 @@ def _resolve_conflicted_rebase(
     rebase_stop_resolver: RebaseStopResolver,
     display: ParallelDisplay | None,
     conflict_resolution_config: ConflictResolutionConfig | None,
+    agent_runner: AgentRunner,
 ) -> RebaseRunResult | None:
     """Resolve the paused rebase and retain unfinished agent work for continuation.
 
@@ -399,6 +417,7 @@ def _resolve_conflicted_rebase(
             target,
             rebase_stop_resolver,
             conflict_resolution_config,
+            agent_runner,
         )
     if resolved and not set_resolving_rebase(root, False):
         logger.warning(

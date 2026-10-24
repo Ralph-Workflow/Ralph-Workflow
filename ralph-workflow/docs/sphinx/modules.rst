@@ -88,6 +88,13 @@ ralph.pipeline.integration_observation
    :members:
    :show-inheritance:
 
+ralph.pipeline.integration_owner
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.integration_owner
+   :members:
+   :show-inheritance:
+
 ralph.logging
 ~~~~~~~~~~~~~
 
@@ -1440,6 +1447,13 @@ ralph.pipeline.auto_integrate_remote_sync
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.auto_integrate_remote_sync
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.integration_remote_actions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.integration_remote_actions
    :members:
    :show-inheritance:
 

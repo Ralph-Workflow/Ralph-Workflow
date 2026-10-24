@@ -14,6 +14,29 @@ This module is the entry point. The reusable pieces live next to it:
 Every private helper the broader pipeline imports by name from
 ``ralph.pipeline.auto_integrate_recovery`` is re-exported here so the
 seam stays stable.
+
+Decision ownership
+------------------
+
+The **mutation ladder** -- which integration rung the boundary must
+climb next -- is decided by the single owner
+:func:`ralph.pipeline.integration_owner.decide_integration`. This module
+asks the owner and acts on its verdict; it never re-derives the rung
+from the durable record.
+
+The **record facts the pure observation table cannot express** stay
+with the seam:
+
+* ``REQUIRE_INTERVENTION`` -- derived from the persisted retry
+  deadline and the exhausted-diagnostics escalation, both of which are
+  durable record facts rather than observations.
+* the completion / publication verdicts (``COMPLETE_WITH_PROOF``,
+  ``PUBLISH_AFTER_LANDING``) -- derived from the record's landing
+  proof.
+
+The split is deliberate: the owner decides *what to do to the
+integration state*, the record facts decide *whether the obligation is
+already finished*.
 """
 
 from __future__ import annotations
@@ -35,9 +58,10 @@ from ralph.pipeline._git_operation_authority import (
 from ralph.pipeline._integration_action import (
     IntegrationAction,
     RebaseOutcomeKind,
-    next_integration_action,
 )
-from ralph.pipeline._integration_diagnostic import _busy_refusal_state
+from ralph.pipeline._integration_diagnostic import (
+    busy_refusal_outcome as _canonical_busy_refusal_outcome,
+)
 from ralph.pipeline._publication_state_machine import PublicationDecision
 from ralph.pipeline._recovery_fast_forward_landing import (
     _land_and_reconcile,
@@ -79,6 +103,8 @@ from ralph.pipeline.auto_integrate_remote_sync import (
 from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 from ralph.pipeline.auto_integrate_transaction import integration_transaction
 from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_progress
+from ralph.pipeline.integration_director import DEFAULT_REMOTE, IntegrationDirector
+from ralph.pipeline.integration_owner import decide_integration
 from ralph.pipeline.integration_resolution import retained_integration_reason
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
@@ -106,12 +132,18 @@ def busy_refusal_outcome(
 ) -> IntegrationAction:
     """Map a persisted ``RebaseState.retry_deadline`` to the typed retry decision.
 
-    Delegates to the ``next_integration_action`` conflict authority: an
-    unexpired persisted deadline yields ``WAIT_FOR_BOUNDED_RETRY``; a
-    missing, malformed, or expired deadline yields
-    ``REQUIRE_INTERVENTION``. Used by the release-refusal BUSY sites.
+    Delegates to the canonical mapping in
+    :mod:`ralph.pipeline._integration_diagnostic` (the module that owns
+    the release-refusal BUSY sites): an unexpired persisted deadline
+    yields ``WAIT_FOR_BOUNDED_RETRY``; a missing, malformed, or expired
+    deadline yields ``REQUIRE_INTERVENTION``.
+
+    The verdict is a **durable record fact**, not an observation: the
+    persisted deadline is what bounds the wait and the pure observation
+    table has no deadline dimension, so the owner cannot decide it. The
+    seam keeps the deadline rule; see the module docstring.
     """
-    return next_integration_action(_busy_refusal_state(retry_deadline), clock=clock)
+    return _canonical_busy_refusal_outcome(retry_deadline, clock=clock)
 
 
 def recovery_retained_record(state: RebaseState | None) -> bool:
@@ -247,6 +279,10 @@ def _recover_incomplete_integration_owned(
       must not start a fresh integration in the same startup: the
       integration writes its own durable record before mutating git
       and would overwrite the unreconciled one.
+    * The mutation ladder is asked of the single owner
+      (:func:`ralph.pipeline.integration_owner.decide_integration`); the
+      durable record decides only whether the obligation is still an
+      integration or already a landing.
 
     Args:
         workspace_scope: Scope whose root holds the durable record.
@@ -259,44 +295,66 @@ def _recover_incomplete_integration_owned(
         root = Path(workspace_scope.root)
         record = _read_record(root, backend=backend)
         if record is None:
-            retained = retained_integration_reason(root)
-            return (
-                _record_skip(
-                    reason=retained,
-                    target=None,
-                    record_retained=True,
-                    retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
-                )
-                if retained is not None
-                else _reclaim_unowned_stale_rebase(root)
-            )
+            return _recover_without_durable_record(root)
+
+        # The owner decides the mutation ladder: it observes the
+        # worktree and the durable record, loads the durable attempt
+        # ledger and returns the one rung the boundary must climb next.
+        # No agent phase is active during startup recovery, so the
+        # observation records that fact. The observation itself is built
+        # by the director -- the one observation owner -- against the
+        # CONFIGURED target and remote (``main`` and ``origin`` are
+        # defaults only), and the owner then decides on it.
+        action, _owner_reason = decide_integration(
+            root,
+            record=record,
+            agent_active=False,
+            ledger_path=None,
+            observation=IntegrationDirector(
+                root,
+                target=_configured_target(config) if config is not None else record.target,
+                remote=remote_target_name(config) if config is not None else DEFAULT_REMOTE,
+                agent_active=False,
+            ).observe(),
+        )
 
         if (
             classify_git_operation(record) is not GitOperationKind.NONE
-            or (
-                record.operation_kind == "feature_integrate"
-                and next_integration_action(record) == IntegrationAction.REINTEGRATE_AGAINST_TARGET
-            )
             or (record.operation_kind == "target_reconcile")
+            or record.reintegrate_pending
         ):
+            # An owned Git operation, a target reconciliation or a
+            # scheduled re-integration is in flight: the pending-merge
+            # recovery path owns the obligation.
             return _recover_pending_merge(
                 root, record, config, conflict_resolver, rebase_stop_resolver
             )
 
-        if rebase_in_progress(root) or merge_state(root) != MERGE_STATE_NONE:
+        if record.phase == "integrated":
+            # Record-fact completion: the work is integrated and the
+            # fast-forward landing path owns it. The owner's verdict
+            # cannot express that landing -- until the fast-forward
+            # lands, the target is behind the feature and the owner
+            # reads the state as "re-integrate" -- so the durable
+            # record decides this split.
+            return _recover_landing_from_record(
+                root, record, config, conflict_resolver, rebase_stop_resolver
+            )
+
+        if action is IntegrationAction.WAIT_FOR_BOUNDED_RETRY:
+            # The owner could not read the environment (or the escalation
+            # ladder is exhausted): the boundary must not mutate. Defer
+            # with the record retained so the next startup re-observes.
             return _record_skip(
-                reason="recovery: later Git operation is not owned by completed landing; finish it before retry",
+                reason="recovery: integration ladder deferred; durable record retained for retry",
                 target=record.target,
-                retention_reason=StartupRetentionReason.OWNED_OPERATION_IDENTITY_MISMATCH,
+                retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
                 record_retained=True,
             )
-        return _continue_fast_forward_from_record(
-            root,
-            record,
-            config,
-            conflict_resolver,
-            rebase_stop_resolver,
-        )
+
+        # RESOLVE, CONTINUE and REINTEGRATE all mean the integration is
+        # still owed; the pending-merge recovery path performs it.
+        return _recover_pending_merge(root, record, config, conflict_resolver, rebase_stop_resolver)
 
     except Exception as exc:
         logger.warning("recover_incomplete_integration failed: {}", exc)
@@ -306,6 +364,52 @@ def _recover_incomplete_integration_owned(
             record_retained=True,
             retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
         )
+
+
+def _recover_without_durable_record(root: Path) -> RebaseState | None:
+    """Recover when no durable integration record exists on disk.
+
+    A retained integration reason keeps the obligation visible; a stale
+    rebase nobody owns is reclaimed. Nothing else is touched: an
+    operator's own Git operation is never disturbed.
+    """
+    retained = retained_integration_reason(root)
+    if retained is not None:
+        return _record_skip(
+            reason=retained,
+            target=None,
+            record_retained=True,
+            retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
+        )
+    return _reclaim_unowned_stale_rebase(root)
+
+
+def _recover_landing_from_record(
+    root: Path,
+    record: IntegrationRecord,
+    config: UnifiedConfig | None,
+    conflict_resolver: ConflictResolver | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+) -> RebaseState | None:
+    """Continue the fast-forward landing an integrated record still owes.
+
+    A later Git operation that the record does not own blocks the
+    landing: the record is retained so the operator can finish it.
+    """
+    if rebase_in_progress(root) or merge_state(root) != MERGE_STATE_NONE:
+        return _record_skip(
+            reason="recovery: later Git operation is not owned by completed landing; finish it before retry",
+            target=record.target,
+            retention_reason=StartupRetentionReason.OWNED_OPERATION_IDENTITY_MISMATCH,
+            record_retained=True,
+        )
+    return _continue_fast_forward_from_record(
+        root,
+        record,
+        config,
+        conflict_resolver,
+        rebase_stop_resolver,
+    )
 
 
 # Re-export the private helpers imported by sibling ralph/ modules

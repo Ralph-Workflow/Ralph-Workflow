@@ -9,6 +9,29 @@ pick the next phase from the current state and a signal, but
 ``decide_phase_transition`` converts that into the typed
 :class:`PhaseDecision` that the run loop, display, and prompt
 materialisation read.
+
+Decision ownership
+------------------
+
+The **integration rung** -- which integration mutation the boundary owes
+next -- is decided by the single owner
+:func:`ralph.pipeline.integration_owner.decide_integration`. This module
+asks the owner and acts on its verdict; it never re-derives the rung from
+the durable record.
+
+The **record facts the pure observation table cannot express** stay with
+the seam:
+
+* ``REQUIRE_INTERVENTION`` -- derived from the durable
+  ``diagnostic_intervention_required`` flag, which is a record fact and
+  not an observation.
+* the completion / publication verdicts (``COMPLETE_WITH_PROOF``,
+  ``PUBLISH_AFTER_LANDING``) -- derived from the record's landing proof
+  and owned by :func:`ralph.pipeline._terminal_authority.is_terminal_success_eligible`.
+
+The split is deliberate: the owner decides *what to do to the integration
+state*, the record facts decide *whether the obligation is already
+finished*.
 """
 
 from __future__ import annotations
@@ -19,11 +42,19 @@ from typing import TYPE_CHECKING
 from ralph.pipeline._integration_action import (
     IntegrationAction,
     RebaseOutcomeKind,
-    next_integration_action,
 )
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
+from ralph.pipeline.integration_director import (
+    DEFAULT_REMOTE,
+    DEFAULT_TARGET_BRANCH,
+    IntegrationDirector,
+)
+from ralph.pipeline.integration_owner import decide_integration
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.pipeline.state import PipelineState
@@ -52,10 +83,86 @@ class PhaseDecision(StrEnum):
 #: consults this for the closed-set invariant.
 _ALL_DECISIONS: frozenset[str] = frozenset(d.value for d in PhaseDecision)
 
+#: The owner's actions under which the integration obligation is still
+#: open, so the pipeline must block for recovery instead of advancing.
+#:
+#: Every action the owner can project belongs here: the owner only ever
+#: answers with a mutation the boundary still owes, a bounded wait, or a
+#: landing. The record-fact completion / publication verdicts
+#: (``COMPLETE_WITH_PROOF`` / ``PUBLISH_AFTER_LANDING``) are NOT owner
+#: actions -- they are derived from the durable landing proof and are
+#: owned by the terminal-success authority -- so they never block here.
+_BLOCKING_ACTIONS: frozenset[IntegrationAction] = frozenset(
+    {
+        IntegrationAction.RESOLVE_ACTIVE_OPERATION,
+        IntegrationAction.CONTINUE_GIT_OPERATION,
+        IntegrationAction.REINTEGRATE_AGAINST_TARGET,
+        IntegrationAction.LAND_TARGET,
+        IntegrationAction.WAIT_FOR_BOUNDED_RETRY,
+    }
+)
+
+
+def _configured_target(config: UnifiedConfig | None) -> str:
+    """The configured integration target branch; ``main`` when unconfigured."""
+    if config is None:
+        return DEFAULT_TARGET_BRANCH
+    return config.general.auto_integrate_target
+
+
+def _configured_remote(config: UnifiedConfig | None) -> str:
+    """The configured integration remote; ``origin`` when unconfigured."""
+    if config is None:
+        return DEFAULT_REMOTE
+    return config.general.auto_integrate_remote
+
+
+def _owner_action(
+    root: Path | None,
+    record: IntegrationRecord,
+    *,
+    config: UnifiedConfig | None,
+    agent_active: bool,
+) -> IntegrationAction:
+    """Ask the single owner which integration rung the boundary owes next.
+
+    ``root`` is the workspace root the owner observes and anchors the
+    durable attempt ledger to. ``config`` supplies the CONFIGURED
+    integration target and remote -- ``main`` and ``origin`` are defaults
+    only, and the observation has to compare the configured refs. The
+    observation is built by the director (the one observation owner) and
+    handed to the owner, which then decides.
+
+    Without a workspace root the seam cannot observe Git at all. It then
+    falls back to the durable record fact: a retained record proves the
+    integration obligation is still owed, which is the owner's repair
+    rung.
+    """
+    if root is None:
+        return IntegrationAction.RESOLVE_ACTIVE_OPERATION
+    observation = IntegrationDirector(
+        root,
+        target=_configured_target(config),
+        remote=_configured_remote(config),
+        agent_active=agent_active,
+    ).observe()
+    action, _reason = decide_integration(
+        root,
+        record=record,
+        agent_active=agent_active,
+        ledger_path=None,
+        observation=observation,
+    )
+    return action
+
 
 def _check_blocking_decision(
     integration_record: IntegrationRecord | None,
     rebase_state: RebaseState,
+    *,
+    root: Path | None,
+    config: UnifiedConfig | None,
+    agent_active: bool,
 ) -> PhaseDecision | None:
     """Derive the blocking decision from current authorities only.
 
@@ -65,23 +172,22 @@ def _check_blocking_decision(
     turn -- re-using it as a blocking input here would let a
     settled obligation remain blocked because the previous
     turn's decision was blocking. The current authority outputs
-    (integration record, integration_unresolved, intervention
-    flag) are the only inputs.
+    (the owner verdict, the durable intervention flag) are the only
+    inputs.
     """
     if integration_record is not None:
-        action = next_integration_action(integration_record)
-        if (
-            integration_record.diagnostic_intervention_required
-            or action == IntegrationAction.REQUIRE_INTERVENTION
-        ):
+        # Record-fact intervention: the durable diagnostic cap fired. The
+        # owner cannot decide it -- it is a fact about the record, not an
+        # observation -- so it stays with the seam.
+        if integration_record.diagnostic_intervention_required:
             return PhaseDecision.REPORT_INTERVENTION_REQUIRED
-        if action in (
-            IntegrationAction.RESOLVE_ACTIVE_OPERATION,
-            IntegrationAction.CONTINUE_GIT_OPERATION,
-            IntegrationAction.REINTEGRATE_AGAINST_TARGET,
-            IntegrationAction.WAIT_FOR_BOUNDED_RETRY,
-            IntegrationAction.LAND_TARGET,
-        ):
+        action = _owner_action(
+            root,
+            integration_record,
+            config=config,
+            agent_active=agent_active,
+        )
+        if action in _BLOCKING_ACTIONS:
             return PhaseDecision.BLOCK_FOR_RECOVERY
     if rebase_state.is_intervention_required is True:
         return PhaseDecision.REPORT_INTERVENTION_REQUIRED
@@ -121,6 +227,9 @@ def decide_phase_transition(
     *,
     integration_record: IntegrationRecord | None,
     rebase_state: RebaseState,
+    root: Path | None = None,
+    config: UnifiedConfig | None = None,
+    agent_active: bool = False,
 ) -> PhaseDecision:
     """Return the typed :class:`PhaseDecision` for the current state.
 
@@ -129,8 +238,30 @@ def decide_phase_transition(
     ``rebase_state.last_decision`` field is the single persisted
     surface for the typed decision; no caller may reconstruct the
     decision from prose or from auxiliary state.
+
+    Args:
+        state: The current pipeline state.
+        policy: The pipeline policy; ``None`` means "no policy, keep
+            going".
+        integration_record: The durable integration record the caller
+            holds, or ``None`` when it holds none.
+        rebase_state: The current rebase state.
+        root: The workspace root the single owner observes and anchors
+            the durable attempt ledger to. ``None`` means the caller has
+            no workspace to observe, and the seam decides from the
+            durable record alone.
+        config: The run configuration. It supplies the CONFIGURED
+            integration target and remote the owner observes.
+        agent_active: Whether an agent phase is active in the worktree.
+            It is one of the observation dimensions the owner decides on.
     """
-    blocking = _check_blocking_decision(integration_record, rebase_state)
+    blocking = _check_blocking_decision(
+        integration_record,
+        rebase_state,
+        root=root,
+        config=config,
+        agent_active=agent_active,
+    )
     if blocking is not None:
         return blocking
     if policy is None:

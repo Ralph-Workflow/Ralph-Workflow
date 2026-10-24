@@ -51,8 +51,8 @@ from ralph.pipeline import progress
 from ralph.pipeline._integration_action import (
     IntegrationAction,
     RebaseOutcomeKind,
-    next_integration_action,
 )
+from ralph.pipeline._integration_owner_seam import decide_seam_action
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline._runner_interrupt import handle_keyboard_interrupt as _handle_keyboard_interrupt
 from ralph.pipeline._runner_mcp_validation import (
@@ -1911,7 +1911,14 @@ def _apply_step_integration_outcome(
     reconciled_rebase = _reconcile_rebase_if_live_resolved(workspace_scope, auto_integrate_outcome)
     record = read_record(workspace_scope.root)
     if record is not None or reconciled_rebase.recovery_record_retained:
-        action = next_integration_action(record)
+        # The dispatch invariant asks the SINGLE owner for the mutation
+        # ladder and overlays the durable record facts. The runner never
+        # re-derives the rung from the record itself.
+        action = decide_seam_action(
+            workspace_scope.root,
+            record=record,
+            retained=reconciled_rebase.recovery_record_retained,
+        )
         decision = decide_phase_transition(
             next_state,
             policy_bundle.pipeline,
@@ -1965,7 +1972,14 @@ def _handle_blocked_dispatch_recovery(
     if not isinstance(exc, IntegrationDispatchBlockedError):
         return recovered_state
     record = read_record(workspace_scope.root)
-    action = next_integration_action(record)
+    # The blocked-dispatch recovery asks the SINGLE owner for the
+    # mutation ladder and overlays the durable record facts. A retained
+    # obligation with no record behind it fails closed to intervention.
+    action = decide_seam_action(
+        workspace_scope.root,
+        record=record,
+        retained=timed_state.rebase.recovery_record_retained,
+    )
     decision = decide_phase_transition(
         timed_state,
         pipeline_policy,

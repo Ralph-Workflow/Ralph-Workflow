@@ -8,7 +8,7 @@ import sys
 import textwrap
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, Protocol
 
 import pytest
 
@@ -79,8 +79,14 @@ def _age(lock: Path, seconds: float) -> None:
     os.utime(lock, (then, then))
 
 
+class _Holder(Protocol):
+    """The holder-process factory the ``holder`` fixture hands to the tests."""
+
+    def __call__(self, lock: Path, mode: str = "plain") -> subprocess.Popen[str]: ...
+
+
 @pytest.fixture
-def holder(tmp_path: Path) -> Iterator[object]:
+def holder(tmp_path: Path) -> Iterator[_Holder]:
     procs: list[subprocess.Popen[str]] = []
 
     def start(lock: Path, mode: str = "plain") -> subprocess.Popen[str]:
@@ -112,7 +118,9 @@ def test_orphaned_worktree_lock_is_proven_dead_and_removed(worktree: Path) -> No
     assert not lock.exists()
 
 
-def test_lock_held_open_by_a_live_process_is_never_removed(worktree: Path, holder) -> None:  # type: ignore[no-untyped-def]
+def test_lock_held_open_by_a_live_process_is_never_removed(
+    worktree: Path, holder: _Holder
+) -> None:
     lock = _private_lock(worktree)
     holder(lock)
     _age(lock, 5000)
@@ -122,7 +130,9 @@ def test_lock_held_open_by_a_live_process_is_never_removed(worktree: Path, holde
     assert lock.exists()
 
 
-def test_non_dumpable_live_holder_is_not_declared_dead(worktree: Path, holder) -> None:  # type: ignore[no-untyped-def]
+def test_non_dumpable_live_holder_is_not_declared_dead(
+    worktree: Path, holder: _Holder
+) -> None:
     """A holder whose fd table we cannot read must not be ruled out by guesswork."""
     lock = _private_lock(worktree)
     proc = holder(lock, "nodump")
@@ -148,19 +158,21 @@ def test_idle_read_only_git_helper_in_the_repo_does_not_pin_an_orphan(worktree: 
         helper.wait()
 
 
-def test_lock_replaced_during_the_probe_is_not_removed(worktree: Path, holder) -> None:  # type: ignore[no-untyped-def]
+def test_lock_replaced_during_the_probe_is_not_removed(
+    worktree: Path, holder: _Holder
+) -> None:
     lock = _private_lock(worktree)
     lock.write_text("orphan")
     _age(lock, 5000)
     err = Exception(f"fatal: Unable to create '{lock}': File exists.")
 
-    def probe_then_swap(path: Path, _gitdir: Path) -> str:
+    def probe_then_swap(path: Path, _gitdir: Path) -> Literal["dead"]:
         path.unlink()
         holder(path)
         _age(path, 5000)
         return "dead"
 
-    assert lr._recover_stale_git_lock("stage_all", err, liveness_fn=probe_then_swap) is False  # type: ignore[arg-type]
+    assert lr._recover_stale_git_lock("stage_all", err, liveness_fn=probe_then_swap) is False
     assert lock.exists()
 
 
@@ -200,8 +212,8 @@ def test_run_git_clears_an_orphaned_lock_for_any_command(
 
 def test_run_git_does_not_steal_a_lock_a_live_process_holds(
     worktree: Path,
-    holder,
-    monkeypatch: pytest.MonkeyPatch,  # type: ignore[no-untyped-def]
+    holder: _Holder,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ralph.git.subprocess_runner import run_git
 

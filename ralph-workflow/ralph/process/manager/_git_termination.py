@@ -50,7 +50,7 @@ def _process_name(pid: int) -> str:
     return _psutil_process_name(pid)
 
 
-def _is_git_name(name: str) -> bool:
+def is_git_name(name: str) -> bool:
     """``git`` itself or one of its ``git-*`` helpers, not look-alikes (gitlab-runner)."""
     return name == "git" or name.startswith("git-")
 
@@ -61,10 +61,10 @@ def is_git_pid(pid: int) -> bool:
     Both the process name and the executable's own name are consulted, so a
     wrapper-renamed git binary is still recognised where ``/proc`` allows.
     """
-    if _is_git_name(_process_name(pid)):
+    if is_git_name(_process_name(pid)):
         return True
     with suppress(OSError):
-        return _is_git_name(Path(f"/proc/{pid}/exe").readlink().name.lower())
+        return is_git_name(Path(f"/proc/{pid}/exe").readlink().name.lower())
     return False
 
 

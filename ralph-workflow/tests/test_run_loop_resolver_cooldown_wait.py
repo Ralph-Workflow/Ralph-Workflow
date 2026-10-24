@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
-from typing import cast
+from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.agents.timeout_clock import FakeClock
+from ralph.config.models import AgentConfig
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.pipeline import run_loop
 from ralph.pipeline._integration_action import RebaseOutcomeKind
@@ -21,17 +21,29 @@ from ralph.policy.loader import load_policy
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from tests.test_run_loop_retry_diagnostic import _create_retry_ctx, _noop_save
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
 _DEFAULTS = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 _MAX_SLEEP_SLICE_SECONDS = 30.0
+
+
+class _InstalledRegistry:
+    """Registry stand-in: the cooldown path only asks whether a resolver is installed."""
+
+    def __init__(self, names: Iterable[str]) -> None:
+        self._agents: dict[str, AgentConfig] = {name: AgentConfig(cmd=name) for name in names}
+
+    def get(self, name: str) -> AgentConfig | None:
+        return self._agents.get(name)
 
 
 def _ctx(tmp_path: Path, sleeps: list[float], clock: FakeClock) -> run_loop._LoopContext:
     bundle = load_policy(_DEFAULTS)
     ctx = _create_retry_ctx(tmp_path, sleeps)
-    namespace = cast("SimpleNamespace", ctx)
-    namespace.policy_bundle = bundle
-    namespace.registry = {agent: object() for agent in resolution_chain_agents(bundle)}
-    namespace.controller = RecoveryController(options=RecoveryControllerOptions(clock=clock))
+    ctx.policy_bundle = bundle
+    ctx.registry = _InstalledRegistry(resolution_chain_agents(bundle))
+    ctx.controller = RecoveryController(options=RecoveryControllerOptions(clock=clock))
     return ctx
 
 

@@ -35,8 +35,10 @@ from ralph.pipeline._git_operation_authority import GitOperationKind, classify_g
 from ralph.pipeline._integration_action import (
     IntegrationAction,
     RebaseOutcomeKind,
-    next_integration_action,
 )
+from ralph.pipeline._integration_executor import default_rebase_continuation_executor
+from ralph.pipeline._integration_owner_seam import decide_seam_action
+from ralph.pipeline._integration_record_facts import busy_refusal_outcome
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline._wait_reason import WaitReason
@@ -97,7 +99,10 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.subscriber import PipelineSubscriber
+    from ralph.pipeline._integration_executor import RebaseContinuationExecutor
     from ralph.pipeline.auto_integrate_catchup import AutoIntegrateCatchupWorker
+    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
+    from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.integration_resolution_types import (
@@ -1488,116 +1493,102 @@ def _run_integration_conflict_resolution(
         return _run_owned_integration_conflict_resolution(ctx, rebase)
 
 
-def _run_owned_integration_conflict_resolution(  # noqa: PLR0911 - cold-capped escalation + budget gate + paused-rebase + merge + orphan-index returns are distinct independent branches
-    ctx: _LoopContext,
-    rebase: RebaseState | None = None,
-) -> bool:
-    """Invoke the out-of-graph conflict resolver against live blocking evidence.
+def _conflict_identity_or_default(ctx: _LoopContext, target: str) -> ConflictIdentity:
+    """Read the conflict identity this seam is standing in.
 
-    ``_run_startup_integration`` cannot serve as the recovery executor for
-    conflict evidence. It routes through
-    :func:`~ralph.pipeline.auto_integrate.auto_integrate_on_phase_transition`,
-    which defers the whole boundary when the worktree is dirty -- and a
-    worktree holding an unfinished rebase or merge is ALWAYS dirty. Handing
-    that seam the resolver therefore guaranteed the resolver was never
-    called for exactly the evidence it exists to clear, and the run exited
-    instead. Call the resolver directly so unresolved integration always
-    reaches conflict resolution.
+    The budget is spent on ONE conflict, and this seam can see which
+    one: it is standing in the worktree that holds it. Consulting the
+    budget without an identity spends the default that matches every
+    conflict, so a genuinely NEW conflict inherits the exhausted count
+    of an older one and is escalated without a resolver ever running --
+    while the operator line calls it "this unchanged conflict".
 
-    The call is still charged against the SAME anti-thrash budget the
-    post-commit seam uses
-    (:func:`~ralph.pipeline.auto_integrate_conflict_budget.resolver_allowed`),
-    so re-running on an unresolvable conflict escalates instead of paying
-    for an agent every time. A fresh state always allows the first attempt.
-    Suppression is announced, never silent. Never raises.
+    Observation reads git, so it can fail; this seam never raises, and
+    an unreadable identity keeps the conservative default that matches
+    every conflict rather than handing out a budget on a guess.
     """
     from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
-    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity, resolver_allowed
-    from ralph.pipeline.auto_integrate_remote_sync import resolver_attempt_limit
+    from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
 
-    target = _integration_target_or_none(ctx)
-    if not target:
-        return False
-    # The budget is spent on ONE conflict, and this seam can see which
-    # one: it is standing in the worktree that holds it. Consulting the
-    # budget without an identity spends the default that matches every
-    # conflict, so a genuinely NEW conflict inherits the exhausted count
-    # of an older one and is escalated without a resolver ever running --
-    # while the operator line calls it "this unchanged conflict".
-    # Observation reads git, so it can fail; this seam never raises, and
-    # an unreadable identity keeps the conservative default that matches
-    # every conflict rather than handing out a budget on a guess.
     try:
-        identity = observe_conflict_identity(ctx.workspace_scope.root, target)
+        return observe_conflict_identity(ctx.workspace_scope.root, target)
     except Exception as identity_exc:
         logger.debug("integration resolution: conflict identity unreadable: {}", identity_exc)
-        identity = ConflictIdentity()
-    resolver_attempts = resolver_attempt_limit(ctx.config)
-    # Cold-capped escalation (O1 retry-progress rule, distinct from
-    # the ordinary resolver budget). The previous behaviour returned
-    # False at this point WITHOUT consulting a resolver, leaving a
-    # cold-capped ``RebaseState`` (one that loaded with
-    # ``resolution_exhausted=True`` and / or ``consecutive_conflicts``
-    # already at the cap) as an unresolvable dead end. The O1
-    # contract requires that a cold-capped state still receive ONE
-    # session-scoped automated escalation that re-derives from live
-    # Git (the cached state may be stale -- a concurrent push or a
-    # previous worktree's resolution may already have cleared the
-    # conflict) and adopts a successful resolver result. The
-    # ``_cold_capped_escalation_attempted`` flag makes this a
-    # one-shot per session, so a subsequent cold-capped call falls
-    # through to the ordinary budget-spent branch (which already
-    # escalates to INTERVENTION_REQUIRED without spinning). The cap
-    # is NEVER reset or raised -- the escalation is purely
-    # additive, distinct from the exhausted ordinary resolver
-    # budget. The cold-capped condition is identity-aware (the
-    # same identity that already exhausted its budget must still be
-    # the conflict on disk now): a different conflict with a
-    # depleted counter inherits a fresh budget via
-    # ``resolver_allowed`` and falls through to the ordinary path.
-    if (
-        rebase is not None
-        and (rebase.resolution_exhausted or rebase.consecutive_conflicts >= resolver_attempts)
-        and not resolver_allowed(rebase, target, identity, attempts=resolver_attempts)
-    ):
-        session_attempted: bool = getattr(ctx, "_cold_capped_escalation_attempted", False)
-        if not session_attempted:
-            ctx._cold_capped_escalation_attempted = True
-            logger.warning(
-                "integration resolution: cold-capped escalation for target '{}'; "
-                "re-deriving live Git state",
-                target,
-            )
-            with suppress(Exception):
-                emit_integration_warn_line(
-                    ctx.active_display,
-                    "conflict resolution budget spent; attempting cold-capped "
-                    "escalation that re-derives live Git state",
-                )
-            return _run_cold_capped_escalation(ctx, target, rebase)
-        # Same-session re-entry: the escalation already ran. Do not
-        # spin -- the budget gate below handles the escalation.
-    if rebase is not None and not resolver_allowed(
-        rebase, target, identity, attempts=resolver_attempts
-    ):
-        logger.warning(
-            "integration resolution: resolver budget spent for target '{}'; escalating",
-            target,
-        )
-        with suppress(Exception):
-            emit_integration_warn_line(
-                ctx.active_display,
-                "conflict resolution budget spent for this unchanged conflict;"
-                " escalating instead of re-invoking the resolver",
-            )
+        return ConflictIdentity()
+
+
+def _cold_capped_escalation_due(
+    ctx: _LoopContext,
+    rebase: RebaseState,
+    target: str,
+    identity: ConflictIdentity,
+    resolver_attempts: int,
+) -> bool:
+    """Whether the session-scoped cold-capped escalation must run now.
+
+    Cold-capped escalation (O1 retry-progress rule, distinct from the
+    ordinary resolver budget). The previous behaviour returned False at
+    this point WITHOUT consulting a resolver, leaving a cold-capped
+    ``RebaseState`` (one that loaded with ``resolution_exhausted=True``
+    and / or ``consecutive_conflicts`` already at the cap) as an
+    unresolvable dead end. The O1 contract requires that a cold-capped
+    state still receive ONE session-scoped automated escalation that
+    re-derives from live Git (the cached state may be stale -- a
+    concurrent push or a previous worktree's resolution may already have
+    cleared the conflict) and adopts a successful resolver result.
+
+    The ``_cold_capped_escalation_attempted`` flag makes this a
+    one-shot per session, so a subsequent cold-capped call falls through
+    to the ordinary budget-spent branch (which already escalates to
+    INTERVENTION_REQUIRED without spinning). The cap is NEVER reset or
+    raised -- the escalation is purely additive, distinct from the
+    exhausted ordinary resolver budget. The cold-capped condition is
+    identity-aware (the same identity that already exhausted its budget
+    must still be the conflict on disk now): a different conflict with a
+    depleted counter inherits a fresh budget via ``resolver_allowed``
+    and falls through to the ordinary path.
+    """
+    from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
+
+    if not (rebase.resolution_exhausted or rebase.consecutive_conflicts >= resolver_attempts):
         return False
-    # A paused REBASE is not a merge, and it is the commoner blocking
-    # state. Handing it the merge resolver built one and dropped it: the
-    # seam returned False having invoked nobody, the startup seam then
-    # deferred on the (always dirty) conflicted worktree, and the run
-    # exited with zero resolution attempts against a conflict a resolver
-    # was standing right there to fix. Decide WHICH resolver is needed
-    # before building one, so the wrong one cannot be the fallback.
+    if resolver_allowed(rebase, target, identity, attempts=resolver_attempts):
+        return False
+    session_attempted: bool = getattr(ctx, "_cold_capped_escalation_attempted", False)
+    if session_attempted:
+        # Same-session re-entry: the escalation already ran. Do not
+        # spin -- the budget gate handles the escalation.
+        return False
+    ctx._cold_capped_escalation_attempted = True
+    logger.warning(
+        "integration resolution: cold-capped escalation for target '{}'; "
+        "re-deriving live Git state",
+        target,
+    )
+    with suppress(Exception):
+        emit_integration_warn_line(
+            ctx.active_display,
+            "conflict resolution budget spent; attempting cold-capped "
+            "escalation that re-derives live Git state",
+        )
+    return True
+
+
+def _resolve_blocking_conflict(
+    ctx: _LoopContext,
+    target: str,
+    rebase: RebaseState | None,
+) -> bool:
+    """Run the resolver that matches the live blocking evidence.
+
+    A paused REBASE is not a merge, and it is the commoner blocking
+    state. Handing it the merge resolver built one and dropped it: the
+    seam returned False having invoked nobody, the startup seam then
+    deferred on the (always dirty) conflicted worktree, and the run
+    exited with zero resolution attempts against a conflict a resolver
+    was standing right there to fix. Decide WHICH resolver is needed
+    before building one, so the wrong one cannot be the fallback.
+    """
     if _paused_rebase_at(ctx.workspace_scope.root):
         return _resolve_paused_rebase_with_history(ctx, target, rebase)
     try:
@@ -1629,6 +1620,58 @@ def _run_owned_integration_conflict_resolution(  # noqa: PLR0911 - cold-capped e
     # named a resolver as its executor. Nothing needs continuing here:
     # repairing the files and staging them IS the whole resolution.
     return _resolve_orphaned_unmerged_index(ctx, target)
+
+
+def _run_owned_integration_conflict_resolution(
+    ctx: _LoopContext,
+    rebase: RebaseState | None = None,
+) -> bool:
+    """Invoke the out-of-graph conflict resolver against live blocking evidence.
+
+    ``_run_startup_integration`` cannot serve as the recovery executor for
+    conflict evidence. It routes through
+    :func:`~ralph.pipeline.auto_integrate.auto_integrate_on_phase_transition`,
+    which defers the whole boundary when the worktree is dirty -- and a
+    worktree holding an unfinished rebase or merge is ALWAYS dirty. Handing
+    that seam the resolver therefore guaranteed the resolver was never
+    called for exactly the evidence it exists to clear, and the run exited
+    instead. Call the resolver directly so unresolved integration always
+    reaches conflict resolution.
+
+    The call is still charged against the SAME anti-thrash budget the
+    post-commit seam uses
+    (:func:`~ralph.pipeline.auto_integrate_conflict_budget.resolver_allowed`),
+    so re-running on an unresolvable conflict escalates instead of paying
+    for an agent every time. A fresh state always allows the first attempt.
+    Suppression is announced, never silent. Never raises.
+    """
+    from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
+    from ralph.pipeline.auto_integrate_remote_sync import resolver_attempt_limit
+
+    target = _integration_target_or_none(ctx)
+    if not target:
+        return False
+    identity = _conflict_identity_or_default(ctx, target)
+    resolver_attempts = resolver_attempt_limit(ctx.config)
+    if rebase is not None and _cold_capped_escalation_due(
+        ctx, rebase, target, identity, resolver_attempts
+    ):
+        return _run_cold_capped_escalation(ctx, target, rebase)
+    if rebase is not None and not resolver_allowed(
+        rebase, target, identity, attempts=resolver_attempts
+    ):
+        logger.warning(
+            "integration resolution: resolver budget spent for target '{}'; escalating",
+            target,
+        )
+        with suppress(Exception):
+            emit_integration_warn_line(
+                ctx.active_display,
+                "conflict resolution budget spent for this unchanged conflict;"
+                " escalating instead of re-invoking the resolver",
+            )
+        return False
+    return _resolve_blocking_conflict(ctx, target, rebase)
 
 
 def _resolve_orphaned_unmerged_index(ctx: _LoopContext, target: str) -> bool:
@@ -1674,7 +1717,33 @@ def _resolve_orphaned_unmerged_index(ctx: _LoopContext, target: str) -> bool:
         return False
 
 
-def _run_cold_capped_escalation(  # noqa: PLR0911 - rederive-clear + paused-rebase + merge + orphan-index returns are distinct independent branches
+def _rederive_live_conflict_state_or_none(
+    root: Path,
+    target: str,
+    rebase: RebaseState,
+) -> RebaseState | None:
+    """Re-derive the live conflict state; ``None`` when it cannot be read.
+
+    An unreadable live state is the conservative answer that lets the
+    escalation resolver run rather than silently clearing the cached
+    exhaustion.
+    """
+    try:
+        return _rederive_live_conflict_state(root, target, rebase)
+    except Exception as derive_exc:  # pragma: no cover -- defensive
+        logger.warning("integration resolution: live re-derivation failed: {}", derive_exc)
+        return None
+
+
+def _adopt_live_rebase(ctx: _LoopContext, live_rebase: RebaseState) -> None:
+    """Adopt the cleared live state on the caller's latest state."""
+    if not ctx.latest_state:
+        return
+    ctx.latest_state[:] = [ctx.latest_state[0].copy_with(rebase=live_rebase)]
+    _save_recovered_rebase_checkpoint(ctx.latest_state[0], ctx)
+
+
+def _run_cold_capped_escalation(
     ctx: _LoopContext,
     target: str,
     rebase: RebaseState,
@@ -1708,59 +1777,20 @@ def _run_cold_capped_escalation(  # noqa: PLR0911 - rederive-clear + paused-reba
     4. Never raises. The cap is NEVER reset or raised -- the
        escalation is purely additive.
     """
-    root = ctx.workspace_scope.root
     # Step 1: re-derive from live Git. A clean live state means the
     # cached record is stale; clear it and adopt the live result.
-    try:
-        live_rebase = _rederive_live_conflict_state(root, target, rebase)
-    except Exception as derive_exc:  # pragma: no cover -- defensive
-        logger.warning("integration resolution: live re-derivation failed: {}", derive_exc)
-        live_rebase = None
+    live_rebase = _rederive_live_conflict_state_or_none(
+        ctx.workspace_scope.root, target, rebase
+    )
     if live_rebase is not None and not live_rebase.is_intervention_required:
-        if ctx.latest_state:
-            ctx.latest_state[:] = [ctx.latest_state[0].copy_with(rebase=live_rebase)]
-            _save_recovered_rebase_checkpoint(ctx.latest_state[0], ctx)
+        _adopt_live_rebase(ctx, live_rebase)
         return True
-    # Step 2: live state still shows a conflict. Decide which
-    # resolver is needed -- the paused-rebase path is the commoner
-    # blocking state, and the merge / unmerged-index paths handle
-    # the rest. Same decision tree as the ordinary path, but no
-    # budget gate.
-    if _paused_rebase_at(root):
-        try:
-            return _resolve_paused_rebase_with_history(ctx, target, rebase)
-        except Exception as resolve_exc:  # pragma: no cover -- defensive
-            logger.warning(
-                "integration resolution: cold-capped paused rebase escalation failed: {}",
-                resolve_exc,
-            )
-            return False
+    # Step 2: live state still shows a conflict. Pick the resolver that
+    # matches the live evidence -- the paused-rebase path is the commoner
+    # blocking state, and the merge / unmerged-index paths handle the
+    # rest. Same decision tree as the ordinary path, but no budget gate.
     try:
-        resolver = build_agent_conflict_resolver(
-            policy_bundle=ctx.policy_bundle,
-            registry=ctx.registry,
-            display=ctx.active_display,
-            config=ctx.config,
-            pipeline_deps=ctx.pipeline_deps,
-            workspace_scope=ctx.workspace_scope,
-            display_context=ctx.display_context,
-            strategy_history=(
-                rebase.conflict_strategies_tried
-                if rebase is not None
-                and rebase.conflict_strategy_index == HISTORY_AWARE_CONFLICT_STRATEGY_INDEX
-                else ()
-            ),
-        )
-    except Exception as build_exc:  # pragma: no cover -- defensive
-        logger.warning(
-            "integration resolution: cold-capped escalation resolver build failed: {}",
-            build_exc,
-        )
-        return False
-    try:
-        if _complete_in_progress_merge(root, target, resolver):
-            return True
-        return _resolve_orphaned_unmerged_index(ctx, target)
+        return _resolve_blocking_conflict(ctx, target, rebase)
     except Exception as resolve_exc:  # pragma: no cover -- defensive
         logger.warning(
             "integration resolution: cold-capped escalation resolver failed: {}",
@@ -1865,17 +1895,30 @@ def _resolve_paused_rebase_with_history(
     ctx: _LoopContext,
     target: str,
     rebase: RebaseState | None,
+    *,
+    executor: RebaseContinuationExecutor | None = None,
 ) -> bool:
-    """Keep the historical two-argument resolver seam intact for empty state."""
+    """Keep the historical two-argument resolver seam intact for empty state.
+
+    The executor is threaded only when the caller supplies one, so the
+    historical call shape (two arguments, or two arguments plus the
+    rebase state) stays intact for the callers that inject nothing.
+    """
+    if executor is None:
+        if rebase is None:
+            return _resolve_paused_rebase(ctx, target)
+        return _resolve_paused_rebase(ctx, target, rebase)
     if rebase is None:
-        return _resolve_paused_rebase(ctx, target)
-    return _resolve_paused_rebase(ctx, target, rebase)
+        return _resolve_paused_rebase(ctx, target, executor=executor)
+    return _resolve_paused_rebase(ctx, target, rebase, executor=executor)
 
 
 def _resolve_paused_rebase(
     ctx: _LoopContext,
     target: str,
     rebase: RebaseState | None = None,
+    *,
+    executor: RebaseContinuationExecutor | None = None,
 ) -> bool:
     """Drive a paused rebase to completion through the stop resolver.
 
@@ -1883,10 +1926,13 @@ def _resolve_paused_rebase(
     needs the SEPARATE stop resolver: a rebase stop carries which commit
     is being replayed, which the two-argument merge resolver has no way
     to express. Ralph stages and continues; the agent only edits.
-    Never raises.
+
+    The mutation itself runs through the injectable EXECUTOR SEAM
+    (:class:`ralph.pipeline._integration_executor.RebaseContinuationExecutor`).
+    The production default drives live Git; a caller (or a test) can
+    inject a double that answers without a repository. Never raises.
     """
     from ralph.pipeline.auto_integrate_agent import build_agent_rebase_stop_resolver
-    from ralph.pipeline.auto_integrate_rebase_merge import _resolve_rebase_with_config
 
     try:
         stop_resolver = build_agent_rebase_stop_resolver(
@@ -1904,7 +1950,10 @@ def _resolve_paused_rebase(
                 else ()
             ),
         )
-        resolved, reason = _resolve_rebase_with_config(
+        active_executor = (
+            executor if executor is not None else default_rebase_continuation_executor()
+        )
+        resolved, reason = active_executor.continue_rebase(
             ctx.workspace_scope.root,
             target,
             stop_resolver,
@@ -2483,24 +2532,36 @@ def _block_unresolved_integration(
         IntegrationResolutionVerdict,
     )
 
-    record, state = _resolve_record_for_block(state, ctx)
-    # The reducer is the single last_decision writer; the typed authority
-    # derives the blocking decision from current evidence and the next
-    # reduce re-persists it.
-    record_action = next_integration_action(record)
-    # The typed authority maps diagnostic_intervention_required=True to
-    # REQUIRE_INTERVENTION itself; no direct checkpoint-field read.
-    if record is not None and record_action == IntegrationAction.REQUIRE_INTERVENTION:
-        emit_integration_warn_line(
-            ctx.active_display,
-            "CRITICAL: diagnostic intervention required; dispatch blocked",
-        )
+    record, busy_expired = _blocking_record(ctx)
+    if busy_expired:
+        # The durable record is locked past its bounded retry deadline:
+        # the read outcome is a record fact, so the canonical
+        # ``busy_refusal_outcome`` helper decided it (a missing or
+        # expired deadline fails closed to REQUIRE_INTERVENTION).
         state = state.copy_with(
             rebase=state.rebase.set_operation_display_state(
                 OperationDisplayState.INTERVENTION_REQUIRED
             )
         )
-        return state, prev_phase, 1
+    if record is not None:
+        # The blocking seam asks the SINGLE owner for the mutation ladder
+        # and overlays the durable record facts. The reducer is the single
+        # last_decision writer; the typed authority derives the blocking
+        # decision from current evidence and the next reduce re-persists it.
+        record_action = decide_seam_action(ctx.workspace_scope.root, record=record)
+        # The record facts map diagnostic_intervention_required=True to
+        # REQUIRE_INTERVENTION themselves; no direct checkpoint-field read.
+        if record_action == IntegrationAction.REQUIRE_INTERVENTION:
+            emit_integration_warn_line(
+                ctx.active_display,
+                "CRITICAL: diagnostic intervention required; dispatch blocked",
+            )
+            state = state.copy_with(
+                rebase=state.rebase.set_operation_display_state(
+                    OperationDisplayState.INTERVENTION_REQUIRED
+                )
+            )
+            return state, prev_phase, 1
 
     state, retained_result = _handle_retained_integration(state, ctx, prev_phase)
     if retained_result is not None:
@@ -2532,45 +2593,44 @@ def _block_unresolved_integration(
     return state, prev_phase, 1
 
 
-def _resolve_record_for_block(
-    state: PipelineState, ctx: _LoopContext
-) -> tuple[object, PipelineState]:
-    """Resolve the integration record and the read outcome in one seam.
+def _blocking_record(ctx: _LoopContext) -> tuple[IntegrationRecord | None, bool]:
+    """Read the durable integration record for the blocking decision.
 
-    Fail-closed read outcome: BUSY maps to the existing bounded-retry
-    decision exactly as _integration_action._conflict_action decides it
-    (wait only on a valid, unexpired deadline; REQUIRE_INTERVENTION when
-    absent, invalid, unreadable, or expired). UNREADABLE keeps the
-    retained/intervention path: the record must not silently vanish.
+    The read OUTCOME is a durable record fact, so it is decided by the
+    canonical helpers rather than by a private table here:
+
+    * a BUSY record is bounded by its persisted retry deadline. The
+      canonical :func:`busy_refusal_outcome` decides it -- an absent,
+      malformed or expired deadline fails closed to
+      ``REQUIRE_INTERVENTION`` because the architecture forbids an
+      unbounded wait. The second return value reports that verdict so
+      the caller can surface the intervention display state.
+    * an UNREADABLE record is never silently dropped: it stays on disk
+      as evidence and the unreadable-record seam owns it.
+    * every other disposition yields the readable record.
+
+    Returns:
+        ``(record, busy_expired)``. ``record`` is ``None`` whenever the
+        read outcome is not a readable record.
     """
-    record = read_record(ctx.workspace_scope.root)
-    read_outcome = read_record_outcome(ctx.workspace_scope.root)
-    if read_outcome.disposition is RecordReadOutcomeDisposition.BUSY:
-        busy_deadline = read_outcome.busy_deadline
-        bounded = (
-            isinstance(busy_deadline, (int, float))
-            and not isinstance(busy_deadline, bool)
-            and time.monotonic() < busy_deadline
+    outcome = read_record_outcome(ctx.workspace_scope.root)
+    if outcome.disposition is RecordReadOutcomeDisposition.BUSY:
+        expired = (
+            busy_refusal_outcome(outcome.busy_deadline)
+            is IntegrationAction.REQUIRE_INTERVENTION
         )
-        if not bounded:
+        if expired:
             emit_integration_warn_line(
                 ctx.active_display,
                 "CRITICAL: durable integration record busy past its bounded retry deadline; "
                 "dispatch blocked",
             )
-            updated = state.copy_with(
-                rebase=state.rebase.set_operation_display_state(
-                    OperationDisplayState.INTERVENTION_REQUIRED
-                )
-            )
-            return None, updated
-        # Unexpired busy window: bounded retry. Preserve the wait decision by
-        # keeping the record absent for the intervention check below; the
+        # The record is not actionable while it is locked; the
         # retained-integration seam owns the bounded wait.
-        return None, state
-    if read_outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
-        return None, state
-    return record, state
+        return None, expired
+    if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
+        return None, False
+    return outcome.record, False
 
 
 def _post_recovery_verdict(

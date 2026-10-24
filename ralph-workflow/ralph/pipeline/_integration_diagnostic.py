@@ -18,6 +18,43 @@ fixes the linked-worktree reproduction by:
 * routing every clear of ``diagnostic_evidence`` /
   ``diagnostic_ownership`` through the
   ``RELEASE_DIAGNOSTIC_EVIDENCE`` transition.
+
+Decision ownership
+------------------
+
+The **mutation ladder** -- which integration rung the boundary must
+climb next -- is decided by the single owner
+:func:`ralph.pipeline.integration_owner.decide_integration`. This
+module asks the owner and acts on its verdict; it never re-derives the
+rung from the durable record.
+
+The **record facts the pure observation table cannot express** stay
+with the seam:
+
+* ``REQUIRE_INTERVENTION`` -- the durable diagnostic-intervention flag
+  (see :func:`ralph.pipeline._integration_record_facts.apply_record_facts`);
+* the **completion proof** -- the four-condition Git proof below. It
+  verifies the DURABLE RECORD against live Git, so the record must
+  decide when it applies: the owner's live observation cannot express
+  "the operation is still in flight" (:func:`_completion_proof_applies`).
+
+The split is deliberate: the owner decides *what to do to the
+integration state*, the record facts decide *whether the obligation is
+already finished*.
+
+Module layout
+-------------
+
+The diagnostic concerns live in three focused modules; this module is
+the seam that composes them and re-exports their public surface:
+
+* :mod:`ralph.pipeline._integration_diagnostic_evidence` -- the
+  evidence-collector seam and the held-lease verdict;
+* :mod:`ralph.pipeline._integration_diagnostic_proof` -- the
+  four-condition positive operation-completion proof;
+* :mod:`ralph.pipeline._integration_record_facts` -- the durable record
+  facts that decide the fail-closed intervention verdict and the
+  persisted bounded-retry deadline.
 """
 
 from __future__ import annotations
@@ -38,9 +75,28 @@ from ralph.pipeline._auto_integrate_record_restamp import (
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._integration_action import (
     IntegrationAction,
-    RebaseOutcomeKind,
     last_outcome_reason,
-    next_integration_action,
+)
+from ralph.pipeline._integration_diagnostic_evidence import (
+    EVIDENCE_LEASE_SECONDS,
+    diagnostic_evidence_unchanged,
+    diagnostic_evidence_verdict,
+    evaluate_held_diagnostic_evidence,
+    operation_evidence_collector,
+    release_verified_diagnostic,
+    set_operation_evidence_collector,
+    snapshot_has_unreadable,
+)
+from ralph.pipeline._integration_diagnostic_proof import (
+    _check_atomic_transition_proof,
+    _check_operation_completion_proof,
+)
+from ralph.pipeline._integration_record_facts import (
+    apply_record_facts,
+    busy_refusal_outcome,
+)
+from ralph.pipeline._integration_record_facts import (
+    busy_refusal_state as _busy_refusal_state,
 )
 from ralph.pipeline.auto_integrate_record import (
     BUMP_DIAGNOSTIC_ATTEMPT,
@@ -59,34 +115,45 @@ from ralph.pipeline.conflict_resolution.resolver_health import (
     choose_resolver,
     clear_resolver,
 )
+from ralph.pipeline.integration_owner import decide_integration
 from ralph.pipeline.operation_evidence import (
-    EvidenceVerdict,
     OperationEvidenceCollector,
-    OperationFact,
-    SubprocessOperationEvidenceCollector,
     identity_fingerprint,
 )
 from ralph.pipeline.operation_fact import (
     _KIND_MERGE_OBJECT_RESOLVABLE,
     _KIND_REBASE_OBJECT_RESOLVABLE,
-    _UNREADABLE,
 )
-from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
+    from ralph.pipeline.operation_evidence import OperationFact
     from ralph.pipeline.run_loop import _LoopContext
     from ralph.recovery.controller import RecoveryController
 
-
-# Default collector used by the diagnostic path. Tests inject
-# ``InMemoryOperationEvidenceCollector`` (or a custom subclass) to
-# exercise the diagnostic without depending on the host's ``git``
-# binary or filesystem layout.
-_OPERATION_EVIDENCE_COLLECTOR: list[OperationEvidenceCollector] = [
-    SubprocessOperationEvidenceCollector()
+__all__ = [
+    "DIAGNOSTIC_REPAIR_ATTEMPT_CAP",
+    "EVIDENCE_LEASE_SECONDS",
+    "_bump_attempt",
+    "_busy_refusal_state",
+    "_check_atomic_transition_proof",
+    "_complete_or_intervene",
+    "_operation_root_for",
+    "busy_refusal_outcome",
+    "diagnose_retained_integration",
+    "diagnostic_evidence_unchanged",
+    "diagnostic_evidence_verdict",
+    "diagnostic_needed",
+    "evaluate_held_diagnostic_evidence",
+    "handoff_integration_diagnostic",
+    "identity_fingerprint",
+    "operation_evidence_collector",
+    "release_verified_diagnostic",
+    "set_operation_evidence_collector",
+    "snapshot_has_unreadable",
 ]
+
 
 # Default repair-attempt cap. The diagnostic path rotates inspection
 # agents on every handoff, but the rotation must terminate: an
@@ -96,15 +163,6 @@ _OPERATION_EVIDENCE_COLLECTOR: list[OperationEvidenceCollector] = [
 # policy configuration; the default is intentionally low so the
 # production loop is broken on the very first incident.
 DIAGNOSTIC_REPAIR_ATTEMPT_CAP: int = 5
-
-#: Default lease lifetime in seconds. The diagnostic HOLD step writes
-#: ``diagnostic_ownership = f"{identity_fingerprint(record)}:{time.time()}"``.
-#: A subsequent run whose elapsed time exceeds this value treats the
-#: lease as expired and auto-releases (fail-open: ``UNKNOWN`` verdict).
-#: 30 minutes accommodates the longest legitimate agent invocation
-#: while ensuring a process killed between HOLD and RELEASE becomes
-#: auto-recoverable on the next run.
-EVIDENCE_LEASE_SECONDS: float = 1800.0
 
 
 def _operation_root_for(record: IntegrationRecord, default_root: Path) -> Path:
@@ -124,24 +182,6 @@ def _operation_root_for(record: IntegrationRecord, default_root: Path) -> Path:
     ):
         return Path(record.owning_worktree)
     return default_root
-
-
-def set_operation_evidence_collector(
-    collector: OperationEvidenceCollector | None,
-) -> None:
-    """Inject (or clear) the diagnostic path's evidence collector.
-
-    Used by tests that need an in-memory fake. ``None`` resets the
-    default subprocess collector.
-    """
-    _OPERATION_EVIDENCE_COLLECTOR[0] = (
-        collector if collector is not None else SubprocessOperationEvidenceCollector()
-    )
-
-
-def operation_evidence_collector() -> OperationEvidenceCollector:
-    """Return the diagnostic path's currently-configured collector."""
-    return _OPERATION_EVIDENCE_COLLECTOR[0]
 
 
 def _raise_intervention(record: IntegrationRecord, reason: str) -> IntegrationRecord:
@@ -179,26 +219,6 @@ def _bump_attempt(
     if new_attempts >= repair_attempt_cap:
         return _raise_intervention(bumped, cap_reason)
     return bumped
-
-
-def _evidence_to_facts(
-    raw: tuple[tuple[str, str], ...],
-) -> tuple[OperationFact, ...]:
-    """Reverse :func:`_record_to_evidence` for the verify path.
-
-    Best-effort: an unknown key is preserved as a
-    :class:`OperationFact` with ``kind="unknown"`` so the verify
-    path can still detect a non-operation-scoped drift without
-    raising on parse.
-    """
-    facts: list[OperationFact] = []
-    for key, value in raw:
-        if ":" in key:
-            kind, scope = key.split(":", 1)
-            facts.append(OperationFact(kind=kind, value=value, scope=scope))
-        else:
-            facts.append(OperationFact(kind=key, value=value))
-    return tuple(facts)
 
 
 def diagnostic_needed(root: Path, record: IntegrationRecord) -> bool:
@@ -318,8 +338,6 @@ def diagnose_retained_integration(
             record.diagnostic_intervention_required
             or record.merge_commit_repair_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP
         ):
-            from ralph.pipeline._auto_integrate_record_restamp import is_owner_dead
-
             _fingerprint, held_at = parse_lease(record.diagnostic_ownership)
             is_expired_lease = held_at is None or (time.time() - held_at) > EVIDENCE_LEASE_SECONDS
             is_old_flagged = not record.diagnostic_evidence and not record.diagnostic_ownership
@@ -393,8 +411,8 @@ def diagnose_retained_integration(
             # The collector's snapshot is preserved public API
             # (tests in :mod:`tests.test_operation_evidence` exercise
             # the snapshot). The diagnostic path no longer compares
-            # the snapshot to held evidence, but it still consults the
-            # snapshot for UNREADABLE detection (via
+            # the snapshot to held evidence, but it still consults
+            # the snapshot for UNREADABLE detection (via
             # :func:`snapshot_has_unreadable` inside the proof). Run
             # the snapshot here so a collector crash surfaces in the
             # ``except`` branch and bumps the attempt counter
@@ -441,362 +459,6 @@ def diagnose_retained_integration(
             return False
 
 
-def diagnostic_evidence_verdict(
-    root: Path,
-    record: IntegrationRecord,
-    collector: OperationEvidenceCollector | None = None,
-) -> EvidenceVerdict:
-    """Evaluate whether the held diagnostic lease is still trustworthy.
-
-    The diagnostic no longer compares the evidence snapshot. The
-    lease in ``diagnostic_ownership`` (``<fingerprint>:<held_at>``)
-    is the sole release authority:
-
-    * Empty ``diagnostic_evidence`` and no ``diagnostic_ownership`` --
-      no live hold; the record is already released. Returns
-      ``UNCHANGED`` so the caller can proceed to recovery.
-    * Non-empty ``diagnostic_evidence`` and no ``diagnostic_ownership``
-      (missing lease) -- returns ``UNKNOWN``; the caller
-      auto-releases fail-open and re-derives from Git.
-    * Non-empty unparseable ``diagnostic_ownership``
-      (malformed lease) -- returns ``UNKNOWN``; the caller
-      auto-releases fail-open and re-derives from Git.
-    * Fingerprint mismatch (the durable identity was rewritten by
-      a different worktree) -- returns ``CHANGED`` (valid old lease
-      bytes preserved on disk).
-    * Lease parseable and unexpired -- returns ``UNCHANGED``.
-    * Lease parseable and expired -- returns ``UNKNOWN``; the caller
-      auto-releases (fail-open).
-
-    Returns:
-        EvidenceVerdict.UNCHANGED: the lease is valid; release.
-        EvidenceVerdict.CHANGED: the durable identity was rewritten.
-        EvidenceVerdict.UNKNOWN: the lease is expired, missing, or unparseable.
-    """
-    if not record.diagnostic_evidence and not record.diagnostic_ownership:
-        return EvidenceVerdict.UNCHANGED
-    if is_owner_dead(record) or record.diagnostic_ownership is None:
-        return EvidenceVerdict.UNKNOWN
-    fingerprint, held_at = parse_lease(record.diagnostic_ownership)
-    is_expired = held_at is not None and (time.time() - held_at) > EVIDENCE_LEASE_SECONDS
-    if is_expired or fingerprint is None:
-        return EvidenceVerdict.UNKNOWN
-    if fingerprint != identity_fingerprint(record):
-        # Valid old lease bytes with differing fingerprint: preserve as CHANGED.
-        return EvidenceVerdict.CHANGED
-    return EvidenceVerdict.UNCHANGED
-
-
-evaluate_held_diagnostic_evidence = diagnostic_evidence_verdict
-
-
-def snapshot_has_unreadable(root: Path, record: IntegrationRecord) -> bool:
-    """Run the snapshot and report whether any fact is UNREADABLE.
-
-    The snapshot is preserved public API (tests in
-    :mod:`tests.test_operation_evidence`); the diagnostic path no
-    longer compares the snapshot to held evidence but still consults
-    it to refuse release when live state cannot be observed. A
-    UNREADABLE fact is the diagnostic equivalent of an indeterminate
-    merge state and must block the atomic transition proof.
-    """
-    try:
-        col = operation_evidence_collector()
-        snapshot = col.snapshot(root, record)
-    except Exception:
-        return True
-    return any(fact.value == _UNREADABLE for fact in snapshot)
-
-
-def diagnostic_evidence_unchanged(
-    root: Path,
-    record: IntegrationRecord,
-    collector: OperationEvidenceCollector | None = None,
-) -> bool:
-    """Return True iff diagnostic evidence evaluates to UNCHANGED."""
-    return (
-        diagnostic_evidence_verdict(root, record, collector=collector) == EvidenceVerdict.UNCHANGED
-    )
-
-
-def release_verified_diagnostic(
-    root: Path,
-    record: IntegrationRecord,
-    collector: OperationEvidenceCollector | None = None,
-) -> EvidenceVerdict:
-    """Evaluate diagnostic evidence without mutating durable record state.
-
-    Returns an :class:`EvidenceVerdict`. The caller owns the transition
-    and durable record write when the verdict is ``UNCHANGED``.
-    """
-    try:
-        return diagnostic_evidence_verdict(root, record, collector=collector)
-    except Exception:
-        return EvidenceVerdict.UNKNOWN
-
-
-def _check_head_match(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
-    from ralph.git.subprocess_runner import run_git
-
-    try:
-        head_res = run_git(
-            ("rev-parse", "--verify", "HEAD"),
-            cwd=root,
-            label="integration_diagnostic:verify_head",
-        )
-    except (OSError, RuntimeError) as exc:
-        return False, f"HEAD rev-parse failed: {exc}"
-    if head_res.returncode != 0:
-        return False, "HEAD is unreadable"
-    head = head_res.stdout.strip()
-    allowed_heads = {
-        record.integrated_feature_sha,
-        record.pre_target_sha,
-        record.pre_feature_sha,
-    } - {None, ""}
-    if head not in allowed_heads:
-        return (
-            False,
-            f"HEAD {head} does not match integrated_feature_sha, pre_target_sha, or pre_feature_sha",
-        )
-    return True, "HEAD matches"
-
-
-def _check_parent_match(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
-    from ralph.git.subprocess_runner import run_git
-
-    try:
-        parents_res = run_git(
-            ("show", "-s", "--format=%P", "HEAD"),
-            cwd=root,
-            label="integration_diagnostic:head_parents",
-        )
-    except (OSError, RuntimeError) as exc:
-        return False, f"parents rev-parse failed: {exc}"
-    if parents_res.returncode != 0:
-        return False, "parents of HEAD are unreadable"
-    parents = parents_res.stdout.strip().split()
-
-    if record.merge_commit_parent:
-        if record.merge_commit_parent not in parents:
-            return (
-                False,
-                f"parent of HEAD does not match merge_commit_parent {record.merge_commit_parent}",
-            )
-    elif record.pre_target_sha and record.pre_target_sha not in parents:
-        try:
-            ancestor_res = run_git(
-                ("merge-base", "--is-ancestor", record.pre_target_sha, "HEAD"),
-                cwd=root,
-                label="integration_diagnostic:check_ancestor",
-            )
-            if ancestor_res.returncode != 0:
-                return (
-                    False,
-                    f"pre_target_sha {record.pre_target_sha} is not an ancestor of HEAD",
-                )
-        except (OSError, RuntimeError) as exc:
-            return False, f"ancestry check failed: {exc}"
-    return True, "parents verified"
-
-
-def _check_ancestry_proof(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
-    ok, reason = _check_head_match(root, record)
-    if not ok:
-        return False, reason
-    return _check_parent_match(root, record)
-
-
-def _check_worktree_match(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
-    if not record.owning_worktree or not record.owning_worktree.strip():
-        return False, "record.owning_worktree is missing or empty"
-    try:
-        if Path(record.owning_worktree).resolve() != root.resolve():
-            return False, f"owning_worktree {record.owning_worktree} does not match {root}"
-    except Exception:
-        return False, f"owning_worktree {record.owning_worktree} is invalid"
-    return True, "worktree matches"
-
-
-def _check_ownership_proof(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
-    ok, reason = _check_worktree_match(root, record)
-    if not ok:
-        return False, reason
-    if not record.diagnostic_ownership:
-        return False, "diagnostic_ownership is missing or empty"
-    fingerprint, held_at = parse_lease(record.diagnostic_ownership)
-    if fingerprint is None or held_at is None or fingerprint != identity_fingerprint(record):
-        return False, "diagnostic_ownership does not match ownership_fingerprint"
-    return True, "ownership verified"
-
-
-def _check_marker_ref_proof(root: Path, ref_name: str) -> tuple[bool, str]:
-    from ralph.git.subprocess_runner import run_git
-
-    try:
-        res = run_git(
-            ("rev-parse", "--verify", "--quiet", ref_name),
-            cwd=root,
-            label=f"integration_diagnostic:check_{ref_name.lower()}",
-        )
-        if res.returncode == 0:
-            return False, f"{ref_name} is present"
-        if res.returncode != 1:
-            return False, f"{ref_name} status is UNKNOWN (unexpected exit code {res.returncode})"
-    except (OSError, RuntimeError) as exc:
-        return False, f"{ref_name} status is UNKNOWN ({exc})"
-    return True, f"{ref_name} absent"
-
-
-def _check_gitdir_markers_proof(root: Path) -> tuple[bool, str]:
-    from ralph.git.subprocess_runner import run_git
-
-    try:
-        gitdir_res = run_git(
-            ("rev-parse", "--absolute-git-dir"),
-            cwd=root,
-            label="integration_diagnostic:gitdir",
-        )
-        if gitdir_res.returncode != 0:
-            return (
-                False,
-                f"gitdir query returned unexpected exit code {gitdir_res.returncode}: UNKNOWN",
-            )
-        gitdir = Path(gitdir_res.stdout.strip())
-        if (gitdir / "MERGE_HEAD").exists():
-            return False, "MERGE_HEAD is present"
-        if (gitdir / "REBASE_HEAD").exists():
-            return False, "REBASE_HEAD is present"
-        if (gitdir / "rebase-merge").exists() or (gitdir / "rebase-apply").exists():
-            return False, "rebase state directory is present"
-    except (OSError, RuntimeError) as exc:
-        return False, f"gitdir check failed: {exc} (UNKNOWN)"
-    return True, "gitdir markers absent"
-
-
-def _check_clean_diff_proof(root: Path) -> tuple[bool, str]:
-    from ralph.git.subprocess_runner import run_git
-
-    try:
-        diff_res = run_git(
-            ("diff", "--quiet", "HEAD"),
-            cwd=root,
-            label="integration_diagnostic:diff_head",
-        )
-        if diff_res.returncode == 1:
-            return False, "git diff against HEAD is non-empty"
-        if diff_res.returncode != 0:
-            return False, f"git diff failed with exit code {diff_res.returncode}: UNKNOWN"
-    except (OSError, RuntimeError) as exc:
-        return False, f"git diff failed: {exc} (UNKNOWN)"
-    return True, "diff against HEAD clean"
-
-
-def _check_index_tree_proof(root: Path) -> tuple[bool, str]:
-    from ralph.git.merge import unmerged_paths
-
-    for ref in ("MERGE_HEAD", "REBASE_HEAD"):
-        ok, reason = _check_marker_ref_proof(root, ref)
-        if not ok:
-            return False, reason
-
-    ok, reason = _check_gitdir_markers_proof(root)
-    if not ok:
-        return False, reason
-
-    unmerged = unmerged_paths(root)
-    if unmerged or "<unmerged-path-query-failed>" in unmerged:
-        return False, "unmerged paths in index or unmerged query failed"
-
-    ok, reason = _check_clean_diff_proof(root)
-    if not ok:
-        return False, reason
-
-    return True, "index and tree verified"
-
-
-def _has_phase_proof(record: IntegrationRecord) -> bool:
-    return record.phase == "integrated" or (
-        record.phase == "integrating" and bool(record.integrated_feature_sha)
-    )
-
-
-def _busy_refusal_state(retry_deadline: float | None) -> RebaseState:
-    """Transient scratch state for busy_refusal_outcome.
-
-    Returned state is consumed by ``next_integration_action`` and never
-    persisted. Note: the legacy checkpoint-retention site in
-    auto_integrate_recovery.py (~line 191) intentionally keeps extra
-    identity kwargs and is NOT migrated.
-    """
-    return RebaseState(
-        last_outcome=RebaseOutcomeKind.CONFLICT,
-        retry_deadline=retry_deadline,
-    )
-
-
-def _check_atomic_transition_proof(
-    record: IntegrationRecord,
-    root: Path | None = None,
-    collector: OperationEvidenceCollector | None = None,
-) -> tuple[bool, str]:
-    has_valid_phase = _has_phase_proof(record)
-    if not has_valid_phase:
-        return False, f"record.phase is '{record.phase}', expected 'integrated'"
-    effective_root = (
-        root
-        if root is not None
-        else (Path(record.owning_worktree) if record.owning_worktree else Path.cwd())
-    )
-    verdict = diagnostic_evidence_verdict(effective_root, record, collector=collector)
-    if verdict == EvidenceVerdict.UNKNOWN:
-        return False, "diagnostic evidence status is UNKNOWN (observations unreadable)"
-    if verdict != EvidenceVerdict.UNCHANGED:
-        return False, "diagnostic evidence does not match release conditions"
-    # Even when the held lease is valid, the live snapshot may carry
-    # UNREADABLE observations (e.g. a half-rewritten gitdir, a
-    # half-removed marker). The proof refuses to release while the
-    # live state cannot be observed; the diagnostic re-derives on the
-    # next seam.
-    if snapshot_has_unreadable(effective_root, record):
-        return False, "diagnostic evidence status is UNKNOWN (observations unreadable)"
-    return True, "atomic transition verified"
-
-
-def _check_operation_completion_proof(
-    root: Path,
-    record: IntegrationRecord,
-    collector: OperationEvidenceCollector | None = None,
-) -> tuple[bool, str]:
-    checks = (
-        _check_ancestry_proof(root, record),
-        _check_ownership_proof(root, record),
-        _check_index_tree_proof(root),
-        _check_atomic_transition_proof(record, root=root, collector=collector),
-    )
-    for ok, reason in checks:
-        if not ok:
-            return False, reason
-    return True, "positive operation-completion proof satisfied"
-
-
-def busy_refusal_outcome(
-    retry_deadline: float | None,
-    *,
-    clock: object = None,
-) -> IntegrationAction:
-    """Map a persisted ``RebaseState.retry_deadline`` to the typed retry decision.
-
-    Single mapping used by the release-refusal BUSY sites: an unexpired
-    persisted deadline authorizes ``WAIT_FOR_BOUNDED_RETRY``; a missing,
-    malformed, or expired deadline fails closed to
-    ``REQUIRE_INTERVENTION``. The decision is delegated to the existing
-    ``next_integration_action`` authority (its conflict branch), so the
-    semantics live in exactly one place.
-    """
-    return next_integration_action(_busy_refusal_state(retry_deadline), clock=clock)
-
-
 def _pre_pass_intervention(
     root: Path,
     record: IntegrationRecord,
@@ -812,6 +474,22 @@ def _pre_pass_intervention(
     return False
 
 
+def _completion_proof_applies(record: IntegrationRecord) -> bool:
+    """Whether the four-condition completion proof applies to ``record``.
+
+    ADR-0008 section 3: the proof is evaluated when the DURABLE RECORD
+    says the Git operation is still in flight (a continuation or a merge
+    commit is pending) or that the integration has landed
+    (``phase == "integrated"``). These are record facts, not
+    observations: the proof verifies the durable record against live
+    Git, so the record must be the trigger.
+    """
+    kind = classify_git_operation(record)
+    if kind in (GitOperationKind.AWAITING_CONTINUE, GitOperationKind.AWAITING_MERGE_COMMIT):
+        return True
+    return record.is_integrated
+
+
 def _run_completion_pre_pass(
     *,
     root: Path,
@@ -822,6 +500,18 @@ def _run_completion_pre_pass(
     backend: FileBackend,
     collector: OperationEvidenceCollector | None = None,
 ) -> bool | None:
+    """Run the fail-closed pre-pass that precedes every diagnostic agent call.
+
+    ``next_action`` is the owner's mutation-ladder answer, overlaid with
+    the durable record facts. The completion-proof trigger is a RECORD
+    FACT (:func:`_completion_proof_applies`): the four-condition proof
+    verifies the durable record against live Git, so the record decides
+    when it applies.
+
+    Returns:
+        ``None`` when the pre-pass does not decide (the caller may
+        offer a resolver), otherwise the pre-pass outcome.
+    """
     for fact in snapshot:
         if fact.kind in (
             _KIND_MERGE_OBJECT_RESOLVABLE,
@@ -834,10 +524,11 @@ def _run_completion_pre_pass(
                 "unreachable marker object; operator intervention required",
             )
 
-    if next_action in (
-        IntegrationAction.CONTINUE_GIT_OPERATION,
-        IntegrationAction.LAND_TARGET,
-    ):
+    if next_action is IntegrationAction.REQUIRE_INTERVENTION:
+        reason = last_outcome_reason(record) or "operator intervention required"
+        return _pre_pass_intervention(root, record, backend, reason)
+
+    if _completion_proof_applies(record):
         return _complete_or_intervene(
             root=root,
             inspection_root=inspection_root,
@@ -845,10 +536,6 @@ def _run_completion_pre_pass(
             backend=backend,
             collector=collector,
         )
-
-    if next_action == IntegrationAction.REQUIRE_INTERVENTION:
-        reason = last_outcome_reason(record) or "operator intervention required"
-        return _pre_pass_intervention(root, record, backend, reason)
 
     return None
 
@@ -880,7 +567,8 @@ def _complete_or_intervene(
     except RecordBusyError:
         # Fail closed: no write, no fresh retry allowance. The caller
         # decides bounded wait vs intervention from the PERSISTED
-        # ``RebaseState.retry_deadline`` (see :func:`busy_refusal_outcome`);
+        # ``RebaseState.retry_deadline`` (see
+        # :func:`ralph.pipeline._integration_record_facts.busy_refusal_outcome`);
         # with no deadline in scope this is REQUIRE_INTERVENTION. The
         # record bytes stay untouched on disk.
         logger.warning("Release busy; record bytes preserved for the bounded-retry authority")
@@ -971,7 +659,11 @@ def handoff_integration_diagnostic(
     inspection_root = _operation_root_for(record, root)
     col = collector if collector is not None else operation_evidence_collector()
     snapshot = col.snapshot(inspection_root, record)
-    next_action = next_integration_action(record)
+    # The owner decides the MUTATION LADDER for this seam; the durable
+    # record facts decide whether the obligation is already finished
+    # (the completion proof in the pre-pass below).
+    owner_action, _owner_reason = decide_integration(root, record=record)
+    next_action = apply_record_facts(owner_action, record)
 
     pre_pass_result = _run_completion_pre_pass(
         root=root,

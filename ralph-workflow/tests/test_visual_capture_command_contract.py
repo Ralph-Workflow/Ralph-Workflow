@@ -14,7 +14,8 @@ from pathlib import Path
 import pytest
 
 from ralph.pipeline import runner
-from ralph.project_policy import _content_checks
+from ralph.pipeline.events import Event
+from ralph.project_policy import check_capture_command_fact
 from ralph.visual.policy_facts import (
     DESIGN_SYSTEM_POLICY_RELPATH,
     capture_command_problem,
@@ -100,7 +101,7 @@ def test_authoring_and_runtime_agree_on_every_case() -> None:
 
 
 def test_validator_emits_a_finding_for_the_design_system_policy() -> None:
-    findings = _content_checks._check_capture_command_fact(
+    findings = check_capture_command_fact(
         _policy(_PROSE), f"docs/ralph-workflow-policy/{_DESIGN_FILE}", _DESIGN_FILE
     )
     assert len(findings) == 1
@@ -111,7 +112,7 @@ def test_validator_emits_a_finding_for_the_design_system_policy() -> None:
 def test_validator_is_silent_for_a_valid_command_and_for_other_policies() -> None:
     path = f"docs/ralph-workflow-policy/{_DESIGN_FILE}"
     assert (
-        _content_checks._check_capture_command_fact(
+        check_capture_command_fact(
             _policy("make visual-capture"), path, _DESIGN_FILE
         )
         == []
@@ -119,7 +120,7 @@ def test_validator_is_silent_for_a_valid_command_and_for_other_policies() -> Non
     # Other policies reference the command descriptively; only the design-system
     # policy is parsed by the visual pipeline.
     assert (
-        _content_checks._check_capture_command_fact(
+        check_capture_command_fact(
             _policy(_PROSE), "docs/ralph-workflow-policy/ux-policy.md", "ux-policy.md"
         )
         == []
@@ -160,7 +161,7 @@ def test_agent_failure_is_not_chained_onto_the_policy_problem(tmp_path: Path) ->
     policy.parent.mkdir(parents=True)
     policy.write_text(_policy(_PROSE), encoding="utf-8")
 
-    def failing_agent() -> object:
+    def failing_agent() -> Event:
         raise RuntimeError("agent run failed")
 
     with pytest.raises(RuntimeError) as excinfo:
@@ -168,7 +169,7 @@ def test_agent_failure_is_not_chained_onto_the_policy_problem(tmp_path: Path) ->
             workspace_root=tmp_path,
             run_id="run-1",
             cycle_id="cycle-1",
-            invoke_agent=failing_agent,  # type: ignore[arg-type]  # reason: minimal fake agent
+            invoke_agent=failing_agent,
             env_getter=lambda name: "secret" if name == "RALPH_BROKER_SECRET" else None,
         )
 
