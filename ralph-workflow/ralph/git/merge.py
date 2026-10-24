@@ -713,6 +713,7 @@ def fast_forward_via_worktree(worktree_root: Path | str, feature_sha: str) -> bo
         (*COMMIT_PIN_CONFIG_ARGS, "merge", "--ff-only", feature_sha),
         cwd=worktree_root_path,
         label="git-merge-ff-only",
+        call_class="mutation",
     )
     return result.returncode == 0
 
@@ -737,6 +738,7 @@ def compare_and_swap_branch(
         (*COMMIT_PIN_CONFIG_ARGS, "update-ref", f"refs/heads/{target}", new_sha, expected_old_sha),
         cwd=repo_root_path,
         label="git-update-ref-cas",
+        call_class="mutation",
     )
     return result.returncode == 0
 

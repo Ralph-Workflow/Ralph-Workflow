@@ -30,6 +30,7 @@ from __future__ import annotations
 import ast
 import importlib
 import inspect
+from collections import deque
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -101,6 +102,21 @@ _SKIP_DECISION_MODULES = (
     "ralph.pipeline.auto_integrate",
     "ralph.pipeline.auto_integrate_planning",
 )
+
+#: Cap on the mutations one trace recorder remembers. The recorder keeps
+#: the ORDER of the attempt, and the cap keeps it from growing with the
+#: number of mutations an attempt performs.
+_MAX_RECORDED_MUTATIONS = 64
+
+
+def _no_sleep(_delay: float) -> None:
+    """The wait seam: the back-off is proven, never waited for."""
+    return None
+
+
+def _no_jitter() -> float:
+    """A constant jitter source, so the back-off schedule is deterministic."""
+    return 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -358,7 +374,10 @@ class _TraceRecorder:
     """Git-mutation double that records the order of an attempt."""
 
     def __init__(self) -> None:
-        self.mutations: list[str] = []
+        # A bounded FIFO: the recorder keeps the ORDER of the attempt, and
+        # the cap keeps the recorder from growing with the number of
+        # mutations an attempt performs.
+        self.mutations: deque[str] = deque(maxlen=_MAX_RECORDED_MUTATIONS)
         self.rebase_result: RebaseResult = RebaseSuccess()
         self.landed = True
         self.land_failures = 0
@@ -652,6 +671,8 @@ def test_the_conflict_strategy_escalation_attempts_the_rebase_first(tmp_path: Pa
             _config(),
             WorkspaceScope(tmp_path),
             RebaseState(conflict_strategy_index=2),
+            sleep=_no_sleep,
+            jitter=_no_jitter,
         )
     finally:
         reset_executors(token)
@@ -682,8 +703,8 @@ def test_the_retry_after_a_merge_commit_records_the_registered_skip(
             _config(),
             WorkspaceScope(tmp_path),
             RebaseState(),
-            sleep=lambda _delay: None,
-            jitter=lambda: 0.0,
+            sleep=_no_sleep,
+            jitter=_no_jitter,
         )
     finally:
         reset_executors(token)

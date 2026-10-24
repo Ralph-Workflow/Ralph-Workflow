@@ -1,9 +1,20 @@
-"""Single typed authority for integration actions and rebase outcome kinds.
+"""Typed vocabularies for integration actions and rebase outcome kinds.
 
 Defines the closed vocabularies for:
 - IntegrationAction: integration lifecycle progression
 - RebaseOutcomeKind: the 19 outcome verbs across the pipeline
-along with the single authorities `next_integration_action` and `last_outcome_reason`.
+along with the typed accessors `last_outcome_reason` and
+`next_integration_action`.
+
+`next_integration_action` is NOT the integration decision authority. The
+owner seam decides: `ralph.pipeline.integration_owner` (`decide_integration`,
+`decide_integration_verdict`, ledger writes through
+`charge_integration_attempt`), reached from the pipeline boundaries through
+`ralph.pipeline._integration_owner_seam.decide_seam_action`. The helper here
+is a typed projection of durable state (`RebaseState` / `IntegrationRecord`)
+onto the closed `IntegrationAction` vocabulary. It has no production callers
+and it fails closed to `REQUIRE_INTERVENTION` when the durable facts cannot
+prove a next step.
 """
 
 from __future__ import annotations
@@ -251,9 +262,15 @@ def next_integration_action(
     *,
     proof: bool | None = None,
 ) -> IntegrationAction:
-    """Compute the next integration action from an integration record or rebase state.
+    """Project the next integration action out of durable state.
 
-    The single authority for integration progression decisions.
+    Typed projection helper, not the integration decision authority: the
+    owner seam (`ralph.pipeline.integration_owner`, reached through
+    `ralph.pipeline._integration_owner_seam.decide_seam_action`) decides.
+    This helper maps a durable record or rebase state onto the closed
+    `IntegrationAction` vocabulary and fails closed to
+    `REQUIRE_INTERVENTION` when the durable facts cannot prove a next step.
+
     Requires proof for completion and uses injected clock for durable deadline.
     """
     has_proof = proof is True

@@ -29,7 +29,9 @@ under ``<git_dir>/ralph/agent-lease.lock``. ``O_EXCL`` gives
 POSIX-atomic acquisition: a second ``begin_agent_lease`` call on the
 same repo fails fast with :class:`WorktreeLeaseUnavailable`. Tests and
 background callers use :func:`try_acquire_lease` for the non-throwing
-variant and treat ``None`` as "skip this tick".
+variant and treat ``None`` as "skip this tick". The lease FILE mechanics
+live in :mod:`ralph.git._git_command_queue_lease`; this module stays the
+single public entry point for the handshake.
 
 Reclaiming a lease is EVIDENCE-GATED. The lease is never stolen because
 it is old: a steal requires POSITIVE EVIDENCE that the recorded holder is
@@ -48,19 +50,25 @@ stderr text to learn what happened to a git call.
 
 from __future__ import annotations
 
-import contextlib
-import errno
 import importlib
 import os
 import threading
 from collections import deque
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard, TypeVar
+from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard
 
 from git import Repo
 from git.exc import GitCommandError
 
+from ralph.git._git_command_queue_lease import (
+    _acquire_lease,
+    _lease_is_held,
+    _lease_lock_path,
+    _WorktreeLease,
+    _WorktreeLeaseHolder,
+    _WorktreeLeaseUnavailableError,
+)
 from ralph.git._lock_recovery import (
     git_dirs_from_git_dir,
     is_lock_failure,
@@ -74,15 +82,13 @@ from ralph.git._run_git_lock_recovery import (
     run_with_lock_recovery,
 )
 from ralph.git._worktree_lease import (
+    LeaseClock,
     LeaseLiveness,
     LeaseStealDecision,
     LeaseStealReason,
-    _read_lease_record,
     decide_lease_steal,
-    lease_payload,
+    default_lease_clock,
     probe_lease_holder_liveness,
-    reclaim_dead_lease,
-    take_lease_flock,
 )
 from ralph.git.git_call_policy import (
     GitCallClass,
@@ -92,6 +98,7 @@ from ralph.git.git_call_policy import (
 )
 from ralph.git.git_run_result import (
     GitOutcome,
+    GitOutcomeKind,
     GitRunResult,
     succeeded_outcome,
     timed_out_outcome,
@@ -100,6 +107,8 @@ from ralph.git.git_run_result import (
 from ralph.git.subprocess_runner import GitRunOptions
 
 if TYPE_CHECKING:
+    import os
+    import subprocess
     from collections.abc import Callable, Mapping, Sequence
 
 
@@ -115,6 +124,9 @@ class GitMethodRepo(RepoPath, Protocol):
 
     @property
     def git(self) -> object: ...
+
+    @property
+    def working_dir(self) -> str | os.PathLike[str] | None: ...
 
 
 class _SpawnGit(Protocol):
@@ -159,9 +171,6 @@ _HEALTH_LOG_CAP: int = 256
 #: subsequent call should treat this queue as stalled".
 _MAX_CONSECUTIVE_TIMEOUTS: int = 64
 
-#: Worktree lease lock-filename (placed under ``<git_dir>/ralph/``).
-_AGENT_LEASE_FILENAME: str = "agent-lease.lock"
-
 #: How many seconds a stale lease may remain before a new agent steals it.
 #: 5x the ``run_git`` ceiling gives ample headroom for the held agent's
 #: wrap-around.
@@ -199,7 +208,7 @@ class QueuedCallOutcome:
     """
 
     kind: Literal["success", "timeout", "error"]
-    outcome: GitOutcome = ("unknown", None)
+    outcome: GitOutcome = field(default_factory=lambda: GitOutcome(GitOutcomeKind.UNKNOWN))
 
 
 class GitCommandQueue:
@@ -512,7 +521,8 @@ def route_git_method(
     if not is_safe_to_repeat(subcommand):
         reap_stale_locks(dirs[0], dirs[1], operation=operation)
         raise first_error
-    cwd = Path(str(repo.working_dir)) if getattr(repo, "working_dir", None) else dirs[0]
+    working_dir = repo.working_dir if hasattr(repo, "working_dir") else None
+    cwd = Path(str(working_dir)) if working_dir else dirs[0]
     if not retry_after_lock_failure(dirs[0], dirs[1], text, cwd=cwd, operation=operation):
         raise first_error
     second_result, second_error = attempt(preflight=False)
@@ -587,9 +597,6 @@ def _classify_exception(exc: BaseException) -> Literal["timeout", "error"]:
 # ---------------------------------------------------------------------------
 
 
-_T = TypeVar("_T")
-
-
 def route_run_git(
     args: Sequence[str],
     *,
@@ -637,17 +644,32 @@ def route_run_git(
     effective_options = _apply_call_class_deadline(options, call_class)
     queue = get_queue_for_repo(cwd if cwd is not None else Path.cwd())
 
-    def under_queue(call: Callable[[], _T]) -> _T:
+    def under_queue(
+        call: Callable[
+            [],
+            tuple[GitRunResult | None, subprocess.CalledProcessError | None],
+        ],
+    ) -> tuple[GitRunResult | None, subprocess.CalledProcessError | None]:
         # One attempt at a time holds the queue lock. Lock recovery waits between
         # attempts, so a held git lock never freezes every other git call here.
         with queue.execute_lock:
             try:
-                outcome = call()
+                attempt = call()
             except BaseException as exc:
                 queue.record_outcome(_classify_exception(exc), outcome=classify_git_exception(exc))
                 raise
-            queue.record_outcome("success", outcome=succeeded_outcome())
-            return outcome
+            result, error = attempt
+            if error is not None:
+                queue.record_outcome("error", outcome=classify_git_exception(error))
+            elif result is None:
+                queue.record_outcome("error", outcome=unknown_outcome("no_result"))
+            else:
+                outcome = classify_git_outcome(returncode=result.returncode)
+                queue_kind: Literal["success", "error"] = (
+                    "success" if outcome.kind is GitOutcomeKind.SUCCEEDED else "error"
+                )
+                queue.record_outcome(queue_kind, outcome=outcome)
+            return attempt
 
     result = run_with_lock_recovery(under_queue, spawn_git, args, cwd, label, effective_options)
     return replace(result, outcome=classify_git_outcome(returncode=result.returncode))
@@ -657,119 +679,45 @@ def _apply_call_class_deadline(
     options: GitRunOptions | None,
     call_class: GitCallClass | None,
 ) -> GitRunOptions | None:
-    """Apply the call-class deadline to spawn options that carry no timeout.
+    """Apply the call class and its default deadline to spawn options.
 
     An explicit timeout from the caller always wins; the table only
     supplies the default deadline for a call that did not ask for one.
+    The selected class is carried into the spawn options so termination
+    uses the same policy row as the deadline.
     """
-    if call_class is None:
+    effective_class = call_class
+    if effective_class is None and options is not None:
+        effective_class = options.call_class
+    if effective_class is None:
         return options
-    deadline = effective_deadline_seconds(call_class)
+    deadline = effective_deadline_seconds(effective_class)
     if options is None:
-        return GitRunOptions(timeout=deadline)
-    if options.timeout is not None:
-        return options
-    return replace(options, timeout=deadline)
+        return GitRunOptions(timeout=deadline, call_class=effective_class)
+    effective_timeout = options.timeout if options.timeout is not None else deadline
+    return replace(
+        options,
+        timeout=effective_timeout,
+        call_class=effective_class,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Worktree lease handshake
 # ---------------------------------------------------------------------------
 
-
-@dataclass(frozen=True)
-class WorktreeLeaseHolder:
-    """The identity handed to :func:`begin_agent_lease`.
-
-    A holder string is written into the lock-file so post-mortem
-    inspections (and tests) can see who holds the lease. ``name`` MUST
-    be short and printable (a single line, no slashes, no NULs).
-    """
-
-    name: str
-    acquired_at_unix: float = 0.0
-
-    def __post_init__(self) -> None:
-        if not self.name:
-            raise ValueError("WorktreeLeaseHolder.name must not be empty")
-        if any(ch in self.name for ch in ("\n", "\x00", "/", "\\")):
-            raise ValueError(
-                f"WorktreeLeaseHolder.name {self.name!r} contains an illegal character"
-            )
-
-
-class WorktreeLeaseUnavailableError(RuntimeError):
-    """Raised when an exclusive lease could not be acquired.
-
-    Background mutators should never see this exception — they use
-    :func:`try_acquire_lease` (which returns ``None`` on failure). It
-    is only surfaced to :func:`begin_agent_phase` callers when the
-    agent phase must NOT proceed without an exclusive lease.
-    """
-
+#: Public aliases of the lease primitives. The lease handshake's
+#: mechanics live in :mod:`ralph.git._git_command_queue_lease`; these
+#: aliases keep THIS module the single public import path for them, so
+#: every existing ``from ralph.git.git_command_queue import
+#: WorktreeLeaseHolder`` keeps working unchanged.
+WorktreeLeaseHolder = _WorktreeLeaseHolder
+WorktreeLeaseUnavailableError = _WorktreeLeaseUnavailableError
+WorktreeLease = _WorktreeLease
 
 #: Backwards-compatible alias kept because the plan's API names the
 #: exception ``WorktreeLeaseUnavailable``; both names refer to one class.
-WorktreeLeaseUnavailable = WorktreeLeaseUnavailableError
-
-
-class WorktreeLease:
-    """Context manager granted by :func:`begin_agent_lease`.
-
-    The lease owns the lock-file at
-    ``<repo>/.git/ralph/agent-lease.lock``. ``__exit__`` closes the
-    fd, removes the lock-file, and clears the cached handle so a
-    follow-up ``begin_agent_lease`` call can succeed immediately.
-
-    The lease is NOT thread-aware: ``__exit__`` from one thread while
-    another holds the same Python descriptor is undefined. The current
-    production use is always single-agent-phase per repo, so the
-    concurrency model is "one phase, one thread".
-    """
-
-    def __init__(self, lock_path: Path, holder: WorktreeLeaseHolder) -> None:
-        self._lock_path = lock_path
-        self._holder = holder
-        self._fd: int | None = None
-        self._released: bool = False
-
-    @property
-    def lock_path(self) -> Path:
-        return self._lock_path
-
-    @property
-    def holder(self) -> WorktreeLeaseHolder:
-        return self._holder
-
-    def release(self) -> None:
-        """Drop the lease and remove the lock-file.
-
-        Idempotent: calling twice is safe. Safe to call from
-        ``__exit__`` and from an explicit ``end_agent_lease``. The
-        underlying unlink is wrapped in ``contextlib.suppress(OSError)``
-        so a crash-recovered lock-file (already removed by another
-        process) does not error the caller.
-        """
-        if self._released:
-            return
-        self._released = True
-        if self._fd is not None:
-            with contextlib.suppress(OSError):
-                os.close(self._fd)
-            self._fd = None
-        with contextlib.suppress(OSError):
-            self._lock_path.unlink()
-
-    def __enter__(self) -> WorktreeLease:
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        self.release()
-
-
-def _lease_lock_path(repo: RepoPath) -> Path:
-    git_dir = Path(repo.git_dir)
-    return git_dir / "ralph" / _AGENT_LEASE_FILENAME
+WorktreeLeaseUnavailable = _WorktreeLeaseUnavailableError
 
 
 #: Module-level seam for the holder-liveness probe. Production uses
@@ -780,64 +728,12 @@ _lease_holder_liveness_probe: Callable[[Path, int | None], LeaseLiveness] = (
     probe_lease_holder_liveness
 )
 
-
-def _acquire_lock_file(lock_path: Path, holder: WorktreeLeaseHolder) -> int:
-    """Create ``lock_path`` with ``O_CREAT|O_EXCL``; return the open fd.
-
-    On success the caller holds an open fd for the lifetime of the lease
-    and an exclusive ``flock`` on it: the kernel drops that lock when the
-    holder dies, so a contender can take it as positive evidence that the
-    holder is gone. A missing parent directory is created; on creation
-    failure the native OSError is propagated.
-    """
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = lease_payload(holder.name)
-    fd = os.open(  # filesystem-write-ok: atomic O_EXCL lease; resource-lifecycle-ok: lease release closes fd
-        str(lock_path),
-        os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_CLOEXEC,
-        0o600,
-    )
-    try:
-        if not take_lease_flock(fd):
-            msg = f"could not lock the newly created lease file {lock_path!r}"
-            raise OSError(errno.EAGAIN, msg, str(lock_path))
-        written = os.write(fd, payload)
-    except OSError:
-        with contextlib.suppress(OSError):
-            os.close(fd)
-        with contextlib.suppress(OSError):
-            lock_path.unlink()
-        raise
-    if written != len(payload):
-        with contextlib.suppress(OSError):
-            os.close(fd)
-        with contextlib.suppress(OSError):
-            lock_path.unlink()
-        msg = f"short write to lease file {lock_path!r}"
-        raise OSError(errno.EIO, msg, str(lock_path))
-    return fd
-
-
-def _reclaim_dead_lease(
-    lock_path: Path,
-    holder: WorktreeLeaseHolder,
-) -> tuple[LeaseStealDecision, int | None]:
-    """Reclaim a lease whose holder is provably dead.
-
-    The age of the lease NEVER authorises the reclaim on its own: the
-    shared git lock liveness probe must first produce positive evidence
-    that the holder is dead. A live holder and an indeterminate probe both
-    refuse the reclaim, and the refusal names the reason.
-
-    Returns:
-        The evidence verdict and the new fd (``None`` when refused).
-    """
-    return reclaim_dead_lease(
-        lock_path,
-        holder.name,
-        stale_seconds=_LEASE_STALE_SECONDS,
-        probe=_lease_holder_liveness_probe,
-    )
+#: Module-level seam for the lease clock. Production reads the real
+#: monotonic and wall clocks (:func:`ralph.git._worktree_lease.
+#: default_lease_clock`); a test replaces it to place a lease at any age
+#: without waiting for wall-clock time. The seam is read at CALL time,
+#: so replacing it changes the next acquisition's payload and age.
+_lease_clock: LeaseClock = default_lease_clock()
 
 
 def begin_agent_lease(
@@ -878,22 +774,15 @@ def begin_agent_lease(
         OSError: Filesystem-level failure (permission, disk full).
     """
     repo = _repo_or_open(repo_or_path)
-    lock_path = _lease_lock_path(repo)
+    lock_path = _lease_lock_path(Path(repo.git_dir))
     effective_holder = holder or WorktreeLeaseHolder(name="agent-phase")
-    fd: int | None = None
-    try:
-        fd = _acquire_lock_file(lock_path, effective_holder)
-    except FileExistsError as exc:
-        decision, stolen = _reclaim_dead_lease(lock_path, effective_holder)
-        if stolen is None:
-            raise WorktreeLeaseUnavailable(
-                f"worktree lease for {lock_path} is not reclaimable: "
-                f"{decision.reason} ({decision.detail})"
-            ) from exc
-        fd = stolen
-    lease = WorktreeLease(lock_path, effective_holder)
-    lease._fd = fd
-    return lease
+    return _acquire_lease(
+        lock_path,
+        effective_holder,
+        stale_seconds=_LEASE_STALE_SECONDS,
+        probe=_lease_holder_liveness_probe,
+        clock=_lease_clock,
+    )
 
 
 def try_acquire_lease(
@@ -938,11 +827,12 @@ def is_lease_held(repo_or_path: RepoPath | Path | str) -> bool:
     skip a tick.
     """
     repo = _repo_or_open(repo_or_path)
-    lock_path = _lease_lock_path(repo)
-    record = _read_lease_record(lock_path)
-    if record is None:
-        return False
-    return _lease_holder_liveness_probe(lock_path, record.holder_pid) != "dead"
+    lock_path = _lease_lock_path(Path(repo.git_dir))
+    return _lease_is_held(
+        lock_path,
+        probe=_lease_holder_liveness_probe,
+        clock=_lease_clock,
+    )
 
 
 def _repo_or_open(repo_or_path: RepoPath | Path | str) -> RepoPath:

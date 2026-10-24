@@ -37,12 +37,8 @@ from ralph.mcp.artifacts.commit_message import (
     read_commit_message_payload_from_path,
 )
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
-from ralph.mcp.session_plan import build_session_mcp_plan
-from ralph.phases.required_artifacts import (
-    build_required_artifacts,
-    resolve_phase_required_artifact,
-)
-from ralph.pipeline import _commit_scope
+from ralph.phases.required_artifacts import resolve_phase_required_artifact
+from ralph.pipeline import _commit_executor_artifacts, _commit_scope
 from ralph.pipeline._auto_integrate_recovery_git_state import (
     common_git_dir,
     detached_branch_name,
@@ -53,6 +49,33 @@ from ralph.pipeline._auto_integrate_recovery_git_state import (
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import CommitResidualEvent, Event, PipelineEvent
 from ralph.prompts.commit_evidence import build_commit_evidence_bundle
+
+
+def phase_output_artifact_paths(
+    phase: str, *, drain: str | None = None, policy_bundle: PolicyBundle | None = None
+) -> tuple[str, ...]:
+    """Return paths of all output artifacts produced by a phase.
+
+    Delegates to ``_commit_executor_artifacts`` at CALL time, so both the
+    public and the private module attribute stay patchable seams.
+    """
+    return _commit_executor_artifacts.phase_output_artifact_paths(
+        phase, drain=drain, policy_bundle=policy_bundle
+    )
+
+
+def default_mcp_capabilities_for_phase(
+    phase: str, *, agents_policy: AgentsPolicy | None = None
+) -> set[str]:
+    """Return the default MCP capability set for a given phase.
+
+    Delegates to ``_commit_executor_artifacts`` at CALL time; see
+    :func:`phase_output_artifact_paths` for the seam contract.
+    """
+    return _commit_executor_artifacts.default_mcp_capabilities_for_phase(
+        phase, agents_policy=agents_policy
+    )
+
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -824,47 +847,6 @@ def clear_phase_output_artifacts(
         return
     for path in phase_output_artifact_paths(phase, drain=drain, policy_bundle=policy_bundle):
         workspace.remove(path)
-
-
-def phase_output_artifact_paths(
-    phase: str, *, drain: str | None = None, policy_bundle: PolicyBundle | None = None
-) -> tuple[str, ...]:
-    """Return paths of all output artifacts produced by a phase."""
-    paths: list[str] = []
-    effective_drain = drain or phase
-    ra = (
-        build_required_artifacts(policy_bundle.artifacts).get(effective_drain)
-        if policy_bundle is not None
-        else None
-    )
-    if ra is not None:
-        paths.append(ra.artifact_path)
-        if ra.markdown_path is not None:
-            paths.append(ra.markdown_path)
-    if policy_bundle is not None:
-        phase_def = policy_bundle.pipeline.phases.get(phase)
-        if phase_def is not None:
-            if phase_def.parallelization is not None:
-                paths.append(".agent/artifacts/parallel_development_summary.md")
-            if phase_def.role == "commit" and ra is None:
-                paths.append(COMMIT_MESSAGE_ARTIFACT)
-    return tuple(paths)
-
-
-def default_mcp_capabilities_for_phase(
-    phase: str,
-    *,
-    agents_policy: AgentsPolicy | None = None,
-) -> set[str]:
-    """Return the default MCP capability set for a given phase."""
-    return set(
-        build_session_mcp_plan(
-            transport=None,
-            drain=phase,
-            workspace_path=None,
-            agents_policy=agents_policy,
-        ).capabilities
-    )
 
 
 repo_has_commit_work = _repo_has_commit_work

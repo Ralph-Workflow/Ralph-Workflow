@@ -46,6 +46,11 @@ from ralph.git.git_run_result import (
     timed_out_outcome,
     unknown_outcome,
 )
+from ralph.process.manager import ProcessTerminationError
+from ralph.timeout_defaults import (
+    GIT_SUBPROCESS_TIMEOUT_SECONDS,
+    GIT_TERMINATE_GRACE_SECONDS,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -87,8 +92,6 @@ class GitCallPolicy:
     Attributes:
         call_class: The class this policy governs.
         deadline_seconds: Wall-clock ceiling for one attempt of the call.
-        terminate_grace_seconds: How long a torn-down child may spend
-            between SIGTERM and SIGKILL.
         kill_policy: Whether the teardown escalates to SIGKILL.
         quarantine_after_same_state_attempts: How many attempts against the
             SAME observed state exhaust the rung and quarantine the next
@@ -97,9 +100,13 @@ class GitCallPolicy:
 
     call_class: GitCallClass
     deadline_seconds: float
-    terminate_grace_seconds: float
     kill_policy: GitKillPolicy
     quarantine_after_same_state_attempts: int
+
+    @property
+    def terminate_grace_seconds(self) -> float:
+        """Return the shared SIGTERM-to-SIGKILL cleanup window."""
+        return GIT_TERMINATE_GRACE_SECONDS
 
 
 #: The call-class policy table. Three rows, one per call class -- NOT one
@@ -110,21 +117,18 @@ GIT_CALL_POLICIES: Mapping[GitCallClass, GitCallPolicy] = {
     "read_only_verify": GitCallPolicy(
         call_class="read_only_verify",
         deadline_seconds=30.0,
-        terminate_grace_seconds=5.0,
         kill_policy="terminate_then_kill",
         quarantine_after_same_state_attempts=2,
     ),
     "mutation": GitCallPolicy(
         call_class="mutation",
         deadline_seconds=120.0,
-        terminate_grace_seconds=5.0,
         kill_policy="terminate_then_kill",
         quarantine_after_same_state_attempts=2,
     ),
     "network": GitCallPolicy(
         call_class="network",
         deadline_seconds=120.0,
-        terminate_grace_seconds=10.0,
         kill_policy="terminate_then_kill",
         quarantine_after_same_state_attempts=2,
     ),
@@ -139,10 +143,10 @@ def _validate_policy_table() -> None:
                 f"git call policy {policy.call_class!r} needs a positive deadline; "
                 f"got {policy.deadline_seconds!r}"
             )
-        if policy.terminate_grace_seconds <= 0.0:
+        if policy.deadline_seconds > GIT_SUBPROCESS_TIMEOUT_SECONDS:
             raise RuntimeError(
-                f"git call policy {policy.call_class!r} needs a positive terminate grace; "
-                f"got {policy.terminate_grace_seconds!r}"
+                f"git call policy {policy.call_class!r} exceeds the repository-wide "
+                f"timeout ceiling; got {policy.deadline_seconds!r}"
             )
         if policy.quarantine_after_same_state_attempts < 1:
             raise RuntimeError(
@@ -189,42 +193,53 @@ def effective_deadline_seconds(
     return policy_for(call_class).deadline_seconds
 
 
-def effective_terminate_grace_seconds(call_class: GitCallClass) -> float:
+def effective_terminate_grace_seconds(call_class: GitCallClass | None = None) -> float:
     """Return the SIGTERM-to-SIGKILL grace for one call of ``call_class``.
 
     Args:
-        call_class: The class of the call.
+        call_class: The class of the call. ``None`` selects the same
+            repository-wide cleanup floor used by an unclassified call.
 
     Returns:
         The terminate grace in seconds.
     """
+    if call_class is None:
+        return GIT_TERMINATE_GRACE_SECONDS
     return policy_for(call_class).terminate_grace_seconds
 
 
 def quarantine_reason(
+    call_class: GitCallClass,
+    signature: str,
     *,
     same_state_attempts: int,
-    call_class: GitCallClass,
 ) -> GitQuarantineReason | None:
     """Return why a call must be quarantined, or ``None`` when it may run.
 
     The quarantine rung is the durable rule "a command that has timed out
     twice against the same observed state is not run a third time". The
     decision is a pure function of the durable attempt record: the caller
-    passes how many attempts have already been charged against the SAME
-    observed state (the durable attempt ledger's per-``(signature, action)``
-    repeat count) and this module decides whether the next run is allowed.
+    reads the ledger's per-``(signature, action)`` repeat count and passes
+    it here together with the signature that identifies the observed
+    state.
 
     Args:
+        call_class: The class of the call being considered.
+        signature: Stable identifier for the observed repository state.
+            It must not be empty.
         same_state_attempts: How many attempts have already been charged
             against the same observed state. Values below zero are treated
             as zero -- a negative count is not evidence of anything.
-        call_class: The class of the call being considered.
 
     Returns:
         The quarantine reason when the rung is exhausted, else ``None``
         (the call may run).
+
+    Raises:
+        ValueError: ``signature`` is empty.
     """
+    if not signature:
+        raise ValueError("quarantine_reason requires a non-empty signature")
     threshold = policy_for(call_class).quarantine_after_same_state_attempts
     if max(0, same_state_attempts) >= threshold:
         return "same_state_timeout_threshold"
@@ -276,11 +291,11 @@ def classify_git_outcome(
 def classify_git_exception(exc: BaseException) -> GitOutcome:
     """Classify an exception raised by an external git call.
 
-    A timeout is a timeout even when it arrives wrapped, a non-zero exit is
-    a definite failure, and everything else -- a vanished working directory,
-    a missing git binary, an unreadable pipe -- is INDETERMINATE and is
-    reported as ``"unknown"`` so no caller can mistake it for a git
-    failure.
+    A timeout is a timeout even when it arrives wrapped, a process
+    termination is a kill, a non-zero exit is a definite failure, and
+    everything else -- a vanished working directory, a missing git binary,
+    an unreadable pipe -- is INDETERMINATE and is reported as ``"unknown"``
+    so no caller can mistake it for a git failure.
 
     Args:
         exc: The exception that escaped the git call.
@@ -290,6 +305,8 @@ def classify_git_exception(exc: BaseException) -> GitOutcome:
     """
     if isinstance(exc, subprocess.TimeoutExpired | TimeoutError):
         return timed_out_outcome()
+    if isinstance(exc, ProcessTerminationError):
+        return killed_outcome()
     if isinstance(exc, subprocess.CalledProcessError):
         return failed_outcome("nonzero_exit")
     if isinstance(exc, GitCommandError):

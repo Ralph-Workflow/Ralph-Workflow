@@ -9,12 +9,13 @@ import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+from ralph.git.git_call_policy import GitCallClass, effective_terminate_grace_seconds
 from ralph.git.git_run_result import GitRunResult
 from ralph.process.manager import SpawnOptions, get_process_manager
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
 )
-from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS, GIT_TERMINATE_GRACE_SECONDS
+from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
 
 #: Non-interactive git environment baseline. Ensures git never blocks on a
 #: credential prompt, a pager, or an editor — so a missing credential or network
@@ -62,6 +63,7 @@ if TYPE_CHECKING:
             cwd: Path | None,
             label: str,
             options: GitRunOptions | None = None,
+            call_class: GitCallClass | None = None,
         ) -> GitRunResult: ...
 
     class _PopenExitProtocol:
@@ -136,6 +138,11 @@ class GitRunOptions:
     with a marker (the
     ``ManagedProcessOutputLimitExceededError`` semantics in
     ``_communicate_with_output_limit``).
+
+    ``call_class``: the operational class selected from the shared git
+    call-policy table. The queue applies its deadline unless ``timeout``
+    is an explicit override and the runner uses the same row for the
+    termination grace.
     """
 
     phase: str | None = None
@@ -146,6 +153,7 @@ class GitRunOptions:
     text: bool = True
     output_limit_bytes: int | None = None
     input_data: str | bytes | None = None
+    call_class: GitCallClass | None = None
 
 
 def run_git(
@@ -154,6 +162,7 @@ def run_git(
     cwd: Path | None,
     label: str,
     options: GitRunOptions | None = None,
+    call_class: GitCallClass | None = None,
 ) -> GitRunResult:
     """Spawn a git subprocess through ProcessManager and return the result.
 
@@ -170,6 +179,15 @@ def run_git(
     on. The ``GIT_SUBPROCESS_TIMEOUT_SECONDS`` ceiling remains the hard
     per-command wall; the queue adds no additional wait.
 
+    Args:
+        args: The git arguments to run.
+        cwd: The working directory of the call.
+        label: The process label used for supervision.
+        options: The spawn options.
+        call_class: The operational class of the call. When supplied, the
+            queue applies that class's deadline unless ``options.timeout``
+            is an explicit override.
+
     Raises subprocess.TimeoutExpired if timeout is exceeded.
     Raises subprocess.CalledProcessError if options.check is True and returncode != 0.
     """
@@ -178,7 +196,13 @@ def run_git(
         importlib.import_module("ralph.git.git_command_queue").route_run_git,
     )
 
-    return queued_run_git(args, cwd=cwd, label=label, options=options)
+    return queued_run_git(
+        args,
+        cwd=cwd,
+        label=label,
+        options=options,
+        call_class=call_class,
+    )
 
 
 def _spawn_git(
@@ -196,6 +220,7 @@ def _spawn_git(
     """
     effective_options = options or GitRunOptions()
     phase = effective_options.phase
+    terminate_grace_seconds = effective_terminate_grace_seconds(effective_options.call_class)
     effective_label = f"phase:{phase}:git:{label}" if phase is not None else label
     cmd = ("git", *args)
     # Fail closed: bound every git call with a default timeout when the caller
@@ -234,14 +259,14 @@ def _spawn_git(
                 input=input_data,
                 timeout=effective_timeout,
                 cleanup_grace_period_s=0.0,
-                terminate_grace_period_s=GIT_TERMINATE_GRACE_SECONDS,
+                terminate_grace_period_s=terminate_grace_seconds,
                 output_limit_bytes=effective_options.output_limit_bytes,
             )
         else:
             raw_stdout, raw_stderr = proc.communicate_and_cleanup(
                 timeout=effective_timeout,
                 cleanup_grace_period_s=0.0,
-                terminate_grace_period_s=GIT_TERMINATE_GRACE_SECONDS,
+                terminate_grace_period_s=terminate_grace_seconds,
                 output_limit_bytes=effective_options.output_limit_bytes,
             )
         with contextlib.suppress(Exception):
@@ -251,11 +276,11 @@ def _spawn_git(
         with contextlib.suppress(Exception):
             get_process_manager().drain_completed()
     except subprocess.TimeoutExpired:
-        proc.terminate(grace_period_s=GIT_TERMINATE_GRACE_SECONDS)
+        proc.terminate(grace_period_s=terminate_grace_seconds)
         raise
     except ManagedProcessOutputLimitExceededError:
         # Output-cap hit — kill the proc tree and propagate.
-        proc.terminate(grace_period_s=GIT_TERMINATE_GRACE_SECONDS)
+        proc.terminate(grace_period_s=terminate_grace_seconds)
         raise
     except BaseException:
         # Any other exception escaping ``communicate_and_cleanup`` — a signal
@@ -272,7 +297,7 @@ def _spawn_git(
         # failing ``terminate`` so the original exception — the one the caller
         # must see — is never masked.
         with contextlib.suppress(Exception):
-            proc.terminate(grace_period_s=GIT_TERMINATE_GRACE_SECONDS)
+            proc.terminate(grace_period_s=terminate_grace_seconds)
         raise
     finally:
         raw_proc_obj: object = proc._proc

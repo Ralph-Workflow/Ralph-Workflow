@@ -37,6 +37,17 @@ backup ref, the fast-forward landing) can be routed through the
 protocol without every caller threading the executors through five
 frames.
 
+The clock rides in the SAME ambient scope, because a clock is a seam
+like any other: an attempt that installs a clock owns the timing of
+everything it runs. :func:`install_executors` therefore takes a ``clock``
+and :func:`current_clock` resolves it; :func:`default_clock` -- the
+"caller supplied no clock" resolver -- honours the installed scope too,
+so the production back-off, deadline and wait of the scope run on the
+INSTALLED clock instead of the real wall clock. That is what lets a
+fault-injection test assert the schedule it asked for without ever
+waiting for it: the test installs a fake clock, the production code
+waits on it, and the recorded wait is the assertion.
+
 The repo-structure policy allows at most ONE public top-level class
 per module (``ralph.testing.audit_repo_structure``). This module
 publishes three protocols, so two of them are declared with private
@@ -67,6 +78,7 @@ __all__ = [
     "GitOps",
     "create_backup_ref",
     "current_agent_runner",
+    "current_clock",
     "current_git_ops",
     "default_agent_runner",
     "default_clock",
@@ -433,8 +445,15 @@ def default_agent_runner() -> AgentRunner:
 
 
 def default_clock() -> Clock:
-    """Return the production clock (real wall-clock time)."""
-    return _DEFAULT_CLOCK
+    """Return the clock a caller gets when it supplies none.
+
+    The INSTALLED clock wins over the production one: a scope that
+    installed a clock owns the timing of everything it runs, so an
+    installed fake clock reaches the production back-off instead of the
+    real wall clock. Without an installed clock the production clock is
+    returned.
+    """
+    return current_clock()
 
 
 # ---------------------------------------------------------------------------
@@ -449,6 +468,7 @@ class _Executors:
 
     git_ops: GitOps
     agent_runner: AgentRunner
+    clock: Clock
 
 
 _EXECUTORS: ContextVar[_Executors | None] = ContextVar(
@@ -460,6 +480,7 @@ _EXECUTORS: ContextVar[_Executors | None] = ContextVar(
 def install_executors(
     git_ops: GitOps | None = None,
     agent_runner: AgentRunner | None = None,
+    clock: Clock | None = None,
 ) -> Token[_Executors | None]:
     """Install the injected mutation seams and return the reset token.
 
@@ -474,6 +495,11 @@ def install_executors(
             installed).
         agent_runner: The resolver-dispatch seam to install, or ``None``
             to inherit the installed one.
+        clock: The wall-clock seam to install, or ``None`` to inherit the
+            installed one (the production clock when nothing is
+            installed). Production code that resolves its clock through
+            :func:`current_clock` or :func:`default_clock` then runs on
+            it, so a test never waits for the real wall clock.
     """
     current = _EXECUTORS.get()
     executors = _Executors(
@@ -486,6 +512,11 @@ def install_executors(
             agent_runner
             if agent_runner is not None
             else (current.agent_runner if current is not None else default_agent_runner())
+        ),
+        clock=(
+            clock
+            if clock is not None
+            else (current.clock if current is not None else _DEFAULT_CLOCK)
         ),
     )
     return _EXECUTORS.set(executors)
@@ -506,6 +537,12 @@ def current_agent_runner() -> AgentRunner:
     """Return the installed resolver-dispatch seam, or the production adapter."""
     executors = _EXECUTORS.get()
     return executors.agent_runner if executors is not None else default_agent_runner()
+
+
+def current_clock() -> Clock:
+    """Return the installed clock seam, or the production wall clock."""
+    executors = _EXECUTORS.get()
+    return executors.clock if executors is not None else _DEFAULT_CLOCK
 
 
 # ---------------------------------------------------------------------------

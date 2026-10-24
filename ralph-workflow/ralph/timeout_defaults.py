@@ -112,6 +112,9 @@ GIT_SUBPROCESS_TIMEOUT_SECONDS: float = 120.0
 #: handler; SIGKILL cannot be handled, so killing git with no grace window
 #: orphans ``index.lock`` / ``HEAD.lock`` / ref locks and wedges every later
 #: git call on that repository. The window only has to cover git's cleanup.
+#: This is the single numeric source for the cleanup floor;
+#: ``ralph.git.git_call_policy`` projects it into every call-class row, and
+#: the git runner obtains its grace through that policy lookup.
 GIT_TERMINATE_GRACE_SECONDS: float = 5.0
 
 #: Default cap (bytes) on git stdout/stderr captured by

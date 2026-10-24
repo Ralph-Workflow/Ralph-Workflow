@@ -586,7 +586,9 @@ def test_delete_file_from_repo_rejects_symlinked_parent_dir(
 
 
 @pytest.mark.timeout_seconds(5)
-def test_delete_file_from_repo_propagates_index_lock_error(tmp_git_repo: Path) -> None:
+def test_delete_file_from_repo_propagates_index_lock_error(
+    tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """An existing ``.git/index.lock`` causes git operations to fail and the error propagates.
 
     The cleanup helper wraps the git index lookup in
@@ -619,6 +621,7 @@ def test_delete_file_from_repo_propagates_index_lock_error(tmp_git_repo: Path) -
         repo.close()
 
     # Simulate a concurrent git operation by writing the lock file.
+    monkeypatch.setattr("ralph.git._lock_recovery._LIVE_HOLDER_PATIENCE_S", 0.0)
     (tmp_git_repo / ".git" / "index.lock").write_text("locked", encoding="utf-8")
     assert (tmp_git_repo / ".git" / "index.lock").exists()
 

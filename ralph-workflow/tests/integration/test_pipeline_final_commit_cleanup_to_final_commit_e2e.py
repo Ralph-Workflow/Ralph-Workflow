@@ -8,17 +8,17 @@ Mirrors the canonical pattern from
 ``tests/integration/test_pipeline_with_engine_internal_artifacts.py``:
 
 * Real ``FsWorkspace`` against a real ``tmp_git_repo``.
-* Extended ``CommitCleanupAlwaysLoopbackInvoker`` helper that now also
-  matches ``development_final_commit_cleanup`` so the final-cleanup
-  phase runs through loopback.
+* One tracked file left with an uncommitted modification, so the pipeline
+  reaches a commit-cleanup phase WITH pending work. A commit-cleanup phase
+  entered on a clean tree is an EMPTY commit cleanup: it neither invokes
+  the agent nor runs ``handle_commit_cleanup_phase``, so the tracked
+  engine-internal residue would survive untouched.
 * Patches ``phase_event_after_agent_run`` so cleanup phases actually
   execute ``handle_commit_cleanup_phase``.
-* Observes pipeline state via the captured state list (no direct git
-  log assertion -- the test suite does not exercise the real git
-  commit step in e2e mode, only the cleanup -> commit transition
-  routing).
+* The real git commit is observed through ``Repo.head.log`` (NOT
+  ``repo.iter_commits``) -- per plan step 18 / AC-08.
 
-This test exercises the ``development_final_commit_cleanup`` handler
+This test exercises the final-commit cleanup -> final-commit transition,
 which has no other dedicated test in the suite. Per-test timeout is
 capped at 15s.
 
@@ -31,6 +31,10 @@ After the pipeline terminates:
   SHA appearing in the post-run reflog that was not present in the
   pre-run reflog, and the new commit's tree does NOT contain the
   deleted tracked files).
+* ``development_final_commit_cleanup`` and ``development_final_commit``
+  were entered as EMPTY commit phases (no agent invoked): the earlier
+  cleanup phase already committed the whole live changed set, so the
+  final pair had nothing left to do.
 """
 
 from __future__ import annotations
@@ -81,6 +85,15 @@ ORIGINALLY_FAILING_PATHS: tuple[str, ...] = (
     ".agent/raw/opencode.log",
     ".agent/tmp/mcp-server.log",
 )
+
+#: A tracked source file left with an UNCOMMITTED modification. The
+#: commit-cleanup phase is reached in production because the pipeline has
+#: pending work to commit; a commit-cleanup phase entered on a clean tree is
+#: an EMPTY commit cleanup (no agent, no cleanup handler) by design. The
+#: pending work below is what makes the cleanup phase run its real handler,
+#: so the tracked engine-internal residue is genuinely deleted and the
+#: subsequent commit phase genuinely commits the deletion.
+PENDING_WORK_PATH: str = "src/pending_work.py"
 
 EXPECTED_GITIGNORE_FRAGMENTS: tuple[str, ...] = (
     ".agent/",
@@ -141,7 +154,7 @@ def _track_and_commit(repo_root: Path, rel_paths: tuple[str, ...] | list[str] | 
 
 @pytest.fixture
 def engine_internal_workspace(tmp_git_repo: Path) -> FsWorkspace:
-    """Pre-stage the originally-failing tracked paths."""
+    """Pre-stage the originally-failing tracked paths and pending work."""
     root_checkpoint = tmp_git_repo / "checkpoint.json"
     root_checkpoint.write_text('{"phase": "development"}')
     raw_log = tmp_git_repo / ".agent" / "raw" / "opencode.log"
@@ -158,6 +171,18 @@ def engine_internal_workspace(tmp_git_repo: Path) -> FsWorkspace:
             ".agent/tmp/mcp-server.log",
         ),
     )
+
+    # Leave ONE tracked file with an uncommitted modification. The pipeline
+    # reaches a commit-cleanup phase because it has pending work; a
+    # commit-cleanup phase entered on a clean tree is an EMPTY commit
+    # cleanup that neither invokes the agent nor runs the cleanup handler,
+    # so the tracked engine-internal residue would survive untouched and
+    # the cleanup -> commit transition under test would never be exercised.
+    pending_work = tmp_git_repo / PENDING_WORK_PATH
+    pending_work.parent.mkdir(parents=True, exist_ok=True)
+    pending_work.write_text("initial pending work\n", encoding="utf-8")
+    _track_and_commit(tmp_git_repo, PENDING_WORK_PATH)
+    pending_work.write_text("updated pending work\n", encoding="utf-8")
 
     (tmp_git_repo / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
 

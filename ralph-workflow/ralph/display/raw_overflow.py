@@ -677,6 +677,23 @@ class RawOverflowLog:
     def _fh(self, handle: BinaryIO | None) -> None:
         self._handle_box[0] = handle
 
+    @property
+    def is_open(self) -> bool:
+        """Whether this writer currently holds an open buffered file handle.
+
+        The capture keeps one buffered handle open for the unit's
+        lifetime, so "is the capture live?" is a real question the
+        flush path must answer. It mirrors
+        :attr:`size_bytes` in kind: a public read-only view of this
+        writer's own resource state.
+
+        The flush path consults it so a handle that was closed
+        OUTSIDE the writer (the GC finalizer closes the shared handle
+        box) is never flushed again: ``flush()`` promises never to
+        raise, and flushing a closed handle raises ``ValueError``.
+        """
+        handle = self._handle_box[0]
+        return handle is not None and not handle.closed
     def disable(self) -> None:
         """Permanently disable this log so future appends are no-ops."""
         with self._lock:
@@ -787,9 +804,15 @@ class RawOverflowLog:
     def flush(self) -> None:
         """Force buffered bytes to disk. Never raises."""
         with self._lock:
-            if self._fh is not None:
+            handle = self._fh
+            # ``is_open`` is the single "is the buffered handle live?"
+            # predicate: a handle closed outside this writer (the GC
+            # finalizer closes the shared handle box) must never be
+            # flushed -- ``flush()`` on a closed handle raises
+            # ``ValueError``, which this method promises never to do.
+            if handle is not None and self.is_open:
                 try:
-                    self._fh.flush()
+                    handle.flush()
                     self._last_flush = self._now()
                 except (OSError, PermissionError):
                     self._close_locked()

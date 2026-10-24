@@ -49,15 +49,22 @@ registration  →  parser  →  strategy  →  CommandBuilder
 Every pipeline decision fact has exactly one authority, and every durable
 state change has exactly one writer:
 
-- **Decision authorities** (each a pure function returning a typed
+- **Decision authorities** (each returning a typed
   decision): `decide_phase_transition`
-  (`ralph.pipeline._pipeline_state_machine`), `next_integration_action`
-  (`ralph.pipeline._integration_action`), `next_publication_action`
+  (`ralph.pipeline._pipeline_state_machine`), the integration owner seam
+  (`decide_integration` / `decide_integration_verdict` in
+  `ralph.pipeline.integration_owner`, reached from the pipeline boundaries
+  through `decide_seam_action` in
+  `ralph.pipeline._integration_owner_seam`), `next_publication_action`
   (`ralph.pipeline._publication_state_machine`), `fan_out_decision`
   (`ralph.pipeline._fan_out_authority`), `classify_git_operation`
   (`ralph.pipeline._git_operation_authority`), `complete_commit`
   (`ralph.pipeline._commit_completion_authority`), and
   `is_terminal_success_eligible` (`ralph.pipeline._terminal_authority`).
+  `next_integration_action` (`ralph.pipeline._integration_action`) is not one
+  of them: it is the typed projection helper onto the closed
+  `IntegrationAction` vocabulary, and it fails closed to
+  `REQUIRE_INTERVENTION` — it is not a decision authority.
 - **Single durable writer**: `IntegrationRecord.with_transition`
   (`ralph.pipeline.auto_integrate_record`) is the only path that mutates
   the durable integration record; ad-hoc `model_copy(update=...)` on

@@ -1,20 +1,8 @@
 """Rebase-then-endpoint-merge engine driver for auto-integration.
 
-Extracted from :mod:`ralph.pipeline.auto_integrate` so that module stays
-under the repo-structure ``_MAX_FILE_LINES`` cap, the same reason the
-durable record helpers moved to
-:mod:`ralph.pipeline.auto_integrate_record` and the outcome branch table
-to :mod:`ralph.pipeline.auto_integrate_outcome`.
-
-Everything here belongs to one phase of an integration attempt: run the
-rebase engine; when it conflicts, resolve it IN PLACE stop by stop --
-Ralph stages each proved-resolved stop and runs ``git rebase
---continue``, leaving linear history and no merge commit -- and only
-when that resolution declines, exhausts a budget, errors or is
-unavailable abort the rebase cleanly and fall back to a single endpoint
-three-way merge (itself optionally agent-resolved). The caller owns the
-phases either side of it -- the durable crash record, the fast-forward,
-and the retry loop.
+This module owns one integration phase: replay the feature, resolve a
+real conflict in place, and only then fall back to one endpoint merge.
+The caller owns the durable record, landing, and retry loop.
 """
 
 from __future__ import annotations
@@ -26,6 +14,7 @@ from loguru import logger
 
 from ralph.git.merge import MERGE_STATE_NONE, merge_state
 from ralph.git.merge_obstructions import clear_untracked_merge_obstructions
+from ralph.git.rebase._rebase_kind import RebaseKind
 from ralph.git.rebase.rebase import (
     RebaseConflicts,
     RebaseFailed,
@@ -38,6 +27,7 @@ from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.auto_integrate_outcome import (
     record_conflict,
     record_rebase_outcome,
+    record_skip,
 )
 from ralph.pipeline.auto_integrate_record import clear_record, read_record, set_resolving_rebase
 from ralph.pipeline.auto_integrate_recovery import (
@@ -255,18 +245,9 @@ def _registered_spec(slug: str) -> tuple[str, str]:
 class RebaseRunResult:
     """Outcome of :func:`run_rebase_or_merge`.
 
-    On the happy path ``short_circuit`` is ``None`` and
-    ``rebase_outcome`` carries the engine result so the caller can
-    build the final :class:`RebaseState`. On a conflict / failure
-    that has already been cleared from the durable record,
-    ``short_circuit`` carries the :class:`RebaseState` the caller
-    should return directly.
-
-    ``skip_reason`` is the REGISTERED reason text of the rebase skip
-    that produced this outcome (``None`` when the rebase was actually
-    attempted). The caller records it so the durable state names WHICH
-    closed-set reason applied instead of dropping the fact that the
-    rebase never ran.
+    ``short_circuit`` carries the state to return when the attempt stopped
+    early; otherwise the engine and merge outcomes describe the path taken.
+    ``skip_reason`` names the registered reason when the rebase was skipped.
     """
 
     rebase_outcome: RebaseSuccess | RebaseConflicts | RebaseNoOp | RebaseFailed
@@ -274,6 +255,104 @@ class RebaseRunResult:
     merge_outcome: MergeResult | None
     short_circuit: RebaseState | None
     skip_reason: str | None = None
+
+
+_ENVIRONMENTAL_REBASE_KINDS = frozenset(
+    {
+        RebaseKind.CONCURRENT_OPERATION,
+        RebaseKind.ENVIRONMENT_FAILURE,
+        RebaseKind.REFERENCE_UPDATE_FAILED,
+        RebaseKind.REPOSITORY_CORRUPT,
+    }
+)
+_ENVIRONMENTAL_IO_MARKERS = (
+    "disk full",
+    "filesystem",
+    "i/o error",
+    "io error",
+    "no space left",
+    "permission denied",
+    "read-only",
+    "too many open files",
+    "worktree directory was deleted",
+)
+
+
+def _rebase_failure_detail(failure: RebaseFailed) -> str:
+    """Return the current observation carried by a classified rebase failure."""
+    metadata = failure.kind.metadata
+    for key in ("reason", "details", "operation"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return failure.kind.kind.value
+
+
+def _environmental_rebase_reason(failure: RebaseFailed) -> str | None:
+    """Return an environmental reason, or ``None`` for another failed rebase."""
+    kind = failure.kind.kind
+    detail = _rebase_failure_detail(failure)
+    if kind in _ENVIRONMENTAL_REBASE_KINDS:
+        category = kind.value
+    elif kind is RebaseKind.UNKNOWN:
+        lowered = detail.lower()
+        if "timed out" in lowered or "timeout" in lowered:
+            category = "timeout"
+        elif "killed" in lowered or "sigkill" in lowered:
+            category = "killed"
+        elif "lock" in lowered or "concurrent" in lowered:
+            category = "concurrent_operation"
+        elif any(marker in lowered for marker in _ENVIRONMENTAL_IO_MARKERS):
+            category = "io_error"
+        else:
+            return None
+    else:
+        return None
+    return f"rebase failed for an environmental reason ({category}): {detail}"
+
+
+def _failed_rebase_reason(failure: RebaseFailed) -> str:
+    """Return the operator-visible reason for any non-conflict rebase failure."""
+    environmental = _environmental_rebase_reason(failure)
+    if environmental is not None:
+        return environmental
+    return f"rebase failed ({failure.kind.kind.value}): {_rebase_failure_detail(failure)}"
+
+
+def _failed_rebase_state(failure: RebaseFailed, target: str) -> RebaseState:
+    """Record a failed rebase without presenting it as a content conflict."""
+    return record_skip(
+        reason=_failed_rebase_reason(failure),
+        target=target,
+        failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+    )
+
+
+def _environmental_rebase_result(
+    root: Path,
+    target: str,
+    failure: RebaseFailed,
+    reason: str,
+    git_ops: GitOps | None,
+) -> RebaseRunResult:
+    """Stop after an environmental rebase failure without attempting a merge."""
+    _abort_rebase_after_conflict(root, git_ops=git_ops)
+    state = record_skip(
+        reason=reason,
+        target=target,
+        failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+    )
+    if rebase_in_progress(root):
+        post_attempt_verify(root, expected_head_sha=None, owns_resolution=False)
+        state = state.set_recovery_record_retained(StartupRetentionReason.FAILED_ABORT)
+    else:
+        _verify_terminal_state(root, expected_head_sha=None, owns_resolution=False)
+    return RebaseRunResult(
+        rebase_outcome=failure,
+        merge_attempted=False,
+        merge_outcome=None,
+        short_circuit=state,
+    )
 
 
 def run_rebase_or_merge(
@@ -378,6 +457,16 @@ def run_rebase_or_merge(
         if git_ops is not None
         else rebase_onto(target, repo_root=root)
     )
+    if isinstance(rebase_outcome, RebaseFailed):
+        environmental_reason = _environmental_rebase_reason(rebase_outcome)
+        if environmental_reason is not None:
+            return _environmental_rebase_result(
+                root,
+                target,
+                rebase_outcome,
+                environmental_reason,
+                git_ops,
+            )
     if not isinstance(rebase_outcome, (RebaseConflicts, RebaseFailed)):
         return RebaseRunResult(
             rebase_outcome=rebase_outcome,
@@ -399,9 +488,7 @@ def run_rebase_or_merge(
             return resolved
         # The endpoint merge is a different integration shape (one merge
         # of the whole branch, not a commit-by-commit replay), and it is
-        # the last way to land the target: it keeps the resolver, or a
-        # conflicted merge would abort and leave the branch behind.
-        return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver, git_ops)
+        # the last way to land the target.
 
     return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver, git_ops)
 
@@ -725,10 +812,14 @@ def _fallback_to_endpoint_merge(
             rebase_outcome=rebase_outcome,
             merge_attempted=False,
             merge_outcome=None,
-            short_circuit=record_conflict(
-                reason="rebase in-progress after abort",
-                target=target,
-                failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+            short_circuit=(
+                _failed_rebase_state(rebase_outcome, target)
+                if isinstance(rebase_outcome, RebaseFailed)
+                else record_conflict(
+                    reason="rebase in-progress after abort",
+                    target=target,
+                    failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+                )
             ),
         )
     _verify_terminal_state(
@@ -794,10 +885,14 @@ def _endpoint_merge_result(
             rebase_outcome=rebase_outcome,
             merge_attempted=True,
             merge_outcome=None,
-            short_circuit=record_conflict(
-                reason="rebase conflict followed by merge attempt exception",
-                target=target,
-                failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+            short_circuit=(
+                _failed_rebase_state(rebase_outcome, target)
+                if isinstance(rebase_outcome, RebaseFailed)
+                else record_conflict(
+                    reason="rebase conflict followed by merge attempt exception",
+                    target=target,
+                    failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+                )
             ),
         )
     if merge_result.outcome == "merge_commit_pending":

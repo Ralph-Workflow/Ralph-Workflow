@@ -19,12 +19,14 @@ from typing import TYPE_CHECKING, Literal, cast
 from git import Repo
 from loguru import logger
 
+from ralph.git.git_call_policy import classify_git_exception, quarantine_reason
 from ralph.git.git_command_queue import (
     WorktreeLeaseHolder,
     end_agent_lease,
     is_lease_held,
     try_acquire_lease,
 )
+from ralph.git.git_run_result import GitOutcomeKind
 from ralph.git.merge import (
     WORKTREE_FOUND,
     WORKTREE_QUERY_FAILED,
@@ -32,6 +34,8 @@ from ralph.git.merge import (
     worktree_lookup,
 )
 from ralph.git.operations import find_main_worktree_root
+from ralph.pipeline._integration_action import IntegrationAction
+from ralph.pipeline._integration_owner_seam import decide_seam_action
 from ralph.pipeline.auto_integrate_backoff import compute_retry_delay
 from ralph.pipeline.auto_integrate_catchup_coordination import (
     RemoteSyncLease,
@@ -104,18 +108,6 @@ CATCHUP_LADDER_ESCALATED = "ladder: fast-forward quarantined after repeated atte
 #: every distinct checkout state.
 _CATCHUP_LEDGER_ACTION = "catchup_fast_forward"
 
-#: A command that timed out twice against the same observed state is
-#: quarantined: the third cycle takes the next ladder rung instead of
-#: issuing the identical merge again.
-_MAX_SAME_STATE_ATTEMPTS = 2
-
-type _GitOutcomeKind = Literal[
-    "succeeded",
-    "definitely_failed",
-    "timed_out",
-    "killed",
-    "unknown",
-]
 type _LeaseVerdict = Literal["acquired", "held", "unknown"]
 
 
@@ -374,34 +366,30 @@ def _lease_failure(verdict: _LeaseVerdict) -> str:
     return CATCHUP_LEASE_UNKNOWN
 
 
-def _classify_fast_forward_result(result: bool) -> _GitOutcomeKind:
-    """Adapt the current boolean fast-forward result to the local outcome union."""
+def _classify_fast_forward_result(result: bool) -> GitOutcomeKind:
+    """Adapt the current boolean fast-forward result to the canonical outcome union."""
 
-    return "succeeded" if result else "definitely_failed"
-
-
-def _classify_git_exception(exc: Exception) -> _GitOutcomeKind:
-    """Classify the CURRENT exception shape without parsing its message."""
-
-    if isinstance(exc, (subprocess.TimeoutExpired, TimeoutError)):
-        return "timed_out"
-    if isinstance(exc, ProcessTerminationError):
-        return "killed"
-    return "unknown"
+    return GitOutcomeKind.SUCCEEDED if result else GitOutcomeKind.FAILED
 
 
-def _failure_reason(kind: _GitOutcomeKind, observation: str) -> str:
+def _classify_git_exception(exc: Exception) -> GitOutcomeKind:
+    """Classify the exception shape into the closed GitOutcomeKind union."""
+
+    return classify_git_exception(exc).kind
+
+
+def _failure_reason(kind: GitOutcomeKind, observation: str) -> str:
     """Render a typed Git outcome as a named, observation-backed reason."""
 
-    reasons: dict[_GitOutcomeKind, str] = {
-        "succeeded": CATCHUP_FAST_FORWARDED,
-        "definitely_failed": CATCHUP_DEFEDITELY_FAILED,
-        "timed_out": CATCHUP_TIMEOUT,
-        "killed": CATCHUP_KILLED,
-        "unknown": CATCHUP_UNKNOWN,
+    reasons: dict[GitOutcomeKind, str] = {
+        GitOutcomeKind.SUCCEEDED: CATCHUP_FAST_FORWARDED,
+        GitOutcomeKind.FAILED: CATCHUP_DEFEDITELY_FAILED,
+        GitOutcomeKind.TIMED_OUT: CATCHUP_TIMEOUT,
+        GitOutcomeKind.KILLED: CATCHUP_KILLED,
+        GitOutcomeKind.UNKNOWN: CATCHUP_UNKNOWN,
     }
     reason = reasons[kind]
-    if kind == "succeeded":
+    if kind == GitOutcomeKind.SUCCEEDED:
         return reason
     return f"{reason}; {observation}"
 
@@ -437,7 +425,7 @@ def _charge_attempt(
         effective_ledger = ledger if ledger is not None else _repository_ledger(root)
         state = effective_ledger.read()
         prior_count = state.repeat_counts.get((signature, _CATCHUP_LEDGER_ACTION), 0)
-        if prior_count >= _MAX_SAME_STATE_ATTEMPTS:
+        if quarantine_reason("mutation", signature, same_state_attempts=prior_count) is not None:
             return (
                 prior_count,
                 f"{CATCHUP_LADDER_ESCALATED}; rung={state.rung.value}; {observation}",
@@ -553,7 +541,7 @@ def _observe_remote_target(
     if verdict == WORKTREE_QUERY_FAILED:
         return None, f"{CATCHUP_UNKNOWN}; target={target}@{remote}"
     if verdict == WORKTREE_FOUND and owner is not None and not _worktree_is_clean(owner):
-        return None, f"{CATCHUP_DEFEDITELY_FAILED}; target={target}@{remote}"
+        return None, CATCHUP_REFUSED
     return remote_sha, ""
 
 
@@ -597,12 +585,12 @@ def _advance_target_to_remote(
         )
     except Exception as exc:
         kind = _classify_git_exception(exc)
-        if kind != "definitely_failed":
+        if kind != GitOutcomeKind.FAILED:
             _backoff_after_failure(effective_clock, attempt_count, jitter=jitter)
         return _failure_reason(kind, observation)
     if advanced:
         return CATCHUP_FAST_FORWARDED
-    return f"{CATCHUP_DEFEDITELY_FAILED}; {reason}; {observation}"
+    return CATCHUP_REFUSED
 
 
 def observe_remote_target_sha(root: Path, remote: str, target: str) -> str | None:
@@ -653,6 +641,13 @@ def _fast_forward_if_strictly_behind(
     with _mutation_lease(root) as lease_verdict:
         if lease_verdict != "acquired":
             return _lease_failure(lease_verdict)
+        if (root / ".git").exists():
+            action = decide_seam_action(root, target=target)
+            if action in (
+                IntegrationAction.REQUIRE_INTERVENTION,
+                IntegrationAction.RESOLVE_ACTIVE_OPERATION,
+            ):
+                return f"{CATCHUP_REFUSED}; owner required {action.value}"
         attempt_count, charge_reason = _charge_attempt(
             root,
             ledger,
@@ -661,17 +656,35 @@ def _fast_forward_if_strictly_behind(
         )
         if charge_reason:
             return charge_reason
-        try:
-            merged = fast_forward_via_worktree(root, observation.target_sha)
-        except Exception as exc:
-            kind = _classify_git_exception(exc)
-            if kind != "definitely_failed":
-                _backoff_after_failure(effective_clock, attempt_count, jitter=jitter)
-            return _failure_reason(kind, observation.summary)
-        kind = _classify_fast_forward_result(merged)
-        if kind == "succeeded":
-            return CATCHUP_FAST_FORWARDED
+        return _execute_fast_forward(
+            root,
+            observation,
+            attempt_count=attempt_count,
+            clock=effective_clock,
+            jitter=jitter,
+        )
+
+
+def _execute_fast_forward(
+    root: Path,
+    observation: _CatchupObservation,
+    *,
+    attempt_count: int,
+    clock: Clock,
+    jitter: Callable[[], float] | None,
+) -> str:
+    """Execute the worktree fast-forward and classify the outcome."""
+    try:
+        merged = fast_forward_via_worktree(root, observation.target_sha)
+    except Exception as exc:
+        kind = _classify_git_exception(exc)
+        if kind != GitOutcomeKind.FAILED:
+            _backoff_after_failure(clock, attempt_count, jitter=jitter)
         return _failure_reason(kind, observation.summary)
+    kind = _classify_fast_forward_result(merged)
+    if kind == GitOutcomeKind.SUCCEEDED:
+        return CATCHUP_FAST_FORWARDED
+    return _failure_reason(kind, observation.summary)
 
 
 def _still_safe_to_merge(root: Path, expected_branch: str) -> bool:

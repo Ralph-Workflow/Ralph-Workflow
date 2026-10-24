@@ -589,11 +589,19 @@ by the authoritative single-source-of-truth architecture defined in
 
 Required invariants:
 
-1. **Typed progression authority:** `ralph.pipeline._integration_action.next_integration_action`
-   is the sole authority for integration progression decisions, returning one of 8 typed
+1. **Typed progression authority:** the integration owner seam
+   (`ralph.pipeline.integration_owner`: `decide_integration` /
+   `decide_integration_verdict`, with durable ledger writes through
+   `charge_integration_attempt`, reached from the pipeline boundaries through
+   `ralph.pipeline._integration_owner_seam.decide_seam_action`) is the sole
+   authority for integration progression decisions, returning one of 8 typed
    `IntegrationAction` enum values (`RESOLVE_ACTIVE_OPERATION`, `CONTINUE_GIT_OPERATION`,
    `REINTEGRATE_AGAINST_TARGET`, `LAND_TARGET`, `PUBLISH_AFTER_LANDING`, `WAIT_FOR_BOUNDED_RETRY`,
-   `REQUIRE_INTERVENTION`, `COMPLETE_WITH_PROOF`). Do not introduce prose comparisons
+   `REQUIRE_INTERVENTION`, `COMPLETE_WITH_PROOF`).
+   `ralph.pipeline._integration_action.next_integration_action` is NOT that
+   authority: it is the typed projection helper that maps durable state onto the
+   same closed vocabulary and fails closed to `REQUIRE_INTERVENTION` when the
+   durable facts cannot prove a next step. Do not introduce prose comparisons
    (`phase == "integrating"`, `phase == "integrated"`, etc.) at call sites.
 2. **Single-writer outcome classification:** `RebaseState.last_outcome: RebaseOutcomeKind | None`
    is the single authoritative field across 19 closed outcome verbs (`REBASED`, `MERGED`,

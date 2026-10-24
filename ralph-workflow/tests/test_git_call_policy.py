@@ -1,6 +1,6 @@
 """Contract tests for the git call-class policy table and outcome classification.
 
-These tests pin the three properties the integration path depends on:
+These tests pin the properties the integration path depends on:
 
 * the policy table is a SMALL table of call classes (not a per-command
   explosion) and every lookup over it is pure;
@@ -8,18 +8,24 @@ These tests pin the three properties the integration path depends on:
   "a command that has timed out twice against the same observed state is
   not run a third time";
 * the classification of a call is a closed typed union: an ambiguous
-  reading is ``"unknown"`` and NEVER ``"failed"``.
+  reading is ``"unknown"`` and NEVER ``"failed"``;
+* the production runner threads a call class into the queue, so the table's
+  deadline and termination grace are the values the child actually receives.
 """
 
 from __future__ import annotations
 
 import subprocess
 from dataclasses import replace
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.git import git_command_queue
 from ralph.git.git_call_policy import (
     GIT_CALL_POLICIES,
+    GitCallClass,
     GitCallPolicy,
     classify_git_exception,
     classify_git_outcome,
@@ -38,18 +44,27 @@ from ralph.git.git_run_result import (
     timed_out_outcome,
     unknown_outcome,
 )
+from ralph.git.subprocess_runner import GitRunOptions, run_git
+from ralph.process.manager import ProcessTerminationError
+from ralph.timeout_defaults import GIT_TERMINATE_GRACE_SECONDS
 
-_EXPECTED_CALL_CLASSES = {"read_only_verify", "mutation", "network"}
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+_EXPECTED_CALL_CLASSES: tuple[GitCallClass, ...] = (
+    "read_only_verify",
+    "mutation",
+    "network",
+)
 _OUTCOME_KINDS = {"succeeded", "failed", "timed_out", "killed", "unknown"}
 
 
 def test_policy_table_is_a_small_table_of_call_classes() -> None:
     """The table has one row per call class -- never one row per command."""
-    assert set(GIT_CALL_POLICIES) == _EXPECTED_CALL_CLASSES
+    assert set(GIT_CALL_POLICIES) == set(_EXPECTED_CALL_CLASSES)
     for call_class, policy in GIT_CALL_POLICIES.items():
         assert policy.call_class == call_class
         assert policy.deadline_seconds > 0.0
-        assert policy.terminate_grace_seconds > 0.0
         assert policy.kill_policy in {"terminate_then_kill", "terminate_only"}
         assert policy.quarantine_after_same_state_attempts >= 1
 
@@ -67,41 +82,50 @@ def test_effective_deadline_prefers_an_explicit_request() -> None:
     policy = policy_for("read_only_verify")
     assert effective_deadline_seconds("read_only_verify") == policy.deadline_seconds
     assert effective_deadline_seconds("read_only_verify", 7.5) == 7.5
-    assert (
-        effective_terminate_grace_seconds("network")
-        == policy_for("network").terminate_grace_seconds
-    )
+
+
+def test_terminate_grace_has_one_numeric_source() -> None:
+    """Every policy projects the live cleanup floor; no row stores a rival."""
+    assert "terminate_grace_seconds" not in GitCallPolicy.__dataclass_fields__
+    for call_class in _EXPECTED_CALL_CLASSES:
+        assert policy_for(call_class).terminate_grace_seconds == GIT_TERMINATE_GRACE_SECONDS
+        assert effective_terminate_grace_seconds(call_class) == GIT_TERMINATE_GRACE_SECONDS
+    assert effective_terminate_grace_seconds() == GIT_TERMINATE_GRACE_SECONDS
 
 
 def test_quarantine_rung_blocks_the_third_same_state_run() -> None:
     """Two same-state attempts exhaust the rung; the third run is quarantined."""
-    assert quarantine_reason(same_state_attempts=0, call_class="mutation") is None
-    assert quarantine_reason(same_state_attempts=1, call_class="mutation") is None
+    assert quarantine_reason("mutation", "state-a", same_state_attempts=0) is None
+    assert quarantine_reason("mutation", "state-a", same_state_attempts=1) is None
     assert (
-        quarantine_reason(same_state_attempts=2, call_class="mutation")
+        quarantine_reason("mutation", "state-a", same_state_attempts=2)
         == "same_state_timeout_threshold"
     )
 
 
 def test_quarantine_rung_ignores_a_negative_attempt_count() -> None:
     """A negative count is not evidence of anything."""
-    assert quarantine_reason(same_state_attempts=-5, call_class="mutation") is None
+    assert quarantine_reason("mutation", "state-a", same_state_attempts=-5) is None
+
+
+def test_quarantine_rung_requires_a_signature() -> None:
+    """An empty signature cannot identify an observed state."""
+    with pytest.raises(ValueError):
+        quarantine_reason("mutation", "", same_state_attempts=2)
 
 
 def test_classification_of_a_finished_call() -> None:
-    """Every observed call maps onto exactly one variant of the union."""
-    assert classify_git_outcome(returncode=0) == ("succeeded", None)
-    assert classify_git_outcome(returncode=1) == ("failed", "nonzero_exit")
-    assert classify_git_outcome(returncode=1, cause="lock_contention") == (
-        "failed",
+    """Every observed call maps onto exactly one member of the closed union."""
+    assert classify_git_outcome(returncode=0).kind is GitOutcomeKind.SUCCEEDED
+    assert classify_git_outcome(returncode=1).kind is GitOutcomeKind.FAILED
+    assert classify_git_outcome(returncode=1).cause == "nonzero_exit"
+    assert classify_git_outcome(returncode=1, cause="lock_contention") == GitOutcome(
+        GitOutcomeKind.FAILED,
         "lock_contention",
     )
-    assert classify_git_outcome(returncode=0, timed_out=True) == (
-        "timed_out",
-        "deadline_exceeded",
-    )
-    assert classify_git_outcome(returncode=0, killed=True) == ("killed", "force_kill")
-    assert classify_git_outcome(returncode=-9) == ("killed", "signal_9")
+    assert classify_git_outcome(returncode=0, timed_out=True).kind is GitOutcomeKind.TIMED_OUT
+    assert classify_git_outcome(returncode=0, killed=True).kind is GitOutcomeKind.KILLED
+    assert classify_git_outcome(returncode=-9).kind is GitOutcomeKind.KILLED
 
 
 def test_ambiguous_reading_is_never_reported_as_failed() -> None:
@@ -111,36 +135,50 @@ def test_ambiguous_reading_is_never_reported_as_failed() -> None:
         classify_git_exception(OSError("git vanished")),
         classify_git_exception(RuntimeError("boom")),
     ]
-    assert {outcome[0] for outcome in ambiguous} == {"unknown"}
+    assert {outcome.kind for outcome in ambiguous} == {GitOutcomeKind.UNKNOWN}
 
 
 def test_exception_classification() -> None:
-    """A timeout is a timeout, a non-zero exit is a failure, the rest is unknown."""
-    assert classify_git_exception(subprocess.TimeoutExpired("git", 1.0))[0] == "timed_out"
-    assert classify_git_exception(TimeoutError())[0] == "timed_out"
-    assert classify_git_exception(subprocess.CalledProcessError(1, "git"))[0] == "failed"
-    assert classify_git_exception(OSError("git vanished"))[0] == "unknown"
-    assert classify_git_exception(RuntimeError("boom"))[0] == "unknown"
+    """A timeout is a timeout, a kill is a kill, a non-zero exit is a failure."""
+    assert classify_git_exception(subprocess.TimeoutExpired("git", 1.0)).kind is (
+        GitOutcomeKind.TIMED_OUT
+    )
+    assert classify_git_exception(TimeoutError()).kind is GitOutcomeKind.TIMED_OUT
+    assert classify_git_exception(ProcessTerminationError(1, 1)).kind is GitOutcomeKind.KILLED
+    assert classify_git_exception(subprocess.CalledProcessError(1, "git")).kind is (
+        GitOutcomeKind.FAILED
+    )
+    assert classify_git_exception(OSError("git vanished")).kind is GitOutcomeKind.UNKNOWN
+    assert classify_git_exception(RuntimeError("boom")).kind is GitOutcomeKind.UNKNOWN
 
 
-def test_outcome_union_is_closed() -> None:
-    """The constructors cover exactly the five documented variants."""
+def test_outcome_union_is_closed_and_str_valued() -> None:
+    """The enum exposes exactly the five documented string-valued members."""
+    assert {member.value for member in GitOutcomeKind} == _OUTCOME_KINDS
+    assert len(tuple(GitOutcomeKind)) == len(_OUTCOME_KINDS)
+    assert isinstance(GitOutcomeKind.SUCCEEDED, str)
+    assert str(GitOutcomeKind.SUCCEEDED) == "succeeded"
+    assert GitOutcomeKind.FAILED.value == "failed"
+
+
+def test_constructors_cover_exactly_the_union_members() -> None:
+    """Every constructor produces one member of the canonical enum."""
     kinds = {
-        succeeded_outcome()[0],
-        failed_outcome("nonzero_exit")[0],
-        timed_out_outcome()[0],
-        killed_outcome()[0],
-        unknown_outcome()[0],
+        succeeded_outcome().kind,
+        failed_outcome("nonzero_exit").kind,
+        timed_out_outcome().kind,
+        killed_outcome().kind,
+        unknown_outcome().kind,
     }
-    assert kinds == _OUTCOME_KINDS
+    assert kinds == set(GitOutcomeKind)
 
 
 def test_git_run_result_carries_the_typed_outcome() -> None:
-    """The result carries the union; an unclassified result is unknown."""
+    """The result exposes the canonical member through ``outcome_kind``."""
     result = GitRunResult(args=("git", "status"), returncode=0, stdout="ok", stderr="")
-    assert result.outcome == ("unknown", None)
+    assert result.outcome_kind is GitOutcomeKind.UNKNOWN
     classified = replace(result, outcome=succeeded_outcome())
-    assert classified.outcome[0] == "succeeded"
+    assert classified.outcome_kind is GitOutcomeKind.SUCCEEDED
     assert classified.args == ("git", "status")
 
 
@@ -154,13 +192,73 @@ def test_a_failed_outcome_always_names_a_cause() -> None:
             returncode=1,
             stdout="",
             stderr="",
-            outcome=("failed", None),
+            outcome=GitOutcome(GitOutcomeKind.FAILED),
         )
 
 
-def test_outcome_kind_alias_matches_the_constructed_variants() -> None:
-    """The kind alias and the constructors agree on the closed variant set."""
-    kind: GitOutcomeKind = succeeded_outcome()[0]
-    outcome: GitOutcome = timed_out_outcome()
-    assert kind == "succeeded"
-    assert outcome[0] == "timed_out"
+def test_run_git_threads_call_class_to_the_production_queue(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The public runner forwards the class that selects the policy row."""
+    captured: dict[str, object] = {}
+
+    def fake_route(
+        args: Sequence[str],
+        *,
+        cwd: Path | None,
+        label: str,
+        options: GitRunOptions | None = None,
+        call_class: GitCallClass | None = None,
+    ) -> GitRunResult:
+        captured["args"] = args
+        captured["cwd"] = cwd
+        captured["label"] = label
+        captured["options"] = options
+        captured["call_class"] = call_class
+        return GitRunResult(args=("git", *args), returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(git_command_queue, "route_run_git", fake_route)
+    result = run_git(
+        ("status", "--porcelain"),
+        cwd=tmp_path,
+        label="integration:status",
+        call_class="read_only_verify",
+    )
+
+    assert captured["call_class"] == "read_only_verify"
+    assert result.outcome_kind is GitOutcomeKind.UNKNOWN
+
+
+def test_route_run_git_applies_the_call_class_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The queue applies the selected table deadline to the real spawn."""
+    captured: dict[str, GitRunOptions | None] = {}
+
+    def fake_spawn(
+        args: Sequence[str],
+        *,
+        cwd: Path | None,
+        label: str,
+        options: GitRunOptions | None = None,
+    ) -> GitRunResult:
+        captured["options"] = options
+        return GitRunResult(args=("git", *args), returncode=0, stdout="", stderr="")
+
+    from ralph.git import subprocess_runner
+
+    monkeypatch.setattr(subprocess_runner, "_spawn_git", fake_spawn)
+    result = git_command_queue.route_run_git(
+        ("status", "--porcelain"),
+        cwd=tmp_path,
+        label="integration:status",
+        call_class="read_only_verify",
+    )
+
+    options = captured["options"]
+    assert options is not None
+    assert options.timeout == policy_for("read_only_verify").deadline_seconds
+    assert options.call_class == "read_only_verify"
+    assert result.outcome_kind is GitOutcomeKind.SUCCEEDED

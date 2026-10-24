@@ -13,7 +13,8 @@ typed-authority model that closed the original linked-worktree
 retained-integration reproduction and the broader architectural class of
 drifting sources of truth. Fresh inspection on the maintained tree
 confirms that every cited site already delegates to the typed authorities
-(`next_integration_action`, `decide_phase_transition`,
+(the integration owner seam `decide_integration` / `decide_seam_action`,
+`decide_phase_transition`,
 `is_terminal_success_eligible`, `classify_git_operation`,
 `fan_out_decision`, `PublicationDecision`). The architecture is in place.
 
@@ -95,19 +96,22 @@ The PARALLEL-1 / PARALLEL-2 / PARALLEL-3 fixtures extend the existing
 test files to pin the already-cited delegation sites:
 
 * `ralph/pipeline/runner.py:972, :1881-1882, :1935-1936, :2516`
-  delegate to `is_terminal_success_eligible`, `next_integration_action`,
-  `decide_phase_transition`. Regression coverage extended in
+  delegate to `is_terminal_success_eligible`, `decide_seam_action`
+  (the integration owner seam), `decide_phase_transition`. Regression
+  coverage extended in
   `tests/test_runner_decision_delegation.py`.
 * `ralph/pipeline/run_loop.py:1422, :2071, :2149, :2549,
   :3138-3140, :3149` delegate to `classify_git_operation`,
-  `next_integration_action`, `decide_phase_transition`,
+  `decide_seam_action` (the integration owner seam),
+  `decide_phase_transition`,
   `is_terminal_success_eligible`. Regression coverage extended in
   `tests/test_run_loop_decision_delegation.py`,
   `tests/test_run_loop_setters_only.py`,
   `tests/test_run_loop_pro_integration.py`.
 * `ralph/pipeline/auto_integrate_recovery.py:142, :777, :802,
   :897-900` delegate to `busy_refusal_outcome`,
-  `next_integration_action`, `classify_git_operation`. Regression
+  `decide_integration` (the integration owner seam),
+  `classify_git_operation`. Regression
   coverage extended in `tests/test_auto_integrate_recovery.py`,
   `tests/test_recovery_release_uses_record_store.py`.
 

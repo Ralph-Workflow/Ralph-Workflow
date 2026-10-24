@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import random
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -108,7 +107,9 @@ from ralph.pipeline.commit_executor import (
 from ralph.pipeline.integration_actions import create_backup_ref as _create_rebase_backup_ref
 from ralph.pipeline.integration_actions import (
     current_agent_runner,
+    current_clock,
     current_git_ops,
+    default_git_ops,
     install_executors,
     reset_executors,
 )
@@ -128,7 +129,7 @@ if TYPE_CHECKING:
     from ralph.pipeline._auto_integrate_reclaim import ReclaimResult
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
-    from ralph.pipeline.integration_actions import AgentRunner, GitOps
+    from ralph.pipeline.integration_actions import AgentRunner, Clock, GitOps
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.workspace.scope import WorkspaceScope
 
@@ -141,32 +142,26 @@ def auto_integrate_after_commit(
     conflict_resolver: ConflictResolver | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
-    sleep: Callable[[float], None] = time.sleep,
-    jitter: Callable[[], float] = _random.random,
+    sleep: Callable[[float], None] | None = None,
+    jitter: Callable[[], float] | None = None,
     git_ops: GitOps | None = None,
     agent_runner: AgentRunner | None = None,
 ) -> RebaseState | None:
-    """Integrate after a commit, recording skips and surfacing terminal-state violations.
+    """Integrate after a commit, recording skips and terminal-state violations.
 
-    ``git_ops`` and ``agent_runner`` are the injected MUTATION seams: every Git
-    mutation and the resolver dispatch of this attempt runs through them.
+    The injected Git and agent seams own every mutation in this attempt.
     """
     executors_token = install_executors(git_ops, agent_runner)
     try:
-        # An unresolved integration must not SKIP this seam: this seam is the
-        # recovery path, and returning `state` here left the only operation
-        # able to clear the verdict blocked by the verdict. The evidence is
-        # protected on the way OUT -- see ``preserve_unresolved_resolution_state``.
+        # An unresolved integration must not skip this recovery seam; the
+        # evidence is protected on the way out by the state authority.
         from ralph.pipeline.integration_resolution import retained_integration_reason
 
         root = Path(workspace_scope.root)
         target = resolve_integration_target(config, root) if (root / ".git").exists() else None
-        # Git is ground truth: release a contained integration before any
-        # blocking decision, so a retained record cannot outlive its work.
+        # Git is ground truth: release a contained integration before blocking.
         state = containment_release(root, target, state)
-        # A non-git workspace has no integration target to probe; the
-        # context resolver intentionally propagates repo errors for real
-        # repos, so exclude this no-op case before it can raise.
+        # A non-git workspace has no target to probe, so exclude it here.
         if retained_integration_reason(root) is None and (root / ".git").exists():
             ctx = _auto_integrate_resolve_context(config, workspace_scope)
             early_skip, _usable_ctx = _check_early_skips(
@@ -254,19 +249,18 @@ def auto_integrate_on_phase_transition(
     conflict_resolver: ConflictResolver | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
-    sleep: Callable[[float], None] = time.sleep,
-    jitter: Callable[[], float] = _random.random,
+    sleep: Callable[[float], None] | None = None,
+    jitter: Callable[[], float] | None = None,
     git_ops: GitOps | None = None,
     agent_runner: AgentRunner | None = None,
 ) -> RebaseState | None:
     """Keep a clean worktree synchronized at phase boundaries without hiding failures.
 
-    ``git_ops`` and ``agent_runner`` are the injected MUTATION seams.
+    The injected Git and agent seams own every mutation in this attempt.
     """
     executors_token = install_executors(git_ops, agent_runner)
     try:
-        # Same rule as the commit seam: an unresolved integration must not
-        # skip the seam that would resolve it. Run, then protect the evidence.
+        # An unresolved integration must not skip the seam that resolves it.
         return preserve_unresolved_resolution_state(
             _auto_integrate_on_phase_transition_inner(
                 config,
@@ -292,8 +286,8 @@ def _auto_integrate_on_phase_transition_inner(
     conflict_resolver: ConflictResolver | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
-    sleep: Callable[[float], None] = time.sleep,
-    jitter: Callable[[], float] = _random.random,
+    sleep: Callable[[float], None] | None = None,
+    jitter: Callable[[], float] | None = None,
 ) -> RebaseState | None:
     try:
         root = Path(workspace_scope.root)
@@ -361,8 +355,8 @@ def _auto_integrate_after_commit_inner(
     *,
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
-    sleep: Callable[[float], None] = time.sleep,
-    jitter: Callable[[], float] = _random.random,
+    sleep: Callable[[float], None] | None = None,
+    jitter: Callable[[], float] | None = None,
 ) -> RebaseState | None:
     """Resolve context, integrate, and retry bounded fast-forward races."""
     ctx = _auto_integrate_resolve_context(config, workspace_scope)
@@ -405,6 +399,8 @@ def _auto_integrate_after_commit_inner(
     record: RebaseState | None = None
     prefer_merge = False
     attempts_exhausted = False
+    sleep = sleep if sleep is not None else current_clock().sleep
+    jitter = jitter if jitter is not None else _random.random
     try:
         for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
             if attempt:
@@ -444,6 +440,7 @@ def _auto_integrate_after_commit_inner(
                 refresh=refresh,
                 rebase_stop_resolver=(rebase_stop_resolver if allowed else None),
                 display=display,
+                clock=current_clock(),
             )
             if not retry_ff:
                 break
@@ -624,25 +621,30 @@ def _integrate_once(
     display: ParallelDisplay | None = None,
     publish: bool = True,
     require_in_sync: bool = False,
+    clock: Clock | None = None,
 ) -> tuple[RebaseState | None, bool]:
-    with integration_transaction(root) as acquired:
-        if not acquired:
-            return _record_skip(
-                reason="integration already running in this worktree", target=target
-            ), False
-        return _integrate_once_owned(
-            config,
-            root,
-            target,
-            conflict_resolver,
-            prefer_merge=prefer_merge,
-            refresh=refresh,
-            rebase_stop_resolver=rebase_stop_resolver,
-            display=display,
-            publish=publish,
-            require_in_sync=require_in_sync,
-            owned_record=scheduled_landing(root, target),
-        )
+    clock_token = install_executors(clock=clock)
+    try:
+        with integration_transaction(root) as acquired:
+            if not acquired:
+                return _record_skip(
+                    reason="integration already running in this worktree", target=target
+                ), False
+            return _integrate_once_owned(
+                config,
+                root,
+                target,
+                conflict_resolver,
+                prefer_merge=prefer_merge,
+                refresh=refresh,
+                rebase_stop_resolver=rebase_stop_resolver,
+                display=display,
+                publish=publish,
+                require_in_sync=require_in_sync,
+                owned_record=scheduled_landing(root, target),
+            )
+    finally:
+        reset_executors(clock_token)
 
 
 def _integrate_once_owned(
@@ -715,7 +717,7 @@ def _integrate_once_owned(
             rebase_stop_resolver=rebase_stop_resolver,
             display=display,
             conflict_resolution_config=config.conflict_resolution,
-            git_ops=current_git_ops(),
+            git_ops=current_git_ops() if current_git_ops() is not default_git_ops() else None,
             agent_runner=current_agent_runner(),
         )
         if rebase_result.short_circuit is not None:
@@ -810,12 +812,9 @@ def _integrate_once_owned(
                 rebase_result.skip_reason,
             )
             return record, is_retryable_fast_forward_failure(skip_reason)
-        # Successful fast-forward: the ``fast_forwarded`` boolean is
-        # the headline signal, so any residual reason from the
-        # rebase/merge phase (including benign rebase NoOp reasons) is
-        # scrubbed here -- except a REGISTERED rebase-skip reason, the
-        # only way the operator learns the rebase never ran.
-        record = record.model_copy(update={"fast_forwarded": True})
+        # A landed feature carries no rebase-phase reason; the registered
+        # skip reason is appended below.
+        record = record.model_copy(update={"fast_forwarded": True, "last_reason": None})
         if publish:
             # Single publication entry point: the reconciler compares
             # local and remote SHAs, pushes when local is ahead, catches

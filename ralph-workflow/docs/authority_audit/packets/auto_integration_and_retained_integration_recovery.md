@@ -19,13 +19,20 @@ is the single authority for the recovery boundary; the durable
   (`auto_integrate_resolution_state.py:49`).
 
 ## Readers
-- `ralph.pipeline._integration_action.next_integration_action` reads
-  the `IntegrationRecord` to compute the next `IntegrationAction`
-  (`_integration_action.py:224-255`).
+- The integration owner seam (`ralph.pipeline.integration_owner`:
+  `decide_integration` / `decide_integration_verdict`, reached from the
+  pipeline boundaries through
+  `ralph.pipeline._integration_owner_seam.decide_seam_action`) reads the
+  `IntegrationRecord` to compute the next `IntegrationAction`
+  (`integration_owner.py:245`).
+  `ralph.pipeline._integration_action.next_integration_action`
+  (`_integration_action.py:258`) is the retired typed projection onto the
+  same closed vocabulary — it fails closed to `REQUIRE_INTERVENTION` and is
+  not an authority.
 - `ralph.pipeline._pipeline_state_machine._check_blocking_decision`
   reads the `IntegrationRecord.diagnostic_intervention_required`
-  flag and the `next_integration_action` verdict to block dispatch
-  (`_pipeline_state_machine.py:72-84`).
+  flag and the owner seam's verdict to block dispatch
+  (`_pipeline_state_machine.py:159`).
 
 ## Derived projections
 - `IntegrationRecord` is the durable source; `RebaseState` and the

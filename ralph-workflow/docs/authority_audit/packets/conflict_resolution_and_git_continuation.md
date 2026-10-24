@@ -1,10 +1,15 @@
 # conflict_resolution_and_git_continuation
 
 ## Authoritative owner
-`ralph.pipeline._integration_action.next_integration_action` is the
-single authority for the integration lifecycle action
-(`_integration_action.py:224-255`); for in-flight conflict and merge
-state, the authority is the
+The integration owner seam is the single authority for the integration
+lifecycle action (`ralph.pipeline.integration_owner`: `decide_integration` /
+`decide_integration_verdict`, reached from the pipeline boundaries through
+`ralph.pipeline._integration_owner_seam.decide_seam_action`);
+`ralph.pipeline._integration_action.next_integration_action`
+(`_integration_action.py:258`) is the retired typed projection onto the
+closed `IntegrationAction` vocabulary — it fails closed to
+`REQUIRE_INTERVENTION` and is not an authority. For in-flight conflict and
+merge state, the authority is the
 `ralph.pipeline._git_operation_authority.classify_git_operation` enum
 (`_git_operation_authority.py:30`).
 

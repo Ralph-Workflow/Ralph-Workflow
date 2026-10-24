@@ -89,6 +89,16 @@ The integration lifecycle is governed by the typed authorities established in
 [ADR-0007](../architecture/adr-0007-integration-source-of-truth.md) and
 [ADR-0008](../architecture/adr-0008-integration-lifecycle-consolidation.md).
 
+The live decision authority is the integration owner seam,
+`ralph.pipeline.integration_owner`: `decide_integration` and
+`decide_integration_verdict` are the only places an integration decision
+is produced, and the durable attempt ledger is written through the owner's
+`charge_integration_attempt` seam. `ralph.pipeline._integration_action.next_integration_action`
+is NOT that authority — it is the typed projection helper that maps a
+durable state (`RebaseState` / `IntegrationRecord`) onto the closed
+`IntegrationAction` vocabulary, and it fails closed to
+`REQUIRE_INTERVENTION` when the durable facts cannot prove a next step.
+
 ### Object-reachability pre-pass
 
 During diagnostic recovery (`handoff_integration_diagnostic` in `ralph.pipeline._integration_diagnostic`),
@@ -101,8 +111,9 @@ Ralph executes an operation-scoped pre-pass before calling any diagnostic agent:
    durable record to `diagnostic_intervention_required=True` via `RAISE_DIAGNOSTIC_INTERVENTION`
    without consuming an attempt, preserving all worktree metadata.
 
-2. **Positive completion proof**: If marker objects are resolvable and `next_integration_action(record)`
-   is `IntegrationAction.CONTINUE_GIT_OPERATION`, Ralph evaluates the four-condition completion proof:
+2. **Positive completion proof**: If marker objects are resolvable and the typed projection
+   `next_integration_action(record)` is `IntegrationAction.CONTINUE_GIT_OPERATION`,
+   Ralph evaluates the four-condition completion proof:
    - *Commit ancestry*: HEAD matches `integrated_feature_sha` or `pre_target_sha`, and parent of HEAD matches expected parent(s).
    - *Operation ownership*: `owning_worktree` matches the inspected root, and `diagnostic_ownership` matches `ownership_fingerprint(record)`.
    - *Clean index and tree*: `MERGE_HEAD` and `REBASE_HEAD` are absent, index contains no unmerged paths, and `git diff --quiet HEAD` is clean.
@@ -129,9 +140,11 @@ state = RebaseState(last_outcome=RebaseOutcomeKind.CONFLICT)
 # 2. Backward-compatible last_action property projects string value
 assert state.last_action == "conflict"
 
-# 3. Next integration action derives directly from typed state
+# 3. The typed projection over the durable state names the closed action
+#    vocabulary. A CONFLICT state with no durable retry deadline cannot
+#    prove a bounded wait, so the projection fails closed.
 action = next_integration_action(state)
-assert action == IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+assert action == IntegrationAction.REQUIRE_INTERVENTION
 
 # 4. Operator display projects directly from RebaseState without prose parsing
 assert state.operation_display_state == OperationDisplayState.CONFLICT_RESOLUTION

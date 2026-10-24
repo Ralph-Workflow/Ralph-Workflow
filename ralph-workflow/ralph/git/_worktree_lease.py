@@ -29,6 +29,13 @@ The takeover itself is atomic: the dead holder's lock-file is re-opened and
 an exclusive ``flock`` is taken on it. The kernel drops that lock when the
 holder dies, so taking it IS the positive evidence that nobody is holding
 the lease any more, and only one contender can win it.
+
+TIME IS INJECTED. The age of a lease is read from a clock, never from a
+direct call into the real one: :func:`default_lease_clock` is the ONLY
+place in this module that touches the real clock, and every other read
+goes through the injected :class:`LeaseClock`. A test can therefore
+drive the lease age deterministically -- no wall-clock wait, no sleeping,
+and no dependence on how long the test machine took to get there.
 """
 
 from __future__ import annotations
@@ -53,10 +60,13 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 __all__ = [
+    "LeaseClock",
     "LeaseLiveness",
     "LeaseStealDecision",
     "LeaseStealReason",
     "decide_lease_steal",
+    "default_lease_clock",
+    "lease_age_seconds",
     "lease_payload",
     "probe_lease_holder_liveness",
     "reclaim_dead_lease",
@@ -121,6 +131,45 @@ class _LeaseRecord:
     holder_name: str | None
     holder_pid: int | None
     age_seconds: float
+
+
+@dataclass(frozen=True)
+class _LeaseClock:
+    """The injectable time source of the lease age path.
+
+    Two domains are needed because the lease records TWO kinds of time:
+
+    * the MONOTONIC clock stamps the lease payload, so a lease cannot be
+      aged across a wall-clock change;
+    * the WALL clock reads the lock-file's modification time, which is
+      the only age evidence left when the payload is corrupt.
+
+    Attributes:
+        monotonic: Returns the current monotonic time in seconds.
+        wall_time: Returns the current wall-clock time in seconds.
+    """
+
+    monotonic: Callable[[], float]
+    wall_time: Callable[[], float]
+
+
+#: Public alias of the lease clock; see the module docstring.
+LeaseClock = _LeaseClock
+
+
+def default_lease_clock() -> LeaseClock:
+    """Return the production lease clock (the real monotonic and wall clocks).
+
+    This factory is the ONLY place in this module that reads the real
+    clock. Every other read goes through the injected clock, so a test
+    can drive the lease age without waiting for wall-clock time.
+    """
+    return LeaseClock(monotonic=time.monotonic, wall_time=time.time)
+
+
+def _resolve_clock(clock: LeaseClock | None) -> LeaseClock:
+    """Return the injected clock, or the production clock."""
+    return clock if clock is not None else default_lease_clock()
 
 
 def decide_lease_steal(
@@ -227,17 +276,45 @@ def _probe_holder_pid(lock_path: Path, git_dir: Path, holder_pid: int) -> LeaseL
     )
 
 
-def lease_payload(holder_name: str) -> bytes:
+def lease_age_seconds(acquired_at: float, *, clock: LeaseClock | None = None) -> float:
+    """Return how long ago the lease was taken, in seconds.
+
+    Pure: no I/O, no state. The age is read from the injected clock, so
+    a test can place the lease at any age it likes.
+
+    Args:
+        acquired_at: The monotonic timestamp the lease payload records.
+        clock: The injected clock; the production clock when omitted.
+
+    Returns:
+        The age of the lease in seconds, never negative.
+    """
+    effective = _resolve_clock(clock)
+    return max(0.0, effective.monotonic() - acquired_at)
+
+
+def lease_payload(holder_name: str, *, clock: LeaseClock | None = None) -> bytes:
     """Return the lock-file payload written for a lease holder.
 
     The payload is ``<holder>|<monotonic timestamp>|<pid>``. The PID makes
     the holder identifiable after a crash; the timestamp is monotonic so a
-    lease cannot be aged across a wall-clock change.
+    lease cannot be aged across a wall-clock change. The timestamp comes
+    from the injected clock, so the writer and the reader of a payload
+    must agree on the clock -- the reader computes the age from it.
+
+    Args:
+        holder_name: The name of the holder the payload records.
+        clock: The injected clock; the production clock when omitted.
     """
-    return f"{holder_name}|{time.monotonic():.6f}|{os.getpid()}\n".encode()
+    effective = _resolve_clock(clock)
+    return f"{holder_name}|{effective.monotonic():.6f}|{os.getpid()}\n".encode()
 
 
-def _read_lease_record(lock_path: Path) -> _LeaseRecord | None:
+def _read_lease_record(
+    lock_path: Path,
+    *,
+    clock: LeaseClock | None = None,
+) -> _LeaseRecord | None:
     """Return what the lease lock-file records, or ``None`` when there is none.
 
     A corrupt lock-file still yields a record (with an unknown holder and
@@ -245,12 +322,13 @@ def _read_lease_record(lock_path: Path) -> _LeaseRecord | None:
     is what blocks a takeover, and the liveness probe -- not the payload --
     decides whether the holder is dead.
     """
+    effective = _resolve_clock(clock)
     try:
         raw = lock_path.read_bytes()
         stat_result = lock_path.stat()
     except OSError:
         return None
-    fallback_age = max(0.0, time.time() - stat_result.st_mtime)
+    fallback_age = max(0.0, effective.wall_time() - stat_result.st_mtime)
     if not raw:
         return _LeaseRecord(holder_name=None, holder_pid=None, age_seconds=fallback_age)
     first_line = raw.split(b"\n", 1)[0].decode("utf-8", errors="replace")
@@ -270,7 +348,7 @@ def _read_lease_record(lock_path: Path) -> _LeaseRecord | None:
     return _LeaseRecord(
         holder_name=parts[0],
         holder_pid=holder_pid,
-        age_seconds=max(0.0, time.monotonic() - acquired_at),
+        age_seconds=lease_age_seconds(acquired_at, clock=effective),
     )
 
 
@@ -280,6 +358,7 @@ def reclaim_dead_lease(
     *,
     stale_seconds: float,
     probe: Callable[[Path, int | None], LeaseLiveness],
+    clock: LeaseClock | None = None,
 ) -> tuple[LeaseStealDecision, int | None]:
     """Reclaim a lease whose holder is provably dead.
 
@@ -288,12 +367,16 @@ def reclaim_dead_lease(
         holder_name: The name of the new holder.
         stale_seconds: The secondary age threshold.
         probe: The holder-liveness probe to consult.
+        clock: The injected clock; the production clock when omitted. The
+            SAME clock must read the payload and write the new one, so
+            the age of the lease stays in one time domain.
 
     Returns:
         The evidence verdict and the file descriptor of the new lease
         (``None`` when the steal was refused or lost the race).
     """
-    record = _read_lease_record(lock_path)
+    effective = _resolve_clock(clock)
+    record = _read_lease_record(lock_path, clock=effective)
     if record is None:
         return (
             LeaseStealDecision(
@@ -310,7 +393,7 @@ def reclaim_dead_lease(
     )
     if not decision.allowed:
         return decision, None
-    return decision, _takeover_lock_file(lock_path, holder_name)
+    return decision, _takeover_lock_file(lock_path, holder_name, clock=effective)
 
 
 def take_lease_flock(fd: int) -> bool:
@@ -334,7 +417,12 @@ def take_lease_flock(fd: int) -> bool:
     return True
 
 
-def _takeover_lock_file(lock_path: Path, holder_name: str) -> int | None:
+def _takeover_lock_file(
+    lock_path: Path,
+    holder_name: str,
+    *,
+    clock: LeaseClock | None = None,
+) -> int | None:
     """Replace a provably dead holder's lease file with ours.
 
     The lock-file is re-opened and an exclusive ``flock`` is taken on it.
@@ -353,7 +441,7 @@ def _takeover_lock_file(lock_path: Path, holder_name: str) -> int | None:
         if not take_lease_flock(fd):
             os.close(fd)
             return None
-        payload = lease_payload(holder_name)
+        payload = lease_payload(holder_name, clock=clock)
         os.ftruncate(fd, 0)
         os.lseek(fd, 0, os.SEEK_SET)
         written = os.write(fd, payload)

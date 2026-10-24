@@ -70,6 +70,17 @@ def _open_local_gates(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         "fast_forward_via_worktree",
         lambda _root, sha: checkout_merges.append(sha) is None,
     )
+    monkeypatch.setattr(catchup, "is_lease_held", lambda _root: False)
+    monkeypatch.setattr(catchup, "try_acquire_lease", lambda _root, **_kw: object())
+    monkeypatch.setattr(catchup, "end_agent_lease", lambda _lease: None)
+    monkeypatch.setattr(
+        catchup,
+        "_repository_ledger",
+        lambda repo_root: AttemptLedger(
+            repo_root,
+            ledger_path=repo_root / ".agent" / "integration_attempt_ledger.json",
+        ),
+    )
     return checkout_merges
 
 

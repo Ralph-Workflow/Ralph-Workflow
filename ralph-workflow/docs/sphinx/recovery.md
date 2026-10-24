@@ -383,11 +383,17 @@ and [ADR-0008](../architecture/adr-0008-integration-lifecycle-consolidation.md))
   `decide_phase_transition`, which returns typed `PhaseDecision` values
   (`CONTINUE_PHASE`, `ADVANCE_PHASE`, `BLOCK_FOR_RECOVERY`, `REPORT_TERMINAL_SUCCESS`,
   `REPORT_TERMINAL_FAILURE`, `REPORT_INTERVENTION_REQUIRED`).
-- **Integration lifecycle action**: `ralph.pipeline._integration_action.next_integration_action`
-  is the sole authority for integration progression decisions, returning one of 8 typed
+- **Integration lifecycle action**: the integration owner seam
+  (`ralph.pipeline.integration_owner`: `decide_integration` /
+  `decide_integration_verdict`, reached from the pipeline boundaries through
+  `ralph.pipeline._integration_owner_seam.decide_seam_action`) is the sole authority for
+  integration progression decisions, returning one of 8 typed
   `IntegrationAction` enum values (`RESOLVE_ACTIVE_OPERATION`, `CONTINUE_GIT_OPERATION`,
   `REINTEGRATE_AGAINST_TARGET`, `LAND_TARGET`, `PUBLISH_AFTER_LANDING`, `WAIT_FOR_BOUNDED_RETRY`,
-  `REQUIRE_INTERVENTION`, `COMPLETE_WITH_PROOF`). All prose checks (`phase == "integrating"`, etc.)
+  `REQUIRE_INTERVENTION`, `COMPLETE_WITH_PROOF`).
+  `ralph.pipeline._integration_action.next_integration_action` is the retired typed projection
+  onto that vocabulary — it fails closed to `REQUIRE_INTERVENTION` and is not an authority.
+  All prose checks (`phase == "integrating"`, etc.)
   are eliminated.
 - **Rebase and merge outcome classification**: `RebaseState.last_outcome` is typed with
   `RebaseOutcomeKind` (19 closed verbs: `REBASED`, `MERGED`, `FAST_FORWARDED`, `SKIPPED`,

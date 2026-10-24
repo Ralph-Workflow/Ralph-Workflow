@@ -39,6 +39,8 @@ RALPH-FACT: bypass_detection_lint_audit: `ralph.testing.audit_lint_bypass` — w
 
 RALPH-FACT: bypass_detection_typecheck_audit: `ralph.testing.audit_typecheck_bypass` — wired into `make verify` as the `typecheck bypass audit (audit_typecheck_bypass)` step of `ralph/verify.py:_VERIFY_STEPS`. It walks the project tree and reports `ignore_missing_imports`, `follow_imports = silent`, `ignore_errors`, `disable_error_code`, blanket `# type: ignore` without a specific mypy error code, `# type: ignore` inside test files, and `disallow_untyped_defs = false`. The acceptance bar is documented in `ralph-workflow/docs/agents/type-ignore-policy.md`; violations fail verify.
 
+RALPH-FACT: repo_structure_gate: `ralph.testing.audit_repo_structure` — wired into `make verify` as the `repo structure audit (audit_repo_structure)` step of `ralph/verify.py:_VERIFY_STEPS`. The audit enforces four repository-structure rules over `ralph/` and `tests/`: a file may not exceed 1000 lines, a module may define at most one public top-level class, a test may not import a private (`_`-prefixed) name from `ralph`, and no lint- or typecheck-suppression comment may appear outside the documented allowlist. The audit is a HARD gate: a violation fails `make verify`, so the tree must satisfy it on every run — the gate is not advisory and a violation is not an "unrelated failure". The rules previously lived ONLY in a `subprocess_e2e`-marked test that `make test` excludes, which let the policy decay silently while the gate stayed green; keeping the audit in `_VERIFY_STEPS` is the regression guard, so it must not be unwired or demoted to an opt-in suite.
+
 RALPH-FACT: ci_integration_command: `.github/workflows/verify.yml` runs `cd ralph-workflow && make verify` on every `push` and `pull_request` event on `ubuntu-latest` with Python 3.12, after the CLA check (`python -m ralph.contrib.cla`) and `pip install --upgrade uv`. `.woodpecker.yml` runs the same `cd ralph-workflow && make verify` gate on the Codeberg mirror, adding `apt-get install ruby` for the formula prerequisite. `.github/workflows/cla.yml` is a separate pull_request-only CLA check, and `.github/workflows/publish-python-package.yml` is a release-only workflow triggered by `ralph-workflow-v*` tags. The opt-in `make test-subprocess-e2e` and `make test-live-agy` suites are NOT part of `make verify` and carry their own per-suite budgets.
 
 ## AI execution instructions
@@ -93,8 +95,13 @@ RALPH-COMMAND: uv run python -m ralph.testing.audit_lint_bypass
 
 RALPH-COMMAND: uv run python -m ralph.testing.audit_typecheck_bypass
 
-Both commands run inside `make verify` as dedicated `_VERIFY_STEPS`
-entries, so a bypass fails the authoritative entry point.
+RALPH-COMMAND: uv run python -m ralph.testing.audit_repo_structure
+
+The first two commands run inside `make verify` as dedicated `_VERIFY_STEPS`
+entries, so a bypass fails the authoritative entry point. The third is the
+repository-structure gate: it enforces the file-size, public-class,
+private-import and suppression-comment rules over `ralph/` and `tests/`, and
+a violation fails `make verify` exactly like a lint or typecheck bypass.
 
 The expected successful result is exit 0 (no bypass detected). On
 failure, report the affected file, line, and bypass category. Approved
@@ -112,6 +119,16 @@ The integration lifecycle is governed by the typed authorities established in
 [ADR-0007](../architecture/adr-0007-integration-source-of-truth.md) and
 [ADR-0008](../architecture/adr-0008-integration-lifecycle-consolidation.md).
 
+The live decision authority is the integration owner seam,
+`ralph.pipeline.integration_owner`: `decide_integration` and
+`decide_integration_verdict` are the only places an integration decision
+is produced, and the durable attempt ledger is written through the owner's
+`charge_integration_attempt` seam. `ralph.pipeline._integration_action.next_integration_action`
+is NOT that authority — it is the typed projection helper that maps a
+durable state (`RebaseState` / `IntegrationRecord`) onto the closed
+`IntegrationAction` vocabulary, and it fails closed to
+`REQUIRE_INTERVENTION` when the durable facts cannot prove a next step.
+
 ### Object-reachability pre-pass
 
 During diagnostic recovery (`handoff_integration_diagnostic` in `ralph.pipeline._integration_diagnostic`),
@@ -124,8 +141,9 @@ Ralph executes an operation-scoped pre-pass before calling any diagnostic agent:
    durable record to `diagnostic_intervention_required=True` via `RAISE_DIAGNOSTIC_INTERVENTION`
    without consuming an attempt, preserving all worktree metadata.
 
-2. **Positive completion proof**: If marker objects are resolvable and `next_integration_action(record)`
-   is `IntegrationAction.CONTINUE_GIT_OPERATION`, Ralph evaluates the four-condition completion proof:
+2. **Positive completion proof**: If marker objects are resolvable and the typed projection
+   `next_integration_action(record)` is `IntegrationAction.CONTINUE_GIT_OPERATION`,
+   Ralph evaluates the four-condition completion proof:
    - *Commit ancestry*: HEAD matches `integrated_feature_sha` or `pre_target_sha`, and parent of HEAD matches expected parent(s).
    - *Operation ownership*: `owning_worktree` matches the inspected root, and `diagnostic_ownership` matches `ownership_fingerprint(record)`.
    - *Clean index and tree*: `MERGE_HEAD` and `REBASE_HEAD` are absent, index contains no unmerged paths, and `git diff --quiet HEAD` is clean.
@@ -152,9 +170,11 @@ state = RebaseState(last_outcome=RebaseOutcomeKind.CONFLICT)
 # 2. Backward-compatible last_action property projects string value
 assert state.last_action == "conflict"
 
-# 3. Next integration action derives directly from typed state
+# 3. The typed projection over the durable state names the closed action
+#    vocabulary. A CONFLICT state with no durable retry deadline cannot
+#    prove a bounded wait, so the projection fails closed.
 action = next_integration_action(state)
-assert action == IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+assert action == IntegrationAction.REQUIRE_INTERVENTION
 
 # 4. Operator display projects directly from RebaseState without prose parsing
 assert state.operation_display_state == OperationDisplayState.CONFLICT_RESOLUTION

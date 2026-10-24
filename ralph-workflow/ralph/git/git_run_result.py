@@ -2,7 +2,7 @@
 
 The result carries a CLOSED, TYPED outcome union so that a caller never has
 to parse stderr text (or a message string) to learn what happened to a git
-call. The union has exactly five variants:
+call. :class:`GitOutcomeKind` has exactly five members:
 
 * ``"succeeded"`` -- git exited with status 0.
 * ``"failed"`` -- git exited non-zero for a DEFINITE cause (the cause is
@@ -14,16 +14,24 @@ call. The union has exactly five variants:
   reading is NEVER reported as a failure: "I could not ask git" must not
   read as "git said no".
 
-The union is represented as a ``(kind, cause)`` pair so the cause travels
+The outcome is represented as a ``(kind, cause)`` pair so the cause travels
 WITH the kind -- a caller can never observe a ``"failed"`` outcome without
 the reason that produced it, and can never observe a ``"succeeded"`` outcome
 carrying a stale cause.
+
+The two outcome TYPES live in their own modules
+(:mod:`ralph.git._git_outcome_kind` and :mod:`ralph.git._git_outcome`) so
+that every module in the git layer defines at most ONE public top-level
+class; this module re-exports them, so ``from
+ralph.git.git_run_result import GitOutcomeKind`` keeps working unchanged.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal
+from dataclasses import dataclass, field
+
+from ralph.git._git_outcome import GitOutcome
+from ralph.git._git_outcome_kind import GitOutcomeKind
 
 __all__ = [
     "GitOutcome",
@@ -37,18 +45,9 @@ __all__ = [
 ]
 
 
-#: The closed set of outcomes one external git call can have. No other
-#: value is a valid outcome; an unreadable or indeterminate reading is
-#: ``"unknown"`` and never ``"failed"``.
-GitOutcomeKind = Literal["succeeded", "failed", "timed_out", "killed", "unknown"]
-
-#: One outcome: the kind plus its cause (``None`` only for ``"succeeded"``).
-GitOutcome = tuple[GitOutcomeKind, str | None]
-
-
 def succeeded_outcome() -> GitOutcome:
     """Return the outcome of a git call that exited cleanly."""
-    return ("succeeded", None)
+    return GitOutcome(GitOutcomeKind.SUCCEEDED)
 
 
 def failed_outcome(cause: str) -> GitOutcome:
@@ -65,22 +64,22 @@ def failed_outcome(cause: str) -> GitOutcome:
     """
     if not cause:
         raise ValueError("failed_outcome requires a non-empty cause")
-    return ("failed", cause)
+    return GitOutcome(GitOutcomeKind.FAILED, cause)
 
 
 def timed_out_outcome(cause: str = "deadline_exceeded") -> GitOutcome:
     """Return the outcome of a git call that hit its deadline."""
-    return ("timed_out", cause)
+    return GitOutcome(GitOutcomeKind.TIMED_OUT, cause)
 
 
 def killed_outcome(cause: str = "force_kill") -> GitOutcome:
     """Return the outcome of a git call that was killed."""
-    return ("killed", cause)
+    return GitOutcome(GitOutcomeKind.KILLED, cause)
 
 
 def unknown_outcome(reason: str = "indeterminate") -> GitOutcome:
     """Return the outcome of a git call whose result is indeterminate."""
-    return ("unknown", reason)
+    return GitOutcome(GitOutcomeKind.UNKNOWN, reason)
 
 
 @dataclass(frozen=True)
@@ -95,20 +94,31 @@ class GitRunResult:
         stdout: The child's captured standard output.
         stderr: The child's captured standard error.
         outcome: The closed typed outcome union. It defaults to
-            ``("unknown", None)`` -- an UNCLASSIFIED result reads as
-            indeterminate, never as a failure and never as a success.
+            :attr:`GitOutcomeKind.UNKNOWN` with no cause -- an
+            UNCLASSIFIED result reads as indeterminate, never as a failure
+            and never as a success.
     """
 
     args: tuple[str, ...]
     returncode: int
     stdout: str
     stderr: str
-    outcome: GitOutcome = ("unknown", None)
+    outcome: GitOutcome | tuple[GitOutcomeKind, str | None] = field(
+        default_factory=lambda: GitOutcome(GitOutcomeKind.UNKNOWN)
+    )
 
     def __post_init__(self) -> None:
         """Reject outcome/cause pairs that cannot describe a real call."""
-        kind, cause = self.outcome
-        if kind == "succeeded" and cause is not None:
+        kind_value, cause = self.outcome
+        kind = GitOutcomeKind(kind_value)
+        object.__setattr__(self, "outcome", GitOutcome(kind, cause))
+        if kind is GitOutcomeKind.SUCCEEDED and cause is not None:
             raise ValueError("a succeeded outcome must not carry a cause")
-        if kind == "failed" and not cause:
+        if kind is GitOutcomeKind.FAILED and not cause:
             raise ValueError("a failed outcome must carry a non-empty cause")
+
+    @property
+    def outcome_kind(self) -> GitOutcomeKind:
+        """Return the closed outcome kind carried by this result."""
+        kind, _cause = self.outcome
+        return GitOutcomeKind(kind)

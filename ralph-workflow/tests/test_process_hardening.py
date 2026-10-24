@@ -73,9 +73,12 @@ if TYPE_CHECKING:
 #    when no observable surface can express the regression."
 #
 # Everything that CAN be observed publicly is asserted publicly: the
-# terminal status / cause of the record, the process-manager termination
-# outcome, and the EFFECT of the registered-descendant registry (the
-# registered descendant is terminated with its parent, exactly once).
+# terminal status / cause of the record and the process-manager
+# termination outcome. The registered-descendant registry has NO public
+# read-back surface (its reader is the private
+# ``ProcessManager._registered_descendants``, listed above as part of
+# this file's white-box exception), because the registry is consumed by
+# the termination paths and no production code reads it back.
 POLICY_WHITE_BOX_EXCEPTION = (
     "White-box tests that reach into private internals are permitted only when "
     "no observable surface can express the regression."
@@ -762,6 +765,22 @@ def test_cleanup_after_abnormal_exit() -> None:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def test_register_descendant_adds_to_registry() -> None:
+    """register_descendant adds PID to _descendants and cleanup removes it."""
+    pm = _make_pm()
+    handle = pm.spawn([sys.executable, "-c", "pass"])
+
+    pm.register_descendant(handle.pid, 99999)
+    # policy: white-box-frozen
+    assert 99999 in pm._registered_descendants(handle.pid)
+
+    handle.terminate(grace_period_s=0.1)
+    # After termination, descendant registry cleaned
+    # policy: white-box-frozen
+    assert pm._registered_descendants(handle.pid) == ()
+
+
+
 class _TrackedDescendant(FakePsutilProcess):
     """FakePsutilProcess subclass that records every terminate/kill call.
 
@@ -882,6 +901,8 @@ def test_register_descendant_terminates_grandchild_hidden_from_psutil_tree() -> 
 
     # Register the re-sessioned grandchild BEFORE terminating the parent.
     pm.register_descendant(parent_pid, descendant_pid)
+    # policy: white-box-frozen
+    assert descendant_pid in pm._registered_descendants(parent_pid)
 
     # Sanity: the descendant is INVISIBLE to the psutil tree walk
     # (this is the scenario the registry has to cover).
@@ -901,6 +922,9 @@ def test_register_descendant_terminates_grandchild_hidden_from_psutil_tree() -> 
     )
     # Parent record transitioned to KILLED.
     assert handle.record.status == ProcessStatus.KILLED
+    # Registry entry consumed (no stale entries remain for parent_pid).
+    # policy: white-box-frozen
+    assert pm._registered_descendants(parent_pid) == ()
 
 
 def test_register_descendant_registry_consumed_once_on_terminate() -> None:

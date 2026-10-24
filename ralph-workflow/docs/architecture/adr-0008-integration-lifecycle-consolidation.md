@@ -52,11 +52,19 @@ We introduce `ralph.pipeline._integration_action.IntegrationAction`, a closed en
 | `require_intervention` | `REQUIRE_INTERVENTION` | Diagnostic repair attempts exhausted, resolution exhausted, or unresolvable failure requiring human operator. |
 | `complete_with_proof` | `COMPLETE_WITH_PROOF` | Integration lifecycle verified and terminal; no pending obligations. |
 
-The function `ralph.pipeline._integration_action.next_integration_action(record, policy=None, clock=None) -> IntegrationAction`
-is the sole authority for deciding what action the pipeline must take for an integration obligation.
+The integration owner seam (`ralph.pipeline.integration_owner`: `decide_integration` /
+`decide_integration_verdict`, with the durable attempt ledger written through
+`charge_integration_attempt`, reached from the pipeline boundaries through
+`ralph.pipeline._integration_owner_seam.decide_seam_action`) is the sole authority for deciding
+what action the pipeline must take for an integration obligation.
 All prose checks (`phase == "integrating"`, `phase == "integrated"`, `last_action == ...`) across
-the run loop, reducer, orchestrator, effect router, and recovery boundaries are eliminated and replaced
-by queries against `next_integration_action`.
+the run loop, reducer, orchestrator, effect router, and recovery boundaries are eliminated and
+replaced by typed queries against that seam.
+
+The helper `ralph.pipeline._integration_action.next_integration_action(record, policy=None, clock=None) -> IntegrationAction`
+is NOT that authority: it is the typed projection of durable state onto the closed
+`IntegrationAction` vocabulary, and it fails closed to `REQUIRE_INTERVENTION` when the durable
+facts cannot prove a next step.
 
 ### 2. Typed `RebaseOutcomeKind` and single-writer `RebaseState.last_outcome`
 
@@ -97,8 +105,8 @@ It does **not** consume a repair attempt (`merge_commit_repair_attempts` is unch
 or mutate `MERGE_HEAD` or `REBASE_HEAD`.
 
 #### Four-condition positive operation-completion proof
-When marker objects are resolvable and `next_integration_action(record)` returns
-`IntegrationAction.CONTINUE_GIT_OPERATION` or `IntegrationAction.LAND_TARGET`,
+When marker objects are resolvable and the typed projection
+`next_integration_action(record)` is `IntegrationAction.CONTINUE_GIT_OPERATION`,
 Ralph evaluates whether the Git operation has in fact completed cleanly,
 satisfying all four conditions:
 
@@ -134,9 +142,12 @@ We type the conflict-resolution driver and fault classification:
 
 ## Consequences
 
-- **Single authority for progression**: `next_integration_action` prevents divergent lifecycle decisions
-  across the six public entry points (`inspect_integration_resolution`, `_run_inner_loop`, commit handler,
-  cooldown handler, parallel-join handler, terminal handler).
+- **Single authority for progression**: the integration owner seam
+  (`ralph.pipeline.integration_owner`, reached from the pipeline boundaries through
+  `decide_seam_action`) prevents divergent lifecycle decisions across the six public entry points
+  (`inspect_integration_resolution`, `_run_inner_loop`, commit handler, cooldown handler,
+  parallel-join handler, terminal handler). The retired `next_integration_action` projection is no
+  longer consulted by those entry points.
 - **Lossless outcome projection**: `RebaseState.last_outcome` provides full typed fidelity across 19 verbs
   while maintaining 100% backward compatibility for legacy checkpoints.
 - **Fail-closed diagnostic safety**: Broken or unreachable Git marker objects no longer trigger infinite

@@ -28,6 +28,7 @@ from ralph.pipeline.integration_resolution import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
@@ -47,6 +48,8 @@ def integrate_before_planning(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     display: ParallelDisplay | None = None,
     readiness: TreeReadinessAssessment | None = None,
+    sleep: Callable[[float], None] | None = None,
+    jitter: Callable[[], float] | None = None,
 ) -> RebaseState | None:
     """Land committed work without stashing or committing unfinished edits.
 
@@ -90,6 +93,8 @@ def integrate_before_planning(
             conflict_resolver=conflict_resolver,
             rebase_stop_resolver=rebase_stop_resolver,
             display=display,
+            sleep=sleep,
+            jitter=jitter,
         )
     staged_block = _record_staged_block(root, target, readiness=readiness)
     if staged_block is not None:

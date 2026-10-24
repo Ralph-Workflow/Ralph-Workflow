@@ -81,6 +81,8 @@ class RepoPath(Protocol):
 class GitMethodRepo(RepoPath, Protocol):
     @property
     def git(self) -> object: ...
+    @property
+    def working_dir(self) -> str | os.PathLike[str] | None: ...
 
 WorktreeLeaseUnavailable: type = WorktreeLeaseUnavailableError
 

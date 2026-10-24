@@ -102,6 +102,7 @@ from ralph.pipeline.conflict_resolution.status import (
     capture_status_bar_model,
     emit_conflict_phase_line,
 )
+from ralph.pipeline.integration_actions import current_clock
 from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
@@ -135,9 +136,13 @@ class RoundAttempt:
     agent_ran: bool = False
 
 
-def _sleep_seconds(seconds: float) -> None:
-    """Sleep without exposing ``time.sleep`` as the patch target for tests."""
-    time.sleep(seconds)  # filesystem-poll-ok: RecoveryController chain retry_delay_ms backoff
+def _sleep_seconds(
+    seconds: float,
+    *,
+    sleep: Callable[[float], None] | None = None,
+) -> None:
+    """Wait through the injected clock seam (the real clock in production)."""
+    (sleep if sleep is not None else current_clock().sleep)(seconds)
 
 
 __all__ = [
