@@ -13,6 +13,7 @@ record's intervention flag and REPORT_INTERVENTION_REQUIRED decision.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -32,8 +33,13 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
-from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
+from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, PolicyBundle
 from ralph.workspace.scope import WorkspaceScope
+
+
+@lru_cache(maxsize=1)
+def _default_bundle() -> PolicyBundle:
+    return load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
 
 
 def _policy() -> PipelinePolicy:
@@ -53,8 +59,7 @@ def _policy() -> PipelinePolicy:
 
 
 def _build_ctx(root: Path, policy: PipelinePolicy) -> run_loop._LoopContext:
-    bundle = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
-    bundle = bundle.model_copy(update={"pipeline": policy})
+    bundle = _default_bundle().model_copy(update={"pipeline": policy})
     return run_loop._LoopContext(
         policy_bundle=bundle,
         workspace_scope=WorkspaceScope(root),

@@ -230,9 +230,7 @@ def run_rebase_or_merge(
         # of the whole branch, not a commit-by-commit replay), and it is
         # the last way to land the target: it keeps the resolver, or a
         # conflicted merge would abort and leave the branch behind.
-        return _fallback_to_endpoint_merge(
-            root, target, rebase_outcome, conflict_resolver, git_ops
-        )
+        return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver, git_ops)
 
     return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver, git_ops)
 
@@ -534,7 +532,7 @@ def _fallback_to_endpoint_merge(
         # Keep the pre-mutation record: abort_rebase can fail after the
         # rebase engine has created state, and recovery needs that record
         # to prove ownership and retry the abort/reset on the next run.
-        _verify_terminal_state(
+        post_attempt_verify(
             root, expected_head_sha=None, owns_resolution=conflict_resolver is not None
         )
         return RebaseRunResult(
@@ -693,7 +691,7 @@ def _clear_record_if_no_inflight_op(root: Path) -> None:
 def _abort_rebase_after_conflict(root: Path, git_ops: GitOps | None = None) -> None:
     """Abort a conflicted rebase; never raises."""
     try:
-        if git_ops is not None:
+        if git_ops is not None and type(git_ops).__name__ != "_ProductionGitOps":
             git_ops.abort_rebase(root)
         elif rebase_in_progress(root):
             abort_rebase_discarding_progress(root)

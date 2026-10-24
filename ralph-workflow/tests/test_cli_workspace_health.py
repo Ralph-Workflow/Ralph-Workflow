@@ -175,7 +175,7 @@ def test_workspace_health_routes_json_through_shared_display(
     fake_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The command uses the shared display surface for operator output."""
-    from ralph.diagnostics import workspace_health as command_module
+    from ralph.cli.commands import workspace_health as command_module
 
     emitted: list[dict[str, object]] = []
 

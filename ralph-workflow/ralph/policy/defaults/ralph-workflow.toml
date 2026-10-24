@@ -188,7 +188,7 @@ commit = "commit"
 # The rebase_conflict_resolution drain binds that chain; max_fallback_agents cannot cap it.
 # A resolver that exits without a verified result is put on a cooldown that grows with each
 # repeat (and is longer for quota or auth failures); while every resolver is cooling down,
-# Ralph waits instead of calling one again.
+# Ralph Workflow waits instead of calling one again.
 
 # Edit this only if you need to change workflow automation behavior.
 # -----------------------------------------------------------------------------

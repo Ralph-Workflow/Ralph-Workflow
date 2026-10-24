@@ -21,13 +21,13 @@ from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline._integration_action import (
     IntegrationAction,
     last_outcome_reason,
-    next_integration_action,
 )
 from ralph.pipeline._integration_diagnostic_state import (
     DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
     _operation_root_for,
     operation_evidence_collector,
 )
+from ralph.pipeline._integration_record_facts import apply_record_facts
 from ralph.pipeline.auto_integrate_record import (
     RELEASE_DIAGNOSTIC_EVIDENCE,
     RecordBusyError,
@@ -40,6 +40,7 @@ from ralph.pipeline.conflict_resolution.resolver_health import (
     choose_resolver,
     clear_resolver,
 )
+from ralph.pipeline.integration_owner import decide_integration
 from ralph.pipeline.operation_fact import (
     _KIND_MERGE_OBJECT_RESOLVABLE,
     _KIND_REBASE_OBJECT_RESOLVABLE,
@@ -82,7 +83,7 @@ def _invoke_and_judge(
     An invocation that raises is benched before the error propagates, so a
     crashing resolver cannot be re-offered on the next pass.
     """
-    from ralph.pipeline._integration_diagnostic import _check_operation_completion_proof
+    from ralph.pipeline._integration_diagnostic_proof import _check_operation_completion_proof
 
     try:
         invoked_ok = invoke(agent, prompt)
@@ -175,7 +176,7 @@ def _complete_or_intervene(
     collector: OperationEvidenceCollector | None,
 ) -> bool:
     """Run the positive-completion pre-pass through the typed record store."""
-    from ralph.pipeline._integration_diagnostic import _check_operation_completion_proof
+    from ralph.pipeline._integration_diagnostic_proof import _check_operation_completion_proof
 
     proof_ok, proof_reason = _check_operation_completion_proof(
         inspection_root, record, collector=collector
@@ -223,9 +224,11 @@ def _settle_exhausted_cap(
 ) -> bool:
     """Release the hold when Git shows no diagnostic is needed; otherwise raise intervention."""
     from ralph.pipeline._integration_diagnostic import (
-        _check_operation_completion_proof,
         _raise_intervention,
         diagnostic_needed,
+    )
+    from ralph.pipeline._integration_diagnostic_proof import (
+        _check_operation_completion_proof,
     )
 
     proof_ok, _ = _check_operation_completion_proof(inspection_root, record, collector=col)
@@ -294,7 +297,8 @@ def handoff_integration_diagnostic(
     inspection_root = _operation_root_for(record, root)
     col = collector if collector is not None else operation_evidence_collector()
     snapshot = col.snapshot(inspection_root, record)
-    next_action = next_integration_action(record)
+    owner_action, _owner_reason = decide_integration(root, record=record)
+    next_action = apply_record_facts(owner_action, record)
 
     pre_pass_result = _run_completion_pre_pass(
         root=root,

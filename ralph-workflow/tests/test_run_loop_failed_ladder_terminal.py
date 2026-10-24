@@ -14,7 +14,7 @@ from ralph.pipeline import run_loop, runner
 from ralph.pipeline.integration_resolution import inspect_integration_resolution
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
-from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
+from ralph.policy.models import AgentsPolicy, PhaseDefinition, PhaseTransition, PipelinePolicy
 from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
@@ -126,7 +126,8 @@ def run_recovery_scenario(
                             drain="development", transitions=PhaseTransition(on_success="complete")
                         )
                     },
-                )
+                ),
+                agents=AgentsPolicy(),
             ),
             active_display=display,
             config=UnifiedConfig(),
@@ -239,7 +240,8 @@ def test_exhausted_conflict_ladder_waits_until_recovery_before_ordinary_dispatch
                             drain="development", transitions=PhaseTransition(on_success="complete")
                         )
                     },
-                )
+                ),
+                agents=AgentsPolicy(),
             ),
             active_display=SimpleNamespace(emit_warn_line=_noop_warn),
             config=UnifiedConfig(),

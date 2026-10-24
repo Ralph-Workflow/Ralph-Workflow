@@ -756,7 +756,10 @@ def _handle_candidate_failure(
         candidates=candidates,
         failed_index=offset,
         policy_bundle=policy_bundle,
-        bench=session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS,
+        bench=(
+            session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
+            and session.terminal_reason != ResolutionTerminationReason.ATTEMPT_FAILED
+        ),
     )
 
 

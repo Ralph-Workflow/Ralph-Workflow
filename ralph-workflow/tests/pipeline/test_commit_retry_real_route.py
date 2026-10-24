@@ -209,7 +209,7 @@ def test_in_place_retry_next_effect_is_commit_effect_not_invoke_agent(
             commit=commit_state,
             recovery_epoch=0,
             pending_cycle_outcome="completed",
-            last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
+            last_error="GitOperationError: worktree not clean: uncommitted changes exist",
         )
         set_last_commit_error(state.last_error or "")
         try:
@@ -290,7 +290,7 @@ def test_default_policy_routes_to_commit_cleanup_phase(tmp_path: Path) -> None:
         },
         recovery_epoch=0,
         pending_cycle_outcome="completed",
-        last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
+        last_error="GitOperationError: worktree not clean: uncommitted changes exist",
     )
     set_last_commit_error(state.last_error or "")
     try:
@@ -369,7 +369,7 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
         commit=commit_state,
         recovery_epoch=0,
         pending_cycle_outcome="completed",
-        last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
+        last_error="GitOperationError: worktree not clean: uncommitted changes exist",
     )
     set_last_commit_error(state.last_error or "")
     try:
@@ -517,7 +517,7 @@ def test_cleanup_failure_does_not_reuse_commit_message(tmp_path: Path) -> None:
         },
         commit=CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True),
         recovery_epoch=1,
-        last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
+        last_error="GitOperationError: worktree not clean: uncommitted changes exist",
     )
 
     failure_event = PhaseFailureEvent(
@@ -553,7 +553,7 @@ def test_cleanup_without_validated_message_does_not_emit_commit_effect(
         },
         commit=CommitState(message_prepared=False, diff_prepared=False, agent_invoked=False),
         recovery_epoch=1,
-        last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
+        last_error="GitOperationError: worktree not clean: uncommitted changes exist",
     )
 
     advanced_state, _ = reduce(cleanup_state, PipelineEvent.PHASE_ADVANCE, pipeline_policy)
@@ -590,7 +590,7 @@ def test_absent_or_malformed_artifact_on_commit_retry_escalates_to_terminal_fail
         phase="development_commit",
         commit=commit_state,
         recovery_epoch=1,
-        last_error="GitOperationError: Unable to create '.git/index.lock': File exists",
+        last_error="GitOperationError: worktree not clean: uncommitted changes exist",
     )
 
     next_effect = determine_effect_from_policy(
@@ -629,18 +629,18 @@ def test_repeated_lock_contention_preserves_and_advances_recovery_epoch(
     pipeline_policy = policy_bundle.pipeline
 
     commit_state = CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True)
-    lock_error = "GitOperationError: Unable to create '.git/index.lock': File exists"
+    repairable_error = "GitOperationError: worktree not clean: uncommitted changes exist"
 
     # Initial state in development_commit
     state = PipelineState(
         phase="development_commit",
         commit=commit_state,
         recovery_epoch=0,
-        last_error=lock_error,
+        last_error=repairable_error,
     )
 
     # Iteration 1: lock failure -> cleanup -> commit (epoch=1)
-    set_last_commit_error(lock_error)
+    set_last_commit_error(repairable_error)
     cleanup_1, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
     assert cleanup_1.phase == "development_commit_cleanup"
     assert cleanup_1.recovery_epoch == 1

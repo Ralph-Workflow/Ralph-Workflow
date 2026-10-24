@@ -182,9 +182,16 @@ class ReviewCollaborators:
     """
 
     read_baseline: Callable[[PhaseContext], str | None] = _production_read_baseline
+    """Returns the recorded review baseline SHA, or ``None`` when no baseline has been recorded yet."""
+
     has_new_commits: Callable[[PhaseContext, str], bool] = _production_has_new_commits
+    """Returns ``True`` when commits landed after the given baseline SHA."""
+
     current_head_sha: Callable[[PhaseContext], str | None] = _production_current_head_sha
+    """Returns the current workspace head SHA, or ``None`` when it cannot be determined."""
+
     write_baseline: Callable[[PhaseContext, str], None] = _production_write_baseline
+    """Records the given SHA as the new review baseline."""
 
 
 #: The production collaborator bundle used when no seam is supplied.

@@ -73,6 +73,11 @@ def test_run_loop_resumes_on_highest_priority_newly_available_agent(
     connectivity_monitor.current_state = "online"
     workspace = MemoryWorkspace("/memory/resume-selection")
     monkeypatch.setattr("ralph.pipeline.auto_integrate_record.read_record", lambda _root: None)
+    monkeypatch.setattr(
+        run_loop,
+        "inspect_integration_resolution",
+        lambda *_args: IntegrationResolutionVerdict(RESOLVED),
+    )
     ctx = run_loop._LoopContext(
         policy_bundle=policy_bundle,
         workspace_scope=WorkspaceScope(workspace.root),

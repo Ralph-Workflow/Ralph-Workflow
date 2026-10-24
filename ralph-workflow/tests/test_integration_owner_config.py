@@ -37,6 +37,7 @@ import pytest
 
 from ralph.pipeline import integration_director, integration_owner
 from ralph.pipeline._integration_action import IntegrationAction
+from ralph.pipeline._integration_diagnostic_handoff import handoff_integration_diagnostic
 from ralph.pipeline._integration_owner_seam import decide_seam_action
 from ralph.pipeline._integration_record_facts import apply_record_facts
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
@@ -405,7 +406,7 @@ def test_the_owner_path_does_not_call_the_retired_record_decider() -> None:
     integration rung would be decided in two places.
     """
     assert "next_integration_action(" not in inspect.getsource(integration_owner)
-    for function in (decide_seam_action, apply_record_facts):
+    for function in (decide_seam_action, apply_record_facts, handoff_integration_diagnostic):
         module = inspect.getmodule(function)
         assert module is not None
         assert "next_integration_action(" not in inspect.getsource(module)

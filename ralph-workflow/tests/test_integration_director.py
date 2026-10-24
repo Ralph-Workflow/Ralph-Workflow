@@ -383,7 +383,7 @@ def test_director_unmerged_worktree_repeats_advance_rung(
 
     assert actions[0] is NextAction.DISPATCH_RESOLVER
     assert rungs[0] is EscalationRung.REPAIR
-    # Subsequent cycles bump the ladder exactly once each.
+    # Subsequent cycles bump the ladder exactly once each until exhausted.
     assert actions[1] is NextAction.REBUILD_ON_TARGET
     assert rungs[1] is EscalationRung.DISPATCH_RESOLVER
     assert actions[2] is NextAction.CONTINUE_WITH_INTEGRATION_PENDING

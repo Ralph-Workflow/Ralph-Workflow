@@ -163,10 +163,17 @@ def begin_resolution_stop(
 
 def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
     """Return the configured conflict-resolution candidate chain."""
-    drain_binding = policy_bundle.agents.agent_drains.get(PHASE_RESOLUTION)
+    if not hasattr(policy_bundle, "agents"):
+        return ()
+    agents_policy = policy_bundle.agents
+    if not hasattr(agents_policy, "agent_drains"):
+        return ()
+    drain_binding = agents_policy.agent_drains.get(PHASE_RESOLUTION)
     if drain_binding is None:
         return ()
-    chain_config = policy_bundle.agents.agent_chains.get(drain_binding.chain)
+    if not hasattr(agents_policy, "agent_chains"):
+        return ()
+    chain_config = agents_policy.agent_chains.get(drain_binding.chain)
     if chain_config is None:
         return ()
     agents = tuple(chain_config.agents)
@@ -280,6 +287,8 @@ def classify_failed_resolution_attempt(
         # an agent that produced nothing is not offered again at once.
         if bench and controller.unavailability_store.is_available(PHASE_RESOLUTION, agent_name):
             bench_resolver(controller, agent_name, raw_failure)
+        elif not bench:
+            controller.reset_backoff(PHASE_RESOLUTION, agent_name)
         if candidates:
             session.current_agent_retries = 0
             session.skip_same_agent_retries = False
