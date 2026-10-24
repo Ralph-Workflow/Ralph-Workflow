@@ -256,6 +256,9 @@ def _probe_upstream_server(
     try:
         probe_start = clock()
         client = factory(server)
+        timeout_s = max(0.0, deadline - clock())
+        if timeout_s <= 0:
+            return (server, server_kind, None, None, _BudgetExhaustedError(server), 0.0)
         tools = client.list_tools(timeout_s=timeout_s)
         elapsed_ms = (clock() - probe_start) * 1000.0
     except UpstreamCallError as exc:

@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import cast, get_args
+from typing import get_args
 
 import pytest
 
@@ -335,9 +335,8 @@ def test_scrub_public_api_contract(monkeypatch: pytest.MonkeyPatch) -> None:
     }
     result = scrub_event(data)
     assert isinstance(result, dict)
-    res_dict = cast("dict[str, object]", result)
-    assert "server_name" not in res_dict
-    assert res_dict["home_path"] == "~/file.py"
+    assert "server_name" not in result
+    assert result["home_path"] == "~/file.py"
 
     obj: dict[str, object] = {"nested": [f"{fake_home}/doc.txt"]}
     _sentry.scrub_object(obj)
@@ -1758,13 +1757,10 @@ def test_record_phase_execution_fail_soft(
 ) -> None:
     """An exception from set_tag / collaborators MUST NOT propagate."""
     monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
-    monkeypatch.setattr(_sentry.telemetry_state(), "phase_stats", {})
-    monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
-
-    # Force a KeyError by pre-populating with a non-dict value.
-    _sentry.telemetry_state().phase_stats["execution"] = cast(
-        "dict[str, object]", "this is not a dict"
+    monkeypatch.setattr(
+        _sentry.telemetry_state(), "phase_stats", {"execution": "this is not a dict"}
     )
+    monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
 
     # Must not raise even though the stats lookup will fail.
     _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")

@@ -14,6 +14,7 @@ injectable clock to verify timing behaviour deterministically without
 from __future__ import annotations
 
 import io
+import threading
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
@@ -73,6 +74,8 @@ class _ProbeCounterClient:
 class _TimeAdvancingClient:
     """Fake client that advances the shared test clock by probe_duration on each call."""
 
+    _probe_lock: threading.Lock = threading.Lock()
+
     def __init__(
         self,
         server: UpstreamMcpServer,
@@ -86,22 +89,23 @@ class _TimeAdvancingClient:
         self._time_advancer = time_advancer
 
     def list_tools(self, *, timeout_s: float | None = None) -> list[UpstreamTool]:
-        self._counter.append(1)
-        if timeout_s is not None and self._probe_duration > timeout_s:
-            self._time_advancer(timeout_s)
-            from ralph.mcp.upstream.models import UpstreamCallError
+        with self._probe_lock:
+            self._counter.append(1)
+            if timeout_s is not None and self._probe_duration > timeout_s:
+                self._time_advancer(timeout_s)
+                from ralph.mcp.upstream.models import UpstreamCallError
 
-            raise UpstreamCallError(
-                f"fake probe to {self._server.name} timed out after {timeout_s:.1f}s"
-            )
-        self._time_advancer(self._probe_duration)
-        return [
-            UpstreamTool(
-                name=f"tool-{self._server.name}",
-                description="time-advancing fake",
-                input_schema={"type": "object"},
-            )
-        ]
+                raise UpstreamCallError(
+                    f"fake probe to {self._server.name} timed out after {timeout_s:.1f}s"
+                )
+            self._time_advancer(self._probe_duration)
+            return [
+                UpstreamTool(
+                    name=f"tool-{self._server.name}",
+                    description="time-advancing fake",
+                    input_schema={"type": "object"},
+                )
+            ]
 
     def call_tool(self, name: str, arguments: dict[str, object]) -> dict[str, object]:
         return {}

@@ -7,18 +7,12 @@ in-memory fakes.  It does not touch the host filesystem or a watchdog observer.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-import pytest
 
 from ralph.agents.invoke._workspace import WorkspaceMonitor
 from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
 from ralph.agents.invoke._workspace_seams import WorkspaceWatchSeams
 from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.workspace.fs import FsWorkspace
-
-if TYPE_CHECKING:
-    from collections.abc import Dict
 
 
 class _HealthyCrossProcessLock:
@@ -68,29 +62,11 @@ class _InMemorySidecar:
         pass
 
 
-@pytest.fixture(autouse=True)
-def _mock_coordination(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Route lock/sidecar coordination through in-memory fakes (virtual roots)."""
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.CrossProcessWatchLock",
-        _HealthyCrossProcessLock(),
-    )
-    sidecar = _InMemorySidecar()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.shared_awareness_for_workspace",
-        lambda _root: sidecar,
-    )
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.remove_shared_awareness_sidecar",
-        lambda _root: None,
-    )
-
-
 class _ActivityBackend(FileBackend):
     """In-memory persistence boundary exposing observable publications."""
 
     def __init__(self) -> None:
-        self._files: Dict[Path, str] = {}
+        self._files: dict[Path, str] = {}
         self.publications: list[tuple[Path, str]] = []
         self.preparations: list[Path] = []
 
@@ -166,13 +142,19 @@ def test_unchanged_workspace_cycle_preserves_bytes_without_new_publication_or_wa
     backend = _ActivityBackend()
     observer = _ActivityObserver()
     workspace = FsWorkspace(Path("/virtual-ws"), backend=backend)
+    sidecar = _InMemorySidecar()
     monitor = WorkspaceMonitor(
         Path("/virtual-ws"),
         classifier=WorkspaceChangeClassifier(),
         host_budget=8192,
         directory_counter=lambda *_, **__: 0,
         live_watch_total=0,
-        seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
+        seams=WorkspaceWatchSeams(
+            watch_lock=_HealthyCrossProcessLock(),
+            observer_factory=lambda: observer,
+            sidecar_factory=lambda _root: sidecar,
+            sidecar_remover=lambda _root: None,
+        ),
     )
 
     monitor.start()
@@ -235,7 +217,13 @@ def test_independent_monitors_for_one_workspace_share_one_recursive_registration
     first = _ActivityObserver()
     second = _ActivityObserver()
     observers = iter((first, second))
-    seams = WorkspaceWatchSeams(observer_factory=lambda: next(observers))
+    sidecar = _InMemorySidecar()
+    seams = WorkspaceWatchSeams(
+        watch_lock=_HealthyCrossProcessLock(),
+        observer_factory=lambda: next(observers),
+        sidecar_factory=lambda _root: sidecar,
+        sidecar_remover=lambda _root: None,
+    )
 
     first_monitor = WorkspaceMonitor(
         Path("/virtual-ws"),

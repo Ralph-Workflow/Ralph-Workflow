@@ -33,10 +33,10 @@ tracker; a caller that needs a different sink passes one explicitly
 fail the stage-recording step through the public seam instead of
 patching a private module attribute.
 
-:class:`StageEventRecorder` -- the in-memory observation recorder --
-is defined in :mod:`ralph.mcp.server._pre_serve_overrun_events` and
-re-exported here, so ``from ralph.mcp.server._pre_serve_overrun import
-StageEventRecorder`` keeps working unchanged.
+:class:`StageEventRecorder`, :class:`StageRecorder`, :class:`ExitHandler`,
+and :class:`OverrunHandler` are defined in their respective modules and
+re-exported here, so imports from :mod:`ralph.mcp.server._pre_serve_overrun`
+keep working unchanged.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ import threading
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
-from typing import TYPE_CHECKING, NoReturn, Protocol
+from typing import TYPE_CHECKING, NoReturn
 
 from loguru import logger
 
@@ -60,8 +60,11 @@ from ralph.mcp.protocol._startup_timeouts import (
     mcp_real_startup_deadline_from_env,
     mcp_startup_now,
 )
+from ralph.mcp.server._exit_handler import ExitHandler
 from ralph.mcp.server._mcp_server_error import McpServerError
+from ralph.mcp.server._overrun_handler import OverrunHandler
 from ralph.mcp.server._pre_serve_overrun_events import StageEventRecorder
+from ralph.mcp.server._stage_recorder import StageRecorder
 from ralph.mcp.server._start_stage_tracker import record as _record_stage
 
 if TYPE_CHECKING:
@@ -80,43 +83,6 @@ SESSION_OVERRUN_EXIT_CODE: int = 33
 #: attributes the exit to the catalog publication stage without
 #: re-reading the on-disk stage file.
 CATALOG_PUBLISH_OVERRUN_EXIT_CODE: int = 34
-
-
-class StageRecorder(Protocol):
-    """Callable that persists one startup stage marker for a workspace root.
-
-    The production implementation is the on-disk stage tracker
-    (:func:`ralph.mcp.server.start_stage_tracker.record`). A caller that
-    needs a different sink injects one through the ``stage_recorder``
-    argument of :func:`log_and_record_stage` /
-    :func:`fail_closed_pre_serve_overrun`, or through
-    :func:`stage_recorder_override` for the current context.
-    """
-
-    def __call__(self, root: Path, stage: str, *, timeout_s: float | None = None) -> None: ...
-
-
-class ExitHandler(Protocol):
-    """Callable invoked to terminate execution when an overrun forces process exit."""
-
-    def __call__(self, exit_code: int, /) -> object: ...
-
-
-class OverrunHandler(Protocol):
-    """Callable that handles a pre-serve overrun condition."""
-
-    def __call__(
-        self,
-        workspace_root: Path,
-        *,
-        stage: str,
-        elapsed_s: float,
-        budget_s: float,
-        exit_code: int,
-        diagnostic_timeout_s: float | None = None,
-        stage_recorder: StageRecorder | None = None,
-        exit_fn: ExitHandler | None = None,
-    ) -> object: ...
 
 
 #: Stage recorder registered for the current context. ``None`` means the

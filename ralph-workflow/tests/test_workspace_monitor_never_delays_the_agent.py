@@ -231,9 +231,7 @@ class _SlowWatchLock:
         self.released = True
 
 
-def test_slow_watch_lock_io_does_not_park_the_launch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_slow_watch_lock_io_does_not_park_the_launch(tmp_path: Path) -> None:
     """The lock the watch is claimed under is workspace I/O too.
 
     Bounding the capacity probe and the observer start leaves the step
@@ -242,13 +240,13 @@ def test_slow_watch_lock_io_does_not_park_the_launch(
     park the launch for as long as the filesystem takes.
     """
     lock = _SlowWatchLock()
-    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", lock)
     monitor = WorkspaceMonitor(
         tmp_path,
         host_budget=8192,
         directory_counter=lambda workspace, cap: 1,
         live_watch_total=0,
         probe_budget_seconds=_PROBE_BUDGET_SECONDS,
+        seams=WorkspaceWatchSeams(watch_lock=lock),
     )
     try:
         monitor.start()
@@ -263,9 +261,7 @@ def test_slow_watch_lock_io_does_not_park_the_launch(
     assert status["mode"] == "live_fallback"
 
 
-def test_abandoning_a_slow_watch_start_releases_the_cross_process_lock(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_abandoning_a_slow_watch_start_releases_the_cross_process_lock(tmp_path: Path) -> None:
     """Giving up on the watch must give up the claim to it.
 
     The cross-process lock is what stops a second process registering an
@@ -281,19 +277,18 @@ def test_abandoning_a_slow_watch_start_releases_the_cross_process_lock(
     require the system to be idle.
     """
     lock = _SlowWatchLock(stall=False)
-    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", lock)
     observer = _SlowObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.shared_awareness_for_workspace",
-        lambda _root: _FastSidecar(),
-    )
     monitor = WorkspaceMonitor(
         tmp_path,
         host_budget=8192,
         directory_counter=lambda workspace, cap: 1,
         live_watch_total=0,
         probe_budget_seconds=_PROBE_BUDGET_SECONDS,
-        seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
+        seams=WorkspaceWatchSeams(
+            watch_lock=lock,
+            observer_factory=lambda: observer,
+            sidecar_factory=lambda _root: _FastSidecar(),
+        ),
     )
     try:
         monitor.start()
@@ -359,21 +354,19 @@ class _SlowStoppingObserver(_SlowObserver):
         self.stopped.set()
 
 
-def test_a_teardown_that_will_not_finish_does_not_park_the_launch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_teardown_that_will_not_finish_does_not_park_the_launch(tmp_path: Path) -> None:
     """Unwinding a failed watch may not cost more than the watch would."""
     observer = _SlowStoppingObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.STOP_OBSERVER_BUDGET_SECONDS", _PROBE_BUDGET_SECONDS
-    )
     monitor = WorkspaceMonitor(
         tmp_path,
         host_budget=8192,
         directory_counter=lambda workspace, cap: 1,
         live_watch_total=0,
         probe_budget_seconds=_PROBE_BUDGET_SECONDS,
-        seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
+        seams=WorkspaceWatchSeams(
+            observer_factory=lambda: observer,
+            stop_observer_budget_seconds=_PROBE_BUDGET_SECONDS,
+        ),
     )
     try:
         monitor.start()
@@ -418,23 +411,19 @@ class _SlowSidecar:
         del args, kwargs
 
 
-def test_a_slow_ownership_write_does_not_park_the_launch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_slow_ownership_write_does_not_park_the_launch(tmp_path: Path) -> None:
     """Recording the claim is workspace I/O like taking it."""
     sidecar = _SlowSidecar()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.shared_awareness_for_workspace", lambda _root: sidecar
-    )
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.CrossProcessWatchLock", _SlowWatchLock(stall=False)
-    )
     monitor = WorkspaceMonitor(
         tmp_path,
         host_budget=8192,
         directory_counter=lambda workspace, cap: 1,
         live_watch_total=0,
         probe_budget_seconds=_PROBE_BUDGET_SECONDS,
+        seams=WorkspaceWatchSeams(
+            watch_lock=_SlowWatchLock(stall=False),
+            sidecar_factory=lambda _root: sidecar,
+        ),
     )
     try:
         monitor.start()
@@ -451,9 +440,7 @@ def test_a_slow_ownership_write_does_not_park_the_launch(
     assert status["mode"] == "live_fallback"
 
 
-def test_a_slow_owner_sidecar_read_does_not_park_the_launch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_slow_owner_sidecar_read_does_not_park_the_launch(tmp_path: Path) -> None:
     """The consumer path reads the workspace too.
 
     When another process already holds the watch lock, this one does not
@@ -462,19 +449,16 @@ def test_a_slow_owner_sidecar_read_does_not_park_the_launch(
     pre-spawn window as everything else here.
     """
     sidecar = _SlowSidecar()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.shared_awareness_for_workspace", lambda _root: sidecar
-    )
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.CrossProcessWatchLock",
-        _SlowWatchLock(stall=False, holder="another-process"),
-    )
     monitor = WorkspaceMonitor(
         tmp_path,
         host_budget=8192,
         directory_counter=lambda workspace, cap: 1,
         live_watch_total=0,
         probe_budget_seconds=_PROBE_BUDGET_SECONDS,
+        seams=WorkspaceWatchSeams(
+            watch_lock=_SlowWatchLock(stall=False, holder="another-process"),
+            sidecar_factory=lambda _root: sidecar,
+        ),
     )
     try:
         monitor.start()
@@ -491,9 +475,7 @@ def test_a_slow_owner_sidecar_read_does_not_park_the_launch(
     assert status["mode"] == "live_fallback"
 
 
-def test_the_watch_teardown_joins_with_a_timeout(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_watch_teardown_joins_with_a_timeout(tmp_path: Path) -> None:
     """Both halves of a teardown are bounded, not just the stop.
 
     ``observer.stop()`` runs under a budget; the ``join`` that follows it
@@ -501,16 +483,16 @@ def test_the_watch_teardown_joins_with_a_timeout(
     emitter thread the stop just failed to reach.
     """
     observer = _SlowStoppingObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.STOP_OBSERVER_BUDGET_SECONDS", _PROBE_BUDGET_SECONDS
-    )
     monitor = WorkspaceMonitor(
         tmp_path,
         host_budget=8192,
         directory_counter=lambda workspace, cap: 1,
         live_watch_total=0,
         probe_budget_seconds=_PROBE_BUDGET_SECONDS,
-        seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
+        seams=WorkspaceWatchSeams(
+            observer_factory=lambda: observer,
+            stop_observer_budget_seconds=_PROBE_BUDGET_SECONDS,
+        ),
     )
     try:
         monitor.start()

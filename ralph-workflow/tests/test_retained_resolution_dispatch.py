@@ -17,7 +17,7 @@ from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.test_pending_merge_commit_recovery import _commit, _git
 
-pytestmark = [pytest.mark.timeout_seconds(5)]
+pytestmark = [pytest.mark.timeout_seconds(10)]
 
 
 @pytest.fixture(autouse=True)

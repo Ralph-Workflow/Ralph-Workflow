@@ -8,8 +8,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.agents.registry import AgentRegistry
-from ralph.cli.commands._commit_chain_config import CommitChainConfig
-from ralph.cli.commands.commit import CommitPlumbingOptions, commit_plumbing
+from ralph.cli.commands.commit import CommitChainConfig, CommitPlumbingOptions, commit_plumbing
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.auto_integrate import (
@@ -40,6 +39,18 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.timeout_seconds(10)]
 
 
+def _make_config(target: str, *, enabled: bool = True) -> UnifiedConfig:
+    return UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_target": target,
+                "auto_integrate_enabled": enabled,
+                "auto_integrate_remote_enabled": False,
+            }
+        }
+    )
+
+
 @pytest.mark.parametrize(
     ("enabled", "receipt_flags_lost"),
     [(True, False), (False, True)],
@@ -68,15 +79,7 @@ def test_owned_landing_reintegrates_moved_target_without_releasing_dispatch(
     assert _git(root, "switch", target).returncode == 0
     _commit(root, "shared.txt", "target\n")
     assert _git(root, "switch", "feature").returncode == 0
-    config = UnifiedConfig.model_validate(
-        {
-            "general": {
-                "auto_integrate_enabled": enabled,
-                "auto_integrate_target": target,
-                "auto_integrate_remote_enabled": False,
-            }
-        }
-    )
+    config = _make_config(target, enabled=enabled)
 
     declined = recover_incomplete_integration(
         WorkspaceScope(root),
@@ -155,15 +158,7 @@ def test_standalone_commit_recovers_ownership_before_commit_session(
         _commit(root, "operator.txt", "operator work\n")
     head_before = _git(root, "rev-parse", "HEAD").stdout.strip()
     (root / "pending.txt").write_text("keep pending work\n", encoding="utf-8")
-    config = UnifiedConfig.model_validate(
-        {
-            "general": {
-                "auto_integrate_enabled": False,
-                "auto_integrate_target": target,
-                "auto_integrate_remote_enabled": False,
-            }
-        }
-    )
+    config = _make_config(target, enabled=False)
     context = make_display_context()
     agent = AgentConfig(cmd="fake-commit", json_parser="generic")
     registry = AgentRegistry.from_config(config)
@@ -240,15 +235,7 @@ def test_completed_owned_reintegration_lands_after_receipt_write_interruption(
     )
     assert _git(root, operation, target).returncode == 0
     completed = _git(root, "rev-parse", "HEAD").stdout.strip()
-    config = UnifiedConfig.model_validate(
-        {
-            "general": {
-                "auto_integrate_enabled": False,
-                "auto_integrate_target": target,
-                "auto_integrate_remote_enabled": False,
-            }
-        }
-    )
+    config = _make_config(target, enabled=False)
 
     outcome = recover_incomplete_integration(WorkspaceScope(root), config=config)
 
@@ -292,15 +279,7 @@ def test_completed_landing_receipt_preserves_later_operator_resolution(
     assert _git(root, "add", "shared.txt").returncode == 0
     index_before = _git(root, "write-tree").stdout
     head_before = _git(root, "rev-parse", "HEAD").stdout
-    config = UnifiedConfig.model_validate(
-        {
-            "general": {
-                "auto_integrate_enabled": False,
-                "auto_integrate_target": target,
-                "auto_integrate_remote_enabled": False,
-            }
-        }
-    )
+    config = _make_config(target, enabled=False)
 
     outcome = recover_incomplete_integration(WorkspaceScope(root), config=config)
 
@@ -466,15 +445,7 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
         (root / "shared.txt").write_text("local and remote preserved\n", encoding="utf-8")
         return True
 
-    config = UnifiedConfig.model_validate(
-        {
-            "general": {
-                "auto_integrate_enabled": False,
-                "auto_integrate_target": target,
-                "auto_integrate_remote_enabled": False,
-            }
-        }
-    )
+    config = _make_config(target, enabled=False)
     from ralph.pipeline.auto_integrate_record import record_path
 
     owner_receipt = record_path(owner)
@@ -537,14 +508,7 @@ def test_stale_resolver_receipt_does_not_adopt_replacement_operator_operation(
 
     outcome = recover_incomplete_integration(
         WorkspaceScope(root),
-        config=UnifiedConfig.model_validate(
-            {
-                "general": {
-                    "auto_integrate_target": target,
-                    "auto_integrate_remote_enabled": False,
-                }
-            }
-        ),
+        config=_make_config(target),
         conflict_resolver=resolve,
         rebase_stop_resolver=lambda repo, branch, _stop: resolve(repo, branch),
     )
@@ -565,15 +529,7 @@ def test_aborted_owned_resolution_retains_landing_until_retry_completes(
     root = tmp_git_repo
     target, feature, _moved = _interrupted(root, operation)
     assert _git(root, operation, "--abort").returncode == 0
-    config = UnifiedConfig.model_validate(
-        {
-            "general": {
-                "auto_integrate_enabled": False,
-                "auto_integrate_target": target,
-                "auto_integrate_remote_enabled": False,
-            }
-        }
-    )
+    config = _make_config(target, enabled=False)
 
     waiting = recover_incomplete_integration(WorkspaceScope(root))
 
@@ -693,14 +649,7 @@ def test_completed_retained_rebase_lands_or_replays_stale_intent(
     if completion == "unrelated":
         _commit(root, "unrelated.txt", "later commit\n")
     outcome = integrate_before_planning(
-        UnifiedConfig.model_validate(
-            {
-                "general": {
-                    "auto_integrate_target": target,
-                    "auto_integrate_remote_enabled": False,
-                }
-            }
-        ),
+        _make_config(target),
         WorkspaceScope(root),
         RebaseState(),
     )
@@ -737,14 +686,7 @@ def test_aborted_operation_reset_to_target_cannot_be_misreported_as_completed(
     assert read_record(root) is not None
     assert _git(root, "reset", "--hard", main).returncode == 0
     outcome = integrate_before_planning(
-        UnifiedConfig.model_validate(
-            {
-                "general": {
-                    "auto_integrate_target": target,
-                    "auto_integrate_remote_enabled": False,
-                }
-            }
-        ),
+        _make_config(target),
         WorkspaceScope(root),
         RebaseState(),
     )
@@ -795,14 +737,7 @@ def test_marker_free_interrupted_resolution_rechecks_and_stages_completed_scope(
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr("ralph.pipeline.effect_executor.execute_agent_effect", execute)
-    config = UnifiedConfig.model_validate(
-        {
-            "general": {
-                "auto_integrate_target": target,
-                "auto_integrate_remote_enabled": False,
-            }
-        }
-    )
+    config = _make_config(target)
     policy = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
     registry = AgentRegistry()
     registry.agents.update(
@@ -952,9 +887,7 @@ def test_stale_resolution_replay_clears_intent_and_retries_auto_rebase(
     tmp_path: Path,
 ) -> None:
     """A record Git disproves is snapshotted, cleared, and replayed at auto rebase."""
-    import importlib
-
-    owned = importlib.import_module("ralph.pipeline._owned_landing_reintegration")
+    import ralph.pipeline._owned_landing_reintegration as owned
     from ralph.git.merge import UnmergedPathsObservation
     from ralph.pipeline._integration_action import RebaseOutcomeKind
     from ralph.pipeline.integration_observation import InProgressKind, Reading
