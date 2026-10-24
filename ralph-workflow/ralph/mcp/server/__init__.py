@@ -13,17 +13,30 @@ from typing import TYPE_CHECKING, cast
 from ._activity_sink import reset_subagent_sink, set_subagent_sink
 
 if TYPE_CHECKING:
+    from ._json_rpc_request import JsonRpcRequest
+    from ._mcp_server import McpServer
+    from ._process_like import ProcessLike
+    from ._standalone_mcp_process import SHUTDOWN_REAP_WAIT_S, SHUTDOWN_TERMINATE_GRACE_S
+    from ._transport_repetition_tracker import TransportRepetitionTracker
+    from ._wire_ledger import WireLedgerIOError
     from .lifecycle import McpServerExtras, SessionBridgeLike, shutdown_mcp_server, start_mcp_server
     from .runtime import run_standalone_server
 
 __all__ = [
+    "SHUTDOWN_REAP_WAIT_S",
+    "SHUTDOWN_TERMINATE_GRACE_S",
     "BridgeDiagnostics",
+    "JsonRpcRequest",
     "McpRestartPolicy",
+    "McpServer",
     "McpServerError",
     "McpServerExtras",
+    "ProcessLike",
     "RestartAwareMcpBridge",
     "SessionBridgeLike",
     "StandaloneMcpProcess",
+    "TransportRepetitionTracker",
+    "WireLedgerIOError",
     "append_wire_record",
     "bound_dominates",
     "canonical_tool_entries",
@@ -61,12 +74,19 @@ __all__ = [
 
 _LAZY_MODULES = {
     "BridgeDiagnostics": "ralph.mcp.bridge_diagnostics",
+    "JsonRpcRequest": "ralph.mcp.server._json_rpc_request",
     "McpRestartPolicy": "ralph.mcp.server.lifecycle",
+    "McpServer": "ralph.mcp.server._mcp_server",
     "McpServerError": "ralph.mcp.server._mcp_server_error",
     "McpServerExtras": "ralph.mcp.server.lifecycle",
+    "ProcessLike": "ralph.mcp.server._process_like",
     "RestartAwareMcpBridge": "ralph.mcp.server.lifecycle",
+    "SHUTDOWN_REAP_WAIT_S": "ralph.mcp.server.lifecycle",
+    "SHUTDOWN_TERMINATE_GRACE_S": "ralph.mcp.server.lifecycle",
     "SessionBridgeLike": "ralph.mcp.server.lifecycle",
     "StandaloneMcpProcess": "ralph.mcp.server.lifecycle",
+    "TransportRepetitionTracker": "ralph.mcp.server._transport_repetition_tracker",
+    "WireLedgerIOError": "ralph.mcp.server._wire_ledger",
     "append_wire_record": "ralph.mcp.server._wire_ledger",
     "bound_dominates": "ralph.mcp.bridge_diagnostics",
     "canonical_tool_entries": "ralph.mcp.server._handover_protocol",

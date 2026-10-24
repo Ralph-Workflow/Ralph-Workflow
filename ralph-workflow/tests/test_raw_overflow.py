@@ -3,10 +3,8 @@
 Testing-policy white-box exception (finalizer handle box):
 
 The cases marked ``# policy: white-box-exception`` below reach into the
-private symbols ``RawOverflowLog._handle_box``,
-``RawOverflowLog._get_raw_log``, ``SubprocessAgentExecutor._raw_logs`` /
-``_raw_overflow_root`` / ``_cwd`` and the display's ``_condensed_logs``
-registry.
+private symbols ``RawOverflowLog._handle_box`` and
+``ParallelDisplay._condensed_logs``.
 
 Quoted policy clause -- docs/ralph-workflow-policy/testing-policy.md,
 "Default requirements":
@@ -19,26 +17,24 @@ has been collected. The owner is gone by then, so the public ``is_open``
 read cannot be taken (it needs a live instance), and the buffered handle
 itself has no public accessor; the shared one-element box is the only place
 where the finalizer's effect stays observable after the collection. The
-executor case builds a bare ``SubprocessAgentExecutor`` (``__new__`` plus
-three private attributes) because the public constructor spawns a real
-subprocess, which no default-suite test may do, and the raw-log lookup has
-no public accessor; the condensed-log registry is a private per-display
-registry with no public getter.
+condensed-log registry is a private per-display registry with no public
+getter.
 """
 
 from __future__ import annotations
 
+import asyncio
 import io
+import sys
 import threading
 import weakref
+from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.display.raw_overflow import RawOverflowLog
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def test_append_writes_lines(tmp_path: Path) -> None:
@@ -366,24 +362,89 @@ def test_close_is_idempotent(tmp_path: Path) -> None:
     log.close()  # no raise
 
 
-def test_executor_drop_unit_closes_raw_log(tmp_path: Path) -> None:
-    """SubprocessAgentExecutor.drop_unit() must close the raw log and
-    flush its buffered tail to disk (RFC-013 P1)."""
-    executor = SubprocessAgentExecutor.__new__(SubprocessAgentExecutor)
-    # policy: white-box-exception
-    executor._raw_logs = {}
-    # policy: white-box-exception
-    executor._raw_overflow_root = tmp_path
-    # policy: white-box-exception
-    executor._cwd = tmp_path
-    # policy: white-box-exception
-    log = executor._get_raw_log("unit-x")
-    log.append("pending line")
-    executor.drop_unit("unit-x")
-    # close() during drop must have flushed the buffered tail
-    assert "pending line\n" in (tmp_path / ".agent" / "raw" / "unit-x.log").read_text(
-        encoding="utf-8"
+@pytest.mark.asyncio
+async def test_executor_drop_unit_closes_raw_log(tmp_path: Path) -> None:
+    """``SubprocessAgentExecutor.drop_unit()`` must close the unit's raw
+    capture and flush its buffered tail to disk (RFC-013 P1).
+
+    Black-box: the executor is built through its PUBLIC constructor and
+    driven through the PUBLIC ``run()`` with an injected fake process
+    manager, so no real subprocess is spawned and no private attribute is
+    touched. The assertions read observable state only -- the capture's
+    public ``is_open`` flag and the bytes on disk.
+    """
+    from ralph.display.activity_router import ActivityRouter
+    from ralph.display.raw_overflow import get_or_create_raw_overflow_log
+    from ralph.pipeline.work_units import WorkUnit
+    from ralph.process import ProcessManager, ProcessManagerPolicy
+    from ralph.testing.fake_process import FakeControllableAsyncProcess, FakePsutil
+
+    # The registry hands out ONE writer per resolved path, and the first
+    # caller's flush interval wins (documented in
+    # ``get_or_create_raw_overflow_log``). Acquiring the capture here with
+    # an hour-long flush interval pins the periodic flush out of the way,
+    # so the tail can only reach disk when ``drop_unit`` closes the
+    # capture -- the behaviour under test, not a timer.
+    capture = get_or_create_raw_overflow_log(tmp_path, "unit-x", flush_interval_seconds=3600.0)
+    capture_path = capture.path
+    assert capture_path == tmp_path / ".agent" / "raw" / "unit-x.log"
+
+    completion = asyncio.Event()
+    completion.set()
+
+    async def async_factory(
+        command: Sequence[str],
+        *,
+        cwd: str | None,
+        env: dict[str, str] | None,
+        stdin: int | None,
+        stdout: int | None,
+        stderr: int | None,
+        start_new_session: bool,
+    ) -> FakeControllableAsyncProcess:
+        del command, cwd, env, stdin, stdout, stderr, start_new_session
+        return FakeControllableAsyncProcess(
+            pid=4242,
+            stdout_data=b"pending line\n",
+            completion_event=completion,
+        )
+
+    pm = ProcessManager(
+        async_process_factory=async_factory,
+        psutil=FakePsutil(),
+        policy=ProcessManagerPolicy(
+            default_grace_period_s=0.0,
+            kill_followup_timeout_s=0.0,
+            log_events=False,
+            enable_zombie_reaper=False,
+        ),
     )
+    executor = SubprocessAgentExecutor(
+        command=(sys.executable, "-c", "pass"),
+        activity_router=ActivityRouter(),
+        raw_overflow_root=tmp_path,
+        _pm=pm,
+    )
+
+    await executor.run(
+        WorkUnit(unit_id="unit-x", description="drop-unit capture"),
+        on_output=lambda _line: None,
+        on_status=lambda _status: None,
+    )
+
+    # The run appended the agent's line to the capture and left its
+    # buffered handle open -- the bytes are still in the buffer.
+    assert capture.is_open is True, "the run must leave the capture's buffered handle open"
+    assert capture_path.read_text(encoding="utf-8") == "", (
+        "the agent's line must still be buffered, not on disk, before the unit is dropped"
+    )
+
+    executor.drop_unit("unit-x")
+
+    # drop_unit closed the capture ...
+    assert capture.is_open is False, "drop_unit must close the unit's raw capture"
+    # ... and that close flushed the buffered tail to disk.
+    assert "pending line\n" in capture_path.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -777,7 +838,7 @@ def test_an_evicted_queue_line_still_reaches_the_capture() -> None:
     reached the consumer as 256, and the missing 744 left a file that
     still parsed, so nothing reported the loss.
     """
-    from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
+    from ralph.agents.invoke import BoundedLinesQueue
 
     evicted: list[str] = []
     queue = BoundedLinesQueue(maxlen=2)

@@ -29,6 +29,7 @@ from ralph.agents.catalog import default_catalog
 from ralph.agents.completion_signals import evaluate_completion
 from ralph.agents.execution_state import strategy_for_command
 from ralph.agents.idle_watchdog import WatchdogFireReason
+from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
 from ralph.agents.invoke._commands import (
     _agent_transport,
     _build_command,
@@ -851,6 +852,7 @@ __all__ = [
     "AgentInvocationError",
     "AgentRunCtx",
     "AgyIncompleteExitError",
+    "BoundedLinesQueue",
     "BrokenAgentExitError",
     "BuildCommandOptions",
     "CompletionCheckOptions",

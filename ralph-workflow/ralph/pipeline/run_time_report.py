@@ -348,14 +348,10 @@ def _render_degraded_run_time_report(
 
     timing_entries = [f"Total wall-clock time: {elapsed_text}s."]
     if _development_timebox_was_used(state):
-        timing_entries.append(
-            f"Development timebox consumed: {_development_consumed_text(state)}"
-        )
+        timing_entries.append(f"Development timebox consumed: {_development_consumed_text(state)}")
     if _cycle_timebox_was_used(state):
         timing_entries.append(f"Cycle timebox consumed: {_cycle_consumed_text(state)}")
-    timing_lines = [
-        f"- [T-{index}] {entry}" for index, entry in enumerate(timing_entries, start=1)
-    ]
+    timing_lines = [f"- [T-{index}] {entry}" for index, entry in enumerate(timing_entries, start=1)]
 
     return (
         "---\n"

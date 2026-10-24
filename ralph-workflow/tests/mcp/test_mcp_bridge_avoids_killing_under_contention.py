@@ -11,14 +11,14 @@ from datetime import timedelta
 import pytest
 from loguru import logger
 
-from ralph.mcp.server import lifecycle
-from ralph.mcp.server._mcp_health_event import (
-    _clear_host_contention_signals,
+from ralph.mcp.server import (
+    McpRestartPolicy,
+    clear_host_contention_signals,
     configure_bridge_sink,
+    lifecycle,
     read_durable_sink,
     record_host_contention_signal,
 )
-from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 
 
 @pytest.fixture(autouse=True)
@@ -30,9 +30,9 @@ def _isolate_contention_signals() -> Iterator[None]:
     the regular 3-miss policy tests in ``test_mcp_lifecycle.py`` and
     turn their probe-failure restarts into deferrals.
     """
-    _clear_host_contention_signals()
+    clear_host_contention_signals()
     yield
-    _clear_host_contention_signals()
+    clear_host_contention_signals()
 
 
 class _FakeProcess:
@@ -195,7 +195,7 @@ def test_successful_recovery_preserves_server() -> None:
 
     # If contention ceases (producer returns False, W signal cleared),
     # regular 3 misses trigger restart
-    _clear_host_contention_signals()
+    clear_host_contention_signals()
     contended[0] = False
     for _ in range(2):
         bridge.check_health_and_restart_if_needed()

@@ -110,6 +110,7 @@ def _open_all_gates(
     monkeypatch.setattr(catchup, "observe_branch_sha", _fake_observe)
     monkeypatch.setattr(catchup, "is_ancestor", _fake_is_ancestor)
     monkeypatch.setattr(catchup, "_still_safe_to_merge", _fake_still_safe)
+
     def _not_held(_root: Path) -> bool:
         return False
 

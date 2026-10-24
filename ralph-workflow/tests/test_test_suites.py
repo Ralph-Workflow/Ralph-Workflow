@@ -10,8 +10,9 @@ under the maintained ``1000``-line-per-file cap.
 
 from __future__ import annotations
 
-import ast
+import importlib.util
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -569,10 +570,11 @@ def test_static_discovery_populates_weight_cache_for_retained_files(
     """discover_test_files must populate the per-file weight cache in one pass.
 
     Without this in-line pre-population ``_test_file_weight`` re-parses every
-    cached source through ``ast.parse`` after discovery, costing ~5s on a 1.3k
-    file tree. The parent process pays that cost before any shard is spawned,
-    so it directly inflates the wall clock against the 60s combined budget
-    enforced by ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``.
+    cached source with the Python syntax-tree parser after discovery, costing
+    ~5s on a 1.3k file tree. The parent process pays that cost before any
+    shard is spawned, so it directly inflates the wall clock against the 60s
+    combined budget enforced by
+    ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``.
     """
     tests_root = tmp_path / "tests"
     tests_root.mkdir()
@@ -850,14 +852,47 @@ def test_static_discovery_populates_source_cache_for_retained_files(
     )  # policy: white-box-frozen
 
 
-def test_real_pty_completion_no_terminal_lost_has_required_auto_integrate_e2e_and_smoke() -> None:
-    (
-        """Verify that test_real_pty_completion_no_terminal_lost.py has required_auto_integrate_e2e/smoke markers.
-    wt-03-fix-bug: subprocess_e2e removed; the file runs in the E2E shard via
-    required_auto_integrate_e2e (which provides the same make-test coverage guarantee).
+def _load_module_from_path(module_name: str, path: Path) -> ModuleType:
+    """Import *path* as a standalone module.
+
+    The module object is deliberately NOT bound into this test module's
+    namespace: nothing it defines may be collected by pytest here.
     """
-        ""
-    )
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    assert spec is not None and spec.loader is not None, f"{path} must be importable"
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _module_marker_names(module: ModuleType) -> set[str]:
+    """Return the marker names pytest collects from *module*.
+
+    ``pytestmark`` is pytest's own public module-level marker attribute; a
+    module may set it to a single marker or to a sequence of markers.
+    """
+    marks = getattr(module, "pytestmark", [])
+    candidates = list(marks) if isinstance(marks, (list, tuple)) else [marks]
+    found = {getattr(candidate, "name", None) for candidate in candidates}
+    return {name for name in found if isinstance(name, str)}
+
+
+def _shard_marker_expression(command: tuple[str, ...]) -> str:
+    """Return the ``-m`` marker expression of a shard command (the last ``-m``)."""
+    marker_flag = len(command) - 1 - command[::-1].index("-m")
+    return command[marker_flag + 1]
+
+
+def test_real_pty_completion_no_terminal_lost_has_required_auto_integrate_e2e_and_smoke() -> None:
+    """The real-PTY regression file must carry the required auto-integrate E2E
+    marker and the smoke marker.
+
+    wt-03-fix-bug: subprocess_e2e removed; the file runs in the E2E shard via
+    required_auto_integrate_e2e (which provides the same make-test coverage
+    guarantee). The markers are read from the module's PUBLIC ``pytestmark``
+    attribute -- the same attribute pytest itself collects -- and not from
+    the file's source text, so no other test file's source is parsed here.
+    """
     target_rel = "tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py"
     repo_root = Path(__file__).resolve().parent.parent
     target_path = repo_root / target_rel
@@ -865,51 +900,95 @@ def test_real_pty_completion_no_terminal_lost_has_required_auto_integrate_e2e_an
     assert target_rel in test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES, (
         f"{target_rel} must be in REQUIRED_AUTO_INTEGRATE_E2E_FILES"
     )
-
-    tree = ast.parse(target_path.read_text(encoding="utf-8"), filename=str(target_path))
-
-    pytestmark_markers: set[str] = set()
-    for node in tree.body:
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "pytestmark":
-                    elements = (
-                        node.value.elts
-                        if isinstance(node.value, (ast.List, ast.Tuple))
-                        else [node.value]
-                    )
-                    for elt in elements:
-                        if isinstance(elt, ast.Attribute):
-                            pytestmark_markers.add(elt.attr)
-                        elif isinstance(elt, ast.Call) and isinstance(elt.func, ast.Attribute):
-                            pytestmark_markers.add(elt.func.attr)
-
-    assert {"required_auto_integrate_e2e", "smoke"}.issubset(pytestmark_markers), (
-        f"module-level pytestmark must define both required_auto_integrate_e2e and smoke, found: {pytestmark_markers}"
+    target_module = _load_module_from_path("pty_completion_target", target_path)
+    markers = _module_marker_names(target_module)
+    assert {"required_auto_integrate_e2e", "smoke"} <= markers, (
+        f"module-level markers must define both required_auto_integrate_e2e and smoke, found: {markers}"
     )
-
-    defined_functions = {
-        node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    }
-    assert "test_request_interactive_exit_does_not_lose_returncode" in defined_functions, (
+    assert hasattr(target_module, "test_request_interactive_exit_does_not_lose_returncode"), (
         f"test_request_interactive_exit_does_not_lose_returncode must be defined in {target_rel}"
     )
 
-    makefile_path = repo_root / "Makefile"
-    assert makefile_path.is_file(), "Makefile must exist on disk"
-    makefile_lines = makefile_path.read_text(encoding="utf-8").splitlines()
+    # The Makefile is the documented user-facing command surface: the
+    # ``test-verification-smoke`` target is how an operator runs this file.
+    # Reading a Makefile target body is a public-surface read, not
+    # white-box coupling into another test's implementation.
+    makefile_lines = (repo_root / "Makefile").read_text(encoding="utf-8").splitlines()
     smoke_target_body: list[str] = []
-    in_target = False
-    for line in makefile_lines:
-        if not in_target:
-            if line.startswith("test-verification-smoke:"):
-                in_target = True
-            continue
+    for line in makefile_lines[makefile_lines.index("test-verification-smoke:") + 1 :]:
         if not line.startswith("\t"):
             break
-        smoke_target_body.append(line.strip())
-
+        smoke_target_body.append(line)
     assert smoke_target_body, "test-verification-smoke target not found in Makefile"
     assert any(target_rel in line for line in smoke_target_body), (
         f"smoke target in Makefile must contain {target_rel}"
     )
+
+
+def test_required_auto_integrate_e2e_smoke_module_routes_to_the_required_e2e_shard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A module marked ``required_auto_integrate_e2e`` + ``smoke`` runs on the
+    required auto-integrate E2E shard, not on the default suite's shards.
+
+    The synthetic ``tests/`` tree holds the three module shapes the routing
+    contract distinguishes: the marked one, a plain unmarked one, and a
+    module-marked ``subprocess_e2e`` one. The public runner must keep the
+    marked module out of the subprocess-E2E lane, route it to the required
+    auto-integrate E2E shard, and leave the plain module on the general
+    shard.
+    """
+    tests_root = tmp_path / "tests"
+    tests_root.mkdir()
+    marked_rel = "tests/test_marked_required_e2e.py"
+    (tests_root / "test_marked_required_e2e.py").write_text(
+        "import pytest\n\n"
+        "pytestmark = [pytest.mark.required_auto_integrate_e2e, pytest.mark.smoke]\n\n\n"
+        "def test_request_interactive_exit_does_not_lose_returncode() -> None:\n    pass\n",
+        encoding="utf-8",
+    )
+    plain_rel = "tests/test_plain_default.py"
+    (tests_root / "test_plain_default.py").write_text(
+        "def test_plain() -> None:\n    pass\n", encoding="utf-8"
+    )
+    subprocess_e2e_rel = "tests/test_subprocess_e2e_only.py"
+    (tests_root / "test_subprocess_e2e_only.py").write_text(
+        "import pytest\n\npytestmark = pytest.mark.subprocess_e2e\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(test_suites_module, "REQUIRED_AUTO_INTEGRATE_E2E_FILES", (marked_rel,))
+    test_suites_module.reset_discovery_cache()
+
+    # Static discovery keeps the marked module (a ``smoke`` marker does not
+    # hide a file from static discovery) and drops the subprocess-E2E one.
+    assert set(test_suites_module.discover_test_files(tmp_path)) == {marked_rel, plain_rel}
+    # The marked module is NOT in the subprocess-E2E lane: it carries no
+    # ``subprocess_e2e`` marker, so the registry reaches it instead.
+    assert test_suites_module.discover_subprocess_e2e_files(tmp_path) == (subprocess_e2e_rel,)
+
+    clock = _FakeClock()
+    spawner = _StubSpawner([_FakeShardProcess([0]), _FakeShardProcess([0])])
+    exit_code = test_suites_module.run_test_suites(
+        cwd=tmp_path, spawner=spawner, monotonic=clock, wait=clock.advance
+    )
+    assert exit_code == 0
+    # The marked module is routed to the required auto-integrate E2E shard;
+    # the plain module stays on the default suite's general shard.
+    assert spawner.manifest_files == [(plain_rel,), (marked_rel,)]
+    # The default profile's expression selects ``required_auto_integrate_e2e``
+    # modules, so the smoke-marked module still runs on the default profile.
+    assert {_shard_marker_expression(c) for c, _cwd, _env in spawner.calls} == {
+        "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
+    }
+
+    # The focused profiles apply the plain ``not subprocess_e2e and not
+    # smoke`` expression, under which the smoke-marked module is NOT
+    # collected while the plain, unmarked module is.
+    focused_clock = _FakeClock()
+    focused_spawner = _StubSpawner([_FakeShardProcess([0]) for _ in range(4)])
+    focused_exit_code = test_suites_module.run_test_suites(
+        cwd=tmp_path, spawner=focused_spawner, profile="unit", monotonic=focused_clock
+    )
+    assert focused_exit_code == 0
+    assert {_shard_marker_expression(c) for c, _cwd, _env in focused_spawner.calls} == {
+        "not subprocess_e2e and not smoke"
+    }

@@ -157,6 +157,7 @@ def test_interrupted_integration_stall_emits_a_valid_run_time_report(
         "submit_artifact_canonical",
         _capture_submission(submitted),
     )
+
     def _skip_checkpoint(_state: PipelineState, **_kwargs: object) -> None:
         return None
 

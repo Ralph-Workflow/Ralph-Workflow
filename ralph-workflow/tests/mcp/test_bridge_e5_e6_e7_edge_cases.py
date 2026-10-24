@@ -16,13 +16,16 @@ Catalogue coverage:
 Testing-policy white-box exception (bridge internals):
 
 The cases marked ``# policy: white-box-exception`` below reach into the
-bridge's private restart machinery. The private symbols involved are
+bridge's private restart machinery and into the module-level scheduling
+knobs of ``ralph.mcp.server.lifecycle``. The private symbols involved are
 ``RestartAwareMcpBridge._bridge_generation``,
 ``RestartAwareMcpBridge._handle_failed_probe_under_lock``,
-``RestartAwareMcpBridge._hand_over_accept`` and
-``RestartAwareMcpBridge._perform_restart``.
+``RestartAwareMcpBridge._hand_over_accept``,
+``RestartAwareMcpBridge._perform_restart`` and the module-level timing
+constants ``_HANDOVER_ACK_TIMEOUT_S``, ``_HANDOVER_KILL_WAIT_S``,
+``_UNKILLABLE_REAP_BACKOFF_S`` and ``_UNKILLABLE_REAP_RETRY_S``.
 
-Quoted policy clause -- docs/ralph-workflow-policy/testing-policy.md,
+Quoted policy clause -- docs/ralph-workflow-policy/testing-policy.md:25-26,
 "Default requirements":
   "White-box tests that reach into private internals are permitted only
    when no observable surface can express the regression."
@@ -39,6 +42,15 @@ guard counter and has no public accessor (``run_id`` is a different
 identifier). Re-expressing these cases publicly would mean driving a real
 child replacement through a real socket handover instead of pinning the
 decision point, and no public diagnostic field carries that verdict.
+
+The four timing constants are INTERNAL SCHEDULING KNOBS with no public
+observable of their own: they bound how long the bridge waits for a child's
+pause acknowledgement, its kill, and the background reap of an unkillable
+child. They are patched only to force the deterministic branch (the bounded
+wait expires immediately instead of racing the wall clock against the
+per-test budget), while every ASSERTED outcome stays observable on the
+public surface: the promoted child PID, the surviving old child, the
+restart count and the deferral counters.
 """
 
 from __future__ import annotations
@@ -56,10 +68,13 @@ from unittest.mock import patch
 import psutil
 import pytest
 
-from ralph.mcp.server import lifecycle
-from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
-from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
-from ralph.mcp.server._wire_ledger import WireLedgerIOError, append_wire_record
+from ralph.mcp.server import (
+    McpRestartPolicy,
+    StandaloneMcpProcess,
+    WireLedgerIOError,
+    append_wire_record,
+    lifecycle,
+)
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 

@@ -16,10 +16,12 @@ import tempfile
 import urllib.error
 from datetime import timedelta
 
-from ralph.mcp.bridge_diagnostics import classify_probe_failure
-from ralph.mcp.server import lifecycle
-from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
-from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
+from ralph.mcp.server import (
+    McpRestartPolicy,
+    StandaloneMcpProcess,
+    classify_probe_failure,
+    lifecycle,
+)
 
 
 class _FakeProcess:

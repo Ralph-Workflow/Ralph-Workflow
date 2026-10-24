@@ -144,10 +144,7 @@ class _CatchupObservation:
     def summary(self) -> str:
         """Return a compact description of the CURRENT observation."""
 
-        return (
-            f"target={self.target}@{self.target_sha}; "
-            f"head={self.current}@{self.current_sha}"
-        )
+        return f"target={self.target}@{self.target_sha}; head={self.current}@{self.current_sha}"
 
 
 def _current_branch_name(root: Path) -> str | None:

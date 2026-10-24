@@ -241,15 +241,9 @@ def test_catchup_regression_repeated_timeout_escalates_without_third_merge(
     ledger, _ledger_path = _ledger(tmp_path)
     clock = _RecordingClock()
 
-    first = catchup.attempt_catchup_fast_forward(
-        _config(), tmp_path, ledger=ledger, clock=clock
-    )
-    second = catchup.attempt_catchup_fast_forward(
-        _config(), tmp_path, ledger=ledger, clock=clock
-    )
-    third = catchup.attempt_catchup_fast_forward(
-        _config(), tmp_path, ledger=ledger, clock=clock
-    )
+    first = catchup.attempt_catchup_fast_forward(_config(), tmp_path, ledger=ledger, clock=clock)
+    second = catchup.attempt_catchup_fast_forward(_config(), tmp_path, ledger=ledger, clock=clock)
+    third = catchup.attempt_catchup_fast_forward(_config(), tmp_path, ledger=ledger, clock=clock)
 
     assert "timed out" in first
     assert "timed out" in second
@@ -277,17 +271,13 @@ def test_catchup_regression_changed_observation_gets_a_fresh_attempt(
     clock = _RecordingClock()
 
     for _ in range(2):
-        catchup.attempt_catchup_fast_forward(
-            _config(), tmp_path, ledger=ledger, clock=clock
-        )
+        catchup.attempt_catchup_fast_forward(_config(), tmp_path, ledger=ledger, clock=clock)
 
     def _changed_observation(_root: Path, name: str) -> tuple[str, bool]:
         return ("c" * 40, True) if name == "main" else ("a" * 40, True)
 
     monkeypatch.setattr(catchup, "observe_branch_sha", _changed_observation)
-    outcome = catchup.attempt_catchup_fast_forward(
-        _config(), tmp_path, ledger=ledger, clock=clock
-    )
+    outcome = catchup.attempt_catchup_fast_forward(_config(), tmp_path, ledger=ledger, clock=clock)
 
     assert "timed out" in outcome
     assert len(calls) == 3

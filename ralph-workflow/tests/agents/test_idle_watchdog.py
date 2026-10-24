@@ -261,6 +261,7 @@ if TYPE_CHECKING:
         WaitingStatusEvent,
         WaitingStatusListener,
     )
+    from ralph.agents.parsers import AgentParser
 
 _IDLE_TIMEOUT = 0.1
 
@@ -275,6 +276,16 @@ _REAL_PROGRESS_LINE = "[subagent] progress: phase=phase-1"
 _REAL_HEARTBEAT_LINE = "[subagent] heartbeat"
 
 _REAL_CHILD_JSON_LINE = '{"type": "child_progress", "child_id": "child-A", "phase": "phase-2"}'
+
+# Every transport whose coverage belongs to the DEFAULT lane. The AGY
+# transport is deliberately absent: its cases live in their own
+# parametrized tests whose node ids contain ``agy``, so
+# ``tests/conftest.py`` marks them ``smoke`` and the default lane
+# deselects them (AGY regression coverage is an explicit smoke
+# profile, never part of the default suite).
+_NON_AGY_TRANSPORTS: tuple[AgentTransport, ...] = tuple(
+    transport for transport in AgentTransport if transport is not AgentTransport.AGY
+)
 
 _KNOWN_TOOL_CALL_VERBS_FOR_TEST: frozenset[str] = frozenset(
     {
@@ -3788,49 +3799,71 @@ def test_opencode_capture_lines_consumable_by_record_subagent_work() -> None:
     assert any("heartbeat" in line.lower() for line in consumed), consumed
 
 
+def _assert_transport_strategy_surfaces_real_extracted_progress(transport: AgentTransport) -> None:
+    """Assert one transport's strategy surfaces real extracted progress.
+
+    The body is shared by the default-lane test (every non-AGY
+    transport) and the AGY-only smoke case below so both cover exactly
+    the same assertions.
+    """
+    watchdog = _cross_transport_subagent_visib_make_watchdog()
+    tokens = _bind_subagent_sink_to_watchdog(watchdog)
+    try:
+        watchdog.record_invocation_start()
+        assert watchdog.last_subagent_progress_description is None
+
+        strategy = strategy_for_transport(transport, registry=_make_registry())
+        strategy.observe_line(_REAL_PROGRESS_LINE)
+
+        assert watchdog.last_subagent_progress_description == _REAL_PROGRESS_LINE, (
+            f"transport={transport!r}: watchdog did not capture real extracted"
+            f" progress from line observer; got"
+            f" {watchdog.last_subagent_progress_description!r}"
+        )
+        snapshot = watchdog.diagnostic_snapshot(now=0.0)
+        assert snapshot["subagent_progress_count"] >= 1, (
+            f"transport={transport!r}: diagnostic_snapshot"
+            f" MUST report subagent_progress_count >= 1 after a real"
+            f" progress line; got {snapshot['subagent_progress_count']}"
+        )
+        last_activity = snapshot["last_subagent_progress_at"]
+        assert (
+            last_activity is not None and isinstance(last_activity, float) and last_activity >= 0.0
+        ), (
+            f"transport={transport!r}: diagnostic_snapshot"
+            f" MUST report last_subagent_progress_at as a non-None"
+            f" float >= 0.0 after a real progress line; got {last_activity!r}"
+        )
+        assert snapshot["current_subagent_tool_call"] == _parse_tool_call_expected(
+            _REAL_PROGRESS_LINE
+        ), (
+            f"transport={transport!r}: diagnostic_snapshot"
+            f" MUST report current_subagent_tool_call matching the"
+            f" parser output for the observed description; got"
+            f" {snapshot['current_subagent_tool_call']!r}"
+        )
+    finally:
+        _reset_sink_tokens(tokens)
+
+
 def test_transport_strategy_surfaces_real_extracted_progress_to_watchdog() -> None:
 
-    for transport in list(AgentTransport):
-        watchdog = _cross_transport_subagent_visib_make_watchdog()
-        tokens = _bind_subagent_sink_to_watchdog(watchdog)
-        try:
-            watchdog.record_invocation_start()
-            assert watchdog.last_subagent_progress_description is None
+    for transport in _NON_AGY_TRANSPORTS:
+        _assert_transport_strategy_surfaces_real_extracted_progress(transport)
 
-            strategy = strategy_for_transport(transport, registry=_make_registry())
-            strategy.observe_line(_REAL_PROGRESS_LINE)
 
-            assert watchdog.last_subagent_progress_description == _REAL_PROGRESS_LINE, (
-                f"transport={transport!r}: watchdog did not capture real extracted"
-                f" progress from line observer; got"
-                f" {watchdog.last_subagent_progress_description!r}"
-            )
-            snapshot = watchdog.diagnostic_snapshot(now=0.0)
-            assert snapshot["subagent_progress_count"] >= 1, (
-                f"transport={transport!r}: diagnostic_snapshot"
-                f" MUST report subagent_progress_count >= 1 after a real"
-                f" progress line; got {snapshot['subagent_progress_count']}"
-            )
-            last_activity = snapshot["last_subagent_progress_at"]
-            assert (
-                last_activity is not None
-                and isinstance(last_activity, float)
-                and last_activity >= 0.0
-            ), (
-                f"transport={transport!r}: diagnostic_snapshot"
-                f" MUST report last_subagent_progress_at as a non-None"
-                f" float >= 0.0 after a real progress line; got {last_activity!r}"
-            )
-            assert snapshot["current_subagent_tool_call"] == _parse_tool_call_expected(
-                _REAL_PROGRESS_LINE
-            ), (
-                f"transport={transport!r}: diagnostic_snapshot"
-                f" MUST report current_subagent_tool_call matching the"
-                f" parser output for the observed description; got"
-                f" {snapshot['current_subagent_tool_call']!r}"
-            )
-        finally:
-            _reset_sink_tokens(tokens)
+@pytest.mark.parametrize("transport", [AgentTransport.AGY], ids=["agy"])
+def test_transport_strategy_surfaces_real_extracted_progress_to_watchdog_agy(
+    transport: AgentTransport,
+) -> None:
+    """AGY-only smoke case for the transport progress-surface contract.
+
+    The parametrization id MUST contain ``agy``: ``tests/conftest.py``
+    marks every node id containing ``agy`` with the ``smoke`` marker, so
+    the default lane deselects this case and it only runs in the
+    explicit smoke profile.
+    """
+    _assert_transport_strategy_surfaces_real_extracted_progress(transport)
 
 
 def test_transport_strategy_surfaces_real_extraction() -> None:
@@ -9035,39 +9068,60 @@ def test_resumable_reasons_still_resume_for_prior_session() -> None:
         )
 
 
+def _assert_agent_registry_build_subagent_pid_registry_per_transport(
+    transport: AgentTransport,
+) -> None:
+    """``AgentRegistry.build_subagent_pid_registry`` returns a per-transport pair.
+
+    For each supported ``AgentTransport``, the helper MUST return a
+    ``(SubagentPidRegistry, SubagentPidSource)`` pair where the source
+    filters by the transport's source label. This is the production
+    entry point the analysis flagged as missing.
+    """
+    agent_registry = AgentRegistry()
+    registry, source = agent_registry.build_subagent_pid_registry(transport)
+    assert isinstance(registry, SubagentPidRegistry)
+    assert isinstance(source, SubagentPidSource)
+    # Registering a PID for the correct transport source makes it
+    # visible via the per-transport filtered source. Every supported
+    # ``AgentTransport`` member is bound to its canonical source label
+    # (``transport.value``) -- including Nanocoder, which has its own
+    # ``make_nanocoder_subagent_pid_source`` factory since the
+    # watchdog's per-transport ``SubagentPidSource`` filter (R1) is
+    # keyed on the ``AgentTransport`` enum, not the parser.
+    registry.register(12345, source=transport.value, now=0.0)
+    assert 12345 in source.known_subagent_pids()
+    # A PID registered for a DIFFERENT transport is invisible (R1
+    # isolation between per-transport filtered views).
+    other_transport = (
+        AgentTransport.CLAUDE if transport != AgentTransport.CLAUDE else AgentTransport.PI
+    )
+    other_registry, other_source = agent_registry.build_subagent_pid_registry(other_transport)
+    other_registry.register(67890, source=other_transport.value, now=0.0)
+    assert 67890 not in source.known_subagent_pids()
+    assert 67890 in other_source.known_subagent_pids()
+
+
 # === consolidated from test_production_subagent_registry_wiring.py ===
 def test_agent_registry_build_subagent_pid_registry_per_transport() -> None:
 
-    for transport in list(AgentTransport):
-        """``AgentRegistry.build_subagent_pid_registry`` returns a per-transport pair.
+    for transport in _NON_AGY_TRANSPORTS:
+        _assert_agent_registry_build_subagent_pid_registry_per_transport(transport)
 
-        For each supported ``AgentTransport``, the helper MUST return a
-        ``(SubagentPidRegistry, SubagentPidSource)`` pair where the source
-        filters by the transport's source label. This is the production
-        entry point the analysis flagged as missing.
-        """
-        agent_registry = AgentRegistry()
-        registry, source = agent_registry.build_subagent_pid_registry(transport)
-        assert isinstance(registry, SubagentPidRegistry)
-        assert isinstance(source, SubagentPidSource)
-        # Registering a PID for the correct transport source makes it
-        # visible via the per-transport filtered source. Every supported
-        # ``AgentTransport`` member is bound to its canonical source label
-        # (``transport.value``) -- including Nanocoder, which has its own
-        # ``make_nanocoder_subagent_pid_source`` factory since the
-        # watchdog's per-transport ``SubagentPidSource`` filter (R1) is
-        # keyed on the ``AgentTransport`` enum, not the parser.
-        registry.register(12345, source=transport.value, now=0.0)
-        assert 12345 in source.known_subagent_pids()
-        # A PID registered for a DIFFERENT transport is invisible (R1
-        # isolation between per-transport filtered views).
-        other_transport = (
-            AgentTransport.CLAUDE if transport != AgentTransport.CLAUDE else AgentTransport.PI
-        )
-        other_registry, other_source = agent_registry.build_subagent_pid_registry(other_transport)
-        other_registry.register(67890, source=other_transport.value, now=0.0)
-        assert 67890 not in source.known_subagent_pids()
-        assert 67890 in other_source.known_subagent_pids()
+
+# === consolidated from test_production_subagent_registry_wiring.py ===
+@pytest.mark.parametrize("transport", [AgentTransport.AGY], ids=["agy"])
+def test_agent_registry_build_subagent_pid_registry_per_transport_agy(
+    transport: AgentTransport,
+) -> None:
+    """AGY-only smoke case for the per-transport subagent PID registry.
+
+    The parametrization id MUST contain ``agy``: ``tests/conftest.py``
+    marks every node id containing ``agy`` with the ``smoke`` marker, so
+    the default lane deselects this case and it only runs in the
+    explicit smoke profile.
+    """
+    _assert_agent_registry_build_subagent_pid_registry_per_transport(transport)
 
 
 # === consolidated from test_production_subagent_registry_wiring.py ===
@@ -9193,6 +9247,36 @@ def test_strategy_for_transport_threads_subagent_pid_source() -> None:
     assert strategy._subagent_pid_source is source
 
 
+def _assert_parser_constructor_stores_subagent_pid_registry(
+    transport_label: str,
+    parser_cls: type[AgentParser],
+) -> None:
+    """Each parser constructor MUST STORE the registry, not discard it.
+
+    The previous pass silently discarded the registry with ``del``.
+    The fix: store as ``self._subagent_pid_registry`` so future code
+    paths can register PIDs into the shared registry without
+    re-plumbing the constructor signature.
+
+    The parametrize list is keyed on the eight supported
+    ``AgentTransport`` enum members that have a corresponding parser
+    class (every transport except ``OPENCODE`` -- OpenCode's parser is
+    constructed with the production ``parser_factory`` call, not via
+    the bare constructor, so it has its own dedicated wiring test).
+    ``gemini`` has its own dedicated regression test below
+    (``test_gemini_parser_registers_pid_from_child_progress``) because
+    the public factory path uses a parser-bound source label distinct
+    from its ``AgentTransport`` (``GENERIC``); the regression test
+    pins the explicit behavior so a future PR cannot silently drop
+    ``gemini``-labeled registrations the way the prior bare
+    ``except Exception`` pattern did.
+    """
+    agent_registry = AgentRegistry()
+    registry, _ = agent_registry.build_subagent_pid_registry(AgentTransport(transport_label))
+    parser = parser_cls(subagent_pid_registry=registry)
+    assert getattr(parser, "_subagent_pid_registry", None) is registry
+
+
 # === consolidated from test_production_subagent_registry_wiring.py ===
 def test_parser_constructor_stores_subagent_pid_registry() -> None:
 
@@ -9201,33 +9285,29 @@ def test_parser_constructor_stores_subagent_pid_registry() -> None:
         ("claude_interactive", ClaudeInteractiveParser),
         ("codex", CodexParser),
         ("pi", PiParser),
-        ("agy", AgyParser),
         ("generic", GenericParser),
     ]:
-        """Each parser constructor MUST STORE the registry, not discard it.
+        _assert_parser_constructor_stores_subagent_pid_registry(transport_label, parser_cls)
 
-        The previous pass silently discarded the registry with ``del``.
-        The fix: store as ``self._subagent_pid_registry`` so future code
-        paths can register PIDs into the shared registry without
-        re-plumbing the constructor signature.
 
-        The parametrize list is keyed on the eight supported
-        ``AgentTransport`` enum members that have a corresponding parser
-        class (every transport except ``OPENCODE`` -- OpenCode's parser is
-        constructed with the production ``parser_factory`` call, not via
-        the bare constructor, so it has its own dedicated wiring test).
-        ``gemini`` has its own dedicated regression test below
-        (``test_gemini_parser_registers_pid_from_child_progress``) because
-        the public factory path uses a parser-bound source label distinct
-        from its ``AgentTransport`` (``GENERIC``); the regression test
-        pins the explicit behavior so a future PR cannot silently drop
-        ``gemini``-labeled registrations the way the prior bare
-        ``except Exception`` pattern did.
-        """
-        agent_registry = AgentRegistry()
-        registry, _ = agent_registry.build_subagent_pid_registry(AgentTransport(transport_label))
-        parser = parser_cls(subagent_pid_registry=registry)
-        assert getattr(parser, "_subagent_pid_registry", None) is registry
+# === consolidated from test_production_subagent_registry_wiring.py ===
+@pytest.mark.parametrize(
+    ("transport_label", "parser_cls"),
+    [("agy", AgyParser)],
+    ids=["agy-AgyParser"],
+)
+def test_parser_constructor_stores_subagent_pid_registry_agy(
+    transport_label: str,
+    parser_cls: type[AgentParser],
+) -> None:
+    """AGY-only smoke case for the parser registry constructor wiring.
+
+    The parametrization id MUST contain ``agy``: ``tests/conftest.py``
+    marks every node id containing ``agy`` with the ``smoke`` marker, so
+    the default lane deselects this case and it only runs in the
+    explicit smoke profile.
+    """
+    _assert_parser_constructor_stores_subagent_pid_registry(transport_label, parser_cls)
 
 
 # === consolidated from test_production_subagent_registry_wiring.py ===
@@ -9320,6 +9400,53 @@ def test_catalog_default_seeded_transports_have_subagent_pid_registry_factory() 
         assert isinstance(source, SubagentPidSource)
 
 
+def _assert_parser_registers_pid_from_structured_event_when_registry_wired(
+    transport_label: str,
+    parser_cls: type[AgentParser],
+) -> None:
+    """Structured event carrying a PID MUST register it into the shared registry.
+
+    The R5 production wiring requires the parser's ``_dispatch_json_object``
+    path to call the registry registration hook for every observed
+    structured event. When an event carries an embedded PID, the parser
+    registers it via ``SubagentPidRegistry.register``. When the event
+    has no PID, the hook is a no-op (and the registry stays empty).
+
+    The parametrize list is the subset of parser keys that are
+    also supported ``AgentTransport`` members. ``gemini`` is
+    covered by the dedicated regression test
+    ``test_gemini_parser_registers_pid_from_child_progress`` below
+    (the public factory path uses the parser-bound ``"gemini"``
+    source label even though the catalog maps Gemini to the
+    ``GENERIC`` transport, so it sits outside the
+    ``AgentTransport``-keyed parametrizations).
+    """
+    registry = SubagentPidRegistry()
+    parser = parser_cls(
+        subagent_pid_registry=registry,
+        subagent_source_label=transport_label,
+    )
+    # Pre-condition: empty registry.
+    assert len(registry) == 0
+
+    # Drive an event that carries a PID at the top level.
+    pid = 55555
+    line_with_pid = '{"type": "child_progress", "pid": ' + str(pid) + ', "content": "x"}'
+    events = list(parser.parse(iter([line_with_pid])))
+    # Parser still emits the same typed event (registry is a side-effect hook).
+    assert events, "parser MUST still emit an event for child_progress line"
+    assert pid in registry.known_pids()
+    identity = next(iter(registry.snapshot()))
+    assert identity.source == transport_label
+
+    # Drive an event with no PID -> no-op for the registry.
+    line_without_pid = '{"type": "text", "content": "hello"}'
+    events2 = list(parser.parse(iter([line_without_pid])))
+    assert events2
+    # No new PIDs registered.
+    assert len(registry) == 1
+
+
 # === consolidated from test_production_subagent_registry_wiring.py ===
 def test_parser_registers_pid_from_structured_event_when_registry_wired() -> None:
 
@@ -9327,50 +9454,33 @@ def test_parser_registers_pid_from_structured_event_when_registry_wired() -> Non
         ("claude", ClaudeParser),
         ("codex", CodexParser),
         ("pi", PiParser),
-        ("agy", AgyParser),
         ("generic", GenericParser),
     ]:
-        """Structured event carrying a PID MUST register it into the shared registry.
-
-        The R5 production wiring requires the parser's ``_dispatch_json_object``
-        path to call the registry registration hook for every observed
-        structured event. When an event carries an embedded PID, the parser
-        registers it via ``SubagentPidRegistry.register``. When the event
-        has no PID, the hook is a no-op (and the registry stays empty).
-
-        The parametrize list is the subset of parser keys that are
-        also supported ``AgentTransport`` members. ``gemini`` is
-        covered by the dedicated regression test
-        ``test_gemini_parser_registers_pid_from_child_progress`` below
-        (the public factory path uses the parser-bound ``"gemini"``
-        source label even though the catalog maps Gemini to the
-        ``GENERIC`` transport, so it sits outside the
-        ``AgentTransport``-keyed parametrizations).
-        """
-        registry = SubagentPidRegistry()
-        parser = parser_cls(
-            subagent_pid_registry=registry,
-            subagent_source_label=transport_label,
+        _assert_parser_registers_pid_from_structured_event_when_registry_wired(
+            transport_label, parser_cls
         )
-        # Pre-condition: empty registry.
-        assert len(registry) == 0
 
-        # Drive an event that carries a PID at the top level.
-        pid = 55555
-        line_with_pid = '{"type": "child_progress", "pid": ' + str(pid) + ', "content": "x"}'
-        events = list(parser.parse(iter([line_with_pid])))
-        # Parser still emits the same typed event (registry is a side-effect hook).
-        assert events, "parser MUST still emit an event for child_progress line"
-        assert pid in registry.known_pids()
-        identity = next(iter(registry.snapshot()))
-        assert identity.source == transport_label
 
-        # Drive an event with no PID -> no-op for the registry.
-        line_without_pid = '{"type": "text", "content": "hello"}'
-        events2 = list(parser.parse(iter([line_without_pid])))
-        assert events2
-        # No new PIDs registered.
-        assert len(registry) == 1
+# === consolidated from test_production_subagent_registry_wiring.py ===
+@pytest.mark.parametrize(
+    ("transport_label", "parser_cls"),
+    [("agy", AgyParser)],
+    ids=["agy-AgyParser"],
+)
+def test_parser_registers_pid_from_structured_event_when_registry_wired_agy(
+    transport_label: str,
+    parser_cls: type[AgentParser],
+) -> None:
+    """AGY-only smoke case for the parser PID registration hook.
+
+    The parametrization id MUST contain ``agy``: ``tests/conftest.py``
+    marks every node id containing ``agy`` with the ``smoke`` marker, so
+    the default lane deselects this case and it only runs in the
+    explicit smoke profile.
+    """
+    _assert_parser_registers_pid_from_structured_event_when_registry_wired(
+        transport_label, parser_cls
+    )
 
 
 # === consolidated from test_production_subagent_registry_wiring.py ===
@@ -9407,6 +9517,36 @@ def test_parser_registration_hook_no_op_when_source_label_none() -> None:
     assert 12345 not in registry.known_pids()
 
 
+def _assert_get_parser_threads_registry_and_source_label(
+    parser_key: str,
+    transport_label: str,
+) -> None:
+    """``get_parser(parser_key, subagent_pid_registry=..., subagent_source_label=...)`` wires both.
+
+    The previous pass silently instantiated parsers as ``parser_cls()``
+    with no registry. The fix: ``get_parser`` MUST accept and forward
+    the registry + source label kwargs so the parser's registration
+    hook fires for PID-carrying events.
+
+    The parametrize list is the subset of parser keys that are
+    also supported ``AgentTransport`` members. ``gemini`` is
+    covered by the dedicated regression test
+    ``test_get_parser_gemini_threads_registry_and_source_label`` below
+    (the public factory path uses the parser-bound ``"gemini"``
+    source label even though the catalog maps Gemini to the
+    ``GENERIC`` transport, so it sits outside the
+    ``AgentTransport``-keyed parametrizations).
+    """
+    registry = SubagentPidRegistry()
+    parser = get_parser(
+        parser_key,
+        subagent_pid_registry=registry,
+        subagent_source_label=transport_label,
+    )
+    assert parser._subagent_pid_registry is registry
+    assert parser._subagent_source_label == transport_label
+
+
 # === consolidated from test_production_subagent_registry_wiring.py ===
 def test_get_parser_threads_registry_and_source_label() -> None:
 
@@ -9414,33 +9554,29 @@ def test_get_parser_threads_registry_and_source_label() -> None:
         ("claude", "claude"),
         ("codex", "codex"),
         ("pi", "pi"),
-        ("agy", "agy"),
         ("generic", "generic"),
     ]:
-        """``get_parser(parser_key, subagent_pid_registry=..., subagent_source_label=...)`` wires both.
+        _assert_get_parser_threads_registry_and_source_label(parser_key, transport_label)
 
-        The previous pass silently instantiated parsers as ``parser_cls()``
-        with no registry. The fix: ``get_parser`` MUST accept and forward
-        the registry + source label kwargs so the parser's registration
-        hook fires for PID-carrying events.
 
-        The parametrize list is the subset of parser keys that are
-        also supported ``AgentTransport`` members. ``gemini`` is
-        covered by the dedicated regression test
-        ``test_get_parser_gemini_threads_registry_and_source_label`` below
-        (the public factory path uses the parser-bound ``"gemini"``
-        source label even though the catalog maps Gemini to the
-        ``GENERIC`` transport, so it sits outside the
-        ``AgentTransport``-keyed parametrizations).
-        """
-        registry = SubagentPidRegistry()
-        parser = get_parser(
-            parser_key,
-            subagent_pid_registry=registry,
-            subagent_source_label=transport_label,
-        )
-        assert parser._subagent_pid_registry is registry
-        assert parser._subagent_source_label == transport_label
+# === consolidated from test_production_subagent_registry_wiring.py ===
+@pytest.mark.parametrize(
+    ("parser_key", "transport_label"),
+    [("agy", "agy")],
+    ids=["agy-agy"],
+)
+def test_get_parser_threads_registry_and_source_label_agy(
+    parser_key: str,
+    transport_label: str,
+) -> None:
+    """AGY-only smoke case for the ``get_parser`` registry wiring.
+
+    The parametrization id MUST contain ``agy``: ``tests/conftest.py``
+    marks every node id containing ``agy`` with the ``smoke`` marker, so
+    the default lane deselects this case and it only runs in the
+    explicit smoke profile.
+    """
+    _assert_get_parser_threads_registry_and_source_label(parser_key, transport_label)
 
 
 # === consolidated from test_production_subagent_registry_wiring.py ===
@@ -11071,6 +11207,40 @@ def test_partial_shared_registry_falls_back_to_internal_build() -> None:
     assert options.subagent_pid_source is None
 
 
+def _assert_shared_registry_supported_for_transport(transport: AgentTransport) -> None:
+    """The shared-registry contract works for the given supported transport.
+
+    The R5 cross-transport subagent visibility requirement covers
+    every transport the orchestrator can dispatch. The
+    ``build_subagent_pid_registry`` factory builds a per-transport
+    source adapter backed by the shared registry, and the registry
+    registrations are visible to the source for every transport in
+    the canonical set.
+    """
+    registry, source = AgentRegistry().build_subagent_pid_registry(transport)
+    transport_name = transport.value
+    # Every supported ``AgentTransport`` member is bound to its canonical
+    # source label (``transport.value``) -- including Nanocoder, which
+    # has its own ``make_nanocoder_subagent_pid_source`` factory since
+    # the watchdog's per-transport ``SubagentPidSource`` filter (R1) is
+    # keyed on the ``AgentTransport`` enum, not the parser.
+    source_label = transport_name
+    # Register a PID under the transport's source label.
+    pid = 70000 + (hash(transport_name) % 1000)
+    # Cast keeps the test fully typed per AGENTS.md 'tests must be
+    # fully typed' (no type-ignore comments in test files). The
+    # pattern mirrors ``tests/agents/idle_watchdog/
+    # test_subagent_identity_excludes_helpers.py`` which casts to
+    # ``SubagentIdentity.__init__`` for the same narrowing reason.
+    registry.register(
+        pid,
+        source=source_label,
+        now=0.0,
+    )
+    # The per-transport source sees the PID (shared-registry contract).
+    assert source.known_subagent_pids() == {pid}
+
+
 # === consolidated from test_shared_subagent_pid_registry.py ===
 def test_shared_registry_supported_for_every_transport() -> None:
 
@@ -11078,43 +11248,27 @@ def test_shared_registry_supported_for_every_transport() -> None:
         AgentTransport.OPENCODE,
         AgentTransport.CLAUDE,
         AgentTransport.PI,
-        AgentTransport.AGY,
         AgentTransport.CLAUDE_INTERACTIVE,
         AgentTransport.CODEX,
         AgentTransport.NANOCODER,
         AgentTransport.GENERIC,
     ]:
-        """The shared-registry contract works for every supported transport.
+        _assert_shared_registry_supported_for_transport(transport)
 
-        The R5 cross-transport subagent visibility requirement covers
-        every transport the orchestrator can dispatch. The
-        ``build_subagent_pid_registry`` factory builds a per-transport
-        source adapter backed by the shared registry, and the registry
-        registrations are visible to the source for every transport in
-        the canonical set.
-        """
-        registry, source = AgentRegistry().build_subagent_pid_registry(transport)
-        transport_name = transport.value
-        # Every supported ``AgentTransport`` member is bound to its canonical
-        # source label (``transport.value``) -- including Nanocoder, which
-        # has its own ``make_nanocoder_subagent_pid_source`` factory since
-        # the watchdog's per-transport ``SubagentPidSource`` filter (R1) is
-        # keyed on the ``AgentTransport`` enum, not the parser.
-        source_label = transport_name
-        # Register a PID under the transport's source label.
-        pid = 70000 + (hash(transport_name) % 1000)
-        # Cast keeps the test fully typed per AGENTS.md 'tests must be
-        # fully typed' (no type-ignore comments in test files). The
-        # pattern mirrors ``tests/agents/idle_watchdog/
-        # test_subagent_identity_excludes_helpers.py`` which casts to
-        # ``SubagentIdentity.__init__`` for the same narrowing reason.
-        registry.register(
-            pid,
-            source=source_label,
-            now=0.0,
-        )
-        # The per-transport source sees the PID (shared-registry contract).
-        assert source.known_subagent_pids() == {pid}
+
+# === consolidated from test_shared_subagent_pid_registry.py ===
+@pytest.mark.parametrize("transport", [AgentTransport.AGY], ids=["agy"])
+def test_shared_registry_supported_for_every_transport_agy(
+    transport: AgentTransport,
+) -> None:
+    """AGY-only smoke case for the shared subagent PID registry contract.
+
+    The parametrization id MUST contain ``agy``: ``tests/conftest.py``
+    marks every node id containing ``agy`` with the ``smoke`` marker, so
+    the default lane deselects this case and it only runs in the
+    explicit smoke profile.
+    """
+    _assert_shared_registry_supported_for_transport(transport)
 
 
 # === consolidated from test_silent_after_tool_call_wedge.py ===
