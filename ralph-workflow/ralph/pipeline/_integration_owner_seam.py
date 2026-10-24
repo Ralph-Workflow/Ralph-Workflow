@@ -28,7 +28,10 @@ about DURABLE STATE, which no live observation can express:
 * ``REQUIRE_INTERVENTION`` -- the durable diagnostic-intervention flag
   on the integration record, plus the "a retained obligation with no
   record behind it" case. It is decided by
-  :func:`ralph.pipeline._integration_record_facts.apply_record_facts`.
+  :func:`ralph.pipeline._integration_record_facts.apply_record_facts`,
+  which applies the durable fact against the LIVE observation: a stale
+  durable claim never outranks a current, healthy Git observation
+  (Git outranks the record).
 * ``PUBLISH_AFTER_LANDING`` -- the remote-publication obligation. It
   lives in the rebase state and is decided by
   :mod:`ralph.pipeline._publication_state_machine`; the durable
@@ -46,6 +49,10 @@ record facts through
 seam that needs ``PUBLISH_AFTER_LANDING`` or ``COMPLETE_WITH_PROOF``
 consults the driver that owns those facts -- it must never re-derive
 them from a private decision table of its own.
+
+The seam also carries the CONFIGURED target branch and remote name into
+the owner, so the observation is taken against the branch and remote
+the operator configured rather than against a hardcoded pair.
 """
 
 from __future__ import annotations
@@ -53,7 +60,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.pipeline._integration_record_facts import apply_record_facts
-from ralph.pipeline.integration_owner import decide_integration
+from ralph.pipeline.integration_owner import decide_integration_verdict
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -73,6 +80,8 @@ def decide_seam_action(
     agent_active: bool = False,
     ledger_path: Path | None = None,
     retained: bool = False,
+    target: str | None = None,
+    remote: str | None = None,
 ) -> IntegrationAction:
     """Ask the owner what integration does next, then overlay the record facts.
 
@@ -93,15 +102,31 @@ def decide_seam_action(
             obligation. A retained obligation with no durable record
             behind it has nothing the boundary can act on, so the seam
             fails closed to ``REQUIRE_INTERVENTION``.
+        target: The CONFIGURED integration target branch name. ``None``
+            uses the director's default (``main``). A caller with a
+            configured target must pass it so the observation is taken
+            against the configured branch.
+        remote: The CONFIGURED remote name. ``None`` uses the
+            director's default (``origin``).
 
     Returns:
         The action the seam must act on: the owner's mutation-ladder
-        answer, overlaid with the durable record facts.
+        answer, overlaid with the durable record facts. The overlay is
+        applied against the LIVE observation, so a stale durable claim
+        never turns a current, healthy Git observation into a terminal
+        block.
     """
-    owner_action, _owner_reason = decide_integration(
+    verdict = decide_integration_verdict(
         root,
         record=record,
         agent_active=agent_active,
         ledger_path=ledger_path,
+        target=target,
+        remote=remote,
     )
-    return apply_record_facts(owner_action, record, retained=retained)
+    return apply_record_facts(
+        verdict.action,
+        record,
+        retained=retained,
+        observation=verdict.observation,
+    )

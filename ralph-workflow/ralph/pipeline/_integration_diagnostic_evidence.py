@@ -22,8 +22,10 @@ The four-condition Git proof that consumes this verdict lives in
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from ralph.pipeline._auto_integrate_record_restamp import is_owner_dead
 from ralph.pipeline.auto_integrate_record import parse_lease

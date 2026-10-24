@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.operation_evidence import OperationEvidenceCollector
 
+
 def _check_head_match(root: Path, record: IntegrationRecord) -> tuple[bool, str]:
     from ralph.git.subprocess_runner import run_git
 

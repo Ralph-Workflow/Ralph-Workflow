@@ -803,7 +803,10 @@ class McpServer:
             warning_active = development_warning_is_active(now_epoch=time.time())
             with session_warning_scope(not warning_active):
                 raw_result = self._registry.dispatch(
-                    tool_name, dict(arguments_value), host_session=self._session
+                    tool_name,
+                    dict(arguments_value),
+                    host_session=self._session,
+                    workspace=self._workspace,
                 )
         except (InvalidParamsError, CapabilityDeniedError) as exc:
             raw_result = ToolResult(

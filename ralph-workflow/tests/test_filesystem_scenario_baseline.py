@@ -24,6 +24,7 @@ import pytest
 
 from ralph.agents.invoke._workspace import WorkspaceMonitor
 from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
+from ralph.agents.invoke._workspace_seams import WorkspaceWatchSeams
 from ralph.mcp.explore.dirty_paths import build_sqlite_index_handle
 from ralph.mcp.explore.pipeline import ReindexOptions, reindex
 from ralph.mcp.explore.store import ExploreStore
@@ -291,7 +292,7 @@ def _scenario_unchanged(
         monitor = WorkspaceMonitor(
             ws_root,
             classifier=WorkspaceChangeClassifier(),
-            observer_factory=lambda: observer,
+            seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
         )
         monitor.start()
         # No changes — simply observe the settled workspace.
@@ -318,7 +319,7 @@ def _scenario_localized_change(
         monitor = WorkspaceMonitor(
             ws_root,
             classifier=WorkspaceChangeClassifier(),
-            observer_factory=lambda: observer,
+            seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
         )
         monitor.start()
 
@@ -350,7 +351,7 @@ def _scenario_large_workspace(
         monitor = WorkspaceMonitor(
             ws_root,
             classifier=WorkspaceChangeClassifier(),
-            observer_factory=lambda: observer,
+            seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
         )
         monitor.start()
         return _measure_dimensions(ws_root, observer, tracker, store)
@@ -376,7 +377,7 @@ def _scenario_long_running(
         monitor = WorkspaceMonitor(
             ws_root,
             classifier=WorkspaceChangeClassifier(),
-            observer_factory=lambda: observer,
+            seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
         )
         monitor.start()
 
@@ -413,7 +414,7 @@ def _scenario_interrupted(
         monitor = WorkspaceMonitor(
             ws_root,
             classifier=WorkspaceChangeClassifier(),
-            observer_factory=lambda: observer,
+            seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
         )
         monitor.start()
 
@@ -480,7 +481,7 @@ def _scenario_concurrent(
                 m = WorkspaceMonitor(
                     ws_root,
                     classifier=WorkspaceChangeClassifier(),
-                    observer_factory=lambda: observer,
+                    seams=WorkspaceWatchSeams(observer_factory=lambda: observer),
                 )
                 m.start()
                 with monitors_lock:

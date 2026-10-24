@@ -23,7 +23,7 @@ def test_no_direct_diagnostic_transition_emit_outside_helpers() -> None:
     """Static scan: the two transitions appear only inside the helper functions."""
     helper_src = _HELPER_FILE.read_text(encoding="utf-8")
     helper_start = helper_src.index("def _raise_intervention(")
-    helper_end = helper_src.index("def set_operation_evidence_collector(")
+    helper_end = helper_src.index("def diagnostic_needed(")
     allowed = helper_src[helper_start:helper_end]
     emit_re = re.compile(r"^\s+(RAISE_DIAGNOSTIC_INTERVENTION|BUMP_DIAGNOSTIC_ATTEMPT),$")
     for path in _EMIT_FILES:

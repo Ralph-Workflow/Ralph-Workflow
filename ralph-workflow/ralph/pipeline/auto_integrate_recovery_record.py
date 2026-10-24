@@ -19,22 +19,23 @@ from ralph.git.merge import (
     MERGE_STATE_IN_PROGRESS,
     MERGE_STATE_NONE,
 )
-from ralph.git.operations import is_repo_clean
 from ralph.pipeline._git_operation_authority import (
     GitOperationKind,
     classify_git_operation,
     is_in_active_resolution_state,
 )
-from ralph.pipeline._integration_action import (
-    IntegrationAction,
-    RebaseOutcomeKind,
-    next_integration_action,
-)
+from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._integration_continuation import continue_retained_resolution
 from ralph.pipeline._owned_landing_reintegration import (
     reintegrate_owned_landing as _reintegrate_owned_landing,
 )
-from ralph.pipeline._pending_merge_commit import _git_value, resume_pending_merge
+from ralph.pipeline._owned_landing_reintegration import (
+    replay_stale_resolution as _replay_stale_resolution,
+)
+from ralph.pipeline._owned_landing_reintegration import (
+    retained_resolution_is_stale as _retained_resolution_is_stale,
+)
+from ralph.pipeline._pending_merge_commit import resume_pending_merge
 from ralph.pipeline._pending_rebase_continue import resume_pending_rebase
 from ralph.pipeline._recovery_fast_forward_landing import (
     _record_skip,
@@ -44,8 +45,6 @@ from ralph.pipeline.auto_integrate_context import (
     refresh_outcome_is_healthy,
 )
 from ralph.pipeline.auto_integrate_record import (
-    MARK_RESOLVING_MERGE,
-    MARK_RESOLVING_REBASE,
     RELEASE_DIAGNOSTIC_EVIDENCE,
     IntegrationRecord,
     RecordBusyError,
@@ -412,35 +411,16 @@ def _recover_pending_merge(
         return recover_target_resolution(
             root, record, config, conflict_resolver, rebase_stop_resolver
         )
-    if next_integration_action(record) == IntegrationAction.REINTEGRATE_AGAINST_TARGET:
-        return _recover_unresolved_integrating(
-            root,
-            record,
-            config,
-            conflict_resolver,
-            rebase_stop_resolver,
-        )
-    import ralph.pipeline.auto_integrate_recovery as _rec_mod
-
-    if (
-        (record.resolving_merge or record.resolving_rebase)
-        and not _rec_mod.rebase_in_progress(root)
-        and _rec_mod.merge_state(root) == MERGE_STATE_NONE
-        and is_repo_clean(root)
-        and _git_value(root, "rev-parse", "--verify", "HEAD") == record.pre_feature_sha
-    ):
-        cleared_record = record.with_transition(
-            MARK_RESOLVING_REBASE, resolving_rebase=False
-        ).with_transition(MARK_RESOLVING_MERGE, resolving_merge=False)
-        return _reintegrate_owned_landing(
-            root,
-            cleared_record,
-            config,
-            conflict_resolver,
-            rebase_stop_resolver,
-        )
     kind = classify_git_operation(record)
     if kind in (GitOperationKind.RESOLVING_MERGE, GitOperationKind.RESOLVING_REBASE):
+        if _retained_resolution_is_stale(root, record):
+            return _replay_stale_resolution(
+                root,
+                record,
+                config,
+                conflict_resolver,
+                rebase_stop_resolver,
+            )
         resumed = continue_retained_resolution(
             root,
             record,
@@ -448,31 +428,35 @@ def _recover_pending_merge(
             conflict_resolver,
             rebase_stop_resolver,
         )
+    elif kind is GitOperationKind.AWAITING_CONTINUE:
+        resumed = resume_pending_rebase(root, record)
+    elif kind is GitOperationKind.AWAITING_MERGE_COMMIT:
+        resumed = resume_pending_merge(root, record)
     else:
-        resumed = (
-            resume_pending_rebase(root, record)
-            if kind is GitOperationKind.AWAITING_CONTINUE
-            else resume_pending_merge(root, record)
+        if record.is_integrating:
+            return _recover_unresolved_integrating(
+                root,
+                record,
+                config,
+                conflict_resolver,
+                rebase_stop_resolver,
+            )
+        resumed = continue_retained_resolution(
+            root,
+            record,
+            config,
+            conflict_resolver,
+            rebase_stop_resolver,
         )
     if isinstance(resumed, str):
-        logger.critical("CRITICAL: {}", resumed)
-        if is_in_active_resolution_state(record):
-            from ralph.pipeline.auto_integrate_outcome import record_conflict
-            from ralph.pipeline.rebase_state import ResolutionFailureCause
-
-            conflicted = record_conflict(
-                reason=resumed,
-                target=record.target,
-                failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
-            )
-            return conflicted.set_recovery_record_retained(
-                StartupRetentionReason.OWNED_OPERATION_IDENTITY_MISMATCH
-            )
-        return _record_skip(
-            reason=resumed,
-            target=record.target,
-            record_retained=True,
-            retention_reason=StartupRetentionReason.OWNED_OPERATION_IDENTITY_MISMATCH,
+        return _resumed_failure_outcome(record, resumed)
+    if resumed.reintegrate_pending:
+        return _replay_stale_resolution(
+            root,
+            resumed,
+            config,
+            conflict_resolver,
+            rebase_stop_resolver,
         )
     return _continue_fast_forward_from_record(
         root,
@@ -480,4 +464,27 @@ def _recover_pending_merge(
         config,
         conflict_resolver,
         rebase_stop_resolver,
+    )
+
+
+def _resumed_failure_outcome(record: IntegrationRecord, reason: str) -> RebaseState:
+    """Map a refused continuation onto the typed retained or conflict state."""
+    logger.critical("CRITICAL: {}", reason)
+    if is_in_active_resolution_state(record):
+        from ralph.pipeline.auto_integrate_outcome import record_conflict
+        from ralph.pipeline.rebase_state import ResolutionFailureCause
+
+        conflicted = record_conflict(
+            reason=reason,
+            target=record.target,
+            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        )
+        return conflicted.set_recovery_record_retained(
+            StartupRetentionReason.OWNED_OPERATION_IDENTITY_MISMATCH
+        )
+    return _record_skip(
+        reason=reason,
+        target=record.target,
+        record_retained=True,
+        retention_reason=StartupRetentionReason.OWNED_OPERATION_IDENTITY_MISMATCH,
     )

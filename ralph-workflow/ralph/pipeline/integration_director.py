@@ -374,9 +374,9 @@ def _project_target_vs_remote(
     """
     remote_value, remote_query_ok = remote_sha
     target_value, target_query_ok = target_sha
-    if not remote_query_ok:
+    if not remote_query_ok or remote_value is None:
         return TargetVsRemote.UNREACHABLE
-    if not target_query_ok or target_value is None or remote_value is None:
+    if not target_query_ok or target_value is None:
         return TargetVsRemote.UNKNOWN
     relation = _project_known_ancestry(
         root,
@@ -612,6 +612,19 @@ def _present_disposition_state(
     return IntegrationRecordState.CONSISTENT
 
 
+def _unreadable_record_state(unreadable_reason: str | None) -> IntegrationRecordState:
+    """Map an unreadable durable record onto the closed record enum.
+
+    An unreadable record whose SCHEMA this build does not understand is
+    :attr:`IntegrationRecordState.OLDER_VERSION`; an unreadable record
+    that is merely corrupt stays
+    :attr:`IntegrationRecordState.UNREADABLE`.
+    """
+    if unreadable_reason == _UNSUPPORTED_SCHEMA_REASON:
+        return IntegrationRecordState.OLDER_VERSION
+    return IntegrationRecordState.UNREADABLE
+
+
 def _project_record(
     disposition: Reading[RecordReadOutcomeDisposition],
     record: IntegrationRecord | None,
@@ -639,9 +652,7 @@ def _project_record(
     if value is RecordReadOutcomeDisposition.ABSENT:
         return IntegrationRecordState.NONE
     if value is RecordReadOutcomeDisposition.UNREADABLE:
-        if unreadable_reason == _UNSUPPORTED_SCHEMA_REASON:
-            return IntegrationRecordState.OLDER_VERSION
-        return IntegrationRecordState.UNREADABLE
+        return _unreadable_record_state(unreadable_reason)
     if value is RecordReadOutcomeDisposition.BUSY:
         return IntegrationRecordState.STALE
     if value is RecordReadOutcomeDisposition.PRESENT:
@@ -718,7 +729,15 @@ def _build_observation(
         merge_base_probe,
     )
 
-    record = _project_record(disposition, reason)
+    record = _project_record(
+        disposition,
+        durable_record,
+        unreadable_reason,
+        root=root,
+        target=target,
+        in_progress_kind=in_progress_kind,
+        target_vs_feature=target_vs_feature,
+    )
 
     return Observation(
         target_vs_feature=target_vs_feature,
@@ -833,7 +852,7 @@ class IntegrationDirector:
         director consumed without having to read :func:`observe` and
         fish the dimension out of the seven-dimension snapshot.
         """
-        disposition, _reason, _record = _read_durable_record(self._root)
+        disposition, _record, _unreadable_reason = _read_durable_record(self._root)
         return disposition
 
     def decide_and_act(

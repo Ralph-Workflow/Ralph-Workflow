@@ -20,12 +20,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.agents.invoke._workspace import (
-    CrossProcessWatchLockProtocol,
-    WorkspaceMonitor,
-    WorkspaceWatchSeams,
-)
+from ralph.agents.invoke._workspace import WorkspaceMonitor
 from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
+from ralph.agents.invoke._workspace_seams import WorkspaceWatchSeams
 from ralph.workspace._shared_awareness import (
     SharedAwarenessError,
     SharedAwarenessSidecar,
@@ -37,6 +34,9 @@ from ralph.workspace.awareness import release_workspace_awareness
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ralph.agents.invoke._workspace_seams import (
+        _CrossProcessWatchLockProtocol as CrossProcessWatchLockProtocol,
+    )
     from ralph.agents.invoke.watchdog_observer import WatchObserverFactory
 
 

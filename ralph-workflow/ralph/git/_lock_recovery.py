@@ -119,6 +119,7 @@ _STALE_GIT_LOCK_AGE_SECONDS = 10.0
 _LIVE_HOLDER_PATIENCE_S = GIT_SUBPROCESS_TIMEOUT_SECONDS + GIT_TERMINATE_GRACE_SECONDS
 _LIVE_HOLDER_POLL_S = 3.0
 
+
 # Bounded backoff constants for git lock contention retry
 _LOCK_BACKOFF_S: tuple[float, ...] = (0.2, 0.5, 1.0)  # total ≤ 1.7s
 

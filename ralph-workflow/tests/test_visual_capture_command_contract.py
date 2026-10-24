@@ -10,11 +10,11 @@ unrelated agent-run crash, hiding the real failure.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from ralph.pipeline import runner
-from ralph.pipeline.events import Event
 from ralph.project_policy import check_capture_command_fact
 from ralph.visual.policy_facts import (
     DESIGN_SYSTEM_POLICY_RELPATH,
@@ -22,6 +22,9 @@ from ralph.visual.policy_facts import (
     parse_policy_facts,
     validate_capture_command,
 )
+
+if TYPE_CHECKING:
+    from ralph.pipeline.events import Event
 
 _PROSE = (
     "make visual-capture (the bounded Tier 1 capture command; the make target "
@@ -111,12 +114,7 @@ def test_validator_emits_a_finding_for_the_design_system_policy() -> None:
 
 def test_validator_is_silent_for_a_valid_command_and_for_other_policies() -> None:
     path = f"docs/ralph-workflow-policy/{_DESIGN_FILE}"
-    assert (
-        check_capture_command_fact(
-            _policy("make visual-capture"), path, _DESIGN_FILE
-        )
-        == []
-    )
+    assert check_capture_command_fact(_policy("make visual-capture"), path, _DESIGN_FILE) == []
     # Other policies reference the command descriptively; only the design-system
     # policy is parsed by the visual pipeline.
     assert (

@@ -118,9 +118,7 @@ def test_orphaned_worktree_lock_is_proven_dead_and_removed(worktree: Path) -> No
     assert not lock.exists()
 
 
-def test_lock_held_open_by_a_live_process_is_never_removed(
-    worktree: Path, holder: _Holder
-) -> None:
+def test_lock_held_open_by_a_live_process_is_never_removed(worktree: Path, holder: _Holder) -> None:
     lock = _private_lock(worktree)
     holder(lock)
     _age(lock, 5000)
@@ -130,9 +128,7 @@ def test_lock_held_open_by_a_live_process_is_never_removed(
     assert lock.exists()
 
 
-def test_non_dumpable_live_holder_is_not_declared_dead(
-    worktree: Path, holder: _Holder
-) -> None:
+def test_non_dumpable_live_holder_is_not_declared_dead(worktree: Path, holder: _Holder) -> None:
     """A holder whose fd table we cannot read must not be ruled out by guesswork."""
     lock = _private_lock(worktree)
     proc = holder(lock, "nodump")
@@ -158,9 +154,7 @@ def test_idle_read_only_git_helper_in_the_repo_does_not_pin_an_orphan(worktree: 
         helper.wait()
 
 
-def test_lock_replaced_during_the_probe_is_not_removed(
-    worktree: Path, holder: _Holder
-) -> None:
+def test_lock_replaced_during_the_probe_is_not_removed(worktree: Path, holder: _Holder) -> None:
     lock = _private_lock(worktree)
     lock.write_text("orphan")
     _age(lock, 5000)

@@ -235,7 +235,9 @@ def _default_director(
         ),
         head_probe=head_probe if head_probe is not None else lambda _root: overrides.head_state,
         in_progress_probe=(
-            in_progress_probe if in_progress_probe is not None else lambda _root: overrides.in_progress
+            in_progress_probe
+            if in_progress_probe is not None
+            else lambda _root: overrides.in_progress
         ),
         unknown_budget=unknown_budget,
         repeat_threshold=repeat_threshold,

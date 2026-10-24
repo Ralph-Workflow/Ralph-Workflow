@@ -26,6 +26,17 @@ Two rules keep the seam honest:
   owning module, so the executor never becomes a place where policy
   hides.
 
+The protocols are reachable two ways. A caller that OWNS the whole
+attempt passes the executors down as arguments. A caller that only
+holds ONE step -- the commit seam, the phase seam -- installs them for
+the duration of its own scope with :func:`install_executors`; the
+seams below then resolve the installed executors through
+:func:`current_git_ops` and :func:`current_agent_runner`. The ambient
+scope exists so that the MUTATION seams a module already owns (the
+backup ref, the fast-forward landing) can be routed through the
+protocol without every caller threading the executors through five
+frames.
+
 The repo-structure policy allows at most ONE public top-level class
 per module (``ralph.testing.audit_repo_structure``). This module
 publishes three protocols, so two of them are declared with private
@@ -36,10 +47,13 @@ the contract.
 from __future__ import annotations
 
 import time
+from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from contextvars import Token
     from pathlib import Path
 
     from ralph.git.rebase.rebase import RebaseResult
@@ -51,9 +65,16 @@ __all__ = [
     "AgentRunner",
     "Clock",
     "GitOps",
+    "create_backup_ref",
+    "current_agent_runner",
+    "current_git_ops",
     "default_agent_runner",
     "default_clock",
     "default_git_ops",
+    "delete_backup_ref",
+    "fast_forward_target",
+    "install_executors",
+    "reset_executors",
 ]
 
 
@@ -413,3 +434,116 @@ def default_agent_runner() -> AgentRunner:
 def default_clock() -> Clock:
     """Return the production clock (real wall-clock time)."""
     return _DEFAULT_CLOCK
+
+
+# ---------------------------------------------------------------------------
+# Ambient executor scope -- the injection seam for callers that own ONE step
+# of an integration attempt rather than the whole attempt.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _Executors:
+    """The injected mutation seams of ONE integration attempt."""
+
+    git_ops: GitOps
+    agent_runner: AgentRunner
+
+
+_EXECUTORS: ContextVar[_Executors | None] = ContextVar(
+    "ralph_integration_executors",
+    default=None,
+)
+
+
+def install_executors(
+    git_ops: GitOps | None = None,
+    agent_runner: AgentRunner | None = None,
+) -> Token[_Executors | None]:
+    """Install the injected mutation seams and return the reset token.
+
+    A ``None`` argument INHERITS the seam that is already installed, so a
+    nested scope never silently downgrades an injected executor to the
+    production adapter. The returned token is handed back to
+    :func:`reset_executors` when the scope ends.
+
+    Args:
+        git_ops: The Git-mutation seam to install, or ``None`` to inherit
+            the installed one (the production adapter when nothing is
+            installed).
+        agent_runner: The resolver-dispatch seam to install, or ``None``
+            to inherit the installed one.
+    """
+    current = _EXECUTORS.get()
+    executors = _Executors(
+        git_ops=(
+            git_ops
+            if git_ops is not None
+            else (current.git_ops if current is not None else default_git_ops())
+        ),
+        agent_runner=(
+            agent_runner
+            if agent_runner is not None
+            else (current.agent_runner if current is not None else default_agent_runner())
+        ),
+    )
+    return _EXECUTORS.set(executors)
+
+
+def reset_executors(token: Token[_Executors | None]) -> None:
+    """Restore the seams that were installed before ``token`` was issued."""
+    _EXECUTORS.reset(token)
+
+
+def current_git_ops() -> GitOps:
+    """Return the installed Git-ops seam, or the production adapter."""
+    executors = _EXECUTORS.get()
+    return executors.git_ops if executors is not None else default_git_ops()
+
+
+def current_agent_runner() -> AgentRunner:
+    """Return the installed resolver-dispatch seam, or the production adapter."""
+    executors = _EXECUTORS.get()
+    return executors.agent_runner if executors is not None else default_agent_runner()
+
+
+# ---------------------------------------------------------------------------
+# Mutation seams -- the ONE call path a caller uses to reach the protocol.
+#
+# These exist so a module that already owns a mutation seam (the backup
+# ref, the fast-forward landing) routes it through the protocol without
+# every caller threading the executors through five frames. They resolve
+# the INSTALLED executor, so an injected double observes the mutation.
+# ---------------------------------------------------------------------------
+
+
+def create_backup_ref(
+    root: Path,
+    pre_feature_sha: str | None,
+    owning_worktree: str | None = None,
+) -> str | None:
+    """Create the in-flight backup ref through the installed Git-ops seam."""
+    return current_git_ops().create_backup_ref(root, pre_feature_sha, owning_worktree)
+
+
+def delete_backup_ref(root: Path, backup_ref: str | None) -> None:
+    """Delete the in-flight backup ref through the installed Git-ops seam."""
+    current_git_ops().delete_backup_ref(root, backup_ref)
+
+
+def fast_forward_target(
+    root: Path,
+    target: str,
+    feature_sha: str,
+    *,
+    reclaim_target_worktree: bool = True,
+    on_reclaimed: Callable[[ReclaimResult], None] | None = None,
+) -> tuple[bool, str]:
+    """Move the target ref to ``feature_sha`` through the installed Git-ops seam."""
+    return current_git_ops().fast_forward_target(
+        root,
+        target,
+        feature_sha,
+        reclaim_target_worktree=reclaim_target_worktree,
+        on_reclaimed=on_reclaimed,
+    )

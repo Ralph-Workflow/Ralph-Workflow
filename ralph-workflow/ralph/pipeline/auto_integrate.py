@@ -24,12 +24,6 @@ from ralph.pipeline._integration_continuation import (
 )
 from ralph.pipeline._target_reconciliation_handoff import scheduled_landing
 from ralph.pipeline.auto_integrate_backoff import wait_before_retry
-from ralph.pipeline.auto_integrate_backup_refs import (
-    create_rebase_backup_ref as _create_rebase_backup_ref,
-)
-from ralph.pipeline.auto_integrate_backup_refs import (
-    delete_rebase_backup_ref as _delete_rebase_backup_ref,
-)
 from ralph.pipeline.auto_integrate_boundary import (
     phase_boundary_outcome as _phase_boundary_outcome,
 )
@@ -50,7 +44,6 @@ from ralph.pipeline.auto_integrate_context import (
 from ralph.pipeline.auto_integrate_context import (
     record_refresh,
 )
-from ralph.pipeline.auto_integrate_ff import fast_forward_target as _fast_forward_target
 from ralph.pipeline.auto_integrate_ff import (
     is_retryable_fast_forward_failure,
 )
@@ -109,6 +102,15 @@ from ralph.pipeline.auto_integrate_transaction import integration_transaction
 from ralph.pipeline.commit_executor import (
     reattach_head_if_detached as _reattach_head_if_detached,
 )
+from ralph.pipeline.integration_actions import create_backup_ref as _create_rebase_backup_ref
+from ralph.pipeline.integration_actions import (
+    current_agent_runner,
+    current_git_ops,
+    install_executors,
+    reset_executors,
+)
+from ralph.pipeline.integration_actions import delete_backup_ref as _delete_rebase_backup_ref
+from ralph.pipeline.integration_actions import fast_forward_target as _fast_forward_target
 from ralph.pipeline.rebase_state import StartupRetentionReason
 
 _random = (
@@ -125,6 +127,7 @@ if TYPE_CHECKING:
     from ralph.pipeline._auto_integrate_reclaim import ReclaimResult
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
+    from ralph.pipeline.integration_actions import AgentRunner, GitOps
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.workspace.scope import WorkspaceScope
 
@@ -139,14 +142,20 @@ def auto_integrate_after_commit(
     display: ParallelDisplay | None = None,
     sleep: Callable[[float], None] = time.sleep,
     jitter: Callable[[], float] = _random.random,
+    git_ops: GitOps | None = None,
+    agent_runner: AgentRunner | None = None,
 ) -> RebaseState | None:
-    """Integrate after a commit, recording skips and surfacing terminal-state violations."""
-    # An unresolved integration must not SKIP this seam: this seam is the
-    # recovery path, and returning `state` here left the only operation
-    # able to clear the verdict blocked by the verdict. The evidence is
-    # protected on the way OUT instead -- see
-    # ``preserve_unresolved_resolution_state``.
+    """Integrate after a commit, recording skips and surfacing terminal-state violations.
+
+    ``git_ops`` and ``agent_runner`` are the injected MUTATION seams: every Git
+    mutation and the resolver dispatch of this attempt runs through them.
+    """
+    executors_token = install_executors(git_ops, agent_runner)
     try:
+        # An unresolved integration must not SKIP this seam: this seam is the
+        # recovery path, and returning `state` here left the only operation
+        # able to clear the verdict blocked by the verdict. The evidence is
+        # protected on the way OUT -- see ``preserve_unresolved_resolution_state``.
         from ralph.pipeline.integration_resolution import retained_integration_reason
 
         root = Path(workspace_scope.root)
@@ -232,6 +241,8 @@ def auto_integrate_after_commit(
         return skipped.set_recovery_record_retained(
             StartupRetentionReason.OBSERVED_RETAINED_ON_DISK
         )
+    finally:
+        reset_executors(executors_token)
 
 
 def auto_integrate_on_phase_transition(
@@ -244,24 +255,32 @@ def auto_integrate_on_phase_transition(
     display: ParallelDisplay | None = None,
     sleep: Callable[[float], None] = time.sleep,
     jitter: Callable[[], float] = _random.random,
+    git_ops: GitOps | None = None,
+    agent_runner: AgentRunner | None = None,
 ) -> RebaseState | None:
-    """Keep a clean worktree synchronized at phase boundaries without hiding failures."""
-    # Same rule as the commit seam: an unresolved integration must not
-    # skip the seam that would resolve it. Run, then protect the evidence
-    # on the way out.
-    return preserve_unresolved_resolution_state(
-        _auto_integrate_on_phase_transition_inner(
-            config,
-            workspace_scope,
-            state,
-            conflict_resolver=conflict_resolver,
-            rebase_stop_resolver=rebase_stop_resolver,
-            display=display,
-            sleep=sleep,
-            jitter=jitter,
-        ),
-        prior=state,
-    )
+    """Keep a clean worktree synchronized at phase boundaries without hiding failures.
+
+    ``git_ops`` and ``agent_runner`` are the injected MUTATION seams.
+    """
+    executors_token = install_executors(git_ops, agent_runner)
+    try:
+        # Same rule as the commit seam: an unresolved integration must not
+        # skip the seam that would resolve it. Run, then protect the evidence.
+        return preserve_unresolved_resolution_state(
+            _auto_integrate_on_phase_transition_inner(
+                config,
+                workspace_scope,
+                state,
+                conflict_resolver=conflict_resolver,
+                rebase_stop_resolver=rebase_stop_resolver,
+                display=display,
+                sleep=sleep,
+                jitter=jitter,
+            ),
+            prior=state,
+        )
+    finally:
+        reset_executors(executors_token)
 
 
 def _auto_integrate_on_phase_transition_inner(
@@ -326,13 +345,10 @@ def _auto_integrate_on_phase_transition_inner(
 
 
 #: Maximum end-to-end integration attempts per commit. Attempt N+1 runs
-#: only when attempt N completed a rebase/merge but the fast-forward
-#: did not land (e.g. the target advanced concurrently, AC-08); the
-#: retry re-integrates onto the moved tip instead of waiting for the
-#: next commit phase. Exhausting the budget is not silent: the returned
-#: record names it (see :func:`_record_attempt_budget_spent`), because
-#: "the target moved once" and "the target kept moving until I gave up"
-#: call for different operator responses.
+#: only when attempt N completed a rebase/merge but the fast-forward did
+#: not land (AC-08); the retry re-integrates onto the moved tip. The
+#: exhausted budget is not silent: the record names it (see
+#: :func:`_record_attempt_budget_spent`).
 _MAX_INTEGRATION_ATTEMPTS = 3
 
 
@@ -349,10 +365,9 @@ def _auto_integrate_after_commit_inner(
 ) -> RebaseState | None:
     """Resolve context, integrate, and retry bounded fast-forward races."""
     ctx = _auto_integrate_resolve_context(config, workspace_scope)
-    # The refresh outcome every decision below is made against. Carried
-    # down instead of discarded so the conflict and short-circuit
-    # records say how fresh the mainline pointer was too -- the success
-    # path was previously the only one that could (AC-04).
+    # The refresh outcome every decision below is made against; carried
+    # down so the conflict and short-circuit records say how fresh the
+    # mainline pointer was too (AC-04).
     refresh: str | None = ctx[3] if ctx is not None else None
     early_skip, usable_ctx = _check_early_skips(
         ctx,
@@ -451,14 +466,11 @@ def _auto_integrate_after_commit_inner(
                 _MAX_INTEGRATION_ATTEMPTS,
             )
     except TerminalStateViolationError:
-        # R6/AC-06: a terminal-state violation is loud, not
-        # silent. The durable record is RETAINED so the recovery
-        # preamble (or the next seam) can reclaim the leaked
-        # state using the recorded pre-attempt SHA. Re-raise
-        # so the outer try/except in
-        # :func:`auto_integrate_after_commit` propagates the
-        # failure instead of converting it to a recorded skip
-        # the operator would never correlate with the leak.
+        # R6/AC-06: a terminal-state violation is loud, not silent. The
+        # durable record is RETAINED so the recovery preamble can reclaim
+        # the leaked state using the recorded pre-attempt SHA. Re-raise so
+        # the outer guard propagates the failure instead of recording a
+        # skip the operator would never correlate with the leak.
         raise
     except Exception as exc:
         # Caught here, not only in the caller's broad guard: this is
@@ -684,11 +696,9 @@ def _integrate_once_owned(
     _write_record(root, attempt_record)
     # B11/E5: backup the original feature tip on a uniquely named
     # ``refs/rebase-backup/<id>`` ref BEFORE any mutation so a
-    # concurrent ``git gc --prune`` cannot reclaim the in-flight
-    # commits while the rebase / merge is in progress. The ref is
-    # retained through the attempt (the recovery preamble reads it
-    # to restore the pre-attempt tip on a verified abort) and
-    # deleted after a successful land or a verified abort.
+    # concurrent ``git gc --prune`` cannot reclaim the in-flight commits.
+    # The ref is retained through the attempt (the recovery preamble
+    # reads it) and deleted after a successful land or a verified abort.
     backup_ref = _create_rebase_backup_ref(
         root,
         pre_feature_sha,
@@ -705,6 +715,8 @@ def _integrate_once_owned(
             rebase_stop_resolver=rebase_stop_resolver,
             display=display,
             conflict_resolution_config=config.conflict_resolution,
+            git_ops=current_git_ops(),
+            agent_runner=current_agent_runner(),
         )
         if rebase_result.short_circuit is not None:
             # Resolved failures clear the record; an abort that leaves a rebase
@@ -751,18 +763,12 @@ def _integrate_once_owned(
 
         # R6/AC-06: post-attempt terminal-state verification on EVERY
         # exit path. A completed rebase/merge leaves HEAD at feature_sha,
-        # regardless of whether the target fast-forward wins its race;
-        # only the earlier abort paths verify pre_feature_sha.
+        # regardless of whether the target fast-forward wins its race.
         #
-        # The record MUST stay on disk until this verification
-        # passes. ``_verify_and_cleanup_backup`` now raises
-        # :class:`TerminalStateViolationError` on failure, so a
-        # terminal-state violation aborts the integration with the
-        # durable record still present; the recovery preamble (or
-        # the next seam) can then reclaim the leaked state using
-        # the recorded pre-attempt SHA. Clearing the record BEFORE
-        # verification (the prior shape) discarded the very
-        # metadata recovery needs to restore the pre-attempt tip.
+        # The record MUST stay on disk until this verification passes, so
+        # the recovery preamble can reclaim the leaked state using the
+        # recorded pre-attempt SHA. Clearing the record BEFORE
+        # verification (the prior shape) discarded that metadata.
         post_attempt_verify(root, expected_head_sha=feature_sha, owns_resolution=False)
         if ok:
             _delete_rebase_backup_ref(root, backup_ref)
@@ -808,20 +814,17 @@ def _integrate_once_owned(
             return record, is_retryable_fast_forward_failure(skip_reason)
         # Successful fast-forward: the ``fast_forwarded`` boolean is
         # the headline signal, so any residual reason from the
-        # rebase/merge phase (including benign rebase NoOp reasons
-        # like ``"Branch is already up-to-date with upstream"``)
-        # is scrubbed here. A clean-success state carries no reason.
+        # rebase/merge phase (including benign rebase NoOp reasons) is
+        # scrubbed here. A clean-success state carries no reason.
         record = record.model_copy(update={"fast_forwarded": True, "last_reason": None})
         if publish:
             # Single publication entry point: the reconciler compares
             # local and remote SHAs, pushes when local is ahead, catches
             # up when remote is ahead, and reintegrates on divergence.
             # A non-fast-forward inside the reconciler is handled by
-            # ``reconcile_after_rejected_push``; the post-landing seam
-            # simply forwards the result. The caller's
-            # ``fast_forwarded`` is carried through ``source_state``
-            # so the headline "did the local land" signal survives the
-            # publication round-trip.
+            # ``reconcile_after_rejected_push``. The caller's
+            # ``fast_forwarded`` is carried through ``source_state`` so
+            # the headline "did the local land" signal survives.
             record = reconcile_remote_publication(
                 config,
                 root,

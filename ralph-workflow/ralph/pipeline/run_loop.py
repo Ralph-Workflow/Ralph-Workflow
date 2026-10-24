@@ -1779,9 +1779,7 @@ def _run_cold_capped_escalation(
     """
     # Step 1: re-derive from live Git. A clean live state means the
     # cached record is stale; clear it and adopt the live result.
-    live_rebase = _rederive_live_conflict_state_or_none(
-        ctx.workspace_scope.root, target, rebase
-    )
+    live_rebase = _rederive_live_conflict_state_or_none(ctx.workspace_scope.root, target, rebase)
     if live_rebase is not None and not live_rebase.is_intervention_required:
         _adopt_live_rebase(ctx, live_rebase)
         return True
@@ -2616,8 +2614,7 @@ def _blocking_record(ctx: _LoopContext) -> tuple[IntegrationRecord | None, bool]
     outcome = read_record_outcome(ctx.workspace_scope.root)
     if outcome.disposition is RecordReadOutcomeDisposition.BUSY:
         expired = (
-            busy_refusal_outcome(outcome.busy_deadline)
-            is IntegrationAction.REQUIRE_INTERVENTION
+            busy_refusal_outcome(outcome.busy_deadline) is IntegrationAction.REQUIRE_INTERVENTION
         )
         if expired:
             emit_integration_warn_line(

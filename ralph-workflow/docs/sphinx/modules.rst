@@ -95,6 +95,13 @@ ralph.pipeline.integration_owner
    :members:
    :show-inheritance:
 
+ralph.pipeline.integration_actions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.integration_actions
+   :members:
+   :show-inheritance:
+
 ralph.logging
 ~~~~~~~~~~~~~
 

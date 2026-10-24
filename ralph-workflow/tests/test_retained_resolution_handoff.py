@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -662,7 +663,7 @@ def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
 
 
 @pytest.mark.parametrize("completion", ["legacy", "prepared", "empty", "unrelated"])
-def test_completed_retained_rebase_requires_exact_completion_receipt(
+def test_completed_retained_rebase_lands_or_replays_stale_intent(
     tmp_git_repo: Path, completion: str
 ) -> None:
     from ralph.pipeline._pending_rebase_continue import prepare_pending_rebase
@@ -691,7 +692,18 @@ def test_completed_retained_rebase_requires_exact_completion_receipt(
     )
     assert outcome is not None
     if completion == "unrelated":
-        assert outcome.recovery_record_retained and not outcome.fast_forwarded
+        # Git shows no rebase, so the retained resolution claim is stale
+        # intent.  The work is snapshotted into a backup ref and a fresh
+        # auto rebase lands it instead of the record being withheld.
+        assert outcome.fast_forwarded
+        assert read_record(root) is None
+        backup_refs = _git(
+            root,
+            "for-each-ref",
+            "--format=%(refname)",
+            "refs/ralph-backup/",
+        ).stdout.split()
+        assert backup_refs
         return
     assert outcome.fast_forwarded
     assert _git(root, "rev-parse", target).stdout == _git(root, "rev-parse", "HEAD").stdout
@@ -911,3 +923,84 @@ def test_foreign_target_commit_repair_uses_git_owner_and_keeps_record_owner(
     assert _git(owner, "show", "feature:shared.txt").stdout == "fixed\n"
     assert _git(feature, "rev-parse", "HEAD").stdout == original_feature
     assert read_record(feature) is not None
+
+
+def test_stale_resolution_modules_do_not_use_legacy_decider_or_terminal_proof_text() -> None:
+    """The stale-intent replay path has one owner and no proof-withholding outcome."""
+    from ralph.pipeline import (
+        _integration_continuation,
+        _owned_landing_reintegration,
+        auto_integrate_recovery_record,
+    )
+
+    for module in (
+        _integration_continuation,
+        _owned_landing_reintegration,
+        auto_integrate_recovery_record,
+    ):
+        source = inspect.getsource(module)
+        assert "next_integration_action" not in source
+        assert "lacks verified completion proof" not in source
+
+
+def test_stale_resolution_replay_clears_intent_and_retries_auto_rebase(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A record Git disproves is snapshotted, cleared, and replayed at auto rebase."""
+    from ralph.git.merge import UnmergedPathsObservation
+    from ralph.pipeline import _owned_landing_reintegration as owned
+    from ralph.pipeline._integration_action import RebaseOutcomeKind
+    from ralph.pipeline.integration_observation import InProgressKind, Reading
+
+    record = IntegrationRecord(
+        phase="integrating",
+        target="main",
+        pre_feature_sha="a" * 40,
+        pre_target_sha="b" * 40,
+        resolving_rebase=True,
+    )
+    written: list[IntegrationRecord] = []
+    replayed: list[IntegrationRecord] = []
+    monkeypatch.setattr(
+        owned, "read_in_progress_kind", lambda _root: Reading.known(InProgressKind.NONE)
+    )
+    monkeypatch.setattr(
+        owned,
+        "observe_unmerged_paths",
+        lambda _root: UnmergedPathsObservation(paths=(), query_ok=True),
+    )
+    monkeypatch.setattr(owned, "_has_user_work", lambda _root: False)
+    monkeypatch.setattr(owned, "branch_sha", lambda _root, _target: "b" * 40)
+    monkeypatch.setattr(owned, "ancestry_state", lambda *_args: False)
+    monkeypatch.setattr(owned, "get_head_sha", lambda _root: "a" * 40)
+    monkeypatch.setattr(owned, "current_branch_or_detached_marker", lambda _root: "feature")
+    monkeypatch.setattr(
+        owned,
+        "create_stale_resolution_snapshot",
+        lambda *_args, **_kwargs: ("refs/ralph-backup/feature-abcdef12", "c" * 40),
+    )
+    monkeypatch.setattr(owned, "_move_feature_to_snapshot", lambda *_args: True)
+    monkeypatch.setattr(owned, "write_record", lambda _root, rec: written.append(rec))
+
+    def fake_reintegrate(
+        _root: Path,
+        replay_record: IntegrationRecord,
+        _config: UnifiedConfig,
+        *_args: object,
+    ) -> RebaseState:
+        replayed.append(replay_record)
+        return RebaseState(last_outcome=RebaseOutcomeKind.REBASED, last_target="main")
+
+    monkeypatch.setattr(owned, "reintegrate_owned_landing", fake_reintegrate)
+
+    outcome = owned.replay_stale_resolution(tmp_path, record, None, None, None)
+
+    assert outcome.last_outcome is RebaseOutcomeKind.REBASED
+    assert "lacks verified completion proof" not in (outcome.last_reason or "")
+    assert written
+    assert written[0].resolving_rebase is False
+    assert written[0].resolving_merge is False
+    assert written[0].pre_feature_sha == "c" * 40
+    assert replayed and replayed[0].resolving_rebase is False
+    assert replayed[0].reintegrate_pending is True

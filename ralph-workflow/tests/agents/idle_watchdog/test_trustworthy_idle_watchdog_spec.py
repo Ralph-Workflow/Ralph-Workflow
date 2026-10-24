@@ -47,7 +47,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ralph.agents.idle_watchdog.corroboration_snapshot import CorroborationSnapshot
 
 import loguru
 import pytest
@@ -70,7 +73,6 @@ from ralph.agents.idle_watchdog import (
     WatchdogVerdict,
     classify_stuck,
 )
-from ralph.agents.idle_watchdog.corroboration_snapshot import CorroborationSnapshot
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from ralph.agents.invoke._idle_stream_timeout_error import _IdleStreamTimeoutError
 from ralph.agents.invoke._open_code_resumable_exit_error import OpenCodeResumableExitError
@@ -805,7 +807,6 @@ class TestTrustworthyIdleWatchdogSpec:
                     fire_reason,
                     now=clock.monotonic(),
                     idle_elapsed=300.0,
-                    corroboration=CorroborationSnapshot(),
                 )
                 assert verdict == WatchdogVerdict.CONTINUE
 

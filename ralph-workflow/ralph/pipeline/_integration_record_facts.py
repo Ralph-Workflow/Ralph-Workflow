@@ -33,7 +33,9 @@ Which durable facts live here
 -----------------------------
 
 * the record's intervention flag (``diagnostic_intervention_required``)
-  -- the fail-closed operator handoff (:func:`record_requires_intervention`);
+  -- the fail-closed operator handoff (:func:`record_requires_intervention`),
+  applied against the LIVE observation so a stale claim cannot outrank
+  Git (see "Git outranks the record" below);
 * the persisted bounded-retry deadline (``retry_deadline``) -- the
   wait-versus-intervention decision at the release-refusal sites
   (:func:`busy_refusal_outcome`).
@@ -47,6 +49,23 @@ proof is the diagnostic path's four-condition Git proof (and is decided
 by :mod:`ralph.pipeline._integration_diagnostic_proof`). Both keep their
 own record-fact drivers, so nothing is dropped by the owner's projection
 covering only the mutation ladder.
+
+Git outranks the record
+-----------------------
+
+The durable record holds INTENT (what the boundary meant to do),
+OWNERSHIP (which worktree owns the operation), ATTEMPT HISTORY (how
+many repairs were tried) and LEGACY-FORMAT IDENTITY (a record written
+by an older Ralph version). It never holds a fact Git can answer.
+
+A durable claim therefore outranks the live Git observation ONLY while
+the obligation it describes is still live. When the live observation
+proves the obligation is discharged -- or that the record belongs to
+another worktree -- the durable claim is stale intent, and a stale
+claim must NOT turn a current, healthy Git observation into
+``REQUIRE_INTERVENTION`` (a terminal block the boundary can never
+leave). :func:`live_git_supersedes_record` is that test, and
+:func:`apply_record_facts` applies it.
 """
 
 from __future__ import annotations
@@ -55,16 +74,24 @@ import time
 from typing import TYPE_CHECKING, Final
 
 from ralph.pipeline._integration_action import IntegrationAction, RebaseOutcomeKind
+from ralph.pipeline.integration_observation import (
+    InProgressKind,
+    IntegrationRecordState,
+    TargetVsFeature,
+    WorktreeState,
+)
+from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
-    from ralph.pipeline.rebase_state import RebaseState
+    from ralph.pipeline.integration_observation import Observation
 
 __all__ = [
     "RECORD_FACT_ACTIONS",
     "apply_record_facts",
     "busy_refusal_outcome",
     "busy_refusal_state",
+    "live_git_supersedes_record",
     "record_requires_intervention",
 ]
 
@@ -86,14 +113,45 @@ def record_requires_intervention(record: IntegrationRecord | None) -> bool:
     """True when the durable record itself demands operator intervention.
 
     The flag is written by the diagnostic path when the repair-attempt
-    cap is reached and it is the ONLY durable fact that authorises the
-    fail-closed ``REQUIRE_INTERVENTION`` verdict. It outranks every
-    observation-derived action: an intervention that a live observation
-    cannot see must never be masked by one.
+    cap is reached. It is durable ATTEMPT HISTORY: it says "the
+    repairs this record describes have been tried and exhausted". It
+    says NOTHING about the live Git state, so it may only outrank the
+    live observation while the obligation it describes is still live --
+    see :func:`live_git_supersedes_record`.
     """
     if record is None:
         return False
     return record.diagnostic_intervention_required is True
+
+
+def live_git_supersedes_record(observation: Observation | None) -> bool:
+    """True when the live Git observation supersedes a durable claim.
+
+    The durable record holds intent, ownership, attempt history and
+    legacy-format identity -- never a fact Git can answer. Two live
+    facts make a durable claim stale:
+
+    * the record belongs to ANOTHER worktree (the observation projects
+      it as :attr:`~ralph.pipeline.integration_observation.IntegrationRecordState.FOREIGN`),
+      so its claims are not about this workspace;
+    * the integration obligation is DISCHARGED -- the feature is
+      contained in the target, the worktree is clean and no Git
+      operation is in flight -- so a claim that "a repair is stuck"
+      describes a situation that no longer exists.
+
+    An observation that cannot answer (an ``unknown`` dimension) never
+    supersedes a durable claim: only a PROVEN healthy Git state may
+    release a fail-closed verdict.
+    """
+    if observation is None:
+        return False
+    if observation.record is IntegrationRecordState.FOREIGN:
+        return True
+    return (
+        observation.target_vs_feature in (TargetVsFeature.EQUAL, TargetVsFeature.AHEAD)
+        and observation.worktree is WorktreeState.CLEAN
+        and observation.in_progress_kind is InProgressKind.NONE
+    )
 
 
 def apply_record_facts(
@@ -101,6 +159,7 @@ def apply_record_facts(
     record: IntegrationRecord | None,
     *,
     retained: bool = False,
+    observation: Observation | None = None,
 ) -> IntegrationAction:
     """Overlay the durable record facts on the owner's mutation-ladder answer.
 
@@ -112,13 +171,22 @@ def apply_record_facts(
             obligation. A retained obligation with no durable record
             behind it has nothing the boundary can act on, so the seam
             fails closed to ``REQUIRE_INTERVENTION``.
+        observation: The LIVE observation the owner's answer was made
+            from. When it proves the durable claim stale (see
+            :func:`live_git_supersedes_record`) the durable claim does
+            not outrank it: Git outranks the record. ``None`` means the
+            caller supplied no live evidence, and the fail-closed
+            behaviour stands.
 
     Returns:
         The action the seam must act on. The owner's answer stands
         unless a durable record fact overrides it, and a durable record
-        fact always wins: the observation can be stale, the record
-        cannot.
+        fact wins ONLY while the obligation it describes is still live:
+        a stale durable claim never turns a current, healthy Git
+        observation into a terminal block.
     """
+    if observation is not None and live_git_supersedes_record(observation):
+        return action
     if record_requires_intervention(record):
         return IntegrationAction.REQUIRE_INTERVENTION
     if record is None and retained:

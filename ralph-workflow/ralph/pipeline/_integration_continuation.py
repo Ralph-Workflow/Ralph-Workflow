@@ -10,6 +10,7 @@ from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
 from ralph.pipeline._pending_merge_commit import _git_value
 from ralph.pipeline.auto_integrate_record import (
+    MARK_REINTEGRATE_PENDING,
     MARK_RESOLVING_REBASE,
     IntegrationRecord,
     read_record,
@@ -105,9 +106,36 @@ def _promote_completed_resolution(root: Path, record: IntegrationRecord) -> Inte
     if legacy is not None:
         write_record(root, legacy.record)
         return legacy.record
-    return (
-        "retained resolution lacks verified completion proof; work preserved and landing withheld"
+    replay = _stale_replay_record(root, current)
+    return current if replay is None else replay
+
+
+def _stale_replay_record(root: Path, record: IntegrationRecord) -> IntegrationRecord | None:
+    """Mark a record whose resolution claim Git disproves for a fresh replay.
+
+    Only a feature-integration record is replayed here: a target
+    reconciliation owns its work in another worktree and is continued by
+    the reconciliation path, not by the feature replay.
+    """
+    from ralph.pipeline._owned_landing_reintegration import retained_resolution_is_stale
+
+    if not (
+        record.operation_kind == "feature_integrate"
+        and (record.resolving_rebase or record.resolving_merge)
+        and retained_resolution_is_stale(root, record)
+    ):
+        return None
+    replay = record.with_transition(
+        MARK_RESOLVING_REBASE,
+        resolving_rebase=False,
+        resolving_merge=False,
+    ).with_transition(
+        MARK_REINTEGRATE_PENDING,
+        reintegrate_pending=True,
+        owning_worktree=record.owning_worktree or str(root),
     )
+    write_record(root, replay)
+    return replay
 
 
 def _legacy_completed_rebase(root: Path, record: IntegrationRecord) -> CommitCompletion | None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.pipeline.auto_integrate_backup_refs import delete_rebase_backup_ref
+from ralph.pipeline.integration_actions import delete_backup_ref as delete_rebase_backup_ref
 
 if TYPE_CHECKING:
     from pathlib import Path

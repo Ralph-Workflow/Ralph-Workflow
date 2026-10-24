@@ -26,6 +26,20 @@ per decision, in this order:
    :class:`~ralph.pipeline._integration_action.IntegrationAction` closed
    vocabulary and render a reason derived from the CURRENT observation.
 
+Configured target and remote
+---------------------------
+
+The owner observes the CONFIGURED integration target branch and remote
+name, never a hardcoded pair. Every entry point therefore accepts the
+configured ``target`` and ``remote`` and hands them to the director
+(:meth:`ralph.pipeline.integration_director.IntegrationDirector.observe`),
+which is the only component that reads the target/feature/remote refs.
+When a caller supplies no configured name, the director's own defaults
+(``main`` / ``origin``) apply; a caller that HAS a configured target
+(``release``, ``tacos``, ...) must pass it, otherwise the observation
+would be taken against a branch the operator never configured and a
+configured non-default target could never converge.
+
 Charge rule
 -----------
 
@@ -237,6 +251,8 @@ def decide_integration(
     observation: Observation | None = None,
     unknown_budget: int = 3,
     repeat_threshold: int = 2,
+    target: str | None = None,
+    remote: str | None = None,
 ) -> tuple[IntegrationAction, str]:
     """Decide what integration does next for ``root`` and explain why.
 
@@ -257,6 +273,12 @@ def decide_integration(
             freshly-loaded ledger state.
         repeat_threshold: The repeat threshold applied to a
             freshly-loaded ledger state.
+        target: The CONFIGURED integration target branch name. ``None``
+            uses the director's default (``main``). A caller with a
+            configured target must pass it so the observation is taken
+            against the configured branch.
+        remote: The CONFIGURED remote name. ``None`` uses the
+            director's default (``origin``).
 
     Returns:
         The projected :class:`IntegrationAction` and a reason derived
@@ -270,6 +292,8 @@ def decide_integration(
         observation=observation,
         unknown_budget=unknown_budget,
         repeat_threshold=repeat_threshold,
+        target=target,
+        remote=remote,
     )
     return verdict.action, verdict.reason
 
@@ -283,14 +307,29 @@ def decide_integration_verdict(
     observation: Observation | None = None,
     unknown_budget: int = 3,
     repeat_threshold: int = 2,
+    target: str | None = None,
+    remote: str | None = None,
 ) -> IntegrationOwnerDecision:
     """Decide, charge and project; return the owner's full verdict.
 
     This is the seam the director delegates to: it owns the ledger
     read, the ledger bump and the ledger persist, and it returns the
     charged ledger state so the caller never has to re-read it.
+
+    The CONFIGURED ``target`` and ``remote`` reach the observation
+    layer: they are handed to the director, which reads the
+    target/feature/remote refs against those names.
     """
-    current = observation if observation is not None else _observe(root, agent_active=agent_active)
+    current = (
+        observation
+        if observation is not None
+        else _observe(
+            root,
+            agent_active=agent_active,
+            target=target,
+            remote=remote,
+        )
+    )
     current = _reconcile_record(current, record)
     attempts = load_integration_attempts(
         root,
@@ -400,16 +439,37 @@ def charge_integration_attempt(
     return state if charged is None else charged
 
 
-def _observe(root: Path, *, agent_active: bool) -> Observation:
+def _observe(
+    root: Path,
+    *,
+    agent_active: bool,
+    target: str | None,
+    remote: str | None,
+) -> Observation:
     """Observe ``root`` through the existing director machinery.
 
     The director is imported lazily because the director delegates its
     ledger work to this module: a module-level import in both
     directions would be an import cycle.
-    """
-    from ralph.pipeline.integration_director import IntegrationDirector
 
-    return IntegrationDirector(root, agent_active=agent_active).observe()
+    The CONFIGURED target branch and remote name reach the observation
+    layer here. The director's own defaults (``main`` / ``origin``) are
+    used ONLY when the caller supplies no configured name, so a
+    configured non-default target/remote is observed against the names
+    the operator configured instead of the hardcoded pair.
+    """
+    from ralph.pipeline.integration_director import (
+        DEFAULT_REMOTE,
+        DEFAULT_TARGET_BRANCH,
+        IntegrationDirector,
+    )
+
+    return IntegrationDirector(
+        root,
+        target=DEFAULT_TARGET_BRANCH if target is None else target,
+        remote=DEFAULT_REMOTE if remote is None else remote,
+        agent_active=agent_active,
+    ).observe()
 
 
 def _reconcile_record(observation: Observation, record: IntegrationRecord | None) -> Observation:
