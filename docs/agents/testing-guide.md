@@ -391,11 +391,36 @@ target**:
   usage;
 - a ceiling for a file that no longer exists retires with the file.
 
+**The whole-tree reconciliation.** The per-file ratchet above only ever sees
+ONE file at a time, so it is structurally blind to the drift that matters most
+for the ledger below: a baseline row that no longer corresponds to any
+coupling. The policy-audit verify step (`policy audit (audit_test_policy)`,
+`python -m ralph.testing.audit_test_policy`) therefore also reconciles the
+frozen baseline against the whole tree
+(`ralph-workflow/ralph/testing/whitebox_reconciliation.py`) and reports three
+drift shapes:
+
+| drift | what it means | the fix |
+| --- | --- | --- |
+| `whitebox-baseline-removed` | the baseline names a test file that no longer exists — a leftover of a deleted file | delete the baseline row |
+| `whitebox-baseline-stale` | the file still exists but its coupling has been fully converted away, so the row claims an exception the file no longer needs | delete the baseline row and its ledger entry |
+| `whitebox-baseline-unlowered` | the frozen ceiling for a category sits above the file's current count | lower the baseline row to the current count |
+
+That reconciliation runs OUTSIDE the 60-second pytest budget: a whole-tree AST
+scan of every test file costs tens of seconds, so it belongs to the
+policy-audit verify step and not to a pytest suite. The pytest suite covers
+the reconciliation logic itself against fixtures, so the rule is enforced in
+both places without spending the immutable budget twice.
+
 **Lowering a ceiling** is a deliberate, reviewed step, never an automatic one.
 After a conversion batch, re-emit the inventory with
 `uv run python -m ralph.testing.audit_test_policy --emit-baseline` and lower
 only the entries whose counts actually fell; an entry may never be raised. A
-new file inherits the ceiling of the files it replaced.
+new file inherits the ceiling of the files it replaced. Lowering the baseline
+and updating the ledger are ONE change: re-emit with `--emit-baseline` and
+update the matching ledger row in the same edit, because a lowered ceiling
+without a matching ledger row — or a ledger row without a lowered ceiling —
+leaves the ledger claiming coupling the tree no longer has.
 
 **Allowlist semantics.** Each allowlist skips only its own category:
 `_IO_ALLOWLIST` skips the real-I/O check, `_WALL_CLOCK_ALLOWLIST` skips the
@@ -420,8 +445,8 @@ Every test file that still holds a non-zero white-box count is listed below
 with its frozen count, the observable-surface gap that keeps it white-box, the
 seam that would remove it, and the follow-up owner. The ledger is the
 authoritative record of retained white-box coupling: a retained entry without
-a ledger row is a defect, and the audit's ratchet is what keeps the table
-honest.
+a ledger row is a defect, and so is a ledger row without a retained entry.
+The ratchet and the whole-tree reconciliation are what keep the table honest.
 
 | cluster | files | setattr_private | private_import | private_attr | total | owner |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -429,7 +454,7 @@ honest.
 | mcp-bridge | 82 | 23 | 267 | 142 | 432 | mcp-bridge |
 | agents | 97 | 34 | 281 | 100 | 415 | agents |
 | auto-integrate | 40 | 160 | 37 | 54 | 251 | auto-integrate |
-| project-policy | 29 | 4 | 54 | 161 | 219 | project-policy |
+| project-policy | 28 | 4 | 53 | 161 | 218 | project-policy |
 | run-loop | 17 | 100 | 27 | 84 | 211 | run-loop |
 | display | 21 | 22 | 85 | 75 | 182 | display |
 | pipeline | 31 | 70 | 32 | 74 | 176 | pipeline |
@@ -738,7 +763,6 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/project_policy/test_run_integration.py` | 0 | 1 | 15 | project-policy | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: policy public-seam unit |
 | `tests/project_policy/test_skip_inline_policy_prompt.py` | 0 | 4 | 9 | project-policy | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: policy public-seam unit |
 | `tests/project_policy/test_starter_enforcement_prose.py` | 0 | 0 | 2 | project-policy | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: policy public-seam unit |
-| `tests/project_policy/test_starter_hygiene_v5.py` | 0 | 1 | 0 | project-policy | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: policy public-seam unit |
 | `tests/project_policy/test_starter_living_document_contract.py` | 0 | 0 | 1 | project-policy | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: policy public-seam unit |
 | `tests/project_policy/test_three_state_readiness_emission.py` | 0 | 2 | 6 | project-policy | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: policy public-seam unit |
 | `tests/project_policy/test_typechecking_ratchet_inventory.py` | 0 | 3 | 0 | project-policy | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: policy public-seam unit |

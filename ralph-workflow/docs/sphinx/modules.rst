@@ -1086,6 +1086,13 @@ ralph.pipeline.reducer
    :members:
    :show-inheritance:
 
+ralph.pipeline.retry_diagnostic
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.retry_diagnostic
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.auto_integrate
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -3574,6 +3581,13 @@ ralph.process.manager
 
 .. automodule:: ralph.process.manager
    :no-members:
+
+ralph.process.manager.liveness_verifier
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.process.manager.liveness_verifier
+   :members:
+   :show-inheritance:
 
 ralph.process.pty
 ~~~~~~~~~~~~~~~~~

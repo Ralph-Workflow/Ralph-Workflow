@@ -982,12 +982,12 @@ level 1 rejects unsupported claims per AGENTS.md.
 - `ralph/agents/timeout_clock.py:16` — `class FakeClock`; the
   deterministic clock every watchdog test drives instead of
   wall-clock waits.
-- `ralph/testing/audit_test_policy.py:216` —
-  `class TestPolicyAuditor(ast.NodeVisitor)`; the AST-level audit
+- `ralph/testing/audit_test_policy.py:204` —
+  `class TestPolicyAuditor`; the AST-level audit
   module that enforces no real `time.sleep`, no `subprocess.run`
   without `timeout=`, and no real file I/O in non-`subprocess_e2e`
-  tests (entrypoints at `audit_test_file` line 568 and
-  `audit_tests_directory` line 630).
+  tests (entrypoints at `audit_test_file` line 558 and
+  `audit_tests_directory` line 608).
 
 ### Pin tests
 

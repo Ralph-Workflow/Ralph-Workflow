@@ -577,7 +577,7 @@ def _advance_target_to_remote(
         return charge_reason
     effective_clock = clock if clock is not None else default_clock()
     try:
-        advanced, _fast_forward_reason = fast_forward_target(
+        advanced, reason = fast_forward_target(
             root,
             target,
             remote_sha,

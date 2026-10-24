@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ast
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
@@ -12,6 +12,7 @@ from ralph.testing.audit_test_policy import (
     TestPolicyViolation,
     audit_test_file,
     audit_tests_directory,
+    collect_whitebox_inventory,
     count_private_attrs,
     count_private_imports,
     count_setattr_private,
@@ -19,10 +20,7 @@ from ralph.testing.audit_test_policy import (
     render_whitebox_baseline,
 )
 from ralph.testing.test_whitebox_baseline import WHITEBOX_BASELINE
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
+from ralph.testing.whitebox_reconciliation import reconcile_whitebox_baseline
 
 # ---------------------------------------------------------------------------
 # Core function tests — audit_test_file
@@ -351,6 +349,159 @@ def test_emit_baseline_entry_set_matches_frozen_baseline() -> None:
     raw = ast.literal_eval(raw_assignment.value)
     emitted_paths = {line.split("|", 1)[0] for line in raw.splitlines() if line}
     assert emitted_paths == set(WHITEBOX_BASELINE)
+
+
+# ---------------------------------------------------------------------------
+# Whole-tree reconciliation tests
+# ---------------------------------------------------------------------------
+
+
+def _whitebox_counts(
+    setattr_private: int = 0,
+    private_import: int = 0,
+    private_attr: int = 0,
+) -> dict[str, int]:
+    """Return one frozen-baseline style count triple."""
+    return {
+        "setattr_private": setattr_private,
+        "private_import": private_import,
+        "private_attr": private_attr,
+    }
+
+
+def _existing_paths(tree_root: Path) -> set[str]:
+    """Return the baseline key of every Python file that exists under ``tree_root``."""
+    return {
+        (Path("tests") / path.relative_to(tree_root)).as_posix()
+        for path in tree_root.rglob("*.py")
+        if "__pycache__" not in path.parts
+    }
+
+
+def test_reconciliation_reports_a_fully_converted_row_as_stale(tmp_path: Path) -> None:
+    """A baseline row whose coupling is fully converted away is reported stale."""
+    tree_root = tmp_path / "tests"
+    tree_root.mkdir()
+    (tree_root / "test_converted.py").write_text(
+        "def test_ok() -> None:\n    assert True\n",
+        encoding="utf-8",
+    )
+    key = "tests/test_converted.py"
+    baseline = {key: _whitebox_counts(private_import=1)}
+    inventory = collect_whitebox_inventory(tree_root)
+    assert inventory == {}
+    drifts = reconcile_whitebox_baseline(
+        inventory,
+        baseline,
+        existing_paths=_existing_paths(tree_root),
+    )
+    assert [(drift.path, drift.category) for drift in drifts] == [(key, "whitebox-baseline-stale")]
+
+
+def test_reconciliation_reports_a_deleted_file_as_removed(tmp_path: Path) -> None:
+    """A baseline row naming a file that no longer exists is reported removed."""
+    tree_root = tmp_path / "tests"
+    tree_root.mkdir()
+    key = "tests/test_deleted.py"
+    baseline = {key: _whitebox_counts(private_import=1)}
+    inventory = collect_whitebox_inventory(tree_root)
+    drifts = reconcile_whitebox_baseline(
+        inventory,
+        baseline,
+        existing_paths=_existing_paths(tree_root),
+    )
+    assert [(drift.path, drift.category) for drift in drifts] == [
+        (key, "whitebox-baseline-removed")
+    ]
+
+
+def test_reconciliation_reports_a_ceiling_above_the_count_as_unlowered(
+    tmp_path: Path,
+) -> None:
+    """A frozen ceiling above the fresh count is reported as unlowered."""
+    tree_root = tmp_path / "tests"
+    tree_root.mkdir()
+    (tree_root / "test_partial.py").write_text(
+        "from ralph.example import _private\n",
+        encoding="utf-8",
+    )
+    key = "tests/test_partial.py"
+    baseline = {key: _whitebox_counts(private_import=3)}
+    inventory = collect_whitebox_inventory(tree_root)
+    assert inventory[key]["private_import"] == 1
+    drifts = reconcile_whitebox_baseline(
+        inventory,
+        baseline,
+        existing_paths=_existing_paths(tree_root),
+    )
+    assert [(drift.path, drift.category) for drift in drifts] == [
+        (key, "whitebox-baseline-unlowered")
+    ]
+
+
+def test_reconciliation_reports_no_drift_for_an_exact_match(tmp_path: Path) -> None:
+    """An exactly matching inventory and baseline produce no drift at all."""
+    tree_root = tmp_path / "tests"
+    tree_root.mkdir()
+    (tree_root / "test_matching.py").write_text(
+        "from ralph.example import _private\n",
+        encoding="utf-8",
+    )
+    key = "tests/test_matching.py"
+    baseline = {key: _whitebox_counts(private_import=1)}
+    inventory = collect_whitebox_inventory(tree_root)
+    assert inventory[key]["private_import"] == 1
+    drifts = reconcile_whitebox_baseline(
+        inventory,
+        baseline,
+        existing_paths=_existing_paths(tree_root),
+    )
+    assert drifts == []
+
+
+def test_frozen_baseline_paths_all_exist_in_the_test_tree() -> None:
+    """Every frozen baseline path still exists in the repository test tree."""
+    project_root = Path(__file__).resolve().parents[1]
+    existing = {
+        path.relative_to(project_root).as_posix()
+        for path in (project_root / "tests").rglob("*.py")
+        if "__pycache__" not in path.parts
+    }
+    missing = sorted(path for path in WHITEBOX_BASELINE if path not in existing)
+    assert missing == []
+
+
+def test_frozen_baseline_holds_no_all_zero_row() -> None:
+    """A frozen row with three zero counts claims no coupling and must not exist."""
+    all_zero = sorted(
+        path for path, counts in WHITEBOX_BASELINE.items() if not any(counts.values())
+    )
+    assert all_zero == []
+
+
+def test_frozen_baseline_matches_a_fresh_scan_of_the_project_policy_cluster() -> None:
+    """A fresh scan of a bounded cluster must not drift from the frozen baseline.
+
+    The whole-tree scan the policy audit performs costs tens of seconds, so it
+    cannot live inside the immutable 60-second pytest budget. This test keeps
+    the same fresh-inventory-vs-frozen-baseline comparison for one bounded
+    cluster, where the AST scan costs well under a second.
+    """
+    project_root = Path(__file__).resolve().parents[1]
+    cluster_root = project_root / "tests" / "project_policy"
+    inventory = collect_whitebox_inventory(cluster_root)
+    baseline = {
+        path: counts
+        for path, counts in WHITEBOX_BASELINE.items()
+        if path.startswith("tests/project_policy/")
+    }
+    existing = {
+        (Path("tests") / "project_policy" / path.relative_to(cluster_root)).as_posix()
+        for path in cluster_root.rglob("*.py")
+        if "__pycache__" not in path.parts
+    }
+    drifts = reconcile_whitebox_baseline(inventory, baseline, existing_paths=existing)
+    assert drifts == []
 
 
 # ---------------------------------------------------------------------------

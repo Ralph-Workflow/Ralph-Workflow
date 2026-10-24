@@ -28,6 +28,19 @@ These counts are a CEILING, never a target. They may only decrease. The audit
 fails closed when a file's count rises above its frozen ceiling, and when a file
 that already holds a non-zero ceiling disappears from the tree.
 
+The ceiling is a snapshot of the retained coupling, so the table must also stay
+truthful about what it still retains. A row whose coupling has been fully
+converted away must be DELETED, because no exception is left to claim. A
+ceiling that sits above the file's current count must be LOWERED to that
+count, because an over-high ceiling keeps the exception ledger claiming
+coupling the tree no longer has. A row may never be raised.
+
+The whole-tree reconciliation in
+``ralph.testing.whitebox_reconciliation`` reports all three drift shapes
+(``whitebox-baseline-removed``, ``whitebox-baseline-stale`` and
+``whitebox-baseline-unlowered``) by comparing a FRESH inventory against this
+frozen table.
+
 The table is stored as one ``path|setattr_private,private_import,private_attr``
 record per line so the module stays inside the repository's 1000-line per-file
 limit; ``WHITEBOX_BASELINE`` exposes the parsed dict-of-dicts form.
@@ -298,7 +311,6 @@ tests/project_policy/test_remediation.py|0,0,9
 tests/project_policy/test_run_integration.py|0,1,15
 tests/project_policy/test_skip_inline_policy_prompt.py|0,4,9
 tests/project_policy/test_starter_enforcement_prose.py|0,0,2
-tests/project_policy/test_starter_hygiene_v5.py|0,1,0
 tests/project_policy/test_starter_living_document_contract.py|0,0,1
 tests/project_policy/test_three_state_readiness_emission.py|0,2,6
 tests/project_policy/test_typechecking_ratchet_inventory.py|0,3,0
