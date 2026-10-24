@@ -9,7 +9,7 @@ pattern match against the canonical file content. Each failure emits a
 evidence, and the required remediation outcome.
 
 The validator is the consumer of the shared readiness-evidence inventory
-in :mod:`ralph.project_policy.evidence`. The inventory enumerates every
+in :mod:`ralph.project_policy._evidence`. The inventory enumerates every
 file the validator needs to read; the cache hashes the same inventory so
 the cache cannot drift from the validator.
 
@@ -724,4 +724,26 @@ def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[Policy
     return findings
 
 
-__all__ = ["validate_readiness"]
+def check_capture_command_fact(
+    content: str,
+    path: str,
+    filename: str,
+) -> list[PolicyFinding]:
+    """Check one document for the declared capture-command fact.
+
+    Public seam over the content-check implementation so a caller (and a
+    black-box test) can assert the finding without importing the private
+    content-check module.
+
+    Args:
+        content: The document text to inspect.
+        path: The document path recorded on each finding.
+        filename: The document filename recorded on each finding.
+
+    Returns:
+        Every policy finding raised by the capture-command fact check.
+    """
+    return _check_capture_command_fact(content, path, filename)
+
+
+__all__ = ["check_capture_command_fact", "validate_readiness"]

@@ -30,7 +30,7 @@ import os
 import sys
 import threading
 from pathlib import Path
-from typing import NoReturn
+from typing import TYPE_CHECKING, NoReturn
 from unittest import mock
 
 import pytest
@@ -58,8 +58,10 @@ from ralph.mcp.server._pre_serve_overrun import (
 from ralph.mcp.server._publish_catalog_bounded import publish_tool_catalog_bounded
 from ralph.mcp.server._start_stage_tracker import read_last_stage
 from ralph.mcp.server._start_stage_tracker import record as real_record_stage
-from ralph.mcp.server.runtime import McpServerExtras
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
+
+if TYPE_CHECKING:
+    from ralph.mcp.server.runtime import McpServerExtras
 
 
 class _ExitInterceptedError(Exception):
@@ -110,17 +112,19 @@ def test_overrun_with_stalled_stage_recording_exits_promptly(tmp_path: Path) -> 
         stall_completed = True
 
     try:
-        with mock.patch.object(os, "_exit", _mock_exit):
-            with pytest.raises(_ExitInterceptedError) as exc_info:
-                fail_closed_pre_serve_overrun(
-                    tmp_path,
-                    stage="session_ready",
-                    elapsed_s=1.2,
-                    budget_s=1.0,
-                    exit_code=SESSION_OVERRUN_EXIT_CODE,
-                    diagnostic_timeout_s=0.05,
-                    stage_recorder=stalled_record,
-                )
+        with (
+            mock.patch.object(os, "_exit", _mock_exit),
+            pytest.raises(_ExitInterceptedError) as exc_info,
+        ):
+            fail_closed_pre_serve_overrun(
+                tmp_path,
+                stage="session_ready",
+                elapsed_s=1.2,
+                budget_s=1.0,
+                exit_code=SESSION_OVERRUN_EXIT_CODE,
+                diagnostic_timeout_s=0.05,
+                stage_recorder=stalled_record,
+            )
         assert exc_info.value.code == SESSION_OVERRUN_EXIT_CODE
         assert stall_completed is False, "Overrun exit must not wait for wedged stage write"
     finally:
@@ -141,16 +145,16 @@ def test_overrun_with_stalled_stdio_flush_exits_promptly(tmp_path: Path) -> None
         with (
             mock.patch.object(os, "_exit", _mock_exit),
             mock.patch.object(sys.stdout, "flush", stalled_flush),
+            pytest.raises(_ExitInterceptedError) as exc_info,
         ):
-            with pytest.raises(_ExitInterceptedError) as exc_info:
-                fail_closed_pre_serve_overrun(
-                    tmp_path,
-                    stage="config_loading",
-                    elapsed_s=1.5,
-                    budget_s=1.0,
-                    exit_code=PRE_SERVE_OVERRUN_EXIT_CODE,
-                    diagnostic_timeout_s=0.05,
-                )
+            fail_closed_pre_serve_overrun(
+                tmp_path,
+                stage="config_loading",
+                elapsed_s=1.5,
+                budget_s=1.0,
+                exit_code=PRE_SERVE_OVERRUN_EXIT_CODE,
+                diagnostic_timeout_s=0.05,
+            )
         assert exc_info.value.code == PRE_SERVE_OVERRUN_EXIT_CODE
         assert flush_completed is False, "Overrun exit must not wait for wedged stdio flush"
     finally:
@@ -163,32 +167,36 @@ def test_overrun_with_failing_stage_recording_suppresses_error_and_exits(tmp_pat
     def failing_record(root: Path, stage: str, *, timeout_s: float | None = None) -> None:
         raise OSError("Hostile filesystem / disk read-only error")
 
-    with mock.patch.object(os, "_exit", _mock_exit):
-        with pytest.raises(_ExitInterceptedError) as exc_info:
-            fail_closed_pre_serve_overrun(
-                tmp_path,
-                stage="config_loading",
-                elapsed_s=1.3,
-                budget_s=1.0,
-                exit_code=PRE_SERVE_OVERRUN_EXIT_CODE,
-                diagnostic_timeout_s=0.1,
-                stage_recorder=failing_record,
-            )
+    with (
+        mock.patch.object(os, "_exit", _mock_exit),
+        pytest.raises(_ExitInterceptedError) as exc_info,
+    ):
+        fail_closed_pre_serve_overrun(
+            tmp_path,
+            stage="config_loading",
+            elapsed_s=1.3,
+            budget_s=1.0,
+            exit_code=PRE_SERVE_OVERRUN_EXIT_CODE,
+            diagnostic_timeout_s=0.1,
+            stage_recorder=failing_record,
+        )
     assert exc_info.value.code == PRE_SERVE_OVERRUN_EXIT_CODE
 
 
 def test_overrun_clean_path_records_stage_and_exits(tmp_path: Path) -> None:
     """Under normal filesystem operation, stage is recorded and exit code is honored."""
-    with mock.patch.object(os, "_exit", _mock_exit):
-        with pytest.raises(_ExitInterceptedError) as exc_info:
-            fail_closed_pre_serve_overrun(
-                tmp_path,
-                stage="catalog_publish",
-                elapsed_s=0.6,
-                budget_s=0.4,
-                exit_code=CATALOG_PUBLISH_OVERRUN_EXIT_CODE,
-                diagnostic_timeout_s=0.5,
-            )
+    with (
+        mock.patch.object(os, "_exit", _mock_exit),
+        pytest.raises(_ExitInterceptedError) as exc_info,
+    ):
+        fail_closed_pre_serve_overrun(
+            tmp_path,
+            stage="catalog_publish",
+            elapsed_s=0.6,
+            budget_s=0.4,
+            exit_code=CATALOG_PUBLISH_OVERRUN_EXIT_CODE,
+            diagnostic_timeout_s=0.5,
+        )
     assert exc_info.value.code == CATALOG_PUBLISH_OVERRUN_EXIT_CODE
     assert read_last_stage(tmp_path) == "catalog_publish"
 

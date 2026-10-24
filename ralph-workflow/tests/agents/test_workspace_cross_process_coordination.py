@@ -22,8 +22,8 @@ import pytest
 
 from ralph.agents.invoke._workspace import (
     CrossProcessWatchLockProtocol,
-    WatchObserverFactory,
     WorkspaceMonitor,
+    WorkspaceWatchSeams,
 )
 from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
 from ralph.workspace._shared_awareness import (
@@ -36,6 +36,8 @@ from ralph.workspace.awareness import release_workspace_awareness
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from ralph.agents.invoke.watchdog_observer import WatchObserverFactory
 
 
 class _FakeObserver:
@@ -178,10 +180,12 @@ def _monitor(
         host_budget=8192,
         directory_counter=_zero_directory_counter,
         live_watch_total=0,
-        watch_lock=lock,
-        observer_factory=observer_factory,
-        sidecar_factory=lambda _root: sidecar,
-        sidecar_remover=lambda _root: None,
+        seams=WorkspaceWatchSeams(
+            watch_lock=lock,
+            observer_factory=observer_factory,
+            sidecar_factory=lambda _root: sidecar,
+            sidecar_remover=lambda _root: None,
+        ),
     )
 
 

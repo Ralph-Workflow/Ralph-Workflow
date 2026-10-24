@@ -56,9 +56,9 @@ def test_integration_recovery_backoff_survives_restart_and_exhaustion() -> None:
         ArtifactsPolicy,
         PolicyBundle,
     )
+    from ralph.recovery.classifier import FailureCategory
     from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
     from ralph.recovery.events import FailureEvent, FalloverEvent
-    from ralph.recovery.failure_category import FailureCategory
 
     for configured_delay in (250, 0):
         bundle = PolicyBundle(

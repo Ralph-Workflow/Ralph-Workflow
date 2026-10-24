@@ -127,8 +127,8 @@ def build_explore_index(workspace_root: Path) -> ExploreIndex:
     index_root = _resolve_index_dir(workspace_root)
     store = ExploreStore(index_root)
     from ralph.mcp.explore.pipeline import EXTRACTOR_VERSION
+    from ralph.mcp.explore.pipeline import EXTRACTOR_VERSION as STRUCTURE_EXTRACTOR_VERSION
     from ralph.mcp.explore.store import SCHEMA_VERSION
-    from ralph.mcp.explore.structure import EXTRACTOR_VERSION as STRUCTURE_EXTRACTOR_VERSION
 
     raw = store.get_setting("current_generation") or "0"
     try:

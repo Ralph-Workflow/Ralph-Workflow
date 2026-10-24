@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Final, Protocol, cast
 
 from ralph.process._spawn_env import child_env_for_spawn
 from ralph.process.manager._deadline_timeout_expired import DeadlineTimeoutExpired
+from ralph.process.manager._git_termination import is_git_name
 from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._managed_process import ManagedProcess
 from ralph.process.manager._managed_pty_process import ManagedPtyProcess
@@ -327,6 +328,7 @@ __all__ = [
     "_pm_state",
     "death_preexec",
     "get_process_manager",
+    "is_git_name",
     "process_phase_scope",
     "reset_process_manager",
     "verify_process_liveness",

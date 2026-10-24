@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.protocol.startup import _visible_mcp_tool_names_owned as lifecycle_visible_tools
 from ralph.mcp.protocol.startup import _visible_mcp_tool_names_owned as startup_visible_tools
-from ralph.mcp.server.lifecycle import _visible_mcp_tool_names_owned as lifecycle_visible_tools
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.prompts.template_variables import default_capability_identifiers_for_drain

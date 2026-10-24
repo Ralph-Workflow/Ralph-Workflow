@@ -21,11 +21,11 @@ from ralph.project_policy._assessment import (
     parse_execution_evidence,
 )
 from ralph.project_policy._assessment_error import EvidenceParseError
-from ralph.project_policy._command_outcome import CommandOutcome
-from ralph.project_policy._readiness_assessment import ReadinessAssessment
-from ralph.project_policy.models import (
+from ralph.project_policy._assessment_error import (
     EvidenceParseError as ModelsEvidenceParseError,
 )
+from ralph.project_policy._command_outcome import CommandOutcome
+from ralph.project_policy._readiness_assessment import ReadinessAssessment
 from ralph.project_policy.models import (
     PolicyFinding,
     ReadinessStatus,

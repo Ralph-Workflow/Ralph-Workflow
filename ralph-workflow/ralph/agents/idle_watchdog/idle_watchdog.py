@@ -834,6 +834,7 @@ class IdleWatchdog:
         *,
         now: float,
         idle_elapsed: float,
+        corroboration: CorroborationSnapshot | None = None,
     ) -> WatchdogVerdict:
         """Public decision accessor for the fire gate.
 
@@ -852,7 +853,12 @@ class IdleWatchdog:
             ``WatchdogVerdict.FIRE`` when the fire is allowed,
             ``WatchdogVerdict.CONTINUE`` when the fire is deferred.
         """
-        return self._gate_fire(fire_reason, now=now, idle_elapsed=idle_elapsed)
+        return self._gate_fire(
+            fire_reason,
+            now=now,
+            idle_elapsed=idle_elapsed,
+            corroboration=corroboration,
+        )
 
     def _gate_fire(
         self,

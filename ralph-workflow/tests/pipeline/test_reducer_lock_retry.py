@@ -363,7 +363,7 @@ def test_valid_message_preserved_through_failure_then_success(tmp_path: Path) ->
 
 def test_persistent_lock_contention_never_reaches_failed_terminal_and_pauses() -> None:
     """A lock is waited out, not fatal: no recovery budget burn, no terminal, a pause between tries."""
-    from ralph.pipeline.reducer import _LOCK_RETRY_DELAY_MS
+    from ralph.pipeline.reducer import LOCK_RETRY_DELAY_MS
 
     policy = _load_pipeline_policy()
     err = "GitOperationError: Git stage_all failed: fatal: Unable to create '/r/.git/index.lock': File exists."
@@ -379,7 +379,7 @@ def test_persistent_lock_contention_never_reaches_failed_terminal_and_pauses() -
             state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy)
             assert state.phase != policy.recovery.failed_route
             assert state.recovery_epoch <= _MAX_COMMIT_RECOVERY_ATTEMPTS
-            assert state.last_retry_delay_ms == _LOCK_RETRY_DELAY_MS
+            assert state.last_retry_delay_ms == LOCK_RETRY_DELAY_MS
             state = state.copy_with(last_retry_delay_ms=0, pending_cycle_outcome="completed")
     finally:
         set_last_commit_error(None)

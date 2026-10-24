@@ -17,14 +17,20 @@ allowance and the envelope is measured from when the child actually began.
 The class is pure: the clock and the stage reader are injected, which keeps
 every edge case (never-booting child, slow boot, boot at the edge of the
 allowance, legacy spawn-anchored mode) deterministic under test.
+
+:class:`StartupVerdict` -- the outcome vocabulary :meth:`StartupWatch.check`
+returns -- is defined in :mod:`ralph.mcp.server._startup_watch_verdict` and
+re-exported here, so ``from ralph.mcp.server._startup_watch import
+StartupVerdict`` keeps working unchanged.
 """
 
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import TYPE_CHECKING, Final
+
+from ralph.mcp.server._startup_watch_verdict import StartupVerdict
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -33,14 +39,6 @@ if TYPE_CHECKING:
 #: still booting. The wait loop itself polls far more often; reading the file
 #: on every tick would add avoidable I/O exactly when the host is I/O bound.
 STAGE_POLL_INTERVAL_S: Final[float] = 0.25
-
-
-class StartupVerdict(StrEnum):
-    """Outcome of one :meth:`StartupWatch.check`."""
-
-    WAITING = "waiting"
-    BOOT_DEADLINE_EXCEEDED = "boot_deadline_exceeded"
-    ENVELOPE_DEADLINE_EXCEEDED = "startup_deadline_exceeded"
 
 
 @dataclass

@@ -483,7 +483,7 @@ def test_two_roots_for_one_file_get_one_writer(tmp_path: Path) -> None:
     registry's, and reverting it alone lost half the transcript.
     """
     from ralph.config.enums import AgentTransport
-    from ralph.display.raw_log_breaks import detect_raw_log_breaks
+    from ralph.display.raw_overflow import detect_raw_log_breaks
 
     reset_raw_overflow_path_state()
     real_root = tmp_path / "real"

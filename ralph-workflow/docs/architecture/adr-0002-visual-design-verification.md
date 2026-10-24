@@ -185,7 +185,7 @@ underlying media call usable but never grades perception.
    contract in `ralph.visual.design_verdict` is not wired into any
    production path (D4), so no code enforces the three-input rule
    itself.
-5. **Per-call agent identity** — `ralph.mcp.server._wire_ledger`.
+5. **Per-call agent identity** — `ralph.mcp.server.wire_ledger`.
    Every record carries `agent_id` plus resolved identity and
    delivery mode.
 
@@ -197,7 +197,7 @@ underlying media call usable but never grades perception.
 | Capture argv execution | `ralph.executor.process` | `_media_capture.py` |
 | Server-minted handle | `ralph.mcp.multimodal.resources` | `_wire_ledger.append_wire_record` |
 | Verdict inputs | `ralph/mcp/artifacts/markdown/specs/design_verdict.py` | `tests/test_visual_evidence_artifact.py` |
-| Per-call agent identity | `ralph.mcp.server._wire_ledger` | `_wire_ledger_capture.py` |
+| Per-call agent identity | `ralph.mcp.server.wire_ledger` | `_wire_ledger_capture.py` |
 
 ## Dependency Direction
 
@@ -208,7 +208,7 @@ ralph.visual (policy, capture_request, capture_cell, design_verdict)
         ↓
 ralph.mcp.tools.workspace._media_capture
         ↓
-ralph.mcp.multimodal + ralph.mcp.server._wire_ledger
+ralph.mcp.multimodal + ralph.mcp.server.wire_ledger
         ↓
 ralph.executor.process + ralph.workspace
 ```

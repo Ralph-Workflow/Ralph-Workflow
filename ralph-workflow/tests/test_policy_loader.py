@@ -14,6 +14,7 @@ from ralph.policy import loader as policy_loader
 from ralph.policy.loader import (
     PolicyValidationError as LoaderPolicyValidationError,
 )
+from ralph.policy.loader import PolicyValidationError as PolicyContractValidationError
 from ralph.policy.loader import (
     build_agents_policy_from_config,
     format_validation_error_detail,
@@ -24,7 +25,6 @@ from ralph.policy.loader import (
     load_policy_for_workspace_scope,
     load_policy_or_die,
 )
-from ralph.policy.validation import PolicyValidationError as PolicyContractValidationError
 from ralph.workspace.scope import WorkspaceScope
 
 PLANNING_ANALYSIS_DEFAULT_MAX_ITERATIONS = 1

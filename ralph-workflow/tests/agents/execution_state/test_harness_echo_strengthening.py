@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ralph.agents.execution_state import is_prompt_echo_line
-from ralph.agents.execution_state._harness_echo import is_prompt_echo_line as implementation
+from ralph.agents.execution_state import is_prompt_echo_line as implementation
 
 
 def test_harness_echo_detector_rejects_harness_framing_and_prompt_fragments() -> None:

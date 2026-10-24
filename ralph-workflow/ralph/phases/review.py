@@ -10,13 +10,21 @@ handler emits ``REVIEW_CLEAN`` so the reducer routes straight to
 any commit since the baseline as a trigger to re-review — even documentation
 churn — because the reviewer, not this handler, is the correct judge of which
 changes are substantive.
+
+The phase's side-effecting collaborators (baseline reader, commit checker,
+head-SHA reader, baseline writer) are reachable through the injectable
+:class:`ReviewCollaborators` bundle so callers can drive
+:func:`handle_review` without a real Git repository. The default bundle
+resolves the production implementations, so omitting the seam leaves the
+handler's behavior unchanged.
 """
 
 from __future__ import annotations
 
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from git import InvalidGitRepositoryError
 from loguru import logger
@@ -27,6 +35,8 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.phases import PhaseContext
 from ralph.phases.artifacts import (
     PhaseArtifactError,
@@ -131,6 +141,65 @@ def _has_new_commits_since_baseline(ctx: PhaseContext, baseline: str) -> bool:
         return True
 
 
+# --- Injectable collaborator seam -----------------------------------------
+#
+# The four callbacks below are the review phase's only side-effecting
+# collaborators. They are resolved through the module globals at CALL
+# TIME (not bound at import time) so the production default stays the
+# single source of truth and remains monkeypatch-compatible for any
+# caller that reaches for the module attributes directly.
+
+
+def _production_read_baseline(ctx: PhaseContext) -> str | None:
+    """Resolve the production review-baseline reader."""
+    return _read_review_baseline(ctx)
+
+
+def _production_has_new_commits(ctx: PhaseContext, baseline: str) -> bool:
+    """Resolve the production commit checker."""
+    return _has_new_commits_since_baseline(ctx, baseline)
+
+
+def _production_current_head_sha(ctx: PhaseContext) -> str | None:
+    """Resolve the production head-SHA reader."""
+    return _current_head_sha(ctx)
+
+
+def _production_write_baseline(ctx: PhaseContext, sha: str) -> None:
+    """Resolve the production review-baseline writer."""
+    _write_review_baseline(ctx, sha)
+
+
+@dataclass(frozen=True)
+class ReviewCollaborators:
+    """Injectable collaborators for the review phase.
+
+    Every field defaults to the production implementation, so
+    ``ReviewCollaborators()`` reproduces the handler's default behavior
+    exactly. Callers (and tests) may override any subset of the
+    callbacks to drive :func:`handle_review` without touching the
+    filesystem or a real Git repository.
+
+    Attributes:
+        read_baseline: Returns the recorded review baseline SHA, or
+            ``None`` when no baseline has been recorded yet.
+        has_new_commits: Returns ``True`` when commits landed after the
+            given baseline SHA.
+        current_head_sha: Returns the current workspace head SHA, or
+            ``None`` when it cannot be determined.
+        write_baseline: Records the given SHA as the new review baseline.
+    """
+
+    read_baseline: Callable[[PhaseContext], str | None] = _production_read_baseline
+    has_new_commits: Callable[[PhaseContext, str], bool] = _production_has_new_commits
+    current_head_sha: Callable[[PhaseContext], str | None] = _production_current_head_sha
+    write_baseline: Callable[[PhaseContext, str], None] = _production_write_baseline
+
+
+#: The production collaborator bundle used when no seam is supplied.
+DEFAULT_REVIEW_COLLABORATORS: Final[ReviewCollaborators] = ReviewCollaborators()
+
+
 def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
     hint_path = retry_hint_path(phase, pipeline_policy=ctx.pipeline_policy)
     hint = build_retry_hint(phase, detail)
@@ -156,12 +225,21 @@ def _load_review_issues(ctx: PhaseContext) -> dict[str, object]:
     )
 
 
-def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
+def handle_review(
+    effect: Effect,
+    ctx: PhaseContext,
+    *,
+    collaborators: ReviewCollaborators = DEFAULT_REVIEW_COLLABORATORS,
+) -> list[Event]:
     """Handle the review phase.
 
     Args:
         effect: The effect that triggered this phase.
         ctx: Phase context with workspace and policy.
+        collaborators: Injectable baseline/commit/head collaborators. Defaults
+            to :data:`DEFAULT_REVIEW_COLLABORATORS`, which resolves the
+            production implementations, so omitting the seam keeps the
+            handler's behavior unchanged.
 
     Returns:
         List of events to emit.
@@ -174,8 +252,8 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
         return [PipelineEvent.PROMPT_PREPARED]
 
     if isinstance(effect, InvokeAgentEffect):
-        baseline = _read_review_baseline(ctx)
-        if baseline is not None and not _has_new_commits_since_baseline(ctx, baseline):
+        baseline = collaborators.read_baseline(ctx)
+        if baseline is not None and not collaborators.has_new_commits(ctx, baseline):
             logger.info("Review phase: no new commits since {} — skipping review", baseline[:8])
             return [PipelineEvent.REVIEW_CLEAN]
 
@@ -193,9 +271,9 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
                 )
             ]
 
-        head = _current_head_sha(ctx)
+        head = collaborators.current_head_sha(ctx)
         if head is not None:
-            _write_review_baseline(ctx, head)
+            collaborators.write_baseline(ctx, head)
 
         try:
             phase_name = effect.phase

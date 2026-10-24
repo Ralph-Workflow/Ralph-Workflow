@@ -59,10 +59,10 @@ from ralph.cli.commands import smoke as smoke_module
 from ralph.cli.commands._smoke_ccs import smoke_interactive_ccs_command
 from ralph.cli.main import app
 from ralph.config import loader as loader_module
+from ralph.config import loader as policy_loader_module
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.pipeline.plumbing.smoke_plumbing import resolve_smoke_harness_spec
-from ralph.policy import loader as policy_loader_module
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.workspace import scope as scope_module
 from ralph.workspace.scope import WorkspaceScope

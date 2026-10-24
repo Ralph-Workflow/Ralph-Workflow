@@ -5,6 +5,13 @@ These pin the fixes surfaced by live-testing the interactive transport
 against Claude Code 2.1.218 (haiku): VT escape residue, exit-banner chrome,
 parallel same-tool call emission, is_error parity, and string-shaped JSON
 payload handling.
+
+The chrome assertions drive the transport through its PUBLIC observation
+seam (``ClaudeInteractiveParser.parse_transcript_entry`` /
+``ClaudeInteractiveParser.session_id``) and never touch private parser
+state: the live content mode is entered the way production enters it --
+with a real assistant envelope -- and is then observed through the KIND of
+the events the seam returns.
 """
 
 from __future__ import annotations
@@ -18,6 +25,34 @@ from ralph.agents.parsers.claude_interactive import (
     ClaudeInteractiveTranscriptParser,
 )
 from ralph.display.vt_normalizer import normalize_vt_text
+
+
+def _enter_output_mode(parser: ClaudeInteractiveParser) -> None:
+    """Drive the transport into the live ``output`` content mode.
+
+    The content mode is live parser state, so it is entered the way
+    production enters it: with an assistant envelope whose content block is
+    agent text.
+
+    The probe line then PROVES which mode the parser is in.  Its text can
+    only ever surface as an ``output`` event in the ``output`` mode: the
+    idle mode drops it (it carries a thinking keyword), the ``thinking``
+    mode surfaces it as a ``thinking`` event, and the ``tool_use`` mode
+    drops it.  So the probe distinguishes the ``output`` mode from every
+    other mode instead of assuming it.
+    """
+    envelope = json.dumps(
+        {
+            "type": "assistant",
+            "message": {"content": [{"type": "text", "text": "working on it"}]},
+        }
+    )
+    assert [(event.kind, event.text) for event in parser.parse_transcript_entry(envelope)] == [
+        ("output", "working on it")
+    ]
+
+    probe = parser.parse_transcript_entry("thinking about it\n")
+    assert [(event.kind, event.text) for event in probe] == [("output", "thinking about it")]
 
 
 def test_vt_normalizer_strips_charset_designation_and_cursor_save_escapes() -> None:
@@ -44,33 +79,34 @@ def test_exit_banner_resume_line_is_chrome_even_in_output_mode() -> None:
     #   Resume this session with:
     #   claude --resume <id>
     # The bare first line must never be classified as agent output.
-    parser = ClaudeInteractiveTranscriptParser()
-    parser._current_content_mode = "output"
+    parser = ClaudeInteractiveParser()
+    _enter_output_mode(parser)
 
-    event = parser._event_for_text("Resume this session with:")
+    events = parser.parse_transcript_entry("Resume this session with:\n")
 
-    assert event is None
+    assert events == []
 
 
 def test_exit_banner_resume_id_line_still_yields_session() -> None:
-    parser = ClaudeInteractiveTranscriptParser()
-    parser._current_content_mode = "output"
+    parser = ClaudeInteractiveParser()
+    _enter_output_mode(parser)
 
-    event = parser._event_for_text("claude --resume e36e8e23-cefd-45e0-9f73-4e43ac761a2a")
+    events = parser.parse_transcript_entry("claude --resume e36e8e23-cefd-45e0-9f73-4e43ac761a2a\n")
 
-    assert event is not None
-    assert event.kind == "session"
+    assert [(event.kind, event.text) for event in events] == [
+        ("session", "claude --resume e36e8e23-cefd-45e0-9f73-4e43ac761a2a")
+    ]
     assert parser.session_id == "e36e8e23-cefd-45e0-9f73-4e43ac761a2a"
 
 
 def test_slash_command_echo_is_chrome_even_in_output_mode() -> None:
     # The PTY echoes typed slash commands (e.g. the auto-exit "/exit");
     # a lone slash-command token is TUI echo, never agent output.
-    parser = ClaudeInteractiveTranscriptParser()
-    parser._current_content_mode = "output"
+    parser = ClaudeInteractiveParser()
+    _enter_output_mode(parser)
 
-    assert parser._event_for_text("/exit") is None
-    assert parser._event_for_text("/rc") is None
+    assert parser.parse_transcript_entry("/exit\n") == []
+    assert parser.parse_transcript_entry("/rc\n") == []
 
 
 def test_final_text_not_contaminated_by_exit_banner_end_to_end() -> None:

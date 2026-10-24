@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from ralph.pipeline._integration_action import IntegrationAction
 from ralph.pipeline._integration_diagnostic import busy_refusal_outcome as diagnostic_outcome
-from ralph.pipeline.auto_integrate_recovery import busy_refusal_outcome as recovery_outcome
+from ralph.pipeline._integration_diagnostic import busy_refusal_outcome as recovery_outcome
 
 
 def test_diagnostic_busy_refusal_returns_require_intervention_when_no_deadline() -> None:

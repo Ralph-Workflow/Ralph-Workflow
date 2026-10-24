@@ -383,7 +383,7 @@ def test_an_unrecorded_outcome_that_loops_forever_is_rejected() -> None:
     import pytest as _pytest
 
     from ralph.policy.models import PipelinePolicy
-    from ralph.policy.validation._api import validate_policy_completeness
+    from ralph.policy.validation import validate_policy_completeness
     from ralph.policy.validation._policy_validation_error import PolicyValidationError
 
     bundle = load_policy(_DEFAULTS_DIR)

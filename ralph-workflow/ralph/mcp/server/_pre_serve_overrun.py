@@ -32,6 +32,11 @@ tracker; a caller that needs a different sink passes one explicitly
 (:func:`stage_recorder_override`). Tests therefore observe, stall, or
 fail the stage-recording step through the public seam instead of
 patching a private module attribute.
+
+:class:`StageEventRecorder` -- the in-memory observation recorder --
+is defined in :mod:`ralph.mcp.server._pre_serve_overrun_events` and
+re-exported here, so ``from ralph.mcp.server._pre_serve_overrun import
+StageEventRecorder`` keeps working unchanged.
 """
 
 from __future__ import annotations
@@ -42,7 +47,6 @@ import os
 import sys
 import threading
 import time
-from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING, NoReturn, Protocol
@@ -54,6 +58,7 @@ from ralph.mcp.protocol._startup_timeouts import (
     mcp_real_startup_deadline_from_env,
 )
 from ralph.mcp.server._mcp_server_error import McpServerError
+from ralph.mcp.server._pre_serve_overrun_events import StageEventRecorder
 from ralph.mcp.server._start_stage_tracker import record as _record_stage
 
 if TYPE_CHECKING:
@@ -78,7 +83,7 @@ class StageRecorder(Protocol):
     """Callable that persists one startup stage marker for a workspace root.
 
     The production implementation is the on-disk stage tracker
-    (:func:`ralph.mcp.server._start_stage_tracker.record`). A caller that
+    (:func:`ralph.mcp.server.start_stage_tracker.record`). A caller that
     needs a different sink injects one through the ``stage_recorder``
     argument of :func:`log_and_record_stage` /
     :func:`fail_closed_pre_serve_overrun`, or through
@@ -86,33 +91,6 @@ class StageRecorder(Protocol):
     """
 
     def __call__(self, root: Path, stage: str, *, timeout_s: float | None = None) -> None: ...
-
-
-class StageEventRecorder:
-    """In-memory startup stage recorder that remembers the stage labels it is handed.
-
-    Public observation seam: a caller registers it to assert the startup
-    stage sequence -- and the stage attribution of a fail-closed exit --
-    without reading the on-disk stage file.
-    """
-
-    def __init__(self, *, max_events: int = 64) -> None:
-        """Create a recorder that keeps at most ``max_events`` stage labels."""
-        self._events: deque[str] = deque(maxlen=max_events)
-
-    def __call__(self, root: Path, stage: str, *, timeout_s: float | None = None) -> None:
-        """Record one startup stage label."""
-        self._events.append(stage)
-
-    @property
-    def stages(self) -> tuple[str, ...]:
-        """Return the recorded stage labels in order."""
-        return tuple(self._events)
-
-    @property
-    def last_stage(self) -> str | None:
-        """Return the most recently recorded stage label, or ``None``."""
-        return self._events[-1] if self._events else None
 
 
 #: Stage recorder registered for the current context. ``None`` means the

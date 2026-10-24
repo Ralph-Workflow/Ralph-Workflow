@@ -12,6 +12,13 @@ Every field is a plain callable, so a caller can inject recording fakes
 and assert on the recorded calls instead of patching production
 internals. :func:`default_telemetry_lifecycle` reproduces the production
 wiring exactly, so the default behaviour is unchanged.
+
+The Sentry-backed telemetry modules are imported at module import time
+(``ralph.telemetry`` itself imports nothing, so there is no cycle), while
+the collaborators are read from those modules when
+:func:`default_telemetry_lifecycle` is called — a caller that patches
+``ralph.telemetry._sentry`` before the call still gets the patched
+callable.
 """
 
 from __future__ import annotations
@@ -19,6 +26,8 @@ from __future__ import annotations
 import atexit
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from ralph.telemetry import _sentry, _user_identity
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -76,12 +85,10 @@ class TelemetryLifecycle:
 def default_telemetry_lifecycle() -> TelemetryLifecycle:
     """Return the production lifecycle (the real Sentry-backed sink).
 
-    The telemetry modules are imported HERE, not at module import time,
-    so importing this module never pulls ``sentry_sdk`` into a process
-    that only needs the collaborator shape.
+    The collaborators are resolved as module attributes at call time, so
+    the returned lifecycle always reflects the current state of
+    ``ralph.telemetry._sentry`` and ``ralph.telemetry._user_identity``.
     """
-    from ralph.telemetry import _sentry, _user_identity
-
     return TelemetryLifecycle(
         is_disabled=_sentry.is_telemetry_disabled,
         is_disabled_by_config=_sentry.is_telemetry_disabled_by_config,

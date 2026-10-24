@@ -144,7 +144,7 @@ def test_git_children_get_sigterm_as_their_parent_death_signal() -> None:
 
 
 def test_look_alikes_of_git_do_not_trigger_the_floor() -> None:
-    from ralph.process.manager._git_termination import is_git_name
+    from ralph.process.manager import is_git_name
 
     assert is_git_name("git")
     assert is_git_name("git-remote-https")

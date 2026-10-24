@@ -101,14 +101,14 @@ fresh one.
 
 | Field | Source | Meaning |
 |---|---|---|
-| Sink path | `<workspace>/.agent/mcp-health-events-<bridge-id>.jsonl` | One file per bridge; `bridge-id` is the 12-hex-char value assigned in `start_mcp_server` (`ralph.mcp.server._mcp_health_event:configure_bridge_sink`). |
+| Sink path | `<workspace>/.agent/mcp-health-events-<bridge-id>.jsonl` | One file per bridge; `bridge-id` is the 12-hex-char value assigned in `start_mcp_server` (`ralph.mcp.server.mcp_health_event:configure_bridge_sink`). |
 | `reason` | `RestartReason.value` | `"process_exited"` when the child died; `"probe_failed"` when `_PROBE_FAILURES_BEFORE_RESTART` consecutive probes missed while the child was still alive. |
 | `exit_status` | `process.poll()` | Raw process exit code, present only when `reason == "process_exited"`. |
 | `probe_duration_s` | wall-clock from probe start | Duration of the failed probe, present only when `reason == "probe_failed"`. |
 | `log_tail` | last 10 lines of the child server log | `null` when the log was unavailable at decision time; an empty list when the log was captured but empty. |
 | `stage` | `"process_exited"` or `"probe_failed"` | Free-form label the supervisor was on at decision time. |
 
-The enum lives at `ralph.mcp.server._mcp_health_event:RestartReason`
+The enum lives at `ralph.mcp.server.mcp_health_event:RestartReason`
 (`PROCESS_EXITED`, `PROBE_FAILED`); the sink writer is
 `record_restart_decision(...)` and the reader is
 `read_durable_sink(path=...)`. When a future incident triggers a

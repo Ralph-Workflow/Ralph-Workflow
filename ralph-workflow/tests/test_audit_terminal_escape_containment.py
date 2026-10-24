@@ -783,9 +783,7 @@ def _remove_literal(source: str, literal: str) -> str:
 
 def _replace_literal(source: str, old: str, new: str) -> str:
     """Return the source with the FIRST occurrence of ``old`` replaced by ``new``."""
-    assert old in source, (
-        f"the source must contain {old!r} for this regression to be injectable"
-    )
+    assert old in source, f"the source must contain {old!r} for this regression to be injectable"
     return source.replace(old, new, 1)
 
 

@@ -7,6 +7,10 @@ prefixes and drops server_name + stack-frame abs_path so no codebase identity
 leaves the process. RALPH_DISABLE_TELEMETRY=1 (or true/yes/on) or
 ``telemetry_enabled = false`` in ``ralph-workflow.toml`` skips initialization
 at the single CLI chokepoint in ``_init_telemetry``.
+
+:class:`ScrubPolicy` -- the path prefixes the scrubber redacts -- is defined
+in :mod:`ralph.telemetry._sentry_scrub` and re-exported here, so ``from
+ralph.telemetry._sentry import ScrubPolicy`` keeps working unchanged.
 """
 
 from __future__ import annotations
@@ -36,6 +40,7 @@ from ralph.telemetry._agent_config_payload import (
     AGENT_FAMILY_BY_TRANSPORT,
     build_agent_config_payload,
 )
+from ralph.telemetry._sentry_scrub import ScrubPolicy
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
@@ -141,14 +146,6 @@ def reset_telemetry_state() -> None:
     _STATE.extra_scrub_prefixes = ()
     _STATE.is_disabled = None
     _STATE.is_disabled_by_config = None
-
-
-@dataclass(frozen=True)
-class ScrubPolicy:
-    """The path prefixes the event scrubber redacts."""
-
-    home_prefix: str = ""
-    extra_prefixes: tuple[str, ...] = ()
 
 
 def current_scrub_policy() -> ScrubPolicy:
@@ -942,3 +939,29 @@ def finalize_session(
     _STATE.agent_stats.clear()
     _STATE.transaction = None
     return duration
+
+
+__all__ = [
+    "ScrubPolicy",
+    "TelemetryState",
+    "current_scrub_policy",
+    "finalize_session",
+    "flush_telemetry",
+    "init_sentry",
+    "is_telemetry_active",
+    "is_telemetry_disabled",
+    "is_telemetry_disabled_by_config",
+    "record_agent_invocation",
+    "record_command_invocation",
+    "record_phase_execution",
+    "record_session_start",
+    "report_handled_exception",
+    "reset_telemetry_state",
+    "set_agent_config_context",
+    "set_environment_context",
+    "set_policy_schema_context",
+    "set_session_outcome",
+    "set_session_wallclock_start",
+    "telemetry_is_inactive",
+    "telemetry_state",
+]

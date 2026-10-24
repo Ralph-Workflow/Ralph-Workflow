@@ -88,7 +88,7 @@ so correlation is operator-driven based on retained evidence.
    near the `setdefault(MCP_STAGE_ID_ENV, ...)` call) and the child writes
    its latest completed startup stage to
    `<workspace>/.agent/.ralph_mcp_start_stage.<spawn_id>` (see
-   `ralph.mcp.server._start_stage_tracker:stage_file_path`). The file is
+   `ralph.mcp.server.start_stage_tracker:stage_file_path`). The file is
    keyed by spawn identity, ensuring multiple children on the same
    workspace never share a stage file.
 

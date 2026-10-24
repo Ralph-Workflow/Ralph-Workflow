@@ -944,7 +944,7 @@ level 1 rejects unsupported claims per AGENTS.md.
       `None` / `()`.
 - `tests/recovery/test_opencode_resumable_exit_producer_path.py`
   (7 tests) — proves the R7 PRODUCER-side root-cause contract:
-  `ralph.agents.invoke._completion._check_process_result` raises
+  `ralph.agents.invoke.completion._check_process_result` raises
   `OpenCodeResumableExitError` carrying the captured `session_id`
   when the agent subprocess exits `rc=0` without completion evidence
   (no durable sentinel, or no required receipt). A regression at

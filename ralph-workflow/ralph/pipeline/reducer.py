@@ -1433,7 +1433,7 @@ _MAX_COMMIT_RECOVERY_ATTEMPTS = 3
 #: Pause before re-running a commit that a git lock blocked. The in-call recovery
 #: already waits on a live holder; this keeps a lock that cannot be cleared from
 #: spinning the loop hot while the holder (or an operator) finishes.
-_LOCK_RETRY_DELAY_MS = 5_000
+LOCK_RETRY_DELAY_MS = 5_000
 
 
 def _is_repairable_git_failure(reason: str | None) -> bool:
@@ -1556,7 +1556,7 @@ def _route_lock_contention_in_place(
         "Git lock blocked the commit; retrying {} in place after {}ms without consuming "
         "the recovery budget (recovery_epoch={}/{}): {}",
         in_place_target,
-        _LOCK_RETRY_DELAY_MS,
+        LOCK_RETRY_DELAY_MS,
         cleared_state.recovery_epoch,
         _MAX_COMMIT_RECOVERY_ATTEMPTS,
         failure_reason,
@@ -1571,7 +1571,7 @@ def _route_lock_contention_in_place(
         "recovery_epoch": min(cleared_state.recovery_epoch + 1, _MAX_COMMIT_RECOVERY_ATTEMPTS),
         "pending_cycle_outcome": None,
         "last_execution_result_status": "failed",
-        "last_retry_delay_ms": _LOCK_RETRY_DELAY_MS,
+        "last_retry_delay_ms": LOCK_RETRY_DELAY_MS,
     }
     if target == in_place_target:
         updates["previous_phase"] = state.previous_phase

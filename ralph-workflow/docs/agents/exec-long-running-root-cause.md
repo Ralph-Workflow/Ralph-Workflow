@@ -73,7 +73,7 @@ separately on purpose:
   Ralph's side of the wire, that bounds the failure mode the long
   exec tool call can produce. The defenses that exist today:
   - **Server-side soft-reply budget** — `EXEC_SOFT_REPLY_BUDGET_MS`
-    (`ralph/timeout_defaults.py:558`) caps how long a single exec call
+    (`ralph/timeout_defaults.py:598`) caps how long a single exec call
     may run before the server returns; the transports above derive
     their per-client timeout from this budget + 30 s of headroom
     (the `TIMING_SAFETY_TRANSPORT_HEADROOM_MS` constant at
@@ -82,10 +82,10 @@ separately on purpose:
     `max(EXEC_MAX_TIMEOUT_MS, EXEC_SOFT_REPLY_BUDGET_MS) + 30 s` =
     330 s.
   - **Server-side hard cap** — `EXEC_MAX_TIMEOUT_MS = 300_000` (5
-    minutes, `ralph/timeout_defaults.py:135`) bounds the
+    minutes, `ralph/timeout_defaults.py:142`) bounds the
     injected-runner seam, and `EXEC_JOB_CEILING_S` /
-    `EXEC_JOB_CEILING_MAX_S` (`ralph/timeout_defaults.py:563` and
-    `:569`) cap production job wall-clock independently of any client
+    `EXEC_JOB_CEILING_MAX_S` (`ralph/timeout_defaults.py:603` and
+    `:609`) cap production job wall-clock independently of any client
     default (Cause 2 below).
   - **Server-side child-runtime shutdown** — the
     `exit_when_owner_exits` daemon in `ralph/mcp/server/runtime.py`
@@ -196,7 +196,7 @@ the child's stdout/stderr, never by CPU work.
   (`:381-383`) and arms the kill with `timeout_cause = "inactivity"` and
   `timeout_value = timeout` (`:391-393`); the terminate-then-raise is at
   `:394-405`.
-- `EXEC_DEFAULT_TIMEOUT_MS = 90_000` (`ralph-workflow/ralph/timeout_defaults.py:128`)
+- `EXEC_DEFAULT_TIMEOUT_MS = 90_000` (`ralph-workflow/ralph/timeout_defaults.py:135`)
   — a 90-second default inactivity cap. Historically, a CPU-busy command that never
   emits stdout (e.g. tight loop, in-process buffered logging, redirected
   output to a file) died at `timeout_ms` with cause `inactivity` and
@@ -222,15 +222,15 @@ production path always starts a registry job and the registry decides kills
 from sampled liveness.
 
 - `ralph-workflow/ralph/mcp/tools/exec.py:792-821` is the production entry
-  path. It resolves the registry (`:790-797`), calls
-  `effective_registry.start(...)` unconditionally (`:807-814`), and then
+  path. It resolves the registry (`:792-799`), calls
+  `effective_registry.start(...)` unconditionally (`:809-816`), and then
   `effective_registry.wait(job_id, wait_ms=EXEC_SOFT_REPLY_BUDGET_MS, ...)`
-  (`:815-820`). **Every** normal `exec` therefore becomes a registry job;
+  (`:817-822`). **Every** normal `exec` therefore becomes a registry job;
   none of them fall back to the output-only window.
 - `ralph-workflow/ralph/mcp/tools/exec.py:777-790` is the **injected runner
   seam**, not a fallback for "short" calls. It is entered only when
   `effective_deps.runner is not None` or `run_command is not
-  _DEFAULT_RUN_COMMAND` (`:775-777`) — i.e. when a caller injected a custom
+  _DEFAULT_RUN_COMMAND` (`:777-779`) — i.e. when a caller injected a custom
   runner. Only on this seam does `run_command` reach
   `_run_subprocess` (`ralph/mcp/tools/exec.py:567`) and the
   `_managed_process.py` output-only inactivity window.
@@ -241,43 +241,43 @@ from sampled liveness.
   response shape.
 - `ralph-workflow/ralph/process/manager/_liveness_assessor.py` —
   Sugeno weighted-average over six working signals (`o`, `c`,
-  `io`, `t`, `n`, `w`; the per-signal helpers are at `:236-310` and the
-  R1..R7 rule weights at `:313`); the verdict score is integrated by
-  `StallIntegrator` (class at `:517`, `step` method called at `:509`, leaky `threshold_(theta - s)/theta`) and a
+  `io`, `t`, `n`, `w`; the per-signal helpers are at `:332-407` and the
+  R1..R7 rule weights at `:409`); the verdict score is integrated by
+  `StallIntegrator` (class at `:613`, `step` method at `:628`, leaky `threshold_(theta - s)/theta`) and a
   sustained-suspicion clock (`SuspicionClock`, imported from
-  `ralph/process/manager/_suspicion_clock.py` at `:158` and re-exported at
-  `:165`) that tracks R4/R7 streaks (`_SUSPICIOUS_RULES` at `:315`) for
-  `EXEC_NO_PROGRESS_WINDOW_S` (15 min, `timeout_defaults.py:548`) →
+  `ralph/process/manager/_suspicion_clock.py` at `:254` and re-exported at
+  `:261`) that tracks R4/R7 streaks (`_SUSPICIOUS_RULES` at `:411`) for
+  `EXEC_NO_PROGRESS_WINDOW_S` (15 min, `timeout_defaults.py:588`) →
   `no_progress`.
-  Per-spec rule table (`:31-32`, `:378`): R1 z=1.0, R2 z=0.9, R3 z=0.9,
+  Per-spec rule table (`:31-32`, `:474`): R1 z=1.0, R2 z=0.9, R3 z=0.9,
   R4 z=0.6, R5 z=0.0, R6 z=0.2 (fire-only, see docstring), R7 z=0.55.
 - `ralph-workflow/ralph/process/manager/_liveness_sampler.py` —
   psutil-tree sampler (`TreeSampler` at `_liveness_sampler.py:321`) reads the process tree every
-  `EXEC_LIVENESS_SAMPLE_INTERVAL_S` (2 s, `timeout_defaults.py:473`) over an
-  `EXEC_LIVENESS_EVIDENCE_WINDOW_S` (30 s, `timeout_defaults.py:478`) window.
+  `EXEC_LIVENESS_SAMPLE_INTERVAL_S` (2 s, `timeout_defaults.py:480`) over an
+  `EXEC_LIVENESS_EVIDENCE_WINDOW_S` (30 s, `timeout_defaults.py:485`) window.
   Each signal is independently `None`-on-read-failure (D5 fail-closed, module
   docstring `:9` and the `_windowed_rate` rebaseline at `_liveness_sampler.py:246-282`); the typed
   adapter is local to the sampler because the existing
   `_PsutilProcessLike` protocol
   (`ralph/process/manager/_process_manager_types.py:27-38`) lacks
   `cpu_times`/`io_counters`/`num_ctx_switches`.
-- `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:57-59` — `ExecJobRegistry`
-  (`class` at `:284`) runs the job on a sample thread that drives the
+- `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:58-60` — `ExecJobRegistry`
+  (`class` at `:319`) runs the job on a sample thread that drives the
   assessor every cycle, accumulates stall pressure, and decides the kill
-  cause. `KillCause` (`:57-59`) names six literals, but only five are
-  actually emitted by the registry today: `abandoned` (`:500`), `hard_cap`
-  (`:505`), `stalled` (`:545`), `no_progress` (`:549`), and `session_end`
-  (`:799`, the `shutdown_all` default). `restart_lost` is declared and
+  cause. `KillCause` (`:58-60`) names six literals, but only five are
+  actually emitted by the registry today: `abandoned` (`:535`), `hard_cap`
+  (`:540`), `stalled` (`:580`), `no_progress` (`:584`), and `session_end`
+  (`:834`, the `shutdown_all` default). `restart_lost` is declared and
   rendered by the error formatter
   (`ralph/mcp/tools/_exec_execution_error.py:243,251-263`) but has no
   producer in `_exec_jobs.py`: a restart destroys the in-memory registry, so
   the only observable restart contract is the non-retryable
   "unknown or expired job; process was killed or lost in server restart"
   error from `wait()`/`cancel()`
-  (the literal at `_exec_jobs.py:730`; `_lookup_job_locked` is the only
-  site that holds the message string — `_exec_jobs.py:701-731`,
-  with the surrounding capability-mismatch path at `_exec_jobs.py:706-716`
-  and `:722-727` and the `_build_job_result` consumer at `_exec_jobs.py:762-767`),
+  (the literal at `_exec_jobs.py:765`; `_lookup_job_locked` is the only
+  site that holds the message string — `_exec_jobs.py:736-766`,
+  with the surrounding capability-mismatch path at `_exec_jobs.py:747-750`
+  and `:758-761` and the `_build_job_result` consumer at `_exec_jobs.py:443-462`),
   which is covered by
   `tests/test_exec_jobs.py::test_restart_lost_fresh_registry_returns_nonretryable_lost_in_server_restart_error`
   (`tests/test_exec_jobs.py:932-986`, invented-id assertion at `:974-986`)
@@ -286,13 +286,13 @@ from sampled liveness.
   `JobResult` and the legacy output shape is preserved end-to-end;
   only jobs that take longer than the soft-reply budget return a
   snapshot with a `job_id` and the "call exec_wait; do not re-run"
-  instruction (`exec.py:828-840`, `_exec_jobs.py:770-777`).
+  instruction (`exec.py:828-840`, `_exec_jobs.py:805-812`).
 
 ## Cause 2 (CONFIRMED) — single 300-second absolute cap
 
 Even after the operator raises `timeout_ms`, the wall clock is capped.
 
-- `EXEC_MAX_TIMEOUT_MS = 300_000` (`ralph-workflow/ralph/timeout_defaults.py:135`)
+- `EXEC_MAX_TIMEOUT_MS = 300_000` (`ralph-workflow/ralph/timeout_defaults.py:142`)
   — 5 minutes. Larger values are rejected at the import-time invariant
   check below the constant.
 - On the **injected-runner seam** only,
@@ -307,10 +307,10 @@ Even after the operator raises `timeout_ms`, the wall clock is capped.
   `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:254-258` resolves the
   ceiling once per job (`ceiling_s = min(max_runtime_ms / 1000.0,
   EXEC_JOB_CEILING_MAX_S)` when the caller set `max_runtime_ms`, else
-  `EXEC_JOB_CEILING_S` (`ralph/timeout_defaults.py:563`, 3600 s)) and stores
+  `EXEC_JOB_CEILING_S` (`ralph/timeout_defaults.py:603`, 3600 s)) and stores
   it as `job.ceiling_ms`; `step_job` kills with `cause="hard_cap"` at
   `_exec_jobs.py:539-540` against that single value. `EXEC_JOB_CEILING_MAX_S = 14400.0`
-  (`ralph/timeout_defaults.py:569`, 4 h) is the outer bound.
+  (`ralph/timeout_defaults.py:609`, 4 h) is the outer bound.
 - **Historical (pre-§3b) wording**, quoted here because it is the text that
   used to ship: `ralph-workflow/ralph/mcp/tools/_exec_execution_error.py`
   `ExecutionError._render_timeout` (now `:187-197`, split into a job path and
@@ -505,7 +505,7 @@ token. The historical "zero matches" claim no longer holds.
   `job_id` until the worker calls `registry.start(...)`, so the
   subscription is bound afterwards by
   `ralph/mcp/tools/_exec_jobs.attach_progress_subscription`
-  (`_exec_jobs.py:884`), which the exec handler hands the subscription
+  (`_exec_jobs.py:919-979`), which the exec handler hands the subscription
   to at `ralph/mcp/tools/exec.py:807-822`.
 - `ralph-workflow/ralph/mcp/server/exec_sse_streaming.py:241-244` wires
   both mechanisms into the streaming POST: the output-chunk sink at
@@ -578,8 +578,9 @@ that the saturation-cap's only job is supposed to prevent.
 The seam for "a parent kill must reach the child's in-memory registry"
 is the child MCP server's shutdown path, not `_session_wrapup.py`.
 
-- `ralph-workflow/ralph/mcp/server/lifecycle.py:2733` and `:2750` invoke
-  `_spawn_mcp_process(...)`, which is defined at `lifecycle.py:2931-3089`
+- `ralph-workflow/ralph/mcp/server/lifecycle.py:2986` and `:3003` invoke
+  `_spawn_mcp_process(...)`, which is defined at
+  `ralph/mcp/server/lifecycle.py:3233-3408`
   and runs
 
   ```python
@@ -591,7 +592,7 @@ is the child MCP server's shutdown path, not `_session_wrapup.py`.
   ]
   ```
 
-  (`lifecycle.py:3355-3365`; the `"ralph.mcp.server"` module name is at
+  (`ralph/mcp/server/lifecycle.py:3356-3367`; the `"ralph.mcp.server"` module name is at
   `:3360`). The MCP server runs as a separate child
   process; the parent owns the lifecycle via
   `StandaloneMcpProcess.shutdown` (`_standalone_mcp_process.py:46-72`),
@@ -631,11 +632,11 @@ is the child MCP server's shutdown path, not `_session_wrapup.py`.
     (`:985`), and enters `run_standalone_server` (`:986`) which blocks
     on the HTTP server until SIGTERM/Ctrl-C.
   - The `MCP_OWNER_PID_ENV` env var
-    (`ralph/mcp/protocol/env.py:86`, `McpEnvVar.OWNER_PID` at `:36`)
+    (`ralph/mcp/protocol/env.py:95`, `McpEnvVar.OWNER_PID` at `:39`)
     is the parent→child hand-off that lets the watcher know when
     to kill itself.
   - The owner-loss hook the registry installs is registered in
-    `ralph/mcp/tools/_exec_jobs.py:324-326`
+    `ralph/mcp/tools/_exec_jobs.py:358-361`
     (`shutdown_all("session_end")`), run by
     `_run_owner_loss_hooks` (`runtime.py:887-897`) on owner loss and by
     `_run_shutdown_hooks` (`runtime.py:880-884`) on SIGTERM
@@ -678,13 +679,13 @@ records the seams that produce them.
 
 | path | mechanism | citation (path:line) | proof-or-bound |
 | --- | --- | --- | --- |
-| SIGTERM of server | Signal handler fires `_run_shutdown_hooks`; registry hook installed at startup calls `registry.shutdown_all("session_end")`; `_kill_job` calls `ManagedProcess.terminate(grace_period_s=0.0)` which escalates to `os.killpg(pgid, SIGKILL)` (preceded by SIGTERM and the git cleanup window when the group contains git) over the worker's process group, taking worker + descendant in one group-kill. | `ralph/mcp/server/runtime.py:900-908` (handler install) → `ralph/mcp/server/runtime.py:880-884` (`_run_shutdown_hooks`) → `ralph/mcp/tools/_exec_jobs.py:323-326` (registry hook) → `ralph/mcp/tools/_exec_jobs.py:799-809` (`shutdown_all`) → `ralph/mcp/tools/_exec_jobs.py:442-460` (`_kill_job`) → `ralph/process/manager/_managed_process.py:549-565` (`terminate`) → `ralph/process/manager/_process_manager.py:1218-1283` (`cleanup_orphans` / `_kill_pgid`) | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:120-161` (`test_sigterm_shutdown_kills_worker_and_descendant`) — worker + descendant reaped, `kill_cause == "session_end"`. Bound: the entire shutdown completes within `SHUTDOWN_TERMINATE_GRACE_S + SHUTDOWN_REAP_WAIT_S = 10s`. |
-| Owner SIGKILL with server surviving | `exit_when_owner_exits` daemon watches `os.getppid()`; when it stops matching the recorded owner, it invokes `_run_owner_loss_hooks` (a daemon thread plus a bounded join at `EXEC_OWNER_LOSS_HOOK_BUDGET_S`), the registry hook fires `registry.shutdown_all("session_end")`, and the same group-kill path as SIGTERM completes the tree. The same sequence fires immediately at entry when the stored owner PID never matched the current PPID (already-orphaned case). | `ralph/mcp/server/runtime.py:914-950` (`exit_when_owner_exits`) → `ralph/mcp/server/runtime.py:887-897` (`_run_owner_loss_hooks`) → immediate fire at `ralph/mcp/server/runtime.py:938`, watcher fire at `ralph/mcp/server/runtime.py:945` → registry hook at `ralph/mcp/tools/_exec_jobs.py:323-326` → group-kill same as the row above. | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:164-251` (`test_owner_loss_watcher_kills_worker_and_descendant`) — owner SIGKILLed, child server's owner watcher fires the pre-exit hook, worker + descendant reaped. Bound: the watch loop polls at the configured sleep interval (`sleep(1.0)` at `ralph/mcp/server/runtime.py:944`, bound to `time.sleep` as the production default at `ralph/mcp/server/runtime.py:918`); the hook thread is bounded by `EXEC_OWNER_LOSS_HOOK_BUDGET_S`. |
-| MCP server SIGKILLed (Linux) | No Python hook runs on SIGKILL — atexit and `atexit.register(_run_shutdown_hooks)` (`runtime.py:911`) are skipped and no signal handler can fire. Tree death depends on the kernel: on Linux, off-main-thread exec-job spawns (the production HTTP dispatch path) route through the supervisor process `ralph/process/manager/_supervisor.py` (`start_new_session=True`), which arms `PR_SET_PDEATHSIG=SIGTERM` against the server holder and runs an `os.killpg(pgid, SIGKILL)` sweep over the process group on holder death, while the forked worker child arms `PR_SET_PDEATHSIG=SIGKILL` against the supervisor; main-thread spawns install `_install_pdeathsig` as the ProcessManager preexec (`prctl(PR_SET_PDEATHSIG, SIGKILL)`). | `ralph/process/manager/_supervisor.py:1-229` (supervisor lifecycle and PG sweep) — `ralph/process/manager/__init__.py:115-142` (`_supervisor_invocation`) — `ralph/process/manager/__init__.py:160-223` (`_default_sync_process_factory`, supervisor routing at `:173`) — `ralph/process/manager/__init__.py:94-112` (`_install_pdeathsig`) and `ralph/process/manager/__init__.py:248-275` (`_default_async_process_factory`). | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:367-603` (`test_worker_thread_sigkill_kills_exec_job_tree_and_its_descendant`, marked `subprocess_e2e`, Linux-only) — starts registry via worker thread, forks descendant, SIGKILLs holder, and asserts both worker and descendant die; additionally `tests/test_exec_job_shutdown_subprocess_e2e.py:270-365` (`test_parent_sigkill_kills_exec_job_via_pr_set_pdeathsig`) for direct main-thread preexec. Bound: sub-millisecond kernel delivery plus supervisor `killpg` sweep. |
-| MCP server SIGKILLed (non-Linux) | SIGKILL cannot run any Python hook on any platform — no atexit, no signal handler, no watchdog. On Linux the supervisor and preexec close the gap (see Linux row above); on macOS/Windows no `PR_SET_PDEATHSIG` exists, the gating `sys.platform.startswith("linux")` test short-circuits supervisor and preexec routing, and the PDEATHSIG test skips. **Nothing in-process bounds the lifetime of a job orphaned by a server SIGKILL on these platforms**: once the server is dead, its `ExecJobRegistry`, liveness sampler threads, the abandonment timer (`EXEC_JOB_ABANDON_S` lives in the now-dead process), and all signal/atexit hooks are gone with it. The orphan's worker and descendants are re-parented to PID 1 and run to natural completion; OS-level process cleanup alone does not terminate them. | `ralph/process/manager/__init__.py:173` (sync supervisor/preexec gate) and `ralph/process/manager/__init__.py:259-264` (async preexec gate — the `_install_pdeathsig if sys.platform.startswith("linux") and threading.current_thread() is threading.main_thread() else None` ternary inside `_default_async_process_factory`) — **pre-SIGKILL caps that DO NOT bind a SIGKILLed-server orphan**: `ralph/mcp/tools/_exec_jobs.py:312-318` (`_running_jobs` capped at `EXEC_MAX_RUNNING_JOBS=4` prevents new submissions from leaking past the cap while the server is alive; `_finished_results` is a `deque(maxlen=EXEC_JOB_RESULT_FIFO=16)`); constants at `ralph/timeout_defaults.py:582`, `:589`, and the abandonment window `EXEC_JOB_ABANDON_S = 120.0` at the same module's §3b block (does NOT fire on an orphan whose server is dead). | **Stated, not proven.** No non-Linux test exists; `tests/test_exec_job_shutdown_subprocess_e2e.py:263-281` skips with the reason "PR_SET_PDEATHSIG is Linux-only and no cross-platform parent-death equivalent is available; once the MCP server is SIGKILLed on a non-Linux platform there is no in-process lifetime bound for an orphaned exec-job tree." **Today's actual bound on the orphan: NONE in-process after the server is SIGKILLed.** The pre-SIGKILL caps cited above prevent new submissions from leaking past the cap while the server is alive; they do NOT cause an in-flight SIGKILLed-server orphan to exit. `EXEC_JOB_ABANDON_S` lives in the (now-dead) server process. The orphan's lifetime is therefore bound by: (a) the orphan runs to natural completion, (b) OS-level cleanup when it exits, or (c) an external supervisor outside this codebase. **Pre-SIGKILL caps retained only for completeness**, not as a bound on the orphan itself. |
-| Post-restart `exec_wait` on a lost job | The in-memory registry is destroyed when the server restarts, so any `exec_wait(old_job_id)` falls through the lookup and raises a non-retryable "unknown or expired job; process was killed or lost in server restart" error. It never fabricates a snapshot or a result. | `ralph/mcp/tools/_exec_jobs.py:701-731` (`_lookup_job_locked`; the literal message string at `ralph/mcp/tools/_exec_jobs.py:730`) | **Proof**: `tests/test_exec_jobs.py:932-986` (`test_restart_lost_fresh_registry_returns_nonretryable_lost_in_server_restart_error`) — the `:974-986` branch asserts the same string for an invented, never-seen `job_id`, proving the new registry cannot distinguish prior-server ids from any other id (the correct behaviour). Bound: immediate. |
-| Normal job completion | The registry runner polls the handle each `EXEC_LIVENESS_SAMPLE_INTERVAL_S` (2 s); a non-`None` returncode marks the job finished with `kill_cause=None`, then `_close_job_streams` calls `pm.cleanup_orphans(handle)` to kill descendants that outlived the root and closes the managed pipes. The job slides from the running map to the bounded results FIFO. | `ralph/mcp/tools/_exec_jobs.py:480-496` (poll-and-mark) — `ralph/mcp/tools/_exec_jobs.py:462-478` (`_mark_finished`) — `ralph/mcp/tools/_exec_jobs.py:396-406` (`_close_job_streams` → `pm.cleanup_orphans`) — `ralph/process/manager/_process_manager.py:1218-1283` (`cleanup_orphans` / `_kill_pgid`) | **Proof**: orphan sweep locked by `tests/test_exec_jobs.py:505-522` (`test_trace_1_root_exit_with_orphaned_child`) and `tests/test_exec_jobs.py:160-185`. Bound: `EXEC_LIVENESS_SAMPLE_INTERVAL_S = 2.0` (`ralph/timeout_defaults.py:473`) is the worst-case staleness between root exit and the registry noticing. |
-| Session end | `session_end` is the `KillCause` literal stamped onto the `JobResult` whenever `shutdown_all()` fires; the trigger is whichever path delivered the teardown — SIGTERM via `install_shutdown_signal_handlers`, owner SIGKILL via `exit_when_owner_exits`, or the lifecycle's `shutdown_mcp_server(bridge)` teardown, which calls `bridge.shutdown()` and triggers the child server's own SIGTERM-handler chain. There is no separate "session end" Python mechanism; it is the union of those paths. | kill-cause literal at `ralph/mcp/tools/_exec_jobs.py:799` (also rendered as `KillCause` member of the literal block at `ralph/mcp/tools/_exec_jobs.py:57-59`); lifecycle teardown at `ralph/mcp/server/lifecycle.py:3169-3171` (`shutdown_mcp_server`) → `ralph/mcp/server/_standalone_mcp_process.py:46-72` (`StandaloneMcpProcess.shutdown`); constants at `ralph/mcp/server/_standalone_mcp_process.py:20` and `:24` (5.0 s each) | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:120-161` reads `CAUSE session_end` off the registry's `wait()` output at `:150`, proving the literal renders through the SIGTERM path. Bound: teardown wall-clock ≤ `SHUTDOWN_TERMINATE_GRACE_S + SHUTDOWN_REAP_WAIT_S = 10s`. |
+| SIGTERM of server | Signal handler fires `_run_shutdown_hooks`; registry hook installed at startup calls `registry.shutdown_all("session_end")`; `_kill_job` calls `ManagedProcess.terminate(grace_period_s=0.0)` which escalates to `os.killpg(pgid, SIGKILL)` (preceded by SIGTERM and the git cleanup window when the group contains git) over the worker's process group, taking worker + descendant in one group-kill. | `ralph/mcp/server/runtime.py:900-908` (handler install) → `ralph/mcp/server/runtime.py:880-884` (`_run_shutdown_hooks`) → `ralph/mcp/tools/_exec_jobs.py:358-361` (registry hook) → `ralph/mcp/tools/_exec_jobs.py:834-845` (`shutdown_all`) → `ralph/mcp/tools/_exec_jobs.py:477-495` (`_kill_job`) → `ralph/process/manager/_managed_process.py:562-578` (`terminate`) → `ralph/process/manager/_process_manager.py:1222-1290` (`cleanup_orphans` / `_kill_pgid`) | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:120-161` (`test_sigterm_shutdown_kills_worker_and_descendant`) — worker + descendant reaped, `kill_cause == "session_end"`. Bound: the entire shutdown completes within `SHUTDOWN_TERMINATE_GRACE_S + SHUTDOWN_REAP_WAIT_S = 10s`. |
+| Owner SIGKILL with server surviving | `exit_when_owner_exits` daemon watches `os.getppid()`; when it stops matching the recorded owner, it invokes `_run_owner_loss_hooks` (a daemon thread plus a bounded join at `EXEC_OWNER_LOSS_HOOK_BUDGET_S`), the registry hook fires `registry.shutdown_all("session_end")`, and the same group-kill path as SIGTERM completes the tree. The same sequence fires immediately at entry when the stored owner PID never matched the current PPID (already-orphaned case). | `ralph/mcp/server/runtime.py:914-950` (`exit_when_owner_exits`) → `ralph/mcp/server/runtime.py:887-897` (`_run_owner_loss_hooks`) → immediate fire at `ralph/mcp/server/runtime.py:938`, watcher fire at `ralph/mcp/server/runtime.py:945` → registry hook at `ralph/mcp/tools/_exec_jobs.py:358-361` → group-kill same as the row above. | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:164-251` (`test_owner_loss_watcher_kills_worker_and_descendant`) — owner SIGKILLed, child server's owner watcher fires the pre-exit hook, worker + descendant reaped. Bound: the watch loop polls at the configured sleep interval (`sleep(1.0)` at `ralph/mcp/server/runtime.py:944`, bound to `time.sleep` as the production default at `ralph/mcp/server/runtime.py:918`); the hook thread is bounded by `EXEC_OWNER_LOSS_HOOK_BUDGET_S`. |
+| MCP server SIGKILLed (Linux) | No Python hook runs on SIGKILL — atexit and `atexit.register(_run_shutdown_hooks)` (`runtime.py:911`) are skipped and no signal handler can fire. Tree death depends on the kernel: on Linux, off-main-thread exec-job spawns (the production HTTP dispatch path) route through the supervisor process `ralph/process/manager/_supervisor.py` (`start_new_session=True`), which arms `PR_SET_PDEATHSIG=SIGTERM` against the server holder and runs an `os.killpg(pgid, SIGKILL)` sweep over the process group on holder death, while the forked worker child arms `PR_SET_PDEATHSIG=SIGKILL` against the supervisor; main-thread spawns install `_install_pdeathsig` as the ProcessManager preexec (`prctl(PR_SET_PDEATHSIG, SIGKILL)`). | `ralph/process/manager/_supervisor.py:203-229` (the `killpg` PG sweep in `_kill_tree_and_exit`) and `ralph/process/manager/_supervisor.py:263-329` (`run`, the supervisor lifecycle) — `ralph/process/manager/__init__.py:128-155` (`_supervisor_invocation`) — `ralph/process/manager/__init__.py:173-223` (`_default_sync_process_factory`, supervisor routing at `:186-221`) — `ralph/process/manager/__init__.py:96-112` (`_install_pdeathsig`) and `ralph/process/manager/__init__.py:263-290` (`_default_async_process_factory`). | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:367-603` (`test_worker_thread_sigkill_kills_exec_job_tree_and_its_descendant`, marked `subprocess_e2e`, Linux-only) — starts registry via worker thread, forks descendant, SIGKILLs holder, and asserts both worker and descendant die; additionally `tests/test_exec_job_shutdown_subprocess_e2e.py:270-365` (`test_parent_sigkill_kills_exec_job_via_pr_set_pdeathsig`) for direct main-thread preexec. Bound: sub-millisecond kernel delivery plus supervisor `killpg` sweep. |
+| MCP server SIGKILLed (non-Linux) | SIGKILL cannot run any Python hook on any platform — no atexit, no signal handler, no watchdog. On Linux the supervisor and preexec close the gap (see Linux row above); on macOS/Windows no `PR_SET_PDEATHSIG` exists, the gating `sys.platform.startswith("linux")` test short-circuits supervisor and preexec routing, and the PDEATHSIG test skips. **Nothing in-process bounds the lifetime of a job orphaned by a server SIGKILL on these platforms**: once the server is dead, its `ExecJobRegistry`, liveness sampler threads, the abandonment timer (`EXEC_JOB_ABANDON_S` lives in the now-dead process), and all signal/atexit hooks are gone with it. The orphan's worker and descendants are re-parented to PID 1 and run to natural completion; OS-level process cleanup alone does not terminate them. | `ralph/process/manager/__init__.py:186` (sync supervisor/preexec gate) and `ralph/process/manager/__init__.py:274-279` (async preexec gate — the `_death_preexec(command) if sys.platform.startswith("linux") and threading.current_thread() is threading.main_thread() else None` ternary inside `_default_async_process_factory`) — **pre-SIGKILL caps that DO NOT bind a SIGKILLed-server orphan**: `ralph/mcp/tools/_exec_jobs.py:347-352` (`_running_jobs` capped at `EXEC_MAX_RUNNING_JOBS=4` prevents new submissions from leaking past the cap while the server is alive; `_finished_results` is a `deque(maxlen=EXEC_JOB_RESULT_FIFO=16)`); constants at `ralph/timeout_defaults.py:622`, `:629`, and the abandonment window `EXEC_JOB_ABANDON_S = 120.0` at `ralph/timeout_defaults.py:617` (does NOT fire on an orphan whose server is dead). | **Stated, not proven.** No non-Linux test exists; `tests/test_exec_job_shutdown_subprocess_e2e.py:271-289` skips with the reason "PR_SET_PDEATHSIG is Linux-only and no cross-platform parent-death equivalent is available; once the MCP server is SIGKILLed on a non-Linux platform there is no in-process lifetime bound for an orphaned exec-job tree." **Today's actual bound on the orphan: NONE in-process after the server is SIGKILLed.** The pre-SIGKILL caps cited above prevent new submissions from leaking past the cap while the server is alive; they do NOT cause an in-flight SIGKILLed-server orphan to exit. `EXEC_JOB_ABANDON_S` lives in the (now-dead) server process. The orphan's lifetime is therefore bound by: (a) the orphan runs to natural completion, (b) OS-level cleanup when it exits, or (c) an external supervisor outside this codebase. **Pre-SIGKILL caps retained only for completeness**, not as a bound on the orphan itself. |
+| Post-restart `exec_wait` on a lost job | The in-memory registry is destroyed when the server restarts, so any `exec_wait(old_job_id)` falls through the lookup and raises a non-retryable "unknown or expired job; process was killed or lost in server restart" error. It never fabricates a snapshot or a result. | `ralph/mcp/tools/_exec_jobs.py:736-766` (`_lookup_job_locked`; the literal message string at `ralph/mcp/tools/_exec_jobs.py:765`) | **Proof**: `tests/test_exec_jobs.py:932-986` (`test_restart_lost_fresh_registry_returns_nonretryable_lost_in_server_restart_error`) — the `:974-986` branch asserts the same string for an invented, never-seen `job_id`, proving the new registry cannot distinguish prior-server ids from any other id (the correct behaviour). Bound: immediate. |
+| Normal job completion | The registry runner polls the handle each `EXEC_LIVENESS_SAMPLE_INTERVAL_S` (2 s); a non-`None` returncode marks the job finished with `kill_cause=None`, then `_close_job_streams` calls `pm.cleanup_orphans(handle)` to kill descendants that outlived the root and closes the managed pipes. The job slides from the running map to the bounded results FIFO. | `ralph/mcp/tools/_exec_jobs.py:526-531` (poll-and-mark) — `ralph/mcp/tools/_exec_jobs.py:497-513` (`_mark_finished`) — `ralph/mcp/tools/_exec_jobs.py:431-441` (`_close_job_streams` → `pm.cleanup_orphans`) — `ralph/process/manager/_process_manager.py:1222-1290` (`cleanup_orphans` / `_kill_pgid`) | **Proof**: orphan sweep locked by `tests/test_exec_jobs.py:505-522` (`test_trace_1_root_exit_with_orphaned_child`) and `tests/test_exec_jobs.py:165-185` (`_TrackingProcessManager.cleanup_orphans`). Bound: `EXEC_LIVENESS_SAMPLE_INTERVAL_S = 2.0` (`ralph/timeout_defaults.py:480`) is the worst-case staleness between root exit and the registry noticing. |
+| Session end | `session_end` is the `KillCause` literal stamped onto the `JobResult` whenever `shutdown_all()` fires; the trigger is whichever path delivered the teardown — SIGTERM via `install_shutdown_signal_handlers`, owner SIGKILL via `exit_when_owner_exits`, or the lifecycle's `shutdown_mcp_server(bridge)` teardown, which calls `bridge.shutdown()` and triggers the child server's own SIGTERM-handler chain. There is no separate "session end" Python mechanism; it is the union of those paths. | kill-cause literal at `ralph/mcp/tools/_exec_jobs.py:834` (also rendered as `KillCause` member of the literal block at `ralph/mcp/tools/_exec_jobs.py:58-60`); lifecycle teardown at `ralph/mcp/server/lifecycle.py:3489-3491` (`shutdown_mcp_server`) → `ralph/mcp/server/_standalone_mcp_process.py:46-72` (`StandaloneMcpProcess.shutdown`); constants at `ralph/mcp/server/_standalone_mcp_process.py:20` and `:24` (5.0 s each) | **Proof**: `tests/test_exec_job_shutdown_subprocess_e2e.py:120-161` reads `CAUSE session_end` off the registry's `wait()` output at `:129`, proving the literal renders through the SIGTERM path. Bound: teardown wall-clock ≤ `SHUTDOWN_TERMINATE_GRACE_S + SHUTDOWN_REAP_WAIT_S = 10s`. |
 
 The matrix is the single point of truth for the seaming. A code edit
 that changes any of the cited lines without updating this table is a
@@ -743,7 +744,7 @@ Worked numbers (scenario-library ground truth):
   `ralph-workflow/tests/test_exec_liveness_scenarios.py:319`) —
   `burst_stop = 30`, kill at **168 s** (continuous 167.5 s)
 - scenario 13 ("mid-run deadlock",
-  `ralph-workflow/tests/test_exec_liveness_scenarios.py:615`) —
+  `ralph-workflow/tests/test_exec_liveness_scenarios.py:644`) —
   `deadlock_at = 120`, kill at **258 s** (continuous 257.5 s)
 
 `ralph/mcp/ARCHITECTURE.md` section 3 ("Ramp-offset timing") and
@@ -764,7 +765,7 @@ The shipped aggregate is the literal-Sugeno weighted average
 `sum(w_i * z_i) / sum(w_i)` verbatim from D2/D3; that aggregate admits
 dilution, and the spec's strict-Monotonic property is unsatisfiable
 jointly with the prescribed aggregate. The counterexample is locked at
-`ralph-workflow/tests/test_liveness_pa002_properties.py:385-424`
+`ralph-workflow/tests/test_liveness_pa002_properties.py:475-549`
 (`test_kill_timing_non_monotone_under_changing_io`): an idle / working /
 idle trace kills at **130 s** with `io = 0` in the working segment and
 strictly earlier (**129 s**) when `io` rises to 64 KiB/s. R2's `z = 0.9`
@@ -813,20 +814,20 @@ The five causes are stable as long as the file:line citations in this
 doc match the working tree. Drift is the only way a citation goes
 stale, and the fastest drift check is a re-read of:
 
-- `ralph-workflow/ralph/timeout_defaults.py:128` (`EXEC_DEFAULT_TIMEOUT_MS`)
-  and `:135` (`EXEC_MAX_TIMEOUT_MS`), plus `:558`
-  (`EXEC_SOFT_REPLY_BUDGET_MS`), `:563` (`EXEC_JOB_CEILING_S`), `:569`
+- `ralph-workflow/ralph/timeout_defaults.py:135` (`EXEC_DEFAULT_TIMEOUT_MS`)
+  and `:142` (`EXEC_MAX_TIMEOUT_MS`), plus `:598`
+  (`EXEC_SOFT_REPLY_BUDGET_MS`), `:603` (`EXEC_JOB_CEILING_S`), `:609`
   (`EXEC_JOB_CEILING_MAX_S`) — the Cause 1 / Cause 2 constants.
 - `ralph-workflow/ralph/process/manager/_managed_process.py:315` (the
   output-only `last_output_at_ref` reset) and `:379-405` (the poll
   loop that computes `inactivity_deadline` and arms the kill)
 - `ralph-workflow/ralph/mcp/tools/exec.py:777-790` (the injected-runner
-  seam) and `:790-820` (the production registry entry path) — reading
+  seam) and `:792-821` (the production registry entry path) — reading
   these two ranges is how a reader tells whether the output-only window
   is still reachable for normal calls.
 - `ralph-workflow/ralph/mcp/tools/_exec_jobs.py:254-258` (the registry
   `hard_cap` ceiling resolution), `:539-540` (the kill check against
-  `job.ceiling_ms`) and `:57-59` (the six kill causes)
+  `job.ceiling_ms`) and `:58-60` (the six kill causes)
 - `ralph-workflow/ralph/mcp/transport/opencode.py:131,148` (Cause 3
   per-server + experimental writes; the comment block at lines 41-45
   is the issue-thread reference) and `:175` (the `$schema` value the
@@ -844,9 +845,9 @@ stale, and the fastest drift check is a re-read of:
   (Cause 5b)
 - `ralph-workflow/ralph/mcp/server/runtime.py:914-950`
   (`exit_when_owner_exits`) and `:953-1000` (`main`) — the Cause 5c seam
-- `ralph-workflow/ralph/mcp/server/lifecycle.py:2733` and `:2750` (the
-  two `_spawn_mcp_process` call sites), `:2931-3089` (its definition) and
-  `:3038-3048` (the `sys.executable -m ralph.mcp.server` argv list)
+- `ralph-workflow/ralph/mcp/server/lifecycle.py:2986` and `:3003` (the
+  two `_spawn_mcp_process` call sites), `:3233-3408` (its definition) and
+  `:3356-3367` (the `sys.executable -m ralph.mcp.server` argv list)
 - `ralph-workflow/ralph/mcp/server/_standalone_mcp_process.py:20` and
   `:24` (`SHUTDOWN_TERMINATE_GRACE_S` / `SHUTDOWN_REAP_WAIT_S`, 5.0 s each)
 - `ralph-workflow/ralph/mcp/server/_timing_safety.py:84`

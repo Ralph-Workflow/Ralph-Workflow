@@ -225,7 +225,7 @@ def test_push_target_after_landing_handles_push_branch_exception_without_losing_
     """AC5, AC8: push_target_after_landing catches unexpected push exceptions and preserves landing."""
     from ralph.config.models import GeneralConfig
     from ralph.pipeline._integration_action import RebaseOutcomeKind
-    from ralph.pipeline.auto_integrate_remote_push import push_target_after_landing
+    from ralph.pipeline.auto_integrate_remote_sync import push_target_after_landing
 
     config = UnifiedConfig(
         general=GeneralConfig(

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import get_args
+from typing import cast, get_args
 
 import pytest
 
@@ -34,6 +35,14 @@ from tests._support.typed_accessors import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _reset_telemetry_state() -> Iterator[None]:
+    """Keep each test independent of the process-wide telemetry session."""
+    _sentry.reset_telemetry_state()
+    yield
+    _sentry.reset_telemetry_state()
+
+
 def test_init_sentry_calls_sentry_init(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[dict[str, object]] = []
 
@@ -56,7 +65,7 @@ def test_init_sentry_calls_sentry_init(monkeypatch: pytest.MonkeyPatch) -> None:
     kwargs = captured[0]
     assert kwargs.get("send_default_pii") is False
     assert "dsn" in kwargs
-    assert "sentry.io" in str(kwargs["dsn"])
+    assert "_sentry.io" in str(kwargs["dsn"])
     assert "before_send" in kwargs
     assert "before_send_transaction" in kwargs
     assert kwargs.get("traces_sample_rate") == 1.0
@@ -152,7 +161,7 @@ def _patch_capture(
         assert isinstance(exc, BaseException)
         captured.append(exc)
 
-    monkeypatch.setattr(_sentry, "_telemetry_is_inactive", fake_inactive)
+    monkeypatch.setattr(_sentry, "telemetry_is_inactive", fake_inactive)
     monkeypatch.setattr("sentry_sdk.new_scope", fake_new_scope)
     monkeypatch.setattr("sentry_sdk.capture_exception", fake_capture)
     return captured, tags
@@ -207,9 +216,9 @@ def test_report_handled_exception_never_raises(monkeypatch: pytest.MonkeyPatch) 
         return False
 
     def exploding_new_scope() -> _RecordingScope:
-        raise RuntimeError("sentry is down")
+        raise RuntimeError("_sentry is down")
 
-    monkeypatch.setattr(_sentry, "_telemetry_is_inactive", fake_inactive)
+    monkeypatch.setattr(_sentry, "telemetry_is_inactive", fake_inactive)
     monkeypatch.setattr("sentry_sdk.new_scope", exploding_new_scope)
 
     _sentry.report_handled_exception(RuntimeError("boom"), origin="agent_invocation")
@@ -265,7 +274,7 @@ def test_init_sentry_sets_session_tag(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_scrub_obj_replaces_home_prefix_in_string(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_home = "/fake/home/testuser"
-    monkeypatch.setattr("ralph.telemetry._sentry._HOME_PREFIX", fake_home)
+    monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", fake_home)
 
     data: dict[str, object] = {"path": f"{fake_home}/projects"}
     _scrub_obj(data)
@@ -275,7 +284,7 @@ def test_scrub_obj_replaces_home_prefix_in_string(monkeypatch: pytest.MonkeyPatc
 
 def test_scrub_obj_handles_nested_dicts(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_home = "/fake/home/testuser"
-    monkeypatch.setattr("ralph.telemetry._sentry._HOME_PREFIX", fake_home)
+    monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", fake_home)
 
     data: dict[str, object] = {"outer": {"inner": f"{fake_home}/x"}}
     _scrub_obj(data)
@@ -287,7 +296,7 @@ def test_scrub_obj_handles_nested_dicts(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_scrub_obj_handles_lists(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_home = "/fake/home/testuser"
-    monkeypatch.setattr("ralph.telemetry._sentry._HOME_PREFIX", fake_home)
+    monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", fake_home)
 
     lst: list[object] = [f"{fake_home}/a", f"{fake_home}/b"]
     _scrub_obj(lst)
@@ -298,7 +307,7 @@ def test_scrub_obj_handles_lists(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_scrub_obj_ignores_non_string_values(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_home = "/fake/home/testuser"
-    monkeypatch.setattr("ralph.telemetry._sentry._HOME_PREFIX", fake_home)
+    monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", fake_home)
 
     data: dict[str, object] = {"n": 42, "b": True, "x": None}
     _scrub_obj(data)
@@ -367,8 +376,8 @@ def test_is_telemetry_disabled_reads_os_environ_when_no_env_passed(
 def test_scrub_obj_redacts_extra_scrub_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_sentry, "_EXTRA_SCRUB_PREFIXES", ("/Volumes/x",))
-    monkeypatch.setattr(_sentry, "_HOME_PREFIX", "/nonexistent/home")
+    monkeypatch.setattr(_sentry.telemetry_state(), "extra_scrub_prefixes", ("/Volumes/x",))
+    monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", "/nonexistent/home")
 
     data: dict[str, object] = {"path": "/Volumes/x/project/file.py"}
     _sentry._scrub_obj(data)
@@ -378,8 +387,10 @@ def test_scrub_obj_redacts_extra_scrub_prefix(
 def test_scrub_obj_redacts_each_extra_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_sentry, "_EXTRA_SCRUB_PREFIXES", ("/Volumes/x", "/tmp/argv1"))
-    monkeypatch.setattr(_sentry, "_HOME_PREFIX", "/nonexistent/home")
+    monkeypatch.setattr(
+        _sentry.telemetry_state(), "extra_scrub_prefixes", ("/Volumes/x", "/tmp/argv1")
+    )
+    monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", "/nonexistent/home")
 
     data: dict[str, object] = {
         "a": "/Volumes/x/proj/x.py",
@@ -396,8 +407,8 @@ def test_scrub_obj_home_prefix_still_maps_to_tilde(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_home = "/fake/home/user"
-    monkeypatch.setattr(_sentry, "_EXTRA_SCRUB_PREFIXES", ())
-    monkeypatch.setattr(_sentry, "_HOME_PREFIX", fake_home)
+    monkeypatch.setattr(_sentry.telemetry_state(), "extra_scrub_prefixes", ())
+    monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", fake_home)
 
     data: dict[str, object] = {"path": f"{fake_home}/projects"}
     _sentry._scrub_obj(data)
@@ -407,8 +418,8 @@ def test_scrub_obj_home_prefix_still_maps_to_tilde(
 def test_scrub_obj_handles_nested_dicts_with_extra_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_sentry, "_EXTRA_SCRUB_PREFIXES", ("/Volumes/x",))
-    monkeypatch.setattr(_sentry, "_HOME_PREFIX", "/nonexistent/home")
+    monkeypatch.setattr(_sentry.telemetry_state(), "extra_scrub_prefixes", ("/Volumes/x",))
+    monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", "/nonexistent/home")
 
     data: dict[str, object] = {"outer": {"inner": "/Volumes/x/y"}}
     _sentry._scrub_obj(data)
@@ -420,8 +431,8 @@ def test_scrub_obj_handles_nested_dicts_with_extra_prefix(
 def test_scrub_obj_handles_lists_with_extra_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_sentry, "_EXTRA_SCRUB_PREFIXES", ("/Volumes/x",))
-    monkeypatch.setattr(_sentry, "_HOME_PREFIX", "/nonexistent/home")
+    monkeypatch.setattr(_sentry.telemetry_state(), "extra_scrub_prefixes", ("/Volumes/x",))
+    monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", "/nonexistent/home")
 
     lst: list[object] = ["/Volumes/x/a", "/Volumes/x/b"]
     _sentry._scrub_obj(lst)
@@ -637,8 +648,8 @@ def test_scrub_event_drops_server_name_alongside_frame_scrubbing() -> None:
 def test_init_sentry_initializes_extra_scrub_prefixes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """init_sentry must populate _EXTRA_SCRUB_PREFIXES from cwd + argv paths."""
-    monkeypatch.setattr(_sentry, "_EXTRA_SCRUB_PREFIXES", ())
+    """init_sentry must populate scrub-policy prefixes from cwd + argv paths."""
+    monkeypatch.setattr(_sentry.telemetry_state(), "extra_scrub_prefixes", ())
 
     init_calls: list[dict[str, object]] = []
 
@@ -656,7 +667,7 @@ def test_init_sentry_initializes_extra_scrub_prefixes(
 
     init_sentry("a" * 32, "b" * 64)
 
-    prefixes = _sentry._EXTRA_SCRUB_PREFIXES
+    prefixes = _sentry.current_scrub_policy().extra_prefixes
     assert fake_cwd in prefixes
     assert fake_argv0 in prefixes
     # The prompt string is NOT a path; it must NOT be added to prefixes.
@@ -770,8 +781,8 @@ def test_scrub_event_basenames_windows_unc_filename() -> None:
 def test_init_sentry_initializes_extra_scrub_prefixes_with_windows_argv(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Windows-style absolute argv entries must end up in ``_EXTRA_SCRUB_PREFIXES``."""
-    monkeypatch.setattr(_sentry, "_EXTRA_SCRUB_PREFIXES", ())
+    """Windows-style absolute argv entries must end up in the scrub policy."""
+    monkeypatch.setattr(_sentry.telemetry_state(), "extra_scrub_prefixes", ())
 
     monkeypatch.setattr("sentry_sdk.init", lambda **kwargs: None)
     monkeypatch.setattr("sentry_sdk.set_user", lambda arg: None)
@@ -787,7 +798,7 @@ def test_init_sentry_initializes_extra_scrub_prefixes_with_windows_argv(
 
     init_sentry("a" * 32, "b" * 64)
 
-    prefixes = _sentry._EXTRA_SCRUB_PREFIXES
+    prefixes = _sentry.current_scrub_policy().extra_prefixes
     assert fake_cwd in prefixes
     assert win_argv0 in prefixes
     assert "secret prompt" not in prefixes
@@ -801,7 +812,9 @@ def test_build_extra_scrub_prefixes_filters_non_absolute_argv(
     Regression: flag values, prompts, and inline arguments would otherwise leak
     into the scrub-prefix list and cause unrelated strings to be redacted.
     """
-    monkeypatch.setattr(_sentry, "_EXTRA_SCRUB_PREFIXES", ())
+    monkeypatch.setattr("sentry_sdk.init", lambda **kwargs: None)
+    monkeypatch.setattr("sentry_sdk.set_user", lambda arg: None)
+    monkeypatch.setattr("sentry_sdk.set_tag", lambda k, v: None)
     monkeypatch.setattr("os.getcwd", lambda: "/tmp/fake-cwd")
     monkeypatch.setattr(
         "sys.argv",
@@ -815,7 +828,10 @@ def test_build_extra_scrub_prefixes_filters_non_absolute_argv(
             "42",  # not a path
         ],
     )
-    prefixes = _sentry._build_extra_scrub_prefixes()
+
+    init_sentry("a" * 32, "b" * 64)
+
+    prefixes = _sentry.current_scrub_policy().extra_prefixes
     assert "/tmp/fake-cwd" in prefixes
     assert "/tmp/fake-argv0" in prefixes
     assert "C:\\Users\\jane\\repo\\run.py" in prefixes
@@ -1036,10 +1052,10 @@ def test_set_environment_context_empty_markers(
 def test_record_session_start_and_finalize_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", None)
-    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
-    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "started_at", None)
+    monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "unknown")
+    monkeypatch.setattr(_sentry.telemetry_state(), "finalized", False)
 
     context_calls: list[tuple[str, dict[str, object]]] = []
     message_calls: list[tuple[str, str]] = []
@@ -1132,10 +1148,10 @@ def test_session_lifecycle_records_utc_start_and_end(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Session context exposes queryable UTC bounds alongside monotonic duration."""
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", None)
-    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
-    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "started_at", None)
+    monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "unknown")
+    monkeypatch.setattr(_sentry.telemetry_state(), "finalized", False)
 
     context_calls: list[tuple[str, dict[str, object]]] = []
     message_calls: list[str] = []
@@ -1168,7 +1184,7 @@ def test_agent_invocation_uses_safe_dimensions(
 ) -> None:
     """Custom agent and drain names never enter invocation telemetry."""
     metric_calls: list[tuple[str, dict[str, object] | None]] = []
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setattr(
         "sentry_sdk.metrics.count",
         lambda name, value, attributes=None: metric_calls.append(
@@ -1208,8 +1224,8 @@ def test_agent_invocation_uses_safe_dimensions(
 def test_finalize_session_returns_none_when_not_initialized(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_sentry, "_INITIALIZED", False)
-    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", None)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", False)
+    monkeypatch.setattr(_sentry.telemetry_state(), "started_at", None)
 
     assert _sentry.finalize_session(now=100.0) is None
 
@@ -1224,9 +1240,9 @@ def test_finalize_session_emits_explicit_start_end_timing_markers(
     pins that contract so the analyzer's "no session-start field sent" defect
     cannot silently regress.
     """
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", None)
-    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "started_at", None)
+    monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "unknown")
 
     context_calls: list[tuple[str, dict[str, object]]] = []
 
@@ -1256,9 +1272,9 @@ def test_finalize_session_timing_markers_are_process_local_not_wallclock(
     value remains inside the injected range so a future regression that
     switches to ``time.time()`` would immediately fail this guard.
     """
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", None)
-    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "started_at", None)
+    monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "unknown")
 
     captured: dict[str, object] = {}
     monkeypatch.setattr(
@@ -1286,8 +1302,8 @@ def test_finalize_session_timing_markers_are_process_local_not_wallclock(
 def test_finalize_session_returns_none_when_no_start(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", None)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "started_at", None)
 
     assert _sentry.finalize_session(now=100.0) is None
 
@@ -1295,10 +1311,10 @@ def test_finalize_session_returns_none_when_no_start(
 def test_finalize_session_is_fail_soft_on_flush_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
-    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "failure")
-    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "started_at", 100.0)
+    monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "failure")
+    monkeypatch.setattr(_sentry.telemetry_state(), "finalized", False)
 
     monkeypatch.setattr("sentry_sdk.set_context", lambda *a, **kw: None)
     monkeypatch.setattr("sentry_sdk.capture_message", lambda *a, **kw: None)
@@ -1334,23 +1350,23 @@ def test_flush_telemetry_is_fail_soft(
 def test_init_sentry_marks_initialized(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_sentry, "_INITIALIZED", False)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", False)
     monkeypatch.setattr("sentry_sdk.init", lambda **kwargs: None)
     monkeypatch.setattr("sentry_sdk.set_user", lambda arg: None)
     monkeypatch.setattr("sentry_sdk.set_tag", lambda k, v: None)
 
     init_sentry("a" * 32, "b" * 64)
-    assert _sentry._INITIALIZED is True
+    assert _sentry.telemetry_state().initialized is True
 
 
 def test_set_session_outcome_records_value(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
+    monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "unknown")
     _sentry.set_session_outcome("success")
-    assert _sentry._SESSION_OUTCOME == "success"
+    assert _sentry.telemetry_state().outcome == "success"
     _sentry.set_session_outcome("interrupted")
-    assert _sentry._SESSION_OUTCOME == "interrupted"
+    assert _sentry.telemetry_state().outcome == "interrupted"
 
 
 # ---------------------------------------------------------------------------
@@ -1358,7 +1374,9 @@ def test_set_session_outcome_records_value(
 # ---------------------------------------------------------------------------
 
 
-def test_scrub_event_redacts_prompt_like_string_anywhere_in_event() -> None:
+def test_scrub_event_redacts_prompt_like_string_anywhere_in_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Regression: prompt-shaped strings must not survive the scrubber.
 
     ``_scrub_event`` must scrub the entire event payload via ``_scrub_obj``
@@ -1366,12 +1384,12 @@ def test_scrub_event_redacts_prompt_like_string_anywhere_in_event() -> None:
     extra/context blobs) carrying prompt-like text is redacted regardless
     of which key it lives under. The scrubber cannot enumerate every key,
     so this test asserts the recursive walk + prefix-match contract: any
-    nested string that contains a ``_HOME_PREFIX`` substring collapses to
+    nested string that contains the configured home prefix collapses to
     ``~``.
     """
     fake_home = "/Users/jane"
-    _sentry._HOME_PREFIX = fake_home
-    _sentry._EXTRA_SCRUB_PREFIXES = ()
+    monkeypatch.setattr(_sentry.telemetry_state(), "home_prefix", fake_home)
+    monkeypatch.setattr(_sentry.telemetry_state(), "extra_scrub_prefixes", ())
 
     event: dict[str, object] = {
         "extra": {
@@ -1458,7 +1476,7 @@ def test_record_command_invocation_sets_command_tag(
         "sentry_sdk.set_tag",
         lambda k, v: tag_calls.append((k, v)),
     )
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
 
     _sentry.record_command_invocation("cleanup")
@@ -1475,7 +1493,7 @@ def test_record_command_invocation_noop_when_disabled(
         "sentry_sdk.set_tag",
         lambda k, v: tag_calls.append((k, v)),
     )
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
 
     _sentry.record_command_invocation("cleanup")
@@ -1492,7 +1510,7 @@ def test_record_command_invocation_noop_when_uninit(
         "sentry_sdk.set_tag",
         lambda k, v: tag_calls.append((k, v)),
     )
-    monkeypatch.setattr(_sentry, "_INITIALIZED", False)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", False)
     monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
 
     _sentry.record_command_invocation("cleanup")
@@ -1509,7 +1527,7 @@ def test_record_command_invocation_fail_soft(
         raise RuntimeError("simulated set_tag boom")
 
     monkeypatch.setattr("sentry_sdk.set_tag", boom)
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
 
     # Must not raise.
@@ -1526,11 +1544,11 @@ def test_set_session_wallclock_start_records_utc_buckets(
 ) -> None:
     """The session payload contains hour_of_day / day_of_week / is_weekday only."""
 
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
-    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
-    monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
-    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "started_at", 100.0)
+    monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "unknown")
+    monkeypatch.setattr(_sentry.telemetry_state(), "wallclock_buckets", None)
+    monkeypatch.setattr(_sentry.telemetry_state(), "finalized", False)
 
     context_calls: list[tuple[str, dict[str, object]]] = []
     monkeypatch.setattr(
@@ -1556,11 +1574,11 @@ def test_wallclock_no_full_timestamp_no_timezone(
 ) -> None:
     """The wallclock payload has NO iso_timestamp / timestamp / timezone key."""
 
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
-    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
-    monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
-    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "started_at", 100.0)
+    monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "unknown")
+    monkeypatch.setattr(_sentry.telemetry_state(), "wallclock_buckets", None)
+    monkeypatch.setattr(_sentry.telemetry_state(), "finalized", False)
 
     captured: dict[str, object] = {}
     monkeypatch.setattr(
@@ -1587,13 +1605,13 @@ def test_set_session_wallclock_start_noop_when_disabled(
 ) -> None:
     """When telemetry is disabled, the wallclock buckets must not be recorded."""
 
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "wallclock_buckets", None)
     monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
 
     _sentry.set_session_wallclock_start(now_dt=datetime(2026, 3, 12, 9, 30, tzinfo=UTC))
 
-    assert _sentry._SESSION_WALLCLOCK_BUCKETS is None
+    assert _sentry.telemetry_state().wallclock_buckets is None
 
 
 def test_set_session_wallclock_start_fail_soft(
@@ -1601,8 +1619,8 @@ def test_set_session_wallclock_start_fail_soft(
 ) -> None:
     """Exceptions during wallclock capture MUST NOT propagate to the caller."""
 
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "wallclock_buckets", None)
     monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
 
     def boom(_dt: object = None) -> None:
@@ -1623,12 +1641,12 @@ def test_record_phase_execution_accumulates_by_role(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Three records collapse into one session payload keyed by PhaseRole."""
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
-    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
-    monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
-    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
-    monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "started_at", 100.0)
+    monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "unknown")
+    monkeypatch.setattr(_sentry.telemetry_state(), "wallclock_buckets", None)
+    monkeypatch.setattr(_sentry.telemetry_state(), "finalized", False)
+    monkeypatch.setattr(_sentry.telemetry_state(), "phase_stats", {})
 
     captured: dict[str, object] = {}
     monkeypatch.setattr(
@@ -1695,37 +1713,39 @@ def test_record_phase_execution_drops_unknown_role(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A role outside the PhaseRole closed vocabulary MUST be silently dropped."""
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "phase_stats", {})
 
     _sentry.record_phase_execution(role="secret-startup-phase", duration_s=1, outcome="success")
 
-    assert _sentry._PHASE_STATS == {}
+    assert _sentry.telemetry_state().phase_stats == {}
 
 
 def test_record_phase_execution_noop_when_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When telemetry is disabled, record_phase_execution is a no-op."""
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "phase_stats", {})
     monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
 
     _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")
 
-    assert _sentry._PHASE_STATS == {}
+    assert _sentry.telemetry_state().phase_stats == {}
 
 
 def test_record_phase_execution_fail_soft(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An exception from set_tag / collaborators MUST NOT propagate."""
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "phase_stats", {})
     monkeypatch.delenv("RALPH_DISABLE_TELEMETRY", raising=False)
 
     # Force a KeyError by pre-populating with a non-dict value.
-    _sentry._PHASE_STATS["execution"] = "this is not a dict"
+    _sentry.telemetry_state().phase_stats["execution"] = cast(
+        "dict[str, object]", "this is not a dict"
+    )
 
     # Must not raise even though the stats lookup will fail.
     _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")
@@ -1734,23 +1754,23 @@ def test_record_phase_execution_fail_soft(
 def test_phase_stats_drained_after_finalize(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """After finalize_session, the _PHASE_STATS accumulator MUST be cleared."""
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", 100.0)
-    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
-    monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
-    monkeypatch.setattr(_sentry, "_SESSION_FINALIZED", False)
-    monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
+    """After finalize_session, the phase-stat accumulator MUST be cleared."""
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "started_at", 100.0)
+    monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "unknown")
+    monkeypatch.setattr(_sentry.telemetry_state(), "wallclock_buckets", None)
+    monkeypatch.setattr(_sentry.telemetry_state(), "finalized", False)
+    monkeypatch.setattr(_sentry.telemetry_state(), "phase_stats", {})
 
     monkeypatch.setattr("sentry_sdk.set_context", lambda *a, **kw: None)
     monkeypatch.setattr("sentry_sdk.capture_message", lambda *a, **kw: None)
     monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
 
     _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")
-    assert _sentry._PHASE_STATS != {}
+    assert _sentry.telemetry_state().phase_stats != {}
 
     _sentry.finalize_session(now=160.0, flush_timeout=2.0)
-    assert _sentry._PHASE_STATS == {}
+    assert _sentry.telemetry_state().phase_stats == {}
 
 
 # ---------------------------------------------------------------------------
@@ -2036,11 +2056,11 @@ def test_closed_vocabulary_privacy_regression(
     )
     monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
 
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
-    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", None)
-    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
-    monkeypatch.setattr(_sentry, "_SESSION_WALLCLOCK_BUCKETS", None)
-    monkeypatch.setattr(_sentry, "_PHASE_STATS", {})
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "started_at", None)
+    monkeypatch.setattr(_sentry.telemetry_state(), "outcome", "unknown")
+    monkeypatch.setattr(_sentry.telemetry_state(), "wallclock_buckets", None)
+    monkeypatch.setattr(_sentry.telemetry_state(), "phase_stats", {})
 
     # Use ci=True/container=True so the privacy guard can verify bool-only.
     monkeypatch.setattr(
@@ -2095,7 +2115,7 @@ def test_closed_vocabulary_privacy_regression(
 
     # Unknown phase role MUST be dropped (privacy invariant).
     _sentry.record_phase_execution(role="secret-startup-phase", duration_s=1, outcome="success")
-    assert _sentry._PHASE_STATS == {}
+    assert _sentry.telemetry_state().phase_stats == {}
 
     _sentry.record_phase_execution(role="execution", duration_s=1, outcome="success")
     _sentry.record_phase_execution(role="review", duration_s=2, outcome="failure")
@@ -2203,7 +2223,7 @@ def _capture_contexts(
     """Activate telemetry and capture set_context / set_tag calls."""
     contexts: list[tuple[str, dict[str, object]]] = []
     tags: list[tuple[str, object]] = []
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     monkeypatch.setattr(
         "sentry_sdk.set_context",
         lambda name, data: contexts.append((str(name), dict(must_mapping(data)))),
@@ -2312,7 +2332,7 @@ def test_agent_config_context_noop_when_not_initialized(
 ) -> None:
     """No agent config is forwarded when Sentry was never initialized."""
     contexts: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr(_sentry, "_INITIALIZED", False)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", False)
     monkeypatch.setattr(
         "sentry_sdk.set_context",
         lambda name, data: contexts.append((str(name), dict(must_mapping(data)))),
@@ -2386,7 +2406,7 @@ def test_finalize_session_reports_ralph_and_python_versions(
     monkeypatch.setattr("sentry_sdk.metrics.distribution", lambda *a, **k: None)
 
     _sentry.record_session_start(now=100.0)
-    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", True)
     _sentry.finalize_session(now=107.0, flush_timeout=0.0)
 
     session = next(data for name, data in contexts if name == "session")
@@ -2446,7 +2466,7 @@ def test_agent_config_rejects_paths_urls_and_credentials_in_model(
     The contract is asserted directly against ``build_agent_config_payload`` so
     the test does not depend on the order-dependent ``_capture_contexts``
     monkeypatch chain (which is flaky when ``set_agent_config_context`` runs
-    before its ``_INITIALIZED`` patch propagates in parallel xdist workers).
+    before its telemetry-state activation propagates in parallel xdist workers).
     """
     payload = _sentry_payload.build_agent_config_payload(
         {"a": _agent(transport=AgentTransport.CLAUDE, model=hostile_model)}
@@ -2538,7 +2558,7 @@ def test_set_policy_schema_context_noop_when_not_initialized(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tags: list[tuple[str, object]] = []
-    monkeypatch.setattr(_sentry, "_INITIALIZED", False)
+    monkeypatch.setattr(_sentry.telemetry_state(), "initialized", False)
     monkeypatch.setattr("sentry_sdk.set_tag", lambda k, v: tags.append((str(k), v)))
 
     _sentry.set_policy_schema_context("current")

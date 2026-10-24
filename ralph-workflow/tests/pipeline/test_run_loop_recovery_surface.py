@@ -60,10 +60,9 @@ from ralph.pipeline.run_loop import (
     _subscribe_recovery_display,
 )
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.events import FailureEvent, FalloverEvent
 from ralph.recovery.events import FailureEvent as _FailureEventCls
 from ralph.recovery.events import FalloverEvent as _FalloverEventCls
-from ralph.recovery.failure_event import FailureEvent
-from ralph.recovery.fallover_event import FalloverEvent
 
 if TYPE_CHECKING:
     import pytest

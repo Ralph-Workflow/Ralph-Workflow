@@ -1,4 +1,26 @@
-"""Convert interactive Claude transcript lines into agent parser output."""
+"""Convert interactive Claude transcript lines into agent parser output.
+
+Public observation seams
+------------------------
+:class:`ClaudeInteractiveParser` wraps a
+:class:`ClaudeInteractiveTranscriptParser` and exposes two read-only
+seams so the transport's behaviour can be observed from OUTSIDE the
+module instead of through private state:
+
+- :meth:`ClaudeInteractiveParser.parse_transcript_entry` ingests ONE raw
+  transcript entry exactly the way the live transport does and returns the
+  resulting :class:`InteractiveTranscriptEvent` objects.  The live content
+  mode (``thinking`` / ``output`` / ``tool_use``) is part of the parser's
+  state, so a caller enters it by feeding a real assistant envelope; the
+  mode is then observable through the KIND of the returned events (agent
+  text in the ``output`` mode yields an ``output`` event, while a short
+  fragment in the idle mode yields none).
+- :meth:`ClaudeInteractiveParser.session_id` reports the session id the
+  transcript has revealed so far.
+
+Both seams delegate to the transcript parser's public API; neither
+mutates it and neither exposes a private attribute.
+"""
 
 from __future__ import annotations
 
@@ -154,6 +176,23 @@ class ClaudeInteractiveParser:
                         metadata=metadata,
                     )
         yield from self._flush_accumulators()
+
+    def parse_transcript_entry(self, entry: str) -> list[InteractiveTranscriptEvent]:
+        """Ingest ONE raw transcript entry and return the events it produced.
+
+        Public observation seam: the entry is fed through the same
+        transcript parser the agent-output stream is built from, so the
+        returned events are exactly the ones a live transcript line would
+        yield -- including the ones :meth:`parse` filters out (such as the
+        ``session`` event).  The entry is expected to be a complete
+        transcript line (terminated by a newline) for a text fragment.
+        """
+        return self._parser.feed(entry)
+
+    @property
+    def session_id(self) -> str | None:
+        """The session id the transcript has revealed so far (read-only)."""
+        return self._parser.session_id
 
     def _flush_accumulators(self) -> Iterator[AgentOutputLine]:
         text = self._text_accumulator.buffer.strip()

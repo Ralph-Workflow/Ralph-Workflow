@@ -31,14 +31,17 @@ from ralph.pipeline._integration_diagnostic import (
 from ralph.pipeline._integration_diagnostic import (
     busy_refusal_outcome as diagnostic_busy_refusal_outcome,
 )
+from ralph.pipeline._integration_diagnostic import (
+    busy_refusal_outcome as recovery_busy_refusal_outcome,
+)
+from ralph.pipeline._integration_diagnostic import (
+    busy_refusal_outcome as remote_busy_refusal_outcome,
+)
 from ralph.pipeline._remote_reconcile_recovery import (
     RecordBusyError,
     RecordUnreadableError,
     _apply_release_or_refuse,
     _maybe_release_target_diagnostic,
-)
-from ralph.pipeline._remote_reconcile_recovery import (
-    busy_refusal_outcome as remote_busy_refusal_outcome,
 )
 from ralph.pipeline.auto_integrate_record import (
     AUTO_INTEGRATE_RECORD_FILENAME,
@@ -48,9 +51,6 @@ from ralph.pipeline.auto_integrate_record import (
 from ralph.pipeline.auto_integrate_record_store import apply_record_transition
 from ralph.pipeline.auto_integrate_recovery import (
     _maybe_release_diagnostic,
-)
-from ralph.pipeline.auto_integrate_recovery import (
-    busy_refusal_outcome as recovery_busy_refusal_outcome,
 )
 from ralph.pipeline.auto_integrate_transition import RELEASE_DIAGNOSTIC_EVIDENCE
 from ralph.pipeline.operation_evidence import (

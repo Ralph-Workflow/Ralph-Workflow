@@ -55,6 +55,11 @@ from ralph.workspace.awareness import awareness_for_workspace, release_workspace
 
 _create_watchdog_observer = create_watchdog_observer
 
+#: Public alias for the watch-lock collaborator protocol. The protocol
+#: itself stays private to the seams module, but callers (and their
+#: black-box tests) need a public name to type the collaborator against.
+CrossProcessWatchLockProtocol = _CrossProcessWatchLockProtocol
+
 if TYPE_CHECKING:
     from ralph.agents.invoke._handler_with_dispatch import _HandlerWithDispatch
     from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier

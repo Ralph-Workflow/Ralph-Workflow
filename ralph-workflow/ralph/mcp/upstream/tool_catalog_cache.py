@@ -6,6 +6,21 @@ server name -> tool list). Identity/authority lives on disk at
 ``<workspace>/.agent/mcp/parent_catalog.json``; the in-process cache is
 only a fast path. Fail-closed: malformed or non-mapping disk payloads are
 removed and reported as absent.
+
+Public observation surface
+--------------------------
+The in-process cache is a module-level singleton bounded by a FIFO cap.
+Callers (and black-box tests, which must not reach into module-private
+state) reason about it through these public accessors instead of the
+private names:
+
+- :func:`cache_key` -- the cache identity of one workspace root.
+- :func:`cache_capacity` -- the FIFO cap on cached catalogs.
+- :func:`cached_entry_count` -- how many catalogs are cached right now.
+- :func:`cached_workspace_keys` -- the cached workspace keys, oldest first.
+- :func:`reset_tool_catalog_cache` -- drop every in-process entry (the
+  authoritative disk snapshots are left untouched); the seam that lets a
+  caller start from a known-empty cache without touching private state.
 """
 
 from __future__ import annotations
@@ -99,10 +114,50 @@ def _write_catalog_file(workspace_root: Path, catalog: dict[str, list[UpstreamTo
         raise
 
 
+def cache_key(workspace_root: Path) -> str:
+    """Public read-only accessor for the in-process cache key of a workspace.
+
+    The key is the resolved absolute workspace path -- the identity the
+    in-process cache uses for one workspace root.
+    """
+    return str(workspace_root.expanduser().resolve())
+
+
 def _cache_key(workspace_root: Path | None) -> str | None:
     if workspace_root is None:
         return None
-    return str(workspace_root.expanduser().resolve())
+    return cache_key(workspace_root)
+
+
+def cache_capacity() -> int:
+    """Public read-only accessor for the FIFO cap on cached catalogs."""
+    return _MAX_CACHE_ENTRIES
+
+
+def cached_entry_count() -> int:
+    """Public read-only accessor for the number of cached catalogs."""
+    return len(_CACHE)
+
+
+def cached_workspace_keys() -> tuple[str, ...]:
+    """Public read-only view of the cached workspace keys, oldest first.
+
+    The in-process cache is FIFO-bounded, so the first key is the next one
+    to be evicted when the cap is exceeded.
+    """
+    return tuple(_CACHE)
+
+
+def reset_tool_catalog_cache() -> None:
+    """Drop every in-process cache entry; the disk snapshots are untouched.
+
+    Public seam for cache isolation: the in-process cache is a
+    module-level singleton, so a caller that counts entries needs a way to
+    start from a known-empty cache without reaching into module-private
+    state.  Only the in-memory fast path is cleared -- the authoritative
+    per-workspace disk snapshots are NOT removed.
+    """
+    _CACHE.clear()
 
 
 def cache_tool_catalog(
@@ -250,11 +305,16 @@ def apply_tool_catalog_env(
 __all__ = [
     "UpstreamToolCatalogSnapshot",
     "apply_tool_catalog_env",
+    "cache_capacity",
+    "cache_key",
     "cache_tool_catalog",
+    "cached_entry_count",
+    "cached_workspace_keys",
     "clear_tool_catalog",
     "collect_tool_catalog",
     "get_tool_catalog",
     "get_tool_catalog_snapshot",
     "publish_tool_catalog_to_parent",
     "read_snapshot_from_disk",
+    "reset_tool_catalog_cache",
 ]
