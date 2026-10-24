@@ -215,7 +215,7 @@ import urllib.request
 import uuid
 from datetime import timedelta
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Final, Protocol, cast
+from typing import IO, TYPE_CHECKING, Final, NoReturn, Protocol, cast
 
 import psutil
 from loguru import logger
@@ -243,6 +243,7 @@ from ralph.mcp.protocol.env import (
 )
 from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV as SESSION_FILE_ENV
 from ralph.mcp.protocol.startup import (
+    mcp_boot_allowance_from_env,
     mcp_preflight_timeout_from_env,
     mcp_probe_timeout_from_env,
     preflight_http_mcp_server_tools,
@@ -306,6 +307,7 @@ from ralph.mcp.server._standalone_mcp_process import (
     StandaloneMcpProcess,
 )
 from ralph.mcp.server._start_stage_tracker import read_last_stage as _read_start_stage
+from ralph.mcp.server._startup_watch import StartupVerdict, StartupWatch
 from ralph.mcp.tool_contract import visible_owned_tool_names
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.upstream.tool_catalog_cache import (
@@ -3067,6 +3069,16 @@ def _startup_diagnostic_suffix(root: Path, log_offset: int) -> str:
     return f"\nMCP server output ({mcp_server_log_path(root)}):\n{diagnostic}"
 
 
+def _boot_allowance_seconds(deps: LifecycleDeps) -> float:
+    """Return the configured child-boot allowance, ``0.0`` when none is wired."""
+    if deps.boot_allowance is None:
+        return 0.0
+    try:
+        return max(0.0, deps.boot_allowance().total_seconds())
+    except Exception:
+        return 0.0
+
+
 def _await_mcp_startup_or_failure(
     bridge: StandaloneMcpProcess,
     *,
@@ -3079,8 +3091,14 @@ def _await_mcp_startup_or_failure(
     root: Path,
     log_offset: int,
     stage_id: str,
+    clock: Callable[[], float] = time.monotonic,
 ) -> None:
-    """Observe preflight and child process termination under an absolute startup deadline."""
+    """Observe preflight and child process termination under the startup deadlines.
+
+    ``spawn_start`` and ``clock`` share one time base (``time.monotonic`` in
+    production); tests inject both to drive the BOOT and ENVELOPE phases
+    deterministically.
+    """
     preflight_timeout_td = deps.preflight_timeout()
     preflight_timeout_s = preflight_timeout_td.total_seconds()
     try:
@@ -3090,13 +3108,24 @@ def _await_mcp_startup_or_failure(
     startup_deadline_s = min(preflight_timeout_s, whole_startup_s)
     if startup_deadline_s >= preflight_timeout_s:
         startup_deadline_s = max(0.1, preflight_timeout_s - 0.5)
+    boot_allowance_s = _boot_allowance_seconds(deps)
+    watch = StartupWatch(
+        spawn_start=spawn_start,
+        envelope_s=startup_deadline_s,
+        boot_allowance_s=boot_allowance_s,
+        read_stage=lambda: _read_start_stage(root, spawn_id=stage_id),
+        clock=clock,
+    )
+    # The preflight probe must outlive the whole budget the watch can grant,
+    # otherwise it would give up on a slow-but-booting child first.
+    preflight_budget_td = preflight_timeout_td + timedelta(seconds=max(0.0, boot_allowance_s))
 
     preflight_error: list[Exception] = []
     preflight_done = threading.Event()
 
     def _run_preflight() -> None:
         try:
-            deps.preflight(endpoint, visible_tools, preflight_timeout_td)
+            deps.preflight(endpoint, visible_tools, preflight_budget_td)
         except Exception as exc:
             preflight_error.append(exc)
         finally:
@@ -3110,7 +3139,7 @@ def _await_mcp_startup_or_failure(
     preflight_thread.start()
 
     early_exit_rc: int | None = None
-    deadline_exceeded = False
+    verdict = StartupVerdict.WAITING
     poll_interval = 0.02
 
     while True:
@@ -3120,64 +3149,85 @@ def _await_mcp_startup_or_failure(
         if rc is not None:
             early_exit_rc = rc
             break
-        if (time.monotonic() - spawn_start) >= startup_deadline_s:
-            deadline_exceeded = True
+        verdict = watch.check()
+        if verdict is not StartupVerdict.WAITING:
             break
 
-    elapsed_s = time.monotonic() - spawn_start
-
-    if early_exit_rc is None and not deadline_exceeded and not preflight_error:
+    if early_exit_rc is None and verdict is StartupVerdict.WAITING and not preflight_error:
         return
 
+    _raise_startup_failure(
+        bridge,
+        endpoint=endpoint,
+        root=root,
+        log_offset=log_offset,
+        stage_id=stage_id,
+        elapsed_s=clock() - spawn_start,
+        early_exit_rc=early_exit_rc,
+        verdict=verdict,
+        preflight_error=preflight_error,
+        startup_deadline_s=startup_deadline_s,
+        boot_allowance_s=boot_allowance_s,
+    )
+
+
+def _raise_startup_failure(
+    bridge: StandaloneMcpProcess,
+    *,
+    endpoint: str,
+    root: Path,
+    log_offset: int,
+    stage_id: str,
+    elapsed_s: float,
+    early_exit_rc: int | None,
+    verdict: StartupVerdict,
+    preflight_error: list[Exception],
+    startup_deadline_s: float,
+    boot_allowance_s: float,
+) -> NoReturn:
+    """Tear the child down and raise the typed error matching how startup failed."""
     returncode = bridge.process.poll()
     child_pid, psutil_status = _child_process_diagnostics(bridge)
     bridge.shutdown()
     diagnostic = _startup_diagnostic_suffix(root, log_offset)
-    last_stage: str | None = _read_start_stage(root, spawn_id=stage_id)
-    last_stage_str: str = last_stage if last_stage is not None else "last_stage_unknown"
+    last_stage = _read_start_stage(root, spawn_id=stage_id)
+    cause = preflight_error[0] if preflight_error else None
+
+    def _error(message: str, reason: str) -> McpServerError:
+        return McpServerError(
+            message,
+            restart_count=0,
+            last_stage=last_stage if last_stage is not None else "last_stage_unknown",
+            elapsed_s=elapsed_s,
+            restart_reason=reason,
+            child_pid=child_pid,
+            psutil_status=psutil_status,
+        )
 
     if early_exit_rc is not None or returncode is not None:
         effective_rc = early_exit_rc if early_exit_rc is not None else returncode
-        cause = preflight_error[0] if preflight_error else None
-        err = McpServerError(
+        raise _error(
             f"MCP server process exited before endpoint {endpoint} became ready "
             f"(rc={effective_rc}){diagnostic}",
-            restart_count=0,
-            last_stage=last_stage_str,
-            elapsed_s=elapsed_s,
-            restart_reason="process_exited",
-            child_pid=child_pid,
-            psutil_status=psutil_status,
-        )
-        if cause is not None:
-            raise err from cause
-        raise err
-
-    if deadline_exceeded:
-        cause = preflight_error[0] if preflight_error else None
-        err = McpServerError(
+            "process_exited",
+        ) from cause
+    if verdict is StartupVerdict.BOOT_DEADLINE_EXCEEDED:
+        raise _error(
+            f"MCP server child did not begin startup within the boot allowance of "
+            f"{boot_allowance_s:.3f}s (interpreter boot/imports; the host may be "
+            f"overloaded) before endpoint {endpoint} became ready{diagnostic}",
+            verdict.value,
+        ) from cause
+    if verdict is StartupVerdict.ENVELOPE_DEADLINE_EXCEEDED:
+        raise _error(
             f"MCP server startup exceeded deadline of {startup_deadline_s:.3f}s "
             f"before endpoint {endpoint} became ready{diagnostic}",
-            restart_count=0,
-            last_stage=last_stage_str,
-            elapsed_s=elapsed_s,
-            restart_reason="startup_deadline_exceeded",
-            child_pid=child_pid,
-            psutil_status=psutil_status,
-        )
-        if cause is not None:
-            raise err from cause
-        raise err
-
-    raise McpServerError(
-        f"MCP server endpoint {endpoint} did not become ready: {preflight_error[0]}{diagnostic}",
-        restart_count=0,
-        last_stage=last_stage_str,
-        elapsed_s=elapsed_s,
-        restart_reason="preflight_failed",
-        child_pid=child_pid,
-        psutil_status=psutil_status,
-    ) from preflight_error[0]
+            verdict.value,
+        ) from cause
+    raise _error(
+        f"MCP server endpoint {endpoint} did not become ready: {cause}{diagnostic}",
+        "preflight_failed",
+    ) from cause
 
 
 def _spawn_mcp_process(
@@ -3593,6 +3643,7 @@ def _default_lifecycle_deps() -> LifecycleDeps:
         spawn_process=_spawn_process,
         preflight=preflight_http_mcp_server_tools,
         preflight_timeout=mcp_preflight_timeout_from_env,
+        boot_allowance=mcp_boot_allowance_from_env,
         probe=probe_mcp_http_endpoint,
         probe_timeout=mcp_probe_timeout_from_env,
     )

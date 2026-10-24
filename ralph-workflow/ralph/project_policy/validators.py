@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 from ralph.project_policy import _content_checks, evidence, markers
 from ralph.project_policy._content_checks import (
+    _check_capture_command_fact,
     _check_commands,
     _check_markers,
     _check_per_language_coverage,
@@ -314,6 +315,7 @@ def _validate_existing_policy_file(content: str, path: str, filename: str) -> li
     findings.extend(_check_placeholders(content, path, filename))
     findings.extend(_check_pending_facts(content, path, filename))
     findings.extend(_check_required_fact_keys(content, path, filename))
+    findings.extend(_check_capture_command_fact(content, path, filename))
     findings.extend(_check_commands(content, path, filename))
     findings.extend(_check_template_banner(content, path, filename))
     # v5 guard-inventory check (B9). Every applicable starter (core and

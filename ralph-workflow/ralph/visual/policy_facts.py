@@ -75,6 +75,11 @@ _SHELL_METACHARS: frozenset[str] = frozenset({";", "&", "|", ">", "<", "`", "$",
 # path traversal and rejected.
 _TRAVERSAL_SEGMENT = re.compile(r"(^|/)\.\.?(/|$)")
 
+# The whole-string pattern above only sees a ``..`` at the very start or after
+# a ``/``; an argv token such as ``../out`` or ``--out=../out`` sits after a
+# space or ``=``. Checked per token so those cannot escape the project root.
+_TRAVERSAL_ARGV_SEGMENT = re.compile(r"(^|[/=])\.\.(/|$)")
+
 # RALPH-FACT line grammar. Captures the key + value; whitespace around
 # the value is trimmed. The line MUST start with ``RALPH-FACT:`` so a
 # body paragraph that happens to contain ``RALPH-FACT:`` mid-line is
@@ -214,7 +219,7 @@ def _split_csv(value: str) -> list[str]:
     return list(seen)
 
 
-def _validate_capture_command(command: str) -> None:
+def validate_capture_command(command: str) -> None:
     """Reject shell fragments and path-traversal inside ``design_capture_command``."""
     if not command or not command.strip():
         raise ValueError("design_capture_command must be a non-empty string")
@@ -233,6 +238,11 @@ def _validate_capture_command(command: str) -> None:
         tokens = shlex.split(command)
     except ValueError as exc:
         raise ValueError(f"design_capture_command must be shell-parseable: {exc}") from exc
+    if any(_TRAVERSAL_ARGV_SEGMENT.search(token) for token in tokens):
+        raise ValueError(
+            "design_capture_command must not contain path-traversal sequences ('..'); "
+            "capture paths must stay within the project root"
+        )
     if len(tokens) < MIN_CAPTURE_COMMAND_TOKENS:
         raise ValueError(
             "design_capture_command must contain at least an executable and a target "
@@ -262,6 +272,25 @@ def _extract_facts(policy_markdown: str) -> dict[str, str]:
     return facts
 
 
+def capture_command_problem(policy_markdown: str) -> str | None:
+    """Return why a policy's ``design_capture_command`` fact is unusable, else ``None``.
+
+    Reads the fact exactly as :func:`parse_policy_facts` does (first
+    occurrence wins) and applies the same :func:`validate_capture_command`
+    rules, so authoring-time validation can never disagree with what the
+    visual pipeline will accept. An absent fact is not a *problem* here --
+    presence is enforced separately -- so it yields ``None``.
+    """
+    command = _extract_facts(policy_markdown).get(_KEY_DESIGN_CAPTURE_COMMAND)
+    if command is None:
+        return None
+    try:
+        validate_capture_command(command)
+    except ValueError as exc:
+        return str(exc)
+    return None
+
+
 def parse_policy_facts(policy_markdown: str, *, target: str | None = None) -> PolicyFacts:
     """Parse and validate a managed-repo policy markdown into PolicyFacts.
 
@@ -286,7 +315,7 @@ def parse_policy_facts(policy_markdown: str, *, target: str | None = None) -> Po
             "construct a capture command from intuition"
         )
     command = facts[_KEY_DESIGN_CAPTURE_COMMAND]
-    _validate_capture_command(command)
+    validate_capture_command(command)
 
     resolved_target = target if target is not None else facts.get(_KEY_DESIGN_TARGET)
     if not resolved_target or not resolved_target.strip():
@@ -357,7 +386,7 @@ def default_policy_facts(*, target: str, command: str) -> PolicyFacts:
     Raises ``ValueError`` for unsafe commands (same rules as
     :func:`parse_policy_facts`).
     """
-    _validate_capture_command(command)
+    validate_capture_command(command)
     if not target or not target.strip():
         raise ValueError("target must be a non-empty string")
     return PolicyFacts(

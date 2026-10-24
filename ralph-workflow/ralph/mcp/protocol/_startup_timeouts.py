@@ -95,6 +95,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.mcp.protocol.env import (
+    MCP_BOOT_ALLOWANCE_MS_ENV,
     MCP_PREFLIGHT_TIMEOUT_MS_ENV,
     MCP_UPSTREAM_PROBE_TIMEOUT_MS_ENV,
 )
@@ -167,6 +168,16 @@ if not (_DEFAULT_PREFLIGHT_BUDGET.total_seconds() > _PROBE_SAFETY_S):
         f"or lower _PROBE_BUDGET_SHARE."
     )
 
+# Interpreter boot + import of the MCP server child happens BEFORE the child
+# starts its own startup clock (``t0`` in ``run_standalone_server`` is taken
+# after the imports). It is therefore host-dependent time that the
+# pre-serve envelope above never accounted for: under heavy swap/iowait a cold
+# ``python -m ralph.mcp.server`` can take far longer than the ~1.8s of slack
+# the spawn-anchored parent deadline left. The parent budgets it separately: a
+# live child gets this long to record its first stage, and only then does the
+# pre-serve envelope start counting.
+_DEFAULT_BOOT_ALLOWANCE = timedelta(seconds=90)
+
 _DISCOVERY_METHOD = "tools/list"
 
 # Budget for an upstream tool call, which runs outside the startup window.
@@ -236,6 +247,19 @@ def mcp_preflight_timeout_from_env(env: Mapping[str, str] | None = None) -> time
             f"or lower _PROBE_BUDGET_SHARE."
         )
     return preflight
+
+
+def mcp_boot_allowance_from_env(env: Mapping[str, str] | None = None) -> timedelta:
+    """Return how long a spawned MCP child may take to begin its own startup.
+
+    This covers interpreter boot and module imports, i.e. the time before the
+    child writes its first stage (``env_loaded``). It is additive to, and
+    independent of, :func:`mcp_preflight_timeout_from_env`, which bounds the
+    child's own pre-serve work. ``RALPH_MCP_BOOT_ALLOWANCE_MS`` overrides it.
+    """
+
+    env_map = os.environ if env is None else env
+    return _timeout_ms_from_env(env_map, MCP_BOOT_ALLOWANCE_MS_ENV) or _DEFAULT_BOOT_ALLOWANCE
 
 
 def mcp_upstream_probe_timeout_from_env(env: Mapping[str, str] | None = None) -> timedelta:
@@ -603,6 +627,7 @@ __all__ = [
     "_WHOLE_STARTUP_BUDGET_S",
     "_check_cumulative_startup_deadline",
     "_check_real_startup_deadline",
+    "mcp_boot_allowance_from_env",
     "mcp_discovery_budget_from_env",
     "mcp_overrun_diagnostic_timeout_from_env",
     "mcp_overrun_diagnostic_timeout_seconds",

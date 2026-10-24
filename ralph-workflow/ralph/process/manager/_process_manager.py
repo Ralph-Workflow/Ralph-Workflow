@@ -146,6 +146,9 @@ def _extract_proc_command(proc: object) -> str:
     return ""
 
 
+_UNINSPECTABLE_STATUSES: frozenset[str] = frozenset({"no_such_process", "access_denied"})
+
+
 def _query_proc_status(proc: _PsutilProcessLike, mod: _PsutilModuleLike) -> str:
     """Query status from a psutil process, mapping exceptions to strings."""
     try:
@@ -2229,9 +2232,12 @@ class ProcessManager:
             try:
                 proc = mod.process_from_pid(pid)
                 status = _query_proc_status(proc, mod)
-                proc_cmd = _extract_proc_command(proc)
-                if proc_cmd:
-                    cmd = proc_cmd
+                # A process psutil cannot see (gone, or not ours to inspect) has
+                # no trustworthy live command line; keep the spawn-time command.
+                if status not in _UNINSPECTABLE_STATUSES:
+                    proc_cmd = _extract_proc_command(proc)
+                    if proc_cmd:
+                        cmd = proc_cmd
             except mod.NoSuchProcess:
                 status = "no_such_process"
             except mod.AccessDenied:

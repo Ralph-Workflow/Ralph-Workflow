@@ -43,6 +43,8 @@ def test_a_stop_never_inherits_the_previous_stops_verdict(
 ) -> None:
     """An early exit must not report a reason left behind by an earlier conflict."""
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
+    # The failed attempt benches the lone resolver; do not really wait out the cooldown.
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
     session = ResolutionSession()
     outcome = driver_module.run_conflict_resolution_outcome(

@@ -283,7 +283,9 @@ def test_e54_zombie_child_is_treated_as_dead_and_replaced_by_bridge(tmp_path: Pa
     )
     bridge, source = _make_bridge(inner, replacement)
 
-    decisions_before = len(get_restart_decisions())
+    # The decision log is a bounded ring buffer, so its length stops growing once
+    # earlier tests fill it; identify a new record by its newest entry instead.
+    newest_before = get_restart_decisions()[-1:]
     try:
         restarted = bridge.check_health_and_restart_if_needed()
 
@@ -304,7 +306,10 @@ def test_e54_zombie_child_is_treated_as_dead_and_replaced_by_bridge(tmp_path: Pa
         assert source.make_before_break_requests == 0
 
         recorded: tuple[RestartDecision, ...] = get_restart_decisions()
-        assert len(recorded) > decisions_before, "the restart must be recorded"
+        assert recorded, "the restart must be recorded"
+        assert not newest_before or recorded[-1] is not newest_before[0], (
+            "the restart must be recorded"
+        )
         decision = recorded[-1]
         assert decision.reason == RestartReason.PROCESS_EXITED
         assert decision.stage == "process_exited"

@@ -9,6 +9,7 @@ in what order) stays in ``validators``.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse
 
@@ -38,6 +39,7 @@ from ralph.project_policy._scanners import (
     _pending_values,
 )
 from ralph.project_policy.models import PolicyFinding
+from ralph.visual.policy_facts import DESIGN_SYSTEM_POLICY_RELPATH, capture_command_problem
 
 if TYPE_CHECKING:
     from ralph.language_detector.models import ProjectStack
@@ -84,6 +86,34 @@ def _check_required_fact_keys(content: str, path: str, filename: str) -> list[Po
             )
         )
     return findings
+
+
+def _check_capture_command_fact(content: str, path: str, filename: str) -> list[PolicyFinding]:
+    """Reject a ``design_capture_command`` the visual pipeline would refuse.
+
+    The visual pipeline parses this one fact from the design-system policy and
+    silently skips visual review when it is unusable (prose, shell
+    metacharacters, a bare executable). Catching it here, with the very same
+    rules, surfaces it as a remediable policy finding instead of a per-cycle
+    runtime warning.
+    """
+    if filename != Path(DESIGN_SYSTEM_POLICY_RELPATH).name:
+        return []
+    problem = capture_command_problem(content)
+    if problem is None:
+        return []
+    return [
+        PolicyFinding(
+            requirement_id=f"{markers.ID_CMD_UNUSABLE}:{filename}:fact-design_capture_command",
+            path=path,
+            missing_evidence=f"RALPH-FACT design_capture_command is unusable: {problem}",
+            required_outcome=(
+                "set `RALPH-FACT: design_capture_command:` to ONLY the bare capture command "
+                "(executable plus arguments, e.g. `make visual-capture`); move any description "
+                "of its arguments into the surrounding prose"
+            ),
+        )
+    ]
 
 
 def _check_template_banner(content: str, path: str, filename: str) -> list[PolicyFinding]:

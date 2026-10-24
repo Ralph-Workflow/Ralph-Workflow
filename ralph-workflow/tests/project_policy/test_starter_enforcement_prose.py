@@ -11,6 +11,8 @@ to FOLLOW the policy.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from ralph.project_policy import remediation, starters
@@ -166,6 +168,14 @@ def test_filled_in_starter_validates_clean(name: str) -> None:
     # remaining fact placeholder with a plain verified value.
     content = content.replace("RALPH-COMMAND: PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test")
     content = content.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
+    # The capture-command fact must be a bare, runnable command (the visual
+    # pipeline rejects anything else), so it is resolved like a RALPH-COMMAND.
+    content = re.sub(
+        r"^(RALPH-FACT: design_capture_command:).*$",
+        r"\1 make visual-capture",
+        content,
+        flags=re.MULTILINE,
+    )
     # No completion marker is appended: a file is complete exactly when no
     # banner, REPLACE-ME comment, or placeholder token remains.
 

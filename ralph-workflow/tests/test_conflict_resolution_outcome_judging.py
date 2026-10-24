@@ -131,8 +131,11 @@ def test_a_markerless_decision_demands_declared_completion(
     land "keep", quietly reversing a deletion the other side intended.
     """
     from ralph.pipeline.conflict_resolution import driver as driver_module
+    from tests._conflict_resolution_phase_parity_seams import _policy_bundle
     from ralph.pipeline.conflict_resolution.sight import ConflictSight
 
+    # Loaded before ``Path.exists`` is stubbed out below: loading reads policy files.
+    bundle = _policy_bundle()
     captured: list[bool] = []
 
     def _capture(**kwargs: object) -> bool:
@@ -167,7 +170,7 @@ def test_a_markerless_decision_demands_declared_completion(
         config=UnifiedConfig.model_validate({"general": {}}),
         pipeline_deps=None,
         workspace_scope=None,
-        policy_bundle=PolicyBundle.model_construct(),
+        policy_bundle=bundle,
         display=None,
         display_context=None,
     )

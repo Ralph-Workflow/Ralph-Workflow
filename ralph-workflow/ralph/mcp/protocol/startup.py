@@ -38,6 +38,7 @@ from ralph.mcp.protocol._startup_http import (
     tools_list_request,
 )
 from ralph.mcp.protocol._startup_timeouts import (
+    mcp_boot_allowance_from_env,
     mcp_preflight_timeout_from_env,
     mcp_upstream_probe_timeout_from_env,
     mcp_upstream_probe_timeout_seconds,
@@ -67,6 +68,7 @@ __all__ = [
     "initialized_notification",
     "legacy_sse_jsonrpc_exchange",
     "looks_like_legacy_sse_endpoint",
+    "mcp_boot_allowance_from_env",
     "mcp_preflight_timeout_from_env",
     "mcp_probe_timeout_from_env",
     "mcp_upstream_probe_timeout_from_env",

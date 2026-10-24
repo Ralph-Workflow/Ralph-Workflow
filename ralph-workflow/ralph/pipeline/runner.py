@@ -224,6 +224,8 @@ if TYPE_CHECKING:
         PolicyBundle,
     )
     from ralph.recovery.controller import RecoveryController
+    from ralph.visual.capture_request import CaptureRequest
+    from ralph.visual.policy_facts import PolicyFacts
 
 
 __all__ = [
@@ -540,6 +542,37 @@ def run_visual_capture_lifecycle(
     return agent_result, before, after
 
 
+def _resolve_policy_capture_plan(
+    workspace_root: Path,
+) -> tuple[PolicyFacts, CaptureRequest, str] | str:
+    """Resolve the policy-declared capture plan, or return why there is none.
+
+    Returns the reason as a string rather than raising so the caller can run
+    the agent outside any ``except`` block: a failure inside that run must not
+    be chained onto this recoverable, already-reported policy problem.
+    """
+    from ralph.visual.capture_lifecycle import compute_matrix_key
+    from ralph.visual.capture_request import CaptureRequest
+    from ralph.visual.policy_facts import DESIGN_SYSTEM_POLICY_RELPATH, parse_policy_facts
+
+    try:
+        facts = parse_policy_facts(
+            (workspace_root / DESIGN_SYSTEM_POLICY_RELPATH).read_text(encoding="utf-8")
+        )
+        request = CaptureRequest.build(
+            target=facts.target,
+            viewports=facts.viewports,
+            themes=facts.themes,
+            states=facts.states,
+        )
+        matrix_key = compute_matrix_key(
+            viewports=facts.viewports, themes=facts.themes, states=facts.states
+        )
+    except (OSError, ValueError) as exc:
+        return str(exc)
+    return facts, request, matrix_key
+
+
 def _run_policy_declared_visual_capture(
     *,
     workspace_root: Path,
@@ -566,26 +599,12 @@ def _run_policy_declared_visual_capture(
         MediaCaptureError,
         handle_media_capture,
     )
-    from ralph.visual.capture_lifecycle import compute_matrix_key
-    from ralph.visual.capture_request import CaptureRequest
-    from ralph.visual.policy_facts import DESIGN_SYSTEM_POLICY_RELPATH, parse_policy_facts
 
-    try:
-        facts = parse_policy_facts(
-            (workspace_root / DESIGN_SYSTEM_POLICY_RELPATH).read_text(encoding="utf-8")
-        )
-        request = CaptureRequest.build(
-            target=facts.target,
-            viewports=facts.viewports,
-            themes=facts.themes,
-            states=facts.states,
-        )
-        matrix_key = compute_matrix_key(
-            viewports=facts.viewports, themes=facts.themes, states=facts.states
-        )
-    except (OSError, ValueError) as exc:
-        logger.warning("visual-review blocked: no policy-declared web capture: {}", exc)
+    plan = _resolve_policy_capture_plan(workspace_root)
+    if isinstance(plan, str):
+        logger.warning("visual-review blocked: no policy-declared web capture: {}", plan)
         return invoke_agent()
+    facts, request, matrix_key = plan
 
     def capture() -> CaptureSet:
         capture_run_id = str(uuid.uuid4())
