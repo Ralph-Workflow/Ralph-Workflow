@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import ctypes
 import errno
+import functools
 import os
 import shutil
 import subprocess
@@ -78,6 +79,7 @@ class _PopenConstructor(Protocol):
 _PR_SET_PDEATHSIG: Final[int] = 1
 _SUPERVISOR_SCRIPT: Final[Path] = Path(__file__).with_name("_supervisor.py")
 _SIGKILL: Final[int] = 9
+_SIGTERM: Final[int] = 15
 _PRCTL_FN: _Prctl | None = None
 if sys.platform.startswith("linux"):
     try:
@@ -91,10 +93,10 @@ if sys.platform.startswith("linux"):
         _PRCTL_FN = None
 
 
-def _install_pdeathsig() -> None:
+def _install_pdeathsig(signal_number: int = _SIGKILL) -> None:
     """Linux parent-death signal setup run inside child preexec.
 
-    Sets PR_SET_PDEATHSIG to SIGKILL and closes the fork/prctl race by
+    Sets PR_SET_PDEATHSIG (SIGKILL by default) and closes the fork/prctl race by
     sampling getppid() before and after the prctl call.
     """
     if _PRCTL_FN is None:
@@ -103,13 +105,24 @@ def _install_pdeathsig() -> None:
     if parent_before == 1:
         os._exit(0)
     try:
-        rc = _PRCTL_FN(_PR_SET_PDEATHSIG, _SIGKILL)
+        rc = _PRCTL_FN(_PR_SET_PDEATHSIG, signal_number)
         if rc != 0:
             os._exit(127)
     except Exception:
         return
     if os.getppid() != parent_before:
         os._exit(0)
+
+
+def _death_preexec(command: Sequence[str]) -> Callable[[], None]:
+    """Parent-death setup for a child: git gets SIGTERM, everything else SIGKILL.
+
+    Git removes its lock files from a SIGTERM handler and always exits; SIGKILL
+    would leave them behind. Every spawn factory goes through here so the choice
+    cannot drift between the sync and async paths.
+    """
+    death_signal = _SIGTERM if Path(command[0]).name == "git" else _SIGKILL
+    return functools.partial(_install_pdeathsig, death_signal)
 
 
 def _supervisor_invocation(command: Sequence[str]) -> list[str]:
@@ -206,7 +219,9 @@ def _default_sync_process_factory(
             errors=opts.errors if opts.text else None,
             pass_fds=opts.pass_fds,
         )
-    preexec: Callable[[], None] | None = _install_pdeathsig if on_linux and on_main_thread else None
+    preexec: Callable[[], None] | None = (
+        _death_preexec(command) if on_linux and on_main_thread else None
+    )
     popen_ctor: _PopenConstructor = subprocess.Popen
     return popen_ctor(
         command,
@@ -257,7 +272,7 @@ async def _default_async_process_factory(
 ) -> _AsyncProcessLike:
     child_env = child_env_for_spawn(env, cwd=cwd)
     preexec: Callable[[], None] | None = (
-        _install_pdeathsig
+        _death_preexec(command)
         if sys.platform.startswith("linux")
         and threading.current_thread() is threading.main_thread()
         else None

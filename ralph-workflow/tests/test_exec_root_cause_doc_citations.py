@@ -201,8 +201,8 @@ REPAIRED_CITATIONS: tuple[tuple[str, int, str], ...] = (
     ("ralph/mcp/server/exec_sse_streaming.py", 123, '"method": "notifications/progress"'),
     ("ralph/mcp/server/exec_sse_streaming.py", 231, '"method": "notifications/message"'),
     # Cause 1 — output-only inactivity window (historical) and its poll loop.
-    ("ralph/process/manager/_managed_process.py", 301, "last_output_at_ref[0] = _time.monotonic()"),
-    ("ralph/process/manager/_managed_process.py", 378, 'timeout_cause = "inactivity"'),
+    ("ralph/process/manager/_managed_process.py", 315, "last_output_at_ref[0] = _time.monotonic()"),
+    ("ralph/process/manager/_managed_process.py", 392, 'timeout_cause = "inactivity"'),
     # Cause 1 — the production entry path vs the injected-runner seam.
     ("ralph/mcp/tools/exec.py", 809, "job_id = effective_registry.start("),
     ("ralph/mcp/tools/exec.py", 819, "wait_ms=EXEC_SOFT_REPLY_BUDGET_MS"),

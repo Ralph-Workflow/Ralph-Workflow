@@ -107,6 +107,13 @@ REPEATED_ERROR_WINDOW_SECONDS: float | None = 600.0
 #: vendor submodules). The process tree is killed on expiry.
 GIT_SUBPROCESS_TIMEOUT_SECONDS: float = 120.0
 
+#: SIGTERM-to-SIGKILL grace for a git child the runner must stop (timeout,
+#: output cap, cancellation). Git removes its ``*.lock`` files from a SIGTERM
+#: handler; SIGKILL cannot be handled, so killing git with no grace window
+#: orphans ``index.lock`` / ``HEAD.lock`` / ref locks and wedges every later
+#: git call on that repository. The window only has to cover git's cleanup.
+GIT_TERMINATE_GRACE_SECONDS: float = 5.0
+
 #: Default cap (bytes) on git stdout/stderr captured by
 #: ``ralph.git.subprocess_runner.run_git`` when a caller does not opt into a
 #: custom value via ``GitRunOptions.output_limit_bytes``. A massive

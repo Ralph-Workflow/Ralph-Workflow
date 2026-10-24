@@ -12,6 +12,7 @@ from typing import IO, TYPE_CHECKING, Literal
 from loguru import logger
 
 from ralph.process.manager._deadline_timeout_expired import DeadlineTimeoutExpired
+from ralph.process.manager._git_termination import git_aware_grace
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
 )
@@ -170,6 +171,7 @@ class ManagedProcess:
         on_output_chunk: Callable[[bytes], None] | None = None,
         *,
         hard_timeout: float | None = None,
+        terminate_grace_period_s: float | None = None,
     ) -> tuple[bytes | None, bytes | None]:
         """Drain output and clean up any descendant processes with psutil.
 
@@ -193,7 +195,19 @@ class ManagedProcess:
         are picked up by the background monitor thread below, and
         descendants still alive at exit are picked up by the trailing
         scan; both are preserved.
+
+        ``cleanup_grace_period_s`` bounds the sweep of descendants that outlive
+        a child that exited on its own. ``terminate_grace_period_s`` is the
+        SIGTERM-to-SIGKILL window when the child itself must be stopped
+        (timeout / output cap); it defaults to ``cleanup_grace_period_s``. They
+        differ for git, which needs a window to remove its lock files on SIGTERM
+        but must not make every normal exit wait on a lingering helper.
         """
+        kill_grace_period_s = (
+            terminate_grace_period_s
+            if terminate_grace_period_s is not None
+            else cleanup_grace_period_s
+        )
         psutil_mod = self._manager._psutil
         observed_descendants: dict[int, _PsutilProcessLike] = {}
         observed_lock = threading.Lock()
@@ -212,13 +226,13 @@ class ManagedProcess:
                     input=input,
                     timeout=timeout,
                     output_limit_bytes=output_limit_bytes,
-                    cleanup_grace_period_s=cleanup_grace_period_s,
+                    cleanup_grace_period_s=kill_grace_period_s,
                     on_output_chunk=on_output_chunk,
                     hard_timeout=hard_timeout,
                 )
         except (subprocess.TimeoutExpired, ManagedProcessOutputLimitExceededError):
             with contextlib.suppress(Exception):
-                self.terminate(grace_period_s=cleanup_grace_period_s)
+                self.terminate(grace_period_s=kill_grace_period_s)
             if psutil_mod is not None:
                 live_descendants = self._collect_live_descendants(
                     psutil_mod,
@@ -230,7 +244,7 @@ class ManagedProcess:
                 if live_descendants:
                     with contextlib.suppress(Exception):
                         self._cleanup_descendant_waves(
-                            psutil_mod, live_descendants, cleanup_grace_period_s
+                            psutil_mod, live_descendants, kill_grace_period_s
                         )
             raise
         finally:
@@ -472,6 +486,7 @@ class ManagedProcess:
     ) -> list[_PsutilProcessLike]:
         if not procs:
             return []
+        grace_period_s = git_aware_grace(grace_period_s, (p.pid for p in procs))
         for proc in procs:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 proc.terminate()
@@ -486,6 +501,19 @@ class ManagedProcess:
                 with contextlib.suppress(Exception):
                     note_fn(root_rc)
         return [proc for proc in alive if self._is_live_psutil_process(psutil_mod, proc)]
+
+    def _kill_late_spawns(
+        self,
+        psutil_mod: _PsutilModuleLike,
+        procs: list[_PsutilProcessLike],
+    ) -> list[_PsutilProcessLike]:
+        """Stop children that appeared after the tree snapshot.
+
+        A git among them is asked to exit first (it removes its lock files on
+        SIGTERM); only what survives that window is killed outright.
+        """
+        survivors = self._terminate_psutil_wave(psutil_mod, procs, 0.0)
+        return self._kill_psutil_wave(psutil_mod, survivors) if survivors else []
 
     def _kill_psutil_wave(
         self,
@@ -525,11 +553,11 @@ class ManagedProcess:
 
         first_late_spawns = self._collect_live_direct_children(psutil_mod, snapshot_descendants)
         if first_late_spawns:
-            self._kill_psutil_wave(psutil_mod, first_late_spawns)
+            self._kill_late_spawns(psutil_mod, first_late_spawns)
 
         second_late_spawns = self._collect_live_direct_children(psutil_mod, first_late_spawns)
         if second_late_spawns:
-            self._kill_psutil_wave(psutil_mod, second_late_spawns)
+            self._kill_late_spawns(psutil_mod, second_late_spawns)
 
     def terminate(self, grace_period_s: float | None = None) -> None:
         # Idempotency guard: if already terminal, skip without error

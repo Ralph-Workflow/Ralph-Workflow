@@ -14,7 +14,7 @@ from ralph.process.manager import SpawnOptions, get_process_manager
 from ralph.process.manager._managed_process_output_limit_exceeded_error import (
     ManagedProcessOutputLimitExceededError,
 )
-from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
+from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS, GIT_TERMINATE_GRACE_SECONDS
 
 #: Non-interactive git environment baseline. Ensures git never blocks on a
 #: credential prompt, a pager, or an editor — so a missing credential or network
@@ -234,12 +234,14 @@ def _spawn_git(
                 input=input_data,
                 timeout=effective_timeout,
                 cleanup_grace_period_s=0.0,
+                terminate_grace_period_s=GIT_TERMINATE_GRACE_SECONDS,
                 output_limit_bytes=effective_options.output_limit_bytes,
             )
         else:
             raw_stdout, raw_stderr = proc.communicate_and_cleanup(
                 timeout=effective_timeout,
                 cleanup_grace_period_s=0.0,
+                terminate_grace_period_s=GIT_TERMINATE_GRACE_SECONDS,
                 output_limit_bytes=effective_options.output_limit_bytes,
             )
         with contextlib.suppress(Exception):
@@ -249,11 +251,11 @@ def _spawn_git(
         with contextlib.suppress(Exception):
             get_process_manager().drain_completed()
     except subprocess.TimeoutExpired:
-        proc.terminate(grace_period_s=0)
+        proc.terminate(grace_period_s=GIT_TERMINATE_GRACE_SECONDS)
         raise
     except ManagedProcessOutputLimitExceededError:
         # Output-cap hit — kill the proc tree and propagate.
-        proc.terminate(grace_period_s=0)
+        proc.terminate(grace_period_s=GIT_TERMINATE_GRACE_SECONDS)
         raise
     except BaseException:
         # Any other exception escaping ``communicate_and_cleanup`` — a signal
@@ -270,7 +272,7 @@ def _spawn_git(
         # failing ``terminate`` so the original exception — the one the caller
         # must see — is never masked.
         with contextlib.suppress(Exception):
-            proc.terminate(grace_period_s=0)
+            proc.terminate(grace_period_s=GIT_TERMINATE_GRACE_SECONDS)
         raise
     finally:
         raw_proc_obj: object = proc._proc

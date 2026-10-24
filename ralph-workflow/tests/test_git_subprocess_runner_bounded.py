@@ -15,7 +15,7 @@ import pytest
 
 from ralph.git import subprocess_runner
 from ralph.git.subprocess_runner import GitRunOptions, run_git
-from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS
+from ralph.timeout_defaults import GIT_SUBPROCESS_TIMEOUT_SECONDS, GIT_TERMINATE_GRACE_SECONDS
 
 if TYPE_CHECKING:
     from ralph.process.manager import SpawnOptions
@@ -50,9 +50,11 @@ class _FakeProc:
         timeout: float | None = None,
         cleanup_grace_period_s: float = 0.0,
         output_limit_bytes: int | None = None,
+        terminate_grace_period_s: float | None = None,
     ) -> tuple[bytes, bytes]:
         self.recorded_timeout = timeout
         self.recorded_kwargs["output_limit_bytes"] = output_limit_bytes
+        self.recorded_kwargs["terminate_grace_period_s"] = terminate_grace_period_s
         del cleanup_grace_period_s
         if self._raise_from_communicate is not None:
             raise self._raise_from_communicate
@@ -132,7 +134,10 @@ def test_run_git_terminates_child_when_communicate_raises_arbitrary_exception(
         run_git(["status"], cwd=None, label="test")
 
     assert caught.value is fault
-    assert proc.terminate_calls == [0.0]
+    # Git removes its *.lock files from a SIGTERM handler; a zero grace window
+    # SIGKILLs it first and orphans index.lock for every later git call.
+    assert proc.terminate_calls == [GIT_TERMINATE_GRACE_SECONDS]
+    assert GIT_TERMINATE_GRACE_SECONDS > 0.0
 
 
 def test_run_git_propagates_original_fault_even_when_terminate_itself_fails(

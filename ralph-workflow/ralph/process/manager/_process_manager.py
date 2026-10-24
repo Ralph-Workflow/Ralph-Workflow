@@ -23,6 +23,7 @@ from ralph.process._pty_process import _status_to_returncode
 from ralph.process._spawn_argv import sanitize_spawn_command
 from ralph.process._spawn_env import child_env_for_spawn
 from ralph.process._spawn_validation import prepare_spawn_command, spawn_payload_bytes
+from ralph.process.manager._git_termination import git_aware_grace, group_pids
 from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._managed_process import ManagedProcess
 from ralph.process.manager._managed_pty_process import ManagedPtyProcess
@@ -50,6 +51,7 @@ from ralph.process.manager._pty_spawn_options import PtySpawnOptions
 from ralph.process.manager._spawn_options import SpawnOptions
 from ralph.process.teardown import register_child_session
 from ralph.runtime_events import record_runtime_event
+from ralph.timeout_defaults import GIT_TERMINATE_GRACE_SECONDS
 
 _PERMITTED_TERMINAL_REASONS = frozenset(
     {
@@ -637,9 +639,10 @@ class ProcessManager:
                     terminated.append(descendant_pid)
                     continue
                 try:
+                    wait_s = git_aware_grace(grace_period_s, (descendant_pid,))
                     with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                         proc.terminate()
-                    gone, _ = self._safe_wait_procs(psutil_mod, [proc], timeout=grace_period_s)
+                    gone, _ = self._safe_wait_procs(psutil_mod, [proc], timeout=wait_s)
                     self._harvest_and_mark_descendant(descendant_pid, gone)
                     with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                         proc.kill()
@@ -714,7 +717,7 @@ class ProcessManager:
         except (OSError, ProcessLookupError):
             return
         with contextlib.suppress(Exception):
-            _time.sleep(max(0.0, grace_period_s))
+            _time.sleep(max(0.0, git_aware_grace(grace_period_s, (descendant_pid,))))
         with contextlib.suppress(OSError, ProcessLookupError):
             os.kill(descendant_pid, signal.SIGKILL)
 
@@ -1261,9 +1264,22 @@ class ProcessManager:
                     self._terminate_by_pid(other_record, self.policy.default_grace_period_s)
 
     def _kill_pgid(self, pgid: int) -> None:
-        """POSIX: kill the entire process group identified by ``pgid``."""
+        """POSIX: stop the entire process group identified by ``pgid``.
+
+        A group containing git is first sent SIGTERM and given the git cleanup
+        window to exit (git removes its lock files from that handler); anything
+        still alive -- and every group without git -- is SIGKILLed.
+        """
         if pgid <= 1 or not hasattr(os, "killpg"):
             return
+        members = group_pids(pgid)
+        grace_s = git_aware_grace(0.0, members)
+        if grace_s > 0:
+            with contextlib.suppress(OSError, ProcessLookupError):
+                os.killpg(pgid, signal.SIGTERM)
+            deadline = _time.monotonic() + grace_s
+            while _time.monotonic() < deadline and group_pids(pgid):
+                _time.sleep(0.05)
         with contextlib.suppress(OSError, ProcessLookupError):
             os.killpg(pgid, signal.SIGKILL)
 
@@ -1292,6 +1308,35 @@ class ProcessManager:
                     proc.kill()
             frontier = set(children_found)
 
+    def _release_git_trees_together(self, grace_period_s: float) -> None:
+        """Give every tracked tree that contains git ONE shared cleanup window.
+
+        The per-record teardown below gives a tree containing git up to the git
+        cleanup window on its own, one record after another, so N stuck trees
+        would cost N windows. Signalling them all first and waiting once bounds
+        the whole shutdown at a single window; survivors are killed here, and the
+        per-record pass then finds them gone.
+        """
+        psutil_mod = self._psutil
+        if psutil_mod is None or grace_period_s >= GIT_TERMINATE_GRACE_SECONDS:
+            return
+        trees: list[_PsutilProcessLike] = []
+        for record in list(self._records.values()):
+            if record.status in _TERMINAL_STATUSES:
+                continue
+            procs = self._find_procs_to_terminate(record, None, psutil_mod)
+            if procs and git_aware_grace(0.0, (p.pid for p in procs)) > 0.0:
+                trees.extend(procs)
+        if not trees:
+            return
+        for proc in trees:
+            with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+                proc.terminate()
+        _, alive = self._safe_wait_procs(psutil_mod, trees, timeout=GIT_TERMINATE_GRACE_SECONDS)
+        for proc in alive:
+            with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+                proc.kill()
+
     def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
         """Terminate all active processes.
 
@@ -1307,6 +1352,7 @@ class ProcessManager:
 
         # Reconcile stale entries before attempting termination
         self._reconcile_stale_entries()
+        self._release_git_trees_together(gp)
 
         first_termination_error: ProcessTerminationError | None = None
         try:
@@ -1445,6 +1491,7 @@ class ProcessManager:
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
             return
 
+        grace_period_s = git_aware_grace(grace_period_s, (record.pid,))
         with contextlib.suppress(ProcessLookupError):
             proc.terminate()
         logger.debug(f"Process {record.pid} graceful terminate sent, waiting {grace_period_s}s")
@@ -1492,6 +1539,7 @@ class ProcessManager:
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
             return
 
+        grace_period_s = git_aware_grace(grace_period_s, (record.pid,))
         with contextlib.suppress(ProcessLookupError):
             proc.terminate()
         logger.debug(f"Process {record.pid} graceful terminate sent, waiting {grace_period_s}s")
@@ -1668,6 +1716,7 @@ class ProcessManager:
         if all_procs is None:
             return
 
+        grace_period_s = git_aware_grace(grace_period_s, (p.pid for p in all_procs))
         for proc in all_procs:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 proc.terminate()
@@ -1751,6 +1800,8 @@ class ProcessManager:
         if all_procs is None:
             return
         self._record_termination_outcome(record.pid, "graceful_terminate", "sent")
+        # A git anywhere in the tree needs time to drop its lock files on SIGTERM.
+        grace_period_s = git_aware_grace(grace_period_s, (record.pid, *(p.pid for p in all_procs)))
         # Drive the owned process object too. This is the canonical lifecycle
         # seam. Invoke tests inject lightweight subprocess doubles with a
         # recycled illustrative PID; once those report termination, touching
@@ -1876,13 +1927,14 @@ class ProcessManager:
             except (psutil_mod.AccessDenied, PermissionError) as exc:
                 raise PermissionError from exc
             all_procs = [root, *children]
+            wait_s = git_aware_grace(grace_period_s, (p.pid for p in all_procs))
             for p in all_procs:
                 with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                     p.terminate()
             # _safe_wait_procs: psutil's wait_procs can raise OSError (EINVAL)
             # from os.pidfd_open on an already-reaped PID; the helper classifies
             # per-PID, so this executor path cannot abort the teardown.
-            gone, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=grace_period_s)
+            gone, alive = self._safe_wait_procs(psutil_mod, all_procs, timeout=wait_s)
             for p in alive:
                 with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                     p.kill()
@@ -1960,6 +2012,7 @@ class ProcessManager:
         all_procs = self._find_procs_to_terminate(record, proc.returncode, psutil_mod)
         if all_procs is None:
             return
+        grace_period_s = git_aware_grace(grace_period_s, (p.pid for p in all_procs))
         for p in all_procs:
             with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 p.terminate()
@@ -2019,8 +2072,16 @@ class ProcessManager:
         self._mark_killed(record, rc)
 
     def _escalate_without_psutil(self, record: ProcessRecord, proc: _AsyncProcessLike) -> None:
+        grace_s = git_aware_grace(0.0, (record.pid,))
         with contextlib.suppress(ProcessLookupError, OSError):
             proc.terminate()
+        deadline = _time.monotonic() + grace_s
+        while (
+            grace_s > 0
+            and _time.monotonic() < deadline
+            and verify_process_liveness(record.pid, psutil_mod=None) != LivenessResult.GONE
+        ):
+            _time.sleep(0.05)
         with contextlib.suppress(ProcessLookupError, OSError):
             proc.kill()
         probe_result = verify_process_liveness(record.pid, psutil_mod=None)

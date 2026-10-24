@@ -84,6 +84,8 @@ import ctypes
 import os
 import signal
 import sys
+import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, NoReturn, Protocol, cast
 
 if TYPE_CHECKING:
@@ -94,6 +96,11 @@ if TYPE_CHECKING:
 _PR_SET_PDEATHSIG: Final[int] = 1
 _SIGTERM: Final[int] = 15
 _SIGKILL: Final[int] = 9
+#: How long the group gets to exit on SIGTERM before SIGKILL when the holder is
+#: gone. Git removes its ``*.lock`` files from a SIGTERM handler; an immediate
+#: SIGKILL orphans them. (Mirrors ``ralph.timeout_defaults.GIT_TERMINATE_GRACE_SECONDS``;
+#: this module is stdlib-only and cannot import it.)
+_GROUP_TERM_GRACE_S: Final[float] = 5.0
 # Copied from ``ralph.process._spawn_env.MALLOC_DEBUG_NOISE_VARS``. This
 # module runs under ``python -I``, which drops both the launcher's
 # ``PYTHONPATH`` and the job's ``cwd`` from ``sys.path``, so it cannot import
@@ -174,19 +181,47 @@ def _set_pdeathsig(signal_number: int) -> bool:
     return os.getppid() == parent_before
 
 
+def _other_group_members_alive(pgid: int) -> bool:
+    """Return True while any process other than this one is alive in ``pgid``."""
+    me = os.getpid()
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit() or int(entry.name) == me:
+            continue
+        try:
+            stat_text = (entry / "stat").read_text(encoding="utf-8")
+        except OSError:
+            continue
+        fields = stat_text.rsplit(")", 1)[1].split()
+        # fields: state ppid pgrp ...; zombies are already dead.
+        if int(fields[2]) == pgid and fields[0] not in ("Z", "X"):
+            return True
+    return False
+
+
 def _kill_tree_and_exit() -> NoReturn:
-    """SIGKILL the entire PG this supervisor leads, then exit immediately.
+    """Stop the entire PG this supervisor leads, then exit immediately.
 
     Called from the termination handler once the holder is gone. The PG includes the worker
     and every descendant the worker spawned, because the worker inherited
     our PG ID at ``fork`` time (``start_new_session=True`` was applied to
     the supervisor, not the worker, so the worker does not get a fresh PG).
+
+    The group is sent SIGTERM first and given a bounded window to exit, so a
+    git inside it can remove its lock files; only survivors are SIGKILLed.
     """
+    pgid = os.getpid()
+    # We are in the group too: ignore the SIGTERM we are about to broadcast.
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
     # killpg against a dead group, a leader we no longer own, or a
     # permissions boundary all warrant the same outcome: we tried, we gave
     # up, exit so the holder's Popen doesn't linger.
     with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
-        os.killpg(os.getpid(), _SIGKILL)
+        os.killpg(pgid, _SIGTERM)
+        deadline = time.monotonic() + _GROUP_TERM_GRACE_S
+        while time.monotonic() < deadline and _other_group_members_alive(pgid):
+            time.sleep(0.05)
+    with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+        os.killpg(pgid, _SIGKILL)
     os._exit(0)
 
 

@@ -31,6 +31,9 @@ class FakePsutilProcess:
             return "zombie"
         return self._status
 
+    def name(self) -> str:
+        return "fake"
+
     def create_time(self) -> float:
         return self._create_time
 
