@@ -694,6 +694,7 @@ class RawOverflowLog:
         """
         handle = self._handle_box[0]
         return handle is not None and not handle.closed
+
     def disable(self) -> None:
         """Permanently disable this log so future appends are no-ops."""
         with self._lock:

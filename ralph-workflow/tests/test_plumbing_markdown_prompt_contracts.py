@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.cli.commands import commit as commit_module
 from ralph.cli.commands.smoke import build_smoke_prompt
 from ralph.config.enums import AgentTransport
@@ -70,6 +72,7 @@ def test_agy_smoke_prompt_uses_canonical_markdown_submission() -> None:
     assert "JSON artifact" not in prompt
 
 
+@pytest.mark.timeout_seconds(5)
 def test_commit_retry_uses_valid_markdown_as_submit_content(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,

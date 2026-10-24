@@ -74,6 +74,36 @@ def test_attempt_ledger_unknown_attempts_persist_across_restart(tmp_path: Path) 
     assert restored.unknown_budget == 4
 
 
+def test_attempt_ledger_new_session_or_record_reload_never_restores_spent_budget(
+    tmp_path: Path,
+) -> None:
+    """Criterion 3: restarting, new session or record reload never restores spent budget."""
+    session1 = AttemptLedger(tmp_path, unknown_budget=3, repeat_threshold=2)
+    session1.with_attempt("sig-1", "action-1", is_unknown=True)
+    session1.with_attempt("sig-1", "action-1", is_unknown=True)
+    spent_state = session1.with_attempt("sig-1", "action-1", is_unknown=True)
+    assert spent_state.unknown_attempts == 3
+
+    session1.with_attempt("sig-2", "action-2", is_unknown=False)
+    advanced_state = session1.with_attempt("sig-2", "action-2", is_unknown=False)
+    assert advanced_state.rung is EscalationRung.DISPATCH_RESOLVER
+    assert advanced_state.repeat_counts[("sig-2", "action-2")] == 2
+
+    del session1
+
+    new_session = AttemptLedger(tmp_path, unknown_budget=3, repeat_threshold=2)
+    reloaded_state = new_session.read()
+
+    assert reloaded_state.unknown_attempts == 3
+    assert reloaded_state.unknown_budget == 3
+    assert reloaded_state.rung is EscalationRung.DISPATCH_RESOLVER
+    assert reloaded_state.repeat_counts[("sig-2", "action-2")] == 2
+
+    next_state = new_session.with_attempt("sig-2", "action-2", is_unknown=False)
+    assert next_state.rung is EscalationRung.REBUILD_ON_TARGET
+    assert next_state.repeat_counts[("sig-2", "action-2")] == 3
+
+
 def test_attempt_ledger_default_state_when_file_missing(tmp_path: Path) -> None:
     """A missing ledger yields the first-run default state."""
     fresh = AttemptLedger(tmp_path)

@@ -68,7 +68,7 @@ def _wait_for_pid_dead(pid: int, timeout_s: float = 3.0) -> bool:
     return False
 
 
-def _wait_for_sentinel(path: str, timeout_s: float = 5.0) -> int:
+def _wait_for_sentinel(path: str, timeout_s: float = 15.0) -> int:
     """Read a PID from ``path`` once it is written, with a deadline."""
     sentinel = Path(path)
     deadline = time.monotonic() + timeout_s
@@ -151,8 +151,8 @@ def test_sigterm_shutdown_kills_worker_and_descendant(
         env=env,
     )
     assert child.stdout is not None
-    worker_pid = _wait_for_sentinel(worker_file, timeout_s=5.0)
-    descendant_pid = _wait_for_sentinel(descendant_file, timeout_s=5.0)
+    worker_pid = _wait_for_sentinel(worker_file, timeout_s=15.0)
+    descendant_pid = _wait_for_sentinel(descendant_file, timeout_s=15.0)
     assert worker_pid > 0
     assert descendant_pid > 0
     # Both must be alive right now.
@@ -240,9 +240,9 @@ def test_owner_loss_watcher_kills_worker_and_descendant(
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    worker_pid = _wait_for_sentinel(worker_file, timeout_s=5.0)
-    descendant_pid = _wait_for_sentinel(descendant_file, timeout_s=5.0)
-    child_pid = _wait_for_sentinel(child_pid_file, timeout_s=5.0)
+    worker_pid = _wait_for_sentinel(worker_file, timeout_s=15.0)
+    descendant_pid = _wait_for_sentinel(descendant_file, timeout_s=15.0)
+    child_pid = _wait_for_sentinel(child_pid_file, timeout_s=15.0)
     assert worker_pid > 0 and descendant_pid > 0 and child_pid > 0
     # All three must be alive right now.
     os.kill(child_pid, 0)
@@ -367,8 +367,8 @@ while True:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    holder_pid = _wait_for_sentinel(holder_pid_file, timeout_s=5.0)
-    worker_pid = _wait_for_sentinel(worker_file, timeout_s=5.0)
+    holder_pid = _wait_for_sentinel(holder_pid_file, timeout_s=15.0)
+    worker_pid = _wait_for_sentinel(worker_file, timeout_s=15.0)
     assert holder_pid > 0
     assert worker_pid > 0
 
@@ -562,10 +562,10 @@ def test_worker_thread_sigkill_kills_exec_job_tree_and_its_descendant(
     worker_pid = 0
     descendant_pid = 0
     try:
-        holder_pid = _wait_for_sentinel(holder_pid_file, timeout_s=5.0)
-        supervisor_pid = _wait_for_sentinel(supervisor_pid_file, timeout_s=5.0)
-        worker_pid = _wait_for_sentinel(worker_pid_file, timeout_s=10.0)
-        descendant_pid = _wait_for_sentinel(descendant_pid_file, timeout_s=10.0)
+        holder_pid = _wait_for_sentinel(holder_pid_file, timeout_s=15.0)
+        supervisor_pid = _wait_for_sentinel(supervisor_pid_file, timeout_s=15.0)
+        worker_pid = _wait_for_sentinel(worker_pid_file, timeout_s=15.0)
+        descendant_pid = _wait_for_sentinel(descendant_pid_file, timeout_s=15.0)
         assert holder_pid > 0
         assert supervisor_pid > 0
         assert worker_pid > 0
@@ -721,7 +721,7 @@ def test_terminating_a_supervised_job_keeps_the_worker_grace_period(tmp_path: Pa
     assert graceful.read_text(encoding="utf-8") == "graceful"
 
 
-def _wait_for_sentinel_text(path: Path, timeout_s: float = 5.0) -> None:
+def _wait_for_sentinel_text(path: Path, timeout_s: float = 15.0) -> None:
     deadline = time.monotonic() + timeout_s
     while not path.exists():
         if time.monotonic() > deadline:

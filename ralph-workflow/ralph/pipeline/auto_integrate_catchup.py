@@ -590,7 +590,12 @@ def _advance_target_to_remote(
         return _failure_reason(kind, observation)
     if advanced:
         return CATCHUP_FAST_FORWARDED
-    return CATCHUP_REFUSED
+    # ``fast_forward_target`` returns an empty skip reason only on
+    # success, so a False here always carries a definite refusal
+    # cause. Surface it as a definite failure with the cause appended
+    # (the named-reason design: operators must see WHY without prose
+    # parsing), consistent with how other definite failures classify.
+    return f"{CATCHUP_DEFEDITELY_FAILED}; {reason}"
 
 
 def observe_remote_target_sha(root: Path, remote: str, target: str) -> str | None:

@@ -757,4 +757,3 @@ def test_trace_4_disconnected_request_scenario() -> None:
     assert isinstance(reconnect_result, JobResult)
     assert reconnect_result.returncode == 0
     assert reconnect_result.kill_cause is None
-

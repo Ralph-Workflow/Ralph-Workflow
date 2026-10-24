@@ -605,6 +605,7 @@ class ProcessManager:
         """Return whether the background zombie reaper thread is running."""
         thread = self._reaper_thread
         return thread is not None and thread.is_alive()
+
     def _terminate_registered_descendants(
         self,
         record: ProcessRecord,
