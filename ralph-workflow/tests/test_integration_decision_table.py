@@ -126,6 +126,9 @@ def test_observation_has_unknown_is_consistent_with_enum_membership() -> None:
 # ---------------------------------------------------------------------------
 
 
+_LADDER_ATTEMPTS: tuple[AttemptState, ...] = tuple(AttemptState(rung=rung) for rung in LADDER_ORDER)
+
+
 def test_decide_total_mapping_covers_every_state_and_reaches_every_member() -> None:
     """Every observation crossed with every rung yields one NextAction; the full
     enum is reachable (rule 7 completeness).
@@ -134,14 +137,14 @@ def test_decide_total_mapping_covers_every_state_and_reaches_every_member() -> N
     assert len(observations) == 77760
     reached: set[NextAction] = set()
     for observation in observations:
-        for rung in LADDER_ORDER:
+        for attempts in _LADDER_ATTEMPTS:
             ctx = DecisionContext(
                 observation=observation,
-                attempts=AttemptState(rung=rung),
+                attempts=attempts,
             )
             action = decide(ctx)
             assert isinstance(action, NextAction), (
-                f"non-action returned for {observation} at rung {rung}: {action!r}"
+                f"non-action returned for {observation} at rung {attempts.rung}: {action!r}"
             )
             reached.add(action)
     assert reached == set(NextAction), f"unreachable members: {set(NextAction) - reached}"
@@ -157,10 +160,10 @@ def test_decide_unknown_observation_never_dispatches_resolver() -> None:
     unknown_observations = _build_unknown_observations()
     assert unknown_observations, "expected at least one unknown observation"
     for observation in unknown_observations:
-        for rung in LADDER_ORDER:
-            ctx = DecisionContext(observation=observation, attempts=AttemptState(rung=rung))
+        for attempts in _LADDER_ATTEMPTS:
+            ctx = DecisionContext(observation=observation, attempts=attempts)
             assert decide(ctx) is not NextAction.DISPATCH_RESOLVER, (
-                f"resolver dispatched on unknown reading: {observation} @ {rung}"
+                f"resolver dispatched on unknown reading: {observation} @ {attempts.rung}"
             )
 
 

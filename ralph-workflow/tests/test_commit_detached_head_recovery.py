@@ -66,6 +66,11 @@ def _init_repo_template(tmp_path_factory: pytest.TempPathFactory) -> None:
     _MODULE_REPO_TEMPLATE.append(td)
 
 
+def _detach_head_at(repo: Repo, sha: str) -> None:
+    head_file = Path(repo.git_dir) / "HEAD"
+    head_file.write_text(f"{sha}\n", encoding="utf-8")
+
+
 def _make_test_repo(repo_root: Path, feature_branch: str = "feature/work") -> Repo:
     """Copy the module-scoped template repo into ``repo_root`` and open it.
 
@@ -112,7 +117,7 @@ def test_worktree_on_detached_head_commits_to_feature_branch_without_failed_term
     feature_commit_sha = repo.head.commit.hexsha
 
     # Detach HEAD at the feature commit
-    repo.git.checkout(feature_commit_sha)
+    _detach_head_at(repo, feature_commit_sha)
     assert repo.head.is_detached
 
     # Add uncommitted tracked changes
@@ -168,7 +173,7 @@ def test_worktree_on_detached_head_reattaches_without_explicit_branch_arg(
     # Detach HEAD at the feature commit (the same shape the
     # production seam leaves behind after a recovery reset or
     # snapshot).
-    repo.git.checkout(feature_commit_sha)
+    _detach_head_at(repo, feature_commit_sha)
     assert repo.head.is_detached
 
     # Add uncommitted tracked changes.
@@ -322,7 +327,7 @@ def test_detached_head_equals_integration_target_skips_integration_target(
     main_sha = repo.heads.main.commit.hexsha
 
     # Detach HEAD exactly at main's commit tip
-    repo.git.checkout(main_sha)
+    _detach_head_at(repo, main_sha)
     assert repo.head.is_detached
 
     config = UnifiedConfig.model_validate({"general": {"auto_integrate_target": "main"}})
@@ -363,7 +368,7 @@ def test_detached_head_equals_or_descendant_of_occupied_worktree_skips_occupied(
 
     try:
         # Return to tmp_path and detach HEAD at other_sha (equal to occupied branch tip)
-        repo.git.checkout(other_sha)
+        _detach_head_at(repo, other_sha)
         assert repo.head.is_detached
 
         # Exact-tip resolution must skip the occupied branch
@@ -386,14 +391,14 @@ def test_detached_head_equals_or_descendant_of_occupied_worktree_skips_occupied(
 
         # Also test descendant case: make a commit on detached HEAD
         repo = Repo(tmp_path)
-        repo.git.checkout(other_sha)
+        _detach_head_at(repo, other_sha)
         assert repo.head.is_detached
         descendant_file = tmp_path / "descendant.txt"
         descendant_file.write_text("descendant commit\n", encoding="utf-8")
         repo.index.add(["descendant.txt"])
         repo.index.commit("descendant on detached HEAD", author=actor, committer=actor)
         descendant_sha = repo.head.commit.hexsha
-        repo.git.checkout(descendant_sha)
+        _detach_head_at(repo, descendant_sha)
         assert repo.head.is_detached
 
         # Reattach must skip the occupied branch for both exact-tip and fast-forward
@@ -494,7 +499,7 @@ def test_committed_feature_work_lands_on_configured_integration_target(
 
     # Detach HEAD at feature/work commit
     feature_sha = repo.head.commit.hexsha
-    repo.git.checkout(feature_sha)
+    _detach_head_at(repo, feature_sha)
     assert repo.head.is_detached
 
     # Add feature work while detached
@@ -560,7 +565,7 @@ def test_execute_commit_effect_from_deps_detached_dirty_commits_on_feature_branc
 
     # Detach HEAD at feature commit
     feature_sha = repo.heads["feature/work"].commit.hexsha
-    repo.git.checkout(feature_sha)
+    _detach_head_at(repo, feature_sha)
     assert repo.head.is_detached
 
     # Add dirty work while detached
@@ -610,7 +615,7 @@ def test_auto_integrate_phase_boundary_reattaches_detached_head_preserving_stage
     feature_sha = repo.heads["feature/work"].commit.hexsha
 
     # Detach HEAD at feature commit
-    repo.git.checkout(feature_sha)
+    _detach_head_at(repo, feature_sha)
     assert repo.head.is_detached
 
     # Add both staged and unstaged changes
@@ -637,7 +642,7 @@ def test_auto_integrate_phase_boundary_reattaches_detached_head_preserving_stage
 
     # Detach again and test auto_integrate_on_phase_transition reattachment
     repo = Repo(tmp_path)
-    repo.git.checkout(feature_sha)
+    _detach_head_at(repo, feature_sha)
     assert repo.head.is_detached
 
     _res = auto_integrate_on_phase_transition(
@@ -668,7 +673,7 @@ def test_detached_head_with_staged_changes_commits_on_feature_branch_and_integra
     feature_sha = repo.heads["feature/work"].commit.hexsha
 
     # Detach HEAD at the feature commit
-    repo.git.checkout(feature_sha)
+    _detach_head_at(repo, feature_sha)
     assert repo.head.is_detached
 
     # Add staged changes

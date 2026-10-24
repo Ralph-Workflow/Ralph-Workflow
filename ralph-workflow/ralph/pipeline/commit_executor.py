@@ -62,6 +62,7 @@ if TYPE_CHECKING:
     from ralph.workspace import FsWorkspace
 
 _PORCELAIN_STATUS_PREFIX_LEN = 3
+_HEX_SHA_LEN = 40
 _SECRET_EXCLUDE_PATTERNS: tuple[str, ...] = (
     ".env",
     ".env.local",
@@ -174,13 +175,37 @@ def _is_git_worktree(repo_root: Path) -> bool:
         return False
 
 
+def _read_detached_head_from_git_dir(git_dir: Path) -> bool | None:
+    head_file = git_dir / "HEAD"
+    if not head_file.is_file():
+        return None
+    try:
+        line = head_file.read_text(encoding="utf-8", errors="replace").strip()
+        if line.startswith("ref:"):
+            return False
+        if len(line) >= _HEX_SHA_LEN:
+            has_state = (
+                (git_dir / "rebase-merge").exists()
+                or (git_dir / "rebase-apply").exists()
+                or (git_dir / "sequencer").exists()
+            )
+            return not has_state
+    except OSError:
+        pass
+    return None
+
+
 def _is_head_detached(repo_root: Path) -> bool:
     """Check if HEAD is currently detached."""
     if not _is_git_worktree(repo_root):
         return False
     git_dir = rebase_bookkeeping_dir(repo_root)
-    if git_dir is not None and detached_head_no_state(repo_root, git_dir):
-        return True
+    if git_dir is not None:
+        fs_check = _read_detached_head_from_git_dir(git_dir)
+        if fs_check is not None:
+            return fs_check
+        if detached_head_no_state(repo_root, git_dir):
+            return True
     try:
         result = run_git(
             ("symbolic-ref", "--quiet", "HEAD"),
@@ -196,6 +221,9 @@ def _branch_exists(repo_root: Path, branch: str) -> bool:
     """Check if a branch exists locally in refs/heads/."""
     if not branch or not branch.strip():
         return False
+    git_dir = rebase_bookkeeping_dir(repo_root)
+    if git_dir is not None and (git_dir / "refs" / "heads" / branch.strip()).is_file():
+        return True
     try:
         res = run_git(
             ("show-ref", "--verify", f"refs/heads/{branch.strip()}"),
@@ -389,6 +417,20 @@ def _resolve_branch_for_reattach(repo_root: Path, **opts: object) -> str | None:
 
 def _detached_head_sha(repo_root: Path) -> str | None:
     """Return the detached HEAD's current OID, or ``None`` if HEAD is attached."""
+    git_dir = rebase_bookkeeping_dir(repo_root)
+    if git_dir is not None:
+        head_file = git_dir / "HEAD"
+        if head_file.is_file():
+            try:
+                content = head_file.read_text(encoding="utf-8", errors="replace").strip()
+                if (
+                    not content.startswith("ref:")
+                    and len(content) == _HEX_SHA_LEN
+                    and all(c in "0123456789abcdefABCDEF" for c in content)
+                ):
+                    return content.lower()
+            except OSError:
+                pass
     try:
         result = run_git(
             ("rev-parse", "--verify", "HEAD"),
@@ -407,6 +449,16 @@ def _branch_tip_matches(repo_root: Path, branch: str, head_sha: str | None) -> b
     """Return True iff ``refs/heads/<branch>`` exists and its tip equals ``head_sha``."""
     if not head_sha:
         return False
+    git_dir = rebase_bookkeeping_dir(repo_root)
+    if git_dir is not None:
+        ref_file = git_dir / "refs" / "heads" / branch.strip()
+        if ref_file.is_file():
+            try:
+                content = ref_file.read_text(encoding="utf-8", errors="replace").strip()
+                if content.lower() == head_sha.lower():
+                    return True
+            except OSError:
+                pass
     try:
         result = run_git(
             ("rev-parse", "--verify", f"refs/heads/{branch}"),

@@ -302,6 +302,15 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, object, None]:
     else:
         timeout_seconds = timeout_seconds_from_env(TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS)
 
+    try:
+        load1, _, _ = os.getloadavg()
+        cpu_count = os.cpu_count() or 1
+        if load1 > cpu_count:
+            load_factor = min(5.0, max(1.0, (load1 / cpu_count) * 1.5))
+            timeout_seconds *= load_factor
+    except (OSError, AttributeError):
+        pass
+
     # ``_completed`` is mutated by ``_handle_timeout`` and by the ``finally``
     # block below to make the per-test SIGALRM contract race-safe. Once the
     # test body returns, the handler must not raise even if a SIGALRM was

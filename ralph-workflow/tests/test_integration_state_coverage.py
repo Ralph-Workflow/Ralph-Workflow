@@ -509,9 +509,12 @@ def test_enumeration_tracks_the_observation_enums() -> None:
 # ---------------------------------------------------------------------------
 
 
+_DEFAULT_ATTEMPT_STATE = AttemptState()
+
+
 @cache
 def _decide_baseline(observation: Observation) -> NextAction:
-    return decide(DecisionContext(observation=observation, attempts=AttemptState()))
+    return decide(DecisionContext(observation=observation, attempts=_DEFAULT_ATTEMPT_STATE))
 
 
 def test_every_combination_has_exactly_one_defined_action() -> None:
@@ -531,9 +534,9 @@ def test_every_combination_has_exactly_one_defined_action() -> None:
             continue
         if observation.agent_active:
             twin_context = DecisionContext(
-                observation=replace(observation), attempts=AttemptState()
+                observation=replace(observation), attempts=_DEFAULT_ATTEMPT_STATE
             )
-            context = DecisionContext(observation=observation, attempts=AttemptState())
+            context = DecisionContext(observation=observation, attempts=_DEFAULT_ATTEMPT_STATE)
             try:
                 repeated = decide(context)
                 by_value = decide(twin_context)

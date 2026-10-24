@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import functools
 import os
+import shutil
+import tempfile
 import time
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -21,15 +24,25 @@ from ralph.pipeline.events import PipelineEvent
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
-def _init_test_git_repo(repo_root: Path, branch: str = "main") -> Repo:
-    repo = Repo.init(repo_root)
+@functools.lru_cache(maxsize=1)
+def _get_commit_executor_template() -> Path:
+    base = Path(tempfile.mkdtemp(prefix="commit-executor-template-"))
+    repo = Repo.init(base)
     repo.config_writer().set_value("user", "name", "Test User").release()
     repo.config_writer().set_value("user", "email", "test@example.com").release()
     actor = Actor("Test User", "test@example.com")
-    init_file = repo_root / "initial.txt"
+    init_file = base / "initial.txt"
     init_file.write_text("initial content", encoding="utf-8")
     repo.index.add(["initial.txt"])
     repo.index.commit("initial commit", author=actor, committer=actor)
+    repo.close()
+    return base
+
+
+def _init_test_git_repo(repo_root: Path, branch: str = "main") -> Repo:
+    template = _get_commit_executor_template()
+    shutil.copytree(template, repo_root, dirs_exist_ok=True)
+    repo = Repo(repo_root)
     if repo.active_branch.name != branch:
         repo.git.branch("-M", branch)
     return repo

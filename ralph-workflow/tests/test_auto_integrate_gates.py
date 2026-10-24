@@ -8,7 +8,10 @@ and in-progress rebase/merge.
 
 from __future__ import annotations
 
+import functools
+import shutil
 import sys
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
@@ -625,8 +628,10 @@ def test_all_gates_agree_on_clean_and_blocked_truth(
     _assert_boundary_agrees(boundary, cfg, tmp_path, readiness, expected_ready)
 
 
-def _make_real_repo(repo_root: Path) -> Repo:
-    repo = Repo.init(repo_root)
+@functools.lru_cache(maxsize=1)
+def _get_gates_template() -> Path:
+    base = Path(tempfile.mkdtemp(prefix="gates-repo-template-"))
+    repo = Repo.init(base)
     writer = repo.config_writer()
     writer.set_value("user", "name", "Test Committer")
     writer.set_value("user", "email", "test@example.com")
@@ -634,12 +639,24 @@ def _make_real_repo(repo_root: Path) -> Repo:
     writer.set_value("core", "fsync", "none")
     writer.release()
     actor = Actor("Test Committer", "test@example.com")
-    tracked_file = repo_root / "tracked.txt"
+    tracked_file = base / "tracked.txt"
     tracked_file.write_text("initial tracked content\n", encoding="utf-8")
     repo.index.add(["tracked.txt"])
     repo.index.commit("initial commit", author=actor, committer=actor)
     repo.git.branch("-M", "main")
-    return repo
+    repo.git.branch("feature/work")
+    main_file = base / "main.txt"
+    main_file.write_text("main advance\n", encoding="utf-8")
+    repo.index.add(["main.txt"])
+    repo.index.commit("main advance", author=actor, committer=actor)
+    repo.close()
+    return base
+
+
+def _make_real_repo(repo_root: Path) -> Repo:
+    template = _get_gates_template()
+    shutil.copytree(template, repo_root, dirs_exist_ok=True)
+    return Repo(repo_root)
 
 
 @pytest.mark.timeout_seconds(5)
@@ -738,17 +755,6 @@ def test_unpatched_real_worktree_gates_agree(
 def test_unpatched_real_worktree_dirty_target_ahead_records_skip(tmp_path: Path) -> None:
     """WU-5: When target is ahead and worktree is dirty, real boundary records a skip."""
     repo = _make_real_repo(tmp_path)
-    actor = Actor("Test Committer", "test@example.com")
-
-    # Checkout feature branch
-    repo.git.checkout("-b", "feature/work")
-
-    # Advance main with a commit
-    repo.git.checkout("main")
-    main_file = tmp_path / "main.txt"
-    main_file.write_text("main update\n", encoding="utf-8")
-    repo.index.add(["main.txt"])
-    repo.index.commit("main advance", author=actor, committer=actor)
 
     # Return to feature branch and dirty it
     repo.git.checkout("feature/work")
@@ -823,16 +829,6 @@ def test_all_three_gates_agree_on_tree_state(
     Development dispatch and integration readiness decisions remain distinct.
     """
     repo = _make_real_repo(tmp_path)
-    actor = Actor("Test Committer", "test@example.com")
-
-    # Feature branch with work (create without switching)
-    repo.git.branch("feature/work")
-
-    # Advance main so boundary catch-up gate observes a target ahead
-    main_file = tmp_path / "main.txt"
-    main_file.write_text("main advance\n", encoding="utf-8")
-    repo.index.add(["main.txt"])
-    repo.index.commit("main advance", author=actor, committer=actor)
 
     # Switch to feature branch (detached if testing detached state) and apply state
     if "detached" in state_name:
@@ -887,19 +883,7 @@ def test_all_three_gates_agree_on_tree_state(
 def test_persisted_clean_evidence_over_live_dirty_tree_defers_to_live_tree(tmp_path: Path) -> None:
     """AC12: persisted clean evidence over a live dirty tree defers to live tree."""
     repo = _make_real_repo(tmp_path)
-    actor = Actor("Test Committer", "test@example.com")
-
-    # Feature branch with work
-    repo.git.checkout("-b", "feature/work")
-
-    # Advance main so boundary catch-up gate observes a target ahead
-    repo.git.checkout("main")
-    main_file = tmp_path / "main.txt"
-    main_file.write_text("main advance\n", encoding="utf-8")
-    repo.index.add(["main.txt"])
-    repo.index.commit("main advance", author=actor, committer=actor)
-
-    # Return to feature branch and dirty it
+    # Switch to feature branch and dirty it
     repo.git.checkout("feature/work")
     (tmp_path / "staged.txt").write_text("staged live work\n", encoding="utf-8")
     repo.index.add(["staged.txt"])
