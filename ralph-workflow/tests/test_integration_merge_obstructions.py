@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
     import pytest
 
+    from ralph.git.git_call_policy import GitCallClass
     from ralph.git.subprocess_runner import GitRunOptions
 
 _SAME_OID = "a" * 40
@@ -54,8 +55,9 @@ def _stub_git(
         cwd: Path | None = None,
         label: str = "",
         options: GitRunOptions | None = None,
+        call_class: GitCallClass | None = None,
     ) -> GitRunResult:
-        del cwd, label, options
+        del cwd, label, options, call_class
         raw = tuple(args)
         argv = (
             raw[len(COMMIT_PIN_CONFIG_ARGS) :]

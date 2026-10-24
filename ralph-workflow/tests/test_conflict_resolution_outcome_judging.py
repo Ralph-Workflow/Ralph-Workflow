@@ -12,6 +12,9 @@ from ralph.policy.models import PolicyBundle
 if TYPE_CHECKING:
     import pytest
 
+    from ralph.git.git_call_policy import GitCallClass
+    from ralph.git.subprocess_runner import GitRunOptions
+
 
 def test_invoke_resolution_agent_does_not_require_declare_complete(
     monkeypatch: pytest.MonkeyPatch,
@@ -246,7 +249,15 @@ def test_a_narrow_conflict_marker_is_still_a_conflict_marker(
         root / "quote.md": "> a quoted line\n>> nested\n",
     }
 
-    def _fake_run_vcs(args: tuple[str, ...], *, cwd: Path, label: str) -> GitRunResult:
+    def _fake_run_vcs(
+        args: tuple[str, ...],
+        *,
+        cwd: Path,
+        label: str,
+        options: GitRunOptions | None = None,
+        call_class: GitCallClass | None = None,
+    ) -> GitRunResult:
+        del options, call_class
         assert args == ("check-attr", "-z", "conflict-marker-size", "--", *paths)
         assert cwd == root
         assert label == "git-conflict-marker-size"
@@ -280,7 +291,15 @@ def test_a_non_ascii_path_is_not_reported_as_marker_free(
     root = Path("/repo")
     git_calls: list[tuple[str, ...]] = []
 
-    def _fake_run_git(args: tuple[str, ...], *, cwd: Path, label: str) -> GitRunResult:
+    def _fake_run_git(
+        args: tuple[str, ...],
+        *,
+        cwd: Path,
+        label: str,
+        options: GitRunOptions | None = None,
+        call_class: GitCallClass | None = None,
+    ) -> GitRunResult:
+        del options, call_class
         assert cwd == root
         assert label == "git-unmerged-paths"
         git_calls.append(args)
@@ -361,7 +380,15 @@ def test_git_itself_corroborates_the_marker_scan(
 
     root = Path("/repo")
 
-    def _fake_run_git(args: tuple[str, ...], *, cwd: Path, label: str) -> GitRunResult:
+    def _fake_run_git(
+        args: tuple[str, ...],
+        *,
+        cwd: Path,
+        label: str,
+        options: GitRunOptions | None = None,
+        call_class: GitCallClass | None = None,
+    ) -> GitRunResult:
+        del options, call_class
         assert args == ("diff", "--cached", "--check")
         assert cwd == root
         assert label == "git-staged-marker-check"

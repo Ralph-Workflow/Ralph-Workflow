@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 import pytest
 
@@ -45,6 +45,13 @@ from ralph.pipeline.auto_integrate import (
 )
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from ralph.git.git_call_policy import GitCallClass
+    from ralph.git.git_run_result import GitRunResult
+    from ralph.git.subprocess_runner import GitRunOptions
 
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
@@ -95,17 +102,29 @@ def _build_config(
     target: str | None = None,
 ) -> UnifiedConfig:
     """Build a real ``UnifiedConfig`` with the auto-integrate knobs set."""
-    payload: dict[str, object] = {
-        "general": {
-            "auto_integrate_enabled": enabled,
-        }
+    general: dict[str, bool | str] = {
+        "auto_integrate_enabled": enabled,
     }
     if target is not None:
-        payload["general"]["auto_integrate_target"] = target
+        general["auto_integrate_target"] = target
+    payload: dict[str, dict[str, bool | str]] = {"general": general}
     return UnifiedConfig.model_validate(payload)
 
 
-def _snapshot(tmp_git_repo: Path) -> dict[str, str]:
+class _Snapshot(TypedDict):
+    """The byte-comparison snapshot of a test repository.
+
+    ``refs`` holds the ref-name -> object-SHA mapping, so the snapshot is
+    NOT a flat ``dict[str, str]``: the nested shape is what the byte-equality
+    assertions compare.
+    """
+
+    head: str
+    refs: dict[str, str]
+    worktree: str
+
+
+def _snapshot(tmp_git_repo: Path) -> _Snapshot:
     """Capture HEAD SHA + all ref SHAs for byte-equality comparisons."""
     head = _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip()
     refs: dict[str, str] = {}
@@ -692,14 +711,21 @@ def test_no_push_invocation(tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch)
     real_run_git = _runner_mod.run_git
 
     def _recording_run_git(
-        args: tuple[str, ...],
+        args: Sequence[str],
         *,
-        cwd: Path,
+        cwd: Path | None,
         label: str,
-        options: object = None,
-    ) -> object:
+        options: GitRunOptions | None = None,
+        call_class: GitCallClass | None = None,
+    ) -> GitRunResult:
         recorded.append(tuple(args))
-        return real_run_git(args, cwd=cwd, label=label, options=options)
+        return real_run_git(
+            args,
+            cwd=cwd,
+            label=label,
+            options=options,
+            call_class=call_class,
+        )
 
     # Patch every import-site of ``run_git`` so the recorder sees
     # EVERY argv across both the merge path and the rebase path.

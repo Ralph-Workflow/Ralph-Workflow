@@ -62,6 +62,7 @@ from ralph.pipeline.auto_integrate_resolve import endpoint_merge_with_resolution
 if TYPE_CHECKING:
     import pytest
 
+    from ralph.git.git_call_policy import GitCallClass
     from ralph.git.subprocess_runner import GitRunOptions
 
 _WORKTREE_LIST_OUTPUT = (
@@ -83,9 +84,10 @@ def _result(args: tuple[str, ...], returncode: int, stdout: str = "") -> GitRunR
 def _install_git_stub(
     monkeypatch: pytest.MonkeyPatch,
     responses: dict[tuple[str, ...], tuple[int, str]],
-) -> list[tuple[str, ...]]:
-    """Route ``ralph.git.merge.run_git`` to canned results; record every argv."""
+) -> tuple[list[tuple[str, ...]], list[tuple[str, GitCallClass | None]]]:
+    """Route ``ralph.git.merge.run_git`` to canned results; record argv and classes."""
     calls: list[tuple[str, ...]] = []
+    call_records: list[tuple[str, GitCallClass | None]] = []
 
     def _fake_run_git(
         args: Sequence[str],
@@ -93,6 +95,7 @@ def _install_git_stub(
         cwd: Path | None = None,
         label: str = "",
         options: GitRunOptions | None = None,
+        call_class: GitCallClass | None = None,
     ) -> GitRunResult:
         raw_argv = tuple(args)
         argv = (
@@ -101,12 +104,13 @@ def _install_git_stub(
             else raw_argv
         )
         calls.append(argv)
+        call_records.append((label, call_class))
         returncode, stdout = responses.get(argv, (0, ""))
         return _result(raw_argv, returncode, stdout)
 
     monkeypatch.setattr("ralph.git.merge.run_git", _fake_run_git)
     monkeypatch.setattr("ralph.git.merge_obstructions.run_git", _fake_run_git)
-    return calls
+    return calls, call_records
 
 
 def test_merge_regression_unreadable_git_dir_is_not_reported_as_no_merge(
@@ -123,7 +127,7 @@ def test_merge_regression_unreadable_git_dir_abort_reports_it_did_not_abort(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``abort_merge`` on an unreadable repository reports failure, not silence."""
-    calls = _install_git_stub(
+    calls, _ = _install_git_stub(
         monkeypatch,
         {
             ("rev-parse", "--git-dir"): (128, ""),
@@ -226,9 +230,9 @@ _FEATURE_SHA = "3333333333333333333333333333333333333333"
 
 def _install_fast_forward_stub(
     monkeypatch: pytest.MonkeyPatch, worktree_list: tuple[int, str]
-) -> list[tuple[str, ...]]:
+) -> tuple[list[tuple[str, ...]], list[tuple[str, GitCallClass | None]]]:
     """Drive ``fast_forward_target`` past its ancestry checks to the branch table."""
-    calls = _install_git_stub(
+    calls, call_records = _install_git_stub(
         monkeypatch,
         {
             ("rev-parse", "--verify", "--quiet", "refs/heads/main"): (
@@ -246,14 +250,14 @@ def _install_fast_forward_stub(
         return repo_root
 
     monkeypatch.setattr("ralph.pipeline.auto_integrate_ff.find_main_worktree_root", _identity_root)
-    return calls
+    return calls, call_records
 
 
 def test_fast_forward_regression_worktree_query_failure_is_a_retryable_skip(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A failed worktree query must not compare-and-swap the shared ref."""
-    calls = _install_fast_forward_stub(monkeypatch, (128, ""))
+    calls, _ = _install_fast_forward_stub(monkeypatch, (128, ""))
 
     landed, reason = fast_forward_target(Path("/repos/feature"), "main", _FEATURE_SHA)
 
@@ -268,7 +272,7 @@ def test_fast_forward_still_uses_the_cas_when_nothing_holds_the_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The paired positive case: a clean query with no match takes the CAS path."""
-    calls = _install_fast_forward_stub(
+    calls, call_records = _install_fast_forward_stub(
         monkeypatch, (0, _WORKTREE_LIST_OUTPUT.replace("refs/heads/main", "refs/heads/other"))
     )
 
@@ -282,13 +286,16 @@ def test_fast_forward_still_uses_the_cas_when_nothing_holds_the_target(
         _FEATURE_SHA,
         _TARGET_SHA,
     ) in calls
+    assert [call_class for label, call_class in call_records if label == "git-update-ref-cas"] == [
+        "mutation"
+    ]
 
 
 def test_merge_regression_unreadable_git_dir_never_commits_a_merge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An unreadable repository is never reported as a committed merge."""
-    calls = _install_git_stub(
+    calls, _ = _install_git_stub(
         monkeypatch,
         {
             ("rev-parse", "--git-dir"): (128, ""),
@@ -385,7 +392,7 @@ def test_resolution_readable_no_merge_state_returns_the_plain_conflict(
 def _install_sequenced_git_stub(
     monkeypatch: pytest.MonkeyPatch,
     responses: dict[tuple[str, ...], list[tuple[int, str]]],
-) -> list[tuple[str, ...]]:
+) -> tuple[list[tuple[str, ...]], list[tuple[str, GitCallClass | None]]]:
     """Route ``run_git`` to a per-argv QUEUE of results, one per call.
 
     The plain stub answers every repetition of an argv identically,
@@ -394,6 +401,7 @@ def _install_sequenced_git_stub(
     once the queue is drained.
     """
     calls: list[tuple[str, ...]] = []
+    call_records: list[tuple[str, GitCallClass | None]] = []
     queues = {argv: list(results) for argv, results in responses.items()}
 
     def _fake_run_git(
@@ -402,6 +410,7 @@ def _install_sequenced_git_stub(
         cwd: Path | None = None,
         label: str = "",
         options: GitRunOptions | None = None,
+        call_class: GitCallClass | None = None,
     ) -> GitRunResult:
         raw_argv = tuple(args)
         argv = (
@@ -410,6 +419,7 @@ def _install_sequenced_git_stub(
             else raw_argv
         )
         calls.append(argv)
+        call_records.append((label, call_class))
         queue = queues.get(argv)
         if not queue:
             return _result(raw_argv, 0, "")
@@ -418,7 +428,7 @@ def _install_sequenced_git_stub(
 
     monkeypatch.setattr("ralph.git.merge.run_git", _fake_run_git)
     monkeypatch.setattr("ralph.git.merge_obstructions.run_git", _fake_run_git)
-    return calls
+    return calls, call_records
 
 
 def test_merge_regression_unreadable_git_dir_after_commit_is_not_a_merge_commit(
@@ -435,7 +445,7 @@ def test_merge_regression_unreadable_git_dir_after_commit_is_not_a_merge_commit(
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
     (git_dir / "MERGE_HEAD").write_text("cafebabe\n", encoding="utf-8")
-    calls = _install_sequenced_git_stub(
+    calls, _ = _install_sequenced_git_stub(
         monkeypatch,
         {
             # First read: a real in-progress merge. Second read (the
@@ -472,7 +482,7 @@ def test_merge_regression_unprovable_cleanup_abort_is_reported(
     all) was reported to the pipeline as an ordinary conflict with
     nothing naming the repository that is now blocked.
     """
-    calls = _install_git_stub(
+    calls, _ = _install_git_stub(
         monkeypatch,
         {
             ("merge", "--no-edit", "--", "main"): (1, ""),
@@ -499,7 +509,7 @@ def test_merge_cleanup_abort_is_silent_when_git_proves_the_tree_is_clean(
     """The paired positive case: a readable, merge-free repo warns nothing."""
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
-    calls = _install_git_stub(
+    calls, _ = _install_git_stub(
         monkeypatch,
         {
             ("merge", "--no-edit", "--", "main"): (1, ""),
