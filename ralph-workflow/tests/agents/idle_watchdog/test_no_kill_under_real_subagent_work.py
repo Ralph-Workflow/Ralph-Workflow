@@ -47,6 +47,7 @@ import pytest
 from ralph.agents.idle_watchdog import (
     IdleWatchdog,
     TimeoutPolicy,
+    classify_stuck,
 )
 from ralph.agents.invoke._subagent_transcript import ClaudeSubagentTranscriptTails
 from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
@@ -162,8 +163,6 @@ def test_r5_replay_does_not_fire_during_real_capture_window(
     # subagent channel; ``classify_stuck_now`` therefore returns
     # ``THINKING`` (not ``SILENT_SUBAGENT``) and the gate does
     # not fire.
-    from ralph.agents.idle_watchdog._stuck_classifier import classify_stuck
-
     summary = watchdog.last_evidence_summary(_FakeClock().monotonic())
     kind = classify_stuck(
         is_waiting_state=False,
@@ -309,8 +308,6 @@ def test_r5_subagent_tool_use_resets_idle_baseline(
     # The fresh subagent event means the classifier's evidence
     # summary has a fresh first-party channel; classify_stuck
     # returns THINKING, not SILENT_SUBAGENT.
-    from ralph.agents.idle_watchdog._stuck_classifier import classify_stuck
-
     summary = watchdog.last_evidence_summary(100.0)
     kind = classify_stuck(
         is_waiting_state=False,
@@ -399,8 +396,6 @@ def test_r5_silent_parent_and_silent_children_still_fire(
     # SILENT_SUBAGENT, since SILENT_SUBAGENT requires
     # ``counter >= 1`` per ``_silent_subagent_path``).
     assert watchdog._subagent_progress_count == 0
-    from ralph.agents.idle_watchdog._stuck_classifier import classify_stuck
-
     summary = watchdog.last_evidence_summary(0.0)
     kind = classify_stuck(
         is_waiting_state=False,

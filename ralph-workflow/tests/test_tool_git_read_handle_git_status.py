@@ -27,8 +27,8 @@ CUSTOM_LOG_COUNT = 20
 def _resolve_cwd_without_git_probe(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Keep mocked-handler tests hermetic despite the mandatory cwd probe."""
     monkeypatch.setattr(
-        "ralph.mcp.tools.git_read._resolve_git_cwd",
-        lambda _workspace, _params: (tmp_path, False, None),
+        "ralph.mcp.tools.git_read.resolve_git_cwd",
+        lambda *, workspace_root, requested_cwd: (tmp_path, False, None),
     )
 
 
@@ -161,7 +161,7 @@ class TestHandleGitStatus:
             )
             with (
                 patch(
-                    "ralph.mcp.tools.git_read._resolve_git_cwd",
+                    "ralph.mcp.tools.git_read.resolve_git_cwd",
                     return_value=(workspace_dir, False, workspace_dir),
                 ),
                 patch(
@@ -317,7 +317,7 @@ class TestHandleGitStatus:
             )
             with (
                 patch(
-                    "ralph.mcp.tools.git_read._resolve_git_cwd",
+                    "ralph.mcp.tools.git_read.resolve_git_cwd",
                     return_value=(workspace_dir, False, workspace_dir),
                 ),
                 patch(
@@ -497,7 +497,7 @@ class TestHandleGitStatus:
         # hermetic rather than spawning the validator's git top-level probe.
         with (
             patch(
-                "ralph.mcp.tools.git_read._resolve_git_cwd",
+                "ralph.mcp.tools.git_read.resolve_git_cwd",
                 return_value=(tmp_path, False, None),
             ),
             patch(

@@ -136,7 +136,7 @@ def test_handler_warn_and_execute_when_cwd_outside_workspace(
     )
     with (
         patch(
-            "ralph.mcp.tools.git_read._resolve_git_cwd",
+            "ralph.mcp.tools.git_read.resolve_git_cwd",
             return_value=(external.resolve(), True, external.resolve()),
         ),
         patch("ralph.mcp.tools.git_read.run_git_command", command_runner),

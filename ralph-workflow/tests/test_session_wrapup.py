@@ -98,9 +98,6 @@ def test_reset_preserves_epoch_warning_without_completion_confirmation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(DEV_WARN_EPOCH_ENV, repr(time.time() - 1.0))
-    monkeypatch.setattr(
-        "ralph.mcp.tools.coordination._write_completion_sentinel", lambda *_args, **_kwargs: True
-    )
     server = _server(tmp_path)
 
     assert "Task declared complete" in _text(_call(server, "declare_complete", "first"))

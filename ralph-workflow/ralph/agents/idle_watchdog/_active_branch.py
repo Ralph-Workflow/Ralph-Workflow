@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog._activity_methods import (
-    _parse_tool_call_from_description,
+    parse_tool_call_from_description,
 )
 from ralph.agents.idle_watchdog._evidence_tier import ChannelName
 from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
@@ -141,7 +141,7 @@ def emit(
         diagnostic=dict(diagnostic) if diagnostic else {},
         subagent_activity=self._last_subagent_progress_description,
         last_subagent_progress_at=self._last_subagent_progress_at,
-        current_subagent_tool_call=_parse_tool_call_from_description(
+        current_subagent_tool_call=parse_tool_call_from_description(
             self._last_subagent_progress_description
         ),
         stall_active=self._stall_active,

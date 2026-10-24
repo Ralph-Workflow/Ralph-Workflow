@@ -12,26 +12,18 @@ The fix: ``PtyLineReader._build_subagent_pid_source`` is added (mirrors
 ``DefaultProcessMonitor`` can classify real spawned subagents as
 ``SPAWNED_SUBAGENT`` via ``ChildLivenessSubagentPidSource``.
 
-Black-box tests exercise ``_build_subagent_pid_source`` and the
-``read_lines`` -> ``_make_process_monitor`` call by patching the
-``_make_process_monitor`` symbol via monkeypatch and asserting the
-keyword arguments it received. All tests use ``FakeClock``; no real
-PTY, no real subprocess.
+Black-box tests exercise ``_build_subagent_pid_source`` and assert the
+registry-backed ``subagent_pid_source`` it produces. All tests use
+``FakeClock``; no real PTY, no real subprocess.
 """
 
 from __future__ import annotations
-
-from typing import TYPE_CHECKING, Any
-from unittest.mock import MagicMock
 
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.process.child_liveness import (
     ChildLivenessRegistry,
     ChildLivenessSubagentPidSource,
 )
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _make_registry() -> ChildLivenessRegistry:
@@ -99,31 +91,3 @@ def test_pty_build_subagent_pid_source_returns_none_without_registry() -> None:
         "PTY _build_subagent_pid_source MUST return None when the"
         " strategy has no ChildLivenessRegistry"
     )
-
-
-def test_pty_make_process_monitor_receives_subagent_pid_source(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """PTY ``_make_process_monitor`` call MUST pass the registry-backed
-    ``subagent_pid_source`` so the DefaultProcessMonitor classifies
-    spawned subagents correctly.
-    """
-    captured: dict[str, Any] = {}
-
-    def _fake_make_process_monitor(*args: object, **kwargs: object) -> MagicMock:
-        captured["args"] = args
-        captured["kwargs"] = kwargs
-        return MagicMock()
-
-    monkeypatch.setattr(
-        "ralph.agents.invoke._pty_line_reader._make_process_monitor",
-        _fake_make_process_monitor,
-    )
-
-    registry = _make_registry()
-    strategy = _FakeStrategy(registry)
-    reader = _build_reader_with_strategy(strategy)
-
-    pid_source = reader._build_subagent_pid_source()
-    assert isinstance(pid_source, ChildLivenessSubagentPidSource)
-    assert pid_source._registry is registry

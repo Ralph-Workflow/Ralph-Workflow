@@ -16,6 +16,7 @@ import os
 import sys
 import time
 import tomllib
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, get_args, runtime_checkable
@@ -38,31 +39,17 @@ from ralph.telemetry._agent_config_payload import (
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from ralph.config.agent_config import AgentConfig
 
 _DSN: str = "https://418c4f0099a0db0987b420c3cd1d5bb0@o4511480216158208.ingest.de.sentry.io/4511480219959376"
-_HOME_PREFIX: str = str(Path.home())
 
 # Minimum length to qualify as a Windows drive-letter path: ``X:\``.
 # Avoids matching ``C:foo`` (no separator after the colon).
 _WINDOWS_DRIVE_LETTER_PREFIX_LEN: int = 3
 
 _TRUE_DISABLE_VALUES: frozenset[str] = frozenset({"1", "true", "yes", "on"})
-
-# Module-level mutable accumulator compliant: tuple (immutable). Populated by
-# init_sentry from os.getcwd() and path-like sys.argv entries.
-_EXTRA_SCRUB_PREFIXES: tuple[str, ...] = ()
-
-# Module-level scalars only (no list/dict/set/deque). Populated by the
-# lifecycle functions; consumed by finalize_session.
-_SESSION_STARTED_AT: float | None = None
-_SESSION_STARTED_AT_UTC: datetime | None = None
-_SESSION_OUTCOME: str = "unknown"
-_SESSION_FINALIZED: bool = False
-_INITIALIZED: bool = False
-_SESSION_TRANSACTION: object | None = None
 
 # PhaseRole closed vocabulary — auto-derived from the Literal type alias via
 # ``get_args`` so the validation set cannot drift from the type. Phase telemetry
@@ -91,34 +78,85 @@ _SAFE_DRAIN_NAMES: frozenset[str] = frozenset(
 )
 _AGENT_STATS_MAX_KEYS = 128
 
-# Aggregate phase statistics across the whole pipeline run. Keyed by PhaseRole,
-# drained at session finalize. Bounded by the 8-value closed vocabulary above
-# (not by user input).
-_PHASE_STATS: dict[
-    str, dict[str, object]
-] = {}  # bounded-accumulator-ok: bounded by PhaseRole vocabulary (8 values); drained at session finalize
 
-_AGENT_STATS: dict[
-    str, dict[str, object]
-] = {}  # bounded-accumulator-ok: bounded by _AGENT_STATS_MAX_KEYS; drained at session finalize
+@dataclass
+class TelemetryState:
+    """Live telemetry session state.
 
-# Coarse UTC time-of-day buckets captured once at session start for aggregate
-# ``when`` analytics. ``None`` until set_session_wallclock_start() runs; the
-# session context only attaches ``wallclock`` when populated.
-_SESSION_WALLCLOCK_BUCKETS: dict[str, object] | None = None
+    The lifecycle functions read and write this object instead of
+    module-level scalars, so a caller can seed, observe, and reset the
+    session through ONE typed handle
+    (:func:`telemetry_state` / :func:`reset_telemetry_state`) instead of
+    by rebinding module attributes.
 
-
-def _replace_module_state(**values: object) -> None:
-    """Update telemetry lifecycle scalars without rebinding through ``global``.
-
-    The telemetry lifecycle intentionally remains observable through module
-    attributes so test seams can reset it independently. Centralizing those
-    updates avoids scattered global-statement lint suppressions while keeping
-    the state surface explicit and contained in this module.
+    ``is_disabled`` and ``is_disabled_by_config`` are the injectable
+    opt-out checks. ``None`` means "ask the real environment variable and
+    the real configuration files"; a callable replaces that check so a
+    caller can decide the verdict without touching the process
+    environment.
     """
-    module = sys.modules[__name__]
-    for name, value in values.items():
-        setattr(module, name, value)
+
+    initialized: bool = False
+    started_at: float | None = None
+    started_at_utc: datetime | None = None
+    outcome: str = "unknown"
+    finalized: bool = False
+    transaction: object | None = None
+    wallclock_buckets: dict[str, object] | None = None
+    # Aggregate phase statistics, keyed by PhaseRole. Bounded by the
+    # 8-value closed vocabulary above; drained at session finalize.
+    phase_stats: dict[str, dict[str, object]] = field(default_factory=dict)
+    # Aggregate agent statistics. Bounded by _AGENT_STATS_MAX_KEYS;
+    # drained at session finalize.
+    agent_stats: dict[str, dict[str, object]] = field(default_factory=dict)
+    # The home-directory prefix the scrubber collapses to ``~``.
+    home_prefix: str = field(default_factory=lambda: str(Path.home()))
+    # Cwd + path-like argv prefixes the scrubber redacts. Populated by
+    # init_sentry from os.getcwd() and path-like sys.argv entries.
+    extra_scrub_prefixes: tuple[str, ...] = ()
+    is_disabled: Callable[[], bool] | None = None
+    is_disabled_by_config: Callable[[], bool] | None = None
+
+
+_STATE = TelemetryState()
+
+
+def telemetry_state() -> TelemetryState:
+    """Return the live telemetry session state handle."""
+    return _STATE
+
+
+def reset_telemetry_state() -> None:
+    """Reset the live telemetry session state to its pristine defaults."""
+    _STATE.initialized = False
+    _STATE.started_at = None
+    _STATE.started_at_utc = None
+    _STATE.outcome = "unknown"
+    _STATE.finalized = False
+    _STATE.transaction = None
+    _STATE.wallclock_buckets = None
+    _STATE.phase_stats.clear()
+    _STATE.agent_stats.clear()
+    _STATE.home_prefix = str(Path.home())
+    _STATE.extra_scrub_prefixes = ()
+    _STATE.is_disabled = None
+    _STATE.is_disabled_by_config = None
+
+
+@dataclass(frozen=True)
+class ScrubPolicy:
+    """The path prefixes the event scrubber redacts."""
+
+    home_prefix: str = ""
+    extra_prefixes: tuple[str, ...] = ()
+
+
+def current_scrub_policy() -> ScrubPolicy:
+    """Return the live scrub policy (home prefix + cwd/argv prefixes)."""
+    return ScrubPolicy(
+        home_prefix=_STATE.home_prefix,
+        extra_prefixes=_STATE.extra_scrub_prefixes,
+    )
 
 
 @runtime_checkable
@@ -220,8 +258,23 @@ def _config_file_disables_telemetry(config_path: Path) -> bool:
     return general.get("telemetry_enabled") is False
 
 
-def _telemetry_is_inactive() -> bool:
-    return is_telemetry_disabled() or is_telemetry_disabled_by_config() or not _INITIALIZED
+def telemetry_is_inactive() -> bool:
+    """Return True when telemetry must not emit anything right now.
+
+    The three inputs (environment opt-out, configuration opt-out, and
+    "Sentry was initialized") come from the live
+    :class:`TelemetryState`. The two opt-out checks are injectable so a
+    caller can decide the verdict without touching the process
+    environment; ``None`` means "use the real check".
+    """
+    state = _STATE
+    disabled = state.is_disabled if state.is_disabled is not None else is_telemetry_disabled
+    disabled_by_config = (
+        state.is_disabled_by_config
+        if state.is_disabled_by_config is not None
+        else is_telemetry_disabled_by_config
+    )
+    return disabled() or disabled_by_config() or not state.initialized
 
 
 def is_telemetry_active() -> bool:
@@ -231,7 +284,7 @@ def is_telemetry_active() -> bool:
     reading the policy pack to derive its schema state) when nothing would be
     forwarded anyway.
     """
-    return not _telemetry_is_inactive()
+    return not telemetry_is_inactive()
 
 
 def _sentry_environment() -> str:
@@ -285,38 +338,42 @@ def _metric_distribution(
         distribution(name, value, unit=unit, attributes=payload)
 
 
-def _scrub_string(value: str) -> str:
+def _scrub_string(value: str, policy: ScrubPolicy | None = None) -> str:
     """Redact home, cwd, and argv prefixes from a string value.
 
-    The first matching prefix wins (the order is _HOME_PREFIX first so that
-    home directories nested inside argv/cwd prefixes still collapse to ``~``).
-    Non-matching strings are returned verbatim.
+    The first matching prefix wins (the order is the home prefix first so
+    that home directories nested inside argv/cwd prefixes still collapse
+    to ``~``). Non-matching strings are returned verbatim.
+
+    ``policy`` is the injectable prefix set; ``None`` uses the live
+    policy (:func:`current_scrub_policy`).
     """
-    if _HOME_PREFIX and _HOME_PREFIX in value:
-        return value.replace(_HOME_PREFIX, "~")
-    for prefix in _EXTRA_SCRUB_PREFIXES:
+    active = policy if policy is not None else current_scrub_policy()
+    if active.home_prefix and active.home_prefix in value:
+        return value.replace(active.home_prefix, "~")
+    for prefix in active.extra_prefixes:
         if prefix and prefix in value:
             return value.replace(prefix, "<redacted>")
     return value
 
 
-def _scrub_obj(obj: object) -> None:
+def _scrub_obj(obj: object, policy: ScrubPolicy | None = None) -> None:
     """Recursively replace home-directory and extra prefixes in all string values."""
     if isinstance(obj, dict):
         d = cast("dict[str, object]", obj)
         for key in list(d.keys()):
             val = d[key]
             if isinstance(val, str):
-                d[key] = _scrub_string(val)
+                d[key] = _scrub_string(val, policy)
             else:
-                _scrub_obj(val)
+                _scrub_obj(val, policy)
     elif isinstance(obj, list):
         lst = cast("list[object]", obj)
         for i, item in enumerate(lst):
             if isinstance(item, str):
-                lst[i] = _scrub_string(item)
+                lst[i] = _scrub_string(item, policy)
             else:
-                _scrub_obj(item)
+                _scrub_obj(item, policy)
 
 
 def _is_absolute_filename(value: object) -> bool:
@@ -379,7 +436,7 @@ def _scrub_frames(frames: object) -> None:
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 
 
-def _scrub_event(event: object, _hint: object) -> object:
+def _scrub_event(event: object, _hint: object, policy: ScrubPolicy | None = None) -> object:
     if isinstance(event, dict):
         d = cast("dict[str, object]", event)
         d.pop("server_name", None)
@@ -393,7 +450,7 @@ def _scrub_event(event: object, _hint: object) -> object:
                     stacktrace = cast("dict[str, object]", value).get("stacktrace")
                     if isinstance(stacktrace, dict):
                         _scrub_frames(cast("dict[str, object]", stacktrace).get("frames"))
-    _scrub_obj(event)
+    _scrub_obj(event, policy)
     return event
 
 
@@ -426,7 +483,7 @@ def _build_extra_scrub_prefixes() -> tuple[str, ...]:
 
 def init_sentry(user_id: str, session_id: str) -> None:
     """Initialize Sentry with anonymous user identity and PII scrubbing."""
-    _replace_module_state(_EXTRA_SCRUB_PREFIXES=_build_extra_scrub_prefixes())
+    _STATE.extra_scrub_prefixes = _build_extra_scrub_prefixes()
 
     sentry_sdk.init(
         dsn=_DSN,
@@ -475,7 +532,7 @@ def init_sentry(user_id: str, session_id: str) -> None:
     )
     sentry_sdk.set_user({"id": user_id})  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     sentry_sdk.set_tag("session_id", session_id)
-    _replace_module_state(_INITIALIZED=True)
+    _STATE.initialized = True
 
 
 def set_environment_context() -> None:
@@ -524,7 +581,7 @@ def set_agent_config_context(agents: Mapping[str, AgentConfig]) -> None:
     No-op when telemetry is disabled or Sentry was never initialized.
     Fail-soft.
     """
-    if _telemetry_is_inactive():
+    if telemetry_is_inactive():
         return
     with contextlib.suppress(Exception):
         payload = build_agent_config_payload(agents)
@@ -543,7 +600,7 @@ def set_policy_schema_context(state: str) -> None:
     No-op when telemetry is disabled or Sentry was never initialized.
     Fail-soft.
     """
-    if _telemetry_is_inactive():
+    if telemetry_is_inactive():
         return
     with contextlib.suppress(Exception):
         safe_state = state if state in _POLICY_SCHEMA_STATES else "unknown"
@@ -576,21 +633,17 @@ def record_session_start(
     """
     if now is None:
         now = time.monotonic()
-    _replace_module_state(
-        _SESSION_STARTED_AT=float(now),
-        _SESSION_STARTED_AT_UTC=now_dt if now_dt is not None else datetime.now(UTC),
-        _SESSION_FINALIZED=False,
-    )
-    if _telemetry_is_inactive():
+    _STATE.started_at = float(now)
+    _STATE.started_at_utc = now_dt if now_dt is not None else datetime.now(UTC)
+    _STATE.finalized = False
+    if telemetry_is_inactive():
         return
     with contextlib.suppress(Exception):
         sentry_sdk.start_session(session_mode="application")
     with contextlib.suppress(Exception):
-        _replace_module_state(
-            _SESSION_TRANSACTION=sentry_sdk.start_transaction(
-                op="cli.run",
-                name="ralph.session",
-            )
+        _STATE.transaction = sentry_sdk.start_transaction(
+            op="cli.run",
+            name="ralph.session",
         )
     _add_breadcrumb(
         category="ralph.session",
@@ -603,7 +656,7 @@ def record_session_start(
 
 def set_session_outcome(outcome: str) -> None:
     """Record the coarse session outcome: success / failure / interrupted / unknown."""
-    _replace_module_state(_SESSION_OUTCOME=outcome)
+    _STATE.outcome = outcome
 
 
 def record_command_invocation(command: str) -> None:
@@ -616,7 +669,7 @@ def record_command_invocation(command: str) -> None:
     Fail-soft: any exception from ``sentry_sdk.set_tag`` is swallowed so the
     host CLI/pipeline is never broken by telemetry.
     """
-    if _telemetry_is_inactive():
+    if telemetry_is_inactive():
         return
     with contextlib.suppress(Exception):
         sentry_sdk.set_tag("command", command)
@@ -651,11 +704,11 @@ def set_session_wallclock_start(now_dt: datetime | None = None) -> None:
     No-op when telemetry is disabled or Sentry was never initialized.
     Fail-soft.
     """
-    if _telemetry_is_inactive():
+    if telemetry_is_inactive():
         return
     with contextlib.suppress(Exception):
         dt = now_dt if now_dt is not None else datetime.now(UTC)
-        _replace_module_state(_SESSION_WALLCLOCK_BUCKETS=_compute_wallclock_buckets(dt))
+        _STATE.wallclock_buckets = _compute_wallclock_buckets(dt)
 
 
 def record_phase_execution(*, role: str, duration_s: int, outcome: str) -> None:
@@ -670,19 +723,19 @@ def record_phase_execution(*, role: str, duration_s: int, outcome: str) -> None:
     No-op when telemetry is disabled or Sentry was never initialized.
     Fail-soft.
     """
-    if _telemetry_is_inactive():
+    if telemetry_is_inactive():
         return
     if role not in _PHASE_ROLES or outcome not in _PHASE_OUTCOMES:
         return
     with contextlib.suppress(Exception):
-        slot = _PHASE_STATS.get(role)
+        slot = _STATE.phase_stats.get(role)
         if slot is None:
             slot = {
                 "count": 0,
                 "total_duration_s": 0,
                 "outcomes": dict.fromkeys(_PHASE_OUTCOMES, 0),
             }
-            _PHASE_STATS[role] = slot
+            _STATE.phase_stats[role] = slot
         current_count_raw = slot.get("count", 0)
         current_total_raw = slot.get("total_duration_s", 0)
         outcomes_map_raw = slot.get("outcomes")
@@ -732,7 +785,7 @@ def record_agent_invocation(
     drain name, and custom/default pipeline profile provide useful attribution
     without forwarding user-authored labels.
     """
-    if _telemetry_is_inactive():
+    if telemetry_is_inactive():
         return
     transport_value = transport.value if isinstance(transport, AgentTransport) else str(transport)
     attributes: dict[str, object] = {
@@ -757,9 +810,9 @@ def record_agent_invocation(
             attributes=attributes,
         )
         key = "|".join(str(attributes[field]) for field in attributes)
-        if key not in _AGENT_STATS and len(_AGENT_STATS) >= _AGENT_STATS_MAX_KEYS:
+        if key not in _STATE.agent_stats and len(_STATE.agent_stats) >= _AGENT_STATS_MAX_KEYS:
             key = "overflow"
-        slot = _AGENT_STATS.setdefault(key, {"count": 0, "duration_s": 0.0})
+        slot = _STATE.agent_stats.setdefault(key, {"count": 0, "duration_s": 0.0})
         count_raw = slot.get("count", 0)
         duration_raw = slot.get("duration_s", 0.0)
         if not isinstance(count_raw, int) or not isinstance(duration_raw, float | int):
@@ -793,7 +846,7 @@ def report_handled_exception(exc: BaseException, *, origin: str) -> None:
     ``ralph.origin`` and passes through the same ``before_send`` scrubber as
     every other event.
     """
-    if _telemetry_is_inactive():
+    if telemetry_is_inactive():
         return
     safe_origin = origin if origin in _HANDLED_FAILURE_ORIGINS else "unknown"
     with contextlib.suppress(Exception), sentry_sdk.new_scope() as scope:
@@ -825,21 +878,21 @@ def finalize_session(
     values are process-local: they are meaningful only inside this
     process instance and leak no real-world clock information.
     """
-    if not _INITIALIZED or _SESSION_STARTED_AT is None or _SESSION_FINALIZED:
+    if not _STATE.initialized or _STATE.started_at is None or _STATE.finalized:
         return None
 
-    started = _SESSION_STARTED_AT
+    started = _STATE.started_at
     end_clock = time.monotonic() if now is None else float(now)
     duration = max(0.0, end_clock - started)
     ended_at_utc = end_dt if end_dt is not None else datetime.now(UTC)
-    _replace_module_state(_SESSION_FINALIZED=True)
+    _STATE.finalized = True
 
     try:
         session_payload: dict[str, object] = {
             "duration_s": duration,
             "started_monotonic_s": started,
             "ended_monotonic_s": end_clock,
-            "outcome": _SESSION_OUTCOME,
+            "outcome": _STATE.outcome,
             # Ralph's version also ships as the Sentry release + a global tag;
             # restating it on the session makes the run self-describing when a
             # session is inspected in isolation.
@@ -848,19 +901,21 @@ def finalize_session(
         python_version = _python_version()
         if python_version is not None:
             session_payload["python_version"] = python_version
-        if _SESSION_STARTED_AT_UTC is not None:
-            session_payload["started_at_utc"] = _format_utc_timestamp(_SESSION_STARTED_AT_UTC)
+        if _STATE.started_at_utc is not None:
+            session_payload["started_at_utc"] = _format_utc_timestamp(_STATE.started_at_utc)
         session_payload["ended_at_utc"] = _format_utc_timestamp(ended_at_utc)
-        if _SESSION_WALLCLOCK_BUCKETS is not None:
-            session_payload["wallclock"] = dict(_SESSION_WALLCLOCK_BUCKETS)
-        if _PHASE_STATS:
-            session_payload["phases"] = {role: dict(stats) for role, stats in _PHASE_STATS.items()}
-        if _AGENT_STATS:
+        if _STATE.wallclock_buckets is not None:
+            session_payload["wallclock"] = dict(_STATE.wallclock_buckets)
+        if _STATE.phase_stats:
+            session_payload["phases"] = {
+                role: dict(stats) for role, stats in _STATE.phase_stats.items()
+            }
+        if _STATE.agent_stats:
             session_payload["agent_invocations"] = {
-                key: dict(stats) for key, stats in _AGENT_STATS.items()
+                key: dict(stats) for key, stats in _STATE.agent_stats.items()
             }
         sentry_sdk.set_context("session", session_payload)
-        attributes = {"outcome": _SESSION_OUTCOME}
+        attributes = {"outcome": _STATE.outcome}
         _metric_count("ralph.session", 1.0, attributes=attributes)
         _metric_distribution(
             "ralph.session.duration",
@@ -874,7 +929,7 @@ def finalize_session(
             data=attributes,
         )
         sentry_sdk.capture_message("session end", level="info")
-        transaction = _SESSION_TRANSACTION
+        transaction = _STATE.transaction
         if isinstance(transaction, _FinishableTransaction):
             transaction.finish()
         sentry_sdk.end_session()
@@ -883,7 +938,7 @@ def finalize_session(
         pass
     # Drain aggregates AFTER the snapshot is sent so a subsequent session can
     # reuse the module-level accumulators safely (bounded-accumulator-ok).
-    _PHASE_STATS.clear()
-    _AGENT_STATS.clear()
-    _replace_module_state(_SESSION_TRANSACTION=None)
+    _STATE.phase_stats.clear()
+    _STATE.agent_stats.clear()
+    _STATE.transaction = None
     return duration

@@ -27,7 +27,6 @@ from ralph.display.context import DisplayContext
 from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.theme import RALPH_THEME
 from ralph.pipeline._integration_action import RebaseOutcomeKind
-from ralph.skills._capability_state import CapabilityState
 
 
 def _make_recording_console() -> Console:
@@ -114,11 +113,6 @@ class TestInjectedDisplayContextIsHonored:
                 patch(
                     "ralph.cli.commands.init.ensure_global_policy_configs",
                     return_value=[skipped_result, skipped_result],
-                ),
-                patch("ralph.cli.commands.init._print_fallback_next_steps"),
-                patch(
-                    "ralph.cli.commands.init._ensure_baseline_capabilities",
-                    return_value=(CapabilityState(), []),
                 ),
                 pytest.raises(typer.Exit) as excinfo,
             ):

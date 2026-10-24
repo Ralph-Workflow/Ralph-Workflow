@@ -117,12 +117,10 @@ def test_subcommand_records_telemetry_via_early_path(
     monkeypatch.setattr("ralph.telemetry._sentry.is_telemetry_disabled", _capture_disabled)
     monkeypatch.setattr("ralph.telemetry._sentry.record_command_invocation", _capture)
 
-    # Allow only the early-return telemetry recorder; everything else must
-    # remain silent so a stray bootstrap call is detected by other tests.
-    monkeypatch.setattr(
-        "ralph.cli.main._record_cli_command",
-        lambda ctx: captured.append(ctx.invoked_subcommand or "pipeline"),
-    )
+    # The public telemetry sink is the observable surface: the CLI's
+    # command-invocation chokepoint forwards the invoked subcommand name
+    # to ``record_command_invocation``, so the capture above pins the
+    # early-return path without reaching into a private CLI helper.
     result = _runner.invoke(app, ["star", "--no-browser"])
 
     assert result.exit_code == 0, result.output

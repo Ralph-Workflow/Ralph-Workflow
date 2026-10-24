@@ -14,8 +14,8 @@ from loguru import logger
 from ralph.agents.invoke import (
     InvokeOptions,
     invoke_agent,
+    resolve_invocation_runtime,
 )
-from ralph.agents.invoke._runtime_resolvers import CursorRuntimeResolver
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.mcp_models import McpConfig, McpServerSpec
 from ralph.config.models import AgentConfig
@@ -38,6 +38,11 @@ def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
     env_obj = kwargs.get("env")
     assert isinstance(env_obj, dict)
     return must_str_dict(env_obj)
+
+
+def _no_workspace_monitor(_workspace_path: Path, _classifier: object) -> None:
+    """Skip workspace monitoring so a test never starts a real observer."""
+    return None
 
 
 class _FakeProcess:
@@ -548,7 +553,7 @@ def test_cursor_runtime_resolver_writes_private_mcp_json_and_cleans_up(
         cmd="agent",
         transport=AgentTransport.CURSOR,
     )
-    runtime = CursorRuntimeResolver().resolve(
+    runtime = resolve_invocation_runtime(
         config,
         extra_env={str(MCP_ENDPOINT_ENV): endpoint},
         workspace_path=tmp_path,
@@ -609,7 +614,7 @@ def test_cursor_runtime_resolver_preserves_existing_mcp_servers(
     )
 
     # unsafe_mode=True: the private config retains the operator upstream.
-    runtime = CursorRuntimeResolver().resolve(
+    runtime = resolve_invocation_runtime(
         config,
         extra_env={str(MCP_ENDPOINT_ENV): endpoint},
         workspace_path=tmp_path,
@@ -643,7 +648,7 @@ def test_cursor_runtime_resolver_preserves_existing_mcp_servers(
         ),
         encoding="utf-8",
     )
-    runtime_safe = CursorRuntimeResolver().resolve(
+    runtime_safe = resolve_invocation_runtime(
         config,
         extra_env={str(MCP_ENDPOINT_ENV): endpoint},
         workspace_path=tmp_path,

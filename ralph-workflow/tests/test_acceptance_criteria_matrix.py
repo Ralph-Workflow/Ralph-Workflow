@@ -234,21 +234,37 @@ def test_acceptance_matrix_renders_inside_tmp_path(tmp_path: Path) -> None:
     destination.write_text(matrix, encoding="utf-8")
 
     rendered = destination.read_text(encoding="utf-8")
-    for index in range(1, 13):
-        assert f"AC-{index}:" in rendered, f"AC-{index} row missing from the matrix"
+
+    # Every rendered line is compared against the canonical table, row by
+    # row. A length-only check ("12 Status lines") would pass for a matrix
+    # that rendered 12 WRONG statuses, 12 rows in the wrong order, or
+    # duplicated one row; the exact-sequence comparison pins the content.
+    rendered_criteria = re.findall(r"^## (AC-\d+):", rendered, flags=re.MULTILINE)
+    assert rendered_criteria == [row[0] for row in _ACCEPTANCE_ROWS], (
+        f"rendered AC rows must match the canonical table exactly; got {rendered_criteria!r}"
+    )
 
     status_tokens = re.findall(r"^Status: (\w+)$", rendered, flags=re.MULTILINE)
-    assert len(status_tokens) == 12
+    assert status_tokens == [row[2] for row in _ACCEPTANCE_ROWS], (
+        f"rendered Status tokens must match the canonical table exactly; got {status_tokens!r}"
+    )
     assert set(status_tokens) <= _STATUS_VOCABULARY
 
     delivery_tokens = re.findall(r"^Delivery: (S-\d+)$", rendered, flags=re.MULTILINE)
-    assert len(delivery_tokens) == 12, f"expected 12 Delivery lines, found {len(delivery_tokens)}"
+    assert delivery_tokens == [row[3] for row in _ACCEPTANCE_ROWS], (
+        f"rendered Delivery steps must match the canonical table exactly; got {delivery_tokens!r}"
+    )
 
     verify_tokens = re.findall(r"^Verify: (.+)$", rendered, flags=re.MULTILINE)
-    assert len(verify_tokens) == 12, f"expected 12 Verify lines, found {len(verify_tokens)}"
+    assert verify_tokens == [row[4] for row in _ACCEPTANCE_ROWS], (
+        f"rendered Verify methods must match the canonical table exactly; got {verify_tokens!r}"
+    )
 
     references = re.findall(r"^Test: (tests/\S+)$", rendered, flags=re.MULTILINE)
-    assert references, "the matrix must name at least one test reference"
+    expected_references = [reference for row in _ACCEPTANCE_ROWS for reference in row[5]]
+    assert references == expected_references, (
+        f"rendered Test references must match the canonical table exactly; got {references!r}"
+    )
     for reference in references:
         assert (_PACKAGE_ROOT / reference).is_file(), (
             f"matrix references a missing test file: {reference}"

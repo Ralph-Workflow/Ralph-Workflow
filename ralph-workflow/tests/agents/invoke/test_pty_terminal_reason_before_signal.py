@@ -106,10 +106,6 @@ def test_request_interactive_exit_records_reason_before_signal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _no_teardown(monkeypatch, [])
-    monkeypatch.setattr(
-        "ralph.agents.invoke._pty_line_reader._write_pty_input",
-        lambda *args, **kwargs: None,
-    )
     handle = _OrderHandle()
     _make_reader(handle)._request_interactive_exit()
     reason_at = _first(handle.events, "reason")

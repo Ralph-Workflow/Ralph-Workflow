@@ -55,25 +55,21 @@ from loguru import logger
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
+    MAX_SUBAGENT_REGISTRY_ENTRIES,
+    ChannelEvidenceSummary,
+    ChannelName,
+    EvidenceSummary,
+    EvidenceTier,
     IdleWatchdog,
+    StuckKind,
     SubagentIdentity,
     SubagentPidRegistry,
     TimeoutPolicy,
     WaitingStatusEvent,
     WatchdogFireReason,
     WatchdogVerdict,
-)
-from ralph.agents.idle_watchdog._evidence_tier import (
-    ChannelEvidenceSummary,
-    ChannelName,
-    EvidenceSummary,
-    EvidenceTier,
-)
-from ralph.agents.idle_watchdog._stuck_classifier import (
-    StuckKind,
     classify_stuck,
 )
-from ralph.agents.idle_watchdog._subagent_identity import _MAX_REGISTRY_ENTRIES
 from ralph.agents.idle_watchdog.corroboration_snapshot import CorroborationSnapshot
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from ralph.agents.invoke._idle_stream_timeout_error import _IdleStreamTimeoutError
@@ -262,7 +258,7 @@ class TestTrustworthyIdleWatchdogSpec:
               (and vice versa). The shared ``SubagentPidRegistry`` is
               filtered by ``source`` at the seam surface.
 
-        Also asserts the FIFO cap (``_MAX_REGISTRY_ENTRIES == 1024``)
+        Also asserts the FIFO cap (``MAX_SUBAGENT_REGISTRY_ENTRIES == 1024``)
         so a long unattended invocation cannot retain unbounded
         ``SubagentIdentity`` records. The cap is the headline R1 +
         resource-lifecycle invariant.
@@ -296,7 +292,7 @@ class TestTrustworthyIdleWatchdogSpec:
         assert opencode_pids & claude_pids == set()
 
         # (c) FIFO cap on the registry (resource-lifecycle invariant).
-        assert _MAX_REGISTRY_ENTRIES == 1024
+        assert MAX_SUBAGENT_REGISTRY_ENTRIES == 1024
 
         # (d) Identity constructor rejects unknown sources (canonical
         # transport set is closed).
@@ -805,7 +801,7 @@ class TestTrustworthyIdleWatchdogSpec:
             # ``watchdog_log_throttle_seconds`` per ``fire_reason``.
             for i in range(1000):
                 call_log = [cycle[i % 2]]
-                verdict = watchdog._gate_fire(
+                verdict = watchdog.evaluate_fire_gate(
                     fire_reason,
                     now=clock.monotonic(),
                     idle_elapsed=300.0,

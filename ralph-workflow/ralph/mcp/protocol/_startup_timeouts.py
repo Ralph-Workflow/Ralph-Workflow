@@ -31,16 +31,29 @@ DIAGNOSTIC vs DEADLINE split:
   It returns ``None`` on overrun so callers can distinguish logged-overrun from clean
   completion.
 - The real fatal deadline is ``mcp_preflight_timeout_from_env() - _PROBE_SAFETY_S``:
-  ``_check_real_startup_deadline`` is the ONLY fatal check during startup. It enforces
-  the preflight envelope (default: 28.0s = 30.0s preflight - 2.0s probe-safety margin)
-  and raises ``McpServerError`` when cumulative elapsed time exceeds it.
+  :func:`check_real_startup_deadline` is the ONLY fatal check during startup. It
+  enforces the preflight envelope (default: 28.0s = 30.0s preflight - 2.0s probe-safety
+  margin) and raises ``McpServerError`` when cumulative elapsed time exceeds it.
+
+CLOCK SEAM: the deadline helpers measure elapsed time with an INJECTED monotonic
+clock (:data:`ClockFn`). Production callers omit ``clock_fn`` and get the module
+clock :func:`mcp_startup_now`; a caller that needs a deterministic timeline injects
+its own clock instead of patching ``time.monotonic``. The same rule holds for
+:func:`record_stage_elapsed`, which never reads a clock at all: the caller measures
+the elapsed seconds and passes them in.
+
+BUDGET ACCESSORS: the budget constants are private implementation details of the
+envelope arithmetic; the public accessors :func:`mcp_probe_safety_s`,
+:func:`mcp_probe_budget_share`, :func:`mcp_max_upstreams_at_defaults`, and
+:func:`mcp_stage_budgets` expose the same numbers to operators and tests without
+exposing the module internals.
 
 Stage vocabulary tracked by :func:`record_stage_elapsed`. For every stage
 below, the per-stage budget is **DIAGNOSTIC ONLY** (a structured WARNING
 plus a JSONL ``.overruns`` entry — never a fatal check). The ONLY fatal
 startup envelope is :func:`mcp_real_startup_deadline_from_env`
 (preflight minus :data:`_PROBE_SAFETY_S`, default 28.0 s), enforced by
-:func:`_check_real_startup_deadline`.
+:func:`check_real_startup_deadline`.
 
 - ``env_loaded`` — environment loaded; no per-stage budget (instant);
 - ``session_ready`` — session initialised; no per-stage budget (instant);
@@ -88,6 +101,7 @@ from __future__ import annotations
 
 import os
 import time as _time_module
+from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -112,6 +126,14 @@ _MCP_OVERRUN_DIAGNOSTIC_TIMEOUT_MS_ENV = "RALPH_MCP_OVERRUN_DIAGNOSTIC_TIMEOUT_M
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+#: A monotonic clock: returns seconds elapsed since an arbitrary origin.
+#:
+#: The startup budgets are measured with an INJECTED clock so callers (and
+#: tests) can drive the deadline arithmetic without patching
+#: ``time.monotonic``. Production callers omit the clock and get
+#: :func:`mcp_startup_now`, the module clock.
+ClockFn = Callable[[], float]
 
 _DEFAULT_PREFLIGHT = timedelta(milliseconds=30_000)
 
@@ -378,6 +400,59 @@ def mcp_real_startup_deadline_from_env(
     ).total_seconds()
 
 
+def mcp_probe_safety_s() -> float:
+    """Return the probe-safety floor in seconds.
+
+    The margin the child reserves to report a stalled upstream probe before
+    the supervisor SIGKILLs it. The floor is subtracted from the preflight
+    timeout to produce the real startup deadline
+    (:func:`mcp_real_startup_deadline_from_env`).
+    """
+
+    return _PROBE_SAFETY_S
+
+
+def mcp_probe_budget_share() -> float:
+    """Return the share of the preflight budget one upstream probe may claim.
+
+    The ceiling for a single upstream probe is
+    ``preflight * share``; it must stay strictly above
+    :func:`mcp_probe_safety_s` so the child can still report a stalled
+    probe.
+    """
+
+    return _PROBE_BUDGET_SHARE
+
+
+def mcp_max_upstreams_at_defaults() -> int:
+    """Return the worst-case upstream count that fits the default preflight budget.
+
+    The count is derived at import time from the default preflight budget,
+    the probe share, and the probe-safety floor. It is the largest number of
+    upstreams whose probes still leave the child one safety margin to fail
+    loudly.
+    """
+
+    return _MAX_UPSTREAMS_AT_DEFAULTS
+
+
+def mcp_stage_budgets(env: Mapping[str, str] | None = None) -> dict[str, float]:
+    """Return the diagnostic per-stage budget ceilings in seconds, keyed by stage.
+
+    These ceilings are DIAGNOSTIC ONLY: a stage that exceeds its ceiling is
+    recorded as an overrun warning and the startup continues. The only fatal
+    envelope is :func:`mcp_real_startup_deadline_from_env`.
+    """
+
+    return {
+        "config_loading": _PRE_SERVE_BUDGET_S,
+        "config_loaded": _CONFIG_LOAD_BUDGET_S,
+        "upstream_catalog_or_discovery_done": mcp_discovery_budget_from_env(env).total_seconds(),
+        "registry_built": _REGISTRY_BUILD_BUDGET_S,
+        "ready_to_serve": _READY_TO_SERVE_BUDGET_S,
+    }
+
+
 _OVERRUN_LOGGER_NAME = "ralph.mcp.protocol._startup_timeouts"
 
 
@@ -449,10 +524,26 @@ def record_stage_elapsed(
     return budget_s
 
 
-def _check_real_startup_deadline(
+def mcp_startup_now() -> float:
+    """Return the current startup monotonic timestamp in seconds.
+
+    Single source of truth for the clock the startup deadlines are measured
+    against. Production call sites omit the ``clock_fn`` argument of
+    :func:`check_real_startup_deadline`, which makes the deadline helpers use
+    this clock; callers that need a deterministic timeline (tests, replayed
+    diagnostics) inject their own clock instead of patching
+    ``time.monotonic``.
+    """
+
+    return _time_module.monotonic()
+
+
+def check_real_startup_deadline(
     stage: str,
     t0: float,
     env_map: Mapping[str, str] | None = None,
+    *,
+    clock_fn: ClockFn | None = None,
 ) -> None:
     """Enforce the preflight startup deadline at a stage boundary.
 
@@ -464,10 +555,20 @@ def _check_real_startup_deadline(
     diagnostic warnings only (see :func:`record_stage_elapsed`), recorded in
     the sibling JSONL ``.overruns`` file without aborting startup.
 
+    Args:
+        stage: Stage label used in the error message and ``last_stage``.
+        t0: Monotonic timestamp the startup window is measured from.
+        env_map: Environment map the envelope is derived from. ``None`` means
+            the process environment.
+        clock_fn: Injectable monotonic clock. ``None`` (the production
+            default) uses the module clock :func:`mcp_startup_now`.
+
     Raises:
         McpServerError: when cumulative elapsed exceeds the real startup deadline.
     """
-    elapsed = _time_module.monotonic() - t0
+
+    clk = clock_fn if clock_fn is not None else mcp_startup_now
+    elapsed = clk() - t0
     real_deadline_s = mcp_real_startup_deadline_from_env(env_map)
     if elapsed > real_deadline_s:
         raise McpServerError(
@@ -479,13 +580,22 @@ def _check_real_startup_deadline(
         )
 
 
+def _check_real_startup_deadline(
+    stage: str,
+    t0: float,
+    env_map: Mapping[str, str] | None = None,
+) -> None:
+    """Thin backward-compatibility wrapper delegating to :func:`check_real_startup_deadline`."""
+    check_real_startup_deadline(stage, t0, env_map)
+
+
 def _check_cumulative_startup_deadline(
     stage: str,
     t0: float,
     env_map: Mapping[str, str] | None = None,
 ) -> None:
-    """Thin backward-compatibility wrapper delegating to :func:`_check_real_startup_deadline`."""
-    _check_real_startup_deadline(stage, t0, env_map)
+    """Thin backward-compatibility wrapper delegating to :func:`check_real_startup_deadline`."""
+    check_real_startup_deadline(stage, t0, env_map)
 
 
 def upstream_call_timeout_seconds(method: str, env: Mapping[str, str] | None = None) -> float:
@@ -625,17 +735,24 @@ __all__ = [
     "_REGISTRY_BUILD_BUDGET_S",
     "_REGISTRY_BUILT_CUMULATIVE_S",
     "_WHOLE_STARTUP_BUDGET_S",
+    "ClockFn",
     "_check_cumulative_startup_deadline",
     "_check_real_startup_deadline",
+    "check_real_startup_deadline",
     "mcp_boot_allowance_from_env",
     "mcp_discovery_budget_from_env",
+    "mcp_max_upstreams_at_defaults",
     "mcp_overrun_diagnostic_timeout_from_env",
     "mcp_overrun_diagnostic_timeout_seconds",
     "mcp_pre_serve_budget_from_env",
     "mcp_preflight_timeout_from_env",
+    "mcp_probe_budget_share",
+    "mcp_probe_safety_s",
     "mcp_real_startup_deadline_from_env",
     "mcp_registry_built_budget_from_env",
     "mcp_registry_read_timeout_from_env",
+    "mcp_stage_budgets",
+    "mcp_startup_now",
     "mcp_upstream_probe_timeout_from_env",
     "mcp_upstream_probe_timeout_seconds",
     "mcp_whole_startup_budget_from_env",

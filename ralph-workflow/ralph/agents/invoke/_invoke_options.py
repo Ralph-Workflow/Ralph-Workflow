@@ -1,20 +1,110 @@
+"""Invocation options and the invoke path's collaborator-injection surface.
+
+``InvokeOptions`` is the public handle callers use to shape one agent
+invocation.  Besides the per-invocation values it carries the scoped
+collaborator overrides used to inject fakes into the invoke path WITHOUT
+reaching into module internals:
+
+* :meth:`InvokeOptions.command_builder_override` replaces the argv builder.
+* :meth:`InvokeOptions.process_monitor_factory_override` replaces the
+  process-monitor factory.
+* :meth:`InvokeOptions.upstream_env_applier_override` replaces the upstream
+  MCP env projection used by the per-transport runtime resolvers.
+* :meth:`InvokeOptions.platform_override` replaces the host platform the
+  runtime resolvers use for OS-specific path selection.
+
+Every override is scoped to a ``with`` block and is stored in a
+:class:`~contextvars.ContextVar`, so the override is visible to the code that
+runs inside the block (including the generators the invoke path yields from)
+and is undone when the block exits -- even if the block raises.  Production
+callers never open an override scope, so the default behaviour is unchanged.
+"""
+
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 _INVOKE_OPTS_UNSET: object = object()
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
-    from ralph.agents.idle_watchdog import SubagentPidRegistry, WaitingStatusListener
+    from ralph.agents.idle_watchdog import (
+        SubagentPidRegistry,
+        TimeoutPolicy,
+        WaitingStatusListener,
+    )
+    from ralph.agents.invoke._build_command_options import _BuildCommandOptions
     from ralph.agents.invoke._workspace import WorkspaceMonitor
     from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
+    from ralph.config.models import AgentConfig
+    from ralph.mcp.upstream.config import UpstreamMcpServer
     from ralph.phases.required_artifacts import RequiredArtifact
-    from ralph.process.monitor import SubagentPidSource
+    from ralph.process.child_liveness import ChildLivenessRegistry
+    from ralph.process.manager import ManagedProcess, ManagedPtyProcess
+    from ralph.process.monitor import ProcessMonitor, SubagentPidSource
     from ralph.process.teardown import ProcessTeardown
+
+
+class _CommandBuilder(Protocol):
+    """Builds the argv for one agent invocation."""
+
+    def __call__(
+        self,
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: _BuildCommandOptions,
+    ) -> list[str]: ...
+
+
+class _ProcessMonitorFactory(Protocol):
+    """Builds the process monitor for one agent invocation."""
+
+    def __call__(
+        self,
+        handle: ManagedProcess | ManagedPtyProcess,
+        config: AgentConfig,
+        policy: TimeoutPolicy,
+        subagent_pid_source: SubagentPidSource | None = None,
+        *,
+        registry: ChildLivenessRegistry | None = None,
+        scope_prefix: str = "",
+    ) -> ProcessMonitor | None: ...
+
+
+class _UpstreamEnvApplier(Protocol):
+    """Projects resolved upstream MCP servers into the runtime and server envs."""
+
+    def __call__(
+        self,
+        upstreams: tuple[UpstreamMcpServer, ...],
+        workspace_path: Path | None,
+        runtime_env: dict[str, str],
+        server_env: dict[str, str],
+    ) -> None: ...
+
+
+_COMMAND_BUILDER_OVERRIDE: ContextVar[_CommandBuilder | None] = ContextVar(
+    "ralph_invoke_command_builder_override",
+    default=None,
+)
+_PROCESS_MONITOR_FACTORY_OVERRIDE: ContextVar[_ProcessMonitorFactory | None] = ContextVar(
+    "ralph_invoke_process_monitor_factory_override",
+    default=None,
+)
+_UPSTREAM_ENV_APPLIER_OVERRIDE: ContextVar[_UpstreamEnvApplier | None] = ContextVar(
+    "ralph_invoke_upstream_env_applier_override",
+    default=None,
+)
+_PLATFORM_OVERRIDE: ContextVar[str | None] = ContextVar(
+    "ralph_invoke_platform_override",
+    default=None,
+)
 
 
 @dataclass(frozen=True)
@@ -123,3 +213,90 @@ class InvokeOptions:
     # the R5 cross-transport wiring).
     subagent_pid_registry: SubagentPidRegistry | None = None
     subagent_pid_source: SubagentPidSource | None = None
+
+    # ------------------------------------------------------------------
+    # Scoped collaborator overrides (the invoke path's injection seam)
+    # ------------------------------------------------------------------
+    #
+    # Each override is a context manager that installs a fake for the
+    # duration of the block.  They live on the public options class so a
+    # caller can inject a collaborator without importing (or rebinding) a
+    # production private.
+
+    @classmethod
+    @contextmanager
+    def command_builder_override(cls, builder: _CommandBuilder) -> Iterator[None]:
+        """Replace the argv builder for the duration of the block.
+
+        Args:
+            builder: Callable invoked with the agent config, the prompt
+                file and the resolved ``BuildCommandOptions``; it returns
+                the argv for the invocation.
+
+        Yields:
+            Nothing; the scope is the unit of installation.
+        """
+        token = _COMMAND_BUILDER_OVERRIDE.set(builder)
+        try:
+            yield
+        finally:
+            _COMMAND_BUILDER_OVERRIDE.reset(token)
+
+    @classmethod
+    @contextmanager
+    def process_monitor_factory_override(cls, factory: _ProcessMonitorFactory) -> Iterator[None]:
+        """Replace the process-monitor factory for the duration of the block.
+
+        Args:
+            factory: Callable invoked with the process handle, the agent
+                config, the timeout policy and the optional subagent PID
+                source; it returns the monitor (or ``None`` to skip it).
+
+        Yields:
+            Nothing; the scope is the unit of installation.
+        """
+        token = _PROCESS_MONITOR_FACTORY_OVERRIDE.set(factory)
+        try:
+            yield
+        finally:
+            _PROCESS_MONITOR_FACTORY_OVERRIDE.reset(token)
+
+    @classmethod
+    @contextmanager
+    def upstream_env_applier_override(cls, applier: _UpstreamEnvApplier) -> Iterator[None]:
+        """Replace the upstream MCP env projection for the duration of the block.
+
+        Args:
+            applier: Callable invoked with the resolved upstreams, the
+                workspace path and the runtime / server environment dicts
+                it mutates.
+
+        Yields:
+            Nothing; the scope is the unit of installation.
+        """
+        token = _UPSTREAM_ENV_APPLIER_OVERRIDE.set(applier)
+        try:
+            yield
+        finally:
+            _UPSTREAM_ENV_APPLIER_OVERRIDE.reset(token)
+
+    @classmethod
+    @contextmanager
+    def platform_override(cls, platform: str) -> Iterator[None]:
+        """Replace the host platform for the duration of the block.
+
+        The runtime resolvers use the platform to pick OS-specific paths
+        (the Cursor IDE state database lives in a different place on
+        macOS).  Overriding it keeps those paths testable on any host.
+
+        Args:
+            platform: Platform identifier, e.g. ``"darwin"`` or ``"linux"``.
+
+        Yields:
+            Nothing; the scope is the unit of installation.
+        """
+        token = _PLATFORM_OVERRIDE.set(platform)
+        try:
+            yield
+        finally:
+            _PLATFORM_OVERRIDE.reset(token)

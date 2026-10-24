@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -12,7 +13,7 @@ from loguru import logger
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
-from ralph.pipeline import run_loop
+from ralph.pipeline import auto_integrate_resolve, run_loop
 from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.integration_resolution import (
     RECOVERABLE,
@@ -41,6 +42,13 @@ def _entry(until_ms: int) -> UnavailabilityEntry:
         base_backoff_ms=5000,
         max_backoff_ms=5000,
     )
+
+
+@dataclass
+class _PendingMergeRecord:
+    """Stand-in for the durable pending-merge record the merge path reads."""
+
+    resolving_merge: bool = False
 
 
 def test_run_loop_resumes_on_highest_priority_newly_available_agent(
@@ -618,19 +626,33 @@ def test_completing_a_merge_stages_and_commits_not_just_resolves(
     """
     from ralph.git.merge import MERGE_STATE_IN_PROGRESS
 
-    calls: list[str] = []
+    staged: list[list[str]] = []
+    committed: list[str] = []
     monkeypatch.setattr("ralph.git.merge.merge_state", lambda _root: MERGE_STATE_IN_PROGRESS)
 
-    def _resolve_and_commit(_root: Path, _target: str, _resolver: Any) -> bool:
-        calls.append("resolve_and_commit")
-        return True
-
+    # The merge-completion path resolves, stages the previously conflicted
+    # paths, and commits the merge. Every collaborator it drives is a public
+    # function, so the observation happens on the public git surface.
+    monkeypatch.setattr(auto_integrate_resolve, "unmerged_paths", lambda _root: [])
+    monkeypatch.setattr(auto_integrate_resolve, "staged_conflict_marker_paths", lambda _root: [])
+    monkeypatch.setattr(auto_integrate_resolve, "paths_with_conflict_markers", lambda *_a: [])
     monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_resolve._resolve_and_commit", _resolve_and_commit
+        auto_integrate_resolve,
+        "stage_paths",
+        lambda _root, paths: staged.append(list(paths)) or True,
+    )
+    monkeypatch.setattr(auto_integrate_resolve, "mark_pending_merge", lambda *_a, **_kw: None)
+    monkeypatch.setattr(auto_integrate_resolve, "prepare_pending_merge", lambda *_a: None)
+    monkeypatch.setattr(auto_integrate_resolve, "read_record", lambda _root: _PendingMergeRecord())
+    monkeypatch.setattr(
+        auto_integrate_resolve,
+        "resume_pending_merge",
+        lambda _root, _record: committed.append("resume") or None,
     )
 
     assert run_loop._complete_in_progress_merge(tmp_path, "main", lambda _r, _t: True) is True
-    assert calls == ["resolve_and_commit"]
+    assert staged == [[]], "the resolved merge must be staged"
+    assert committed == ["resume"], "the verified merge must be committed"
 
 
 def test_completing_a_merge_declines_when_no_merge_is_in_progress(
@@ -640,12 +662,11 @@ def test_completing_a_merge_declines_when_no_merge_is_in_progress(
     from ralph.git.merge import MERGE_STATE_NONE
 
     def _must_not_run(*_args: Any, **_kwargs: Any) -> bool:
-        raise AssertionError("_resolve_and_commit must not run without a merge")
+        raise AssertionError("the resolver must not run without a merge")
 
     monkeypatch.setattr("ralph.git.merge.merge_state", lambda _root: MERGE_STATE_NONE)
-    monkeypatch.setattr("ralph.pipeline.auto_integrate_resolve._resolve_and_commit", _must_not_run)
 
-    assert run_loop._complete_in_progress_merge(tmp_path, "main", lambda _r, _t: True) is False
+    assert run_loop._complete_in_progress_merge(tmp_path, "main", _must_not_run) is False
 
 
 def test_an_unreadable_rebase_state_never_answers_no_rebase(

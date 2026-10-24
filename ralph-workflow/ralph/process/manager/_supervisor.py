@@ -184,10 +184,12 @@ def _set_pdeathsig(signal_number: int) -> bool:
 def _other_group_members_alive(pgid: int) -> bool:
     """Return True while any process other than this one is alive in ``pgid``."""
     me = os.getpid()
+    # filesystem-read-ok: /proc is the kernel process-metadata source; this isolated supervisor cannot import the Workspace seam
     for entry in Path("/proc").iterdir():
         if not entry.name.isdigit() or int(entry.name) == me:
             continue
         try:
+            # filesystem-read-ok: kernel process-group metadata; this isolated supervisor cannot import the Workspace seam
             stat_text = (entry / "stat").read_text(encoding="utf-8")
         except OSError:
             continue
@@ -219,6 +221,7 @@ def _kill_tree_and_exit() -> NoReturn:
         os.killpg(pgid, _SIGTERM)
         deadline = time.monotonic() + _GROUP_TERM_GRACE_S
         while time.monotonic() < deadline and _other_group_members_alive(pgid):
+            # filesystem-poll-ok: bounded by the 5-second SIGTERM grace deadline; process-group exit has no event source
             time.sleep(0.05)
     with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
         os.killpg(pgid, _SIGKILL)

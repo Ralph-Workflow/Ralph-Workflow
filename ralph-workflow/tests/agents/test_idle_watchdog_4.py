@@ -14,9 +14,12 @@ from unittest.mock import patch
 import pytest
 
 from ralph.agents.execution_state import AgentExecutionState
-from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy
-from ralph.agents.idle_watchdog._evidence_tier import ChannelName
-from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
+from ralph.agents.idle_watchdog import (
+    ChannelName,
+    IdleWatchdog,
+    TimeoutPolicy,
+    WorkspaceChangeKind,
+)
 from ralph.agents.invoke import CompletionCheckOptions, check_process_result
 from ralph.agents.invoke._errors import AgentInvocationError
 from ralph.agents.invoke._workspace_change_classifier import (
@@ -260,12 +263,12 @@ def test_record_subagent_work_description_strips_control_characters() -> None:
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description="hello\nworld\rmore\tchars\x00\x01")
-    assert "\n" not in (wd._last_subagent_progress_description or "")
-    assert "\r" not in (wd._last_subagent_progress_description or "")
-    assert "\t" not in (wd._last_subagent_progress_description or "")
-    assert "\x00" not in (wd._last_subagent_progress_description or "")
-    assert "\x01" not in (wd._last_subagent_progress_description or "")
-    assert wd._last_subagent_progress_description == "helloworldmorechars"
+    assert "\n" not in (wd.last_subagent_progress_description or "")
+    assert "\r" not in (wd.last_subagent_progress_description or "")
+    assert "\t" not in (wd.last_subagent_progress_description or "")
+    assert "\x00" not in (wd.last_subagent_progress_description or "")
+    assert "\x01" not in (wd.last_subagent_progress_description or "")
+    assert wd.last_subagent_progress_description == "helloworldmorechars"
 
 
 def test_record_subagent_work_description_strips_ansi_escapes() -> None:
@@ -277,7 +280,7 @@ def test_record_subagent_work_description_strips_ansi_escapes() -> None:
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description="\x1b[31mhello\x1b[0m world")
-    stored = wd._last_subagent_progress_description
+    stored = wd.last_subagent_progress_description
     assert stored is not None
     assert "\x1b" not in stored
     # The text content survives; only the escape introducer is removed.
@@ -289,7 +292,7 @@ def test_record_subagent_work_description_redacts_tool_arguments() -> None:
     """A description that contains ``"arguments": "<secret>"`` has the value redacted."""
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='tool {"arguments": "secret_payload_value"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "secret_payload_value" not in stored
     assert "<redacted>" in stored
 
@@ -300,7 +303,7 @@ def test_record_subagent_work_description_redacts_sensitive_paths() -> None:
     not leak verbatim into operator-visible text."""
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description="reading /etc/passwd then /proc/self/maps")
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "/etc/" not in stored
     assert "/proc/" not in stored
     assert stored.count("<redacted>") >= 2
@@ -312,7 +315,7 @@ def test_record_subagent_work_description_redacts_bearer_token() -> None:
     echoing the token)."""
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description="hdr: Authorization: Bearer abc123token")
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "Bearer" not in stored
 
 
@@ -325,7 +328,7 @@ def test_record_subagent_work_description_redacts_lowercase_bearer_token() -> No
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description="hdr: authorization: bearer SECRET123")
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "SECRET123" not in stored, (
         f"lowercase bearer token 'SECRET123' must NOT leak, got: {stored!r}"
     )
@@ -340,7 +343,7 @@ def test_record_subagent_work_description_redacts_uppercase_bearer_token() -> No
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description="hdr: AUTHORIZATION: BEARER UPPERSECRET")
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "UPPERSECRET" not in stored, (
         f"uppercase bearer token 'UPPERSECRET' must NOT leak, got: {stored!r}"
     )
@@ -355,7 +358,7 @@ def test_record_subagent_work_description_redacts_mixed_case_bearer_token() -> N
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description="hdr: AuThOrIzAtIoN: BeArEr MiXeDcAsE")
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "MiXeDcAsE" not in stored, (
         f"mixed-case bearer token 'MiXeDcAsE' must NOT leak, got: {stored!r}"
     )
@@ -367,7 +370,7 @@ def test_record_subagent_work_description_redacts_private_key_marker() -> None:
     marker is redacted to prevent private-key fragments leaking into logs."""
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description="key fragment -----BEGIN RSA PRIVATE KEY----- data")
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "PRIVATE KEY" not in stored
     assert "<redacted>" in stored
 
@@ -376,7 +379,7 @@ def test_record_subagent_work_description_truncates_to_200_chars() -> None:
     """A description longer than 200 chars after sanitization is truncated."""
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description="a" * 500)
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert len(stored) == 200
 
 
@@ -385,7 +388,7 @@ def test_record_subagent_work_description_only_whitespace_stores_empty() -> None
     an empty string so the subscriber does not render ``subagent=``."""
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description="   \n\n  \t\t  ")
-    stored = wd._last_subagent_progress_description
+    stored = wd.last_subagent_progress_description
     assert stored == ""
 
 
@@ -395,9 +398,9 @@ def test_record_subagent_work_description_none_leaves_field_none() -> None:
     legacy behavior used by tests that exercise the channel
     timestamp without supplying a description."""
     wd, _clock = _make_watchdog()
-    prior = wd._last_subagent_progress_description
+    prior = wd.last_subagent_progress_description
     wd.record_subagent_work(description=None)
-    assert wd._last_subagent_progress_description == prior
+    assert wd.last_subagent_progress_description == prior
 
 
 def test_record_subagent_work_description_does_not_mutate_last_activity() -> None:
@@ -428,7 +431,7 @@ def test_record_subagent_work_description_redacts_well_formed_escaped_quote() ->
     wd, _clock = _make_watchdog()
     # Source: {"arguments":"secret\"tail"}  (the \" is a real escape)
     wd.record_subagent_work(description='{"arguments":"secret\\"tail"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "tail" not in stored, f"escaped-quote suffix 'tail' must be redacted, got: {stored!r}"
     assert "<redacted>" in stored
 
@@ -444,7 +447,7 @@ def test_record_subagent_work_description_redacts_malformed_inner_quote() -> Non
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"arguments":"secret"tail"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "tail" not in stored, f"malformed-JSON suffix 'tail' must be redacted, got: {stored!r}"
     assert "secret" not in stored, (
         f"malformed-JSON prefix 'secret' must be redacted, got: {stored!r}"
@@ -462,7 +465,7 @@ def test_record_subagent_work_description_redacts_malformed_args_inner_quote() -
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"args":"secret"tail"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "tail" not in stored, (
         f"malformed-JSON args suffix 'tail' must be redacted, got: {stored!r}"
     )
@@ -481,7 +484,7 @@ def test_record_subagent_work_description_redacts_escaped_prompt_content() -> No
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"prompt": "say \\"hi\\" please"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "please" not in stored, (
         f"escaped-quote suffix 'please' must be redacted, got: {stored!r}"
     )
@@ -496,7 +499,7 @@ def test_record_subagent_work_description_redacts_escaped_file_path() -> None:
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"file_path": "/etc/secret\\"name"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "name" not in stored, (
         f"escaped-quote file_path suffix 'name' must be redacted, got: {stored!r}"
     )
@@ -516,7 +519,7 @@ def test_record_subagent_work_description_redacts_bearer_token_with_quotes() -> 
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='Authorization: Bearer abc"def')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "def" not in stored, f"bearer token suffix 'def' must be redacted, got: {stored!r}"
     assert "Bearer" not in stored, f"bearer token prefix 'Bearer' must be redacted, got: {stored!r}"
     assert "<redacted>" in stored
@@ -530,7 +533,7 @@ def test_record_subagent_work_description_redacts_input_field_with_quotes() -> N
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"input": "echo \\"hello\\" world"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "world" not in stored, f"input field suffix 'world' must be redacted, got: {stored!r}"
     assert "<redacted>" in stored
 
@@ -544,7 +547,7 @@ def test_record_subagent_work_description_redacts_repeated_escaped_quotes() -> N
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"content": "say \\"hi\\" then \\"bye\\" now"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     for forbidden in ("hi", "bye", "now"):
         assert forbidden not in stored, (
             f"escaped-quote value {forbidden!r} must be redacted, got: {stored!r}"
@@ -563,7 +566,7 @@ def test_record_subagent_work_description_reproducer_no_leaked_suffix() -> None:
     wd, _clock = _make_watchdog()
     # Reproducer line verbatim from the analysis feedback.
     wd.record_subagent_work(description='{"arguments":"secret\\"tail"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     # The reproducer must NOT print leaked suffix text.
     assert "tail" not in stored, (
         f"analysis-feedback reproducer: 'tail' suffix leaked, got: {stored!r}"
@@ -597,7 +600,7 @@ def test_record_subagent_work_description_redacts_nested_object_arguments() -> N
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"arguments": {"command": "rm -rf /", "token": "abc"}}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "rm -rf /" not in stored, f"nested 'command' value must NOT leak, got: {stored!r}"
     assert "token" not in stored, f"nested 'token' key must NOT leak, got: {stored!r}"
     assert "abc" not in stored, f"nested 'abc' value must NOT leak, got: {stored!r}"
@@ -613,7 +616,7 @@ def test_record_subagent_work_description_redacts_nested_list_arguments() -> Non
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"arguments": ["rm -rf /", "secret"]}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "rm -rf /" not in stored
     assert "secret" not in stored
     assert "<redacted>" in stored
@@ -623,7 +626,7 @@ def test_record_subagent_work_description_redacts_nested_object_input() -> None:
     """Nested OBJECT under ``input`` is redacted in full."""
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"input": {"echo": "hello", "user": "admin"}}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "hello" not in stored
     assert "admin" not in stored
     assert "echo" not in stored
@@ -635,7 +638,7 @@ def test_record_subagent_work_description_redacts_nested_array_content() -> None
     """Nested ARRAY under ``content`` is redacted in full."""
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"content": [{"text": "secret message"}]}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "secret message" not in stored
     assert "text" not in stored
     assert "<redacted>" in stored
@@ -645,7 +648,7 @@ def test_record_subagent_work_description_redacts_nested_prompt() -> None:
     """Nested OBJECT under ``prompt`` is redacted in full."""
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"prompt": {"role": "system", "content": "do the thing"}}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "do the thing" not in stored
     assert "role" not in stored
     assert "system" not in stored
@@ -661,7 +664,7 @@ def test_record_subagent_work_description_redacts_nested_file_path() -> None:
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"file_path": {"path": "/etc/passwd", "name": "shadow"}}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "/etc/passwd" not in stored
     assert "shadow" not in stored
     assert "name" not in stored
@@ -681,7 +684,7 @@ def test_record_subagent_work_description_reproducer_nested_token() -> None:
     wd.record_subagent_work(
         description='{"name": "tool", "arguments": {"command": "echo secret", "token": "abc123"}}'
     )
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "echo secret" not in stored, (
         f"nested 'command' value 'echo secret' must NOT leak, got: {stored!r}"
     )
@@ -711,7 +714,7 @@ def test_record_subagent_work_description_redacts_embedded_json_after_prefix() -
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='prefix {"prompt": "hello, world"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "world" not in stored, f"comma-bearing value 'world' must NOT leak, got: {stored!r}"
     assert "hello" not in stored, (
         f"comma-bearing value prefix 'hello' must NOT leak, got: {stored!r}"
@@ -728,7 +731,7 @@ def test_record_subagent_work_description_redacts_embedded_json_with_comma() -> 
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='prefix {"arguments": "abc,def", "x":1}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "abc" not in stored, f"comma-bearing value 'abc' must NOT leak, got: {stored!r}"
     assert "def" not in stored, f"comma-bearing value 'def' must NOT leak, got: {stored!r}"
     assert "<redacted>" in stored
@@ -750,7 +753,7 @@ def test_record_subagent_work_description_redacts_embedded_nested_object() -> No
             'prefix {"name": "tool", "arguments": {"command": "echo secret", "token": "abc123"}}'
         )
     )
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "echo secret" not in stored, (
         f"nested 'command' value 'echo secret' must NOT leak, got: {stored!r}"
     )
@@ -772,7 +775,7 @@ def test_record_subagent_work_description_redacts_multiple_embedded_fragments() 
     wd.record_subagent_work(
         description=('prefix {"arguments": "first"} middle {"arguments": "second"}')
     )
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "first" not in stored, f"first fragment 'first' must NOT leak, got: {stored!r}"
     assert "second" not in stored, f"second fragment 'second' must NOT leak, got: {stored!r}"
     assert stored.count("<redacted>") == 2, f"both fragments must be redacted, got: {stored!r}"
@@ -784,7 +787,7 @@ def test_record_subagent_work_description_handles_malformed_inner_quote_after_pr
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='prefix {"arguments": "secret"tail"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "secret" not in stored, f"malformed-JSON 'secret' must NOT leak, got: {stored!r}"
     assert "tail" not in stored, f"malformed-JSON 'tail' must NOT leak, got: {stored!r}"
     assert "<redacted>" in stored
@@ -819,7 +822,7 @@ def test_record_subagent_work_description_redacts_args_payload() -> None:
     wd.record_subagent_work(
         description='{"type":"tool_call","name":"bash","args":{"command":"rm -rf /","token":"abc"}}'
     )
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     # The payload contents MUST NOT leak.
     assert "rm -rf /" not in stored, (
         f"nested 'command' value 'rm -rf /' must NOT leak, got: {stored!r}"
@@ -845,7 +848,7 @@ def test_record_subagent_work_description_redacts_scalar_args_value() -> None:
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"name":"bash","args":"secret_payload_value"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "secret_payload_value" not in stored, (
         f"scalar 'args' value 'secret_payload_value' must NOT leak, got: {stored!r}"
     )
@@ -857,7 +860,7 @@ def test_record_subagent_work_description_redacts_list_args_value() -> None:
     """A LIST ``args`` value is redacted in full (no element leak)."""
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"args": ["rm -rf /", "secret"]}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "rm -rf /" not in stored
     assert "secret" not in stored
     assert "<redacted>" in stored
@@ -878,7 +881,7 @@ def test_record_subagent_work_description_redacts_tool_call_line_with_nested_arg
             '{"type":"tool_call","name":"bash","args":{"command":"echo secret","token":"abc123"}}'
         )
     )
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "echo secret" not in stored, (
         f"nested 'command' value 'echo secret' MUST NOT leak, got: {stored!r}"
     )
@@ -902,7 +905,7 @@ def test_record_subagent_work_description_redacts_mixed_case_prompt_key() -> Non
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"Prompt": "SECRET-upper"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "SECRET-upper" not in stored, (
         f"mixed-case 'Prompt' value 'SECRET-upper' must NOT leak, got: {stored!r}"
     )
@@ -913,7 +916,7 @@ def test_record_subagent_work_description_redacts_mixed_case_arguments_key() -> 
     """A description with ``\"Arguments\": {...}`` has the nested value redacted."""
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"Arguments": {"token": "SECRET-mixed"}}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "SECRET-mixed" not in stored, (
         f"mixed-case 'Arguments' value 'SECRET-mixed' must NOT leak, got: {stored!r}"
     )
@@ -925,7 +928,7 @@ def test_record_subagent_work_description_redacts_mixed_case_input_key() -> None
     """A description with ``\"Input\": \"<secret>\"`` has the value redacted."""
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"Input": "SECRET-input"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "SECRET-input" not in stored, (
         f"mixed-case 'Input' value 'SECRET-input' must NOT leak, got: {stored!r}"
     )
@@ -936,7 +939,7 @@ def test_record_subagent_work_description_redacts_mixed_case_content_key() -> No
     """A description with ``\"Content\": \"<secret>\"`` has the value redacted."""
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"Content": "SECRET-content"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "SECRET-content" not in stored, (
         f"mixed-case 'Content' value 'SECRET-content' must NOT leak, got: {stored!r}"
     )
@@ -951,7 +954,7 @@ def test_record_subagent_work_description_redacts_malformed_mixed_case_arguments
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"Arguments": "secret"tail"}')
-    stored = wd._last_subagent_progress_description or ""
+    stored = wd.last_subagent_progress_description or ""
     assert "secret" not in stored, (
         f"malformed mixed-case 'Arguments' prefix 'secret' must NOT leak, got: {stored!r}"
     )

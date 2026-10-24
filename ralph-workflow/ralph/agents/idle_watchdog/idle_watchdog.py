@@ -191,7 +191,7 @@ if TYPE_CHECKING:
 # fire decisions. Any future addition (or removal) of a reason requires
 # updating this assertion AND the watchdog owner's classification logic
 # so a future PR cannot silently widen (or narrow) the fire set.
-_EXPECTED_FIRE_REASONS: frozenset[str] = frozenset(
+EXPECTED_FIRE_REASONS: frozenset[str] = frozenset(
     {
         WatchdogFireReason.NO_OUTPUT_DEADLINE.value,
         WatchdogFireReason.CONFLICT_INACTIVITY.value,
@@ -210,9 +210,9 @@ _EXPECTED_FIRE_REASONS: frozenset[str] = frozenset(
     }
 )
 _actual = frozenset(member.value for member in WatchdogFireReason.__members__.values())
-if _actual != _EXPECTED_FIRE_REASONS:
-    missing = _EXPECTED_FIRE_REASONS - _actual
-    extra = _actual - _EXPECTED_FIRE_REASONS
+if _actual != EXPECTED_FIRE_REASONS:
+    missing = EXPECTED_FIRE_REASONS - _actual
+    extra = _actual - EXPECTED_FIRE_REASONS
     raise RuntimeError(
         "WatchdogFireReason.__members__ drifted from the IdleWatchdog owner's"
         " allowlist. The watchdog owner is the single source of truth for"
@@ -587,12 +587,29 @@ class IdleWatchdog:
         self._classify_quiet_provider = None
         # wt-047-stall-label: stall-state flag initializer.
         self._stall_active = False
+        # Most recent verdict returned by ``evaluate()`` (None before the
+        # first evaluation). Exposed via the public ``last_verdict``
+        # property so black-box callers can assert the watchdog's
+        # decision without reaching into private state.
+        self._last_verdict: WatchdogVerdict | None = None
         self._log = logger.bind(component="idle_watchdog")
 
     @property
     def last_fire_reason(self) -> WatchdogFireReason | None:
         """The reason the watchdog fired, or None if it hasn't fired yet."""
         return self._last_fire_reason
+
+    @property
+    def last_verdict(self) -> WatchdogVerdict | None:
+        """The verdict returned by the most recent ``evaluate()`` call.
+
+        ``None`` before the first evaluation. This is the public
+        decision accessor: black-box callers can assert the watchdog's
+        last decision (``FIRE`` / ``CONTINUE`` / ``WAITING_ON_CHILD``)
+        without inspecting private state or re-deriving the verdict
+        from the diagnostic snapshot.
+        """
+        return self._last_verdict
 
     @property
     def last_deferred_kind(self) -> StuckKind | None:
@@ -643,6 +660,25 @@ class IdleWatchdog:
         transition.
         """
         return self._stall_active
+
+    def set_stall_state(self, active: bool, *, now: float, idle_elapsed: float) -> None:
+        """Public seam for the stall-state transition.
+
+        The watchdog owns the ``STALLED`` / ``STALL_RESUMED`` label
+        transitions; this method exposes that transition as a public
+        operation so callers (and black-box tests) can drive the
+        stall state machine without reaching into private state.
+
+        Semantics are identical to the internal transition: the event
+        fires exactly once per transition and repeated calls with the
+        same ``active`` value are no-ops.
+
+        Args:
+            active: ``True`` to enter the stall state, ``False`` to leave it.
+            now: Monotonic timestamp used for the emitted event payload.
+            idle_elapsed: Idle seconds carried on the emitted event payload.
+        """
+        self._set_stall(active, now=now, idle_elapsed=idle_elapsed)
 
     def _set_stall(self, active: bool, *, now: float, idle_elapsed: float) -> None:
         """Transition the watchdog's stall state and emit the matching event.
@@ -775,6 +811,48 @@ class IdleWatchdog:
         return classify_stuck_now(
             self, now=now, idle_elapsed=idle_elapsed, corroboration=corroboration
         )
+
+    def classify_stuck_now(self, *, now: float, idle_elapsed: float) -> StuckKind:
+        """Public decision accessor for the stuck classifier.
+
+        Returns the ``StuckKind`` the watchdog's classifier assigns to
+        the current tick.  ``StuckKind.STUCK`` is the only kind that
+        lets a fire through the gate; every other kind defers it.
+
+        Args:
+            now: Monotonic timestamp of the tick being classified.
+            idle_elapsed: Seconds since the last recorded activity.
+
+        Returns:
+            The classifier's verdict for this tick.
+        """
+        return self._classify_stuck_now(now=now, idle_elapsed=idle_elapsed)
+
+    def evaluate_fire_gate(
+        self,
+        fire_reason: WatchdogFireReason,
+        *,
+        now: float,
+        idle_elapsed: float,
+    ) -> WatchdogVerdict:
+        """Public decision accessor for the fire gate.
+
+        The gate is the watchdog's smart-verdict block: it consults the
+        stuck classifier and the activity-evidence summary and returns
+        ``WatchdogVerdict.FIRE`` (kill) or ``WatchdogVerdict.CONTINUE``
+        (defer).  Exposing it publicly lets callers assert the fire
+        decision without re-deriving it from the diagnostic snapshot.
+
+        Args:
+            fire_reason: The reason the caller wants to fire for.
+            now: Monotonic timestamp of the tick being evaluated.
+            idle_elapsed: Seconds since the last recorded activity.
+
+        Returns:
+            ``WatchdogVerdict.FIRE`` when the fire is allowed,
+            ``WatchdogVerdict.CONTINUE`` when the fire is deferred.
+        """
+        return self._gate_fire(fire_reason, now=now, idle_elapsed=idle_elapsed)
 
     def _gate_fire(
         self,
@@ -1468,7 +1546,9 @@ class IdleWatchdog:
         )
 
     def evaluate(self, classify_quiet: Callable[[], AgentExecutionState]) -> WatchdogVerdict:
-        return active_evaluate(self, classify_quiet=classify_quiet)
+        verdict = active_evaluate(self, classify_quiet=classify_quiet)
+        self._last_verdict = verdict
+        return verdict
 
     def _evaluate_inner(
         self,

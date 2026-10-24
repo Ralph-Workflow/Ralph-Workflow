@@ -27,7 +27,7 @@ because shell helpers like ``npm test`` were counted as ``children``).
 
 Lifecycle invariants:
 
-    - The registry is bounded at ``_MAX_REGISTRY_ENTRIES`` via FIFO eviction
+    - The registry is bounded at ``MAX_SUBAGENT_REGISTRY_ENTRIES`` via FIFO eviction
       (collections.OrderedDict; ``popitem(last=False)`` on overflow).
     - ``register`` is idempotent: duplicate PID calls return the existing
       identity with the FIRST ``registered_at_monotonic`` preserved (no
@@ -75,7 +75,7 @@ _SUBAGENT_SOURCES: frozenset[str] = frozenset(
 # (1024) to cover the typical 30-50 concurrent subagents observed in long
 # running sessions with significant headroom, but bounded so the worst-case
 # process-tree-watchdog pair cannot blow up.
-_MAX_REGISTRY_ENTRIES: int = 1024
+MAX_SUBAGENT_REGISTRY_ENTRIES: int = 1024
 
 
 _IdentityMap = OrderedDict[int, "SubagentIdentity"]
@@ -153,7 +153,7 @@ class SubagentPidRegistry:
         held only for the brief list/set snapshot, never across I/O.
 
     Bounds:
-        ``_MAX_REGISTRY_ENTRIES = 1024`` entries. FIFO eviction via
+        ``MAX_SUBAGENT_REGISTRY_ENTRIES = 1024`` entries. FIFO eviction via
         ``OrderedDict.popitem(last=False)`` so the OLDEST-registered
         identity is the first to be dropped when the cap binds. This
         is annotated ``# bounded-accumulator-ok`` for the resource
@@ -171,7 +171,7 @@ class SubagentPidRegistry:
     def __init__(self) -> None:
         # FIFO cap at 1024 entries (collections.OrderedDict
         # ``popitem(last=False)`` eviction on overflow; see
-        # ``_MAX_REGISTRY_ENTRIES`` and ``register()`` for the eviction
+        # ``MAX_SUBAGENT_REGISTRY_ENTRIES`` and ``register()`` for the eviction
         # path; the audit ``audit_resource_lifecycle`` enforces the cap).
         self._identities: _IdentityMap = OrderedDict()  # bounded-accumulator-ok: FIFO 1024
         self._lock = threading.Lock()
@@ -207,7 +207,7 @@ class SubagentPidRegistry:
         Idempotent on PID: a duplicate call returns the existing identity
         with the FIRST ``registered_at_monotonic`` preserved (no timestamp
         rewrite on retry). Evicts the oldest entry FIFO when the registry
-        hits ``_MAX_REGISTRY_ENTRIES``.
+        hits ``MAX_SUBAGENT_REGISTRY_ENTRIES``.
 
         Args:
             pid: The OS process id of the subagent. Must be > 0.
@@ -240,7 +240,7 @@ class SubagentPidRegistry:
             # bounded-accumulator-ok: FIFO cap at 1024 entries (collections.OrderedDict
             # ``popitem(last=False)`` eviction; cap is module-level constant).
             self._identities[pid] = identity
-            while len(self._identities) > _MAX_REGISTRY_ENTRIES:
+            while len(self._identities) > MAX_SUBAGENT_REGISTRY_ENTRIES:
                 self._identities.popitem(last=False)
             self._known_pids_cache = None
             return identity
@@ -289,6 +289,7 @@ class SubagentPidRegistry:
 
 
 __all__ = [
+    "MAX_SUBAGENT_REGISTRY_ENTRIES",
     "SubagentIdentity",
     "SubagentPidRegistry",
 ]

@@ -50,7 +50,10 @@ def test_commit_gate_persists_validation_hint_for_missing_or_invalid_artifact(
         agents_policy=object(),
         artifacts_policy=object(),
     )
-    monkeypatch.setattr("ralph.phases.commit._has_no_diff", lambda _ctx: False)
+    monkeypatch.setattr(
+        "ralph.phases.commit.has_uncommitted_changes",
+        lambda _root: True,
+    )
 
     events = handle_commit_phase(
         InvokeAgentEffect(agent_name="commit", phase="commit", prompt_file="commit.md"), context

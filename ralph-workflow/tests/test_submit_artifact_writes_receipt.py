@@ -6,8 +6,9 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ralph.agents.completion_signals import _check_completion_sentinel
+from ralph.mcp.artifacts import completion_receipts
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
+from ralph.mcp.artifacts.state_db import MISSING, RunStateDB
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.md_artifact import handle_submit_md_artifact
 from tests._artifact_format_docs_memory_backend import MemoryBackend
@@ -69,7 +70,14 @@ def test_submit_artifact_does_not_implicitly_write_completion_sentinel(
     result = handle_submit_md_artifact(_Session(), workspace, _commit_params(), deps=deps)
 
     assert result.is_error is False
-    assert _check_completion_sentinel(tmp_path, "run-1") is False
+    # Public completion-sentinel surfaces: the durable DB row and the
+    # legacy per-run sentinel file must both stay absent.
+    db = RunStateDB(tmp_path)
+    try:
+        assert db.get_completion_sentinel_hmac("run-1") is MISSING
+    finally:
+        db.close()
+    assert not (tmp_path / ".agent" / "completion_seen_run-1.json").exists()
 
 
 def test_submit_artifact_does_not_write_sentinel_for_planning_decision(
@@ -161,14 +169,16 @@ def test_submit_artifact_uses_receipt_fallback_when_runstate_db_raises_sqlite_er
     workspace = MockWorkspace(tmp_path)
     deps = ArtifactHandlerDeps(backend=backend)
 
-    def _exploding_init(
-        self: object,
-        *args: object,
-        **kwargs: object,
-    ) -> None:
-        raise sqlite3.OperationalError("database is locked")
+    class _ExplodingRunStateDB:
+        """Public stand-in for ``RunStateDB`` whose open always fails."""
 
-    monkeypatch.setattr("ralph.mcp.artifacts.state_db.RunStateDB.__init__", _exploding_init)
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            raise sqlite3.OperationalError("database is locked")
+
+    # The receipt writer resolves ``RunStateDB`` from the module scope of
+    # ``completion_receipts``; replacing that public symbol makes the DB
+    # path fail exactly like a locked database would.
+    monkeypatch.setattr(completion_receipts, "RunStateDB", _ExplodingRunStateDB)
 
     result = handle_submit_md_artifact(_Session(), workspace, _commit_params(), deps=deps)
 

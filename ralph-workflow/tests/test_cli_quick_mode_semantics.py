@@ -49,7 +49,7 @@ class TestQuickModeSemantics:
         monkeypatch.setattr(
             "ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None
         )
-        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
+        monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
 
         runner = TyperCliRunner()
         runner.invoke(app, ["-Q", "--dry-run"], catch_exceptions=False)
@@ -72,7 +72,7 @@ class TestQuickModeSemantics:
         monkeypatch.setattr(
             "ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None
         )
-        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
+        monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
 
         runner = TyperCliRunner()
         runner.invoke(
@@ -96,7 +96,7 @@ class TestQuickModeSemantics:
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """S-3 regression: the removed inline-prompt flag is rejected by Click."""
-        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
+        monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
         result = cli_runner.invoke(app, ["--prompt", "some text"])
 
         assert result.exit_code == USAGE_ERROR_EXIT_CODE

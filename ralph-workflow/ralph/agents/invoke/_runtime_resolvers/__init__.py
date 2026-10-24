@@ -17,6 +17,10 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from loguru import logger
 
 from ralph.agents.invoke._errors import UnsupportedMcpTransportError
+from ralph.agents.invoke._invoke_options import (
+    _PLATFORM_OVERRIDE,
+    _UPSTREAM_ENV_APPLIER_OVERRIDE,
+)
 from ralph.agents.invoke._resolved_invocation_runtime import ResolvedInvocationRuntime
 from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
@@ -223,8 +227,31 @@ def _apply_upstream_env(
     runtime_env: dict[str, str],
     server_env: dict[str, str],
 ) -> None:
-    """Delegate through the package seam so runtime tests can monkeypatch it."""
+    """Project the resolved upstreams into the runtime and server environments.
+
+    A caller may replace the projection for the duration of a scope with
+    :meth:`ralph.agents.invoke.InvokeOptions.upstream_env_applier_override`;
+    the override then owns both environment dicts.  Without an override the
+    package seam is used so the shared MCP wiring stays in one place.
+    """
+    override = _UPSTREAM_ENV_APPLIER_OVERRIDE.get()
+    if override is not None:
+        override(upstreams, workspace_path, runtime_env, server_env)
+        return
     _invoke_module()._apply_upstream_env(upstreams, workspace_path, runtime_env, server_env)
+
+
+def _current_platform() -> str:
+    """Return the host platform the resolvers use for OS-specific paths.
+
+    A caller may replace the platform for the duration of a scope with
+    :meth:`ralph.agents.invoke.InvokeOptions.platform_override` so the
+    macOS-specific branches stay testable on any host.
+    """
+    override = _PLATFORM_OVERRIDE.get()
+    if override is not None:
+        return override
+    return sys.platform
 
 
 def _canonical_http_mcp_tool_names(endpoint: str) -> tuple[str, ...]:
@@ -313,7 +340,7 @@ def _cursor_ide_auth(source_home: Path, source_config_home: Path) -> dict[str, o
     """Extract a non-empty Cursor IDE token from its read-only state database."""
     state_db = (
         source_home / "Library/Application Support/Cursor/User/globalStorage/state.vscdb"
-        if sys.platform == "darwin"
+        if _current_platform() == "darwin"
         else source_config_home / "Cursor/User/globalStorage/state.vscdb"
     )
     try:

@@ -2088,7 +2088,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # not merge (cold-cap fires BEFORE the budget gate; budget
         # gate fires ONLY when cold-cap is not in effect; the
         # conflict-timeout path is separate from both).
-        ("ralph/pipeline/run_loop.py", 1465),
+        ("ralph/pipeline/run_loop.py", 1491),
         # wt-18: ``_run_cold_capped_escalation`` returns once per
         # distinct branch: live-rederive-clear (the cached record
         # was stale), paused-rebase path, in-progress merge
@@ -2098,7 +2098,7 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # into a single accumulator would break the re-derive-clear
         # fast path that prevents the cap from being burned on a
         # state that no longer exists.
-        ("ralph/pipeline/run_loop.py", 1651),
+        ("ralph/pipeline/run_loop.py", 1677),
         # wt-16: ``_host_contention_signal`` lazily imports
         # ``_mcp_health_event.record_host_contention_signal`` inside
         # the producer functions. The lazy import keeps the producer

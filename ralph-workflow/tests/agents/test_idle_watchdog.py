@@ -128,8 +128,17 @@ from ralph.agents.execution_state._factory import (
     _make_pi_strategy,
 )
 from ralph.agents.idle_watchdog import (
+    CHANNEL_DEFERS_BY_DEFAULT,
+    EXPECTED_FIRE_REASONS,
+    KNOWN_TOOL_CALL_VERBS,
+    MAX_SUBAGENT_REGISTRY_ENTRIES,
     AliveBy,
+    ChannelEvidenceSummary,
+    ChannelName,
+    ClassifyStuckInputs,
     CorroborationSnapshot,
+    EvidenceSummary,
+    EvidenceTier,
     IdleWatchdog,
     PostExitVerdict,
     PostExitWatchdog,
@@ -142,27 +151,10 @@ from ralph.agents.idle_watchdog import (
     WaitingStatusKind,
     WatchdogFireReason,
     WatchdogVerdict,
-)
-from ralph.agents.idle_watchdog._activity_methods import (
-    _KNOWN_TOOL_CALL_VERBS,
-    _parse_tool_call_from_description,
-)
-from ralph.agents.idle_watchdog._evidence_tier import (
-    CHANNEL_DEFERS_BY_DEFAULT,
-    ChannelEvidenceSummary,
-    ChannelName,
-    EvidenceSummary,
-    EvidenceTier,
-)
-from ralph.agents.idle_watchdog._stuck_classifier import (
-    ClassifyStuckInputs,
+    WatchLoopBase,
+    WorkspaceChangeKind,
     classify_stuck,
-)
-from ralph.agents.idle_watchdog._subagent_identity import _MAX_REGISTRY_ENTRIES
-from ralph.agents.idle_watchdog._watch_loop_base import WatchLoopBase
-from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
-from ralph.agents.idle_watchdog.idle_watchdog import (
-    _EXPECTED_FIRE_REASONS,
+    parse_tool_call_from_description,
 )
 from ralph.agents.idle_watchdog.repetition_tracker import RepetitionTracker
 from ralph.agents.idle_watchdog_kill import (
@@ -310,10 +302,6 @@ __all__ = [
 _ = None
 
 pytestmark = pytest.mark.subprocess_e2e
-
-_IDE_TIMEOUT = 0.1
-
-_DRAIN = 0.0
 
 _INFO_LOG_SUBSTRING = "idle watchdog: subagent activity:"
 
@@ -610,54 +598,6 @@ def _dumb_kill_scenarios_make_watchdog(
     )
 
 
-# === Helper for test_e2e_activity_aware.py ===
-def _e2e_activity_aware_active() -> AgentExecutionState:
-    return AgentExecutionState.ACTIVE
-
-
-# === Helper for test_e2e_activity_aware.py ===
-def _e2e_activity_aware_make_policy(activity_ttl: float | None = 30.0) -> TimeoutPolicy:
-    return TimeoutPolicy(
-        idle_timeout_seconds=_IDE_TIMEOUT,
-        drain_window_seconds=_DRAIN,
-        max_waiting_on_child_seconds=_MAX_WAITING,
-        # Disable the stuck-job sub-ceiling: this test file uses a
-        # small cumulative ceiling (_MAX_WAITING) for fast in-memory
-        # cycles. The sub-ceiling default (600s) would fail the
-        # ``<= max_waiting_on_child_seconds`` validator. The tests
-        # in this file do not exercise the sub-ceiling path; the
-        # dedicated tests live in
-        # ``tests/agents/idle_watchdog/test_stuck_job_sub_ceiling.py``.
-        stuck_job_sub_ceiling_seconds=None,
-        suspect_waiting_on_child_seconds=None,
-        max_waiting_on_child_no_progress_seconds=None,
-        activity_evidence_ttl_seconds=activity_ttl,
-        os_descendant_only_ceiling_seconds=None,
-        # Disable the SILENT_SUBAGENT diagnostic by default so this
-        # file exercises the activity-aware fire path (NO_OUTPUT_DEADLINE
-        # etc.) rather than the SILENT_SUBAGENT classifier branch.
-        # Tests that explicitly exercise SILENT_SUBAGENT are in
-        # ``tests/agents/idle_watchdog/test_silent_subagent_runtime.py``.
-        silent_subagent_seconds=None,
-    )
-
-
-# === Helper for test_e2e_activity_aware.py ===
-def _e2e_activity_aware_make_watchdog(
-    policy: TimeoutPolicy,
-    process_monitor: ProcessMonitor | None = None,
-) -> tuple[IdleWatchdog, FakeClock]:
-    clock = FakeClock(start=0.0)
-    return (
-        IdleWatchdog(
-            policy,
-            clock,
-            process_monitor=process_monitor,
-        ),
-        clock,
-    )
-
-
 # === Helper for test_emit_info_log_throttle.py ===
 def _emit_info_log_throttle_make_watchdog(
     *,
@@ -665,6 +605,7 @@ def _emit_info_log_throttle_make_watchdog(
     status_interval: float = 10.0,
     subagent_progress_interval: float = 3600.0,
     max_waiting: float = 600.0,
+    listener: WaitingStatusListener | None = None,
 ) -> tuple[IdleWatchdog, FakeClock]:
     """Build a watchdog with a fixed status cadence.
 
@@ -686,7 +627,7 @@ def _emit_info_log_throttle_make_watchdog(
         activity_evidence_ttl_seconds=180.0,
     )
     clock = FakeClock(start=0.0)
-    return IdleWatchdog(policy, clock), clock
+    return IdleWatchdog(policy, clock, listener), clock
 
 
 # === Helper for test_emit_info_log_throttle.py ===
@@ -892,6 +833,7 @@ def _os_descendant_only_escalation_make_watchdog(
     status_interval: float = 30.0,
     corroborator: WaitingCorroborator | None = None,
     no_progress_quiet_seconds: float | None = None,
+    listener: WaitingStatusListener | None = None,
 ) -> tuple[IdleWatchdog, FakeClock]:
     if max_waiting is None:
         max_waiting = max(1800.0, idle_timeout) if idle_timeout is not None else 1800.0
@@ -918,7 +860,7 @@ def _os_descendant_only_escalation_make_watchdog(
         no_progress_quiet_heartbeat_ceiling_seconds=no_progress_quiet_seconds,
     )
     clock = FakeClock(start=start)
-    return IdleWatchdog(config, clock, corroborator=corroborator), clock
+    return IdleWatchdog(config, clock, listener, corroborator=corroborator), clock
 
 
 # === Helper for test_os_descendant_only_escalation.py ===
@@ -1636,7 +1578,7 @@ def _parse_tool_call_expected(description: str | None) -> str | None:
     Splits on a single ``:`` (not ``": "``) because the
     canonical production format from the NDJSON parser layer is
     ``tool_use:<name>`` with no space after the colon. See
-    ``ralph.agents.idle_watchdog._activity_methods._parse_tool_call_from_description``
+    ``ralph.agents.idle_watchdog.parse_tool_call_from_description``
     for the production implementation this helper mirrors.
     """
     if not description:
@@ -2960,7 +2902,7 @@ def _extract_fire_reasons(node: ast.AST) -> set[str]:
         and isinstance(node.targets[0], ast.Name)
     ):
         target_name = node.targets[0].id
-    if target_name != "_EXPECTED_FIRE_REASONS":
+    if target_name != "EXPECTED_FIRE_REASONS":
         return set()
     if not isinstance(node.value, ast.Call):
         return set()
@@ -2993,7 +2935,7 @@ def _extract_fire_reasons(node: ast.AST) -> set[str]:
 
 # === Helper: _find_drift_guard (from test_watchdog_recovery_contract.py) ===
 def _find_drift_guard(tree: ast.Module) -> ast.If | None:
-    """Return the top-level ``if _actual != _EXPECTED_FIRE_REASONS`` guard.
+    """Return the top-level ``if _actual != EXPECTED_FIRE_REASONS`` guard.
 
     The guard is the import-time invariant that pins the IdleWatchdog
     sole-owner contract for ``WatchdogFireReason.__members__``.  A
@@ -3014,7 +2956,7 @@ def _find_drift_guard(tree: ast.Module) -> ast.If | None:
             continue
         if not (isinstance(test.left, ast.Name) and test.left.id == "_actual") or not (
             isinstance(test.comparators[0], ast.Name)
-            and test.comparators[0].id == "_EXPECTED_FIRE_REASONS"
+            and test.comparators[0].id == "EXPECTED_FIRE_REASONS"
         ):
             continue
         return node
@@ -3891,79 +3833,50 @@ def test_transport_strategy_surfaces_real_extracted_progress_to_watchdog(
         _reset_sink_tokens(tokens)
 
 
-def test_transport_strategy_surfaces_real_heartbeat_extraction() -> None:
-    watchdog = _cross_transport_subagent_visib_make_watchdog()
-    tokens = _bind_subagent_sink_to_watchdog(watchdog)
-    try:
-        watchdog.record_invocation_start()
-        assert watchdog.last_subagent_progress_description is None
+def test_transport_strategy_surfaces_real_extraction() -> None:
+    """Real Claude transport lines surface as watchdog subagent progress.
 
-        strategy = strategy_for_transport(AgentTransport.CLAUDE, registry=_make_registry())
-        strategy.observe_line(_REAL_HEARTBEAT_LINE)
+    Both a raw heartbeat line and a structured child JSON line must
+    reach the watchdog as the recorded subagent progress description,
+    bump ``subagent_progress_count``, stamp
+    ``last_subagent_progress_at``, and expose the parsed
+    ``current_subagent_tool_call`` in the diagnostic snapshot.
+    """
+    for real_line in (_REAL_HEARTBEAT_LINE, _REAL_CHILD_JSON_LINE):
+        watchdog = _cross_transport_subagent_visib_make_watchdog()
+        tokens = _bind_subagent_sink_to_watchdog(watchdog)
+        try:
+            watchdog.record_invocation_start()
+            assert watchdog.last_subagent_progress_description is None
 
-        assert watchdog.last_subagent_progress_description == _REAL_HEARTBEAT_LINE, (
-            "watchdog did not capture real extracted heartbeat; got "
-            f"{watchdog.last_subagent_progress_description!r}"
-        )
-        snapshot = watchdog.diagnostic_snapshot(now=0.0)
-        assert snapshot["subagent_progress_count"] >= 1, (
-            "diagnostic_snapshot MUST report subagent_progress_count >= 1 "
-            "after a real heartbeat line; got "
-            f"{snapshot['subagent_progress_count']}"
-        )
-        last_activity = snapshot["last_subagent_progress_at"]
-        assert (
-            last_activity is not None and isinstance(last_activity, float) and last_activity >= 0.0
-        ), (
-            "diagnostic_snapshot MUST report last_subagent_progress_at as a "
-            f"non-None float >= 0.0 after a real heartbeat line; got {last_activity!r}"
-        )
-        assert snapshot["current_subagent_tool_call"] == _parse_tool_call_expected(
-            _REAL_HEARTBEAT_LINE
-        ), (
-            "diagnostic_snapshot MUST report current_subagent_tool_call matching the"
-            " parser output for the heartbeat description; got"
-            f" {snapshot['current_subagent_tool_call']!r}"
-        )
-    finally:
-        _reset_sink_tokens(tokens)
+            strategy = strategy_for_transport(AgentTransport.CLAUDE, registry=_make_registry())
+            strategy.observe_line(real_line)
 
-
-def test_transport_strategy_surfaces_real_json_extraction() -> None:
-    watchdog = _cross_transport_subagent_visib_make_watchdog()
-    tokens = _bind_subagent_sink_to_watchdog(watchdog)
-    try:
-        watchdog.record_invocation_start()
-        assert watchdog.last_subagent_progress_description is None
-
-        strategy = strategy_for_transport(AgentTransport.CLAUDE, registry=_make_registry())
-        strategy.observe_line(_REAL_CHILD_JSON_LINE)
-
-        assert watchdog.last_subagent_progress_description == _REAL_CHILD_JSON_LINE, (
-            "watchdog did not capture real extracted JSON child signal; got"
-            f" {watchdog.last_subagent_progress_description!r}"
-        )
-        snapshot = watchdog.diagnostic_snapshot(now=0.0)
-        assert snapshot["subagent_progress_count"] >= 1, (
-            "diagnostic_snapshot MUST report subagent_progress_count >= 1 after a real"
-            f" JSON child signal; got {snapshot['subagent_progress_count']}"
-        )
-        last_activity = snapshot["last_subagent_progress_at"]
-        assert (
-            last_activity is not None and isinstance(last_activity, float) and last_activity >= 0.0
-        ), (
-            "diagnostic_snapshot MUST report last_subagent_progress_at as a non-None"
-            f" float >= 0.0 after a real JSON child signal; got {last_activity!r}"
-        )
-        assert snapshot["current_subagent_tool_call"] == _parse_tool_call_expected(
-            _REAL_CHILD_JSON_LINE
-        ), (
-            "diagnostic_snapshot MUST report current_subagent_tool_call matching the"
-            " parser output for the JSON child signal; got"
-            f" {snapshot['current_subagent_tool_call']!r}"
-        )
-    finally:
-        _reset_sink_tokens(tokens)
+            assert watchdog.last_subagent_progress_description == real_line, (
+                "watchdog did not capture the real extracted line; got "
+                f"{watchdog.last_subagent_progress_description!r}"
+            )
+            snapshot = watchdog.diagnostic_snapshot(now=0.0)
+            assert snapshot["subagent_progress_count"] >= 1, (
+                "diagnostic_snapshot MUST report subagent_progress_count >= 1 "
+                f"after a real line; got {snapshot['subagent_progress_count']}"
+            )
+            last_activity = snapshot["last_subagent_progress_at"]
+            assert (
+                last_activity is not None
+                and isinstance(last_activity, float)
+                and last_activity >= 0.0
+            ), (
+                "diagnostic_snapshot MUST report last_subagent_progress_at as a "
+                f"non-None float >= 0.0 after a real line; got {last_activity!r}"
+            )
+            assert snapshot["current_subagent_tool_call"] == _parse_tool_call_expected(real_line), (
+                "diagnostic_snapshot MUST report current_subagent_tool_call matching the"
+                " parser output for the description; got"
+                f" {snapshot['current_subagent_tool_call']!r}"
+            )
+        finally:
+            _reset_sink_tokens(tokens)
 
 
 def test_transport_strategy_surfaces_real_extraction_to_listener() -> None:
@@ -5316,21 +5229,21 @@ def test_subagent_output_first_party_deferral(tmp_path: Path) -> None:
     log_file.parent.mkdir(parents=True, exist_ok=True)
     log_file.write_text("line 1\n", encoding="utf-8")
 
-    policy = _e2e_activity_aware_make_policy(activity_ttl=1000.0)
+    policy = _activity_aware_make_policy(activity_ttl=1000.0)
     monitor = _FakeProcessMonitorE2eActivityAware(
         captures={"w1": FileSubagentOutputCapture(str(log_file))}
     )
-    wd, clock = _e2e_activity_aware_make_watchdog(policy, monitor)
+    wd, clock = _activity_aware_make_watchdog(policy, process_monitor=monitor)
     wd.record_activity()
     clock.advance(1.0)
 
-    verdict = wd.evaluate(classify_quiet=_e2e_activity_aware_active)
+    verdict = wd.evaluate(classify_quiet=_activity_aware_active)
     assert verdict == WatchdogVerdict.CONTINUE
     assert wd._subagent_output_count >= 1
 
     # Past TTL with no new lines -> fire.
     clock.advance(2000.0)
-    verdict = wd.evaluate(classify_quiet=_e2e_activity_aware_active)
+    verdict = wd.evaluate(classify_quiet=_activity_aware_active)
     assert verdict == WatchdogVerdict.FIRE
     assert wd.last_fire_reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
 
@@ -5410,36 +5323,6 @@ def test_process_monitor_discovers_and_classifies_subagent() -> None:
         host.wait(timeout=0.5)
 
 
-# === consolidated from test_e2e_activity_aware.py ===
-def test_evidence_summary_labels_tiers_e2e() -> None:
-    """AC-12: last_evidence_summary exposes tier labels and freshness."""
-    policy = _e2e_activity_aware_make_policy(activity_ttl=1000.0)
-    wd, clock = _e2e_activity_aware_make_watchdog(policy)
-    wd.record_activity()
-    wd.record_mcp_tool_call()
-    wd.record_subagent_work()
-    clock.advance(1.0)
-
-    summary = wd.last_evidence_summary(clock.monotonic())
-    by_name = {c.channel_name: c for c in summary.channels}
-    assert by_name[ChannelName.STDOUT].tier == EvidenceTier.FIRST_PARTY
-    assert by_name[ChannelName.MCP_TOOL].tier == EvidenceTier.FIRST_PARTY
-    assert by_name[ChannelName.SUBAGENT_OUTPUT].tier == EvidenceTier.FIRST_PARTY
-    assert by_name[ChannelName.SUBAGENT_LIVENESS].tier == EvidenceTier.SIDE_CHANNEL
-    assert by_name[ChannelName.WORKSPACE].tier == EvidenceTier.SIDE_CHANNEL
-
-
-# === consolidated from test_e2e_activity_aware.py ===
-def test_truly_idle_fires_on_time_e2e() -> None:
-    """AC-04: no activity on any channel fires at the idle deadline."""
-    policy = _e2e_activity_aware_make_policy(activity_ttl=30.0)
-    wd, clock = _e2e_activity_aware_make_watchdog(policy)
-    clock.advance(1.0)
-    verdict = wd.evaluate(classify_quiet=_e2e_activity_aware_active)
-    assert verdict == WatchdogVerdict.FIRE
-    assert wd.last_fire_reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
-
-
 # === consolidated from test_emit_info_log_throttle.py ===
 def test_emit_info_log_fires_at_most_once_per_status_interval_when_no_subagent_listener(
     captured_info_records: tuple[io.StringIO, list[str]],
@@ -5494,14 +5377,14 @@ def test_emit_info_log_fires_at_most_once_per_status_interval_when_no_subagent_l
     boundary).
     """
     _buf, records = captured_info_records
+    captured_events: list[WaitingStatusEvent] = []
     watchdog, clock = _emit_info_log_throttle_make_watchdog(
         idle_timeout=1.0,
         status_interval=10.0,
         subagent_progress_interval=3600.0,
         max_waiting=600.0,
+        listener=captured_events.append,
     )
-    captured_events: list[WaitingStatusEvent] = []
-    watchdog._listener = captured_events.append
 
     # Phase 1: enter WAITING_ON_CHILD (ENTERED emit).
     clock.advance(1.1)
@@ -5590,14 +5473,14 @@ def test_emit_info_log_carries_latest_recorded_description(
     description at ENTERED time and never refreshes it).
     """
     _buf, records = captured_info_records
+    captured_events: list[WaitingStatusEvent] = []
     watchdog, clock = _emit_info_log_throttle_make_watchdog(
         idle_timeout=1.0,
         status_interval=10.0,
         subagent_progress_interval=3600.0,
         max_waiting=600.0,
+        listener=captured_events.append,
     )
-    captured_events: list[WaitingStatusEvent] = []
-    watchdog._listener = captured_events.append
 
     # Phase 1: enter with the first description.
     clock.advance(1.1)
@@ -5663,14 +5546,14 @@ def test_emit_no_info_log_when_subagent_activity_is_none(
     PROGRESS cadence via the main listener path.
     """
     _buf, records = captured_info_records
+    captured_events: list[WaitingStatusEvent] = []
     watchdog, clock = _emit_info_log_throttle_make_watchdog(
         idle_timeout=1.0,
         status_interval=10.0,
         subagent_progress_interval=3600.0,
         max_waiting=600.0,
+        listener=captured_events.append,
     )
-    captured_events: list[WaitingStatusEvent] = []
-    watchdog._listener = captured_events.append
 
     clock.advance(1.1)
     watchdog.evaluate(classify_quiet=_emit_info_log_throttle_waiting)  # ENTERED
@@ -6312,7 +6195,7 @@ def test_gate_fire_throttles_identical_deferred_emission(
     # reason so the deferral branch is reached.
     fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
     for _ in range(1000):
-        verdict = watchdog._gate_fire(
+        verdict = watchdog.evaluate_fire_gate(
             fire_reason,
             now=clock.monotonic(),
             idle_elapsed=300.0,
@@ -6344,7 +6227,7 @@ def test_gate_fire_throttle_uses_configured_window(
     _patch_classifier_to_deferring_kind(watchdog)
     fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
     for _ in range(100):
-        watchdog._gate_fire(
+        watchdog.evaluate_fire_gate(
             fire_reason,
             now=clock.monotonic(),
             idle_elapsed=300.0,
@@ -6352,7 +6235,7 @@ def test_gate_fire_throttle_uses_configured_window(
         )
     clock.advance(0.05)
     for _ in range(100):
-        watchdog._gate_fire(
+        watchdog.evaluate_fire_gate(
             fire_reason,
             now=clock.monotonic(),
             idle_elapsed=300.0,
@@ -6406,7 +6289,7 @@ def test_gate_fire_throttle_is_per_key() -> None:
     # First call with DUPLICATE_KILL.
     call_log = [StuckKind.DUPLICATE_KILL]
     assert (
-        watchdog._gate_fire(
+        watchdog.evaluate_fire_gate(
             fire_reason,
             now=clock.monotonic(),
             idle_elapsed=300.0,
@@ -6417,7 +6300,7 @@ def test_gate_fire_throttle_is_per_key() -> None:
     # Second call with LOADING (different deferred_kind).
     call_log = [StuckKind.LOADING]
     assert (
-        watchdog._gate_fire(
+        watchdog.evaluate_fire_gate(
             fire_reason,
             now=clock.monotonic(),
             idle_elapsed=300.0,
@@ -6482,7 +6365,7 @@ def test_coarse_single_key_throttle_caps_emissions_across_kind_cycles(
     kinds = [StuckKind.DUPLICATE_KILL, StuckKind.LOADING]
     for i in range(1000):
         call_log = [kinds[i % 2]]
-        watchdog._gate_fire(
+        watchdog.evaluate_fire_gate(
             fire_reason,
             now=clock.monotonic(),
             idle_elapsed=300.0,
@@ -7368,10 +7251,15 @@ def test_pi_strategy_classifies_tool_execution_error_as_error_line() -> None:
 
 
 # === consolidated from test_mark_tool_call_runtime_reachability.py ===
-def test_cursor_strategy_classifies_live_tool_call_started_as_tool_use() -> None:
-    """Cursor live ``tool_call`` start events must feed the tool-use path."""
+def test_cursor_strategy_classifies_live_tool_call_lifecycle() -> None:
+    """Cursor live ``tool_call`` events feed the tool-use / tool-result paths.
+
+    A ``started`` event must feed the tool-use path; the matching
+    ``completed`` event must close the post-tool window as a tool
+    result.  Both must preserve the raw line verbatim.
+    """
     strategy = _make_cursor_strategy()
-    line = json.dumps(
+    started_line = json.dumps(
         {
             "type": "tool_call",
             "subtype": "started",
@@ -7383,19 +7271,7 @@ def test_cursor_strategy_classifies_live_tool_call_started_as_tool_use() -> None
             },
         }
     )
-
-    signal = strategy.classify_activity_line(line)
-
-    assert signal is not None
-    assert signal.kind == AgentActivityKind.TOOL_USE
-    assert signal.raw == line
-
-
-# === consolidated from test_mark_tool_call_runtime_reachability.py ===
-def test_cursor_strategy_classifies_live_tool_call_completed_as_tool_result() -> None:
-    """Cursor live ``tool_call`` completed events must close the post-tool window."""
-    strategy = _make_cursor_strategy()
-    line = json.dumps(
+    completed_line = json.dumps(
         {
             "type": "tool_call",
             "subtype": "completed",
@@ -7409,11 +7285,15 @@ def test_cursor_strategy_classifies_live_tool_call_completed_as_tool_result() ->
         }
     )
 
-    signal = strategy.classify_activity_line(line)
+    for line, expected_kind in (
+        (started_line, AgentActivityKind.TOOL_USE),
+        (completed_line, AgentActivityKind.TOOL_RESULT),
+    ):
+        signal = strategy.classify_activity_line(line)
 
-    assert signal is not None
-    assert signal.kind == AgentActivityKind.TOOL_RESULT
-    assert signal.raw == line
+        assert signal is not None
+        assert signal.kind == expected_kind
+        assert signal.raw == line
 
 
 # === consolidated from test_mark_tool_call_runtime_reachability.py ===
@@ -8405,39 +8285,38 @@ def test_no_progress_quiet_diagnostic_payload_contains_required_fields() -> None
 
 
 # === consolidated from test_non_resumable_end_to_end.py ===
-def test_process_exit_hang_does_not_resume() -> None:
-    """PROCESS_EXIT_HANG refuses to resume the prior session."""
-    wrapper = _fire_process_exit_hang()
-    timeout_exc = _convert_reason_to_agent_error(wrapper)
-    assert timeout_exc.reason == WatchdogFireReason.PROCESS_EXIT_HANG
-    _assert_non_resumable_recovery_chain(timeout_exc)
+def test_post_exit_fire_reasons_do_not_resume() -> None:
+    """Post-exit fire reasons refuse to resume the prior session.
+
+    PROCESS_EXIT_HANG and DESCENDANT_HANG are owned by
+    ``PostExitWatchdog``; neither is resumable.
+    """
+    for fire, expected in (
+        (_fire_process_exit_hang, WatchdogFireReason.PROCESS_EXIT_HANG),
+        (_fire_descendant_hang, WatchdogFireReason.DESCENDANT_HANG),
+    ):
+        wrapper = fire()
+        timeout_exc = _convert_reason_to_agent_error(wrapper)
+        assert timeout_exc.reason == expected
+        _assert_non_resumable_recovery_chain(timeout_exc)
 
 
 # === consolidated from test_non_resumable_end_to_end.py ===
-def test_descendant_hang_does_not_resume() -> None:
-    """DESCENDANT_HANG refuses to resume the prior session."""
-    wrapper = _fire_descendant_hang()
-    timeout_exc = _convert_reason_to_agent_error(wrapper)
-    assert timeout_exc.reason == WatchdogFireReason.DESCENDANT_HANG
-    _assert_non_resumable_recovery_chain(timeout_exc)
+def test_in_stream_absolute_fire_reasons_do_not_resume() -> None:
+    """In-stream absolute fire reasons refuse to resume the prior session.
 
-
-# === consolidated from test_non_resumable_end_to_end.py ===
-def test_session_ceiling_exceeded_does_not_resume() -> None:
-    """SESSION_CEILING_EXCEEDED refuses to resume the prior session."""
-    pending_lines, wrapper = _fire_in_stream_reason(WatchdogFireReason.SESSION_CEILING_EXCEEDED)
-    timeout_exc = _convert_reason_to_agent_error(wrapper, pending_lines)
-    assert timeout_exc.reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
-    _assert_non_resumable_recovery_chain(timeout_exc)
-
-
-# === consolidated from test_non_resumable_end_to_end.py ===
-def test_children_persist_too_long_does_not_resume() -> None:
-    """CHILDREN_PERSIST_TOO_LONG refuses to resume the prior session."""
-    pending_lines, wrapper = _fire_in_stream_reason(WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG)
-    timeout_exc = _convert_reason_to_agent_error(wrapper, pending_lines)
-    assert timeout_exc.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
-    _assert_non_resumable_recovery_chain(timeout_exc)
+    SESSION_CEILING_EXCEEDED (the operator-set hard cap) and
+    CHILDREN_PERSIST_TOO_LONG (the cumulative waiting ceiling) are
+    absolute: neither is resumable.
+    """
+    for reason in (
+        WatchdogFireReason.SESSION_CEILING_EXCEEDED,
+        WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
+    ):
+        pending_lines, wrapper = _fire_in_stream_reason(reason)
+        timeout_exc = _convert_reason_to_agent_error(wrapper, pending_lines)
+        assert timeout_exc.reason == reason
+        _assert_non_resumable_recovery_chain(timeout_exc)
 
 
 # === consolidated from test_opencode_step_frames.py ===
@@ -8813,18 +8692,15 @@ def test_short_ceiling_fires_at_os_descendant_only_ceiling() -> None:
     Advance to 130s (past 120s short ceiling) -> FIRE with
     effective_ceiling_label='os_descendant_only' and effective_ceiling=120.0.
     """
+    events: list[WaitingStatusEvent] = []
+    events: list[WaitingStatusEvent] = []
     watchdog, clock = _os_descendant_only_escalation_make_watchdog(
         idle_timeout=10.0,
         max_waiting=600.0,
         os_descendant_only_ceiling=120.0,
         corroborator=_make_os_descendant_only_corroborator(),
+        listener=events.append,
     )
-    events: list[WaitingStatusEvent] = []
-
-    def _listener(evt: WaitingStatusEvent) -> None:
-        events.append(evt)
-
-    watchdog._listener = _listener
 
     clock.advance(11.0)
     watchdog.evaluate(classify_quiet=_os_descendant_only_escalation_waiting)
@@ -8854,6 +8730,7 @@ def test_suspect_event_fires_at_os_descendant_only_suspect_seconds() -> None:
     Advance to 70s -> one SUSPECTED_FROZEN with
     suspect_reason='os_descendant_only' and suspect_threshold=60.0.
     """
+    events: list[WaitingStatusEvent] = []
     watchdog, clock = _os_descendant_only_escalation_make_watchdog(
         idle_timeout=10.0,
         max_waiting=600.0,
@@ -8862,13 +8739,8 @@ def test_suspect_event_fires_at_os_descendant_only_suspect_seconds() -> None:
         os_descendant_only_suspect=60.0,
         status_interval=100.0,
         corroborator=_make_os_descendant_only_corroborator(),
+        listener=events.append,
     )
-    events: list[WaitingStatusEvent] = []
-
-    def _listener(evt: WaitingStatusEvent) -> None:
-        events.append(evt)
-
-    watchdog._listener = _listener
 
     clock.advance(11.0)
     watchdog.evaluate(classify_quiet=_os_descendant_only_escalation_waiting)
@@ -8886,85 +8758,46 @@ def test_suspect_event_fires_at_os_descendant_only_suspect_seconds() -> None:
 
 
 # === consolidated from test_os_descendant_only_escalation.py ===
-def test_cpu_idle_override_picks_no_progress_ceiling() -> None:
-    """CPU_IDLE_WHILE_ALIVE short-circuits to no_progress ceiling (180s).
+@pytest.mark.parametrize(
+    ("alive_by", "policy_override"),
+    [
+        (AliveBy.CPU_IDLE_WHILE_ALIVE, {"cpu_idle_seconds": 60.0}),
+        (AliveBy.LOG_STALE_WHILE_ALIVE, {"log_growth_seconds": 30.0}),
+    ],
+    ids=["cpu_idle_while_alive", "log_stale_while_alive"],
+)
+def test_alive_by_override_picks_no_progress_ceiling(
+    alive_by: AliveBy,
+    policy_override: dict[str, float],
+) -> None:
+    """CPU_IDLE_WHILE_ALIVE / LOG_STALE_WHILE_ALIVE short-circuit to the
+    no_progress ceiling (180s).
 
-    Setup: max_waiting_on_child_no_progress_seconds=180.0,
-    cpu_idle_seconds=60.0, alive_by=CPU_IDLE_WHILE_ALIVE.
-
-    Advance to 190s -> FIRE with effective_ceiling_label='no_progress'
-    and effective_ceiling=180.0.
-    """
-
-    def _cpu_idle_corr() -> CorroborationSnapshot:
-        return CorroborationSnapshot(
-            alive_by=AliveBy.CPU_IDLE_WHILE_ALIVE,
-            scoped_child_active=True,
-            scoped_child_count=1,
-        )
-
-    watchdog, clock = _os_descendant_only_escalation_make_watchdog(
-        idle_timeout=10.0,
-        max_waiting=600.0,
-        no_progress_ceiling=180.0,
-        cpu_idle_seconds=60.0,
-        corroborator=_cpu_idle_corr,
-    )
-    events: list[WaitingStatusEvent] = []
-
-    def _listener(evt: WaitingStatusEvent) -> None:
-        events.append(evt)
-
-    watchdog._listener = _listener
-
-    clock.advance(11.0)
-    watchdog.evaluate(classify_quiet=_os_descendant_only_escalation_waiting)
-
-    clock.advance(190.0)
-    result = watchdog.evaluate(classify_quiet=_os_descendant_only_escalation_waiting)
-
-    assert result == WatchdogVerdict.FIRE
-    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
-
-    hard_stop_events = [e for e in events if e.kind == WaitingStatusKind.HARD_STOP]
-    assert len(hard_stop_events) == 1
-    diag = hard_stop_events[0].diagnostic
-    assert diag is not None
-    assert diag.get("effective_ceiling_label") == "no_progress"
-    assert diag.get("effective_ceiling") == 180.0
-
-
-# === consolidated from test_os_descendant_only_escalation.py ===
-def test_log_growth_override_picks_no_progress_ceiling() -> None:
-    """LOG_STALE_WHILE_ALIVE short-circuits to no_progress ceiling (180s).
-
-    Setup: max_waiting_on_child_no_progress_seconds=180.0,
-    log_growth_seconds=30.0, alive_by=LOG_STALE_WHILE_ALIVE.
+    Setup: max_waiting_on_child_no_progress_seconds=180.0 plus the
+    per-alive_by policy override (cpu_idle_seconds=60.0 for
+    CPU_IDLE_WHILE_ALIVE, log_growth_seconds=30.0 for
+    LOG_STALE_WHILE_ALIVE).
 
     Advance to 190s -> FIRE with effective_ceiling_label='no_progress'
     and effective_ceiling=180.0.
     """
 
-    def _log_stale_corr() -> CorroborationSnapshot:
+    def _alive_by_corr() -> CorroborationSnapshot:
         return CorroborationSnapshot(
-            alive_by=AliveBy.LOG_STALE_WHILE_ALIVE,
+            alive_by=alive_by,
             scoped_child_active=True,
             scoped_child_count=1,
         )
 
+    events: list[WaitingStatusEvent] = []
     watchdog, clock = _os_descendant_only_escalation_make_watchdog(
         idle_timeout=10.0,
         max_waiting=600.0,
         no_progress_ceiling=180.0,
-        log_growth_seconds=30.0,
-        corroborator=_log_stale_corr,
+        corroborator=_alive_by_corr,
+        listener=events.append,
+        **policy_override,
     )
-    events: list[WaitingStatusEvent] = []
-
-    def _listener(evt: WaitingStatusEvent) -> None:
-        events.append(evt)
-
-    watchdog._listener = _listener
 
     clock.advance(11.0)
     watchdog.evaluate(classify_quiet=_os_descendant_only_escalation_waiting)
@@ -8999,18 +8832,14 @@ def test_fresh_progress_path_unchanged() -> None:
             scoped_child_count=1,
         )
 
+    events: list[WaitingStatusEvent] = []
     watchdog, clock = _os_descendant_only_escalation_make_watchdog(
         idle_timeout=10.0,
         max_waiting=600.0,
         status_interval=100.0,
         corroborator=_fresh_progress_corr,
+        listener=events.append,
     )
-    events: list[WaitingStatusEvent] = []
-
-    def _listener(evt: WaitingStatusEvent) -> None:
-        events.append(evt)
-
-    watchdog._listener = _listener
 
     clock.advance(11.0)
     watchdog.evaluate(classify_quiet=_os_descendant_only_escalation_waiting)
@@ -10276,11 +10105,11 @@ def test_is_resumable_fire_reason_classifies_known_reasons() -> None:
 
 
 # === consolidated from test_resume_after_kill_watchdog_boundary.py ===
-@pytest.mark.parametrize("reason_value", sorted(_EXPECTED_FIRE_REASONS))
+@pytest.mark.parametrize("reason_value", sorted(EXPECTED_FIRE_REASONS))
 def test_expected_fire_reasons_partitioned_into_resumable_or_excluded(
     reason_value: str,
 ) -> None:
-    """Every reason in the import-time ``_EXPECTED_FIRE_REASONS`` lock is
+    """Every reason in the import-time ``EXPECTED_FIRE_REASONS`` lock is
     either resumable or explicitly documented as non-resumable.
 
     If a future PR adds a ``WatchdogFireReason`` member without updating
@@ -11308,9 +11137,9 @@ def test_gate_fires_on_silent_subagent() -> None:
     now = _wedge(watchdog, clock, silent_for=181.0)
 
     # Precondition: the classifier really does name this SILENT_SUBAGENT.
-    assert watchdog._classify_stuck_now(now=now, idle_elapsed=181.0) == (StuckKind.SILENT_SUBAGENT)
+    assert watchdog.classify_stuck_now(now=now, idle_elapsed=181.0) == (StuckKind.SILENT_SUBAGENT)
 
-    gate_verdict = watchdog._gate_fire(
+    gate_verdict = watchdog.evaluate_fire_gate(
         WatchdogFireReason.NO_OUTPUT_DEADLINE,
         now=now,
         idle_elapsed=181.0,
@@ -11332,7 +11161,7 @@ def test_silent_subagent_fire_is_not_recorded_as_a_deferral() -> None:
     watchdog, clock = _silent_subagent_fires_make_watchdog()
     now = _wedge(watchdog, clock, silent_for=181.0)
 
-    watchdog._gate_fire(WatchdogFireReason.NO_OUTPUT_DEADLINE, now=now, idle_elapsed=181.0)
+    watchdog.evaluate_fire_gate(WatchdogFireReason.NO_OUTPUT_DEADLINE, now=now, idle_elapsed=181.0)
     assert watchdog.last_deferred_kind is None, (
         "A FIRE is not a deferral; last_deferred_kind must not be stamped."
         f" Got {watchdog.last_deferred_kind}."
@@ -11353,7 +11182,7 @@ def test_silence_never_becomes_permanent_immunity() -> None:
         watchdog, clock = _silent_subagent_fires_make_watchdog()
         now = _wedge(watchdog, clock, silent_for=silent_for)
 
-        gate_verdict = watchdog._gate_fire(
+        gate_verdict = watchdog.evaluate_fire_gate(
             WatchdogFireReason.NO_OUTPUT_DEADLINE,
             now=now,
             idle_elapsed=silent_for,
@@ -11386,7 +11215,7 @@ def test_silent_subagent_seconds_is_threaded_into_runtime_classifier() -> None:
     clock.advance(180.0 + 1.0)
     now = clock.monotonic()
 
-    kind = watchdog._classify_stuck_now(now=now, idle_elapsed=181.0)
+    kind = watchdog.classify_stuck_now(now=now, idle_elapsed=181.0)
     assert kind == StuckKind.SILENT_SUBAGENT, (
         f"Expected SILENT_SUBAGENT when subagent_progress is stale and"
         f" classify_quiet is ACTIVE; got {kind}"
@@ -11410,7 +11239,7 @@ def test_silent_subagent_disabled_when_silent_subagent_seconds_is_none() -> None
     clock.advance(1000.0)
     now = clock.monotonic()
 
-    kind = watchdog._classify_stuck_now(now=now, idle_elapsed=1000.0)
+    kind = watchdog.classify_stuck_now(now=now, idle_elapsed=1000.0)
     assert kind != StuckKind.SILENT_SUBAGENT, (
         f"Expected the SILENT_SUBAGENT diagnostic to be DISABLED when"
         f" silent_subagent_seconds is None; got {kind}"
@@ -11443,7 +11272,7 @@ def test_gate_fires_on_silent_subagent_and_does_not_record_a_deferral() -> None:
     clock.advance(180.0 + 1.0)
     now = clock.monotonic()
 
-    gate_verdict = watchdog._gate_fire(
+    gate_verdict = watchdog.evaluate_fire_gate(
         WatchdogFireReason.NO_OUTPUT_DEADLINE,
         now=now,
         idle_elapsed=clock.monotonic(),
@@ -11487,7 +11316,7 @@ def test_last_deferred_kind_resets_on_invocation_start() -> None:
     # Force one deferral. SILENT_SUBAGENT now FIRES, so drive a kind that
     # still defers: is_waiting_state=True -> DUPLICATE_KILL (branch 1).
     watchdog.set_is_waiting_state(True)
-    watchdog._gate_fire(
+    watchdog.evaluate_fire_gate(
         WatchdogFireReason.NO_OUTPUT_DEADLINE,
         now=now,
         idle_elapsed=clock.monotonic(),
@@ -11916,7 +11745,7 @@ def test_stall_lifetime_regression_invocation_end_clears_active_stall() -> None:
     clock = FakeClock(start=0.0)
     watchdog = _stall_lifetime_watchdog(clock, events)
     watchdog.record_invocation_start()
-    watchdog._set_stall(active=True, now=1.0, idle_elapsed=1.0)
+    watchdog.set_stall_state(active=True, now=1.0, idle_elapsed=1.0)
 
     clock.advance(2.0)
     watchdog.record_invocation_end()
@@ -11949,10 +11778,10 @@ def test_is_stalled_initially_false() -> None:
 
 # === consolidated from test_stall_status_events.py ===
 def test_set_stall_emits_stalled_transition_only_once() -> None:
-    """A single ``_set_stall(active=True)`` call emits one STALLED event."""
+    """A single ``set_stall_state(active=True)`` call emits one STALLED event."""
     captured: list[WaitingStatusEvent] = []
     watchdog, _clock = _stall_status_events_make_watchdog(listener=captured.append)
-    watchdog._set_stall(active=True, now=100.0, idle_elapsed=100.0)
+    watchdog.set_stall_state(active=True, now=100.0, idle_elapsed=100.0)
     stalled_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
     assert len(stalled_events) == 1
     assert _stall_state(watchdog) is True
@@ -11960,11 +11789,11 @@ def test_set_stall_emits_stalled_transition_only_once() -> None:
 
 # === consolidated from test_stall_status_events.py ===
 def test_set_stall_repeated_active_emits_no_duplicates() -> None:
-    """Repeated ``_set_stall(active=True)`` emits no duplicate STALLED events."""
+    """Repeated ``set_stall_state(active=True)`` emits no duplicate STALLED events."""
     captured: list[WaitingStatusEvent] = []
     watchdog, _clock = _stall_status_events_make_watchdog(listener=captured.append)
     for _ in range(10):
-        watchdog._set_stall(active=True, now=100.0, idle_elapsed=100.0)
+        watchdog.set_stall_state(active=True, now=100.0, idle_elapsed=100.0)
     stalled_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
     assert len(stalled_events) == 1, (
         f"STALLED must be emitted only on transition; got {len(stalled_events)}"
@@ -11976,9 +11805,9 @@ def test_set_stall_toggle_emits_stall_resumed_once() -> None:
     """Toggling from active=True to active=False emits exactly one STALL_RESUMED."""
     captured: list[WaitingStatusEvent] = []
     watchdog, _clock = _stall_status_events_make_watchdog(listener=captured.append)
-    watchdog._set_stall(active=True, now=100.0, idle_elapsed=100.0)
+    watchdog.set_stall_state(active=True, now=100.0, idle_elapsed=100.0)
     for _ in range(10):
-        watchdog._set_stall(active=False, now=200.0, idle_elapsed=0.0)
+        watchdog.set_stall_state(active=False, now=200.0, idle_elapsed=0.0)
     resumed_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALL_RESUMED]
     assert len(resumed_events) == 1
     assert _stall_state(watchdog) is False
@@ -11989,7 +11818,7 @@ def test_set_stall_idempotent_false_emits_no_event() -> None:
     """Active=False on a fresh watchdog emits no STALL_RESUMED."""
     captured: list[WaitingStatusEvent] = []
     watchdog, _clock = _stall_status_events_make_watchdog(listener=captured.append)
-    watchdog._set_stall(active=False, now=100.0, idle_elapsed=0.0)
+    watchdog.set_stall_state(active=False, now=100.0, idle_elapsed=0.0)
     assert _events(captured) == []
 
 
@@ -12141,7 +11970,7 @@ def test_silent_subagent_emits_stalled_event() -> None:
     # Drive _gate_fire directly. The SILENT_SUBAGENT branch must
     # return FIRE AND emit exactly one STALLED listener event.
     _now = clock.monotonic() + 181.0
-    gate_verdict = watchdog._gate_fire(
+    gate_verdict = watchdog.evaluate_fire_gate(
         WatchdogFireReason.NO_OUTPUT_DEADLINE,
         now=_now,
         idle_elapsed=181.0,
@@ -12159,7 +11988,7 @@ def test_silent_subagent_emits_stalled_event() -> None:
     assert _stall_state(watchdog) is True
 
     # A second _gate_fire on the same tick MUST NOT emit a duplicate.
-    gate_verdict = watchdog._gate_fire(
+    gate_verdict = watchdog.evaluate_fire_gate(
         WatchdogFireReason.NO_OUTPUT_DEADLINE,
         now=_now,
         idle_elapsed=181.0,
@@ -12229,43 +12058,49 @@ def test_fire_session_ceiling_emits_stalled_event() -> None:
 
 
 # === consolidated from test_stall_status_events.py ===
-def test_record_activity_emits_stall_resumed() -> None:
-    """``record_activity`` clears the stall state and emits STALL_RESUMED."""
-    captured: list[WaitingStatusEvent] = []
-    watchdog, _clock = _stall_status_events_make_watchdog(listener=captured.append)
-    watchdog._set_stall(active=True, now=100.0, idle_elapsed=100.0)
-    assert _stall_state(watchdog) is True
-    # Drain prior events.
-    captured.clear()
-    watchdog.record_activity()
-    resumed_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALL_RESUMED]
-    assert len(resumed_events) == 1
-    assert _stall_state(watchdog) is False
+def test_activity_triggers_emit_stall_resumed() -> None:
+    """Activity triggers clear the stall state and emit STALL_RESUMED.
 
-
-# === consolidated from test_stall_status_events.py ===
-def test_record_invocation_start_emits_stall_resumed() -> None:
-    """``record_invocation_start`` clears the stall state and emits STALL_RESUMED."""
-    captured: list[WaitingStatusEvent] = []
-    watchdog, _clock = _stall_status_events_make_watchdog(listener=captured.append)
-    watchdog._set_stall(active=True, now=100.0, idle_elapsed=100.0)
-    captured.clear()
-    watchdog.record_invocation_start()
-    resumed_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALL_RESUMED]
-    assert len(resumed_events) == 1
-    assert _stall_state(watchdog) is False
+    Both public activity triggers behave the same way: recording
+    activity and starting a new invocation each end the stall, emit
+    exactly one ``STALL_RESUMED`` event, and leave the watchdog
+    un-stalled.
+    """
+    for trigger in ("record_activity", "record_invocation_start"):
+        captured: list[WaitingStatusEvent] = []
+        watchdog, _clock = _stall_status_events_make_watchdog(listener=captured.append)
+        watchdog.set_stall_state(active=True, now=100.0, idle_elapsed=100.0)
+        assert _stall_state(watchdog) is True
+        # Drain prior events.
+        captured.clear()
+        if trigger == "record_activity":
+            watchdog.record_activity()
+        else:
+            watchdog.record_invocation_start()
+        resumed_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALL_RESUMED]
+        assert len(resumed_events) == 1, f"{trigger} must emit exactly one STALL_RESUMED"
+        assert _stall_state(watchdog) is False
 
 
 # === consolidated from test_stall_status_events.py ===
 def test_accumulate_waiting_run_emits_stall_resumed() -> None:
     """Transitioning out of WAITING (EXITED) emits STALL_RESUMED."""
     captured: list[WaitingStatusEvent] = []
-    watchdog, _clock = _stall_status_events_make_watchdog(listener=captured.append)
-    # Force the watchdog into a WAITING_ON_CHILD run.
-    watchdog._waiting_on_child_started_at = 100.0
-    watchdog._set_stall(active=True, now=100.0, idle_elapsed=100.0)
+    watchdog, clock = _stall_status_events_make_watchdog(listener=captured.append)
+    # Enter the WAITING_ON_CHILD branch through the public evaluate()
+    # path so the watchdog owns the waiting-run bookkeeping.
+    clock.advance(61.0)
+    watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
+    watchdog.set_stall_state(active=True, now=100.0, idle_elapsed=100.0)
     captured.clear()
-    watchdog._accumulate_waiting_run(200.0)
+    # Leaving the waiting run emits EXITED, which clears the stall.
+    # ``record_error_activity`` flushes the waiting run without
+    # resetting the idle baseline, so the EXITED transition is the
+    # only thing that can end the stall here.
+    clock.advance(1.0)
+    watchdog.record_error_activity("stalled while waiting on a child")
+    exited_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.EXITED]
+    assert len(exited_events) == 1
     resumed_events = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALL_RESUMED]
     assert len(resumed_events) == 1
     assert _stall_state(watchdog) is False
@@ -12290,14 +12125,14 @@ def test_stall_oscillation_emits_only_on_transitions() -> None:
     watchdog, _clock = _stall_status_events_make_watchdog(listener=captured.append)
     # 5 transitions.
     for i in range(5):
-        watchdog._set_stall(active=True, now=float(i * 100), idle_elapsed=100.0)
-        watchdog._set_stall(active=False, now=float(i * 100 + 50), idle_elapsed=0.0)
+        watchdog.set_stall_state(active=True, now=float(i * 100), idle_elapsed=100.0)
+        watchdog.set_stall_state(active=False, now=float(i * 100 + 50), idle_elapsed=0.0)
     # Then 100 ticks of repeated STALLED.
     for _ in range(100):
-        watchdog._set_stall(active=True, now=10_000.0, idle_elapsed=100.0)
+        watchdog.set_stall_state(active=True, now=10_000.0, idle_elapsed=100.0)
     # Then 100 ticks of repeated STALL_RESUMED.
     for _ in range(100):
-        watchdog._set_stall(active=False, now=10_500.0, idle_elapsed=0.0)
+        watchdog.set_stall_state(active=False, now=10_500.0, idle_elapsed=0.0)
     stalled = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
     resumed = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALL_RESUMED]
     # 5 STALLED + 1 extra (the last 100-tick burst counts once) = 6
@@ -12315,9 +12150,9 @@ def test_is_stalled_property_reflects_internal_state() -> None:
     """The public ``is_stalled`` property mirrors the watchdog's internal state."""
     watchdog, _clock = _stall_status_events_make_watchdog()
     assert watchdog.is_stalled is False
-    watchdog._set_stall(active=True, now=100.0, idle_elapsed=100.0)
+    watchdog.set_stall_state(active=True, now=100.0, idle_elapsed=100.0)
     assert watchdog.is_stalled is True
-    watchdog._set_stall(active=False, now=200.0, idle_elapsed=0.0)
+    watchdog.set_stall_state(active=False, now=200.0, idle_elapsed=0.0)
     assert watchdog.is_stalled is False
 
 
@@ -12361,7 +12196,7 @@ def test_gate_deferral_clears_silent_subagent_stall_on_non_stuck_tick() -> None:
 
     # Tick 1: SILENT_SUBAGENT -> gate fires + sets stall.
     first_now = clock.monotonic() + 181.0
-    first_verdict = watchdog._gate_fire(
+    first_verdict = watchdog.evaluate_fire_gate(
         WatchdogFireReason.NO_OUTPUT_DEADLINE,
         now=first_now,
         idle_elapsed=181.0,
@@ -12375,7 +12210,7 @@ def test_gate_deferral_clears_silent_subagent_stall_on_non_stuck_tick() -> None:
     # defers (CONTINUE). The deferral path must clear the stall flag
     # and emit exactly one STALL_RESUMED transition.
     second_now = clock.monotonic() + 1.0
-    second_verdict = watchdog._gate_fire(
+    second_verdict = watchdog.evaluate_fire_gate(
         WatchdogFireReason.NO_OUTPUT_DEADLINE,
         now=second_now,
         idle_elapsed=1.0,
@@ -12392,7 +12227,7 @@ def test_gate_deferral_clears_silent_subagent_stall_on_non_stuck_tick() -> None:
 
     # Tick 3: classifier still returns LOADING -> no additional events.
     third_now = clock.monotonic() + 1.0
-    third_verdict = watchdog._gate_fire(
+    third_verdict = watchdog.evaluate_fire_gate(
         WatchdogFireReason.NO_OUTPUT_DEADLINE,
         now=third_now,
         idle_elapsed=1.0,
@@ -12441,7 +12276,7 @@ def test_gate_deferral_does_not_clear_stuck_or_fire_stall() -> None:
     setattr(watchdog, _attr, _sequence_now)
 
     first_now = clock.monotonic() + 60.0
-    first_verdict = watchdog._gate_fire(
+    first_verdict = watchdog.evaluate_fire_gate(
         WatchdogFireReason.NO_OUTPUT_DEADLINE,
         now=first_now,
         idle_elapsed=60.0,
@@ -12450,7 +12285,7 @@ def test_gate_deferral_does_not_clear_stuck_or_fire_stall() -> None:
     assert _stall_state(watchdog) is True
 
     second_now = clock.monotonic() + 1.0
-    second_verdict = watchdog._gate_fire(
+    second_verdict = watchdog.evaluate_fire_gate(
         WatchdogFireReason.NO_OUTPUT_DEADLINE,
         now=second_now,
         idle_elapsed=1.0,
@@ -12476,7 +12311,7 @@ def test_set_stall_emitted_event_carries_idle_elapsed_seconds() -> None:
     """
     captured: list[WaitingStatusEvent] = []
     watchdog, _clock = _stall_status_events_make_watchdog(listener=captured.append)
-    watchdog._set_stall(active=True, now=100.0, idle_elapsed=42.0)
+    watchdog.set_stall_state(active=True, now=100.0, idle_elapsed=42.0)
     stalled = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALLED]
     assert len(stalled) == 1
     assert stalled[0].idle_elapsed_seconds == 42.0
@@ -12488,8 +12323,8 @@ def test_set_stall_resumed_emitted_event_carries_idle_elapsed_seconds() -> None:
     """DA-002 regression: STALL_RESUMED event carries idle_elapsed_seconds."""
     captured: list[WaitingStatusEvent] = []
     watchdog, _clock = _stall_status_events_make_watchdog(listener=captured.append)
-    watchdog._set_stall(active=True, now=100.0, idle_elapsed=42.0)
-    watchdog._set_stall(active=False, now=200.0, idle_elapsed=37.0)
+    watchdog.set_stall_state(active=True, now=100.0, idle_elapsed=42.0)
+    watchdog.set_stall_state(active=False, now=200.0, idle_elapsed=37.0)
     resumed = [e for e in _events(captured) if e.kind == WaitingStatusKind.STALL_RESUMED]
     assert len(resumed) == 1
     assert resumed[0].idle_elapsed_seconds == 37.0
@@ -14261,7 +14096,7 @@ def test_subagent_pid_registry_bounded_at_max_entries() -> None:
     lived mutable collection; the registry honours the cap with
     ``OrderedDict.popitem(last=False)`` eviction.
     """
-    assert _MAX_REGISTRY_ENTRIES == 1024
+    assert MAX_SUBAGENT_REGISTRY_ENTRIES == 1024
     registry = SubagentPidRegistry()
     # PIDs must be positive; offset by 1_000_000 to stay well clear of
     # kernel reserved values. ``registered_at_monotonic`` is the
@@ -14272,7 +14107,7 @@ def test_subagent_pid_registry_bounded_at_max_entries() -> None:
     # The registry evicts the OLDEST entries first; the surviving
     # PIDs are the most-recently-registered ones.
     snapshot = registry.snapshot()
-    assert len(snapshot) == _MAX_REGISTRY_ENTRIES == 1024
+    assert len(snapshot) == MAX_SUBAGENT_REGISTRY_ENTRIES == 1024
     surviving_pids = [identity.pid for identity in snapshot]
     assert surviving_pids == list(range(1_000_977, 1_002_001))
     # The OLDEST pids (1_000_001..1_000_976) are evicted FIFO.
@@ -14511,47 +14346,70 @@ def test_default_no_progress_quiet_minimum_invocation_seconds_matches_constant()
 
 # === consolidated from test_timeout_policy.py ===
 def test_constructor_accepts_none_as_disabled() -> None:
-    """None disables the dumb-kill floor (documented escape hatch)."""
-    policy = TimeoutPolicy(
+    """None disables the dumb-kill floor and the heartbeat-only ceiling.
+
+    Both fields share the same documented escape hatch: ``None``
+    disables the corresponding branch entirely.
+    """
+    floor_disabled = TimeoutPolicy(
         idle_timeout_seconds=300.0,
         no_progress_quiet_minimum_invocation_seconds=None,
     )
-    assert policy.no_progress_quiet_minimum_invocation_seconds is None
+    assert floor_disabled.no_progress_quiet_minimum_invocation_seconds is None
+
+    heartbeat_disabled = TimeoutPolicy(
+        idle_timeout_seconds=300.0,
+        no_progress_quiet_heartbeat_ceiling_seconds=None,
+    )
+    assert heartbeat_disabled.no_progress_quiet_heartbeat_ceiling_seconds is None
 
 
 # === consolidated from test_timeout_policy.py ===
-def test_constructor_rejects_zero_when_set() -> None:
-    """0.0 is rejected; the floor cannot be silently disabled by a 0.0 typo."""
-    with pytest.raises(ValueError, match="must be positive when set"):
-        TimeoutPolicy(
-            idle_timeout_seconds=300.0,
-            no_progress_quiet_minimum_invocation_seconds=0.0,
-        )
+def test_constructor_rejects_non_positive_floor() -> None:
+    """0.0 and negative values are rejected; the floor cannot be silently disabled.
+
+    A 0.0 typo must not read as "disabled" either, so both the zero
+    and the negative case raise the same ``must be positive when set``
+    error.
+    """
+    for invalid in (0.0, -1.0):
+        with pytest.raises(ValueError, match="must be positive when set"):
+            TimeoutPolicy(
+                idle_timeout_seconds=300.0,
+                no_progress_quiet_minimum_invocation_seconds=invalid,
+            )
 
 
 # === consolidated from test_timeout_policy.py ===
-def test_constructor_rejects_negative_when_set() -> None:
-    """Negative values are rejected; the floor cannot be silently disabled."""
-    with pytest.raises(ValueError, match="must be positive when set"):
-        TimeoutPolicy(
-            idle_timeout_seconds=300.0,
-            no_progress_quiet_minimum_invocation_seconds=-1.0,
-        )
+def test_constructor_rejects_non_positive_heartbeat_ceiling() -> None:
+    """0.0 and negative values are rejected for the heartbeat-only ceiling.
+
+    The heartbeat-only ceiling cannot be silently disabled by a 0.0 or
+    negative typo either.
+    """
+    for invalid in (0.0, -1.0):
+        with pytest.raises(ValueError, match="must be positive when set"):
+            TimeoutPolicy(
+                idle_timeout_seconds=300.0,
+                no_progress_quiet_heartbeat_ceiling_seconds=invalid,
+            )
 
 
 # === consolidated from test_timeout_policy.py ===
-def test_constructor_accepts_positive_floor() -> None:
-    """Any positive float is allowed as the floor."""
-    policy = TimeoutPolicy(
+def test_constructor_floor_ceiling_relationships() -> None:
+    """The floor is a positive sub-window of ``no_progress_quiet_seconds``.
+
+    * Any positive float is accepted as the floor.
+    * Floor > ceiling is rejected when both are set.
+    * Floor == ceiling is allowed (the floor is a sub-window of the ceiling).
+    * The floor is allowed when the ceiling itself is None (ceiling disabled).
+    """
+    positive_floor = TimeoutPolicy(
         idle_timeout_seconds=300.0,
         no_progress_quiet_minimum_invocation_seconds=60.0,
     )
-    assert policy.no_progress_quiet_minimum_invocation_seconds == 60.0
+    assert positive_floor.no_progress_quiet_minimum_invocation_seconds == 60.0
 
-
-# === consolidated from test_timeout_policy.py ===
-def test_constructor_rejects_floor_above_ceiling() -> None:
-    """Floor must be <= no_progress_quiet_seconds when both are set."""
     with pytest.raises(ValueError, match="must be <= no_progress_quiet_seconds"):
         TimeoutPolicy(
             idle_timeout_seconds=300.0,
@@ -14559,30 +14417,22 @@ def test_constructor_rejects_floor_above_ceiling() -> None:
             no_progress_quiet_minimum_invocation_seconds=200.0,
         )
 
-
-# === consolidated from test_timeout_policy.py ===
-def test_constructor_accepts_floor_equal_to_ceiling() -> None:
-    """Floor == ceiling is allowed (floor is a sub-window of the ceiling)."""
-    policy = TimeoutPolicy(
+    equal_to_ceiling = TimeoutPolicy(
         idle_timeout_seconds=300.0,
         no_progress_quiet_seconds=120.0,
         no_progress_quiet_minimum_invocation_seconds=120.0,
         no_progress_quiet_heartbeat_ceiling_seconds=120.0,
     )
-    assert policy.no_progress_quiet_minimum_invocation_seconds == 120.0
-    assert policy.no_progress_quiet_seconds == 120.0
+    assert equal_to_ceiling.no_progress_quiet_minimum_invocation_seconds == 120.0
+    assert equal_to_ceiling.no_progress_quiet_seconds == 120.0
 
-
-# === consolidated from test_timeout_policy.py ===
-def test_constructor_accepts_floor_with_none_ceiling() -> None:
-    """Floor can be set when the ceiling itself is None (ceiling disabled)."""
-    policy = TimeoutPolicy(
+    with_none_ceiling = TimeoutPolicy(
         idle_timeout_seconds=300.0,
         no_progress_quiet_seconds=None,
         no_progress_quiet_minimum_invocation_seconds=60.0,
     )
-    assert policy.no_progress_quiet_seconds is None
-    assert policy.no_progress_quiet_minimum_invocation_seconds == 60.0
+    assert with_none_ceiling.no_progress_quiet_seconds is None
+    assert with_none_ceiling.no_progress_quiet_minimum_invocation_seconds == 60.0
 
 
 # === consolidated from test_timeout_policy.py ===
@@ -14601,43 +14451,22 @@ def test_default_no_progress_quiet_heartbeat_ceiling_seconds_matches_constant() 
 
 
 # === consolidated from test_timeout_policy.py ===
-def test_constructor_accepts_none_as_disabled_heartbeat_ceiling() -> None:
-    """None disables the heartbeat-only ceiling (documented escape hatch)."""
-    policy = TimeoutPolicy(
-        idle_timeout_seconds=300.0,
-        no_progress_quiet_heartbeat_ceiling_seconds=None,
-    )
-    assert policy.no_progress_quiet_heartbeat_ceiling_seconds is None
+def test_constructor_heartbeat_ceiling_relationships() -> None:
+    """The heartbeat-only ceiling is a shorter, orthogonal sub-ceiling.
 
-
-# === consolidated from test_timeout_policy.py ===
-def test_constructor_rejects_zero_heartbeat_ceiling() -> None:
-    """0.0 is rejected; the heartbeat-only ceiling cannot be silently disabled."""
-    with pytest.raises(ValueError, match="must be positive when set"):
-        TimeoutPolicy(
-            idle_timeout_seconds=300.0,
-            no_progress_quiet_heartbeat_ceiling_seconds=0.0,
-        )
-
-
-# === consolidated from test_timeout_policy.py ===
-def test_constructor_rejects_negative_heartbeat_ceiling() -> None:
-    """Negative values are rejected; the heartbeat-only ceiling cannot be silently disabled."""
-    with pytest.raises(ValueError, match="must be positive when set"):
-        TimeoutPolicy(
-            idle_timeout_seconds=300.0,
-            no_progress_quiet_heartbeat_ceiling_seconds=-1.0,
-        )
-
-
-# === consolidated from test_timeout_policy.py ===
-def test_constructor_rejects_heartbeat_ceiling_above_no_progress_quiet_seconds() -> None:
-    """Heartbeat-only ceiling must be <= no_progress_quiet_seconds when both are set.
-
-    Without this cross-field guard, an operator could configure the
-    heartbeat-only ceiling to be LONGER than the dumb-kill
-    ``no_progress_quiet_seconds`` ceiling, which would silently defeat
-    the heartbeat-only branch (the outer ceiling would trip first).
+    * It must be <= ``no_progress_quiet_seconds`` when both are set;
+      without that guard an operator could configure the heartbeat-only
+      ceiling to be LONGER than the dumb-kill ceiling, which would
+      silently defeat the heartbeat-only branch (the outer ceiling would
+      trip first).
+    * Equality is the degenerate case and is allowed: the heartbeat
+      branch and the dumb-kill branch trip at the same time.
+    * A value below the ceiling is allowed (the happy path).
+    * The cross-field guard is only enforced when BOTH fields are set, so
+      a None ``no_progress_quiet_seconds`` (dumb-kill disabled) does NOT
+      block the heartbeat-only ceiling; the heartbeat branch operates
+      independently of the dumb-kill floor/ceiling and is consulted
+      first in ``_is_no_progress_quiet``.
     """
     with pytest.raises(
         ValueError,
@@ -14649,78 +14478,51 @@ def test_constructor_rejects_heartbeat_ceiling_above_no_progress_quiet_seconds()
             no_progress_quiet_heartbeat_ceiling_seconds=240.0,
         )
 
-
-# === consolidated from test_timeout_policy.py ===
-def test_constructor_accepts_heartbeat_ceiling_equal_to_no_progress_quiet_seconds() -> None:
-    """Heartbeat-only ceiling == no_progress_quiet_seconds is allowed.
-
-    The heartbeat-only branch is a SHORTER, ORTHOGONAL ceiling. Equality
-    is the degenerate case: the heartbeat branch and the dumb-kill
-    branch trip at the same time. The contract permits this so an
-    operator who wants the heartbeat-only branch to fire at the
-    dumb-kill ceiling can do so without an off-by-one in the
-    cross-field guard.
-    """
-    policy = TimeoutPolicy(
+    equal_to_ceiling = TimeoutPolicy(
         idle_timeout_seconds=300.0,
         no_progress_quiet_seconds=240.0,
         no_progress_quiet_heartbeat_ceiling_seconds=240.0,
     )
-    assert policy.no_progress_quiet_heartbeat_ceiling_seconds == 240.0
-    assert policy.no_progress_quiet_seconds == 240.0
+    assert equal_to_ceiling.no_progress_quiet_heartbeat_ceiling_seconds == 240.0
+    assert equal_to_ceiling.no_progress_quiet_seconds == 240.0
 
-
-# === consolidated from test_timeout_policy.py ===
-def test_constructor_accepts_heartbeat_ceiling_below_no_progress_quiet_seconds() -> None:
-    """Heartbeat-only ceiling < no_progress_quiet_seconds is allowed (the happy path)."""
-    policy = TimeoutPolicy(
+    below_ceiling = TimeoutPolicy(
         idle_timeout_seconds=300.0,
         no_progress_quiet_seconds=240.0,
         no_progress_quiet_heartbeat_ceiling_seconds=180.0,
     )
-    assert policy.no_progress_quiet_heartbeat_ceiling_seconds == 180.0
-    assert policy.no_progress_quiet_seconds == 240.0
+    assert below_ceiling.no_progress_quiet_heartbeat_ceiling_seconds == 180.0
+    assert below_ceiling.no_progress_quiet_seconds == 240.0
 
-
-# === consolidated from test_timeout_policy.py ===
-def test_constructor_accepts_heartbeat_ceiling_with_none_no_progress_quiet_seconds() -> None:
-    """Heartbeat-only ceiling is allowed when no_progress_quiet_seconds is None.
-
-    The cross-field guard is only enforced when BOTH fields are set. A
-    None ``no_progress_quiet_seconds`` (dumb-kill disabled) does NOT
-    block the heartbeat-only ceiling; the heartbeat branch operates
-    independently of the dumb-kill floor/ceiling and is consulted
-    first in ``_is_no_progress_quiet``.
-    """
-    policy = TimeoutPolicy(
+    with_none_ceiling = TimeoutPolicy(
         idle_timeout_seconds=300.0,
         no_progress_quiet_seconds=None,
         no_progress_quiet_heartbeat_ceiling_seconds=240.0,
     )
-    assert policy.no_progress_quiet_seconds is None
-    assert policy.no_progress_quiet_heartbeat_ceiling_seconds == 240.0
+    assert with_none_ceiling.no_progress_quiet_seconds is None
+    assert with_none_ceiling.no_progress_quiet_heartbeat_ceiling_seconds == 240.0
 
 
 # === consolidated from test_tool_call_parser.py ===
 def test_known_tool_call_verbs_set_is_twelve_members() -> None:
-    """``_KNOWN_TOOL_CALL_VERBS`` MUST be exactly the 12 canonical verbs.
+    """``KNOWN_TOOL_CALL_VERBS`` MUST be exactly the 12 canonical verbs.
 
     The R5 contract pins the parser's vocabulary to a closed set of 12
     verbs. Any future addition (or removal) of a verb changes the
     R5 contract and MUST be reviewed against the product spec.
     """
-    assert isinstance(_KNOWN_TOOL_CALL_VERBS, frozenset), (
-        f"_KNOWN_TOOL_CALL_VERBS MUST be a frozenset for immutability;"
-        f" got {type(_KNOWN_TOOL_CALL_VERBS).__name__}"
+    assert isinstance(KNOWN_TOOL_CALL_VERBS, frozenset), (
+        f"KNOWN_TOOL_CALL_VERBS MUST be a frozenset for immutability;"
+        f" got {type(KNOWN_TOOL_CALL_VERBS).__name__}"
     )
-    assert len(_KNOWN_TOOL_CALL_VERBS) == 12, (
-        f"_KNOWN_TOOL_CALL_VERBS MUST contain exactly 12 verbs (R5);"
-        f" got {len(_KNOWN_TOOL_CALL_VERBS)}: {sorted(_KNOWN_TOOL_CALL_VERBS)}"
+    assert len(KNOWN_TOOL_CALL_VERBS) == 12, (
+        f"KNOWN_TOOL_CALL_VERBS MUST contain exactly 12 verbs (R5);"
+        f" got {len(KNOWN_TOOL_CALL_VERBS)}: {sorted(KNOWN_TOOL_CALL_VERBS)}"
     )
-    assert _KNOWN_TOOL_CALL_VERBS == _EXPECTED_CANONICAL_VERBS, (
-        f"_KNOWN_TOOL_CALL_VERBS mismatch; expected="
+    assert KNOWN_TOOL_CALL_VERBS == _EXPECTED_CANONICAL_VERBS, (
+        f"KNOWN_TOOL_CALL_VERBS mismatch; expected="
         f"{sorted(_EXPECTED_CANONICAL_VERBS)}, got="
-        f"{sorted(_KNOWN_TOOL_CALL_VERBS)}"
+        f"{sorted(KNOWN_TOOL_CALL_VERBS)}"
     )
 
 
@@ -14753,7 +14555,7 @@ def test_parse_returns_canonical_verb_for_known_prefix(description: str, expecte
     the substring before the first ``:`` when that substring is in the
     canonical verb set, otherwise ``None``.
     """
-    result = _parse_tool_call_from_description(description)
+    result = parse_tool_call_from_description(description)
     assert result == expected, f"description={description!r}: expected {expected!r}, got {result!r}"
 
 
@@ -14807,7 +14609,7 @@ def test_parse_returns_canonical_verb_for_known_prefix(description: str, expecte
 )
 def test_parse_returns_none_for_edge_cases(description: str | None, expected: str | None) -> None:
     """Edge cases MUST return ``None`` (not raise, not leak partial data)."""
-    result = _parse_tool_call_from_description(description)
+    result = parse_tool_call_from_description(description)
     assert result == expected, f"description={description!r}: expected {expected!r}, got {result!r}"
 
 
@@ -14820,19 +14622,19 @@ def test_parse_does_not_mutate_known_verb_set() -> None:
     could silently change the set between calls (e.g., a future
     refactor that switches to a mutable set).
     """
-    snapshot_before = set(_KNOWN_TOOL_CALL_VERBS)
+    snapshot_before = set(KNOWN_TOOL_CALL_VERBS)
     for _ in range(100):
-        _parse_tool_call_from_description("tool_use:Read")
-        _parse_tool_call_from_description(None)
-        _parse_tool_call_from_description("")
-        _parse_tool_call_from_description("unknown_verb:Read")
-    snapshot_after = set(_KNOWN_TOOL_CALL_VERBS)
+        parse_tool_call_from_description("tool_use:Read")
+        parse_tool_call_from_description(None)
+        parse_tool_call_from_description("")
+        parse_tool_call_from_description("unknown_verb:Read")
+    snapshot_after = set(KNOWN_TOOL_CALL_VERBS)
     assert snapshot_before == snapshot_after, (
-        f"_KNOWN_TOOL_CALL_VERBS mutated across calls; before="
+        f"KNOWN_TOOL_CALL_VERBS mutated across calls; before="
         f"{snapshot_before}, after={snapshot_after}"
     )
     assert len(snapshot_after) == 12, (
-        f"_KNOWN_TOOL_CALL_VERBS size changed across calls; got {len(snapshot_after)} members"
+        f"KNOWN_TOOL_CALL_VERBS size changed across calls; got {len(snapshot_after)} members"
     )
 
 
@@ -15112,8 +14914,13 @@ def test_subagent_progress_resets_on_record_invocation_start() -> None:
 
 # === consolidated from test_watch_loop_base.py ===
 def test_wait_until_returns_immediately_when_predicate_true() -> None:
-    """Predicate truthy on first check -> returns value immediately, zero clock budget."""
+    """Predicate truthy on first check -> returns value immediately, zero clock budget.
+
+    The entry check happens BEFORE the first wait, so the loop consumes
+    no clock budget and never calls ``on_tick``.
+    """
     clock = FakeClock(start=0.0)
+    tick_calls: list[int | None] = []
 
     def _predicate() -> int | None:
         return 42
@@ -15124,6 +14931,7 @@ def test_wait_until_returns_immediately_when_predicate_true() -> None:
                 predicate=_predicate,
                 timeout_s=30.0,
                 poll_interval_s=0.5,
+                on_tick=tick_calls.append,
             )
 
     wd = _Watchdog(clock)
@@ -15131,6 +14939,7 @@ def test_wait_until_returns_immediately_when_predicate_true() -> None:
 
     assert result == 42
     assert clock.monotonic() == 0.0
+    assert tick_calls == []
 
 
 # === consolidated from test_watch_loop_base.py ===
@@ -15207,32 +15016,6 @@ def test_wait_until_calls_on_tick_each_cycle() -> None:
 
     assert result == "found"
     assert tick_values == [None, None]
-
-
-# === consolidated from test_watch_loop_base.py ===
-def test_wait_until_does_not_wait_when_predicate_true_on_entry() -> None:
-    """Predicate is True on first call -> no clock advance, no on_tick."""
-    clock = FakeClock(start=0.0)
-    tick_calls: list[int | None] = []
-
-    def _predicate() -> int | None:
-        return 99
-
-    class _Watchdog(WatchLoopBase):
-        def check(self) -> int | None:
-            return self.wait_until(
-                predicate=_predicate,
-                timeout_s=5.0,
-                poll_interval_s=0.5,
-                on_tick=tick_calls.append,
-            )
-
-    wd = _Watchdog(clock)
-    result = wd.check()
-
-    assert result == 99
-    assert clock.monotonic() == 0.0
-    assert tick_calls == []
 
 
 # === consolidated from test_watch_loop_base.py ===
@@ -15664,7 +15447,7 @@ def test_idle_watchdog_module_imports_clean() -> None:
 def test_expected_fire_reasons_includes_repeated_identical_tool_call(
     tmp_path: Path,
 ) -> None:
-    """The production ``_EXPECTED_FIRE_REASONS`` frozenset lock at
+    """The production ``EXPECTED_FIRE_REASONS`` frozenset lock at
     idle_watchdog.py:129-141 MUST include the new fire reason.
 
     The lock uses ``if/raise RuntimeError`` (NOT ``assert``) so
@@ -15675,7 +15458,7 @@ def test_expected_fire_reasons_includes_repeated_identical_tool_call(
 
     This test is the runtime pin for the contract: it parses
     idle_watchdog.py via AST and inspects the
-    ``_EXPECTED_FIRE_REASONS = frozenset({...})`` literal to ensure
+    ``EXPECTED_FIRE_REASONS = frozenset({...})`` literal to ensure
     ``WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL.value`` is
     present in the literal.
 
@@ -15696,11 +15479,10 @@ def test_expected_fire_reasons_includes_repeated_identical_tool_call(
             break
 
     assert expected_fire_reasons, (
-        "_EXPECTED_FIRE_REASONS frozenset literal MUST be present in"
-        " idle_watchdog.py; got empty set"
+        "EXPECTED_FIRE_REASONS frozenset literal MUST be present in idle_watchdog.py; got empty set"
     )
     assert "REPEATED_IDENTICAL_TOOL_CALL" in expected_fire_reasons, (
-        "_EXPECTED_FIRE_REASONS MUST include REPEATED_IDENTICAL_TOOL_CALL"
+        "EXPECTED_FIRE_REASONS MUST include REPEATED_IDENTICAL_TOOL_CALL"
         f" for the new fire reason; got {sorted(expected_fire_reasons)}"
     )
 
@@ -15712,7 +15494,7 @@ def test_expected_fire_reasons_drift_guard_raises_runtime_error(
     """The production drift guard MUST ``raise RuntimeError`` (fail-fast),
     not just build a message.
 
-    The ``if _actual != _EXPECTED_FIRE_REASONS`` block is the only
+    The ``if _actual != EXPECTED_FIRE_REASONS`` block is the only
     enforcement of the IdleWatchdog sole-owner contract on
     ``WatchdogFireReason.__members__``.  A regression where the guard
     only assigns the diagnostic message (``msg = ...``) and forgets
@@ -15722,7 +15504,7 @@ def test_expected_fire_reasons_drift_guard_raises_runtime_error(
     would stay green.
 
     This test pins the fail-fast behavior at the AST level: it locates
-    the top-level ``if _actual != _EXPECTED_FIRE_REASONS`` block in
+    the top-level ``if _actual != EXPECTED_FIRE_REASONS`` block in
     ``idle_watchdog.py`` and asserts that one of its direct body
     statements is ``raise RuntimeError(...)``.  This is the structural
     counterpart to the enum-literal assertion in
@@ -15741,7 +15523,7 @@ def test_expected_fire_reasons_drift_guard_raises_runtime_error(
 
     guard = _find_drift_guard(tree)
     assert guard is not None, (
-        "The drift guard `if _actual != _EXPECTED_FIRE_REASONS` MUST be"
+        "The drift guard `if _actual != EXPECTED_FIRE_REASONS` MUST be"
         " a top-level statement of idle_watchdog.py; got none"
     )
     has_raise, raise_line = _guard_raises_runtime_error(guard)

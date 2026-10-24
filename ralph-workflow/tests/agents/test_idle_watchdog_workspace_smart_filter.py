@@ -34,13 +34,11 @@ from loguru import logger as loguru_logger
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
+    DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS,
     IdleWatchdog,
     TimeoutPolicy,
     WatchdogFireReason,
     WatchdogVerdict,
-)
-from ralph.agents.idle_watchdog._workspace_change_kind import (
-    DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS,
     WorkspaceChangeKind,
 )
 from ralph.agents.invoke._workspace import WorkspaceMonitor

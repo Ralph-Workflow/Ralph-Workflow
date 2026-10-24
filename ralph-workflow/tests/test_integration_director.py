@@ -27,6 +27,7 @@ from pathlib import Path
 
 import pytest
 
+from ralph.git.git_run_result import GitRunResult
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     RecordReadOutcome,
@@ -84,17 +85,23 @@ def _install_probe_overrides(
 ) -> None:
     """Install the probe overrides into every probe function the director uses."""
 
-    def _fake_porcelain(root: Path):
-        from ralph.pipeline.integration_director import reading_from_callable
-        from ralph.pipeline.integration_observation import Reading
-
+    def _fake_run_git(
+        args: tuple[str, ...],
+        *,
+        cwd: Path,
+        label: str,
+        options: object = None,
+    ) -> GitRunResult:
+        """Stand in for the porcelain probe's public git runner."""
+        del cwd, label, options
         if overrides.porcelain == "__raise__":
-
-            def _bad() -> str:
-                raise OSError("porcelain probe failed")
-
-            return reading_from_callable(_bad)
-        return Reading.known(overrides.porcelain)
+            raise OSError("porcelain probe failed")
+        return GitRunResult(
+            args=tuple(args),
+            returncode=0,
+            stdout=overrides.porcelain,
+            stderr="",
+        )
 
     def _fake_rebase(root: Path) -> bool:
         if overrides.rebase_active is True and overrides.rebase_active == "__raise__":
@@ -147,7 +154,7 @@ def _install_probe_overrides(
         return overrides.remote_probe
 
     del tmp_path  # unused; kept for signature parity with test arguments.
-    monkeypatch.setattr("ralph.pipeline.integration_director._read_porcelain", _fake_porcelain)
+    monkeypatch.setattr("ralph.git.subprocess_runner.run_git", _fake_run_git)
     monkeypatch.setattr("ralph.pipeline.integration_director.rebase_in_progress", _fake_rebase)
     monkeypatch.setattr("ralph.pipeline.integration_director.merge_state", _fake_merge)
     monkeypatch.setattr("ralph.pipeline.integration_director.is_repo_clean", _fake_repo_clean)

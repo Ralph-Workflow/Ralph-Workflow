@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -112,12 +113,22 @@ def test_install_baseline_skills_falls_back_to_copy_when_symlink_fails(
 ) -> None:
     canonical_dir, all_roots = fake_roots
 
-    # Force the installer seam to raise OSError so we exercise its
-    # shutil.copytree fallback without patching pathlib globally.
-    def _raise_symlink(*_args: object, **_kwargs: object) -> None:
-        raise OSError("simulated symlink unsupported")
+    # Force the installer's symlink step to raise OSError so we exercise its
+    # shutil.copytree fallback. Only the sibling-root destinations fail; the
+    # canonical materialization keeps using the real symlink.
+    real_symlink = os.symlink
+    sibling_dirs = tuple(str(root.resolve()) for root in all_roots[1:])
 
-    monkeypatch.setattr("ralph.skills._installer._create_symlink", _raise_symlink)
+    def _fail_sibling_symlink(
+        src: str | Path,
+        dst: str | Path,
+        target_is_directory: bool = False,
+    ) -> None:
+        if any(str(dst).startswith(sibling_dir) for sibling_dir in sibling_dirs):
+            raise OSError("simulated symlink unsupported")
+        real_symlink(src, dst, target_is_directory)
+
+    monkeypatch.setattr(os, "symlink", _fail_sibling_symlink)
 
     entry, failures = install_baseline_skills()
     assert entry.status.value == "installed_healthy"

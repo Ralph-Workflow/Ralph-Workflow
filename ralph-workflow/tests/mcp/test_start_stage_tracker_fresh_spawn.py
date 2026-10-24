@@ -8,41 +8,11 @@ from unittest.mock import patch
 
 from ralph.mcp.server._start_stage_tracker import (
     RUNTIME_STAGES,
-    _get_spawn_id,
     read_last_stage,
     record,
     reset_spawn_id,
     stage_file_path,
 )
-
-
-class _FakeClock:
-    """Monotonic fake for tests that do not need wall-clock time."""
-
-    def __init__(self) -> None:
-        self._t = 0.0
-
-    def advance(self, delta: float) -> None:
-        self._t += delta
-
-    def monotonic(self) -> float:
-        return self._t
-
-
-class _SpySpawnId:
-    """Controlled spawn-id source that returns the next value from a sequence."""
-
-    def __init__(self, values: list[str]) -> None:
-        self._values = values
-        self._i = 0
-
-    def __call__(self) -> str:
-        if self._i >= len(self._values):
-            raise RuntimeError("spy sequence exhausted")
-        value = self._values[self._i]
-        self._i += 1
-        return value
-
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -80,7 +50,7 @@ def test_fresh_spawn_isolation__predecessor_file_not_readable_by_new_spawn(
 ) -> None:
     """A new spawn cannot read the previous spawn's stage.
 
-    Spawn A writes its stage. Spawn B (with a different spawn ID) calls
+    Spawn A writes its stage. Spawn B (a fresh spawn identity) calls
     ``read_last_stage`` on the same root — it must receive ``None``
     because the predecessor's file is at a different path.
     """
@@ -89,18 +59,12 @@ def test_fresh_spawn_isolation__predecessor_file_not_readable_by_new_spawn(
     # Verify the file was written and is readable by the same spawn.
     assert read_last_stage(tmp_path) == RUNTIME_STAGES[-1]
 
-    # Spawn B: fake a different spawn ID so it gets a different file path.
-    old_spawn_id = _get_spawn_id()
-    try:
-        with patch(
-            "ralph.mcp.server._start_stage_tracker._get_spawn_id",
-            _FakeSpawnIdGetter("spawn-b-uuid"),
-        ):
-            # Spawn B's path is different, so it finds no file.
-            assert read_last_stage(tmp_path) is None
-    finally:
-        # Restore the original spawn ID so later tests use the real value.
-        _restore_spawn_id(old_spawn_id)
+    # Spawn B: the public ``reset_spawn_id`` gives the process a new
+    # identity, so it addresses a different stage file.
+    reset_spawn_id()
+
+    # Spawn B's path is different, so it finds no file.
+    assert read_last_stage(tmp_path) is None
 
 
 def test_reset_spawn_id_produces_new_spawn_unreadable_by_old_spawn(
@@ -129,12 +93,12 @@ def test_reset_spawn_id_produces_new_spawn_unreadable_by_old_spawn(
     assert read_last_stage(tmp_path) == RUNTIME_STAGES[-1]
 
 
-def test_consecutive_reset_spawn_id_produces_unique_ids() -> None:
+def test_consecutive_reset_spawn_id_produces_unique_ids(tmp_path: Path) -> None:
     """Every ``reset_spawn_id()`` call produces a distinct identity."""
     ids = set()
     for _ in range(5):
         reset_spawn_id()
-        ids.add(_get_spawn_id())
+        ids.add(stage_file_path(tmp_path).name)
     assert len(ids) == 5
 
 
@@ -173,23 +137,6 @@ def test_stage_file_path_differs_across_spawn_ids(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-class _FakeSpawnIdGetter:
-    """Returns a fixed spawn ID each call, for testing path-scoping."""
-
-    def __init__(self, spawn_id: str) -> None:
-        self._id = spawn_id
-
-    def __call__(self) -> str:
-        return self._id
-
-
-def _restore_spawn_id(spawn_id: str) -> None:
-    """Restore the module-level spawn ID (only for test cleanup)."""
-    import ralph.mcp.server._start_stage_tracker as m
-
-    m._spawn_id = spawn_id
 
 
 # ---------------------------------------------------------------------------

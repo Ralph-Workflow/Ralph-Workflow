@@ -45,6 +45,7 @@ def _psutil_process_name(pid: int) -> str:
 def _process_name(pid: int) -> str:
     """Return the lower-cased executable name of ``pid``, or "" when unreadable/gone."""
     with suppress(OSError):
+        # filesystem-read-ok: /proc is a virtual kernel process-metadata source, not workspace content
         return Path(f"/proc/{pid}/comm").read_text(encoding="utf-8").strip().lower()
     return _psutil_process_name(pid)
 
@@ -97,13 +98,16 @@ def group_pids(pgid: int) -> list[int]:
     whether a group contains git before it is torn down, and to wait for it.
     """
     proc_root = Path("/proc")
+    # filesystem-read-ok: /proc directory detection selects the Linux procfs reader before the macOS psutil fallback
     if not proc_root.is_dir():
         return _psutil_group_pids(pgid)
     members: list[int] = []
+    # filesystem-read-ok: enumerate virtual procfs process entries; this is not workspace traversal
     for entry in proc_root.iterdir():
         if not entry.name.isdigit():
             continue
         with suppress(OSError, IndexError, ValueError):
+            # filesystem-read-ok: virtual procfs process-group metadata
             fields = (entry / "stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()
             if int(fields[2]) == pgid and fields[0] not in ("Z", "X"):
                 members.append(int(entry.name))

@@ -98,7 +98,7 @@ class TestConfigErrorEnvelope:
             "ralph.cli.main.bootstrap_global_configs",
             lambda *, display_context: (_ for _ in ()).throw(ConfigTomlError(_ENVELOPE_TEXT)),
         )
-        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
+        monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
         monkeypatch.setattr(
             "ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None
         )
@@ -118,7 +118,7 @@ class TestConfigErrorEnvelope:
         monkeypatch.setattr(
             "ralph.cli.main.bootstrap_global_configs", lambda *, display_context: None
         )
-        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
+        monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
         monkeypatch.setattr(
             "ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None
         )

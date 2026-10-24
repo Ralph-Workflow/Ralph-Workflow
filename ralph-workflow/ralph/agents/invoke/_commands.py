@@ -14,6 +14,7 @@ __all__ = ["_agent_transport", "claude_mcp_config"]
 
 from ralph.agents.invoke._command_builders import COMMAND_BUILDERS
 from ralph.agents.invoke._errors import UnsupportedMcpTransportError
+from ralph.agents.invoke._invoke_options import _COMMAND_BUILDER_OVERRIDE
 from ralph.agents.invoke._types import _BuildCommandOptions
 from ralph.config.enums import AgentTransport
 from ralph.mcp.transport.claude import claude_mcp_config
@@ -125,14 +126,23 @@ def _build_command(
 ) -> list[str]:
     """Build the command line for agent invocation.
 
+    A caller may replace the builder for the duration of a scope with
+    :meth:`ralph.agents.invoke.InvokeOptions.command_builder_override`;
+    the override then owns the whole argv.  Without an override the
+    per-transport builder is used.
+
     Args:
         config: Agent configuration.
         prompt_file: Path to prompt file.
+        options: Resolved build options for the invocation.
 
     Returns:
         List of command arguments.
     """
     build_options = options or _BuildCommandOptions()
+    override = _COMMAND_BUILDER_OVERRIDE.get()
+    if override is not None:
+        return override(config, prompt_file, options=build_options)
     transport = _agent_transport(config)
     if build_options.mcp_endpoint and transport == AgentTransport.GENERIC:
         raise UnsupportedMcpTransportError(

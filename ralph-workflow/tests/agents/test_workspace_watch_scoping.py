@@ -8,9 +8,13 @@ scheduling), so observable behavior is unchanged while the
 fseventsd footprint shrinks from the previous 4+ overlapping
 OS-recursive streams down to one.
 
-No real filesystem or watchdog observer is touched. The
-``_FakeObserver`` records every ``schedule()`` call into a list and
-no-ops ``start``/``stop``/``join``. All events flow through the
+No real filesystem or watchdog observer is touched. The three watch
+collaborators ``WorkspaceMonitor`` reaches for -- the cross-process
+watch lock, the observer factory and the shared-awareness sidecar --
+are injected through the monitor's public constructor, so the tests
+drive the collaboration contract instead of patching module internals.
+The ``_FakeObserver`` records every ``schedule()`` call into a list
+and no-ops ``start``/``stop``/``join``. All events flow through the
 public ``monitor.dispatch_event`` seam (never the private handler)
 so the rewritten tests prove the production dispatch wiring without
 coupling to internals.
@@ -19,7 +23,9 @@ coupling to internals.
 from __future__ import annotations
 
 import errno
+from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -28,8 +34,17 @@ from ralph.agents.invoke._workspace_change_classifier import (
     WorkspaceChangeClassifier,
     WorkspaceChangeKind,
 )
-from ralph.workspace._shared_awareness import release_shared_awareness
+from ralph.agents.invoke._workspace_seams import WorkspaceWatchSeams
+from ralph.workspace._shared_awareness import (
+    SharedAwarenessSidecar,
+    SharedAwarenessState,
+    release_shared_awareness,
+)
 from ralph.workspace.awareness import release_workspace_awareness
+
+if TYPE_CHECKING:
+    from ralph.agents.invoke._watch_capacity import DirectoryCounter
+    from ralph.agents.invoke.watchdog_observer import WatchObserverFactory
 
 
 class _FakeCrossProcessWatchLock:
@@ -58,28 +73,39 @@ class _FakeCrossProcessWatchLock:
         self._owner_id = None
 
 
-class _FakeSharedAwarenessSidecar:
-    """In-memory stand-in for the shared-awareness sidecar."""
+class _FakeSharedAwarenessSidecar(SharedAwarenessSidecar):
+    """In-memory stand-in for the shared-awareness sidecar.
 
-    def __init__(self) -> None:
+    Every member the workspace monitor drives is overridden, so the
+    coordination contract stays observable without a sidecar file ever
+    being written.
+    """
+
+    def __init__(self, workspace_root: Path) -> None:
+        super().__init__(workspace_root)
         self.owner_id: str | None = None
-        self.epoch = 0
+        self._current_epoch = 0
         self.paths: list[str] = []
         self.overflowed = False
+
+    @property
+    def epoch(self) -> int:
+        """Return the epoch the fake has published up to."""
+        return self._current_epoch
 
     def begin_ownership(self, owner_id: str, *, prior_holder: str | None) -> int:
         del prior_holder
         self.owner_id = owner_id
-        self.epoch += 1
-        return self.epoch
+        self._current_epoch += 1
+        return self._current_epoch
 
     def publish_changes(self, paths: list[str], *, overflowed: bool = False) -> int:
         for path in paths:
             if path not in self.paths:
                 self.paths.append(path)
         self.overflowed = self.overflowed or overflowed
-        self.epoch += 1
-        return self.epoch
+        self._current_epoch += 1
+        return self._current_epoch
 
     def publish_error(self, cause: str) -> None:
         del cause
@@ -87,31 +113,70 @@ class _FakeSharedAwarenessSidecar:
     def end_ownership(self) -> None:
         self.owner_id = None
 
+    def poll(self) -> SharedAwarenessState:
+        return SharedAwarenessState(
+            epoch=self._current_epoch,
+            paths=list(self.paths),
+            overflowed=self.overflowed,
+            owner_id=self.owner_id or "unknown",
+            changed=True,
+        )
+
+    def claim_epoch(self, epoch: int) -> None:
+        del epoch
+
+
+def _fixed_directory_counter(count: int | None) -> DirectoryCounter:
+    """Return a counter that reports ``count`` directories without walking a tree."""
+
+    def _counter(workspace: Path, *, cap: int) -> int | None:
+        del workspace, cap
+        return count
+
+    return _counter
+
 
 @pytest.fixture(autouse=True)
-def _mock_cross_process_coordination(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Route cross-process coordination through in-memory fakes.
-
-    The watch-scoping tests use synthetic workspace roots (``/ws``) that
-    cannot host a real lock sidecar; the fakes keep the coordination
-    contract observable without filesystem access.
-    """
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.CrossProcessWatchLock",
-        _FakeCrossProcessWatchLock(),
-    )
-    sidecar = _FakeSharedAwarenessSidecar()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.shared_awareness_for_workspace",
-        lambda _root: sidecar,
-    )
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.remove_shared_awareness_sidecar",
-        lambda _root: None,
-    )
+def _cleanup_shared_workspace_state() -> Iterator[None]:
+    """Clear shared watch and awareness state between tests."""
     yield
     release_workspace_awareness(Path("/ws"))
     release_shared_awareness(Path("/ws"))
+
+
+def _monitor(
+    workspace: Path,
+    observer_factory: WatchObserverFactory,
+    *,
+    lock: _FakeCrossProcessWatchLock | None = None,
+    sidecar: SharedAwarenessSidecar | None = None,
+    classifier: WorkspaceChangeClassifier | None = None,
+    host_budget: int | None = 8192,
+    directory_counter: DirectoryCounter | None = None,
+    live_watch_total: int | None = 0,
+) -> WorkspaceMonitor:
+    """Build a monitor whose watch collaborators are in-memory doubles.
+
+    The watch-scoping tests use synthetic workspace roots (``/ws``) that
+    cannot host a real lock sidecar; injecting the collaborators keeps
+    the coordination contract observable without filesystem access.
+    """
+    resolved_sidecar = sidecar if sidecar is not None else _FakeSharedAwarenessSidecar(workspace)
+    return WorkspaceMonitor(
+        workspace,
+        classifier=classifier,
+        host_budget=host_budget,
+        directory_counter=(
+            directory_counter if directory_counter is not None else _fixed_directory_counter(0)
+        ),
+        live_watch_total=live_watch_total,
+        seams=WorkspaceWatchSeams(
+            watch_lock=lock if lock is not None else _FakeCrossProcessWatchLock(),
+            observer_factory=observer_factory,
+            sidecar_factory=lambda _root: resolved_sidecar,
+            sidecar_remover=lambda _root: None,
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -213,24 +278,16 @@ class _ScheduleAndStopFailingObserver(_ScheduleFailingObserver):
 # ---------------------------------------------------------------------------
 
 
-def test_start_schedules_single_recursive_root_watch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_start_schedules_single_recursive_root_watch() -> None:
     """With the default classifier, ``start()`` schedules exactly
     one watchdog watch on the workspace root with ``recursive=True``.
     The fseventsd footprint is the minimal single recursive stream."""
     fake = _FakeObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: fake,
-    )
 
-    monitor = WorkspaceMonitor(
+    monitor = _monitor(
         Path("/ws"),
+        lambda: fake,
         classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
     )
     monitor.start()
 
@@ -241,26 +298,18 @@ def test_start_schedules_single_recursive_root_watch(
     assert fake.started is True
 
 
-def test_start_single_recursive_root_watch_when_classifier_none(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_start_single_recursive_root_watch_when_classifier_none() -> None:
     """With ``classifier=None`` (default), ``start()`` also schedules
     exactly one recursive watch on the workspace root. The default
     source-only classifier drops Ralph-managed internal paths so internal
     activity never recursively triggers workspace awareness (S-2).
     Parity across configs."""
     fake = _FakeObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: fake,
-    )
 
-    monitor = WorkspaceMonitor(
+    monitor = _monitor(
         Path("/ws"),
+        lambda: fake,
         classifier=None,
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
     )
     monitor.start()
 
@@ -276,23 +325,16 @@ def test_start_single_recursive_root_watch_when_classifier_none(
     assert monitor.event_count == 1
 
 
-def test_start_failure_enters_live_fallback_and_allows_a_later_watch_registration_retry(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_start_failure_enters_live_fallback_and_allows_a_later_watch_registration_retry() -> None:
     """S-2 regression: non-capacity observer failures degrade safely and remain retryable."""
     failing = _ScheduleFailingObserver()
     succeeding = _FakeObserver()
     observers = iter((failing, succeeding))
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: next(observers),
-    )
-    monitor = WorkspaceMonitor(
+
+    monitor = _monitor(
         Path("/ws"),
+        lambda: next(observers),
         classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
     )
 
     monitor.start()
@@ -308,23 +350,16 @@ def test_start_failure_enters_live_fallback_and_allows_a_later_watch_registratio
     assert succeeding.started is True
 
 
-def test_start_failure_after_registration_enters_live_fallback_and_remains_retryable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_start_failure_after_registration_enters_live_fallback_and_remains_retryable() -> None:
     """S-2 regression: a post-registration startup failure degrades safely and remains retryable."""
     failing = _StartFailingObserver("watch registration failed")
     succeeding = _FakeObserver()
     observers = iter((failing, succeeding))
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: next(observers),
-    )
-    monitor = WorkspaceMonitor(
+
+    monitor = _monitor(
         Path("/ws"),
+        lambda: next(observers),
         classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
     )
 
     monitor.start()
@@ -340,23 +375,18 @@ def test_start_failure_after_registration_enters_live_fallback_and_remains_retry
     assert succeeding.started is True
 
 
-def test_workspace_monitor_regression_start_failure_after_registration_releases_watch_for_retry(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_workspace_monitor_regression_start_failure_after_registration_releases_watch_for_retry() -> (
+    None
+):
     """S-5 regression: partial startup does not strand a registered watch."""
     failing = _StartFailingObserver()
     succeeding = _FakeObserver()
     observers = iter((failing, succeeding))
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: next(observers),
-    )
-    monitor = WorkspaceMonitor(
+
+    monitor = _monitor(
         Path("/ws"),
+        lambda: next(observers),
         classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
     )
 
     monitor.start()
@@ -372,23 +402,16 @@ def test_workspace_monitor_regression_start_failure_after_registration_releases_
     assert succeeding.started is True
 
 
-def test_start_rollback_stop_failure_releases_monitor_for_a_later_retry(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_start_rollback_stop_failure_releases_monitor_for_a_later_retry() -> None:
     """S-5 regression: failed startup cleanup cannot strand watch ownership."""
     failing = _ScheduleAndStopFailingObserver()
     succeeding = _FakeObserver()
     observers = iter((failing, succeeding))
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: next(observers),
-    )
-    monitor = WorkspaceMonitor(
+
+    monitor = _monitor(
         Path("/ws"),
+        lambda: next(observers),
         classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
     )
 
     monitor.start()
@@ -402,21 +425,14 @@ def test_start_rollback_stop_failure_releases_monitor_for_a_later_retry(
     assert succeeding.started is True
 
 
-def test_capacity_exhaustion_enters_observable_live_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_capacity_exhaustion_enters_observable_live_fallback() -> None:
     """S-3: capacity failures are visible and retain bounded live fallback semantics."""
     fake = _CapacityFailingObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: fake,
-    )
-    monitor = WorkspaceMonitor(
+
+    monitor = _monitor(
         Path("/ws"),
+        lambda: fake,
         classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
     )
 
     monitor.start()
@@ -432,21 +448,14 @@ def test_capacity_exhaustion_enters_observable_live_fallback(
     assert fake.joined is True
 
 
-def test_inotify_instance_limit_during_start_enters_live_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_inotify_instance_limit_during_start_enters_live_fallback() -> None:
     """An exhausted inotify-instance limit must not abort agent execution."""
     fake = _InotifyInstanceLimitObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: fake,
-    )
-    monitor = WorkspaceMonitor(
+
+    monitor = _monitor(
         Path("/ws"),
+        lambda: fake,
         classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
     )
 
     monitor.start()
@@ -456,26 +465,19 @@ def test_inotify_instance_limit_during_start_enters_live_fallback(
     assert fake.joined is True
 
 
-def test_capacity_exhaustion_updates_shared_awareness_status(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_capacity_exhaustion_updates_shared_awareness_status() -> None:
     """S-3 regression: public status never calls a failed observer current."""
     fake = _CapacityFailingObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: fake,
-    )
-    monitor = WorkspaceMonitor(
+
+    monitor = _monitor(
         Path("/canonical-fallback"),
+        lambda: fake,
         classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
     )
 
     monitor.start()
 
-    from ralph.workspace.awareness import awareness_for_workspace, release_workspace_awareness
+    from ralph.workspace.awareness import awareness_for_workspace
 
     assert (
         awareness_for_workspace(Path("/canonical-fallback")).snapshot()["freshness"]
@@ -484,20 +486,15 @@ def test_capacity_exhaustion_updates_shared_awareness_status(
     release_workspace_awareness(Path("/canonical-fallback"))
 
 
-def test_predicted_watch_capacity_skips_observer_and_updates_shared_awareness(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_predicted_watch_capacity_skips_observer_and_updates_shared_awareness() -> None:
     """A predicted capacity breach falls back before constructing an observer."""
     workspace = Path("/synthetic-ws-predicted-capacity")
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: pytest.fail("over-budget workspaces must not construct an observer"),
-    )
-    monitor = WorkspaceMonitor(
+
+    monitor = _monitor(
         workspace,
+        lambda: pytest.fail("over-budget workspaces must not construct an observer"),
         host_budget=500,
-        directory_counter=lambda _workspace, cap: 1000,
-        live_watch_total=0,
+        directory_counter=_fixed_directory_counter(1000),
     )
 
     try:
@@ -514,21 +511,16 @@ def test_predicted_watch_capacity_skips_observer_and_updates_shared_awareness(
         release_workspace_awareness(workspace)
 
 
-def test_predicted_watch_capacity_allows_an_under_budget_recursive_watch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_predicted_watch_capacity_allows_an_under_budget_recursive_watch() -> None:
     """An injected under-budget prediction keeps the existing recursive watch behavior."""
     workspace = Path("/synthetic-ws-predicted-under-budget")
     fake = _FakeObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: fake,
-    )
-    monitor = WorkspaceMonitor(
+
+    monitor = _monitor(
         workspace,
+        lambda: fake,
         host_budget=500,
-        directory_counter=lambda _workspace, cap: 5,
-        live_watch_total=0,
+        directory_counter=_fixed_directory_counter(5),
     )
 
     monitor.start()
@@ -547,20 +539,17 @@ def test_predicted_watch_capacity_allows_an_under_budget_recursive_watch(
     ((500, 0), (100, 450), (None, 0)),
 )
 def test_predicted_watch_capacity_rejects_boundary_and_unbounded_counts(
-    monkeypatch: pytest.MonkeyPatch,
     directory_count: int | None,
     live_watch_total: int,
 ) -> None:
     """The combined per-user prediction rejects equality and unknown over-cap counts."""
     workspace = Path(f"/synthetic-ws-predicted-{directory_count}-{live_watch_total}")
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: pytest.fail("over-budget workspaces must not construct an observer"),
-    )
-    monitor = WorkspaceMonitor(
+
+    monitor = _monitor(
         workspace,
+        lambda: pytest.fail("over-budget workspaces must not construct an observer"),
         host_budget=500,
-        directory_counter=lambda _workspace, cap: directory_count,
+        directory_counter=_fixed_directory_counter(directory_count),
         live_watch_total=live_watch_total,
     )
 
@@ -574,27 +563,22 @@ def test_predicted_watch_capacity_rejects_boundary_and_unbounded_counts(
         release_workspace_awareness(workspace)
 
 
-def test_predicted_watch_capacity_allows_retry_after_larger_budget(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_predicted_watch_capacity_allows_retry_after_larger_budget() -> None:
     """A later lease can schedule after a prior predicted capacity fallback."""
     workspace = Path("/synthetic-ws-predicted-retry")
     fake = _FakeObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
+
+    rejected = _monitor(
+        workspace,
         lambda: fake,
-    )
-    rejected = WorkspaceMonitor(
-        workspace,
         host_budget=500,
-        directory_counter=lambda _workspace, cap: 1000,
-        live_watch_total=0,
+        directory_counter=_fixed_directory_counter(1000),
     )
-    accepted = WorkspaceMonitor(
+    accepted = _monitor(
         workspace,
+        lambda: fake,
         host_budget=501,
-        directory_counter=lambda _workspace, cap: 5,
-        live_watch_total=0,
+        directory_counter=_fixed_directory_counter(5),
     )
 
     rejected.start()
@@ -609,21 +593,14 @@ def test_predicted_watch_capacity_allows_retry_after_larger_budget(
     accepted.stop()
 
 
-def test_start_replay_preserves_one_live_workspace_watch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_start_replay_preserves_one_live_workspace_watch() -> None:
     """S-6 regression: re-starting an active monitor does not add a duplicate watch."""
     fake = _FakeObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: fake,
-    )
-    monitor = WorkspaceMonitor(
+
+    monitor = _monitor(
         Path("/ws"),
+        lambda: fake,
         classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
     )
 
     monitor.start()
@@ -633,23 +610,16 @@ def test_start_replay_preserves_one_live_workspace_watch(
     assert fake.started is True
 
 
-def test_stop_failure_releases_monitor_for_a_later_watch_registration(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_stop_failure_releases_monitor_for_a_later_watch_registration() -> None:
     """S-5 regression: failed release still joins and clears stale watch ownership."""
     failing = _StopFailingObserver()
     succeeding = _FakeObserver()
     observers = iter((failing, succeeding))
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: next(observers),
-    )
-    monitor = WorkspaceMonitor(
+
+    monitor = _monitor(
         Path("/ws"),
+        lambda: next(observers),
         classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
     )
 
     monitor.start()
@@ -766,25 +736,17 @@ def test_record_event_counts_unchanged_equivalence(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_dispatched_file_event_counts_via_public_seam(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_dispatched_file_event_counts_via_public_seam() -> None:
     """A file event delivered through the public
     ``monitor.dispatch_event`` seam is counted and adds no new
     ``observer.schedule`` call. Exercises the production handler ->
     ``record_event`` wiring through the public seam (PA-001)."""
     fake = _FakeObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: fake,
-    )
 
-    monitor = WorkspaceMonitor(
+    monitor = _monitor(
         Path("/ws"),
+        lambda: fake,
         classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
     )
     monitor.start()
     initial_count = len(fake.scheduled)
@@ -796,21 +758,14 @@ def test_dispatched_file_event_counts_via_public_seam(
     assert len(fake.scheduled) == initial_count
 
 
-def test_dispatched_outside_workspace_event_is_ignored_at_monitor_ingress(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_dispatched_outside_workspace_event_is_ignored_at_monitor_ingress() -> None:
     """S-6 regression: events outside the subscribed root do not refresh activity."""
     fake = _FakeObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: fake,
-    )
-    monitor = WorkspaceMonitor(
+
+    monitor = _monitor(
         Path("/ws"),
+        lambda: fake,
         classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
     )
     monitor.start()
 
@@ -821,9 +776,7 @@ def test_dispatched_outside_workspace_event_is_ignored_at_monitor_ingress(
     assert monitor.last_event_at is None
 
 
-def test_dispatched_moved_in_workspace_file_counts_destination_at_monitor_ingress(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_dispatched_moved_in_workspace_file_counts_destination_at_monitor_ingress() -> None:
     """S-5 regression: a file moved into the root refreshes workspace activity.
 
     The observer reports the source outside the root and the destination inside
@@ -831,16 +784,11 @@ def test_dispatched_moved_in_workspace_file_counts_destination_at_monitor_ingres
     seam without adding another recursive watch.
     """
     fake = _FakeObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: fake,
-    )
-    monitor = WorkspaceMonitor(
+
+    monitor = _monitor(
         Path("/ws"),
+        lambda: fake,
         classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
     )
     monitor.start()
     initial_count = len(fake.scheduled)
@@ -852,25 +800,17 @@ def test_dispatched_moved_in_workspace_file_counts_destination_at_monitor_ingres
     assert len(fake.scheduled) == initial_count
 
 
-def test_dispatched_directory_event_schedules_no_additional_watch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_dispatched_directory_event_schedules_no_additional_watch() -> None:
     """A created/moved-in directory event delivered through the public
     ``monitor.dispatch_event`` seam produces ZERO additional
     ``observer.schedule`` calls. The recursive root watch already
     covers new subdirectories; no dynamic scheduling remains (AC-03)."""
     fake = _FakeObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: fake,
-    )
 
-    monitor = WorkspaceMonitor(
+    monitor = _monitor(
         Path("/ws"),
+        lambda: fake,
         classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
     )
     monitor.start()
     initial_count = len(fake.scheduled)

@@ -5,7 +5,6 @@ from __future__ import annotations
 import errno
 import threading
 import time
-import weakref
 from collections.abc import Callable
 from contextlib import suppress
 from functools import partial
@@ -29,8 +28,18 @@ from ralph.agents.invoke._watch_capacity import (
     watch_capacity_is_predicted,
 )
 from ralph.agents.invoke._workspace_change_coalescer import WorkspaceChangeCoalescer
-from ralph.agents.invoke.watchdog_event_queue import DroppingEventQueue
-from ralph.agents.invoke.watchdog_observer import ObserverProtocol, create_watchdog_observer
+from ralph.agents.invoke._workspace_seams import (
+    WorkspaceWatchSeams,
+    _CrossProcessWatchLockProtocol,
+    _SharedWorkspaceWatch,
+    bind_observer_overflow,
+    make_change_tracker,
+    shared_workspace_key,
+)
+from ralph.agents.invoke.watchdog_observer import (
+    _WatchObserverProtocol,
+    create_watchdog_observer,
+)
 from ralph.workspace._cross_process_watch_lock import (
     CrossProcessWatchLock,
     WatchLockIOError,
@@ -47,8 +56,6 @@ from ralph.workspace.awareness import awareness_for_workspace, release_workspace
 _create_watchdog_observer = create_watchdog_observer
 
 if TYPE_CHECKING:
-    from queue import Queue
-
     from ralph.agents.invoke._handler_with_dispatch import _HandlerWithDispatch
     from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
 
@@ -66,58 +73,6 @@ _MAX_WORKSPACE_CHANGED_FILES = 512
 #: real classifications. The ``__post_init__`` arity check rejects
 #: any other arity at construction time.
 WorkspaceEventCallback = Callable[[], None] | Callable[[WorkspaceChangeKind, float], None]
-
-
-def _is_within_workspace(workspace: Path, src_path: str) -> bool:
-    """Return whether a delivered event path remains inside the monitor root."""
-    try:
-        Path(src_path).resolve(strict=False).relative_to(workspace.resolve(strict=False))
-    except ValueError:
-        return False
-    return True
-
-
-def _make_change_tracker(workspace: Path, key: str) -> WorkspaceChangeCoalescer:
-    return WorkspaceChangeCoalescer(
-        deliver=lambda path: WorkspaceMonitor._record_event_for_key(key, path),
-        is_within=lambda path: _is_within_workspace(workspace, path),
-        on_overflow=lambda: awareness_for_workspace(workspace).set_freshness(
-            "stale", cause="workspace_event_overflow"
-        ),
-    )
-
-
-def _mark_workspace_event_queue_overflow(workspace: Path) -> None:
-    awareness_for_workspace(workspace).set_freshness(
-        "stale", cause="workspace_event_queue_overflow"
-    )
-
-
-class _SharedWorkspaceWatch:
-    """One observer plus weak leases for a canonical workspace root.
-
-    ``cross_process_owner_id`` tracks the advisory-lock owner so the
-    cross-process lock is released exactly when the shared observer is
-    torn down (the final in-process lease), not when any single lease
-    stops (S-10 / DA-001 / DA-009).
-    """
-
-    def __init__(
-        self,
-        observer: ObserverProtocol,
-        handler: object,
-        *,
-        cross_process_owner_id: str | None = None,
-    ) -> None:
-        self.observer = observer
-        self.handler = handler
-        self.monitors: weakref.WeakSet[WorkspaceMonitor] = weakref.WeakSet()
-        self.cross_process_owner_id = cross_process_owner_id
-
-
-def _shared_workspace_key(workspace: Path) -> str:
-    """Return the lexical root key without probing a possibly absent workspace."""
-    return str(workspace.absolute())
 
 
 class WorkspaceMonitor:
@@ -157,6 +112,7 @@ class WorkspaceMonitor:
         directory_counter: DirectoryCounter | None = None,
         live_watch_total: int | None = None,
         probe_budget_seconds: float | None = None,
+        seams: WorkspaceWatchSeams | None = None,
     ) -> None:
         """Initialize workspace monitor.
 
@@ -206,9 +162,16 @@ class WorkspaceMonitor:
                 ``None`` uses the Linux-safe production counter at start time.
             live_watch_total: Explicit current-user inotify-watch count.
                 ``None`` detects the Linux host value when monitoring starts.
+            seams: Optional collaborators the watch reaches for: the
+                cross-process watch lock, the watchdog observer factory, the
+                shared-awareness sidecar and the teardown bound. ``None``
+                uses every production collaborator, so the default path is
+                unchanged. Supplying them lets a caller drive the watch
+                lifecycle without a lock file, a real observer or a sidecar
+                file.
         """
         self._workspace = workspace_path
-        self._observer: ObserverProtocol | None = None
+        self._observer: _WatchObserverProtocol | None = None
         self._shared_key: str | None = None
         self._started = False
         self._event_count = 0
@@ -255,6 +218,20 @@ class WorkspaceMonitor:
         self._shared_awareness_io_error: SharedAwarenessError | None = None
         self._sidecar_publisher: ThrottledSidecarPublisher | None = None
         self._awareness_status: dict[str, object] = live_fallback_status("unavailable")
+        self._seams = seams if seams is not None else WorkspaceWatchSeams()
+
+    def _watch_lock(self) -> _CrossProcessWatchLockProtocol:
+        """Return the injected watch lock, or the production default.
+
+        The production default is resolved on every call so a caller that
+        swaps the module-level lock still sees the swap.
+        """
+        return self._seams.watch_lock or CrossProcessWatchLock
+
+    def _create_observer(self) -> _WatchObserverProtocol | None:
+        """Return a fresh observer from the injected factory, or the default."""
+        factory = self._seams.observer_factory or _create_watchdog_observer
+        return factory()
 
     def start(self) -> None:
         """Start monitoring the workspace for file changes.
@@ -276,7 +253,7 @@ class WorkspaceMonitor:
         if self._started:
             return
 
-        key = _shared_workspace_key(self._workspace)
+        key = shared_workspace_key(self._workspace)
         with self._shared_lock:
             if self._attach_existing_watch(key):
                 return
@@ -364,23 +341,19 @@ class WorkspaceMonitor:
 
     def _prepare_new_shared_watch(self, key: str) -> bool:
         """Create the observer resources needed for a new shared watch."""
-        observer = _create_watchdog_observer()
+        observer = self._create_observer()
         if observer is None:
             self._release_cross_process_watch_lock()
             self._activate_live_fallback("observer_unavailable")
             return False
         self._observer = observer
-        self._handler = _make_change_tracker(self._workspace, key)
-        event_queue = cast(
-            "Queue[object] | None", getattr(observer, "event_queue", None)
-        )  # cast-policy: seam: optional watchdog/fake observer attribute
-        if isinstance(event_queue, DroppingEventQueue):
-            event_queue.set_overflow_callback(
-                partial(_mark_workspace_event_queue_overflow, self._workspace)
-            )
+        self._handler = make_change_tracker(
+            self._workspace, partial(WorkspaceMonitor._record_event_for_key, key)
+        )
+        bind_observer_overflow(observer, self._workspace)
         return True
 
-    def _start_observer_within_budget(self, observer: ObserverProtocol) -> bool:
+    def _start_observer_within_budget(self, observer: _WatchObserverProtocol) -> bool:
         """Start the scheduled watch, giving up if it takes too long.
 
         Bounding the capacity ESTIMATE is not bounding the walk it
@@ -454,7 +427,7 @@ class WorkspaceMonitor:
         self._release_cross_process_watch_lock()
         self._activate_live_fallback("watch_start_timed_out")
 
-    def _abort_unexpected_watch_start(self, observer: ObserverProtocol) -> None:
+    def _abort_unexpected_watch_start(self, observer: _WatchObserverProtocol) -> None:
         """Release partially started watch resources before propagating an error."""
         with suppress(BaseException):
             self._stop_observer(observer)
@@ -463,7 +436,7 @@ class WorkspaceMonitor:
         self._release_cross_process_watch_lock()
 
     def _register_new_shared_watch(
-        self, key: str, observer: ObserverProtocol, handler: object
+        self, key: str, observer: _WatchObserverProtocol, handler: object
     ) -> None:
         """Publish a successfully started shared observer to all local leases."""
         shared = _SharedWorkspaceWatch(
@@ -560,7 +533,10 @@ class WorkspaceMonitor:
             return
         if self._sidecar_publisher is None:
             self._sidecar_publisher = ThrottledSidecarPublisher(
-                sidecar=partial(shared_awareness_for_workspace, self._workspace),
+                sidecar=partial(
+                    self._seams.sidecar_factory or shared_awareness_for_workspace,
+                    self._workspace,
+                ),
                 now=self._now,
                 on_failure=self._activate_live_fallback,
             )
@@ -598,7 +574,7 @@ class WorkspaceMonitor:
             self._sidecar_publisher = None
         self._observer = None
         self._handler = None
-        observer: ObserverProtocol | None = None
+        observer: _WatchObserverProtocol | None = None
         handler_to_close: WorkspaceChangeCoalescer | None = None
         cross_process_owner_id: str | None = None
         if key is not None:
@@ -617,13 +593,13 @@ class WorkspaceMonitor:
             if handler_to_close is not None:
                 handler_to_close.close()
             release_workspace_awareness(self._workspace)
-            remove_shared_awareness_sidecar(self._workspace)
+            (self._seams.sidecar_remover or remove_shared_awareness_sidecar)(self._workspace)
         # S-10: release the cross-process watch lock only when the final
         # in-process lease tore down the shared observer, using the owner
         # id stored on the shared watch (not the per-monitor id, which
         # could belong to a lease that stopped before the final one).
         if cross_process_owner_id is not None:
-            CrossProcessWatchLock.release(self._workspace, cross_process_owner_id)
+            self._watch_lock().release(self._workspace, cross_process_owner_id)
         # S-2: a shared-awareness consumer lease detaches from the owner
         # sidecar; the file itself remains for the owner and future owners.
         if self._shared_consumer or self._owns_shared_awareness:
@@ -646,8 +622,7 @@ class WorkspaceMonitor:
             self._event_count,
         )
 
-    @classmethod
-    def _stop_observer(cls, observer: ObserverProtocol) -> None:
+    def _stop_observer(self, observer: _WatchObserverProtocol) -> None:
         """Tear a watch down without letting the teardown park the caller.
 
         ``observer.join(5)`` reads like the bound here, but the
@@ -660,8 +635,14 @@ class WorkspaceMonitor:
         class-wide lock, in the window before the agent process exists.
         A wedged emitter parks every workspace's monitor, not just this
         one's.
+
+        Args:
+            observer: The observer to tear down.
         """
         failed: list[tuple[type[BaseException], str]] = []
+        budget = self._seams.stop_observer_budget_seconds
+        if budget is None:
+            budget = STOP_OBSERVER_BUDGET_SECONDS
 
         def _stop() -> bool:
             try:
@@ -673,7 +654,7 @@ class WorkspaceMonitor:
             return True
 
         try:
-            call_within_budget(_stop, fallback=None, budget_seconds=STOP_OBSERVER_BUDGET_SECONDS)
+            call_within_budget(_stop, fallback=None, budget_seconds=budget)
         finally:
             observer.join(5)
         if failed:
@@ -686,7 +667,7 @@ class WorkspaceMonitor:
             kind, message = failed[0]
             raise kind(message)
 
-    def _abort_start_on_oserror(self, exc: OSError, observer: ObserverProtocol) -> None:
+    def _abort_start_on_oserror(self, exc: OSError, observer: _WatchObserverProtocol) -> None:
         """Clean up after an OSError during observer start.
 
         Tears down the partially-started observer, releases the
@@ -727,13 +708,14 @@ class WorkspaceMonitor:
         owner_id = self._cross_process_owner_id
         self._cross_process_owner_id = None
         workspace = self._workspace
+        lock = self._watch_lock()
         # Bounded like the claim it undoes. Releasing unlocks and closes
         # a file under ``<workspace>/.agent/``, and this runs on the
         # GIVE-UP path -- so a mount that hung after the claim would
         # park the launch inside the very release it performed because
         # it was giving up.
         call_within_budget(
-            lambda: CrossProcessWatchLock.release(workspace, owner_id),
+            lambda: lock.release(workspace, owner_id),
             fallback=None,
             budget_seconds=self._probe_budget_seconds,
         )
@@ -759,10 +741,11 @@ class WorkspaceMonitor:
         workspace = self._workspace
         acquired: list[str | None] = []
         lock_io_failed: list[bool] = []
+        lock = self._watch_lock()
 
         def _try_acquire() -> bool:
             try:
-                acquired.append(CrossProcessWatchLock.try_acquire(workspace))
+                acquired.append(lock.try_acquire(workspace))
             except WatchLockIOError:
                 lock_io_failed.append(True)
                 return False
@@ -781,20 +764,19 @@ class WorkspaceMonitor:
         if holder is not None:
             self._enter_shared_awareness_consumer(holder)
             return False
-        self._cross_process_owner_id = CrossProcessWatchLock.claimed_owner_id(self._workspace)
+        self._cross_process_owner_id = lock.claimed_owner_id(self._workspace)
         if self._cross_process_owner_id is None:
             self._activate_live_fallback("cross_process_holder")
             return False
-        self._prior_lock_holder = CrossProcessWatchLock.last_released_holder(self._workspace)
+        self._prior_lock_holder = lock.last_released_holder(self._workspace)
         owner_id = self._cross_process_owner_id
         prior_holder = self._prior_lock_holder
         ownership_error: list[SharedAwarenessError] = []
+        sidecar_factory = self._seams.sidecar_factory or shared_awareness_for_workspace
 
         def _begin_ownership() -> bool:
             try:
-                shared_awareness_for_workspace(workspace).begin_ownership(
-                    owner_id, prior_holder=prior_holder
-                )
+                sidecar_factory(workspace).begin_ownership(owner_id, prior_holder=prior_holder)
             except SharedAwarenessError as exc:
                 ownership_error.append(exc)
             return True
@@ -830,7 +812,7 @@ class WorkspaceMonitor:
         A sidecar that is unreadable, corrupt, or carries an owner-side
         error yields explicit ``live_fallback`` (S-2).
         """
-        sidecar = shared_awareness_for_workspace(self._workspace)
+        sidecar = (self._seams.sidecar_factory or shared_awareness_for_workspace)(self._workspace)
         polled: list[SharedAwarenessState] = []
         poll_failed: list[bool] = []
 

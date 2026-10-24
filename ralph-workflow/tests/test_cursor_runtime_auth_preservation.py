@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pytest import mark, raises
 
 from ralph.agents.invoke import (
+    AgentRunCtx,
     InvokeOptions,
     MissingCredentialsError,
     _has_cursor_file_credentials,
     invoke_agent,
+    resolve_invocation_runtime,
 )
-from ralph.agents.invoke._runtime_resolvers import CursorRuntimeResolver
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
@@ -24,7 +26,10 @@ from ralph.mcp.transport import cursor as cursor_transport
 if TYPE_CHECKING:
     import pytest
 
-    from ralph.agents.invoke._subprocess import SubprocessContext
+
+def _no_workspace_monitor(_workspace_path: Path, _classifier: object) -> None:
+    """Skip workspace monitoring so a test never starts a real observer."""
+    return None
 
 
 @mark.parametrize("use_explicit_xdg", [False, True])
@@ -51,7 +56,7 @@ def test_cursor_runtime_regression_projects_xdg_auth_into_private_config_root(
         monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
 
     endpoint = "http://127.0.0.1:9999/mcp"
-    runtime = CursorRuntimeResolver().resolve(
+    runtime = resolve_invocation_runtime(
         AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
         extra_env={str(MCP_ENDPOINT_ENV): endpoint},
         workspace_path=tmp_path,
@@ -91,11 +96,11 @@ def test_cursor_runtime_regression_defaults_to_file_store_without_api_key(
     tmp_path: Path,
 ) -> None:
     """S-4: Cursor runs avoid the macOS keychain unless an operator overrides the store."""
-    runtime = CursorRuntimeResolver().resolve(
+    runtime = resolve_invocation_runtime(
         AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
         extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
         workspace_path=tmp_path,
-        base_env={"HOME": str(tmp_path / "operator-home")},
+        _base_env={"HOME": str(tmp_path / "operator-home")},
     )
 
     try:
@@ -164,11 +169,11 @@ def test_cursor_runtime_regression_preserves_credential_override_precedence(
     expected_api_key: str,
 ) -> None:
     """S-4: invocation credentials override ambient values, which override defaults."""
-    runtime = CursorRuntimeResolver().resolve(
+    runtime = resolve_invocation_runtime(
         AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
         extra_env=extra_env,
         workspace_path=tmp_path,
-        base_env=base_env,
+        _base_env=base_env,
     )
 
     try:
@@ -210,19 +215,21 @@ def test_cursor_invocation_uses_only_private_non_keychain_runtime(
 
     captured_env: dict[str, str] = {}
 
-    def capture_runtime(_cmd: list[str], ctx: SubprocessContext) -> object:
+    def capture_runtime(_cmd: list[str], ctx: AgentRunCtx) -> object:
         captured_env.update(ctx.extra_env)
         return iter(())
 
     monkeypatch.setattr("ralph.agents.invoke.run_subprocess_and_read_lines", capture_runtime)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
 
     list(
         invoke_agent(
             AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
             str(prompt_file),
             options=InvokeOptions(
-                show_progress=False, workspace_path=tmp_path, extra_env=extra_env
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env=extra_env,
+                workspace_monitor_factory=_no_workspace_monitor,
             ),
         )
     )
@@ -257,7 +264,11 @@ def test_cursor_invocation_without_credentials_fails_before_spawn(
             invoke_agent(
                 AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
                 str(prompt_file),
-                options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
+                options=InvokeOptions(
+                    show_progress=False,
+                    workspace_path=tmp_path,
+                    workspace_monitor_factory=_no_workspace_monitor,
+                ),
             )
         )
 
@@ -291,7 +302,11 @@ def test_cursor_invocation_with_unusable_auth_fails_before_spawn(
             invoke_agent(
                 AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
                 str(prompt_file),
-                options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
+                options=InvokeOptions(
+                    show_progress=False,
+                    workspace_path=tmp_path,
+                    workspace_monitor_factory=_no_workspace_monitor,
+                ),
             )
         )
 
@@ -304,11 +319,11 @@ def test_cursor_parallel_worker_environment_cannot_restore_keychain(
     monkeypatch.setenv("AGENT_CLI_CREDENTIAL_STORE", "keychain")
     worker_extra_env = {str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"}
     worker_env = {**os.environ, **worker_extra_env}
-    runtime = CursorRuntimeResolver().resolve(
+    runtime = resolve_invocation_runtime(
         AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
         extra_env=worker_extra_env,
         workspace_path=tmp_path,
-        base_env=worker_env,
+        _base_env=worker_env,
     )
 
     try:
@@ -338,7 +353,7 @@ def test_cursor_invocation_accepts_dot_cursor_auth_json_when_xdg_auth_missing(
     captured_env: dict[str, str] = {}
     captured_projected_auth: list[str] = []
 
-    def capture_runtime(_cmd: list[str], ctx: SubprocessContext) -> object:
+    def capture_runtime(_cmd: list[str], ctx: AgentRunCtx) -> object:
         captured_env.update(ctx.extra_env)
         captured_projected_auth.extend(
             path.read_text(encoding="utf-8")
@@ -350,13 +365,16 @@ def test_cursor_invocation_accepts_dot_cursor_auth_json_when_xdg_auth_missing(
         return iter(())
 
     monkeypatch.setattr("ralph.agents.invoke.run_subprocess_and_read_lines", capture_runtime)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
 
     list(
         invoke_agent(
             AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
             str(prompt_file),
-            options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                workspace_monitor_factory=_no_workspace_monitor,
+            ),
         )
     )
 
@@ -390,7 +408,11 @@ def test_cursor_invocation_with_unusable_dot_cursor_auth_fails_before_spawn(
             invoke_agent(
                 AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
                 str(prompt_file),
-                options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
+                options=InvokeOptions(
+                    show_progress=False,
+                    workspace_path=tmp_path,
+                    workspace_monitor_factory=_no_workspace_monitor,
+                ),
             )
         )
 
@@ -470,7 +492,7 @@ def test_cursor_runtime_uses_valid_home_auth_when_xdg_auth_is_malformed(
     monkeypatch.setenv("HOME", str(operator_home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(source_config_home))
 
-    runtime = CursorRuntimeResolver().resolve(
+    runtime = resolve_invocation_runtime(
         AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
         extra_env={},
         workspace_path=tmp_path,
@@ -518,13 +540,12 @@ def test_cursor_runtime_extracts_ide_auth_when_file_auth_is_unusable(
         )
     monkeypatch.setenv("HOME", str(operator_home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(source_config_home))
-    monkeypatch.setattr("ralph.agents.invoke._runtime_resolvers.sys.platform", platform)
-
-    runtime = CursorRuntimeResolver().resolve(
-        AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
-        extra_env={},
-        workspace_path=tmp_path,
-    )
+    with InvokeOptions.platform_override(platform):
+        runtime = resolve_invocation_runtime(
+            AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
+            extra_env={},
+            workspace_path=tmp_path,
+        )
 
     try:
         assert runtime.agent_env is not None
@@ -574,12 +595,10 @@ def test_cursor_invocation_projects_ide_credentials_before_spawn(
     monkeypatch.setenv("HOME", str(operator_home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(source_config_home))
     monkeypatch.delenv("CURSOR_API_KEY", raising=False)
-    monkeypatch.setattr("ralph.agents.invoke._runtime_resolvers.sys.platform", platform)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     captured_env: dict[str, str] = {}
     projected_payloads: list[dict[str, object]] = []
 
-    def capture_runtime(_cmd: list[str], ctx: SubprocessContext) -> object:
+    def capture_runtime(_cmd: list[str], ctx: AgentRunCtx) -> object:
         captured_env.update(ctx.extra_env)
         projected_payloads.extend(
             json.loads(path.read_text(encoding="utf-8"))
@@ -592,17 +611,19 @@ def test_cursor_invocation_projects_ide_credentials_before_spawn(
 
     monkeypatch.setattr("ralph.agents.invoke.run_subprocess_and_read_lines", capture_runtime)
 
-    list(
-        invoke_agent(
-            AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
-            str(prompt_file),
-            options=InvokeOptions(
-                show_progress=False,
-                workspace_path=tmp_path,
-                extra_env={"AGENT_CLI_CREDENTIAL_STORE": credential_store},
-            ),
+    with InvokeOptions.platform_override(platform):
+        list(
+            invoke_agent(
+                AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
+                str(prompt_file),
+                options=InvokeOptions(
+                    show_progress=False,
+                    workspace_path=tmp_path,
+                    extra_env={"AGENT_CLI_CREDENTIAL_STORE": credential_store},
+                    workspace_monitor_factory=_no_workspace_monitor,
+                ),
+            )
         )
-    )
 
     assert captured_env["AGENT_CLI_CREDENTIAL_STORE"] == credential_store
     assert Path(captured_env["HOME"]) != operator_home
@@ -629,13 +650,12 @@ def test_cursor_runtime_replaces_mirrored_auth_without_touching_operator_home(
         )
     monkeypatch.setenv("HOME", str(operator_home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(source_config_home))
-    monkeypatch.setattr("ralph.agents.invoke._runtime_resolvers.sys.platform", "linux")
-
-    runtime = CursorRuntimeResolver().resolve(
-        AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
-        extra_env={},
-        workspace_path=tmp_path,
-    )
+    with InvokeOptions.platform_override("linux"):
+        runtime = resolve_invocation_runtime(
+            AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
+            extra_env={},
+            workspace_path=tmp_path,
+        )
 
     try:
         assert runtime.agent_env is not None
@@ -663,6 +683,7 @@ def test_cursor_runtime_regression_strips_ssh_markers_for_each_credential_source
         auth_path = source_config_home / "cursor" / "auth.json"
         auth_path.parent.mkdir(parents=True)
         auth_path.write_text('{"token":"file-token"}', encoding="utf-8")
+        platform_scope = nullcontext()
     else:
         state_db = source_config_home / "Cursor/User/globalStorage/state.vscdb"
         state_db.parent.mkdir(parents=True)
@@ -671,20 +692,21 @@ def test_cursor_runtime_regression_strips_ssh_markers_for_each_credential_source
             connection.execute(
                 "INSERT INTO ItemTable VALUES (?, ?)", ("cursorAuth/accessToken", "ide-token")
             )
-        monkeypatch.setattr("ralph.agents.invoke._runtime_resolvers.sys.platform", "linux")
+        platform_scope = InvokeOptions.platform_override("linux")
 
-    runtime = CursorRuntimeResolver().resolve(
-        AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
-        extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
-        workspace_path=tmp_path,
-        base_env={
-            "HOME": str(operator_home),
-            "XDG_CONFIG_HOME": str(source_config_home),
-            "SSH_CLIENT": "192.0.2.1 12345 22",
-            "SSH_TTY": "/dev/ttys001",
-            "SSH_CONNECTION": "192.0.2.1 12345 198.51.100.1 22",
-        },
-    )
+    with platform_scope:
+        runtime = resolve_invocation_runtime(
+            AgentConfig(cmd="agent", transport=AgentTransport.CURSOR),
+            extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+            workspace_path=tmp_path,
+            _base_env={
+                "HOME": str(operator_home),
+                "XDG_CONFIG_HOME": str(source_config_home),
+                "SSH_CLIENT": "192.0.2.1 12345 22",
+                "SSH_TTY": "/dev/ttys001",
+                "SSH_CONNECTION": "192.0.2.1 12345 198.51.100.1 22",
+            },
+        )
 
     try:
         assert runtime.agent_env is not None

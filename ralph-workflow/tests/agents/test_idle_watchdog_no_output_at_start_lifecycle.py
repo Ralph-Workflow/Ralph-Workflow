@@ -25,8 +25,8 @@ from ralph.agents.idle_watchdog import (
     TimeoutPolicy,
     WatchdogFireReason,
     WatchdogVerdict,
+    WorkspaceChangeKind,
 )
-from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
 from ralph.agents.timeout_clock import FakeClock
 from ralph.process.child_liveness import AliveBy
 

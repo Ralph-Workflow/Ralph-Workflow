@@ -3,29 +3,39 @@
 Three black-box tests proving ``WorkspaceMonitor.start()`` consults a
 ``CrossProcessWatchLock`` before registering a recursive watchdog observer
 so two independent processes do not each schedule their own watch on the
-same workspace root. A fake lock is monkeypatched in so no real flock or
-lock file is touched; the fake observer records ``schedule`` calls so the
-tests can assert zero overlap.
+same workspace root. The lock, the observer and the shared-awareness
+sidecar are injected through the monitor's public constructor, so no real
+flock, lock file or sidecar file is touched; the fake observer records
+``schedule`` calls so the tests can assert zero overlap.
 
 Patterns follow ``tests/agents/test_workspace_watch_scoping.py`` (fake
-observer + ``_create_watchdog_observer`` monkeypatch) and the held/free
-assertion style from the awareness-status regression tests.
+observer injected as a collaborator) and the held/free assertion style from
+the awareness-status regression tests.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.agents.invoke._workspace import WorkspaceMonitor
+from ralph.agents.invoke._workspace import (
+    CrossProcessWatchLockProtocol,
+    WatchObserverFactory,
+    WorkspaceMonitor,
+)
 from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
 from ralph.workspace._shared_awareness import (
     SharedAwarenessError,
+    SharedAwarenessSidecar,
     SharedAwarenessState,
     release_shared_awareness,
 )
 from ralph.workspace.awareness import release_workspace_awareness
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 class _FakeObserver:
@@ -85,7 +95,7 @@ class _FakeCrossProcessWatchLock:
 
 
 @pytest.fixture(autouse=True)
-def _cleanup_shared_workspace_state() -> None:
+def _cleanup_shared_workspace_state() -> Iterator[None]:
     """Clear shared watch and awareness state between tests."""
     yield
     WorkspaceMonitor._shared_watches.clear()
@@ -93,7 +103,7 @@ def _cleanup_shared_workspace_state() -> None:
     release_shared_awareness(Path("/ws"))
 
 
-class _FakeSharedAwarenessSidecar:
+class _FakeSharedAwarenessSidecar(SharedAwarenessSidecar):
     """In-memory stand-in for the shared-awareness sidecar.
 
     Records every ``begin_ownership``, ``poll``, and ``claim_epoch`` call so
@@ -101,9 +111,10 @@ class _FakeSharedAwarenessSidecar:
     contracts without touching the filesystem.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, workspace_root: Path) -> None:
+        super().__init__(workspace_root)
         self.owner_id: str | None = None
-        self.epoch = 0
+        self._current_epoch = 0
         self.paths: list[str] = []
         self.overflowed = False
         self.error: str | None = None
@@ -112,11 +123,16 @@ class _FakeSharedAwarenessSidecar:
         self.poll_calls = 0
         self.claim_calls: list[int] = []
 
+    @property
+    def epoch(self) -> int:
+        """Return the epoch the fake has published up to."""
+        return self._current_epoch
+
     def begin_ownership(self, owner_id: str, *, prior_holder: str | None) -> int:
         self.begin_calls.append((owner_id, prior_holder))
         self.owner_id = owner_id
-        self.epoch += 1
-        return self.epoch
+        self._current_epoch += 1
+        return self._current_epoch
 
     def publish_changes(self, paths: list[str], *, overflowed: bool = False) -> int:
         self.publish_calls.append((paths, overflowed))
@@ -124,8 +140,8 @@ class _FakeSharedAwarenessSidecar:
             if path not in self.paths:
                 self.paths.append(path)
         self.overflowed = self.overflowed or overflowed
-        self.epoch += 1
-        return self.epoch
+        self._current_epoch += 1
+        return self._current_epoch
 
     def publish_error(self, cause: str) -> None:
         self.error = cause
@@ -138,7 +154,7 @@ class _FakeSharedAwarenessSidecar:
         if self.error is not None:
             raise SharedAwarenessError(self.error)
         return SharedAwarenessState(
-            epoch=self.epoch,
+            epoch=self._current_epoch,
             paths=list(self.paths),
             overflowed=self.overflowed,
             owner_id=self.owner_id or "unknown",
@@ -149,32 +165,48 @@ class _FakeSharedAwarenessSidecar:
         self.claim_calls.append(epoch)
 
 
-def test_cross_process_holder_blocks_start_and_reports_shared_awareness_consumer(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def _monitor(
+    observer_factory: WatchObserverFactory,
+    *,
+    lock: CrossProcessWatchLockProtocol,
+    sidecar: SharedAwarenessSidecar,
+) -> WorkspaceMonitor:
+    """Build a monitor whose watch collaborators are in-memory doubles."""
+    return WorkspaceMonitor(
+        Path("/ws"),
+        classifier=WorkspaceChangeClassifier(),
+        host_budget=8192,
+        directory_counter=_zero_directory_counter,
+        live_watch_total=0,
+        watch_lock=lock,
+        observer_factory=observer_factory,
+        sidecar_factory=lambda _root: sidecar,
+        sidecar_remover=lambda _root: None,
+    )
+
+
+def _zero_directory_counter(workspace: Path, *, cap: int) -> int:
+    """Report an empty workspace so the capacity probe never walks a tree."""
+    del workspace, cap
+    return 0
+
+
+def test_cross_process_holder_blocks_start_and_reports_shared_awareness_consumer() -> None:
     """Held case: ``try_acquire`` returns a non-None owner id, so the second
     process's ``WorkspaceMonitor.start()`` schedules zero observers and
     consumes the owner's shared-awareness sidecar instead (S-2). The
     awareness status carries ``cause="cross_process_holder"`` and the owner
     id."""
     fake_lock = _FakeCrossProcessWatchLock(holder="proc-99:1")
-    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock)
     fake = _FakeObserver()
-    monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake)
-    fake_sidecar = _FakeSharedAwarenessSidecar()
+    fake_sidecar = _FakeSharedAwarenessSidecar(Path("/ws"))
     fake_sidecar.owner_id = "proc-99:1"
     fake_sidecar.paths = ["src/app.py"]
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.shared_awareness_for_workspace",
-        lambda _root: fake_sidecar,
-    )
 
-    monitor = WorkspaceMonitor(
-        Path("/ws"),
-        classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
+    monitor = _monitor(
+        lambda: fake,
+        lock=fake_lock,
+        sidecar=fake_sidecar,
     )
     monitor.start()
 
@@ -192,15 +224,12 @@ def test_cross_process_holder_blocks_start_and_reports_shared_awareness_consumer
     monitor.stop()
 
 
-def test_free_lock_lets_start_schedule_one_observer_and_release_roundtrips(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_free_lock_lets_start_schedule_one_observer_and_release_roundtrips() -> None:
     """Free case: ``try_acquire`` returns None, so the first ``start()``
     schedules exactly one observer and stores the owner id; the matching
     ``stop()`` calls ``release`` with that id; a second ``start()`` after
     release succeeds."""
     fake_lock = _FakeCrossProcessWatchLock(holder=None)
-    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock)
     observers: list[_FakeObserver] = []
 
     def _factory() -> _FakeObserver:
@@ -208,15 +237,12 @@ def test_free_lock_lets_start_schedule_one_observer_and_release_roundtrips(
         observers.append(observer)
         return observer
 
-    monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", _factory)
-
-    monitor = WorkspaceMonitor(
-        Path("/ws"),
-        classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
+    monitor = _monitor(
+        _factory,
+        lock=fake_lock,
+        sidecar=_FakeSharedAwarenessSidecar(Path("/ws")),
     )
+
     monitor.start()
 
     assert len(observers) == 1
@@ -242,22 +268,16 @@ def test_free_lock_lets_start_schedule_one_observer_and_release_roundtrips(
     monitor.stop()
 
 
-def test_non_owner_stop_does_not_release_and_does_not_raise(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_non_owner_stop_does_not_release_and_does_not_raise() -> None:
     """Non-owner stop: a monitor that never won the cross-process lock
     does NOT call ``release`` and does NOT raise."""
     fake_lock = _FakeCrossProcessWatchLock(holder="proc-99:1")
-    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock)
     fake = _FakeObserver()
-    monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake)
 
-    monitor = WorkspaceMonitor(
-        Path("/ws"),
-        classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
+    monitor = _monitor(
+        lambda: fake,
+        lock=fake_lock,
+        sidecar=_FakeSharedAwarenessSidecar(Path("/ws")),
     )
     monitor.start()  # blocked by the cross-process holder
 
@@ -268,36 +288,29 @@ def test_non_owner_stop_does_not_release_and_does_not_raise(
     assert fake_lock.release_calls == []
 
 
-def test_shared_lease_releases_cross_process_lock_only_at_final_stop(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_shared_lease_releases_cross_process_lock_only_at_final_stop() -> None:
     """DA-001/DA-009: stopping one in-process lease while another lease still
     shares the observer must leave the cross-process lock held; only the final
     matching ``stop()`` releases it."""
     fake_lock = _FakeCrossProcessWatchLock(holder=None)
-    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock)
     fake = _FakeObserver()
-    monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake)
+    fake_sidecar = _FakeSharedAwarenessSidecar(Path("/ws"))
 
     # Monitor A: creates the shared watch and acquires the cross-process lock.
-    monitor_a = WorkspaceMonitor(
-        Path("/ws"),
-        classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
+    monitor_a = _monitor(
+        lambda: fake,
+        lock=fake_lock,
+        sidecar=fake_sidecar,
     )
     monitor_a.start()
     assert len(fake.scheduled) == 1
     assert fake_lock.acquire_calls == [Path("/ws")]
 
     # Monitor B: joins the existing shared watch (no new observer, no acquire).
-    monitor_b = WorkspaceMonitor(
-        Path("/ws"),
-        classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
+    monitor_b = _monitor(
+        lambda: fake,
+        lock=fake_lock,
+        sidecar=fake_sidecar,
     )
     monitor_b.start()
     assert len(fake.scheduled) == 1
@@ -320,28 +333,18 @@ def test_shared_lease_releases_cross_process_lock_only_at_final_stop(
 # ---------------------------------------------------------------------------
 
 
-def test_owner_publishes_source_changes_to_sidecar(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_owner_publishes_source_changes_to_sidecar() -> None:
     """S-2: the watch-lock owner publishes observed source changes to the
     shared sidecar (owner id, epoch bump, coalesced relative path) while
     Ralph-managed internal paths are excluded."""
     fake_lock = _FakeCrossProcessWatchLock(holder=None)
-    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock)
     fake = _FakeObserver()
-    monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake)
-    fake_sidecar = _FakeSharedAwarenessSidecar()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.shared_awareness_for_workspace",
-        lambda _root: fake_sidecar,
-    )
+    fake_sidecar = _FakeSharedAwarenessSidecar(Path("/ws"))
 
-    monitor = WorkspaceMonitor(
-        Path("/ws"),
-        classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
+    monitor = _monitor(
+        lambda: fake,
+        lock=fake_lock,
+        sidecar=fake_sidecar,
     )
     monitor.start()
 
@@ -361,32 +364,21 @@ def test_owner_publishes_source_changes_to_sidecar(
     monitor.stop()
 
 
-def test_sidecar_write_failure_enters_live_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_sidecar_write_failure_enters_live_fallback() -> None:
     """S-2: an owner whose sidecar publication fails surfaces explicit
     ``live_fallback`` rather than silently dropping the change."""
-    from ralph.workspace._shared_awareness import SharedAwarenessError
 
     class _FailingSidecar(_FakeSharedAwarenessSidecar):
         def publish_changes(self, paths: list[str], *, overflowed: bool = False) -> int:
             raise SharedAwarenessError("disk full")
 
     fake_lock = _FakeCrossProcessWatchLock(holder=None)
-    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock)
     fake = _FakeObserver()
-    monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake)
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.shared_awareness_for_workspace",
-        lambda _root: _FailingSidecar(),
-    )
 
-    monitor = WorkspaceMonitor(
-        Path("/ws"),
-        classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
+    monitor = _monitor(
+        lambda: fake,
+        lock=fake_lock,
+        sidecar=_FailingSidecar(Path("/ws")),
     )
     monitor.start()
     monitor.record_event("/ws/src/app.py")
@@ -396,29 +388,19 @@ def test_sidecar_write_failure_enters_live_fallback(
     monitor.stop()
 
 
-def test_consumer_sidecar_read_failure_enters_live_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_consumer_sidecar_read_failure_enters_live_fallback() -> None:
     """S-2: a non-owner that cannot read the owner sidecar (corrupt or
     owner-reported error) enters bounded ``live_fallback`` instead of
     registering a duplicate observer."""
     fake_lock = _FakeCrossProcessWatchLock(holder="proc-99:1")
-    monkeypatch.setattr("ralph.agents.invoke._workspace.CrossProcessWatchLock", fake_lock)
     fake = _FakeObserver()
-    monkeypatch.setattr("ralph.agents.invoke._workspace._create_watchdog_observer", lambda: fake)
-    fake_sidecar = _FakeSharedAwarenessSidecar()
+    fake_sidecar = _FakeSharedAwarenessSidecar(Path("/ws"))
     fake_sidecar.error = "corrupt sidecar"
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace.shared_awareness_for_workspace",
-        lambda _root: fake_sidecar,
-    )
 
-    monitor = WorkspaceMonitor(
-        Path("/ws"),
-        classifier=WorkspaceChangeClassifier(),
-        host_budget=8192,
-        directory_counter=lambda *_, **__: 0,
-        live_watch_total=0,
+    monitor = _monitor(
+        lambda: fake,
+        lock=fake_lock,
+        sidecar=fake_sidecar,
     )
     monitor.start()
 
@@ -429,31 +411,30 @@ def test_consumer_sidecar_read_failure_enters_live_fallback(
     monitor.stop()
 
 
-def test_crash_takeover_restarts_sidecar_epoch(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def test_crash_takeover_restarts_sidecar_epoch(tmp_path: Path) -> None:
     """S-2: a new owner that acquires the lock after a stale owner crashed
     reconciles the stale sidecar and restarts the epoch at 1, so consumers
     can detect the owner change."""
     from ralph.workspace._shared_awareness import (
-        SharedAwarenessSidecar,
-        release_shared_awareness,
+        SharedAwarenessSidecar as RealSharedAwarenessSidecar,
+    )
+    from ralph.workspace._shared_awareness import (
+        release_shared_awareness as release_real_shared_awareness,
     )
 
     workspace = tmp_path / "ws"
     workspace.mkdir()
 
     # Simulate a crashed owner's sidecar: unknown owner id, high epoch.
-    crashed = SharedAwarenessSidecar(workspace)
+    crashed = RealSharedAwarenessSidecar(workspace)
     crashed.begin_ownership("dead-proc:7", prior_holder=None)
     for _ in range(5):
         crashed.publish_changes(["stale.py"])
     crashed_epoch = crashed.epoch
-    release_shared_awareness(workspace)
+    release_real_shared_awareness(workspace)
 
     # A new owner takes over with a stale (unknown) prior holder.
-    new_owner = SharedAwarenessSidecar(workspace)
+    new_owner = RealSharedAwarenessSidecar(workspace)
     new_epoch = new_owner.begin_ownership("us:1", prior_holder=None)
     try:
         assert new_epoch == 1, "stale owner id must restart the epoch"
@@ -462,4 +443,4 @@ def test_crash_takeover_restarts_sidecar_epoch(
         assert state.owner_id == "us:1"
         assert state.paths == []
     finally:
-        release_shared_awareness(workspace)
+        release_real_shared_awareness(workspace)

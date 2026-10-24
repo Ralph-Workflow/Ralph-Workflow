@@ -13,9 +13,18 @@ The AST-scoped invariants use ``FunctionBodyInvariant`` and
 ``CallSiteInvariant`` so the audit cannot be satisfied by a
 helper name appearing anywhere in the file -- the strip call
 must actually live inside the wired sink.
+
+The adversarial regressions share one recipe (patch a file, narrow
+the audit to the invariant that owns that seam, run the audit, assert
+it fails and says why), so they are driven from a single table: the
+row carries the source edit, the seam to narrow to, and the fragments
+the audit output must name. A failure message always names the row.
 """
 
 from __future__ import annotations
+
+from functools import partial
+from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
 
@@ -28,6 +37,9 @@ from ralph.testing.audit_terminal_escape_containment import (
 )
 from ralph.testing.audit_terminal_escape_containment import main as audit_main
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 # NOTE: ``test_audit_returns_zero_when_all_invariants_satisfied`` and
 # ``test_audit_module_path`` were removed in the wt-05-test-opti pass.
 # The clean-tree check duplicates the audit already executed by
@@ -37,6 +49,353 @@ from ralph.testing.audit_terminal_escape_containment import main as audit_main
 # cover the AST + literal-string regression contract with monkey-patched
 # sources.
 
+#: The audit's UNPATCHED source reader, captured at import time. A
+#: table-driven regression test patches several files in sequence; each
+#: patch must start from the REAL source, not from the previous row's
+#: already-patched reader.
+_REAL_READ = audit_module._read
+
+#: The audit's FULL invariant table, captured at import time. The same
+#: reasoning applies to the narrowing helper: every row must narrow from
+#: the complete table, not from the previous row's narrowed tuple.
+_REAL_INVARIANTS = audit_module._INVARIANTS
+
+
+class _RegressionCase(NamedTuple):
+    """One adversarial regression row for the terminal-containment audit.
+
+    Attributes:
+        name: Human-readable label used in the failure messages.
+        rel_path: The production file the regression is injected into.
+        invariant_cls: The invariant class that owns the patched seam.
+        expected_fragments: Fragments the audit output must name.
+        qualname: Seam filter for the narrowing helper (``None`` = no filter).
+        callee_name: Callee filter for the narrowing helper (``None`` = no filter).
+        narrow_rel_path: Whether the narrowing filters on ``rel_path``.
+        edits: ``(old_literal, new_literal)`` replacements applied to the source.
+        appended: Text appended to the source after the replacements.
+        narrow_package_files: Whether the package-wide file list must be
+            narrowed to the patched file (the package-wide invariant would
+            otherwise walk the whole tree).
+    """
+
+    name: str
+    rel_path: str
+    invariant_cls: type[object]
+    expected_fragments: tuple[str, ...]
+    qualname: str | None = None
+    callee_name: str | None = None
+    narrow_rel_path: bool = True
+    edits: tuple[tuple[str, str], ...] = ()
+    appended: str = ""
+    narrow_package_files: bool = False
+
+
+#: The adversarial regressions the audit must catch, one row per seam.
+_REGRESSION_CASES: tuple[_RegressionCase, ...] = (
+    _RegressionCase(
+        name="activity_model.render_event_line drops the strip",
+        rel_path="display/activity_model.py",
+        invariant_cls=FunctionBodyInvariant,
+        qualname="render_event_line",
+        expected_fragments=("render_event_line body missing required literal",),
+        edits=(
+            (
+                'safe_content = strip_terminal_control(content or "")',
+                'safe_content = content or ""',
+            ),
+        ),
+    ),
+    _RegressionCase(
+        name="ParallelDisplay.strip_markup drops the strip",
+        rel_path="display/parallel_display.py",
+        invariant_cls=FunctionBodyInvariant,
+        qualname="ParallelDisplay.strip_markup",
+        expected_fragments=("ParallelDisplay.strip_markup body missing required literal",),
+        edits=(("return strip_terminal_control(line)", "return line"),),
+    ),
+    _RegressionCase(
+        name="emit_activity_line sanitizes only one branch",
+        rel_path="display/parallel_display.py",
+        invariant_cls=FunctionBodyInvariant,
+        qualname="emit_activity_line",
+        expected_fragments=("minimum required is 2", "emit_activity_line body has 1 occurrence"),
+        edits=(
+            (
+                "console.print(_sanitize(line), markup=False, highlight=False)",
+                "console.print(line)",
+            ),
+        ),
+    ),
+    _RegressionCase(
+        name="ParallelDisplay._render_titled_lines prints raw lines",
+        rel_path="display/parallel_display.py",
+        invariant_cls=FunctionBodyInvariant,
+        qualname="ParallelDisplay._render_titled_lines",
+        expected_fragments=("_render_titled_lines body missing required literal",),
+        edits=(
+            (
+                "strip_terminal_control(line), markup=False, highlight=False",
+                "line, markup=False, highlight=False",
+            ),
+        ),
+    ),
+    _RegressionCase(
+        name="_process_reader re-opens the child stdin to INHERIT",
+        rel_path="agents/invoke/_process_reader.py",
+        invariant_cls=FunctionBodyInvariant,
+        qualname="_run_subprocess_and_read_lines",
+        expected_fragments=("stdin=None",),
+        edits=(("stdin=subprocess.DEVNULL,", "stdin=None,"),),
+    ),
+    _RegressionCase(
+        name="_process_reader hands the terminal to the child",
+        rel_path="agents/invoke/_process_reader.py",
+        invariant_cls=FunctionBodyInvariant,
+        qualname="_run_subprocess_and_read_lines",
+        expected_fragments=("stdin=sys.stdin",),
+        edits=(("stdin=subprocess.DEVNULL,", "stdin=sys.stdin,"),),
+    ),
+    _RegressionCase(
+        name="subprocess_executor passes stdin=None to SpawnOptions",
+        rel_path="agents/subprocess_executor.py",
+        invariant_cls=CallSiteInvariant,
+        callee_name="SpawnOptions",
+        expected_fragments=("no SpawnOptions call passes",),
+        edits=(("stdin=_DEVNULL,", "stdin=None,"),),
+    ),
+    _RegressionCase(
+        name="SpawnOptions.stdin defaults back to None",
+        rel_path="process/manager/_spawn_options.py",
+        invariant_cls=Invariant,
+        expected_fragments=("subprocess.DEVNULL",),
+        edits=(
+            (
+                "stdin: int | None = subprocess.DEVNULL",
+                "stdin: int | None = None",
+            ),
+        ),
+    ),
+    _RegressionCase(
+        name="a new SpawnOptions call re-opts into INHERIT",
+        rel_path="agents/invoke/_process_reader.py",
+        invariant_cls=PackageWideCallSiteInvariant,
+        callee_name="SpawnOptions",
+        narrow_rel_path=False,
+        narrow_package_files=True,
+        expected_fragments=("stdin=None",),
+        appended="\nSpawnOptions(stdin=None,)\n",
+    ),
+    _RegressionCase(
+        name="configure_logging hands sys.stderr to loguru",
+        rel_path="logging.py",
+        invariant_cls=FunctionBodyInvariant,
+        qualname="configure_logging",
+        expected_fragments=("configure_logging", "sys.stderr"),
+        edits=(
+            (
+                "sink = console_sink if console_sink is not None else make_stderr_log_sink()",
+                "sink = sys.stderr",
+            ),
+            ("colorize=False,", "colorize=True,"),
+        ),
+    ),
+    _RegressionCase(
+        name="cli._configure_logging hands sys.stderr to loguru",
+        rel_path="cli/main.py",
+        invariant_cls=FunctionBodyInvariant,
+        qualname="_configure_logging",
+        expected_fragments=("_configure_logging", "sys.stderr"),
+        edits=(
+            (
+                "sink = console_sink if console_sink is not None else make_stderr_log_sink()",
+                "sink = None  # pretend we forgot to wire it",
+            ),
+            (
+                'logger.add(sink, level="ERROR")',
+                'logger.add(sys.stderr, level="ERROR")',
+            ),
+        ),
+    ),
+    _RegressionCase(
+        name="cli.main drops the sanitizing log sink",
+        rel_path="cli/main.py",
+        invariant_cls=FunctionBodyInvariant,
+        qualname="main",
+        expected_fragments=("main", "make_sanitizing_log_sink"),
+        edits=(
+            (
+                "configure_logging(verbosity, console_sink=make_sanitizing_log_sink(_cli_ctx))",
+                "configure_logging(verbosity)",
+            ),
+        ),
+    ),
+    _RegressionCase(
+        name="make_sanitizing_log_sink skips the stripper",
+        rel_path="display/log_sink.py",
+        invariant_cls=FunctionBodyInvariant,
+        qualname="make_sanitizing_log_sink",
+        expected_fragments=("make_sanitizing_log_sink",),
+        edits=(
+            (
+                'cleaned = strip_terminal_control(message.rstrip("\\n"))',
+                'cleaned = message.rstrip("\\n")',
+            ),
+        ),
+    ),
+    _RegressionCase(
+        name="make_stderr_log_sink skips the stripper",
+        rel_path="display/log_sink.py",
+        invariant_cls=FunctionBodyInvariant,
+        qualname="make_stderr_log_sink",
+        expected_fragments=("make_stderr_log_sink",),
+        edits=(
+            (
+                'cleaned = strip_terminal_control(message.rstrip("\\n"))',
+                'cleaned = message.rstrip("\\n")',
+            ),
+        ),
+    ),
+    _RegressionCase(
+        name="log_sink constructs a Console inline",
+        rel_path="display/log_sink.py",
+        invariant_cls=Invariant,
+        expected_fragments=("Console(",),
+        appended="\n_console = Console(file=sys.stderr)\n",
+    ),
+    _RegressionCase(
+        name="spawn_pty_process drops os.setsid()",
+        rel_path="process/pty.py",
+        invariant_cls=FunctionBodyInvariant,
+        qualname="spawn_pty_process",
+        expected_fragments=("spawn_pty_process", "os.setsid()"),
+        edits=(("os.setsid()", "_ = None  # nosetsid"),),
+    ),
+    _RegressionCase(
+        name="line_sanitizer loses the strip_terminal_control helper",
+        rel_path="display/line_sanitizer.py",
+        invariant_cls=Invariant,
+        expected_fragments=("missing required literal",),
+        edits=(("def strip_terminal_control", "def _gone"),),
+    ),
+    _RegressionCase(
+        name="_plain_constants re-introduces the SGR-only regex",
+        rel_path="display/_plain_constants.py",
+        invariant_cls=Invariant,
+        expected_fragments=("[0-9;]*m",),
+        appended="\n_LEGACY = re.compile(r'[0-9;]*m')\n",
+    ),
+    _RegressionCase(
+        name="_pty_runner paints the terminal with tqdm",
+        rel_path="agents/invoke/_pty_runner.py",
+        invariant_cls=Invariant,
+        expected_fragments=("file=sys.stdout",),
+        appended="\ntqdm(..., file=sys.stdout)\n",
+    ),
+)
+
+#: Line separators that Python's tokenizer treats as ordinary characters
+#: inside a line even though ``str.splitlines`` breaks on them.
+_UNICODE_SEPARATORS: tuple[str, ...] = (
+    "",
+    "\u2028",
+    "\u2029",
+    "\x0c",
+    "\u0085",
+)
+
+#: ``(rel_path, qualname, required_literal)`` rows: the safe-restoration
+#: literals whose removal must be caught by the audit.
+_TERMINAL_RESTORE_REQUIRED_LITERALS: tuple[tuple[str, str | None, str], ...] = (
+    ("display/terminal_restore.py", "terminal_restore_sequence", "?25h"),
+    ("display/terminal_restore.py", "terminal_restore_sequence", "[0m"),
+    ("display/terminal_restore.py", "restore_terminal_modes", "_STATE.saved_modes"),
+    ("display/terminal_restore.py", "restore_terminal_modes", "termios.tcsetattr"),
+    ("display/_terminal_bg_query.py", "_probe", "get_global_snapshot()"),
+    ("display/_terminal_bg_query.py", "_probe", "parsed_color is None"),
+    ("display/_terminal_bg_query.py", "_probe", "tcflush"),
+    ("display/_terminal_bg_query.py", "_probe", "TCIFLUSH"),
+    ("cli/main.py", "ensure_cli_terminal_restore", "SIGTERM"),
+    ("cli/main.py", "ensure_cli_terminal_restore", "SIGHUP"),
+    ("cli/main.py", "ensure_cli_terminal_restore", "SIGQUIT"),
+    ("cli/main.py", "ensure_cli_terminal_restore", "install_sanitizing_excepthook"),
+    ("cli/main.py", "ensure_cli_terminal_restore", "restore_terminal_modes"),
+    ("display/excepthook.py", None, "strip_terminal_control"),
+    ("display/excepthook.py", None, "restore_terminal"),
+    ("display/terminal_restore.py", "restore_terminal", "terminal_understands_vt"),
+    ("display/_terminal_bg_query.py", "_probe", "terminal_understands_vt"),
+    ("display/context.py", "install_sigwinch_refresher", "refresh_in_progress"),
+    ("display/context.py", "install_sigwinch_refresher", "signal.SIG_DFL"),
+)
+
+#: Literals the parent cleanup must never use: switching buffers, repainting
+#: or repositioning the display, or discarding queued operator input.
+_DESTRUCTIVE_CLEANUP_LITERALS: tuple[str, ...] = (
+    "?1049l",
+    "?1047l",
+    "?47l",
+    "[2J",
+    "[3J",
+    "[H",
+    "[1;1H",
+    "tcflush",
+)
+
+#: Every seam the audit must own, in the form ``rel_path::qualname``. The
+#: count alone does not pin WHICH sinks are covered, so the audit's
+#: invariant table is compared against this list seam by seam.
+_EXPECTED_INVARIANT_SEAMS: tuple[str, ...] = (
+    "MarkupParseInvariant",
+    "NarrowCsiParameterInvariant",
+    "PackageWideCallSiteInvariant",
+    "agents/invoke/_process_reader.py::_run_subprocess_and_read_lines",
+    "agents/invoke/_pty_line_reader.py",
+    "agents/invoke/_pty_runner.py",
+    "agents/subprocess_executor.py::SpawnOptions()",
+    "cli/main.py::_configure_logging",
+    "cli/main.py::ensure_cli_terminal_restore",
+    "cli/main.py::main",
+    "display/_plain_constants.py::_sanitize",
+    "display/_plain_constants.py",
+    "display/_terminal_bg_query.py::_probe",
+    "display/activity_model.py::render_event_line",
+    "display/context.py::install_sigwinch_refresher",
+    "display/excepthook.py",
+    "display/log_sink.py::make_sanitizing_log_sink",
+    "display/log_sink.py::make_stderr_log_sink",
+    "display/log_sink.py",
+    "display/line_sanitizer.py::strip_markup_safe",
+    "display/line_sanitizer.py",
+    "display/parallel_display.py::ParallelDisplay._render_titled_lines",
+    "display/parallel_display.py::ParallelDisplay.strip_markup",
+    "display/parallel_display.py::_strip_markup",
+    "display/parallel_display.py::emit_activity_line",
+    "display/parallel_display.py",
+    "display/status_bar.py::StatusBar._fallback_cleanup",
+    "display/terminal_restore.py::restore_terminal",
+    "display/terminal_restore.py::restore_terminal",
+    "display/terminal_restore.py::restore_terminal_modes",
+    "display/terminal_restore.py::terminal_restore_sequence",
+    "interrupt/controller.py::InterruptController.force_exit",
+    "logging.py::configure_logging",
+    "process/manager/_spawn_options.py",
+    "process/pty.py::spawn_pty_process",
+)
+
+
+def _seam_key(invariant: object) -> str:
+    """Return the ``rel_path::qualname`` seam an invariant owns."""
+    rel_path = getattr(invariant, "rel_path", None)
+    if not isinstance(rel_path, str):
+        return type(invariant).__name__
+    qualname = getattr(invariant, "qualname", None)
+    if isinstance(qualname, str):
+        return f"{rel_path}::{qualname}"
+    callee_name = getattr(invariant, "callee_name", None)
+    if isinstance(callee_name, str):
+        return f"{rel_path}::{callee_name}()"
+    return rel_path
+
 
 def test_audit_invariant_count_matches_table() -> None:
     """The audit pins every sink (file-level, function-body, and SpawnOptions call-site)."""
@@ -44,13 +403,28 @@ def test_audit_invariant_count_matches_table() -> None:
     # CSI ban) + 4 markup-parse containment invariants and 9 terminal
     # restoration wiring invariants, including the Status Bar fallback gate.
     expected = 35
-    assert len(audit_module._INVARIANTS) == expected
+    invariants = audit_module._INVARIANTS
+    assert len(invariants) == expected
+
+    # The count alone does not pin WHICH sinks are covered: a dropped or
+    # duplicated invariant would keep the count at 35. The seam list below
+    # names every sink the audit must own, so a sink cannot disappear (or
+    # be replaced by a duplicate of another sink) without this test failing.
+    seams = sorted(_seam_key(invariant) for invariant in invariants)
+    assert seams == sorted(_EXPECTED_INVARIANT_SEAMS), (
+        f"the audit must own exactly these seams; "
+        f"missing={sorted(set(_EXPECTED_INVARIANT_SEAMS) - set(seams))} "
+        f"unexpected={sorted(set(seams) - set(_EXPECTED_INVARIANT_SEAMS))} "
+        f"counts={{expected: {len(_EXPECTED_INVARIANT_SEAMS)}, actual: {len(seams)}}}"
+    )
 
 
 def test_audit_line_sanitizer_invariant_pins_full_csi_class() -> None:
     """The line_sanitizer invariant pins the [0-?] class explicitly."""
     ls_invariant = next(
-        inv for inv in audit_module._INVARIANTS if inv.rel_path == "display/line_sanitizer.py"
+        inv
+        for inv in audit_module._INVARIANTS
+        if isinstance(inv, Invariant) and inv.rel_path == "display/line_sanitizer.py"
     )
     assert "def strip_terminal_control" in ls_invariant.present
     assert "[0-?]" in ls_invariant.present
@@ -118,82 +492,6 @@ def test_audit_blocks_regression_when_csi_class_is_narrowed(
     assert "TERMINAL-ESCAPE-CONTAINMENT AUDIT FAILED" in captured.out
 
 
-def test_audit_blocks_regression_when_strip_terminal_control_missing(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Regression: removing the helper name from line_sanitizer must fail the audit."""
-    real_read = audit_module._read
-    path = "display/line_sanitizer.py"
-
-    def _read_without_helper(rel_path: str) -> str:
-        content = real_read(rel_path)
-        if rel_path != path:
-            return content
-        return content.replace("def strip_terminal_control", "def _gone")
-
-    monkeypatch.setattr(audit_module, "_read", _read_without_helper)
-    _narrow_invariants(monkeypatch, rel_path="display/line_sanitizer.py", invariant_cls=Invariant)
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1, "audit must exit 1 when strip_terminal_control is removed"
-    assert path in captured.out
-
-
-def test_audit_blocks_regression_when_sgr_only_regex_returns(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Regression: re-introducing ``[0-9;]*m`` in _plain_constants must fail."""
-    real_read = audit_module._read
-    path = "display/_plain_constants.py"
-
-    def _read_with_sgr(rel_path: str) -> str:
-        content = real_read(rel_path)
-        if rel_path != path:
-            return content
-        # Inject the forbidden root-cause regex on a fresh line.
-        return content + "\n_LEGACY = re.compile(r'[0-9;]*m')\n"
-
-    monkeypatch.setattr(audit_module, "_read", _read_with_sgr)
-    _narrow_invariants(monkeypatch, rel_path="display/_plain_constants.py", invariant_cls=Invariant)
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert path in captured.out
-    assert "[0-9;]*m" in captured.out
-
-
-def test_audit_blocks_regression_when_pty_runner_paint_returns(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Regression: re-introducing ``file=sys.stdout`` in _pty_runner must fail."""
-    real_read = audit_module._read
-    path = "agents/invoke/_pty_runner.py"
-
-    def _read_with_paint(rel_path: str) -> str:
-        content = real_read(rel_path)
-        if rel_path != path:
-            return content
-        return content + "\ntqdm(..., file=sys.stdout)\n"
-
-    monkeypatch.setattr(audit_module, "_read", _read_with_paint)
-    _narrow_invariants(
-        monkeypatch, rel_path="agents/invoke/_pty_runner.py", invariant_cls=Invariant
-    )
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert path in captured.out
-
-
 def test_process_reader_stdin_regression_accepts_conditional_pipe_or_devnull() -> None:
     """S-3: prompt PIPE and non-prompt DEVNULL are both isolated child-stdin choices."""
     invariant = next(
@@ -216,17 +514,26 @@ def test_process_reader_stdin_regression_accepts_conditional_pipe_or_devnull() -
 # ---------------------------------------------------------------------------
 
 
-def _patch_rel(monkeypatch: pytest.MonkeyPatch, rel_path: str, transform) -> None:
-    real_read = audit_module._read
+def _patch_rel(
+    monkeypatch: pytest.MonkeyPatch,
+    rel_path: str,
+    transform: Callable[[str], str],
+) -> None:
+    """Patch the audit's source reader for ONE file.
+
+    The reader always delegates to the REAL reader captured at import
+    time, so patching several files in sequence never compounds the
+    previous row's transformation.
+    """
     cached_transformed: str | None = None
 
     def _read(rel_path_arg: str) -> str:
         nonlocal cached_transformed
         if rel_path_arg == rel_path:
             if cached_transformed is None:
-                cached_transformed = transform(real_read(rel_path_arg))
+                cached_transformed = transform(_REAL_READ(rel_path_arg))
             return cached_transformed
-        return real_read(rel_path_arg)
+        return _REAL_READ(rel_path_arg)
 
     monkeypatch.setattr(audit_module, "_read", _read)
 
@@ -242,14 +549,18 @@ def _narrow_invariants(
     """Replace ``_INVARIANTS`` with the single invariant matching the given filters.
 
     Each adversarial test drives exactly one regression; running the full
-    25-invariant sweep inside every adversarial test costs ~10-15 s of
+    35-invariant sweep inside every adversarial test costs ~10-15 s of
     per-shard wall time because the two package-wide invariants re-scan
     the entire package on every call. Narrowing the audit's invariant
     list to the targeted invariant keeps the same banner / assertion
     shape but executes only the seam under test.
+
+    The filter always runs over the FULL invariant table captured at
+    import time, so a table-driven test that narrows once per row never
+    narrows an already-narrowed table.
     """
     matching = []
-    for inv in audit_module._INVARIANTS:
+    for inv in _REAL_INVARIANTS:
         if rel_path is not None and getattr(inv, "rel_path", None) != rel_path:
             continue
         if qualname is not None and getattr(inv, "qualname", None) != qualname:
@@ -268,195 +579,67 @@ def _narrow_invariants(
     monkeypatch.setattr(audit_module, "_INVARIANTS", tuple(matching))
 
 
-def test_audit_blocks_regression_when_activity_model_render_event_line_drops_strip(
+def _apply_case_edits(case: _RegressionCase, source: str) -> str:
+    """Apply one regression row's literal replacements and append to the source."""
+    for old, new in case.edits:
+        assert old in source, (
+            f"{case.name}: {case.rel_path!r} must contain {old!r} for the "
+            f"regression to be injectable"
+        )
+        source = source.replace(old, new)
+    if case.appended:
+        source += case.appended
+    return source
+
+
+def _narrow_to_case(monkeypatch: pytest.MonkeyPatch, case: _RegressionCase) -> None:
+    """Narrow the audit to the invariant that owns the row's seam."""
+    _narrow_invariants(
+        monkeypatch,
+        rel_path=case.rel_path if case.narrow_rel_path else None,
+        qualname=case.qualname,
+        callee_name=case.callee_name,
+        invariant_cls=case.invariant_cls,
+    )
+    if case.narrow_package_files:
+        # This case exercises the driver's violation rendering for an
+        # injected package member. The invariant's package-walk behavior
+        # is covered below with a synthetic path list; avoiding a full
+        # source-tree rescan here keeps this adversarial test
+        # deterministic under xdist I/O.
+        monkeypatch.setattr(
+            audit_module.PackageWideCallSiteInvariant,
+            "_package_files",
+            classmethod(lambda _cls, _path=case.rel_path: [_path]),
+        )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_audit_blocks_each_injected_regression(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Adversarial: keep the helper name (in import + docstring) but remove the strip from ``render_event_line``.
+    """Every adversarial regression must make the audit fail and say why.
 
-    A naive whole-file check would still see ``strip_terminal_control`` in
-    the import line and pass. The FunctionBodyInvariant on
-    ``render_event_line`` must catch the regression.
+    Each row injects ONE regression into ONE production file, narrows the
+    audit to the invariant that owns that seam, and asserts the audit
+    exits 1 while naming the patched file and the offending literal.
     """
-    path = "display/activity_model.py"
+    for case in _REGRESSION_CASES:
+        _patch_rel(monkeypatch, case.rel_path, partial(_apply_case_edits, case))
+        _narrow_to_case(monkeypatch, case)
 
-    def _transform(src: str) -> str:
-        return src.replace(
-            'safe_content = strip_terminal_control(content or "")',
-            'safe_content = content or ""',
+        rc = audit_main([])
+        captured = capsys.readouterr()
+
+        assert rc == 1, f"{case.name}: the audit must exit 1 for the injected regression"
+        assert case.rel_path in captured.out, (
+            f"{case.name}: the audit output must name {case.rel_path!r}; got {captured.out!r}"
         )
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        rel_path="display/activity_model.py",
-        qualname="render_event_line",
-        invariant_cls=FunctionBodyInvariant,
-    )
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1, (
-        "audit must exit 1 when activity_model.render_event_line body drops strip_terminal_control"
-    )
-    assert "render_event_line body missing required literal" in captured.out
-    assert path in captured.out
-
-
-def test_audit_blocks_regression_when_parallel_display_strip_markup_drops_control_strip(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Adversarial: remove terminal-control stripping from ``strip_markup``."""
-    path = "display/parallel_display.py"
-
-    def _transform(src: str) -> str:
-        # Drop ``strip_terminal_control`` from the wired sink body so the
-        # ``ParallelDisplay.strip_markup`` invariant fires. The helper
-        # name still appears elsewhere (imports, docstrings, _strip_markup),
-        # so a whole-file literal check would still pass -- the AST
-        # function-body check must fail.
-        return src.replace(
-            "return strip_terminal_control(line)",
-            "return line",
-        )
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        rel_path="display/parallel_display.py",
-        qualname="ParallelDisplay.strip_markup",
-        invariant_cls=FunctionBodyInvariant,
-    )
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert "ParallelDisplay.strip_markup body missing required literal" in captured.out
-
-
-def test_audit_blocks_regression_when_module_level_emit_activity_line_drops_sanitize(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Adversarial: revert ``emit_activity_line`` unit_id-is-None branch to unsanitized print."""
-    path = "display/parallel_display.py"
-
-    def _transform(src: str) -> str:
-        # The pre-fix branch had ``console.print(line)`` -- this matches
-        # the whole-file forbidden literal AND removes the _sanitize call
-        # from emit_activity_line's body.
-        return src.replace(
-            "console.print(_sanitize(line), markup=False, highlight=False)",
-            "console.print(line)",
-        )
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        rel_path="display/parallel_display.py",
-        qualname="emit_activity_line",
-        invariant_cls=FunctionBodyInvariant,
-    )
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert path in captured.out
-    # The function-body invariant MUST fire (in addition to the file-level
-    # forbidden literal). The audit pins ``_sanitize(line)`` with min_count=2
-    # so reverting ONE branch is caught even if the other still sanitizes.
-    assert "minimum required is 2" in captured.out
-    assert "emit_activity_line body has 1 occurrence" in captured.out
-
-
-def test_audit_blocks_regression_when_render_titled_lines_drops_strip(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Adversarial: revert ``_render_titled_lines`` to print raw lines."""
-    path = "display/parallel_display.py"
-
-    def _transform(src: str) -> str:
-        return src.replace(
-            "strip_terminal_control(line), markup=False, highlight=False",
-            "line, markup=False, highlight=False",
-        )
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        rel_path="display/parallel_display.py",
-        qualname="ParallelDisplay._render_titled_lines",
-        invariant_cls=FunctionBodyInvariant,
-    )
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert "_render_titled_lines body missing required literal" in captured.out
-
-
-@pytest.mark.parametrize("inherited_stdin", ("None", "sys.stdin"))
-def test_process_reader_stdin_regression_rejects_inherited_terminal_input(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    inherited_stdin: str,
-) -> None:
-    """S-3: neither implicit inheritance nor a direct terminal stream may reach a child."""
-    path = "agents/invoke/_process_reader.py"
-
-    def _transform(src: str) -> str:
-        return src.replace(
-            "stdin=subprocess.DEVNULL,",
-            f"stdin={inherited_stdin},",
-        )
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        rel_path=path,
-        qualname="_run_subprocess_and_read_lines",
-        invariant_cls=FunctionBodyInvariant,
-    )
-
-    assert audit_main([]) == 1
-    captured = capsys.readouterr()
-    assert path in captured.out
-    assert f"stdin={inherited_stdin}" in captured.out
-
-
-def test_audit_blocks_regression_when_subprocess_executor_drops_devnull(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Adversarial: revert SpawnOptions ``stdin=_DEVNULL`` back to ``stdin=None``."""
-    path = "agents/subprocess_executor.py"
-
-    def _transform(src: str) -> str:
-        return src.replace(
-            "stdin=_DEVNULL,",
-            "stdin=None,",
-        )
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        rel_path="agents/subprocess_executor.py",
-        callee_name="SpawnOptions",
-        invariant_cls=CallSiteInvariant,
-    )
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert path in captured.out
-    assert "no SpawnOptions call passes" in captured.out
+        for fragment in case.expected_fragments:
+            assert fragment in captured.out, (
+                f"{case.name}: the audit output must name {fragment!r}; got {captured.out!r}"
+            )
 
 
 def test_function_body_invariant_returns_violations_for_missing_target(
@@ -497,302 +680,10 @@ def test_call_site_invariant_reports_missing_callee() -> None:
 #   * ralph.display.log_sink.make_stderr_log_sink drops the stripper
 #   * ralph.display.log_sink constructs a Console inline
 #   * ralph.process.pty.spawn_pty_process drops os.setsid() / TIOCSCTTY
-# Each adversarial case below mirrors the pattern of the existing ones:
-# monkeypatch the source via _patch_rel (or _read), run the audit, assert
+# Each adversarial case is one row of ``_REGRESSION_CASES`` above: it
+# monkeypatches the source via _patch_rel, runs the audit, and asserts
 # it exits 1 and prints the relevant violation banner.
 # ---------------------------------------------------------------------------
-
-
-def test_audit_blocks_regression_when_spawn_options_devnull_default_reverted(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Adversarial: revert SpawnOptions.stdin default to None."""
-    path = "process/manager/_spawn_options.py"
-
-    def _transform(src: str) -> str:
-        return src.replace(
-            "stdin: int | None = subprocess.DEVNULL",
-            "stdin: int | None = None",
-        )
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        rel_path="process/manager/_spawn_options.py",
-        invariant_cls=Invariant,
-    )
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert path in captured.out
-    # Either the file-level invariant or the FunctionBody invariant can fire;
-    # we also assert the literal specifically.
-    assert "subprocess.DEVNULL" in captured.out or "stdin=None" in captured.out
-
-
-def test_audit_blocks_regression_when_a_new_spawn_options_call_passes_stdin_none(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Adversarial: inject ``SpawnOptions(stdin=None)`` into a brand-new file.
-
-    Drives :class:`PackageWideCallSiteInvariant`: the audit must
-    catch the INHERIT leak anywhere under ``ralph/`` regardless
-    of which file re-introduces it.
-    """
-    path = "agents/invoke/_process_reader.py"
-
-    def _transform(src: str) -> str:
-        # The file already has ``stdin=subprocess.DEVNULL``; add a SECOND
-        # call site that re-opts into INHERIT.
-        return src + "\nSpawnOptions(stdin=None,)\n"
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        callee_name="SpawnOptions",
-        invariant_cls=PackageWideCallSiteInvariant,
-    )
-    # This case exercises the driver's violation rendering for an injected
-    # package member. The invariant's package-walk behavior is covered below
-    # with a synthetic path list; avoiding a full source-tree rescan here
-    # keeps this one-second adversarial test deterministic under xdist I/O.
-    monkeypatch.setattr(
-        audit_module.PackageWideCallSiteInvariant,
-        "_package_files",
-        classmethod(lambda cls: [path]),
-    )
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert path in captured.out
-    # The package-wide invariant emits 'stdin=None' on the offending call.
-    assert "stdin=None" in captured.out
-
-
-@pytest.mark.timeout_seconds(5)
-def test_audit_blocks_regression_when_logging_configure_logging_drops_console_sink(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Adversarial: revert ralph.logging.configure_logging to raw ``sys.stderr`` + colorize=True."""
-    path = "logging.py"
-
-    def _transform(src: str) -> str:
-        # Replace the injected sink block with a raw sys.stderr + colorize=True
-        # restore -- the function body's \"sink = console_sink...\" line is
-        # the load-bearing seam, so removing it triggers BOTH the missing-
-        # required-literal and the forbidden-literal checks.
-        return src.replace(
-            "sink = console_sink if console_sink is not None else make_stderr_log_sink()",
-            "sink = sys.stderr",
-        ).replace(
-            "colorize=False,",
-            "colorize=True,",
-        )
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        rel_path="logging.py",
-        qualname="configure_logging",
-        invariant_cls=FunctionBodyInvariant,
-    )
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert path in captured.out
-    assert "configure_logging" in captured.out
-    assert "sys.stderr" in captured.out
-
-
-@pytest.mark.timeout_seconds(5)
-def test_audit_blocks_regression_when_cli_configure_logging_drops_sink(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Adversarial: revert ralph.cli.main._configure_logging to raw ``sys.stderr``.
-
-    This runs the whole AST audit under parallel worker contention, so it has
-    the same five-second resource headroom as the clean-tree audit above.
-    """
-    path = "cli/main.py"
-
-    def _transform(src: str) -> str:
-        return src.replace(
-            "sink = console_sink if console_sink is not None else make_stderr_log_sink()",
-            "sink = None  # pretend we forgot to wire it",
-        ).replace(
-            'logger.add(sink, level="ERROR")',
-            'logger.add(sys.stderr, level="ERROR")',
-        )
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        rel_path="cli/main.py",
-        qualname="_configure_logging",
-        invariant_cls=FunctionBodyInvariant,
-    )
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert path in captured.out
-    assert "_configure_logging" in captured.out
-    assert "sys.stderr" in captured.out
-
-
-def test_audit_blocks_regression_when_cli_main_drops_sanitizing_log_sink(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Adversarial: the CLI call site drops ``make_sanitizing_log_sink``."""
-    path = "cli/main.py"
-
-    def _transform(src: str) -> str:
-        return src.replace(
-            "configure_logging(verbosity, console_sink=make_sanitizing_log_sink(_cli_ctx))",
-            "configure_logging(verbosity)",
-        )
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        rel_path="cli/main.py",
-        qualname="main",
-        invariant_cls=FunctionBodyInvariant,
-    )
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert "main" in captured.out
-    assert "make_sanitizing_log_sink" in captured.out
-
-
-def test_audit_blocks_regression_when_sanitizing_log_sink_drops_stripper(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Adversarial: ``make_sanitizing_log_sink`` skips ``strip_terminal_control``."""
-    path = "display/log_sink.py"
-
-    def _transform(src: str) -> str:
-        return src.replace(
-            'cleaned = strip_terminal_control(message.rstrip("\\n"))',
-            'cleaned = message.rstrip("\\n")',
-        )
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        rel_path="display/log_sink.py",
-        qualname="make_sanitizing_log_sink",
-        invariant_cls=FunctionBodyInvariant,
-    )
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert path in captured.out
-    assert "make_sanitizing_log_sink" in captured.out
-
-
-def test_audit_blocks_regression_when_stderr_log_sink_drops_stripper(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Adversarial: ``make_stderr_log_sink`` skips ``strip_terminal_control``."""
-    path = "display/log_sink.py"
-
-    def _transform(src: str) -> str:
-        return src.replace(
-            'cleaned = strip_terminal_control(message.rstrip("\\n"))',
-            'cleaned = message.rstrip("\\n")',
-        )
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        rel_path="display/log_sink.py",
-        qualname="make_stderr_log_sink",
-        invariant_cls=FunctionBodyInvariant,
-    )
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert path in captured.out
-    assert "make_stderr_log_sink" in captured.out
-
-
-def test_audit_blocks_regression_when_log_sink_constructs_console_inline(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Adversarial: ``ralph.display.log_sink`` constructs a Console inline.
-
-    Tests/display/test_di_invariants.py also enforces this, but the
-    audit is the load-bearing \"machines never speak unless asked\"
-    layer so the regression must surface here too.
-    """
-    path = "display/log_sink.py"
-
-    def _transform(src: str) -> str:
-        return src + "\n_console = Console(file=sys.stderr)\n"
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        rel_path="display/log_sink.py",
-        invariant_cls=Invariant,
-    )
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert path in captured.out
-    assert "Console(" in captured.out
-
-
-def test_audit_blocks_regression_when_pty_spawn_drops_setsid_or_tiocsctty(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Adversarial: remove either ``os.setsid()`` or ``TIOCSCTTY`` from the PTY spawn."""
-    path = "process/pty.py"
-
-    def _transform(src: str) -> str:
-        return src.replace("os.setsid()", "_ = None  # nosetsid")
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        rel_path="process/pty.py",
-        qualname="spawn_pty_process",
-        invariant_cls=FunctionBodyInvariant,
-    )
-
-    rc = audit_main([])
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert path in captured.out
-    assert "spawn_pty_process" in captured.out
-    assert "os.setsid()" in captured.out
 
 
 def test_package_wide_call_site_invariant_flags_stdin_none_in_any_file(
@@ -816,7 +707,7 @@ def test_package_wide_call_site_invariant_flags_stdin_none_in_any_file(
     monkeypatch.setattr(
         audit_module.PackageWideCallSiteInvariant,
         "_package_files",
-        classmethod(lambda cls: ["fake.py"]),
+        classmethod(lambda _cls: ["fake.py"]),
     )
 
     violations = inv.violations()
@@ -831,14 +722,8 @@ def test_package_wide_call_site_invariant_flags_stdin_none_in_any_file(
 
 
 @pytest.mark.timeout_seconds(5)
-@pytest.mark.parametrize(
-    "separator",
-    ["", "\u2028", "\u2029", "\x0c", "\u0085"],
-    ids=["plain", "ls", "ps", "ff", "nel"],
-)
 def test_package_wide_call_site_invariant_flags_stdin_none_despite_unicode_separators(
     monkeypatch: pytest.MonkeyPatch,
-    separator: str,
 ) -> None:
     """Line-splitting must match Python AST line semantics for every separator.
 
@@ -848,25 +733,26 @@ def test_package_wide_call_site_invariant_flags_stdin_none_despite_unicode_separ
     silently missed the forbidden literal. The audit must flag it for all
     of them.
     """
-    fake_source = f'x = "a{separator}"\nSpawnOptions(stdin=None,)\n'
-    inv = PackageWideCallSiteInvariant(
-        callee_name="SpawnOptions",
-        absent=("stdin=None",),
-    )
+    for separator in _UNICODE_SEPARATORS:
+        fake_source = f'x = "a{separator}"\nSpawnOptions(stdin=None,)\n'
+        inv = PackageWideCallSiteInvariant(
+            callee_name="SpawnOptions",
+            absent=("stdin=None",),
+        )
 
-    monkeypatch.setattr(audit_module, "_read", lambda rel_path: fake_source)
-    monkeypatch.setattr(
-        audit_module.PackageWideCallSiteInvariant,
-        "_package_files",
-        classmethod(lambda cls: ["fake.py"]),
-    )
+        monkeypatch.setattr(audit_module, "_read", lambda rel_path, source=fake_source: source)
+        monkeypatch.setattr(
+            audit_module.PackageWideCallSiteInvariant,
+            "_package_files",
+            classmethod(lambda _cls: ["fake.py"]),
+        )
 
-    violations = inv.violations()
-    assert any("stdin=None" in v for v in violations), (
-        f"audit missed stdin=None after separator {separator!r}; got {violations!r}"
-    )
+        violations = inv.violations()
+        assert any("stdin=None" in v for v in violations), (
+            f"audit missed stdin=None after separator {separator!r}; got {violations!r}"
+        )
 
-    audit_module.PackageWideCallSiteInvariant.reset_cache()
+        audit_module.PackageWideCallSiteInvariant.reset_cache()
 
 
 def test_package_wide_call_site_invariant_passes_when_no_stdin_none(
@@ -887,86 +773,80 @@ def test_package_wide_call_site_invariant_passes_when_no_stdin_none(
     )
 
 
-@pytest.mark.parametrize(
-    ("rel_path", "qualname", "required_literal"),
-    (
-        ("display/terminal_restore.py", "terminal_restore_sequence", "?25h"),
-        ("display/terminal_restore.py", "terminal_restore_sequence", "[0m"),
-        ("display/terminal_restore.py", "restore_terminal_modes", "_STATE.saved_modes"),
-        ("display/terminal_restore.py", "restore_terminal_modes", "termios.tcsetattr"),
-        ("display/_terminal_bg_query.py", "_probe", "get_global_snapshot()"),
-        ("display/_terminal_bg_query.py", "_probe", "parsed_color is None"),
-        ("display/_terminal_bg_query.py", "_probe", "tcflush"),
-        ("display/_terminal_bg_query.py", "_probe", "TCIFLUSH"),
-        ("cli/main.py", "ensure_cli_terminal_restore", "SIGTERM"),
-        ("cli/main.py", "ensure_cli_terminal_restore", "SIGHUP"),
-        ("cli/main.py", "ensure_cli_terminal_restore", "SIGQUIT"),
-        ("cli/main.py", "ensure_cli_terminal_restore", "install_sanitizing_excepthook"),
-        ("cli/main.py", "ensure_cli_terminal_restore", "restore_terminal_modes"),
-        ("display/excepthook.py", None, "strip_terminal_control"),
-        ("display/excepthook.py", None, "restore_terminal"),
-        ("display/terminal_restore.py", "restore_terminal", "terminal_understands_vt"),
-        ("display/_terminal_bg_query.py", "_probe", "terminal_understands_vt"),
-        ("display/context.py", "install_sigwinch_refresher", "refresh_in_progress"),
-        ("display/context.py", "install_sigwinch_refresher", "signal.SIG_DFL"),
-    ),
-)
+def _remove_literal(source: str, literal: str) -> str:
+    """Return the source with every occurrence of ``literal`` removed."""
+    assert literal in source, (
+        f"the source must contain {literal!r} for this regression to be injectable"
+    )
+    return source.replace(literal, "REMOVED")
+
+
+def _replace_literal(source: str, old: str, new: str) -> str:
+    """Return the source with the FIRST occurrence of ``old`` replaced by ``new``."""
+    assert old in source, (
+        f"the source must contain {old!r} for this regression to be injectable"
+    )
+    return source.replace(old, new, 1)
+
+
 @pytest.mark.timeout_seconds(5)
 def test_terminal_restore_audit_regression_rejects_missing_safe_restoration(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    rel_path: str,
-    qualname: str | None,
-    required_literal: str,
 ) -> None:
     """S-3: each owned restore or probe-timeout operation remains load-bearing."""
-    _patch_rel(monkeypatch, rel_path, lambda source: source.replace(required_literal, "REMOVED"))
-    _narrow_invariants(
-        monkeypatch,
-        rel_path=rel_path,
-        qualname=qualname,
-        invariant_cls=FunctionBodyInvariant if qualname is not None else Invariant,
-    )
+    for rel_path, qualname, required_literal in _TERMINAL_RESTORE_REQUIRED_LITERALS:
+        _patch_rel(monkeypatch, rel_path, partial(_remove_literal, literal=required_literal))
+        _narrow_invariants(
+            monkeypatch,
+            rel_path=rel_path,
+            qualname=qualname,
+            invariant_cls=FunctionBodyInvariant if qualname is not None else Invariant,
+        )
 
-    assert audit_main([]) == 1
-    assert required_literal in capsys.readouterr().out
+        assert audit_main([]) == 1, (
+            f"{rel_path} {qualname!r} must fail the audit when {required_literal!r} is removed"
+        )
+        assert required_literal in capsys.readouterr().out
+
+
+def _destructive_cleanup_edit(forbidden_literal: str) -> tuple[str, str, str]:
+    """Return the ``(qualname, old_literal, new_literal)`` edit for a forbidden literal."""
+    if forbidden_literal == "tcflush":
+        return (
+            "restore_terminal",
+            "target_fd = _fd_of(target_stream)",
+            "termios.tcflush(0, termios.TCIFLUSH)\n        target_fd = _fd_of(target_stream)",
+        )
+    return (
+        "terminal_restore_sequence",
+        'return "\\x1b[?25h\\x1b[0m"',
+        f'return "\\x1b[?25h\\x1b[0m{forbidden_literal}"',
+    )
 
 
 @pytest.mark.timeout_seconds(5)
-@pytest.mark.parametrize(
-    "forbidden_literal",
-    ("?1049l", "?1047l", "?47l", "[2J", "[3J", "[H", "[1;1H", "tcflush"),
-)
 def test_terminal_restore_audit_regression_rejects_destructive_parent_cleanup(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    forbidden_literal: str,
 ) -> None:
     """S-3: parent cleanup may not switch buffers, repaint, reposition, or flush input."""
     path = "display/terminal_restore.py"
 
-    if forbidden_literal == "tcflush":
-        qualname = "restore_terminal"
-        old_literal = "target_fd = _fd_of(target_stream)"
-        new_literal = (
-            "termios.tcflush(0, termios.TCIFLUSH)\n        target_fd = _fd_of(target_stream)"
+    for forbidden_literal in _DESTRUCTIVE_CLEANUP_LITERALS:
+        qualname, old_literal, new_literal = _destructive_cleanup_edit(forbidden_literal)
+
+        _patch_rel(
+            monkeypatch,
+            path,
+            partial(_replace_literal, old=old_literal, new=new_literal),
         )
-    else:
-        qualname = "terminal_restore_sequence"
-        old_literal = 'return "\\x1b[?25h\\x1b[0m"'
-        new_literal = f'return "\\x1b[?25h\\x1b[0m{forbidden_literal}"'
+        _narrow_invariants(
+            monkeypatch,
+            rel_path=path,
+            qualname=qualname,
+            invariant_cls=FunctionBodyInvariant,
+        )
 
-    def _transform(source: str) -> str:
-        assert old_literal in source
-        return source.replace(old_literal, new_literal, 1)
-
-    _patch_rel(monkeypatch, path, _transform)
-    _narrow_invariants(
-        monkeypatch,
-        rel_path=path,
-        qualname=qualname,
-        invariant_cls=FunctionBodyInvariant,
-    )
-
-    assert audit_main([]) == 1
-    assert forbidden_literal in capsys.readouterr().out
+        assert audit_main([]) == 1, f"{forbidden_literal!r} must fail the audit in {qualname!r}"
+        assert forbidden_literal in capsys.readouterr().out

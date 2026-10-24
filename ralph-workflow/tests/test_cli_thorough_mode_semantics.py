@@ -50,7 +50,7 @@ class TestThoroughModeSemantics:
         monkeypatch.setattr(
             "ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None
         )
-        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
+        monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
 
         runner = TyperCliRunner()
         runner.invoke(app, ["-T", "--dry-run"], catch_exceptions=False)
@@ -73,7 +73,7 @@ class TestThoroughModeSemantics:
         monkeypatch.setattr(
             "ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None
         )
-        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
+        monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
 
         runner = TyperCliRunner()
         runner.invoke(app, ["-T", "-D", "3", "--dry-run"], catch_exceptions=False)
@@ -85,7 +85,7 @@ class TestThoroughModeSemantics:
     def test_quick_and_thorough_together_raise_usage_error(
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
+        monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
         result = cli_runner.invoke(app, ["-Q", "-T"])
         assert result.exit_code == 2
         assert "--quick/-Q and --thorough/-T cannot be used together" in (

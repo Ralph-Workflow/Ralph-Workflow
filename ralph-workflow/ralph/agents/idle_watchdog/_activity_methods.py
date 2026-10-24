@@ -27,9 +27,12 @@ from ralph.process.child_liveness import AliveBy
 # the ``WaitingStatusEvent`` emit path, and the per-transport pin
 # tests without re-implementing the prefix-parse logic. The set
 # is a frozen ``frozenset`` (immutable; resource-lifecycle
-# audit does not flag it) and module-private: callers MUST NOT
-# mutate it.
-_KNOWN_TOOL_CALL_VERBS: frozenset[str] = frozenset(
+# audit does not flag it): callers MUST NOT mutate it.
+#
+# Public surface: re-exported from ``ralph.agents.idle_watchdog``
+# as ``KNOWN_TOOL_CALL_VERBS`` so black-box tests can pin the
+# contract without importing a private module path.
+KNOWN_TOOL_CALL_VERBS: frozenset[str] = frozenset(
     {
         "tool_use",
         "tool_result",
@@ -47,7 +50,7 @@ _KNOWN_TOOL_CALL_VERBS: frozenset[str] = frozenset(
 )
 
 
-def _parse_tool_call_from_description(description: str | None) -> str | None:
+def parse_tool_call_from_description(description: str | None) -> str | None:
     """Parse the ``verb:`` prefix from a subagent progress description.
 
     Returns the substring before the first ``:`` when the
@@ -83,7 +86,7 @@ def _parse_tool_call_from_description(description: str | None) -> str | None:
     head, sep, _tail = description.partition(":")
     if not sep:
         return None
-    if head not in _KNOWN_TOOL_CALL_VERBS:
+    if head not in KNOWN_TOOL_CALL_VERBS:
         return None
     return head
 
@@ -341,7 +344,7 @@ def diagnostic_snapshot(self: IdleWatchdog, now: float | None = None) -> dict[st
         "cumulative_waiting_on_child_seconds": round(self._cumulative_waiting_on_child_seconds, 1),
         "last_subagent_progress_description": self._last_subagent_progress_description,
         "last_subagent_progress_at": self._last_subagent_progress_at,
-        "current_subagent_tool_call": _parse_tool_call_from_description(
+        "current_subagent_tool_call": parse_tool_call_from_description(
             self._last_subagent_progress_description
         ),
         "live_subagent_count": live_subagent_count,

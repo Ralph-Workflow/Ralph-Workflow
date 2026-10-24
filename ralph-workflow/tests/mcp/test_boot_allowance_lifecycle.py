@@ -9,6 +9,7 @@ host pressure a healthy, still-booting child was killed with
 from __future__ import annotations
 
 import threading
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -18,6 +19,7 @@ from ralph.mcp.protocol._startup_timeouts import mcp_boot_allowance_from_env
 from ralph.mcp.protocol.env import MCP_BOOT_ALLOWANCE_MS_ENV
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server._start_stage_tracker import stage_file_path
+from ralph.mcp.server.lifecycle import StandaloneMcpProcess
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -28,19 +30,54 @@ ENVELOPE_S = 0.5  # preflight_timeout 1s -> envelope 0.5s
 
 
 class _Process:
+    """A child that never boots: it stays alive so the wait loop must time it out."""
+
     pid = 0  # not a real pid: psutil lookup is best-effort
 
     def poll(self) -> int | None:
         return None
 
+    def terminate(self, grace_period_s: float = 5.0) -> None:
+        del grace_period_s
 
-class _Bridge:
-    def __init__(self) -> None:
-        self.process = _Process()
-        self.shutdowns = 0
+    def wait(self, timeout: float | None = None) -> int | None:
+        del timeout
+        return 0
+
+    def kill(self) -> None:
+        """The teardown path terminates the child; it never kills it directly."""
+
+
+@dataclass
+class _Bridge(StandaloneMcpProcess):
+    """A real standalone MCP process whose teardown is counted for the assertions."""
+
+    shutdowns: int = 0
 
     def shutdown(self) -> None:
         self.shutdowns += 1
+        super().shutdown()
+
+
+def _bridge(tmp_path: Path) -> _Bridge:
+    return _Bridge(
+        endpoint="http://127.0.0.1:1/mcp",
+        process=_Process(),
+        session_file=tmp_path / "session.json",
+    )
+
+
+def _spawn_process(
+    command: list[str],
+    cwd: Path,
+    env: dict[str, str],
+    *,
+    phase: str | None = None,
+    pass_fds: tuple[int, ...] = (),
+) -> _Process:
+    """Spawn the fake child the wait loop only ever polls."""
+    del command, cwd, env, phase, pass_fds
+    return _Process()
 
 
 def _deps(
@@ -57,7 +94,7 @@ def _deps(
     return lifecycle.LifecycleDeps(
         create_session_file=lambda root, session: root,
         subprocess_env=lambda session_file: {},
-        spawn_process=lambda *a, **k: _Process(),
+        spawn_process=_spawn_process,
         preflight=preflight,
         preflight_timeout=lambda: timedelta(seconds=1),
         boot_allowance=(
@@ -95,7 +132,7 @@ def _await(
     tick = clock or _TickClock()
     try:
         lifecycle._await_mcp_startup_or_failure(
-            bridge,  # type: ignore[arg-type]  # reason: minimal fake bridge for the wait loop
+            bridge,
             deps=deps,
             endpoint="http://127.0.0.1:1/mcp",
             visible_tools=[],
@@ -119,8 +156,9 @@ def _write_stage(tmp_path: Path, value: str = "env_loaded") -> None:
 
 
 def test_child_that_never_boots_fails_with_a_boot_specific_error(tmp_path: Path) -> None:
-    release, budgets = threading.Event(), []
-    bridge = _Bridge()
+    release = threading.Event()
+    budgets: list[timedelta] = []
+    bridge = _bridge(tmp_path)
     try:
         err = _await(
             tmp_path,
@@ -138,13 +176,14 @@ def test_child_that_never_boots_fails_with_a_boot_specific_error(tmp_path: Path)
 
 
 def test_booted_child_is_judged_by_the_envelope_from_its_first_stage(tmp_path: Path) -> None:
-    release, budgets = threading.Event(), []
+    release = threading.Event()
+    budgets: list[timedelta] = []
     _write_stage(tmp_path)
     try:
         err = _await(
             tmp_path,
             _deps(boot_allowance_s=30.0, preflight_release=release, seen_budgets=budgets),
-            _Bridge(),
+            _bridge(tmp_path),
         )
     finally:
         release.set()
@@ -156,7 +195,8 @@ def test_booted_child_is_judged_by_the_envelope_from_its_first_stage(tmp_path: P
 
 def test_slow_boot_longer_than_the_envelope_still_becomes_ready(tmp_path: Path) -> None:
     """Boot (3s) outlasts the 0.5s envelope yet readiness inside the allowance succeeds."""
-    release, budgets = threading.Event(), []
+    release = threading.Event()
+    budgets: list[timedelta] = []
     clock = _TickClock(step=0.2)
     clock.at(3.0, lambda: _write_stage(tmp_path))
     clock.at(3.4, release.set)
@@ -164,7 +204,7 @@ def test_slow_boot_longer_than_the_envelope_still_becomes_ready(tmp_path: Path) 
     err = _await(
         tmp_path,
         _deps(boot_allowance_s=10.0, preflight_release=release, seen_budgets=budgets),
-        _Bridge(),
+        _bridge(tmp_path),
         clock,
     )
 
@@ -172,23 +212,25 @@ def test_slow_boot_longer_than_the_envelope_still_becomes_ready(tmp_path: Path) 
 
 
 def test_preflight_budget_is_extended_by_the_boot_allowance(tmp_path: Path) -> None:
-    release, budgets = threading.Event(), []
+    release = threading.Event()
+    budgets: list[timedelta] = []
     release.set()
     _await(
         tmp_path,
         _deps(boot_allowance_s=7.0, preflight_release=release, seen_budgets=budgets),
-        _Bridge(),
+        _bridge(tmp_path),
     )
     assert budgets == [timedelta(seconds=8)]
 
 
 def test_no_boot_allowance_keeps_the_spawn_anchored_deadline(tmp_path: Path) -> None:
-    release, budgets = threading.Event(), []
+    release = threading.Event()
+    budgets: list[timedelta] = []
     try:
         err = _await(
             tmp_path,
             _deps(boot_allowance_s=None, preflight_release=release, seen_budgets=budgets),
-            _Bridge(),
+            _bridge(tmp_path),
         )
     finally:
         release.set()
@@ -205,7 +247,7 @@ def test_failing_boot_allowance_provider_degrades_to_no_allowance(tmp_path: Path
     deps = lifecycle.LifecycleDeps(
         create_session_file=lambda root, session: root,
         subprocess_env=lambda session_file: {},
-        spawn_process=lambda *a, **k: _Process(),
+        spawn_process=_spawn_process,
         preflight=lambda *a: None,
         preflight_timeout=lambda: timedelta(seconds=1),
         boot_allowance=boom,

@@ -14,17 +14,14 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from ralph.agents.invoke import BuildCommandOptions, resolve_invocation_runtime
-from ralph.agents.invoke._command_builders import (
-    AgyCommandBuilder,
-    CodexCommandBuilder,
-    CommandBuilderSpec,
-    ConfigurableCommandBuilder,
-    NanocoderCommandBuilder,
-    OpencodeCommandBuilder,
+from ralph.agents.invoke import (
+    BuildCommandOptions,
+    InvokeOptions,
+    ResolvedInvocationRuntime,
+    UnsupportedMcpTransportError,
+    build_command,
+    resolve_invocation_runtime,
 )
-from ralph.agents.invoke._errors import UnsupportedMcpTransportError
-from ralph.agents.invoke._resolved_invocation_runtime import ResolvedInvocationRuntime
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
@@ -96,17 +93,13 @@ class TestResolveInvocationRuntimeParity:
             "ralph.agents.invoke.build_opencode_provider_config",
             fake_build_opencode_provider_config,
         )
-        monkeypatch.setattr(
-            "ralph.agents.invoke._apply_upstream_env",
-            _make_fake_apply_upstream_env(),
-        )
-
-        result = resolve_invocation_runtime(
-            config,
-            extra_env=extra_env,
-            workspace_path=tmp_path,
-            _base_env={},
-        )
+        with InvokeOptions.upstream_env_applier_override(_make_fake_apply_upstream_env()):
+            result = resolve_invocation_runtime(
+                config,
+                extra_env=extra_env,
+                workspace_path=tmp_path,
+                _base_env={},
+            )
 
         assert isinstance(result, ResolvedInvocationRuntime)
         if has_endpoint:
@@ -145,17 +138,13 @@ class TestResolveInvocationRuntimeParity:
             "ralph.agents.invoke.load_existing_agy_upstream_servers",
             fake_load_existing_agy_upstream_servers,
         )
-        monkeypatch.setattr(
-            "ralph.agents.invoke._apply_upstream_env",
-            _make_fake_apply_upstream_env(),
-        )
-
-        result = resolve_invocation_runtime(
-            config,
-            extra_env=extra_env,
-            workspace_path=tmp_path,
-            _base_env={},
-        )
+        with InvokeOptions.upstream_env_applier_override(_make_fake_apply_upstream_env()):
+            result = resolve_invocation_runtime(
+                config,
+                extra_env=extra_env,
+                workspace_path=tmp_path,
+                _base_env={},
+            )
 
         assert isinstance(result, ResolvedInvocationRuntime)
         assert isinstance(result.agent_env, dict)
@@ -212,17 +201,13 @@ class TestResolveInvocationRuntimeParity:
             "ralph.agents.invoke.load_existing_nanocoder_upstream_servers",
             fake_load_existing_nanocoder_upstream_servers,
         )
-        monkeypatch.setattr(
-            "ralph.agents.invoke._apply_upstream_env",
-            _make_fake_apply_upstream_env(),
-        )
-
-        result = resolve_invocation_runtime(
-            config,
-            extra_env=extra_env,
-            workspace_path=tmp_path,
-            _base_env={},
-        )
+        with InvokeOptions.upstream_env_applier_override(_make_fake_apply_upstream_env()):
+            result = resolve_invocation_runtime(
+                config,
+                extra_env=extra_env,
+                workspace_path=tmp_path,
+                _base_env={},
+            )
 
         assert isinstance(result, ResolvedInvocationRuntime)
         if has_endpoint:
@@ -267,17 +252,13 @@ class TestResolveInvocationRuntimeParity:
             "ralph.agents.invoke.prepare_codex_home_with_upstreams",
             fake_prepare_codex_home_with_upstreams,
         )
-        monkeypatch.setattr(
-            "ralph.agents.invoke._apply_upstream_env",
-            _make_fake_apply_upstream_env(),
-        )
-
-        result = resolve_invocation_runtime(
-            config,
-            extra_env=extra_env,
-            workspace_path=tmp_path,
-            _base_env={},
-        )
+        with InvokeOptions.upstream_env_applier_override(_make_fake_apply_upstream_env()):
+            result = resolve_invocation_runtime(
+                config,
+                extra_env=extra_env,
+                workspace_path=tmp_path,
+                _base_env={},
+            )
 
         assert isinstance(result, ResolvedInvocationRuntime)
         if has_endpoint:
@@ -320,17 +301,13 @@ class TestResolveInvocationRuntimeParity:
             "ralph.agents.invoke.load_existing_claude_upstream_servers",
             fake_load_existing_claude_upstream_servers,
         )
-        monkeypatch.setattr(
-            "ralph.agents.invoke._apply_upstream_env",
-            _make_fake_apply_upstream_env(),
-        )
-
-        result = resolve_invocation_runtime(
-            config,
-            extra_env=extra_env,
-            workspace_path=tmp_path,
-            _base_env={},
-        )
+        with InvokeOptions.upstream_env_applier_override(_make_fake_apply_upstream_env()):
+            result = resolve_invocation_runtime(
+                config,
+                extra_env=extra_env,
+                workspace_path=tmp_path,
+                _base_env={},
+            )
 
         assert isinstance(result, ResolvedInvocationRuntime)
         assert isinstance(result.agent_env, dict)
@@ -503,7 +480,6 @@ class TestResolveInvocationRuntimeParity:
     @pytest.mark.parametrize(
         (
             "transport",
-            "spec",
             "cmd",
             "session_flag",
             "yolo_flag",
@@ -514,7 +490,6 @@ class TestResolveInvocationRuntimeParity:
         [
             (
                 AgentTransport.OPENCODE,
-                OpencodeCommandBuilder.SPEC,
                 "opencode",
                 "--session {}",
                 "--skip-stuff",
@@ -542,7 +517,6 @@ class TestResolveInvocationRuntimeParity:
             ),
             (
                 AgentTransport.NANOCODER,
-                NanocoderCommandBuilder.SPEC,
                 "nanocoder",
                 None,
                 None,
@@ -563,7 +537,6 @@ class TestResolveInvocationRuntimeParity:
             ),
             (
                 AgentTransport.CODEX,
-                CodexCommandBuilder.SPEC,
                 "codex exec",
                 None,
                 "--bypass",
@@ -581,7 +554,6 @@ class TestResolveInvocationRuntimeParity:
             ),
             (
                 AgentTransport.AGY,
-                AgyCommandBuilder.SPEC,
                 "agy",
                 "--session {}",
                 "--skip-perms",
@@ -610,7 +582,6 @@ class TestResolveInvocationRuntimeParity:
     def test_configurable_command_builder_parity(
         self,
         transport: AgentTransport,
-        spec: CommandBuilderSpec,
         cmd: str,
         session_flag: str | None,
         yolo_flag: str | None,
@@ -619,9 +590,11 @@ class TestResolveInvocationRuntimeParity:
         expected_argv: list[str],
         tmp_path: Path,
     ) -> None:
-        """Assert ConfigurableCommandBuilder produces byte-identical command line.
+        """Assert the per-transport builder produces a byte-identical command line.
 
-        This checks each headless transport.
+        This checks each headless transport through the public
+        ``build_command`` entry point, which dispatches to the same
+        configurable builder the transport owns.
         """
         prompt_file = tmp_path / "PROMPT.md"
         prompt_file.write_text("hello world", encoding="utf-8")
@@ -655,6 +628,5 @@ class TestResolveInvocationRuntimeParity:
             str(tmp_path) if x == "WORKSPACE_PATH_PLACEHOLDER" else x for x in expected_argv
         ]
 
-        builder = ConfigurableCommandBuilder(spec)
-        res = builder.build(config, str(prompt_file), options=options)
+        res = build_command(config, str(prompt_file), options=options)
         assert res == expected

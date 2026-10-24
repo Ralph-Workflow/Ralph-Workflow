@@ -29,16 +29,17 @@ from loguru import logger as loguru_logger
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
     ChannelEvidenceSummary,
+    ChannelName,
     CorroborationSnapshot,
+    EvidenceSummary,
     IdleWatchdog,
     TimeoutPolicy,
     WaitingStatusEvent,
     WaitingStatusKind,
     WatchdogFireReason,
     WatchdogVerdict,
+    WorkspaceChangeKind,
 )
-from ralph.agents.idle_watchdog._evidence_tier import ChannelName, EvidenceSummary
-from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
 from ralph.agents.invoke._workspace import WorkspaceMonitor
 from ralph.agents.invoke._workspace_change_classifier import (
     DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS,

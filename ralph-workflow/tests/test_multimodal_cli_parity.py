@@ -20,11 +20,10 @@ from ralph.cli.main import app
 
 def _noop_bootstrap(
     *,
-    init_requested: bool = False,
-    regenerate_config: bool = False,
     display_context: object = None,
+    emit_welcome: bool = True,
 ) -> None:
-    del init_requested, regenerate_config, display_context
+    del display_context, emit_welcome
 
 
 @pytest.fixture(autouse=True)
@@ -39,7 +38,7 @@ def _wide_help_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
     shell width — keeps the assertion environment-independent.
     """
     monkeypatch.setenv("COLUMNS", "200")
-    monkeypatch.setattr("ralph.cli.main._bootstrap_for_command", _noop_bootstrap)
+    monkeypatch.setattr("ralph.cli.main.bootstrap_global_configs", _noop_bootstrap)
 
 
 #: Every smoke command that exposes ``--multimodal``. The plan locks

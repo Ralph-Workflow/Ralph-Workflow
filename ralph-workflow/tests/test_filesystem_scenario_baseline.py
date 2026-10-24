@@ -288,7 +288,11 @@ def _scenario_unchanged(
     monitor: WorkspaceMonitor | None = None
     try:
         _build_index(store, ws_root)
-        monitor = WorkspaceMonitor(ws_root, classifier=WorkspaceChangeClassifier())
+        monitor = WorkspaceMonitor(
+            ws_root,
+            classifier=WorkspaceChangeClassifier(),
+            observer_factory=lambda: observer,
+        )
         monitor.start()
         # No changes — simply observe the settled workspace.
         return _measure_dimensions(ws_root, observer, tracker, store)
@@ -311,7 +315,11 @@ def _scenario_localized_change(
     monitor: WorkspaceMonitor | None = None
     try:
         _build_index(store, ws_root)
-        monitor = WorkspaceMonitor(ws_root, classifier=WorkspaceChangeClassifier())
+        monitor = WorkspaceMonitor(
+            ws_root,
+            classifier=WorkspaceChangeClassifier(),
+            observer_factory=lambda: observer,
+        )
         monitor.start()
 
         # Edit one file and dispatch the event so the monitor records it.
@@ -339,7 +347,11 @@ def _scenario_large_workspace(
     monitor: WorkspaceMonitor | None = None
     try:
         _build_index(store, ws_root)
-        monitor = WorkspaceMonitor(ws_root, classifier=WorkspaceChangeClassifier())
+        monitor = WorkspaceMonitor(
+            ws_root,
+            classifier=WorkspaceChangeClassifier(),
+            observer_factory=lambda: observer,
+        )
         monitor.start()
         return _measure_dimensions(ws_root, observer, tracker, store)
     finally:
@@ -361,7 +373,11 @@ def _scenario_long_running(
     monitor: WorkspaceMonitor | None = None
     try:
         _build_index(store, ws_root)
-        monitor = WorkspaceMonitor(ws_root, classifier=WorkspaceChangeClassifier())
+        monitor = WorkspaceMonitor(
+            ws_root,
+            classifier=WorkspaceChangeClassifier(),
+            observer_factory=lambda: observer,
+        )
         monitor.start()
 
         # Loop observe/check cycle 25 times (no time.sleep; deterministic).
@@ -394,7 +410,11 @@ def _scenario_interrupted(
     run_id = "run-interrupted"
     try:
         _build_index(store, ws_root)
-        monitor = WorkspaceMonitor(ws_root, classifier=WorkspaceChangeClassifier())
+        monitor = WorkspaceMonitor(
+            ws_root,
+            classifier=WorkspaceChangeClassifier(),
+            observer_factory=lambda: observer,
+        )
         monitor.start()
 
         # Mutate a file and dispatch the event.
@@ -457,7 +477,11 @@ def _scenario_concurrent(
             m: WorkspaceMonitor | None = None
             try:
                 start_barrier.wait(timeout=5.0)
-                m = WorkspaceMonitor(ws_root, classifier=WorkspaceChangeClassifier())
+                m = WorkspaceMonitor(
+                    ws_root,
+                    classifier=WorkspaceChangeClassifier(),
+                    observer_factory=lambda: observer,
+                )
                 m.start()
                 with monitors_lock:
                     monitors.append(m)
@@ -559,19 +583,16 @@ _SCENARIOS: list[tuple[str, Callable[[Path, _ActivityObserver, _WriteTracker], l
 
 
 @pytest.mark.timeout_seconds(60)
-def test_filesystem_scenario_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_filesystem_scenario_baseline(tmp_path: Path) -> None:
     """S-12: 6 scenarios x 6 dimensions baseline matrix.
 
     Drives real production seams through every scenario.  The watchdog
-    observer is replaced with ``_ActivityObserver`` (no host watch
-    capacity).  No subprocess, no ``time.sleep``, no real host watchdog.
+    observer is injected through the public ``observer_factory`` seam with
+    ``_ActivityObserver`` (no host watch capacity).  No subprocess, no
+    ``time.sleep``, no real host watchdog.
     Renders the full 36-cell matrix to ``tmp_path/baseline-matrix.md``.
     """
     observer = _ActivityObserver()
-    monkeypatch.setattr(
-        "ralph.agents.invoke._workspace._create_watchdog_observer",
-        lambda: observer,
-    )
 
     all_rows: list[tuple[str, str, object, str, str]] = []
 

@@ -66,7 +66,17 @@ def test_pending_merge_refuses_changed_or_unreadable_evidence(
             encoding="utf-8",
         )
     else:
-        monkeypatch.setattr("ralph.pipeline._pending_merge_commit._git_value", lambda *_a: None)
+        # The pending-merge identity query fails: the public git runner
+        # answers with a non-zero status, so no identity value is read.
+        monkeypatch.setattr(
+            "ralph.pipeline._pending_merge_commit.run_git",
+            lambda *_args, **_kwargs: GitRunResult(
+                args=(),
+                returncode=1,
+                stdout="",
+                stderr="query failed",
+            ),
+        )
     head = _git(root, "rev-parse", "HEAD").stdout
     staged = _git(root, "write-tree").stdout
     parent = (root / ".git" / "MERGE_HEAD").read_text(encoding="utf-8")

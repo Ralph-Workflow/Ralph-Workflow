@@ -53,7 +53,7 @@ class TestIterationCounterFlags:
         monkeypatch.setattr(
             "ralph.cli.main.configure_logging", lambda v, *, console_sink=None: None
         )
-        monkeypatch.setattr("ralph.cli.main._init_telemetry", lambda: None)
+        monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
 
         runner = TyperCliRunner()
         result = runner.invoke(

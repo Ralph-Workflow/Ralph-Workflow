@@ -9,12 +9,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.agents.invoke._invoke_options import _PROCESS_MONITOR_FACTORY_OVERRIDE
 from ralph.config.enums import AgentTransport
 from ralph.process.monitor import (
     DefaultProcessMonitor,
     DiscoveryStrategy,
     NullDiscoveryStrategy,
     OpenCodeRegistryDiscoveryStrategy,
+    ProcessMonitor,
     SubagentPidSource,
     role_classifier_for_transport,
 )
@@ -83,8 +85,24 @@ def _make_process_monitor(
     *,
     registry: ChildLivenessRegistry | None = None,
     scope_prefix: str = "",
-) -> DefaultProcessMonitor | None:
-    """Construct a DefaultProcessMonitor when the policy enables it."""
+) -> ProcessMonitor | None:
+    """Construct a process monitor when the policy enables it.
+
+    A caller may replace the factory for the duration of a scope with
+    :meth:`ralph.agents.invoke.InvokeOptions.process_monitor_factory_override`;
+    the override then owns the monitor.  Without an override the default
+    monitor is built.
+    """
+    override = _PROCESS_MONITOR_FACTORY_OVERRIDE.get()
+    if override is not None:
+        return override(
+            handle,
+            config,
+            policy,
+            subagent_pid_source,
+            registry=registry,
+            scope_prefix=scope_prefix,
+        )
     if not policy.process_monitor_enabled:
         return None
     discovery = _make_discovery_strategy(

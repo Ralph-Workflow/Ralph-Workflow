@@ -180,7 +180,15 @@ def test_cli_ensure_terminal_restore_installs_signal_handlers_once_and_chains_pr
             "ralph.cli.main.os.write",
             side_effect=lambda fd, data: writes.append((fd, data)) or len(data),
         ),
-        patch("ralph.cli.main._resolve_fd", return_value=1),
+        patch(
+            "ralph.display.terminal_restore.sys.stdin",
+            _FakeStream(is_tty=False, fd=0),
+        ),
+        patch(
+            "ralph.display.terminal_restore.sys.stdout",
+            _FakeStream(is_tty=True, fd=1),
+        ),
+        patch("os.isatty", side_effect=lambda fd: fd == 1),
         patch("ralph.cli.main.restore_terminal_modes") as restore_modes,
     ):
         ensure_cli_terminal_restore(signal_getter=getter, signal_setter=setter)

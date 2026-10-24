@@ -92,6 +92,12 @@ _INFRASTRUCTURE_DAEMONS = (
 )
 
 
+#: Thread-name prefix of the bounded probe pool. It is a named constant so a
+#: test can observe the pool's worker count through ``threading.enumerate()``
+#: instead of reaching into a private attribute of the executor object.
+_PROBE_THREAD_NAME_PREFIX = "ralph-git-lock-probe"
+
+
 class _ProbeExecutorHolder:
     """Dedicated bounded ThreadPoolExecutor holder for lock liveness probes.
 
@@ -109,7 +115,7 @@ class _ProbeExecutorHolder:
                 if self._executor is None:
                     self._executor = ThreadPoolExecutor(
                         max_workers=self._max_workers,
-                        thread_name_prefix="ralph-git-lock-probe",
+                        thread_name_prefix=_PROBE_THREAD_NAME_PREFIX,
                     )
         return self._executor
 
@@ -1109,6 +1115,7 @@ def _recover_stale_git_lock(
     error: Exception,
     *,
     liveness_fn: LivenessProbeFn | None = None,
+    now_fn: Callable[[], float] | None = None,
 ) -> bool:
     """Recover from a transient Git lock-file error using an age-and-liveness gate.
 
@@ -1124,6 +1131,14 @@ def _recover_stale_git_lock(
           is affirmatively proven "dead". If any check signals "live" or
           liveness is "unknown" (timeout or error), removal is refused fail-closed.
 
+    Args:
+        operation: Human-readable operation name for log messages.
+        error: The git error that named the lock file.
+        liveness_fn: Optional override for the liveness probe.
+        now_fn: Optional injected clock for the age gate. Production uses the
+            wall clock; a test injects a deterministic one so the age gate can
+            be exercised without mutating filesystem timestamps.
+
     Returns:
         True  -- lock removed or already gone (caller can retry).
         False -- lock is live, too young, or unprovable (caller
@@ -1132,12 +1147,21 @@ def _recover_stale_git_lock(
     lock_path = _parse_lock_path_from_error(str(error))
     if lock_path is None:
         return False
-    return _reap_stale_lock(operation, lock_path, liveness_fn=liveness_fn)
+    return _reap_stale_lock(operation, lock_path, liveness_fn=liveness_fn, now_fn=now_fn)
 
 
-def _stale_age_or_none(operation: str, lock_path: Path) -> float | None:
-    """Return the lock's age when it is old enough to be considered, else None."""
-    age_seconds = time.time() - lock_path.stat().st_mtime
+def _stale_age_or_none(
+    operation: str,
+    lock_path: Path,
+    *,
+    now_fn: Callable[[], float] | None = None,
+) -> float | None:
+    """Return the lock's age when it is old enough to be considered, else None.
+
+    ``now_fn`` is the injected clock; the default is the wall clock.
+    """
+    now = now_fn() if now_fn is not None else time.time()
+    age_seconds = now - lock_path.stat().st_mtime
     if age_seconds < _STALE_GIT_LOCK_AGE_SECONDS:
         logger.warning(
             "Refusing to auto-unlink git lock for {} (path={}, age={:.1f}s < {}s); "
@@ -1224,6 +1248,7 @@ def _reap_stale_lock(
     liveness_fn: LivenessProbeFn | None = None,
     gitdir: Path | None = None,
     gitdir_common: Path | None = None,
+    now_fn: Callable[[], float] | None = None,
 ) -> bool:
     """Remove ``lock_path`` iff it is old enough AND provably has no live holder.
 
@@ -1236,7 +1261,7 @@ def _reap_stale_lock(
         return gone_or_refused
 
     try:
-        age_seconds = _stale_age_or_none(operation, lock_path)
+        age_seconds = _stale_age_or_none(operation, lock_path, now_fn=now_fn)
         if age_seconds is None:
             return False
         probed_identity = _lock_identity(lock_path)
