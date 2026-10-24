@@ -220,6 +220,7 @@ from typing import IO, TYPE_CHECKING, Final, NoReturn, Protocol, cast
 import psutil
 from loguru import logger
 
+from ralph.mcp.bridge_diagnostics import BridgeDiagnostics, classify_probe_failure
 from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
     ResolvedCapabilityProfile,
@@ -555,33 +556,19 @@ if not (_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S > 0):
 # ---------------------------------------------------------------------------
 # E6.4 arithmetic-dominance proof (not vacuous positivity)
 # ---------------------------------------------------------------------------
-def _e64_bound_dominates(bound: float, components: tuple[float, ...]) -> bool:
-    """Return ``True`` iff ``bound`` is an upper bound over ``components``.
+def bound_dominates(bound: float, components: tuple[float, ...]) -> bool:
+    """Return whether ``bound`` dominates every positive duration in ``components``.
 
-    A positivity check cannot prove an upper bound: the sum of positive
-    durations is positive even when a stage term has been dropped from it,
-    so ``bound > 0`` stays satisfied by a bound that silently omits the
-    drain (or the kill-wait, or the preflight) stage. The proof carried
-    here is the temporal one — ``bound`` must be at least the SUM of every
-    worst-case duration the bound is composed of, and each of those
-    component durations must itself be strictly positive. Drop any term
-    from a bound and ``bound < sum(components)`` no longer holds, so the
-    import-time check below raises instead of silently under-reporting the
-    worst case.
-
-    Implemented with ``if``/``return`` rather than ``assert`` so the
-    property survives ``python -O``.
+    The rule is used by the import-time restart-budget guard and is public so
+    callers can evaluate the same arithmetic contract without reaching into
+    private lifecycle helpers.
     """
-    if not components:
+    if not components or not bound > 0.0:
         return False
-    if not (bound > 0.0):
-        return False
-    total = 0.0
-    for component in components:
-        if not (component > 0.0):
-            return False
-        total += component
-    return bound >= total
+    return all(component > 0.0 for component in components) and bound >= sum(components)
+
+
+_e64_bound_dominates = bound_dominates
 
 
 #: Per-attempt worst-case durations bound (a) is composed of: the
@@ -844,50 +831,17 @@ _LOG_TAIL_MAX_BYTES: int = 16 * 1024
 
 def _is_non_deferrable_probe_failure(exc: Exception | None) -> bool:
     """Return True if exc represents a definitive, non-deferrable failure."""
-    if exc is None:
-        return False
-    if isinstance(exc, (ConnectionResetError, ConnectionRefusedError, BrokenPipeError)):
-        return True
-    exc_str = str(exc).lower()
-    return (
-        "connection reset" in exc_str
-        or "connection refused" in exc_str
-        or "broken pipe" in exc_str
-        or isinstance(exc, (ValueError, json.JSONDecodeError, UnicodeDecodeError))
-        or any(code in exc_str for code in ("500", "502", "503", "504"))
-        or "malformed" in exc_str
-        or "spawn_id_mismatch" in exc_str
-        or "protocol" in exc_str
-    )
+    return classify_probe_failure(exc) == "fatal"
 
 
 def _is_timeout_class_probe_outcome(exc: Exception | None, overrun: bool) -> bool:
-    """Return True if the failure is deferrable under contention.
-
-    Positive classification: the probe outcome is deferrable iff the outcome is
-    a timeout-class event (a TimeoutError, socket.timeout, an exception
-    indicating timeout, or a measured probe wall-clock duration overrun) AND
-    is NOT an explicit non-deferrable failure.
-
-    Non-deferrable failures (connection reset, connection refused, broken pipe,
-    HTTP 4xx/5xx, malformed/protocol errors, saturated dispatch, generic
-    unhandled RuntimeError) ALWAYS prevail over overrun.
-    """
-    if _is_non_deferrable_probe_failure(exc) or _is_saturated_dispatch_outcome(exc):
-        return False
-    if isinstance(exc, TimeoutError):
-        return True
-    if exc is not None:
-        exc_str = str(exc).lower()
-        return "timed out" in exc_str or "timeout" in exc_str or "probe failed" in exc_str
-    return overrun
+    """Return True if the failure is deferrable under contention."""
+    return classify_probe_failure(exc, overrun=overrun) == "timeout"
 
 
 def _is_saturated_dispatch_outcome(exc: Exception | None) -> bool:
-    if exc is None:
-        return False
-    exc_str = str(exc).lower()
-    return "saturated_dispatch" in exc_str or "_saturated_dispatch" in exc_str
+    """Return True if the probe reported a saturated (busy) dispatch."""
+    return classify_probe_failure(exc) == "saturated"
 
 
 def _stamp_handover_step(exc: BaseException, step: str) -> BaseException:
@@ -962,6 +916,11 @@ class RestartAwareMcpBridge:
         broker_fingerprint: str | None = None,
         effective_config_fingerprint: str | None = None,
         tool_entries_fn: Callable[[str, float], list[dict[str, object]]] | None = None,
+        handover_ack_timeout_s: float | None = None,
+        handover_kill_wait_s: float | None = None,
+        handover_drain_s: float | None = None,
+        unkillable_reap_backoff_s: float | None = None,
+        unkillable_reap_retry_s: float | None = None,
     ) -> None:
         self._inner = inner
         self._restart_fn = restart_fn
@@ -980,6 +939,37 @@ class RestartAwareMcpBridge:
         # production 2.0-second default does not stall the suite.
         # Production uses ``time.sleep`` (default below).
         self._sleep_fn: Callable[[float], object] | None = sleep_fn
+        # Handover timing is constructor-injected so an operational caller can
+        # choose a different bounded policy without mutating module globals.
+        self._handover_ack_timeout_s = (
+            _HANDOVER_ACK_TIMEOUT_S
+            if handover_ack_timeout_s is None
+            else float(handover_ack_timeout_s)
+        )
+        self._handover_kill_wait_s = (
+            _HANDOVER_KILL_WAIT_S if handover_kill_wait_s is None else float(handover_kill_wait_s)
+        )
+        self._handover_drain_s = (
+            _HANDOVER_DRAIN_S if handover_drain_s is None else float(handover_drain_s)
+        )
+        self._unkillable_reap_backoff_s = (
+            _UNKILLABLE_REAP_BACKOFF_S
+            if unkillable_reap_backoff_s is None
+            else float(unkillable_reap_backoff_s)
+        )
+        self._unkillable_reap_retry_s = (
+            _UNKILLABLE_REAP_RETRY_S
+            if unkillable_reap_retry_s is None
+            else float(unkillable_reap_retry_s)
+        )
+        if not (
+            self._handover_ack_timeout_s > 0.0
+            and self._handover_kill_wait_s > 0.0
+            and self._handover_drain_s > 0.0
+            and self._unkillable_reap_backoff_s >= 0.0
+            and self._unkillable_reap_retry_s >= 0.0
+        ):
+            raise ValueError("handover timing values must be positive and bounded")
         # Test seam: a fake ``time.monotonic`` substitute used by
         # ``_run_health_probe`` and the deferral wall-clock ceiling
         # accumulator. Production uses ``time.monotonic`` (the default
@@ -1142,6 +1132,54 @@ class RestartAwareMcpBridge:
         counter to diagnose which cap fired on a wedged run.
         """
         return self._tool_registry_resets
+
+    def diagnostics(self) -> BridgeDiagnostics:
+        """Return an immutable snapshot of the bridge's public operational state.
+
+        The snapshot exposes restart-budget accounting, probe classification
+        state, carried identity/tool-catalogue references, and the timing bounds
+        that govern replacement.  It is intentionally the only supported way to
+        inspect those values; callers do not need to couple to private fields.
+        """
+        with self._lock:
+            entries = tuple(dict(entry) for entry in (self._expected_tool_entries or ()))
+            return BridgeDiagnostics(
+                restart_count=self._restart_count,
+                restart_attempt_count=len(self._restart_timestamps),
+                generation=self._bridge_generation,
+                consecutive_probe_failures=self._consecutive_probe_failures,
+                consecutive_probe_successes=self._consecutive_probe_successes,
+                deferred_probe_failures=self._consecutive_probe_failures_deferred,
+                first_probe_deferred=self._first_probe_deferred_at is not None,
+                session_id=self._session_id,
+                broker_fingerprint=self._broker_fingerprint,
+                tool_set_hash=self._expected_tool_hash,
+                tool_set_entries=entries,
+                tool_set_baseline_captured=self._expected_tool_hash is not None,
+                tool_set_baseline_failed=self._baseline_capture_failed,
+                draining_process_count=len(self._draining_inners),
+                probe_deferral_count_ceiling=_DEFERRAL_COUNT_CEILING,
+                probe_deferral_wall_time_ceiling_s=_DEFERRAL_WALL_TIME_CEILING_S,
+                probe_deadline_slack_s=_PROBE_DEADLINE_SLACK_S,
+                tool_registry_max_resets=_TOOL_REGISTRY_MAX_RESETS,
+                respawn_alias_verify_timeout_s=_RESPAWN_ALIAS_VERIFY_TIMEOUT_S,
+                initial_tool_hash_timeout_s=_INITIAL_TOOL_HASH_TIMEOUT_S,
+                candidate_deadline_s=_CANDIDATE_DEADLINE_S,
+                preflight_deadline_s=_PREFLIGHT_DEADLINE_S,
+                candidate_startup_deadline_s=_CANDIDATE_STARTUP_DEADLINE_S,
+                handover_ack_timeout_s=self._handover_ack_timeout_s,
+                handover_kill_wait_s=self._handover_kill_wait_s,
+                handover_drain_s=self._handover_drain_s,
+                max_restarts=self._restart_policy.max_restarts,
+                cooldown_seconds=self._restart_policy.cooldown_seconds,
+                worst_case_terminal_exhaustion_dead_child_s=(
+                    _WORST_CASE_TERMINAL_EXHAUSTION_DEAD_CHILD_S
+                ),
+                candidate_delay_bound_alive_child_s=_CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S,
+                failed_attempt_cleanup_s=_FAILED_ATTEMPT_CLEANUP_S,
+                bound_a_components_s=_E64_BOUND_A_COMPONENTS_S,
+                bound_b_components_s=_E64_BOUND_B_COMPONENTS_S,
+            )
 
     @property
     def process(self) -> ProcessLike:
@@ -1879,7 +1917,7 @@ class RestartAwareMcpBridge:
                     request_old_child_pause(pause_file)
                     ack = wait_for_old_child_pause_ack(
                         pause_file,
-                        timeout=_HANDOVER_ACK_TIMEOUT_S,
+                        timeout=self._handover_ack_timeout_s,
                         sleep_fn=self._sleep_fn,
                     )
                 except BaseException as pause_exc:
@@ -1893,7 +1931,7 @@ class RestartAwareMcpBridge:
                 if not ack:
                     logger.warning(
                         "Old child failed to acknowledge pause within {}s; escalating termination",
-                        _HANDOVER_ACK_TIMEOUT_S,
+                        self._handover_ack_timeout_s,
                     )
                     kill_fn: object = getattr(proc, "kill", None)
                     if callable(kill_fn):
@@ -1909,7 +1947,7 @@ class RestartAwareMcpBridge:
                     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol confinee)
                     old_exited = False
                     if poll_fn is not None and callable(poll_fn):
-                        deadline = time.monotonic() + _HANDOVER_KILL_WAIT_S
+                        deadline = time.monotonic() + self._handover_kill_wait_s
                         while time.monotonic() < deadline:
                             poll_res: object = poll_fn()
                             if poll_res is not None:
@@ -1946,7 +1984,7 @@ class RestartAwareMcpBridge:
 
     def _drain_old(self, old_inner: StandaloneMcpProcess) -> None:
         """Drain old child in background up to _HANDOVER_DRAIN_S then shut it down."""
-        drain_s = _HANDOVER_DRAIN_S
+        drain_s = self._handover_drain_s
         sleep_fn = cast("Callable[[float], object] | None", getattr(self, "_sleep_fn", None))
         proc: object = getattr(old_inner, "process", None)
         if sleep_fn is None and (self._workspace_root is None or not _is_alive_process(proc)):
@@ -2056,12 +2094,13 @@ class RestartAwareMcpBridge:
         def _reap_worker() -> None:
             try:
                 # filesystem-poll-ok: bounded unkillable-child reap backoff
-                time.sleep(_UNKILLABLE_REAP_BACKOFF_S)
+                sleep_fn = self._sleep_fn or time.sleep
+                sleep_fn(self._unkillable_reap_backoff_s)
                 terminate_fn = cast("Callable[[], object] | None", getattr(proc, "terminate", None))
                 if callable(terminate_fn):
                     with contextlib.suppress(Exception):
                         terminate_fn()
-                deadline = time.monotonic() + _UNKILLABLE_REAP_RETRY_S
+                deadline = time.monotonic() + self._unkillable_reap_retry_s
                 poll_fn = cast("Callable[[], object] | None", getattr(proc, "poll", None))
                 while time.monotonic() < deadline:
                     if poll_fn is not None and callable(poll_fn):
@@ -2069,7 +2108,7 @@ class RestartAwareMcpBridge:
                             if poll_fn() is not None:
                                 return
                     # filesystem-poll-ok: bounded child-exit retry before forced kill
-                    time.sleep(0.05)
+                    sleep_fn(0.05)
                 kill_fn = cast("Callable[[], object] | None", getattr(proc, "kill", None))
                 if callable(kill_fn):
                     with contextlib.suppress(Exception):
@@ -3053,7 +3092,7 @@ def start_mcp_server(
     return bridge
 
 
-def _startup_diagnostic_suffix(root: Path, log_offset: int) -> str:
+def startup_diagnostic_suffix(root: Path, log_offset: int) -> str:
     """Render the child's own startup output as a suffix for the parent's error.
 
     NEVER returns an empty string. A child that died before writing anything
@@ -3067,6 +3106,9 @@ def _startup_diagnostic_suffix(root: Path, log_offset: int) -> str:
     if not diagnostic:
         return f"\nMCP server output ({mcp_server_log_path(root)}):\nchild wrote no log output"
     return f"\nMCP server output ({mcp_server_log_path(root)}):\n{diagnostic}"
+
+
+_startup_diagnostic_suffix = startup_diagnostic_suffix
 
 
 def _boot_allowance_seconds(deps: LifecycleDeps) -> float:

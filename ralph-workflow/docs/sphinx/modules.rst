@@ -2270,6 +2270,20 @@ ralph.mcp
 .. automodule:: ralph.mcp
    :no-members:
 
+ralph.mcp.bridge_diagnostics
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.bridge_diagnostics
+   :members:
+   :show-inheritance:
+
+ralph.mcp.bridge_handover
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.bridge_handover
+   :members:
+   :show-inheritance:
+
 ralph.mcp.artifacts
 ~~~~~~~~~~~~~~~~~~~
 

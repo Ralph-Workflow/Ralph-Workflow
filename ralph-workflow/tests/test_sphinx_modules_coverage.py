@@ -44,7 +44,6 @@ _EXCLUDED: dict[str, str] = {
     "exit_pause.exit_outcome": "internal exit type, not public API",
     "exit_pause.pause_on_exit_mode": "internal exit type, not public API",
     "git.hardening": "internal git hardening, not public API",
-    "git.lock_recovery": "internal lock recovery test seam, not public API",
     "git.git_run_result": "internal git type, not public API",
     "git.rebase.process_result": "internal git type, not public API",
     "git.rebase.rebase_conflicts": "internal git type, not public API",
