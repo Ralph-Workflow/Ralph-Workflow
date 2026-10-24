@@ -25,8 +25,7 @@ from __future__ import annotations
 import subprocess
 from typing import TYPE_CHECKING, Any
 
-from ralph.process.manager import _default_sync_process_factory
-from ralph.process.manager._spawn_options import SpawnOptions
+from ralph.process.manager import SpawnOptions, default_sync_process_factory
 
 if TYPE_CHECKING:
     import pytest
@@ -67,7 +66,7 @@ def test_default_sync_process_factory_forwards_pass_fds_to_popen(
 
     monkeypatch.setattr(subprocess, "Popen", _CapturePopen)
 
-    _default_sync_process_factory(["/bin/true"], SpawnOptions(pass_fds=(4, 5)))
+    default_sync_process_factory(["/bin/true"], SpawnOptions(pass_fds=(4, 5)))
 
     assert len(captured) == 1, f"subprocess.Popen must be invoked exactly once; got {len(captured)}"
     popen_kwargs = captured[0]["kwargs"]

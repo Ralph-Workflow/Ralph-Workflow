@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
-from ralph.process._spawn_env import child_env_for_spawn
+from ralph.process import child_env_for_spawn
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch

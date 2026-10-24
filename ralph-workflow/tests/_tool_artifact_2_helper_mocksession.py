@@ -1,14 +1,10 @@
-from __future__ import annotations
+"""Re-export shim for the shared tool-artifact helpers.
 
+The implementation now lives in ``tests/_tool_artifact_helpers.py``; this
+module keeps the legacy ``_tool_artifact_2_helper_mocksession`` import path
+working for existing consumers.
+"""
 
-class MockSession:
-    session_id: str = "test-session"
-    run_id: str = ""
-    broker_secret = None
-    explore_index: object | None = None
+from tests._tool_artifact_helpers import MockSession
 
-    def __init__(self, drain: str = "development") -> None:
-        self.drain = drain
-
-    def check_capability(self, capability: str) -> object:
-        return capability in {"artifact.submit", "artifact.plan_read", "artifact.plan_write"}
+__all__ = ["MockSession"]

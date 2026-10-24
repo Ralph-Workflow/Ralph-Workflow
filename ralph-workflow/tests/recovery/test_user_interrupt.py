@@ -116,6 +116,17 @@ def _cancel_task_and_close(loop: asyncio.AbstractEventLoop, task: asyncio.Task) 
     loop.close()
 
 
+async def _pending_until_cancelled() -> None:
+    """Stay pending until the task is cancelled.
+
+    The first-SIGINT handler cancels the root task, so the contract
+    under test needs a task that is *pending* for the whole test. An
+    unset ``asyncio.Event`` provides that pending task without a real
+    ``asyncio.sleep`` wall-clock wait.
+    """
+    await asyncio.Event().wait()
+
+
 def test_second_sigint_calls_os_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     """Second SIGINT must call os._exit(130) immediately with no cleanup.
 
@@ -135,7 +146,7 @@ def test_second_sigint_calls_os_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     bridge = SignalBridge()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    root_task = loop.create_task(asyncio.sleep(10))
+    root_task = loop.create_task(_pending_until_cancelled())
 
     try:
         install_signal_handlers(loop, root_task, bridge)
@@ -168,7 +179,7 @@ def test_second_sigint_handler_installed_after_first(monkeypatch: pytest.MonkeyP
     bridge = SignalBridge()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    root_task = loop.create_task(asyncio.sleep(10))
+    root_task = loop.create_task(_pending_until_cancelled())
 
     try:
         install_signal_handlers(loop, root_task, bridge)

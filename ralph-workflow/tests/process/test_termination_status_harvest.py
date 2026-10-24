@@ -17,10 +17,14 @@ from typing import IO
 
 import pytest
 
-from ralph.process.manager import ManagedPtyProcess, ProcessManager, ProcessManagerPolicy
-from ralph.process.manager._managed_process import ManagedProcess
-from ralph.process.manager._process_record import ProcessRecord
-from ralph.process.manager._process_status import ProcessStatus
+from ralph.process.manager import (
+    ManagedProcess,
+    ManagedPtyProcess,
+    ProcessManager,
+    ProcessManagerPolicy,
+    ProcessRecord,
+    ProcessStatus,
+)
 from ralph.testing.fake_process import FakeAsyncProcess, FakePsutil, FakePsutilProcess
 
 pytestmark = pytest.mark.timeout_seconds(5)
@@ -526,7 +530,7 @@ def test_harvest_and_mark_descendant_unrecorded_descendant_leaves_parent_untouch
     assert parent_record.status == ProcessStatus.RUNNING
     assert parent_called_with == []
     assert parent_proc.returncode is None
-    assert 200 not in manager._records
+    assert 200 not in {record.pid for record in manager.list_records()}
 
 
 # ----------------------------------------------------------------------

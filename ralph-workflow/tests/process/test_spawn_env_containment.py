@@ -94,7 +94,7 @@ def _string_keyed_mapping(value: object, label: str) -> dict[str, object]:
     return result
 
 
-def _script_targets() -> dict[str, set[str]]:
+def script_targets() -> dict[str, set[str]]:
     parsed: object = tomllib.loads((PACKAGE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     project = _string_keyed_mapping(parsed, "pyproject")
     scripts = _string_keyed_mapping(project["project"], "project")
@@ -107,11 +107,11 @@ def _script_targets() -> dict[str, set[str]]:
 
 
 def _script_module_names() -> set[str]:
-    return set(_script_targets())
+    return set(script_targets())
 
 
 @cache
-def _cached_parsed_modules() -> dict[str, ast.Module]:
+def cached_parsed_modules() -> dict[str, ast.Module]:
     script_paths = {module.replace(".", "/") + ".py" for module in _script_module_names()}
     modules: dict[str, ast.Module] = {}
     main_guard_markers = (
@@ -129,12 +129,12 @@ def _cached_parsed_modules() -> dict[str, ast.Module]:
     return modules
 
 
-def _parsed_modules() -> dict[str, ast.Module]:
-    return dict(_cached_parsed_modules())
+def parsed_modules() -> dict[str, ast.Module]:
+    return dict(cached_parsed_modules())
 
 
 # Pre-warm module cache at import time to prevent SIGALRM under concurrent test-shard I/O
-_cached_parsed_modules()
+cached_parsed_modules()
 
 
 def _is_main_guard(node: ast.If) -> bool:
@@ -256,7 +256,7 @@ def _declared_entry_names(tree: ast.Module, module_name: str, attributes: set[st
 @pytest.mark.timeout_seconds(5)
 def test_spawn_capable_entry_points_sanitize_before_work() -> None:
     """Full-package entry-point sweep; 5s covers parallel-load I/O on slow disks."""
-    modules = _parsed_modules()
+    modules = parsed_modules()
     guard_paths = {path for path, tree in modules.items() if _has_main_guard(tree)}
     assert all(_GUARD_ALLOWLIST.values())
     spawn_guard_paths = {
@@ -269,8 +269,8 @@ def test_spawn_capable_entry_points_sanitize_before_work() -> None:
     )
     assert not unclassified_guards, unclassified_guards
 
-    script_targets = _script_targets()
-    discovered_modules = set(script_targets)
+    declared_targets = script_targets()
+    discovered_modules = set(declared_targets)
     for path in spawn_guard_paths:
         discovered_modules.add(_module_path(PACKAGE_ROOT / path))
 
@@ -282,7 +282,7 @@ def test_spawn_capable_entry_points_sanitize_before_work() -> None:
         entry_names = (
             _guard_entry_names(tree).intersection(functions) if _has_main_guard(tree) else set()
         )
-        if attributes := script_targets.get(module_name):
+        if attributes := declared_targets.get(module_name):
             entry_names.update(_declared_entry_names(tree, module_name, attributes))
         assert entry_names, f"{module_name} has no resolvable entry function"
         for entry_name in entry_names:
@@ -311,13 +311,13 @@ def test_spawn_env_containment_regression_checks_declared_script_attribute(
     """DA-001: a non-``main`` console-script target cannot evade the sweep."""
     fake_module = "ralph.fake_b"
     monkeypatch.setattr(
-        __import__(__name__, fromlist=["_script_targets"]),
-        "_script_targets",
+        __import__(__name__, fromlist=["script_targets"]),
+        "script_targets",
         lambda: {fake_module: {"launch"}},
     )
     monkeypatch.setattr(
-        __import__(__name__, fromlist=["_parsed_modules"]),
-        "_parsed_modules",
+        __import__(__name__, fromlist=["parsed_modules"]),
+        "parsed_modules",
         lambda: {
             "ralph/fake_b.py": ast.parse(
                 "from ralph.executor.process import run_process\n\n"

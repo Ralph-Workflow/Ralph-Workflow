@@ -56,9 +56,7 @@ def _write_commit_cleanup_artifact(
         action_name = action["action"]
         value = action.get("path", action.get("pattern"))
         lines.append(f"- [A{index}] {action_name} | {value}")
-    path = Path(workspace.root) / COMMIT_CLEANUP_ARTIFACT_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    workspace.write(COMMIT_CLEANUP_ARTIFACT_PATH, "\n".join(lines) + "\n")
 
 
 def _ctx(
@@ -144,7 +142,7 @@ def test_resubmitted_duplicate_batch_remains_idempotent(tmp_git_repo: Path) -> N
     assert first == [PipelineEvent.AGENT_SUCCESS]
     assert second == [PipelineEvent.AGENT_SUCCESS]
     assert not junk.exists()
-    assert "*.exe" in (tmp_git_repo / ".gitignore").read_text(encoding="utf-8")
+    assert "*.exe" in workspace.read(".gitignore")
 
 
 def test_missing_artifact_bound_survives_highest_priority_reselection(
@@ -191,7 +189,7 @@ def test_next_prompt_contains_declined_and_apply_failed_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace = FsWorkspace(tmp_git_repo)
-    (tmp_git_repo / "app.py").write_text("x = 1\n", encoding="utf-8")
+    workspace.write("app.py", "x = 1\n")
     _write_commit_cleanup_artifact(
         workspace,
         {
@@ -221,7 +219,7 @@ def test_mixed_declined_delete_and_throwing_ignore_is_not_applied_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace = FsWorkspace(tmp_git_repo)
-    (tmp_git_repo / "lib.py").write_text("pass\n", encoding="utf-8")
+    workspace.write("lib.py", "pass\n")
     _write_commit_cleanup_artifact(
         workspace,
         {
@@ -288,17 +286,14 @@ def test_prompt_named_deletable_classes_match_engine_boundary(tmp_git_repo: Path
     lowered = rules.lower()
     assert "completion" in lowered or "report" in lowered
     assert "lockfile" in lowered or "package-lock.json" in rules
-    jinja = (
-        Path(__file__).resolve().parents[1]
-        / "ralph"
-        / "prompts"
-        / "templates"
-        / "commit_cleanup.jinja"
-    ).read_text(encoding="utf-8")
+    package_root = Path(__file__).resolve().parents[1]
+    jinja = FsWorkspace(package_root).read(
+        "ralph/prompts/templates/commit_cleanup.jinja",
+    )
     assert "DELETE_DECISION_RULES" in jinja
     assert "LAST_RETRY_ERROR" in jinja
     workspace = FsWorkspace(tmp_git_repo)
-    (tmp_git_repo / "scratch.tmp").write_text("x\n", encoding="utf-8")
+    workspace.write("scratch.tmp", "x\n")
     _write_commit_cleanup_artifact(
         workspace,
         {
@@ -311,8 +306,8 @@ def test_prompt_named_deletable_classes_match_engine_boundary(tmp_git_repo: Path
             ],
         },
     )
-    (tmp_git_repo / "app.py").write_text("print(1)\n", encoding="utf-8")
-    (tmp_git_repo / "package-lock.json").write_text("{}", encoding="utf-8")
+    workspace.write("app.py", "print(1)\n")
+    workspace.write("package-lock.json", "{}")
     result = _run(workspace)
     assert result == [PipelineEvent.AGENT_SUCCESS]
     assert not (tmp_git_repo / "scratch.tmp").exists()

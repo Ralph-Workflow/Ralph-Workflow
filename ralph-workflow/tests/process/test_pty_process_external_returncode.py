@@ -6,10 +6,14 @@ from typing import Any
 
 import pytest
 
-from ralph.process._pty_process import PtyProcess
-from ralph.process.manager import ManagedPtyProcess, ProcessManager, ProcessManagerPolicy
-from ralph.process.manager._process_record import ProcessRecord
-from ralph.process.manager._process_status import ProcessStatus
+from ralph.process.manager import (
+    ManagedPtyProcess,
+    ProcessManager,
+    ProcessManagerPolicy,
+    ProcessRecord,
+    ProcessStatus,
+)
+from ralph.process.pty import PtyProcess
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
@@ -64,7 +68,6 @@ class _StubPtyProc:
 def test_note_external_returncode_sets_value() -> None:
     pty = PtyProcess(pid=0, master_fd=-1, slave_fd=-1)
     pty.note_external_returncode(7)
-    assert pty._returncode == 7
     assert pty.returncode == 7
 
 
@@ -72,7 +75,7 @@ def test_note_external_returncode_is_idempotent() -> None:
     pty = PtyProcess(pid=0, master_fd=-1, slave_fd=-1)
     pty.note_external_returncode(7)
     pty.note_external_returncode(8)
-    assert pty._returncode == 7
+    assert pty.returncode == 7
 
 
 def test_note_external_returncode_rejects_non_int() -> None:
@@ -92,7 +95,7 @@ def test_note_external_returncode_rejects_bool() -> None:
 def test_note_external_returncode_accepts_negative() -> None:
     pty = PtyProcess(pid=0, master_fd=-1, slave_fd=-1)
     pty.note_external_returncode(-15)
-    assert pty._returncode == -15
+    assert pty.returncode == -15
 
 
 def test_poll_returns_external_returncode_when_set() -> None:

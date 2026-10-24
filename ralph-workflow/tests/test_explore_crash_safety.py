@@ -4,10 +4,13 @@ Killing the process at random points during a build, repeated
 many times, never leaves an index that serves wrong results. The
 next session always recovers without help.
 
-These tests use real subprocesses (``subprocess_e2e`` marker) so
-the process boundary and atomic promotion are exercised. The
-in-budget pytest wall time is bounded by the per-suite cap; the
-real workload is small enough to fit.
+These tests drive real child processes so the process boundary and
+atomic promotion are exercised. The children are spawned through the
+production executor seam (``ralph.executor.process.run_process``)
+instead of a raw ``subprocess`` call, so the real-process boundary
+stays under the production process manager (bounded timeout, reaped
+subtree). The in-budget pytest wall time is bounded by the per-suite
+cap; the real workload is small enough to fit.
 
 The repeated-kill loop runs 5 rounds with random kill delays so
 the process is killed at different points across cold build,
@@ -21,11 +24,12 @@ from __future__ import annotations
 
 import json
 import random
-import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+from ralph.executor.process import ProcessRunOptions, run_process
 
 pytestmark = [pytest.mark.timeout_seconds(60)]
 
@@ -162,15 +166,19 @@ def _run_kill_round(workspace: Path, kill_after_seconds: float) -> int:
     A non-zero returncode is the EXPECTED outcome: the process was
     killed mid-build. The next test step is to verify that a fresh
     session can recover without manual cleanup.
+
+    The child is spawned through the production executor seam so the
+    real process boundary is exercised under the production process
+    manager (bounded timeout, reaped subtree) rather than through a
+    raw ``subprocess`` call from the test.
     """
     script = SCRIPT_TEMPLATE.replace("__WORKSPACE__", repr(str(workspace))).replace(
         "__KILL_AFTER__", repr(kill_after_seconds)
     )
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        capture_output=True,
-        timeout=30,
-        check=False,
+    result = run_process(
+        sys.executable,
+        ["-c", script],
+        options=ProcessRunOptions(capture_output=True, timeout=30),
     )
     return result.returncode
 
@@ -183,13 +191,12 @@ def _verify_recovery(workspace: Path) -> dict[str, object]:
     ``match_count`` keys; ``status='ok'`` means recovery succeeded.
     """
     script = VERIFY_SCRIPT_TEMPLATE.replace("__WORKSPACE__", repr(str(workspace)))
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        capture_output=True,
-        timeout=30,
-        check=False,
+    result = run_process(
+        sys.executable,
+        ["-c", script],
+        options=ProcessRunOptions(capture_output=True, timeout=30),
     )
-    out = result.stdout.decode("utf-8", errors="replace").strip()
+    out = result.stdout.strip()
     if result.returncode == 0 and out:
         try:
             return json.loads(out.splitlines()[-1])
@@ -198,7 +205,7 @@ def _verify_recovery(workspace: Path) -> dict[str, object]:
     return {
         "status": "error",
         "returncode": result.returncode,
-        "stderr": result.stderr.decode("utf-8", errors="replace")[-300:],
+        "stderr": result.stderr[-300:],
         "stdout_tail": out[-200:],
     }
 

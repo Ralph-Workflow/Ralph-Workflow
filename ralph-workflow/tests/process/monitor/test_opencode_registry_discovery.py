@@ -28,13 +28,13 @@ from __future__ import annotations
 
 from ralph.config.enums import AgentTransport
 from ralph.process.child_liveness import ChildLivenessRegistry
-from ralph.process.monitor._discovery_strategy import (
+from ralph.process.monitor import (
     DiscoveryStrategy,
     NullDiscoveryStrategy,
     OpenCodeRegistryDiscoveryStrategy,
     RegistryBackedSubagentOutputCapture,
+    SubagentOutputCapture,
 )
-from ralph.process.monitor._subagent_output_capture import SubagentOutputCapture
 
 
 def _make_registry() -> ChildLivenessRegistry:

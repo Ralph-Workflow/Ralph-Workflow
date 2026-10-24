@@ -28,18 +28,16 @@ from typing import TYPE_CHECKING, Protocol
 
 import pytest
 
-import ralph.process.manager._managed_async_process as _async_proc_mod
 from ralph.process.manager import ProcessManager, ProcessManagerPolicy
-from ralph.timeout_defaults import PROCESS_EXIT_WAIT_SECONDS
 
 if TYPE_CHECKING:
-    from ralph.process.manager._process_manager_types import (
-        _AsyncProcessLike,
-        _PsutilModuleLike,
+    from ralph.process.manager import (
+        AsyncProcessLike,
+        PsutilModuleLike,
     )
-from ralph.process.manager._process_status import (
-    _TERMINAL_STATUSES,
+from ralph.process.manager import (
     ProcessStatus,
+    is_terminal_status,
 )
 from ralph.testing.fake_process import (
     FakeControllableAsyncProcess,
@@ -62,7 +60,7 @@ class _AsyncStream(Protocol):
 
 
 class _AsyncProc(Protocol):
-    """Minimal protocol matching the production ``_AsyncProcessLike`` for tests."""
+    """Minimal protocol matching the production ``AsyncProcessLike`` for tests."""
 
     pid: int
     stdin: _AsyncStream | None
@@ -79,11 +77,11 @@ class _AsyncProc(Protocol):
     def kill(self) -> None: ...
 
 
-def _psutil() -> _PsutilModuleLike:
+def _psutil() -> PsutilModuleLike:
     return FakePsutil()
 
 
-def _as_proc(value: object) -> _AsyncProcessLike:
+def _as_proc(value: object) -> AsyncProcessLike:
     return value
 
 
@@ -101,7 +99,7 @@ async def test_async_context_manager_terminates_on_exit() -> None:
     async with handle:
         pass  # exit the block without explicit terminate
 
-    assert handle.record.status in _TERMINAL_STATUSES, (
+    assert is_terminal_status(handle.record.status), (
         f"async-with exit should have terminated the process; status={handle.record.status}"
     )
 
@@ -139,7 +137,7 @@ async def test_async_context_manager_returns_self() -> None:
     async with handle as bound:
         assert bound is handle
 
-    assert handle.record.status in _TERMINAL_STATUSES
+    assert is_terminal_status(handle.record.status)
 
 
 class _RecordingStream:
@@ -207,7 +205,7 @@ class _RecordingFakeAsyncProc:
 
 def _build_proc_with_close_tracking(
     close_calls: list[str], *, raise_on_close: bool
-) -> _AsyncProcessLike:
+) -> AsyncProcessLike:
     """Build a fake async proc whose stdin/stdout/stderr each call ``close()``."""
     return _RecordingFakeAsyncProc(
         pid=9999,
@@ -295,7 +293,7 @@ async def _never_return_future() -> None:
     await asyncio.wait_for(event.wait(), timeout=60.0)
 
 
-async def test_wait_bounds_with_asyncio_wait_for() -> None:
+async def test_wait_bounds_with_asyncio_wait_for(monkeypatch: pytest.MonkeyPatch) -> None:
     """``wait()`` must raise TimeoutError when the subprocess never completes."""
 
     class _NeverWaitProc(FakeControllableAsyncProcess):
@@ -314,20 +312,18 @@ async def test_wait_bounds_with_asyncio_wait_for() -> None:
     handle = await pm.spawn_async([sys.executable, "-c", "pass"])
     handle._proc = controllable
 
-    original = PROCESS_EXIT_WAIT_SECONDS
-    _async_proc_mod.PROCESS_EXIT_WAIT_SECONDS = 0.05
-    try:
-        # Wrap in asyncio.wait_for to satisfy the audit ``blocking-wait``
-        # check (docs/agents/testing-guide.md §'blocking-wait'). The
-        # production code's 0.05s timeout fires first; the 5s wrapper
-        # ceiling is a defensive backstop.
-        with pytest.raises(TimeoutError):
-            await asyncio.wait_for(handle.wait(), timeout=5.0)
-    finally:
-        _async_proc_mod.PROCESS_EXIT_WAIT_SECONDS = original
+    # The exit-wait ceiling is a PUBLIC default (``ralph.timeout_defaults``);
+    # shrinking it here keeps the bounded-wait assertion fast.
+    monkeypatch.setattr("ralph.timeout_defaults.PROCESS_EXIT_WAIT_SECONDS", 0.05)
+    # Wrap in asyncio.wait_for to satisfy the audit ``blocking-wait``
+    # check (docs/agents/testing-guide.md §'blocking-wait'). The
+    # production code's 0.05s timeout fires first; the 5s wrapper
+    # ceiling is a defensive backstop.
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(handle.wait(), timeout=5.0)
 
 
-async def test_communicate_bounds_with_asyncio_wait_for() -> None:
+async def test_communicate_bounds_with_asyncio_wait_for(monkeypatch: pytest.MonkeyPatch) -> None:
     """``communicate()`` must raise TimeoutError when subprocess never completes."""
 
     class _NeverCommunicateProc(FakeControllableAsyncProcess):
@@ -347,14 +343,12 @@ async def test_communicate_bounds_with_asyncio_wait_for() -> None:
     handle = await pm.spawn_async([sys.executable, "-c", "pass"])
     handle._proc = controllable
 
-    original = PROCESS_EXIT_WAIT_SECONDS
-    _async_proc_mod.PROCESS_EXIT_WAIT_SECONDS = 0.05
-    try:
-        # Wrap in asyncio.wait_for to satisfy the audit ``blocking-wait``
-        # check (docs/agents/testing-guide.md §'blocking-wait'). The
-        # production code's 0.05s timeout fires first; the 5s wrapper
-        # ceiling is a defensive backstop.
-        with pytest.raises(TimeoutError):
-            await asyncio.wait_for(handle.communicate(), timeout=5.0)
-    finally:
-        _async_proc_mod.PROCESS_EXIT_WAIT_SECONDS = original
+    # The exit-wait ceiling is a PUBLIC default (``ralph.timeout_defaults``);
+    # shrinking it here keeps the bounded-wait assertion fast.
+    monkeypatch.setattr("ralph.timeout_defaults.PROCESS_EXIT_WAIT_SECONDS", 0.05)
+    # Wrap in asyncio.wait_for to satisfy the audit ``blocking-wait``
+    # check (docs/agents/testing-guide.md §'blocking-wait'). The
+    # production code's 0.05s timeout fires first; the 5s wrapper
+    # ceiling is a defensive backstop.
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(handle.communicate(), timeout=5.0)

@@ -24,8 +24,7 @@ from typing import TYPE_CHECKING
 
 import psutil
 
-from ralph.process.manager._process_record import ProcessRecord
-from ralph.process.manager._process_status import ProcessStatus
+from ralph.process.manager import ProcessRecord, ProcessStatus
 from ralph.process.teardown import (
     DefaultProcessTeardown,
     register_child_session,

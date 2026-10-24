@@ -765,6 +765,21 @@ def test_cleanup_after_abnormal_exit() -> None:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def test_register_descendant_registry_tracks_pid_until_teardown() -> None:
+    """register_descendant adds PID to _descendants and cleanup removes it."""
+    pm = _make_pm()
+    handle = pm.spawn([sys.executable, "-c", "pass"])
+
+    pm.register_descendant(handle.pid, 99999)
+    # policy: white-box-frozen
+    assert 99999 in pm._registered_descendants(handle.pid)
+
+    handle.terminate(grace_period_s=0.1)
+    # After termination, descendant registry cleaned
+    # policy: white-box-frozen
+    assert pm._registered_descendants(handle.pid) == ()
+
+
 class _TrackedDescendant(FakePsutilProcess):
     """FakePsutilProcess subclass that records every terminate/kill call.
 

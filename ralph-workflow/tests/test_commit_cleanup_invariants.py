@@ -52,9 +52,7 @@ def _write_commit_cleanup_artifact(
         action_name = action["action"]
         value = action.get("path", action.get("pattern"))
         lines.append(f"- [A{index}] {action_name} | {value}")
-    path = Path(workspace.root) / COMMIT_CLEANUP_ARTIFACT_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    workspace.write(COMMIT_CLEANUP_ARTIFACT_PATH, "\n".join(lines) + "\n")
 
 
 def _ctx(workspace: FsWorkspace) -> PhaseContext:
@@ -80,7 +78,7 @@ def test_identical_declined_path_replay_completes_without_phase_failure(
     tmp_git_repo: Path,
 ) -> None:
     workspace = FsWorkspace(tmp_git_repo)
-    (tmp_git_repo / "src.py").write_text("print(1)\n", encoding="utf-8")
+    workspace.write("src.py", "print(1)\n")
     _write_commit_cleanup_artifact(
         workspace,
         {
@@ -149,7 +147,7 @@ def test_all_throw_apply_identical_replay_is_bounded(
 
 def test_wholly_declined_deletes_emit_no_phase_failure(tmp_git_repo: Path) -> None:
     workspace = FsWorkspace(tmp_git_repo)
-    (tmp_git_repo / "README.md").write_text("docs\n", encoding="utf-8")
+    workspace.write("README.md", "docs\n")
     _write_commit_cleanup_artifact(
         workspace,
         {
@@ -164,7 +162,7 @@ def test_wholly_declined_deletes_emit_no_phase_failure(tmp_git_repo: Path) -> No
 
 def test_next_cleanup_prompt_contains_declined_path_and_reason(tmp_git_repo: Path) -> None:
     workspace = FsWorkspace(tmp_git_repo)
-    (tmp_git_repo / "app.py").write_text("x = 1\n", encoding="utf-8")
+    workspace.write("app.py", "x = 1\n")
     _write_commit_cleanup_artifact(
         workspace,
         {
@@ -224,7 +222,7 @@ def test_declined_and_empty_decisions_log_once_at_warning(
     caplog: LogCaptureFixture,
 ) -> None:
     workspace = FsWorkspace(tmp_git_repo)
-    (tmp_git_repo / "main.py").write_text("pass\n", encoding="utf-8")
+    workspace.write("main.py", "pass\n")
     _write_commit_cleanup_artifact(
         workspace,
         {
@@ -251,7 +249,7 @@ def test_mixed_declined_delete_and_throwing_ignore_is_not_applied_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace = FsWorkspace(tmp_git_repo)
-    (tmp_git_repo / "lib.py").write_text("pass\n", encoding="utf-8")
+    workspace.write("lib.py", "pass\n")
     _write_commit_cleanup_artifact(
         workspace,
         {
@@ -407,7 +405,7 @@ def test_idempotent_second_apply_of_well_formed_batch(tmp_git_repo: Path) -> Non
     assert first == [PipelineEvent.AGENT_SUCCESS]
     assert second == [PipelineEvent.AGENT_SUCCESS]
     assert not junk.exists()
-    assert "*.exe" in (tmp_git_repo / ".gitignore").read_text(encoding="utf-8")
+    assert "*.exe" in workspace.read(".gitignore")
 
 
 def test_stale_identical_artifact_is_not_a_new_attempt(tmp_git_repo: Path) -> None:
@@ -452,13 +450,10 @@ def test_prompt_and_engine_generated_text_classes_agree() -> None:
     for marker in GENERATED_TEXT_MARKERS:
         assert marker in table
     assert "Markdown" in table or ".md" in table
-    template = (
-        Path(__file__).resolve().parents[1]
-        / "ralph"
-        / "prompts"
-        / "templates"
-        / "commit_cleanup.jinja"
-    ).read_text(encoding="utf-8")
+    package_root = Path(__file__).resolve().parents[1]
+    template = FsWorkspace(package_root).read(
+        "ralph/prompts/templates/commit_cleanup.jinja",
+    )
     assert "{{ DELETE_DECISION_RULES }}" in template
     assert "{% if LAST_RETRY_ERROR %}" in template
 

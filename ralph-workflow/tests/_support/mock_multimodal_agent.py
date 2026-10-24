@@ -15,12 +15,13 @@ import json
 import os
 import re
 import sys
-import urllib.error
-import urllib.request
 import uuid
 import zlib
 from pathlib import Path
 from typing import Any
+
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
+from ralph.mcp.protocol.startup import PreflightError, post_http_jsonrpc
 
 ENDPOINT_ENV = "RALPH_MCP_ENDPOINT"
 SECRET_ENV = "RALPH_BROKER_SECRET"
@@ -525,48 +526,13 @@ def _make_emit_functions(transport: str) -> dict[str, Any]:
 
 def _dispatch(endpoint: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """POST a real ``tools/call`` JSON-RPC frame to ``endpoint``."""
-    request = urllib.request.Request(
-        endpoint,
-        data=json.dumps(
-            {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {"name": name, "arguments": arguments},
-            }
-        ).encode(),
-        headers={
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream",
-        },
-    )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        raw = response.read()
-    body_text = raw.decode("utf-8", errors="replace") if raw else ""
-    if not body_text.strip():
-        return {"result": None, "_empty_body": True}
-    # Handle SSE-style responses: lines starting with ``data:`` are JSON.
-    sse_lines = [
-        line[len("data:") :].strip() for line in body_text.splitlines() if line.startswith("data:")
-    ]
-    if sse_lines:
-        last_data = sse_lines[-1]
-        if last_data == "[DONE]":
-            return {"result": None, "_sse_done": True}
-        try:
-            return json.loads(last_data)
-        except json.JSONDecodeError as exc:
-            sys.stderr.write(
-                f"mock_multimodal_agent: {name} SSE response not JSON: {exc!r} body={last_data[:200]!r}\n"
-            )
-            return {"result": None, "_sse_parse_error": str(exc)}
-    try:
-        return json.loads(body_text)
-    except json.JSONDecodeError as exc:
-        sys.stderr.write(
-            f"mock_multimodal_agent: {name} response not JSON: {exc!r} body={body_text[:200]!r}\n"
-        )
-        return {"result": None, "_parse_error": str(exc)}
+    payload: dict[str, Any] = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": name, "arguments": arguments},
+    }
+    return post_http_jsonrpc(endpoint, payload)
 
 
 def _extension_path() -> str:
@@ -582,7 +548,10 @@ def _extension_path() -> str:
 def _endpoint_from_extension(extension_path: str) -> str:
     """Extract the endpoint embedded in a generated Pi extension."""
     try:
-        extension_source = Path(extension_path).read_text(encoding="utf-8")
+        extension_source = DEFAULT_FILE_BACKEND.read_text(
+            Path(extension_path),
+            encoding="utf-8",
+        )
     except OSError:
         return ""
     endpoint_match = re.search(r'^const ENDPOINT = "([^"]+)";', extension_source, re.MULTILINE)
@@ -728,7 +697,7 @@ def _run_dispatch(
             "read_media",
             {"path": "smoke-fixture.png", "format": "inline"},
         )
-    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError):
+    except (PreflightError, OSError, json.JSONDecodeError):
         return False, mint_handle, width, height
     server_uri = _extract_server_uri(first)
     if not ignore_response and server_uri is not None:
@@ -738,7 +707,7 @@ def _run_dispatch(
                 "read_media",
                 {"path": server_uri, "format": "inline"},
             )
-        except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError) as exc:
+        except (PreflightError, OSError, json.JSONDecodeError) as exc:
             sys.stderr.write(f"mock_multimodal_agent: read_media(replay) failed: {exc}\n")
         try:
             metadata = _dispatch(
@@ -749,7 +718,7 @@ def _run_dispatch(
             meta_width, _meta_sha = _extract_metadata_envelope(metadata)
             if isinstance(meta_width, int):
                 width = meta_width
-        except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError) as exc:
+        except (PreflightError, OSError, json.JSONDecodeError) as exc:
             sys.stderr.write(f"mock_multimodal_agent: read_image failed: {exc}\n")
         mint_handle = server_uri
     elif ignore_response:
@@ -780,7 +749,7 @@ def _fixture_geometry_from_disk(workspace_root: Path) -> tuple[int, int, str] | 
     if not fixture_path.is_file():
         return None
     try:
-        body = fixture_path.read_bytes()
+        body = DEFAULT_FILE_BACKEND.read_bytes(fixture_path)
     except OSError:
         return None
     if len(body) < 24:
@@ -811,7 +780,7 @@ def _first_idat_payload(body: bytes) -> bytes | None:
 def _fixture_perception_secret_from_disk(workspace_root: Path) -> str | None:
     """Extract the fixed-width secret from the fixture's final-row RGB pixels."""
     try:
-        body = (workspace_root / "smoke-fixture.png").read_bytes()
+        body = DEFAULT_FILE_BACKEND.read_bytes(workspace_root / "smoke-fixture.png")
     except OSError:
         return None
     if len(body) < 24 or body[:8] != b"\x89PNG\r\n\x1a\n":
@@ -903,7 +872,7 @@ def _post_artifact_and_complete(
             "mcp__ralph__declare_complete",
             {"summary": "multimodal smoke stub complete"},
         )
-    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError) as exc:
+    except (PreflightError, OSError, json.JSONDecodeError) as exc:
         sys.stderr.write(f"mock_multimodal_agent: declare_complete failed: {exc}\n")
 
 

@@ -3,10 +3,12 @@
 Uses AST analysis (not regex) to detect policy violations in test code:
 - sleep() calls with non-zero arguments
 - Real I/O operations (file I/O, network, subprocess)
-- Budget circumvention patterns
+- White-box coupling to private ``ralph`` production internals
+- White-box counts above the frozen baseline ceiling
 
 Usage:
     python -m ralph.testing.audit_test_policy [tests_root]
+    python -m ralph.testing.audit_test_policy --emit-baseline [tests_root]
 
 Returns exit code 0 if no policy violations found, 1 otherwise.
 """
@@ -15,9 +17,40 @@ from __future__ import annotations
 
 import ast
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
-# Directories to skip during file collection.
+from ralph.testing import test_whitebox_baseline
+from ralph.testing.test_whitebox_baseline import WHITEBOX_BASELINE
+from ralph.testing.whitebox_detectors import (
+    canonical_patch_target,
+    canonical_target_string,
+    collect_patched_targets,
+    collect_whitebox_counts,
+    count_private_attrs,
+    count_private_imports,
+    count_setattr_private,
+)
+
+__all__ = [
+    "TestPolicyViolation",
+    "audit_test_file",
+    "audit_tests_directory",
+    "audit_whitebox_ratchet",
+    "collect_whitebox_counts",
+    "collect_whitebox_inventory",
+    "count_private_attrs",
+    "count_private_imports",
+    "count_setattr_private",
+    "main",
+    "render_whitebox_baseline",
+]
+
+
+def _split_names(value: str) -> set[str]:
+    return set(value.split())
+
+
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
         "__pycache__",
@@ -57,16 +90,13 @@ _NETWORK_CALLS: frozenset[str] = frozenset(
     }
 )
 
-# --- Allowlist: test files exempt from specific checks ---
-
-# Files with pytest.mark.subprocess_e2e are EXCLUDED from all checks.
+# Files marked subprocess_e2e skip only subprocess and network checks.
 _SUBPROCESS_E2E_FILES: set[str] = set()
 
-# Files that legitimately use sleep() for clock-injection testing.
+# Sleep exemptions apply only to the sleep category.
 _SLEEP_ALLOWLIST: set[str] = set()  # none currently — all sleep() in tests is a design defect
 
-# Files that legitimately do real I/O (e.g., test infrastructure,
-# memory regression tests requiring real filesystem allocations).
+# Files in this list skip only the real-I/O category.
 _IO_ALLOWLIST: set[str] = {
     # Memory regression test (test_multimodal_session_memory_regression) is
     # intrinsically coupled to FsWorkspace for valid tracemalloc measurements.
@@ -185,17 +215,6 @@ _IO_ALLOWLIST: set[str] = {
     # resume read must parse and migrate them; same tmp_git_repo-writes
     # pattern as the two entries above.
     "test_legacy_restart_acceptance",
-    # Helper backend classes: write_text is a method on a custom backend
-    # object (MemoryBackend subclass), not a Path.write_text() call.
-    # The audit tool's AST heuristic cannot distinguish these.
-    # These helper modules were renamed from ``test_*_helper_*`` to
-    # ``_*_helper_*`` in commit e1247b55d ("exclude helper modules from
-    # pytest collection") so pytest stops collecting them as test files.
-    # The audit's allowlist still keys on the file stem, so the entries
-    # must match the renamed stems — leaving the legacy ``test_`` prefix
-    # would silently re-flag the very helpers this list is meant to allow.
-    "_tool_artifact_1_helper_failingartifactbackend",
-    "_tool_artifact_2_helper_failingartifactbackend",
     # Docs<->pin-list parity guard: reads docs/agents/watchdog-spec.md
     # to enforce that every RALPH_PIN_TEST_PATHS entry is cited in the
     # traceability doc. The assertion is the contract under test;
@@ -218,16 +237,9 @@ _IO_ALLOWLIST: set[str] = {
     "test_mcp_server_startup_diagnostics",
 }
 
-# --- Narrow, read-only exemption ------------------------------------------
-#
-# Entries in ``_IO_ALLOWLIST`` (and the sleep/wall-clock lists) exempt the
-# WHOLE FILE from EVERY category -- ``audit_test_file`` returns early for
-# them. That is far broader than most justifications need. When the only
-# thing a test genuinely needs is to read a shipped repository file, list it
-# here instead: this allowlist suppresses ONLY ``Path.read_text`` /
-# ``Path.read_bytes`` findings. Subprocess, network, filesystem writes,
-# ``open()``, ``sleep()``, wall-clock, and blocking-wait violations in the
-# same file are still reported.
+# Files that may read only shipped repository source files. This exemption
+# suppresses Path.read_text/read_bytes findings only; every other policy
+# category remains checked for the same file.
 _SOURCE_READ_ALLOWLIST: set[str] = {
     # Starter-policy and ADR alignment guard. Reads the shipped
     # ``ralph/project_policy/starters/*.md`` files and ADR-0002 because their
@@ -268,12 +280,8 @@ _SOURCE_READ_ALLOWLIST: set[str] = {
     "test_commit_completion_authority",
 }
 
-# Read-only Path methods covered by ``_SOURCE_READ_ALLOWLIST``.
 _PATH_READ_METHODS: frozenset[str] = frozenset({"read_text", "read_bytes"})
 
-# Files that legitimately use time.monotonic()/time.perf_counter() for
-# non-circumvention purposes (single-point measurements, FakeClock
-# comparison, timing correctness assertions).
 _WALL_CLOCK_ALLOWLIST: set[str] = {
     # Single timestamp measurement for fake process creation — not an
     # elapsed-time loop. Aliased as _time.monotonic().
@@ -359,62 +367,38 @@ _WALL_CLOCK_ALLOWLIST: set[str] = {
     "test_filesystem_scenario_baseline",
 }
 
-# Files whose name contains "smoke" but that are NOT live/slow smoke
-# tests in disguise -- the naming heuristic below assumes "smoke" in
-# the stem implies real subprocess/file I/O that must be excluded from
-# the default suite, which is wrong for a plumbing-level regression
-# test that merely exercises smoke-related production code hermetically.
 _SMOKE_NAME_ALLOWLIST: set[str] = {
-    # S-6 regression (DEVELOPMENT_ANALYSIS_DECISION.md DA-002) for the
-    # capability-breaks detector in ralph/pipeline/plumbing/smoke_plumbing.py.
-    # "smoke" appears in the name because the test drives
-    # ``_run_smoke_agent`` directly -- not because it is itself a live or
-    # slow smoke test. It reads only the committed
-    # tests/display/_fixtures/opencode_wire.jsonl fixture via
-    # Path.read_text()/splitlines(), uses tmp_path, and monkeypatches
-    # ``_execute_smoke_turns`` so no real subprocess, live binary, or
-    # wall-clock wait ever runs (completes in well under a second). It
-    # MUST stay in the default (unmarked) suite: marking it
-    # @pytest.mark.smoke would silently exclude it from ``make verify``,
-    # defeating the regression this task exists to add (AGENTS.md
-    # "every new check must run under make verify").
     "test_smoke_capability_breaks_when_supported_but_unrendered",
-    # wt-19 WU-4 (DEVELOPMENT_ANALYSIS_DECISION.md round-3 EV-004): the
-    # four real-process liveness smoke tests prove psutil reads the
-    # ``cpu_ratio``/``io_bytes_per_s``/``voluntary_ctx_per_s`` signals
-    # on the CI platform. Each test runs at most ~3 s (config-shrunk
-    # windows) so they fit the 60 s combined budget. They MUST run in
-    # the default suite via the ``required_auto_integrate_e2e`` marker
-    # (U-GATE registry entries), not be excluded by ``-m 'not smoke'``;
-    # PRODUCT_CRITERIA Verification §5 makes them required proof.
     "test_exec_smoke_subprocess_e2e",
 }
 
-# Path I/O methods that indicate real filesystem access.
 _PATH_IO_METHODS: frozenset[str] = frozenset(
     {"read_text", "write_text", "read_bytes", "write_bytes", "open"}
 )
 
-# Patterns that monkeypatch away real I/O — these are legitimate.
-_MONKEYPATCH_PATTERNS: set[str] = {
-    "monkeypatch.setattr",
-    "monkeypatch.setenv",
-    "monkeypatch.delenv",
-    "monkeypatch.setitem",
-    "monkeypatch.delitem",
-    "unittest.mock.patch",
-    "mock.patch",
-    "mocker.patch",
-    "patch(",
-}
+# Patch calls are exemptions only for their exact dotted target.
+_MONKEYPATCH_PATTERNS: set[str] = _split_names(
+    """
+    monkeypatch.setattr monkeypatch.setenv monkeypatch.delenv monkeypatch.setitem
+    monkeypatch.delitem unittest.mock.patch mock.patch mocker.patch patch(
+    """
+)
 
-# Sleep calls that are explicitly allowed (e.g., asyncio.sleep(0) which yields).
 _ALLOWED_SLEEP_PATTERNS: set[str] = {
     "asyncio.sleep(0)",
     "asyncio.sleep(0.0)",
     "time.sleep(0)",
     "time.sleep(0.0)",
 }
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_WHITEBOX_CATEGORIES: tuple[str, ...] = (
+    "setattr_private",
+    "private_import",
+    "private_attr",
+)
+WhiteboxCounts = dict[str, int]
+WhiteboxBaseline = Mapping[str, Mapping[str, int]]
 
 
 class TestPolicyViolation:
@@ -441,13 +425,38 @@ class TestPolicyViolation:
 class TestPolicyAuditor(ast.NodeVisitor):
     """AST visitor that detects test policy violations."""
 
-    def __init__(self, file_path: str, source: str) -> None:
+    def __init__(self, file_path: str, source: str, tree: ast.AST | None = None) -> None:
         self.file_path = file_path
         self.source_lines = source.splitlines()
         self.violations: list[TestPolicyViolation] = []
-        self._has_monkeypatch = any(pattern in source for pattern in _MONKEYPATCH_PATTERNS)
         self._source_read_exempt = Path(file_path).stem in _SOURCE_READ_ALLOWLIST
-        self._has_subprocess_e2e_marker = "subprocess_e2e" in source
+        parsed_tree = tree if tree is not None else ast.parse(source, filename=file_path)
+        self._has_subprocess_e2e_marker = _has_subprocess_e2e_marker_ast(parsed_tree)
+        # The ``subprocess_e2e`` marker is the repository's declared profile for
+        # tests that drive REAL subprocesses and sockets. Per the canonical
+        # testing policy (docs/ralph-workflow-policy/testing-policy.md):
+        # "An agent MUST NOT introduce real ``time.sleep()``, real filesystem
+        # I/O, or real network I/O in tests not marked ``subprocess_e2e`` or
+        # ``live_agy``", and the audit "fails the gate on real
+        # ``time.sleep()`` with non-zero arguments, real file ``open()``, real
+        # subprocess calls, and real socket/``urllib``/``requests``/``httpx``
+        # calls in any test that is not marked ``subprocess_e2e``".
+        #
+        # A marked test therefore owns the real-time and real-process
+        # categories: waiting for a real child to exit, measuring real elapsed
+        # time, and touching real sockets are the SUBJECT UNDER TEST there.
+        # The marker exempts those categories ONLY. The three white-box
+        # detectors are unconditional and still run on every test file.
+        self._is_subprocess_e2e = (
+            Path(file_path).stem in _SUBPROCESS_E2E_FILES or self._has_subprocess_e2e_marker
+        )
+        self._skip_sleep = Path(file_path).stem in _SLEEP_ALLOWLIST or self._is_subprocess_e2e
+        self._skip_io = Path(file_path).stem in _IO_ALLOWLIST or self._is_subprocess_e2e
+        self._skip_wall_clock = (
+            Path(file_path).stem in _WALL_CLOCK_ALLOWLIST or self._is_subprocess_e2e
+        )
+        self._skip_subprocess_network = self._is_subprocess_e2e
+        self._patched_targets = collect_patched_targets(parsed_tree, _MONKEYPATCH_PATTERNS)
         self._inside_wait_for: bool = False
 
     def _add_violation(self, node: ast.AST, category: str, detail: str) -> None:
@@ -482,19 +491,17 @@ class TestPolicyAuditor(ast.NodeVisitor):
 
         if func_name not in ("time.sleep", "asyncio.sleep"):
             return
-
-        # Check if this is inside a monkeypatch context — if the file
-        # has monkeypatch patterns, assume sleep is being patched.
-        if self._has_monkeypatch:
+        if self._skip_sleep:
+            return
+        if self._is_target_patched(func_name):
             return
 
-        # Check if the argument is a literal 0.
         if node.args:
             first_arg = node.args[0]
             if isinstance(first_arg, ast.Constant):
                 if isinstance(first_arg.value, (int, float)) and first_arg.value <= 0:
                     return  # asyncio.sleep(0) is allowed
-                elif isinstance(first_arg.value, (int, float)) and first_arg.value > 0:
+                if isinstance(first_arg.value, (int, float)) and first_arg.value > 0:
                     self._add_violation(
                         node,
                         "sleep",
@@ -502,7 +509,6 @@ class TestPolicyAuditor(ast.NodeVisitor):
                         "sleep with positive argument is a design defect",
                     )
                     return
-            # If the argument is not a constant, flag it — any non-trivial sleep is suspicious.
             self._add_violation(
                 node,
                 "sleep",
@@ -511,32 +517,39 @@ class TestPolicyAuditor(ast.NodeVisitor):
 
     def _check_io_call(self, node: ast.Call) -> None:
         """Detect real I/O operations."""
+        if self._skip_io:
+            return
         func_name = self._get_func_name(node)
         if func_name is None:
             self._check_anonymous_path_io_call(node)
-        elif func_name == "open" and not self._has_monkeypatch:
-            self._add_violation(
-                node,
-                "io",
-                "open() — real file I/O in test; use MemoryWorkspace, tmp_path, or monkeypatch",
-            )
+        elif func_name == "open":
+            if not self._is_target_patched("builtins.open"):
+                self._add_violation(
+                    node,
+                    "io",
+                    "open() — real file I/O in test; use MemoryWorkspace, tmp_path, or monkeypatch",
+                )
         elif any(func_name == f"Path.{method}" for method in _PATH_IO_METHODS):
             method_name = func_name.split(".", 1)[1]
             if self._is_source_read_exempt(method_name):
                 return
-            if not self._has_monkeypatch and not self._is_using_tmp_path():
+            target = canonical_patch_target("Path", method_name)
+            if not self._is_target_patched(target) and not self._is_using_tmp_path():
                 self._add_violation(
                     node,
                     "io",
                     f"{func_name}() — real filesystem I/O in test; use tmp_path fixture",
                 )
-        elif func_name in _SUBPROCESS_CALLS and not self._has_subprocess_e2e_marker:
-            self._add_violation(
-                node,
-                "io",
-                f"{func_name}() — subprocess call in test; use MockProcessExecutor",
-            )
-        elif func_name in _NETWORK_CALLS and not self._has_monkeypatch:
+        elif func_name in _SUBPROCESS_CALLS:
+            if not self._skip_subprocess_network:
+                self._add_violation(
+                    node,
+                    "io",
+                    f"{func_name}() — subprocess call in test; use MockProcessExecutor",
+                )
+        elif func_name in _NETWORK_CALLS and not (
+            self._skip_subprocess_network or self._is_target_patched(func_name)
+        ):
             self._add_violation(
                 node,
                 "io",
@@ -544,28 +557,23 @@ class TestPolicyAuditor(ast.NodeVisitor):
             )
 
     def _is_source_read_exempt(self, method_name: str) -> bool:
-        """Return True when this file may read shipped repository files.
-
-        Narrower than the whole-file allowlists: only read methods are
-        exempt, so a write, subprocess, sleep, or wall-clock call in the
-        same file is still reported.
-        """
+        """Return True when this file may read shipped repository files."""
         return self._source_read_exempt and method_name in _PATH_READ_METHODS
 
     def _check_anonymous_path_io_call(self, node: ast.Call) -> None:
         """Detect I/O on an inline Path expression without a dotted name."""
-        if (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr in _PATH_IO_METHODS
-            and not self._is_source_read_exempt(node.func.attr)
-            and not self._has_monkeypatch
-            and not self._is_using_tmp_path()
-        ):
-            self._add_violation(
-                node,
-                "io",
-                f".{node.func.attr}() — real filesystem I/O in test; use tmp_path fixture",
-            )
+        if not (isinstance(node.func, ast.Attribute) and node.func.attr in _PATH_IO_METHODS):
+            return
+        if self._is_source_read_exempt(node.func.attr):
+            return
+        target = canonical_patch_target("Path", node.func.attr)
+        if self._is_target_patched(target) or self._is_using_tmp_path():
+            return
+        self._add_violation(
+            node,
+            "io",
+            f".{node.func.attr}() — real filesystem I/O in test; use tmp_path fixture",
+        )
 
     def _check_wall_clock_call(self, node: ast.Call) -> None:
         """Detect time.monotonic()/time.perf_counter() in elapsed-time loops."""
@@ -574,6 +582,8 @@ class TestPolicyAuditor(ast.NodeVisitor):
             return
 
         if func_name in ("time.monotonic", "time.perf_counter"):
+            if self._skip_wall_clock or self._is_target_patched(func_name):
+                return
             self._add_violation(
                 node,
                 "wall-clock",
@@ -587,15 +597,24 @@ class TestPolicyAuditor(ast.NodeVisitor):
         if func_name is None:
             return
 
-        # threading.Event().wait(), asyncio.Event().wait(), etc.
         if func_name.endswith(".wait") and not node.args and not node.keywords:
             if self._inside_wait_for:
+                return
+            if self._is_subprocess_e2e:
+                # A real child process is waited on for real; the marker owns
+                # the blocking-wait category for the same reason it owns the
+                # sleep and wall-clock categories.
                 return
             self._add_violation(
                 node,
                 "blocking-wait",
                 f"{func_name}() without timeout - blocking wait in test; always specify a timeout",
             )
+
+    def _is_target_patched(self, target: str) -> bool:
+        """Return whether the exact dotted ``target`` is patched in this file."""
+        canonical = canonical_target_string(target)
+        return canonical in self._patched_targets
 
     def _get_func_name(self, node: ast.Call) -> str | None:
         """Extract the full dotted function name from a Call node."""
@@ -618,16 +637,8 @@ class TestPolicyAuditor(ast.NodeVisitor):
 
 
 def _collect_markers_for_file(py_file: Path) -> set[str]:
-    """Return every pytest marker name used in ``py_file`` (AST-based).
+    """Return every pytest marker name used in ``py_file`` (AST-based)."""
 
-    Used to verify that test files matching the ``*smoke*`` naming
-    convention are actually marked with the ``smoke`` marker. A file
-    whose name contains ``smoke`` but whose markers do not include
-    ``smoke`` is a smoke test in disguise — it would not be excluded
-    by ``-m "not smoke"`` in addopts/Makefile, and would silently
-    leak into the regular suite, burning the 60s budget on a one-off
-    manual debug harness.
-    """
     try:
         source = py_file.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
@@ -640,12 +651,10 @@ def _collect_markers_for_file(py_file: Path) -> set[str]:
 
     markers: set[str] = set()
     for node in ast.walk(tree):
-        # Module-level pytestmark assignment: collect every marker name.
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name) and target.id == "pytestmark":
                     _harvest_markers_from_value(node.value, markers)
-        # Decorator on a test function/class: collect marker names.
         if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
             for decorator in node.decorator_list:
                 _harvest_markers_from_value(decorator, markers)
@@ -655,7 +664,6 @@ def _collect_markers_for_file(py_file: Path) -> set[str]:
 def _harvest_markers_from_value(value: ast.AST, markers: set[str]) -> None:
     """Walk a single marker expression and record its name."""
     if isinstance(value, ast.Attribute):
-        # ``pytest.mark.smoke`` → attr name is the marker.
         if (
             isinstance(value.value, ast.Attribute)
             and value.value.attr == "mark"
@@ -664,7 +672,6 @@ def _harvest_markers_from_value(value: ast.AST, markers: set[str]) -> None:
         ):
             markers.add(value.attr)
     elif isinstance(value, ast.Call):
-        # ``pytest.mark.smoke(...)`` — the func is the marker name.
         if isinstance(value.func, ast.Attribute):
             _harvest_markers_from_value(value.func, markers)
     elif isinstance(value, ast.List):
@@ -673,30 +680,20 @@ def _harvest_markers_from_value(value: ast.AST, markers: set[str]) -> None:
 
 
 def _collect_subprocess_e2e_files(tests_root: Path) -> set[str]:
-    """Find all test files marked with @pytest.mark.subprocess_e2e.
-
-    Uses string pre-filter then AST parsing for accuracy. Files that
-    contain 'subprocess_e2e' in docstrings/comments but lack the actual
-    marker are NOT added (string-only false positives are excluded).
-    """
+    """Find all test files marked with @pytest.mark.subprocess_e2e."""
     e2e_files: set[str] = set()
     for py_file in tests_root.rglob("*.py"):
-        # Skip directories.
         if any(part in _SKIP_DIRS for part in py_file.relative_to(tests_root).parts):
             continue
         try:
             content = py_file.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        # Fast string pre-filter.
         if "subprocess_e2e" not in content:
             continue
-        # AST-based confirmation: check for @pytest.mark.subprocess_e2e decorator
-        # or pytestmark assignment.
         try:
             tree = ast.parse(content, filename=str(py_file))
         except SyntaxError:
-            # If we cannot parse, fall back to string-based (conservative).
             e2e_files.add(py_file.stem)
             continue
         has_marker = _has_subprocess_e2e_marker_ast(tree)
@@ -708,13 +705,10 @@ def _collect_subprocess_e2e_files(tests_root: Path) -> set[str]:
 def _has_subprocess_e2e_marker_ast(tree: ast.AST) -> bool:
     """Check AST for @pytest.mark.subprocess_e2e decorator or pytestmark."""
     for node in ast.walk(tree):
-        # Check for @pytest.mark.subprocess_e2e decorator.
         if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
             for decorator in node.decorator_list:
                 if _is_subprocess_e2e_decorator(decorator):
                     return True
-        # Check for module-level pytestmark = pytest.mark.subprocess_e2e
-        # or pytestmark = [pytest.mark.subprocess_e2e]
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name) and target.id == "pytestmark":
@@ -739,7 +733,142 @@ def _is_subprocess_e2e_decorator(node: ast.AST) -> bool:
     )
 
 
-def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:
+def _iter_test_files(tests_root: Path) -> list[Path]:
+    """Return auditable Python files below ``tests_root`` in stable order."""
+    return [
+        path
+        for path in sorted(tests_root.rglob("*.py"))
+        if not any(part in _SKIP_DIRS for part in path.relative_to(tests_root).parts)
+    ]
+
+
+def _baseline_key(file_path: Path, tests_root: Path | None = None) -> str:
+    """Return the project-relative baseline key for ``file_path``."""
+    resolved = file_path.resolve()
+    try:
+        return resolved.relative_to(_PROJECT_ROOT).as_posix()
+    except ValueError:
+        pass
+
+    if tests_root is not None:
+        try:
+            relative = resolved.relative_to(tests_root.resolve())
+        except ValueError:
+            relative = Path(file_path.name)
+        return (Path("tests") / relative).as_posix()
+    return (Path("tests") / file_path.name).as_posix()
+
+
+def collect_whitebox_inventory(tests_root: Path) -> dict[str, WhiteboxCounts]:
+    """Return current white-box counts for every non-zero test file."""
+    inventory: dict[str, WhiteboxCounts] = {}
+    for path in _iter_test_files(tests_root):
+        try:
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(path))
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        counts = collect_whitebox_counts(tree)
+        if any(count > 0 for count in counts.values()):
+            inventory[_baseline_key(path, tests_root)] = counts
+    return inventory
+
+
+def render_whitebox_baseline(inventory: Mapping[str, Mapping[str, int]]) -> str:
+    """Render a deterministic frozen-baseline Python module."""
+    docstring = test_whitebox_baseline.__doc__
+    if docstring is None:
+        raise RuntimeError("frozen white-box baseline is missing its module docstring")
+    lines = [
+        f'"""{docstring}"""\n',
+        "from __future__ import annotations",
+        "",
+        "INIT_COMPLETE = True",
+        "",
+        '_RAW = """',
+    ]
+    for path in sorted(inventory):
+        counts = inventory[path]
+        if not any(counts.get(category, 0) > 0 for category in _WHITEBOX_CATEGORIES):
+            continue
+        lines.append(
+            f"{path}|{counts.get('setattr_private', 0)},"
+            f"{counts.get('private_import', 0)},{counts.get('private_attr', 0)}"
+        )
+    lines.extend(
+        [
+            '"""',
+            "",
+            "",
+            "def _parse(raw: str) -> dict[str, dict[str, int]]:",
+            '    """Parse the frozen ``path|c1,c2,c3`` table into the public dict form."""',
+            "    table: dict[str, dict[str, int]] = {}",
+            "    for line in raw.splitlines():",
+            "        record = line.strip()",
+            "        if not record:",
+            "            continue",
+            '        path, counts = record.split("|")',
+            '        setattr_private, private_import, private_attr = counts.split(",")',
+            "        table[path] = {",
+            '            "setattr_private": int(setattr_private),',
+            '            "private_import": int(private_import),',
+            '            "private_attr": int(private_attr),',
+            "        }",
+            "    return table",
+            "",
+            "",
+            "WHITEBOX_BASELINE: dict[str, dict[str, int]] = _parse(_RAW)",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def audit_whitebox_ratchet(
+    file_path: Path,
+    counts: Mapping[str, int],
+    baseline: WhiteboxBaseline,
+    baseline_key: str | None = None,
+) -> list[TestPolicyViolation]:
+    """Compare one file's white-box counts with its frozen ceiling."""
+    if not any(count > 0 for count in counts.values()):
+        return []
+    key = baseline_key or _baseline_key(file_path)
+    ceiling = baseline.get(key)
+    if ceiling is None:
+        return [
+            TestPolicyViolation(
+                file_path=str(file_path),
+                line=1,
+                category="whitebox-baseline-missing",
+                detail=(
+                    "white-box usage is absent from the frozen baseline; "
+                    f"current counts: {dict(counts)}"
+                ),
+            )
+        ]
+
+    violations: list[TestPolicyViolation] = []
+    for category in _WHITEBOX_CATEGORIES:
+        current = counts.get(category, 0)
+        allowed = ceiling.get(category, 0)
+        if current > allowed:
+            violations.append(
+                TestPolicyViolation(
+                    file_path=str(file_path),
+                    line=1,
+                    category="whitebox-regression",
+                    detail=(f"{category} count {current} exceeds frozen ceiling {allowed}"),
+                )
+            )
+    return violations
+
+
+def audit_test_file(
+    file_path: Path,
+    *,
+    baseline: WhiteboxBaseline | None = None,
+    baseline_key: str | None = None,
+) -> list[TestPolicyViolation]:
     """Audit a single test file for policy violations."""
     if not file_path.is_file() or file_path.suffix != ".py":
         return []
@@ -749,47 +878,44 @@ def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:
     except (OSError, UnicodeDecodeError, SyntaxError):
         return []
 
-    excluded_files = (
-        _SUBPROCESS_E2E_FILES | _SLEEP_ALLOWLIST | _IO_ALLOWLIST | _WALL_CLOCK_ALLOWLIST
-    )
-    if file_path.stem in excluded_files:
-        return []
-    auditor = TestPolicyAuditor(str(file_path), source)
+    auditor = TestPolicyAuditor(str(file_path), source, tree)
     auditor.visit(tree)
+    effective_baseline = WHITEBOX_BASELINE if baseline is None else baseline
+    auditor.violations.extend(
+        audit_whitebox_ratchet(
+            file_path,
+            collect_whitebox_counts(tree),
+            effective_baseline,
+            baseline_key,
+        )
+    )
     return auditor.violations
 
 
-def audit_tests_directory(tests_root: Path) -> tuple[list[TestPolicyViolation], int]:
-    """Audit all test files in a directory.
-
-    Returns (violations, files_checked).
-    """
+def audit_tests_directory(
+    tests_root: Path,
+    *,
+    baseline: WhiteboxBaseline | None = None,
+) -> tuple[list[TestPolicyViolation], int]:
+    """Audit all test files in a directory."""
     _SUBPROCESS_E2E_FILES.clear()
     _SUBPROCESS_E2E_FILES.update(_collect_subprocess_e2e_files(tests_root))
 
     all_violations: list[TestPolicyViolation] = []
     files_checked = 0
 
-    for py_file in sorted(tests_root.rglob("*.py")):
-        # Skip excluded directories.
-        if any(part in _SKIP_DIRS for part in py_file.relative_to(tests_root).parts):
-            continue
-        # Skip test_process_audit.py itself and this audit file.
+    for py_file in _iter_test_files(tests_root):
         if py_file.name in ("test_process_audit.py", "audit_test_policy.py"):
             continue
         if "/fixtures/" in py_file.as_posix():
             continue
-        violations = audit_test_file(py_file)
+        violations = audit_test_file(
+            py_file,
+            baseline=baseline,
+            baseline_key=_baseline_key(py_file, tests_root),
+        )
         if violations:
             all_violations.extend(violations)
-        # Policy (2026-06-14): smoke tests are NOT part of any test suite.
-        # Any test file whose name contains ``smoke`` MUST be marked with
-        # ``@pytest.mark.smoke`` (or have ``pytestmark = pytest.mark.smoke``)
-        # so the ``-m "not smoke"`` exclusion in pytest.ini/addopts and
-        # every Makefile target excludes it. A file with "smoke" in the
-        # name that LACKS the marker is a regression waiting to happen —
-        # it would silently run as a regular test, leak real file I/O
-        # into the suite, and burn the 60s budget.
         if (
             "smoke" in py_file.stem.lower()
             and py_file.stem not in _SMOKE_NAME_ALLOWLIST
@@ -815,31 +941,43 @@ def audit_tests_directory(tests_root: Path) -> tuple[list[TestPolicyViolation], 
     return all_violations, files_checked
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Run the policy audit and return exit code.
-
-    Exit code 0: no violations found.
-    Exit code 1: violations found.
-    """
+def main(
+    argv: list[str] | None = None,
+    *,
+    baseline: WhiteboxBaseline | None = None,
+) -> int:
+    """Run the policy audit and return an exit code."""
     args = argv if argv is not None else sys.argv[1:]
+    emit_baseline = "--emit-baseline" in args
+    positional = [argument for argument in args if argument != "--emit-baseline"]
+    if len(positional) > 1 or any(argument.startswith("-") for argument in positional):
+        print(
+            "Usage: python -m ralph.testing.audit_test_policy [--emit-baseline] [tests_root]",
+            file=sys.stderr,
+        )
+        return 2
 
-    tests_root = Path(args[0]) if args else (Path(__file__).parent.parent.parent / "tests")
+    tests_root = Path(positional[0]) if positional else (_PROJECT_ROOT / "tests")
 
     if not tests_root.is_dir():
         print(f"Error: tests directory not found: {tests_root}", file=sys.stderr)
         return 2
 
-    print(f"Auditing test files in: {tests_root}")
-    print(f"Subprocess E2E files excluded: {len(_SUBPROCESS_E2E_FILES)}")
-    print()
+    if emit_baseline:
+        inventory = collect_whitebox_inventory(tests_root)
+        sys.stdout.write(render_whitebox_baseline(inventory))
+        return 0
 
-    violations, files_checked = audit_tests_directory(tests_root)
+    violations, files_checked = audit_tests_directory(tests_root, baseline=baseline)
+    print(f"Auditing test files in: {tests_root}")
+    print(f"Subprocess/network E2E files exempt: {len(_SUBPROCESS_E2E_FILES)}")
+    print()
 
     if violations:
         print(f"POLICY VIOLATIONS FOUND: {len(violations)} violation(s) in {files_checked} file(s)")
         print("=" * 72)
-        for v in violations:
-            print(f"  {v}")
+        for violation in violations:
+            print(f"  {violation}")
         print()
         print("These violations are test design defects. Fix the test, not the audit.")
         print("Guidance: docs/agents/testing-guide.md §'Test Performance Policy'")
@@ -849,9 +987,6 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-# The twelve-cycle pipeline memory harness compares early and late invocation
-# cost as its explicit no-drift contract; retained memory remains the separate
-# hard plateau assertion.
 _WALL_CLOCK_ALLOWLIST = _WALL_CLOCK_ALLOWLIST | frozenset(
     {"test_pipeline_multi_cycle_memory_regression"}
 )

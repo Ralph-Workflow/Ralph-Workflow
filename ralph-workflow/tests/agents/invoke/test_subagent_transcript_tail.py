@@ -61,8 +61,8 @@ Test isolation guarantees (per ``docs/agents/testing-guide.md``):
 from __future__ import annotations
 
 import json
+import queue
 import threading
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -80,6 +80,25 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # Shared test scaffolding
 # ---------------------------------------------------------------------------
+
+#: Bounded wait for a sink delivery. The queue publish IS the
+#: synchronisation point; the timeout is a safety bound so a broken
+#: tailer fails the test instead of hanging the suite.
+_SINK_WAIT_TIMEOUT_SECONDS = 5.0
+
+
+def _next_summary(delivered: queue.SimpleQueue[str], *, what: str) -> str:
+    """Return the next summary published by the subagent sink.
+
+    The tailer runs in a background thread, so the test synchronises
+    with it through the sink's own publication (a queue) instead of
+    sleeping on the wall clock. A missing publication fails the test
+    with a message naming what was expected.
+    """
+    try:
+        return delivered.get(timeout=_SINK_WAIT_TIMEOUT_SECONDS)
+    except queue.Empty:
+        raise AssertionError(f"the subagent sink never surfaced {what}") from None
 
 
 def _setup_shadow_home(
@@ -183,26 +202,29 @@ def test_subagent_events_feed_record_subagent_work_channel(
     )
 
     sink_calls: list[str] = []
+    delivered: queue.SimpleQueue[str] = queue.SimpleQueue()
     stop = threading.Event()
+
+    def _record(summary: str) -> None:
+        sink_calls.append(summary)
+        delivered.put(summary)
+
     tails = ClaudeSubagentTranscriptTails(
         session_id="sess_1",
         project_key="-home-test-workspace",
         monitor_stop=stop,
-        subagent_sink=sink_calls.append,
+        subagent_sink=_record,
         r7_sink=lambda diag: None,
         poll_interval_seconds=0.01,
         clock=lambda: 0.0,
     )
     try:
         tails.start()
-        # Wait up to 40 iterations (≈ 2s at 0.05s cadence) for the
-        # tailer to surface at least 1 event. The wait is bounded by
-        # iteration count rather than wall-clock measurement so the
-        # test never blocks the suite budget on a slow CI runner.
-        for _ in range(40):
-            if sink_calls:
-                break
-            time.sleep(0.05)
+        # Wait for the tailer to surface the first event. The sink
+        # publishes into a queue, so the wait is a deterministic
+        # synchronisation with the tailer thread -- never a wall-clock
+        # sleep and never a budget risk on a slow CI runner.
+        _next_summary(delivered, what="the first subagent event")
     finally:
         stop.set()
         tails.stop()
@@ -250,21 +272,47 @@ def test_silent_parent_and_silent_children_still_record_no_progress(
             "message": {"role": "user", "content": [{"type": "text", "text": "initial prompt"}]},
         },
     )
+    # A ``thinking`` record alongside the user prompt: the parser emits a
+    # ``thinking`` event for it, which the tailer forwards as a
+    # ``thinking:<text>`` summary. Its ONLY purpose is to make the
+    # tailer's read observable so the "no tool events" assertion below is
+    # backed by a real parse of the fixture instead of a timed wait.
+    _write_jsonl_line(
+        sub_path,
+        {
+            "type": "assistant",
+            "isSidechain": True,
+            "agentId": "aa4510ad576b74f67",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "thinking", "thinking": "planning the next step"}],
+            },
+        },
+    )
 
     sink_calls: list[str] = []
+    delivered: queue.SimpleQueue[str] = queue.SimpleQueue()
     stop = threading.Event()
+
+    def _record(summary: str) -> None:
+        sink_calls.append(summary)
+        delivered.put(summary)
+
     tails = ClaudeSubagentTranscriptTails(
         session_id="sess_silent",
         project_key="-home-test-workspace",
         monitor_stop=stop,
-        subagent_sink=sink_calls.append,
+        subagent_sink=_record,
         r7_sink=lambda diag: None,
         poll_interval_seconds=0.01,
         clock=lambda: 0.0,
     )
     try:
         tails.start()
-        time.sleep(0.3)  # let the tailer pick up the file
+        # Wait for the tailer to publish the fixture's non-tool summary.
+        # The publication proves the child file was discovered, read and
+        # parsed, so the negative assertion below is deterministic.
+        _next_summary(delivered, what="the fixture's non-tool summary")
     finally:
         stop.set()
         tails.stop()
@@ -503,17 +551,22 @@ def test_tail_survives_quiet_then_active_child_and_drops_on_tool_result(
     )
 
     sink_calls: list[str] = []
+    delivered: queue.SimpleQueue[str] = queue.SimpleQueue()
     stop = threading.Event()
     clock_value = [0.0]
 
     def _clock() -> float:
         return clock_value[0]
 
+    def _record(summary: str) -> None:
+        sink_calls.append(summary)
+        delivered.put(summary)
+
     tails = ClaudeSubagentTranscriptTails(
         session_id="sess_lifecycle",
         project_key="-home-test-workspace",
         monitor_stop=stop,
-        subagent_sink=sink_calls.append,
+        subagent_sink=_record,
         r7_sink=lambda diag: None,
         poll_interval_seconds=0.01,
         clock=_clock,
@@ -536,13 +589,10 @@ def test_tail_survives_quiet_then_active_child_and_drops_on_tool_result(
                 },
             },
         )
-        # Wait for the first event to surface. Bounded by iteration
-        # count rather than wall-clock measurement so the test never
-        # blocks the suite budget on a slow CI runner.
-        for _ in range(40):
-            if sink_calls:
-                break
-            time.sleep(0.05)
+        # Wait for the first event to surface. The sink publishes into a
+        # queue, so the wait is a deterministic synchronisation with the
+        # tailer thread rather than a wall-clock sleep.
+        _next_summary(delivered, what="the first subagent event")
         first_event_count = len(sink_calls)
         assert first_event_count >= 1
 
@@ -566,11 +616,8 @@ def test_tail_survives_quiet_then_active_child_and_drops_on_tool_result(
         # Wait for the second event to surface. The tailer must
         # still be alive on the same file (it was NOT dropped
         # during the silent window -- mtime is not a stop condition).
-        # Bounded by iteration count rather than wall-clock.
-        for _ in range(40):
-            if len(sink_calls) >= first_event_count + 1:
-                break
-            time.sleep(0.05)
+        # The queue publication is the synchronisation point.
+        _next_summary(delivered, what="the second subagent event")
         assert len(sink_calls) >= first_event_count + 1, (
             f"second event was dropped; the tailer should still be"
             f" alive on the child file after a 200s silent window."

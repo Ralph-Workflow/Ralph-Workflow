@@ -22,7 +22,6 @@ run well inside the immutable 60s combined verify budget.
 
 from __future__ import annotations
 
-import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
@@ -44,14 +43,32 @@ pytestmark = [
 
 
 def _git(repo_root: Path, *args: str) -> str:
-    """Run a git command in ``repo_root`` and return stdout."""
-    result = subprocess.run(
-        ["git", "-C", str(repo_root), *args],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return result.stdout
+    """Run a git command in ``repo_root`` and return stdout.
+
+    The command is driven through the GitPython API -- the same library
+    the production bootstrap commits with -- so the test exercises real
+    git (the subject under test) without spawning a subprocess of its
+    own. A failing command raises ``GitCommandError``, mirroring the
+    previous ``check=True`` behaviour.
+    """
+    command, *rest = args
+    repo = Repo(repo_root)
+    try:
+        if command == "add":
+            return repo.git.add(*rest)
+        if command == "commit":
+            return repo.git.commit(*rest)
+        if command == "log":
+            return repo.git.log(*rest)
+        if command == "status":
+            return repo.git.status(*rest)
+        if command == "ls-files":
+            return repo.git.ls_files(*rest)
+        if command == "check-ignore":
+            return repo.git.check_ignore(*rest)
+    finally:
+        repo.close()
+    raise AssertionError(f"unsupported git command: {command}")
 
 
 def _init_repo_with_initial_commit(repo_root: Path) -> None:

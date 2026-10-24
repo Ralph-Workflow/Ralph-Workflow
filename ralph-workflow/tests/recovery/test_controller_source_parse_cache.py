@@ -24,7 +24,7 @@ arbitrary files, no real subprocess).
 from __future__ import annotations
 
 import ast
-from pathlib import Path
+import inspect
 from typing import TYPE_CHECKING
 
 from ralph.recovery import controller
@@ -43,7 +43,7 @@ def test_controller_source_tree_caches_parse_result() -> None:
     ``parse_fn`` call each invocation.
     """
     controller._reset_controller_source_tree_cache()
-    real_source = Path(controller.__file__).read_text(encoding="utf-8")
+    real_source = inspect.getsource(controller)
     parse_calls = {"count": 0}
 
     def counting_parse(source: str) -> ast.Module:
@@ -79,7 +79,7 @@ def test_reset_controller_source_tree_cache_forces_fresh_parse() -> None:
     using the supplied ``parse_fn``. This is the seam tests need to
     avoid leaking state across test cases.
     """
-    real_source = Path(controller.__file__).read_text(encoding="utf-8")
+    real_source = inspect.getsource(controller)
     parse_calls = {"count": 0}
 
     def counting_parse(source: str) -> ast.Module:
@@ -172,7 +172,7 @@ def test_module_level_invariant_calls_still_use_shared_helper(
     ``_controller_source_tree`` so no type-ignore comment is needed.
     """
     controller._reset_controller_source_tree_cache()
-    real_source = Path(controller.__file__).read_text(encoding="utf-8")
+    real_source = inspect.getsource(controller)
 
     parse_calls = {"count": 0}
 

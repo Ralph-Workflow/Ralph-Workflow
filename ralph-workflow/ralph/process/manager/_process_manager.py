@@ -66,6 +66,8 @@ _PERMITTED_TERMINAL_REASONS = frozenset(
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
+    from ralph.process.manager.liveness_verifier import LivenessVerifier
+
 
 def _extract_psutil_returncode(procs: Sequence[object], target_pid: int) -> int | None:
     """Return the harvested integer returncode for target_pid from a procs list."""
@@ -185,6 +187,21 @@ def _safe_record_host_contention_signal(reason: str) -> None:
             fn(reason)
 
 
+def _default_liveness_verifier(
+    pid: int,
+    *,
+    psutil_mod: _PsutilModuleLike | None = None,
+) -> LivenessResult:
+    """Call the module-level liveness verifier.
+
+    The lookup is late-bound on purpose: the module-level
+    ``verify_process_liveness`` stays the single default every
+    ``ProcessManager`` uses, and a caller that swaps it out at runtime
+    keeps affecting the managers that did not inject their own verifier.
+    """
+    return verify_process_liveness(pid, psutil_mod=psutil_mod)
+
+
 class ProcessManager:
     """Single source of truth for all child processes Ralph spawns.
 
@@ -220,6 +237,8 @@ class ProcessManager:
         async_process_factory: _AsyncProcessFactory | None = None,
         pty_process_factory: _PtyProcessFactory | None = None,
         psutil: _PsutilModuleLike | None = None,
+        terminate_executor_factory: Callable[[], ThreadPoolExecutor] | None = None,
+        liveness_verifier: LivenessVerifier | None = None,
     ) -> None:
         self.policy = policy or ProcessManagerPolicy()
         # All ProcessManager dicts are bounded by the centralized process
@@ -284,6 +303,22 @@ class ProcessManager:
         # reaped by ``concurrent.futures``' own ``_python_exit`` atexit
         # join, so no orphaned termination worker blocks process exit.
         self._terminate_executor: ThreadPoolExecutor | None = None
+        # The liveness probe used by every termination path. Injectable
+        # so a caller that owns its own liveness policy (or a caller
+        # that must observe the probe) can supply one instead of the
+        # built-in ``verify_process_liveness``.
+        self._liveness_verifier: LivenessVerifier = (
+            liveness_verifier if liveness_verifier is not None else _default_liveness_verifier
+        )
+        # The factory that lazily builds the dedicated termination
+        # executor. Injectable so a caller that owns its own executor
+        # policy (or a caller that must observe the executor's
+        # lifecycle) can supply one instead of the built-in builder.
+        self._terminate_executor_factory: Callable[[], ThreadPoolExecutor] = (
+            terminate_executor_factory
+            if terminate_executor_factory is not None
+            else self._build_terminate_executor
+        )
         sf = (
             sync_process_factory
             if sync_process_factory is not None
@@ -334,7 +369,24 @@ class ProcessManager:
     # the ceiling exists to make unbounded thread growth structurally
     # impossible, NOT to be tuned for peak throughput. The cap is a
     # SAFETY invariant, not a perf invariant.
-    _TERMINATE_EXECUTOR_MAX_WORKERS: int = 4
+    TERMINATE_EXECUTOR_MAX_WORKERS: int = 4
+
+    def _build_terminate_executor(self) -> ThreadPoolExecutor:
+        """Build the dedicated bounded termination executor."""
+        return ThreadPoolExecutor(
+            max_workers=self.TERMINATE_EXECUTOR_MAX_WORKERS,
+            thread_name_prefix="ralph-terminate",
+        )
+
+    @property
+    def terminate_executor(self) -> ThreadPoolExecutor | None:
+        """The dedicated termination executor, or None while unallocated.
+
+        The executor is created lazily on the first async termination,
+        so a manager that never terminated an async process reports
+        None here and never allocated a worker pool.
+        """
+        return self._terminate_executor
 
     def _get_terminate_executor(self) -> ThreadPoolExecutor:
         """Return the ProcessManager-owned bounded ``ThreadPoolExecutor`` for
@@ -349,10 +401,7 @@ class ProcessManager:
         and are reaped by ``concurrent.futures``' own atexit join).
         """
         if self._terminate_executor is None:
-            self._terminate_executor = ThreadPoolExecutor(
-                max_workers=self._TERMINATE_EXECUTOR_MAX_WORKERS,
-                thread_name_prefix="ralph-terminate",
-            )
+            self._terminate_executor = self._terminate_executor_factory()
         return self._terminate_executor
 
     def _note_proc_external_returncode(
@@ -559,6 +608,22 @@ class ProcessManager:
             self._listeners.pop(lid, None)
 
         return unsubscribe
+
+    @property
+    def listener_count(self) -> int:
+        """Number of currently registered lifecycle-event listeners.
+
+        The registry is capped at ``policy.max_listeners`` with FIFO
+        eviction, so this count never exceeds the cap.
+        """
+        return len(self._listeners)
+
+    def listener_callbacks(self) -> tuple[Callable[[ProcessEvent], None], ...]:
+        """The registered listener callbacks, in registration order.
+
+        A snapshot tuple: mutating it cannot disturb the registry.
+        """
+        return tuple(self._listeners.values())
 
     # ------------------------------------------------------------------
     # Descendant registry API
@@ -1153,7 +1218,7 @@ class ProcessManager:
             record = self._records.get(pid)
             if record is None or record.status in _TERMINAL_STATUSES:
                 continue
-            liveness = verify_process_liveness(pid, psutil_mod=self._psutil)
+            liveness = self._liveness_verifier(pid, psutil_mod=self._psutil)
             if liveness in (LivenessResult.GONE, LivenessResult.UNKNOWN):
                 self._mark_killed(record, returncode=None, cause="stale_entry_reconciled")
                 logger.debug(f"Stale tracking entry reconciled: PID {pid} no longer exists")
@@ -1505,7 +1570,7 @@ class ProcessManager:
         grace_period_s: float,
     ) -> None:
         # Pre-kill liveness check
-        liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        liveness = self._liveness_verifier(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, None, cause="already_gone")
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
@@ -1526,7 +1591,7 @@ class ProcessManager:
             try:
                 rc = proc.wait(timeout=self.policy.kill_followup_timeout_s)
             except (subprocess.TimeoutExpired, TimeoutError):
-                post_liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
+                post_liveness = self._liveness_verifier(record.pid, psutil_mod=self._psutil)
                 if post_liveness == LivenessResult.ZOMBIE:
                     logger.warning(
                         f"Process {record.pid} is zombie after force kill — parent must reap"
@@ -1553,7 +1618,7 @@ class ProcessManager:
         grace_period_s: float,
     ) -> None:
         # Pre-kill liveness check
-        liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        liveness = self._liveness_verifier(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, proc.returncode, cause="already_gone")
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
@@ -1580,7 +1645,7 @@ class ProcessManager:
                     timeout=self.policy.kill_followup_timeout_s,
                 )
             except TimeoutError:
-                post_liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
+                post_liveness = self._liveness_verifier(record.pid, psutil_mod=self._psutil)
                 if post_liveness == LivenessResult.ZOMBIE:
                     logger.warning(
                         f"Process {record.pid} is zombie after force kill — parent must reap"
@@ -1632,7 +1697,7 @@ class ProcessManager:
                     # Cannot prove death — conservatively keep it retryable.
                     alive.append(proc)
                     continue
-                liveness = verify_process_liveness(raw_pid, psutil_mod=psutil_mod)
+                liveness = self._liveness_verifier(raw_pid, psutil_mod=psutil_mod)
                 if liveness in (LivenessResult.GONE, LivenessResult.ZOMBIE):
                     dead.append(proc)
                 else:
@@ -1683,7 +1748,7 @@ class ProcessManager:
         any_zombies = False
         all_resolved = True
         for p in survivors:
-            pid_liveness = verify_process_liveness(p.pid, psutil_mod=psutil_mod)
+            pid_liveness = self._liveness_verifier(p.pid, psutil_mod=psutil_mod)
             if pid_liveness == LivenessResult.ZOMBIE:
                 any_zombies = True
                 logger.warning(f"Process {p.pid} is zombie after force kill — parent must reap")
@@ -1726,7 +1791,7 @@ class ProcessManager:
             return
 
         # Pre-kill liveness check
-        liveness = verify_process_liveness(record.pid, psutil_mod=psutil_mod)
+        liveness = self._liveness_verifier(record.pid, psutil_mod=psutil_mod)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, cause="already_gone")
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
@@ -1805,7 +1870,7 @@ class ProcessManager:
             return
 
         # Pre-kill liveness check
-        liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        liveness = self._liveness_verifier(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, proc.poll(), cause="already_gone")
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
@@ -1899,7 +1964,7 @@ class ProcessManager:
         if self._refuse_unauthorized_termination(record.pid):
             return
         # Pre-kill liveness check
-        liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        liveness = self._liveness_verifier(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, proc.poll(), cause="already_gone")
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
@@ -1922,7 +1987,7 @@ class ProcessManager:
             return
 
         # Pre-kill liveness check
-        liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        liveness = self._liveness_verifier(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, proc.returncode, cause="already_gone")
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")
@@ -1995,7 +2060,7 @@ class ProcessManager:
             self._note_proc_external_returncode(record, proc, harvested_rc)
         if still_alive:
             # Post-kill zombie/liveness check
-            post_liveness = verify_process_liveness(record.pid, psutil_mod=psutil_mod)
+            post_liveness = self._liveness_verifier(record.pid, psutil_mod=psutil_mod)
             if post_liveness == LivenessResult.ZOMBIE:
                 logger.warning(f"Process {pid} is zombie after force kill — parent must reap")
                 await self._reap_async_and_mark(record, proc, cause="zombie_after_kill")
@@ -2099,12 +2164,12 @@ class ProcessManager:
         while (
             grace_s > 0
             and _time.monotonic() < deadline
-            and verify_process_liveness(record.pid, psutil_mod=None) != LivenessResult.GONE
+            and self._liveness_verifier(record.pid, psutil_mod=None) != LivenessResult.GONE
         ):
             _time.sleep(0.05)
         with contextlib.suppress(ProcessLookupError, OSError):
             proc.kill()
-        probe_result = verify_process_liveness(record.pid, psutil_mod=None)
+        probe_result = self._liveness_verifier(record.pid, psutil_mod=None)
         if probe_result == LivenessResult.GONE:
             # wt-024 M3 (AC-03): no-psutil fallback reap BEFORE mark.
             self._terminate_registered_descendants(record, grace_period_s=0.0)
@@ -2131,7 +2196,7 @@ class ProcessManager:
             return
         if self._refuse_unauthorized_termination(record.pid):
             return
-        liveness = verify_process_liveness(record.pid, psutil_mod=self._psutil)
+        liveness = self._liveness_verifier(record.pid, psutil_mod=self._psutil)
         if liveness == LivenessResult.GONE:
             self._mark_killed(record, proc.returncode, cause="already_gone")
             logger.debug(f"Process {record.pid} already gone before terminate — marked killed")

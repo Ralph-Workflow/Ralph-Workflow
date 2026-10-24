@@ -172,29 +172,26 @@ async def test_shutdown_all_releases_terminate_executor(
     directly without spying on the event loop.
     """
     async_factory = make_async_process_factory(itertools.count(1), returncode=None)
+    # Inject a recording executor through the PUBLIC factory seam so we
+    # can observe ``shutdown`` directly. The seam is the canonical
+    # injection point per AC-02 design.
+    recording = _RecordingExecutor(max_workers=4)
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=make_sync_process_factory(itertools.count(100)),
         async_process_factory=async_factory,
         psutil=FakePsutil(),
+        terminate_executor_factory=lambda: recording,
     )
     handle = await pm.spawn_async([sys.executable, "-c", "pass"])
     assert handle.record.status.name == "RUNNING"
 
-    # Inject a recording executor through the seam so we can
-    # observe ``shutdown`` directly. The seam is the canonical
-    # injection point per AC-02 design.
-    recording = _RecordingExecutor(max_workers=4)
-    monkeypatch.setattr(pm, "_get_terminate_executor", lambda: recording)
-
     await handle.terminate(grace_period_s=0.01)
 
-    # Mirror what the production ``_get_terminate_executor`` seam does
-    # on its lazy-allocate branch: populate the field so the
-    # ``shutdown_all`` release-path guard ``if self._terminate_executor
-    # is not None`` fires on this executor (the production code would
-    # have set this field on first seam call).
-    pm._terminate_executor = recording
+    # The lazy-allocate branch populated the manager's executor with the
+    # injected one, so the ``shutdown_all`` release-path guard
+    # ``if self._terminate_executor is not None`` fires on it.
+    assert pm.terminate_executor is recording
 
     # Sanity: no shutdown yet (the terminate path itself doesn't release).
     assert recording.shutdown_calls == [], (
@@ -234,42 +231,32 @@ def test_shutdown_all_does_not_allocate_terminate_executor_on_unused_manager(
     asserts the seam was NEVER touched and ``self._terminate_executor``
     remains ``None`` throughout.
     """
+    # Spy on the executor factory: record call count AND fail loudly if
+    # it is ever called. The factory is the canonical injection point
+    # used by AC-02's tests; counting its invocations proves whether the
+    # release path lazily allocates an executor or guards on the
+    # existing executor.
+    seam_calls: list[object] = []
+
+    def _spy_seam() -> ThreadPoolExecutor:
+        seam_calls.append(object())
+        return ThreadPoolExecutor(
+            max_workers=ProcessManager.TERMINATE_EXECUTOR_MAX_WORKERS,
+            thread_name_prefix="ralph-terminate",
+        )
+
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=make_sync_process_factory(itertools.count(100)),
         async_process_factory=make_async_process_factory(itertools.count(1)),
         psutil=FakePsutil(),
+        terminate_executor_factory=_spy_seam,
     )
 
-    assert pm._terminate_executor is None, (
-        "fresh ProcessManager MUST start with _terminate_executor=None "
+    assert pm.terminate_executor is None, (
+        "fresh ProcessManager MUST start with no terminate executor "
         "(lazy allocation; no async work has been done)"
     )
-
-    # Spy on the seam: record call count AND fail loudly if it is
-    # ever called. The seam is the canonical injection point used by
-    # AC-02's tests; counting its invocations proves whether the
-    # release path lazily allocates an executor or guards on the
-    # existing field.
-    seam_calls: list[object] = []
-
-    def _spy_seam() -> ThreadPoolExecutor:
-        seam_calls.append(object())
-        # Forward to the real seam so the rest of the contract still
-        # works if the field IS already populated (it should not be
-        # in this test, but keep behaviour observable).
-        return (
-            pm._terminate_executor
-            if pm._terminate_executor is not None
-            else (
-                ThreadPoolExecutor(
-                    max_workers=ProcessManager._TERMINATE_EXECUTOR_MAX_WORKERS,
-                    thread_name_prefix="ralph-terminate",
-                )
-            )
-        )
-
-    monkeypatch.setattr(pm, "_get_terminate_executor", _spy_seam)
 
     pm.shutdown_all(grace_period_s=0.01)
 
@@ -281,7 +268,7 @@ def test_shutdown_all_does_not_allocate_terminate_executor_on_unused_manager(
         f"ThreadPoolExecutor, even during teardown. Got {len(seam_calls)} "
         f"unwanted seam call(s)."
     )
-    assert pm._terminate_executor is None, (
-        f"after shutdown_all on an unused manager, _terminate_executor "
-        f"MUST remain None (lazy-allocation contract). Got {pm._terminate_executor!r}"
+    assert pm.terminate_executor is None, (
+        f"after shutdown_all on an unused manager, the terminate executor "
+        f"MUST remain unallocated (lazy-allocation contract). Got {pm.terminate_executor!r}"
     )

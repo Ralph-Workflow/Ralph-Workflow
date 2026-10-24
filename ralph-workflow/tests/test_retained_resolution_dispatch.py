@@ -8,11 +8,13 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.pipeline.auto_integrate_planning import integrate_before_planning
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
 from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
 from ralph.pipeline.integration_resolution import inspect_integration_resolution
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.test_pending_merge_commit_recovery import _commit, _git
@@ -50,12 +52,13 @@ def test_completed_commit_is_not_replayed_while_clean_landing_receipt_waits(
     from ralph.recovery.testing import FakeConnectivityMonitor
 
     root = tmp_git_repo
+    workspace = FsWorkspace(root)
     target = _git(root, "branch", "--show-current").stdout.strip()
     base = _commit(root, "shared.txt", "base\n")
     assert _git(root, "switch", "-c", "feature").returncode == 0
     feature = _commit(root, "shared.txt", "completed feature\n")
     if not empty:
-        (root / "shared.txt").write_text("new committed work\n", encoding="utf-8")
+        workspace.write("shared.txt", "new committed work\n")
     context = make_display_context(console=Console(file=StringIO(), width=120))
     display = ParallelDisplay(context)
     policy = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
@@ -86,7 +89,7 @@ def test_completed_commit_is_not_replayed_while_clean_landing_receipt_waits(
         target_lock.unlink()
 
     def held(_config: UnifiedConfig, _scope: WorkspaceScope, _state: RebaseState) -> RebaseState:
-        target_lock.write_text("another process owns target lock", encoding="utf-8")
+        workspace.write(f".git/refs/heads/{target}.lock", "another process owns target lock")
         write_record(
             root,
             IntegrationRecord(
@@ -189,8 +192,8 @@ def test_durable_ownership_blocks_clean_dispatch_and_survives_disable(
         ),
     )
     if receipt == "malformed":
-        record_path(root).write_text('{"phase":', encoding="utf-8")
-    original = record_path(root).read_bytes()
+        DEFAULT_FILE_BACKEND.write_text(record_path(root), '{"phase":', encoding="utf-8")
+    original = DEFAULT_FILE_BACKEND.read_bytes(record_path(root))
     assert not inspect_integration_resolution(root, RebaseState()).dispatch_allowed
     config = UnifiedConfig.model_validate(
         {
@@ -205,7 +208,7 @@ def test_durable_ownership_blocks_clean_dispatch_and_survives_disable(
     assert recovered is not None
     if receipt in {"malformed", "missing_sha"}:
         assert recovered.recovery_record_retained
-        assert record_path(root).read_bytes() == original
+        assert DEFAULT_FILE_BACKEND.read_bytes(record_path(root)) == original
         direct = recover_incomplete_integration(WorkspaceScope(root), config=config)
         assert direct is not None and direct.recovery_record_retained
         assert _git(root, "rev-parse", target).stdout.strip() == base
@@ -213,7 +216,7 @@ def test_durable_ownership_blocks_clean_dispatch_and_survives_disable(
         if receipt == "malformed":
             with pytest.raises(RecordUnreadableError):
                 clear_record(root)
-            assert record_path(root).read_bytes() == original
+            assert DEFAULT_FILE_BACKEND.read_bytes(record_path(root)) == original
             assert not inspect_integration_resolution(
                 root, RebaseState(recovery_record_retained=True)
             ).dispatch_allowed

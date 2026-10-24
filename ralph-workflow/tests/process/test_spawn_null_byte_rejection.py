@@ -52,7 +52,7 @@ from typing import TYPE_CHECKING
 import pytest
 from loguru import logger
 
-from ralph.process._spawn_validation import validate_spawn_arguments
+from ralph.process import validate_spawn_arguments
 from ralph.process.manager import (
     ProcessEvent,
     ProcessManager,

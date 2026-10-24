@@ -27,21 +27,19 @@ from ralph.process import (
     ProcessStatus,
     SpawnOptions,
     get_process_manager,
+    install_process_manager,
     process_phase_scope,
     reset_process_manager,
+    shutdown_process_manager,
 )
 from ralph.process.manager import (
     LivenessResult,
+    ProcessRecord,
     ProcessTerminationError,
-    _singleton,
+    loguru_event_listener,
 )
-from ralph.process.manager import (
-    _process_manager as pm_mod,
-)
-from ralph.process.manager._process_manager_runtime import loguru_event_listener
-from ralph.process.manager._process_record import ProcessRecord
-from ralph.process.manager._singleton import _pm_state
 from ralph.testing.fake_process import (
+    FakeAsyncProcess,
     FakeImmortalPopen,
     FakePopen,
     FakePsutil,
@@ -53,7 +51,59 @@ from ralph.testing.fake_process import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from ralph.testing.fake_process import AsyncFactoryCallable, SyncFactoryCallable
+
+
+class _RecordingAsyncProc(FakeAsyncProcess):
+    """Async process fake that records termination calls PUBLICLY.
+
+    The production contract under test is "the manager really signalled
+    the child".  The base fake keeps that in private flags, so this
+    subclass exposes public counters the test can assert on without
+    reaching into private state.
+    """
+
+    def __init__(self, pid: int) -> None:
+        super().__init__(pid=pid, state=ProcessState(returncode=None))
+        self.terminate_calls = 0
+        self.kill_calls = 0
+
+    def terminate(self) -> None:
+        self.terminate_calls += 1
+        super().terminate()
+
+    def kill(self) -> None:
+        self.kill_calls += 1
+        super().kill()
+
+    @property
+    def termination_calls(self) -> int:
+        """How many times the manager signalled this child."""
+        return self.terminate_calls + self.kill_calls
+
+
+def _recording_async_factory(created: list[_RecordingAsyncProc]) -> AsyncFactoryCallable:
+    """Build an async process factory that records the fakes it hands out."""
+
+    async def factory(
+        command: Sequence[str],
+        *,
+        cwd: str | None,
+        env: dict[str, str] | None,
+        stdin: int | None,
+        stdout: int | None,
+        stderr: int | None,
+        start_new_session: bool,
+    ) -> _RecordingAsyncProc:
+        del command, cwd, env, stdin, stdout, stderr, start_new_session
+        proc = _RecordingAsyncProc(pid=9001 + len(created))
+        created.append(proc)
+        return proc
+
+    return factory
+
 
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.3,
@@ -102,7 +152,7 @@ def test_spawn_tracks_lifecycle_to_exited() -> None:
     assert handle.record.status == ProcessStatus.RUNNING
     assert handle.record.pid >= 1
 
-    handle.wait()
+    handle.wait(timeout=5.0)
 
     assert handle.record.status == ProcessStatus.EXITED
     assert handle.record.cause == "exited"
@@ -235,12 +285,12 @@ def test_listener_receives_one_event_per_transition_and_unsubscribe_works() -> N
     _unsub_b = pm.register_listener(events_b.append)
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    handle.wait()
+    handle.wait(timeout=5.0)
 
     unsub_a()
 
     handle2 = pm.spawn([sys.executable, "-c", "pass"])
-    handle2.wait()
+    handle2.wait(timeout=5.0)
 
     expected_events_a = 2
     expected_events_b = 4
@@ -319,7 +369,7 @@ def test_raising_listener_does_not_break_lifecycle() -> None:
     pm.register_listener(good_events.append)
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    handle.wait()
+    handle.wait(timeout=5.0)
 
     assert handle.record.status == ProcessStatus.EXITED
     assert len(good_events) >= 1
@@ -346,7 +396,7 @@ def test_log_events_false_suppresses_loguru_output() -> None:
             sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=1),
         )
         handle = pm_silent.spawn([sys.executable, "-c", "pass"])
-        handle.wait()
+        handle.wait(timeout=5.0)
         pid_str = str(handle.record.pid)
         process_lines_silent = [r for r in records if "process " in r and pid_str in r]
         assert process_lines_silent == [], (
@@ -366,7 +416,7 @@ def test_log_events_false_suppresses_loguru_output() -> None:
             sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=1),
         )
         handle2 = pm_loud.spawn([sys.executable, "-c", "pass"])
-        handle2.wait()
+        handle2.wait(timeout=5.0)
         pid2_str = str(handle2.record.pid)
         process_lines_loud = [r for r in records if "process " in r and pid2_str in r]
         assert len(process_lines_loud) >= 1, (
@@ -737,7 +787,7 @@ def test_get_record_returns_terminal_history_after_exit() -> None:
 
     handle = pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="phase:test"))
     pid = handle.pid
-    handle.wait()
+    handle.wait(timeout=5.0)
 
     record = pm.get_record(pid)
     assert record is not None
@@ -751,7 +801,7 @@ def test_list_records_filters_active_and_terminal_by_label_prefix() -> None:
 
     active = pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="phase:keep"))
     terminal = pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="phase:done"))
-    terminal.wait()
+    terminal.wait(timeout=5.0)
 
     active_records = pm.list_records(
         include_active=True,
@@ -787,7 +837,7 @@ def test_terminal_history_limit_evicts_oldest_terminal_records_first() -> None:
         for idx in range(3)
     ]
     for handle in handles:
-        handle.wait()
+        handle.wait(timeout=5.0)
 
     terminal_records = pm.list_records(
         include_active=False,
@@ -813,7 +863,7 @@ def test_ec1_spawn_pid_in_list_active() -> None:
     handle = pm.spawn([sys.executable, "-c", "pass"])
     active_pids = [r.pid for r in pm.list_active()]
     assert handle.record.pid in active_pids
-    handle.wait()
+    handle.wait(timeout=5.0)
 
 
 # EC2: process exits normally -> status EXITED rc=0
@@ -822,7 +872,7 @@ def test_ec2_process_exits_normally() -> None:
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(sync_factory=sync_factory)
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    handle.wait()
+    handle.wait(timeout=5.0)
     assert handle.record.status == ProcessStatus.EXITED
     assert handle.record.returncode == 0
     assert handle.record.cause == "exited"
@@ -989,7 +1039,7 @@ def test_ec8_concurrent_shutdown_all_single_event() -> None:
     barrier = threading.Barrier(2)
 
     def _shutdown() -> None:
-        barrier.wait()
+        barrier.wait(timeout=5.0)
         pm.shutdown_all(grace_period_s=0)
 
     t1 = threading.Thread(target=_shutdown)
@@ -1082,7 +1132,7 @@ def test_ec19_exit_record_accessible_via_public_api() -> None:
     pm = _make_pm(sync_factory=sync_factory)
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
-    handle.wait()
+    handle.wait(timeout=5.0)
 
     records = pm.list_records(include_active=False, include_terminal=True)
     exited_records = [r for r in records if r.status == ProcessStatus.EXITED]
@@ -1246,9 +1296,9 @@ def _publish_named_process_manager_regressions() -> None:
 
 def test_atexit_shutdown_skips_when_no_instance() -> None:
     """_atexit_shutdown returns early when no singleton is set."""
-    _singleton._pm_state.instance = None
+    reset_process_manager()
     # No exception, no side effect.
-    _singleton._atexit_shutdown()
+    shutdown_process_manager()
 
 
 def test_atexit_shutdown_calls_pm_shutdown_all() -> None:
@@ -1259,12 +1309,12 @@ def test_atexit_shutdown_calls_pm_shutdown_all() -> None:
         def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
             captured["grace"] = grace_period_s
 
-    _singleton._pm_state.instance = _FakePM()
+    install_process_manager(_FakePM())
     try:
-        _singleton._atexit_shutdown()
+        shutdown_process_manager()
         assert captured.get("grace") == 0.5
     finally:
-        _singleton._pm_state.instance = None
+        reset_process_manager()
 
 
 def test_atexit_shutdown_swallows_baseexception() -> None:
@@ -1275,12 +1325,12 @@ def test_atexit_shutdown_swallows_baseexception() -> None:
             del grace_period_s
             raise RuntimeError("shutdown-failed")
 
-    _singleton._pm_state.instance = _ExplodingPM()
+    install_process_manager(_ExplodingPM())
     try:
         # Must NOT raise.
-        _singleton._atexit_shutdown()
+        shutdown_process_manager()
     finally:
-        _singleton._pm_state.instance = None
+        reset_process_manager()
 
 
 def test_get_process_manager_registers_atexit_exactly_once() -> None:
@@ -1292,8 +1342,7 @@ def test_get_process_manager_registers_atexit_exactly_once() -> None:
         register_calls.append(fn)
         return original_register(fn)
 
-    _singleton._pm_state.instance = None
-    _singleton._pm_state.atexit_registered = False
+    reset_process_manager(reset_atexit_registration=True)
     try:
         with patch("atexit.register", side_effect=_spy_register):
             get_process_manager()
@@ -1309,17 +1358,19 @@ def test_process_phase_scope_tears_down_labeled_processes() -> None:
     """process_phase_scope triggers shutdown_all_for_label on exit."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     # Inject the PM into the singleton so process_phase_scope uses it.
-    _singleton._pm_state.instance = ProcessManager(
-        policy=ProcessManagerPolicy(
-            default_grace_period_s=0.1,
-            kill_followup_timeout_s=0.1,
-            log_events=False,
-            enable_zombie_reaper=False,
-        ),
-        sync_process_factory=sync_factory,
-        async_process_factory=make_sync_process_factory(itertools.count(100)),
+    pm = install_process_manager(
+        ProcessManager(
+            policy=ProcessManagerPolicy(
+                default_grace_period_s=0.1,
+                kill_followup_timeout_s=0.1,
+                log_events=False,
+                enable_zombie_reaper=False,
+            ),
+            sync_process_factory=sync_factory,
+            async_process_factory=make_sync_process_factory(itertools.count(100)),
+        )
     )
-    handle = _singleton._pm_state.instance.spawn(
+    handle = pm.spawn(
         [sys.executable, "-c", "pass"],
         SpawnOptions(label="phase:audit"),
     )
@@ -1355,12 +1406,12 @@ def test_process_phase_scope_logs_and_reraises_on_termination_error() -> None:
                 reason="cleanup failed",
             )
 
-    _singleton._pm_state.instance = _ExplodingPM()
+    install_process_manager(_ExplodingPM())
     try:
         with pytest.raises(ProcessTerminationError), process_phase_scope("audit"):
             pass
     finally:
-        _singleton._pm_state.instance = None
+        reset_process_manager()
 
 
 # ---------------------------------------------------------------------------
@@ -1398,12 +1449,13 @@ async def test_pm_terminate_routes_async_handle_to_escalation() -> None:
             first_seen[0] = True
         return LivenessResult.ALIVE
 
-    async_factory = make_async_process_factory(itertools.count(9001), returncode=None)
+    created: list[_RecordingAsyncProc] = []
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=make_sync_process_factory(itertools.count(100)),
-        async_process_factory=async_factory,
+        async_process_factory=_recording_async_factory(created),
         psutil=None,
+        liveness_verifier=_fake_verify,
     )
 
     handle = await pm.spawn_async(
@@ -1415,11 +1467,10 @@ async def test_pm_terminate_routes_async_handle_to_escalation() -> None:
     first_seen[0] = False
 
     handle.record_terminal_reason("operator_cancellation")
-    with patch.object(pm_mod, "verify_process_liveness", _fake_verify):
-        pm.terminate(handle, grace_period_s=0.0)
+    pm.terminate(handle, grace_period_s=0.0)
 
-    fake_proc = handle._proc
-    assert fake_proc._terminated is True or fake_proc._killed is True, (
+    fake_proc = created[0]
+    assert fake_proc.termination_calls >= 1, (
         "pm.terminate on an async handle must drive proc.terminate()/kill()"
     )
     assert handle.record.status == ProcessStatus.KILLED
@@ -1450,40 +1501,36 @@ async def test_pm_terminate_async_handle_is_idempotent() -> None:
             first_seen[0] = True
         return LivenessResult.ALIVE
 
-    async_factory = make_async_process_factory(itertools.count(9101), returncode=None)
+    created: list[_RecordingAsyncProc] = []
     pm = ProcessManager(
         policy=_FAST_POLICY,
         sync_process_factory=make_sync_process_factory(itertools.count(100)),
-        async_process_factory=async_factory,
+        async_process_factory=_recording_async_factory(created),
         psutil=None,
+        liveness_verifier=_fake_verify,
     )
 
     handle = await pm.spawn_async(
         [sys.executable, "-c", "pass"],
         SpawnOptions(stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE),
     )
-    fake_proc = handle._proc
+    fake_proc = created[0]
     target_pid_ref[0] = handle.pid
     first_seen[0] = False
 
-    with patch.object(pm_mod, "verify_process_liveness", _fake_verify):
-        pm.terminate(handle, grace_period_s=0.0)
-    terminated_count_after_first = int(fake_proc._terminated) + int(fake_proc._killed)
+    pm.terminate(handle, grace_period_s=0.0)
+    terminated_count_after_first = fake_proc.termination_calls
     first_cause = handle.record.cause
     first_status = handle.record.status
     assert first_status == ProcessStatus.KILLED
 
-    # Second call must be a no-op (record is already terminal); undo
-    # the liveness probe so the public-API call path is exercised
-    # without re-entry through the patched verify.
-    with patch.object(
-        pm_mod,
-        "verify_process_liveness",
-        lambda p, *, psutil_mod=None: LivenessResult.GONE,
-    ):
-        pm.terminate(handle, grace_period_s=0.0)
+    # Second call must be a no-op (record is already terminal).  The
+    # INJECTED verifier now reports GONE (the fake reports GONE from the
+    # second probe onwards), so the public-API call path is exercised
+    # without re-entering the ALIVE branch.
+    pm.terminate(handle, grace_period_s=0.0)
 
-    terminated_count_after_second = int(fake_proc._terminated) + int(fake_proc._killed)
+    terminated_count_after_second = fake_proc.termination_calls
     assert handle.record.status == first_status
     assert handle.record.cause == first_cause
     assert terminated_count_after_second == terminated_count_after_first, (
@@ -1589,7 +1636,7 @@ def test_reset_process_manager_shuts_down_prior_instance() -> None:
         async_process_factory=make_async_process_factory(itertools.count(100)),
         psutil=None,
     )
-    _pm_state.instance = pm
+    install_process_manager(pm)
 
     singleton = get_process_manager()
     assert singleton is pm
@@ -1601,7 +1648,7 @@ def test_reset_process_manager_shuts_down_prior_instance() -> None:
 
     assert handle.record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
     assert not pm.list_active()
-    assert _pm_state.instance is None
+    assert get_process_manager() is not pm
 
 
 def test_reset_process_manager_swallows_exceptions_during_shutdown() -> None:
@@ -1615,11 +1662,12 @@ def test_reset_process_manager_swallows_exceptions_during_shutdown() -> None:
         def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
             raise RuntimeError("boom")
 
-    _pm_state.instance = _RaisingPm()
+    raising = _RaisingPm()
+    install_process_manager(raising)
 
     # Must not raise
     reset_process_manager()
-    assert _pm_state.instance is None
+    assert get_process_manager() is not raising
 
 
 def test_shutdown_all_stops_zombie_reaper_even_when_loop_raises() -> None:
@@ -1656,7 +1704,7 @@ def test_shutdown_all_stops_zombie_reaper_even_when_loop_raises() -> None:
 
     with (
         patch("os.kill", side_effect=_fake_os_kill),
-        patch.object(pm_mod.ProcessManager, "_stop_zombie_reaper", _stop_recorder),
+        patch.object(ProcessManager, "_stop_zombie_reaper", _stop_recorder),
         pytest.raises(ProcessTerminationError),
     ):
         pm.shutdown_all(grace_period_s=0.0)

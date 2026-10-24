@@ -15,6 +15,7 @@ from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record
 from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
 from ralph.pipeline.events import PipelineEvent
 from ralph.policy.models import PolicyBundle
+from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._resolver_controller import make_resolver_controller
@@ -31,14 +32,15 @@ pytestmark = [pytest.mark.timeout_seconds(5)]
 
 def _install_validation_hook(root: Path, *, custom: bool) -> Path:
     hooks = root / "custom-hooks" if custom else root / ".git" / "hooks"
+    hook_relative = "custom-hooks/pre-commit" if custom else ".git/hooks/pre-commit"
     if custom:
         hooks.mkdir()
         assert _git(root, "config", "core.hooksPath", str(hooks)).returncode == 0
     hook = hooks / "pre-commit"
-    hook.write_text(
+    FsWorkspace(root).write(
+        hook_relative,
         '#!/bin/sh\nif [ "$(git show :shared.txt)" != fixed ]; then\n'
         "echo 'shared.txt: expected fixed' >&2\nexit 1\nfi\n",
-        encoding="utf-8",
     )
     hook.chmod(0o755)
     return hook
@@ -73,22 +75,23 @@ def test_hook_source_fix_is_reverified_and_landed_without_sweeping_wip(
     import ralph.pipeline._pending_repair_edits as repair_edits
 
     root = tmp_git_repo
+    workspace = FsWorkspace(root)
     target, original = _prepared(root)
     hook = _install_validation_hook(root, custom=case == "weak_hook")
     outcome = recover_incomplete_integration(WorkspaceScope(root))
     assert outcome is not None and outcome.recovery_record_retained
     if case == "existing_wip":
-        (root / "shared.txt").write_text("user unfinished work\n", encoding="utf-8")
+        workspace.write("shared.txt", "user unfinished work\n")
 
     def execute(*_args: object, **_kwargs: object) -> PipelineEvent:
         if case == "weak_hook":
-            hook.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            workspace.write("custom-hooks/pre-commit", "#!/bin/sh\nexit 0\n")
         if case == "new_file":
-            (root / "required.txt").write_text("new source\n", encoding="utf-8")
-        (root / "shared.txt").write_text("fixed\n", encoding="utf-8")
-        (root / ".agent" / "tmp" / "pending_commit_repair_paths.json").write_text(
+            workspace.write("required.txt", "new source\n")
+        workspace.write("shared.txt", "fixed\n")
+        workspace.write(
+            ".agent/tmp/pending_commit_repair_paths.json",
             '["required.txt", "shared.txt"]' if case == "new_file" else '["shared.txt"]',
-            encoding="utf-8",
         )
         return PipelineEvent.AGENT_SUCCESS
 
@@ -154,10 +157,10 @@ def test_hook_source_fix_is_reverified_and_landed_without_sweeping_wip(
         assert prepared.merge_commit_tree != original.merge_commit_tree
     assert prepared.repair_original_tree == original.merge_commit_tree
     if case == "staged_intruder":
-        (root / "shared.txt").write_text("other actor staged work\n", encoding="utf-8")
+        workspace.write("shared.txt", "other actor staged work\n")
         assert _git(root, "add", "shared.txt").returncode == 0
         other_tree = _git(root, "write-tree").stdout
-        (root / "shared.txt").write_text("fixed\n", encoding="utf-8")
+        workspace.write("shared.txt", "fixed\n")
         blocked = recover_incomplete_integration(WorkspaceScope(root))
         assert blocked is not None and blocked.recovery_record_retained
         assert _git(root, "write-tree").stdout == other_tree

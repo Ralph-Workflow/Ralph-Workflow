@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
+import ast
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.testing.audit_test_policy import (
     TestPolicyViolation,
     audit_test_file,
     audit_tests_directory,
+    count_private_attrs,
+    count_private_imports,
+    count_setattr_private,
     main,
+    render_whitebox_baseline,
 )
+from ralph.testing.test_whitebox_baseline import WHITEBOX_BASELINE
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -63,12 +72,12 @@ def test_open_is_violation(tmp_path: Path) -> None:
     assert violations[0].category == "io"
 
 
-def test_open_with_monkeypatch_is_allowed(tmp_path: Path) -> None:
-    """open() in a file containing monkeypatch.setattr should be allowed."""
+def test_open_with_exact_monkeypatch_is_allowed(tmp_path: Path) -> None:
+    """open() is allowed when builtins.open itself is patched."""
     test_file = tmp_path / "test_example.py"
-    test_file.write_text("monkeypatch.setattr(target, 'open', fake_open)\nopen('file.txt')\n")
+    test_file.write_text("monkeypatch.setattr('builtins.open', fake_open)\nopen('file.txt')\n")
     violations = audit_test_file(test_file)
-    assert len(violations) == 0
+    assert violations == []
 
 
 def test_path_read_text_is_violation(tmp_path: Path) -> None:
@@ -166,12 +175,12 @@ def test_non_py_file_returns_empty(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_io_allowlist_file_is_skipped(tmp_path: Path) -> None:
-    """File with stem in _IO_ALLOWLIST should be skipped entirely."""
+def test_io_allowlist_skips_only_io_and_keeps_whitebox_check(tmp_path: Path) -> None:
+    """An I/O-allowlisted file still receives the white-box ratchet check."""
     test_file = tmp_path / "test_multimodal_session_memory_regression.py"
-    test_file.write_text("open('file.txt')\n")
+    test_file.write_text("from ralph.example import _private\nopen('file.txt')\n")
     violations = audit_test_file(test_file)
-    assert len(violations) == 0
+    assert [violation.category for violation in violations] == ["whitebox-baseline-missing"]
 
 
 def test_wall_clock_allowlist_file_is_skipped(tmp_path: Path) -> None:
@@ -214,6 +223,134 @@ def test_source_read_allowlist_still_flags_sleep_and_writes(tmp_path: Path) -> N
     )
     violations = audit_test_file(test_file)
     assert sorted(violation.category for violation in violations) == ["io", "sleep"]
+
+
+# ---------------------------------------------------------------------------
+# White-box detector and ratchet tests
+# ---------------------------------------------------------------------------
+
+
+def test_const_first_private_setattr_is_flagged() -> None:
+    """A const-first monkeypatch target reaching a private name is counted."""
+    tree = ast.parse('monkeypatch.setattr("ralph.example._secret", value)\n')
+    assert count_setattr_private(tree) == 1
+
+
+def test_name_first_private_setattr_is_flagged() -> None:
+    """A name-first monkeypatch target reaching a private name is counted."""
+    tree = ast.parse('monkeypatch.setattr(run_loop, "_save_checkpoint", fake)\n')
+    assert count_setattr_private(tree) == 1
+
+
+def test_public_setattr_target_is_not_flagged() -> None:
+    """A public monkeypatch target is not white-box coupling."""
+    tree = ast.parse('monkeypatch.setattr("ralph.example.public_name", value)\n')
+    assert count_setattr_private(tree) == 0
+
+
+def test_dunder_setattr_target_is_not_flagged() -> None:
+    """Dunder monkeypatch targets are public and are not counted."""
+    tree = ast.parse('monkeypatch.setattr("ralph.example.__wrapped__", value)\n')
+    assert count_setattr_private(tree) == 0
+
+
+def test_private_ralph_symbol_import_is_flagged_but_public_import_is_not() -> None:
+    """Only imports reaching private production symbols are counted."""
+    private_tree = ast.parse("from ralph.example import _private\n")
+    public_tree = ast.parse("from ralph.example import public_name\n")
+    assert count_private_imports(private_tree) == 1
+    assert count_private_imports(public_tree) == 0
+
+
+def test_dunder_private_import_is_not_flagged() -> None:
+    """Dunder imports are public and are not counted as private coupling."""
+    tree = ast.parse("from ralph.example import __doc__\n")
+    assert count_private_imports(tree) == 0
+
+
+def test_public_symbol_through_private_module_is_flagged() -> None:
+    """A public symbol imported through a private ralph module is coupling."""
+    tree = ast.parse("from ralph.example._private_module import public_name\n")
+    assert count_private_imports(tree) == 1
+
+
+def test_private_attribute_read_inside_assert_is_flagged() -> None:
+    """A private attribute read in an assertion is high-confidence coupling."""
+    tree = ast.parse("def test_value(owner):\n    assert owner._secret == 1\n")
+    assert count_private_attrs(tree) == 1
+
+
+def test_private_attribute_read_outside_assert_is_not_flagged() -> None:
+    """An unrelated private attribute read outside the narrowed contexts is ignored."""
+    tree = ast.parse("value = owner._secret\n")
+    assert count_private_attrs(tree) == 0
+
+
+def test_unrelated_monkeypatch_does_not_exempt_sleep(tmp_path: Path) -> None:
+    """Mentioning monkeypatch does not suppress a real sleep call."""
+    test_file = tmp_path / "test_sleep_policy.py"
+    test_file.write_text(
+        "monkeypatch.setattr('ralph.example.public_name', fake)\ntime.sleep(0.3)\n"
+    )
+    violations = audit_test_file(test_file)
+    assert [violation.category for violation in violations] == ["sleep"]
+
+
+def test_exact_sleep_target_patch_exempts_sleep(tmp_path: Path) -> None:
+    """Patching the exact sleep target exempts that sleep call."""
+    test_file = tmp_path / "test_sleep_policy.py"
+    test_file.write_text("monkeypatch.setattr('time.sleep', fake)\ntime.sleep(0.3)\n")
+    violations = audit_test_file(test_file)
+    assert violations == []
+
+
+def test_whitebox_count_above_baseline_exits_one(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A count above its frozen ceiling is a fail-closed regression."""
+    test_file = tmp_path / "test_whitebox_regression.py"
+    test_file.write_text("from ralph.example import _private\n")
+    baseline: Mapping[str, Mapping[str, int]] = {
+        "tests/test_whitebox_regression.py": {
+            "setattr_private": 0,
+            "private_import": 0,
+            "private_attr": 0,
+        }
+    }
+    exit_code = main([str(tmp_path)], baseline=baseline)
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "whitebox-regression" in output
+
+
+def test_nonzero_whitebox_count_missing_from_baseline_exits_one(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A new file with white-box usage fails closed when absent from baseline."""
+    test_file = tmp_path / "test_whitebox_missing.py"
+    test_file.write_text("from ralph.example import _private\n")
+    exit_code = main([str(tmp_path)], baseline={})
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "whitebox-baseline-missing" in output
+
+
+def test_emit_baseline_entry_set_matches_frozen_baseline() -> None:
+    """The emitted inventory parses and contains the frozen baseline's file set."""
+    emitted_text = render_whitebox_baseline(WHITEBOX_BASELINE)
+    parsed = ast.parse(emitted_text)
+    raw_assignment = next(
+        node
+        for node in parsed.body
+        if isinstance(node, ast.Assign)
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id == "_RAW"
+    )
+    raw = ast.literal_eval(raw_assignment.value)
+    emitted_paths = {line.split("|", 1)[0] for line in raw.splitlines() if line}
+    assert emitted_paths == set(WHITEBOX_BASELINE)
 
 
 # ---------------------------------------------------------------------------

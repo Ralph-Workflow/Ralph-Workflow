@@ -77,6 +77,7 @@ from ralph.pipeline.rebase_state import (
     RebaseState,
     StartupRetentionReason,
 )
+from ralph.pipeline.retry_diagnostic import RetryDiagnosticHooks
 from ralph.pipeline.run_time_report import emit_run_time_report_safely
 from ralph.process.manager import get_process_manager
 from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
@@ -169,7 +170,7 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class _LoopContext:
+class LoopContext:
     """Execution context for the inner pipeline loop."""
 
     policy_bundle: PolicyBundle
@@ -217,7 +218,7 @@ class _LoopContext:
     # same session skip the handoff (avoiding the operator-visible
     # rotation that the original guard was designed to prevent). A
     # cold-loaded capped-intervention record resets the flag because
-    # ``_LoopContext`` is constructed fresh per run.
+    # ``LoopContext`` is constructed fresh per run.
     _session_handoff_dispatched: bool = False
     # Session-scoped one-shot flag that prevents the cold-capped
     # conflict-resolution escalation from running more than once
@@ -232,9 +233,74 @@ class _LoopContext:
     # cold-capped call falls through to the existing
     # budget-spent branch (which already escalates to
     # INTERVENTION_REQUIRED). A cold-loaded capped-intervention
-    # record resets the flag because ``_LoopContext`` is
+    # record resets the flag because ``LoopContext`` is
     # constructed fresh per run.
-    _cold_capped_escalation_attempted: bool = False
+    cold_capped_escalation_attempted: bool = False
+    # Injectable collaborators for the integration-retry path.  The
+    # defaults use the production implementations; a caller that owns the
+    # surrounding resources substitutes an equivalent collaborator so the
+    # retry path stays observable through a public surface.
+    hooks: RetryDiagnosticHooks = field(default_factory=RetryDiagnosticHooks)
+
+
+# Backwards-compatible alias for the historical private name.  The class
+# itself is public (``LoopContext``) because it is part of the supported
+# retry-diagnostic surface; the alias keeps existing importers working.
+_LoopContext = LoopContext
+
+
+def _retry_hooks(ctx: LoopContext) -> RetryDiagnosticHooks:
+    """Resolve the injectable retry collaborators for this context.
+
+    The retry path is driven by the inner loop, but the collaborators it
+    uses (checkpoint persistence, the automated-resolver handoff, the
+    recovery preamble, the conflict resolver, the live-state re-deriver)
+    are exactly the seams a caller that owns the surrounding resources
+    needs to substitute.  Reading them from the context keeps that
+    substitution on a public surface instead of inside module internals.
+
+    A context that carries no hooks -- or carries something that is not a
+    :class:`~ralph.pipeline.retry_diagnostic.RetryDiagnosticHooks` -- uses
+    the production implementations.
+    """
+    hooks = _context_hooks(ctx)
+    if isinstance(hooks, RetryDiagnosticHooks):
+        return hooks
+    return RetryDiagnosticHooks()
+
+
+def _context_hooks(ctx: LoopContext) -> object:
+    """Read the retry hooks the context carries, if it carries any.
+
+    A context built by the inner loop always carries a
+    :class:`~ralph.pipeline.retry_diagnostic.RetryDiagnosticHooks`.  A
+    duck-typed context that does not (or carries something else) is
+    handled here so the retry path never fails on the lookup itself.
+    """
+    try:
+        return ctx.hooks
+    except AttributeError:
+        return None
+
+
+def _recovery_preamble_for(
+    ctx: LoopContext,
+    backend: FileBackend,
+) -> Callable[[WorkspaceScope, UnifiedConfig | None], RebaseState | None]:
+    """Resolve the recovery preamble this context must run.
+
+    The injected preamble replaces the whole preamble call, so it takes
+    the workspace and the configuration; the production implementation
+    additionally receives the file backend that is in use.
+    """
+    hooks = _retry_hooks(ctx)
+    if hooks.recovery_preamble is not None:
+        return hooks.recovery_preamble
+
+    def _default(scope: WorkspaceScope, config: UnifiedConfig | None) -> RebaseState | None:
+        return _run_auto_integrate_recovery_preamble(scope, config, backend=backend)
+
+    return _default
 
 
 def _sync_live_display_context(display: _DisplayContextOwner, ctx: DisplayContext) -> None:
@@ -244,7 +310,7 @@ def _sync_live_display_context(display: _DisplayContextOwner, ctx: DisplayContex
     ``object.__setattr__`` to bypass :class:`DisplayContext`'s
     ``frozen=True`` constraint) so the *identity* of the context object
     is preserved across width refreshes. Callers holding a reference
-    to the original context (e.g. ``_LoopContext.display_context``)
+    to the original context (e.g. ``LoopContext.display_context``)
     therefore see the updated width automatically, with no need to
     re-fetch ``active._ctx`` after every refresh. Mutating in place
     avoids the staleness bug where the refresher would otherwise
@@ -415,7 +481,7 @@ def _setup_active_display(
     that object in place via
     :func:`_sync_live_display_context` so callers holding the
     returned reference automatically see the post-refresh width —
-    there is no divergence between ``_LoopContext.display_context``
+    there is no divergence between ``LoopContext.display_context``
     and ``active._ctx`` after a SIGWINCH or poll-refresh tick.
     """
     if display is not None:
@@ -459,7 +525,7 @@ def _setup_active_display(
 
     # Return ``active._ctx`` so the caller holds the SAME Python object
     # the refresher mutates in place. This way, after a refresh tick
-    # both ``_LoopContext.display_context`` and ``active._ctx`` observe
+    # both ``LoopContext.display_context`` and ``active._ctx`` observe
     # the same updated width (the in-place mutation preserves object
     # identity across refreshes; see ``_sync_live_display_context``).
     live_ctx: DisplayContext = active._ctx if ctx_holder is not None else resolved_ctx
@@ -467,7 +533,7 @@ def _setup_active_display(
 
 
 def _emit_run_start(
-    ctx: _LoopContext,
+    ctx: LoopContext,
     state: PipelineState,
 ) -> None:
     """Emit run-start banner to display if it supports it."""
@@ -516,7 +582,7 @@ def _emit_run_start(
         ctx.active_display.emit_run_start(_orientation)
 
 
-def _target_worktree_path(ctx: _LoopContext) -> str | None:
+def _target_worktree_path(ctx: LoopContext) -> str | None:
     """Return the target-owner path for the run banner, if it can be safely resolved."""
     target: object = getattr(ctx.config.general, "auto_integrate_target", None)
     if not isinstance(target, str) or not target:
@@ -527,7 +593,7 @@ def _target_worktree_path(ctx: _LoopContext) -> str | None:
 
 def _log_waiting_state(
     state: PipelineState,
-    ctx: _LoopContext,
+    ctx: LoopContext,
     phase_str: str,
     unavail_reason: str,
     delay_ms: int,
@@ -555,7 +621,7 @@ def _log_waiting_state(
 
 def _log_resumed_state(
     state: PipelineState,
-    ctx: _LoopContext,
+    ctx: LoopContext,
     phase_str: str,
     unavail_reason: str,
     delay_ms: int,
@@ -823,7 +889,7 @@ def _run_auto_integrate_recovery_preamble(
 
 
 def _run_startup_integration(
-    ctx: _LoopContext, state: RebaseState | None = None
+    ctx: LoopContext, state: RebaseState | None = None
 ) -> RebaseState | None:
     """Integrate the branch onto the target BEFORE the first phase runs.
 
@@ -891,7 +957,7 @@ def _run_startup_integration(
 
 def _save_recovered_rebase_checkpoint(
     state: PipelineState,
-    ctx: _LoopContext,
+    ctx: LoopContext,
 ) -> None:
     """Persist the recovery-threaded ``state`` to the same checkpoint path the runner uses.
 
@@ -906,6 +972,10 @@ def _save_recovered_rebase_checkpoint(
     failure mode (log + continue) mirrors the runner's contract: a
     failed save must never abort the run.
     """
+    hooks = _retry_hooks(ctx)
+    if hooks.save_checkpoint is not None:
+        hooks.save_checkpoint(state, ctx)
+        return
     try:
         from ralph.pipeline.auto_integrate_resolution_state import reconcile_stale_unresolved_state
 
@@ -1298,7 +1368,7 @@ def _resolve_recovery_display_interval(config: UnifiedConfig) -> float:
     return WAITING_STATUS_INTERVAL_SECONDS
 
 
-def _announce_deferred_startup_integration(ctx: _LoopContext, recovered: RebaseState) -> None:
+def _announce_deferred_startup_integration(ctx: LoopContext, recovered: RebaseState) -> None:
     """Tell the operator why the startup catch-up was skipped this run.
 
     A deferral that only appeared in the log file would read exactly
@@ -1317,7 +1387,7 @@ def _announce_deferred_startup_integration(ctx: _LoopContext, recovered: RebaseS
 
 def _apply_startup_rebase_outcomes(
     state: PipelineState,
-    ctx: _LoopContext,
+    ctx: LoopContext,
     *,  # keyword-only seam for backend injection
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> PipelineState:
@@ -1363,9 +1433,7 @@ def _apply_startup_rebase_outcomes(
             return state
         return state.copy_with(rebase=injected_rebase)
 
-    recovered_rebase = _run_auto_integrate_recovery_preamble(
-        ctx.workspace_scope, ctx.config, backend=backend
-    )
+    recovered_rebase = _recovery_preamble_for(ctx, backend)(ctx.workspace_scope, ctx.config)
     if recovered_rebase is not None:
         state = state.copy_with(rebase=recovered_rebase)
         verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
@@ -1392,7 +1460,7 @@ def _apply_startup_rebase_outcomes(
 
 def _reselect_preferred_agent(
     state: PipelineState,
-    ctx: _LoopContext,
+    ctx: LoopContext,
     *,
     allow_wait: bool = True,
 ) -> PipelineState:
@@ -1426,7 +1494,7 @@ def _reselect_preferred_agent(
 
 def _resume_after_cooldown_wait(
     state: PipelineState,
-    ctx: _LoopContext,
+    ctx: LoopContext,
     phase: str,
     unavailability_reason: str,
     delay_ms: int,
@@ -1446,7 +1514,7 @@ def _resume_after_cooldown_wait(
 
 
 def _announce_conflict_resolution_entry(
-    ctx: _LoopContext,
+    ctx: LoopContext,
     verdict: IntegrationResolutionVerdict,
 ) -> None:
     """Tell the operator that blocking evidence is entering conflict resolution."""
@@ -1459,7 +1527,7 @@ def _announce_conflict_resolution_entry(
         )
 
 
-def _integration_target_or_none(ctx: _LoopContext) -> str | None:
+def _integration_target_or_none(ctx: LoopContext) -> str | None:
     """Resolve the integration target, or ``None`` when it cannot be read."""
     from ralph.pipeline.auto_integrate import resolve_integration_target
 
@@ -1471,11 +1539,14 @@ def _integration_target_or_none(ctx: _LoopContext) -> str | None:
 
 
 def _run_integration_conflict_resolution(
-    ctx: _LoopContext,
+    ctx: LoopContext,
     rebase: RebaseState | None = None,
 ) -> bool:
     from ralph.pipeline.auto_integrate_transaction import integration_transaction
 
+    hooks = _retry_hooks(ctx)
+    if hooks.conflict_resolution is not None:
+        return hooks.conflict_resolution(ctx, rebase)
     with integration_transaction(ctx.workspace_scope.root) as acquired:
         if not acquired:
             emit_integration_warn_line(
@@ -1493,7 +1564,7 @@ def _run_integration_conflict_resolution(
         return _run_owned_integration_conflict_resolution(ctx, rebase)
 
 
-def _conflict_identity_or_default(ctx: _LoopContext, target: str) -> ConflictIdentity:
+def _conflict_identity_or_default(ctx: LoopContext, target: str) -> ConflictIdentity:
     """Read the conflict identity this seam is standing in.
 
     The budget is spent on ONE conflict, and this seam can see which
@@ -1518,7 +1589,7 @@ def _conflict_identity_or_default(ctx: _LoopContext, target: str) -> ConflictIde
 
 
 def _cold_capped_escalation_due(
-    ctx: _LoopContext,
+    ctx: LoopContext,
     rebase: RebaseState,
     target: str,
     identity: ConflictIdentity,
@@ -1537,7 +1608,7 @@ def _cold_capped_escalation_due(
     concurrent push or a previous worktree's resolution may already have
     cleared the conflict) and adopts a successful resolver result.
 
-    The ``_cold_capped_escalation_attempted`` flag makes this a
+    The ``cold_capped_escalation_attempted`` flag makes this a
     one-shot per session, so a subsequent cold-capped call falls through
     to the ordinary budget-spent branch (which already escalates to
     INTERVENTION_REQUIRED without spinning). The cap is NEVER reset or
@@ -1554,12 +1625,12 @@ def _cold_capped_escalation_due(
         return False
     if resolver_allowed(rebase, target, identity, attempts=resolver_attempts):
         return False
-    session_attempted: bool = getattr(ctx, "_cold_capped_escalation_attempted", False)
+    session_attempted: bool = getattr(ctx, "cold_capped_escalation_attempted", False)
     if session_attempted:
         # Same-session re-entry: the escalation already ran. Do not
         # spin -- the budget gate handles the escalation.
         return False
-    ctx._cold_capped_escalation_attempted = True
+    ctx.cold_capped_escalation_attempted = True
     logger.warning(
         "integration resolution: cold-capped escalation for target '{}'; "
         "re-deriving live Git state",
@@ -1575,7 +1646,7 @@ def _cold_capped_escalation_due(
 
 
 def _resolve_blocking_conflict(
-    ctx: _LoopContext,
+    ctx: LoopContext,
     target: str,
     rebase: RebaseState | None,
 ) -> bool:
@@ -1589,7 +1660,8 @@ def _resolve_blocking_conflict(
     was standing right there to fix. Decide WHICH resolver is needed
     before building one, so the wrong one cannot be the fallback.
     """
-    if _paused_rebase_at(ctx.workspace_scope.root):
+    paused_probe = _retry_hooks(ctx).paused_rebase_at or _paused_rebase_at
+    if paused_probe(ctx.workspace_scope.root):
         return _resolve_paused_rebase_with_history(ctx, target, rebase)
     try:
         resolver = build_agent_conflict_resolver(
@@ -1610,7 +1682,8 @@ def _resolve_blocking_conflict(
     except Exception as build_exc:  # pragma: no cover -- defensive
         logger.warning("integration resolution executor failed: {}", build_exc)
         return False
-    if _complete_in_progress_merge(ctx.workspace_scope.root, target, resolver):
+    complete_merge = _retry_hooks(ctx).complete_in_progress_merge or _complete_in_progress_merge
+    if complete_merge(ctx.workspace_scope.root, target, resolver):
         return True
     # Unmerged paths with NO operation in progress. Ralph's own recovery
     # makes this state: quitting a foreign cherry-pick or revert removes
@@ -1623,7 +1696,7 @@ def _resolve_blocking_conflict(
 
 
 def _run_owned_integration_conflict_resolution(
-    ctx: _LoopContext,
+    ctx: LoopContext,
     rebase: RebaseState | None = None,
 ) -> bool:
     """Invoke the out-of-graph conflict resolver against live blocking evidence.
@@ -1674,8 +1747,16 @@ def _run_owned_integration_conflict_resolution(
     return _resolve_blocking_conflict(ctx, target, rebase)
 
 
-def _resolve_orphaned_unmerged_index(ctx: _LoopContext, target: str) -> bool:
+def _resolve_orphaned_unmerged_index(ctx: LoopContext, target: str) -> bool:
     """Resolve a conflicted index that no rebase or merge owns. Never raises."""
+    hooks = _retry_hooks(ctx)
+    if hooks.resolve_orphaned_unmerged_index is not None:
+        return bool(hooks.resolve_orphaned_unmerged_index(ctx, target))
+    return _resolve_orphaned_unmerged_index_in_place(ctx, target)
+
+
+def _resolve_orphaned_unmerged_index_in_place(ctx: LoopContext, target: str) -> bool:
+    """Repair and stage the unmerged paths no rebase or merge owns."""
     from ralph.git.merge import stage_paths, unmerged_paths
     from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
 
@@ -1718,6 +1799,7 @@ def _resolve_orphaned_unmerged_index(ctx: _LoopContext, target: str) -> bool:
 
 
 def _rederive_live_conflict_state_or_none(
+    ctx: LoopContext,
     root: Path,
     target: str,
     rebase: RebaseState,
@@ -1729,13 +1811,14 @@ def _rederive_live_conflict_state_or_none(
     exhaustion.
     """
     try:
-        return _rederive_live_conflict_state(root, target, rebase)
+        derive = _retry_hooks(ctx).rederive_live_conflict_state or _rederive_live_conflict_state
+        return derive(root, target, rebase)
     except Exception as derive_exc:  # pragma: no cover -- defensive
         logger.warning("integration resolution: live re-derivation failed: {}", derive_exc)
         return None
 
 
-def _adopt_live_rebase(ctx: _LoopContext, live_rebase: RebaseState) -> None:
+def _adopt_live_rebase(ctx: LoopContext, live_rebase: RebaseState) -> None:
     """Adopt the cleared live state on the caller's latest state."""
     if not ctx.latest_state:
         return
@@ -1744,7 +1827,7 @@ def _adopt_live_rebase(ctx: _LoopContext, live_rebase: RebaseState) -> None:
 
 
 def _run_cold_capped_escalation(
-    ctx: _LoopContext,
+    ctx: LoopContext,
     target: str,
     rebase: RebaseState,
 ) -> bool:
@@ -1779,7 +1862,9 @@ def _run_cold_capped_escalation(
     """
     # Step 1: re-derive from live Git. A clean live state means the
     # cached record is stale; clear it and adopt the live result.
-    live_rebase = _rederive_live_conflict_state_or_none(ctx.workspace_scope.root, target, rebase)
+    live_rebase = _rederive_live_conflict_state_or_none(
+        ctx, ctx.workspace_scope.root, target, rebase
+    )
     if live_rebase is not None and not live_rebase.is_intervention_required:
         _adopt_live_rebase(ctx, live_rebase)
         return True
@@ -1890,7 +1975,7 @@ def _rebase_markers_on_disk(root: Path) -> bool:
 
 
 def _resolve_paused_rebase_with_history(
-    ctx: _LoopContext,
+    ctx: LoopContext,
     target: str,
     rebase: RebaseState | None,
     *,
@@ -1912,7 +1997,7 @@ def _resolve_paused_rebase_with_history(
 
 
 def _resolve_paused_rebase(
-    ctx: _LoopContext,
+    ctx: LoopContext,
     target: str,
     rebase: RebaseState | None = None,
     *,
@@ -1996,7 +2081,7 @@ def _complete_in_progress_merge(root: Path, target: str, resolver: ConflictResol
 
 
 def _announce_blocked_dispatch(
-    ctx: _LoopContext,
+    ctx: LoopContext,
     verdict: IntegrationResolutionVerdict,
 ) -> None:
     """Report the ACTUAL evidence that is terminating this run.
@@ -2020,7 +2105,7 @@ def _announce_blocked_dispatch(
         )
 
 
-def _is_planning_entry(state: PipelineState, ctx: _LoopContext) -> bool:
+def _is_planning_entry(state: PipelineState, ctx: LoopContext) -> bool:
     """Whether ``state`` is about to dispatch a planning phase."""
     pipeline = ctx.policy_bundle.pipeline
     phase = str(state.phase)
@@ -2030,7 +2115,7 @@ def _is_planning_entry(state: PipelineState, ctx: _LoopContext) -> bool:
     return definition is not None and definition.drain == "planning"
 
 
-def _configured_sync_target(ctx: _LoopContext) -> tuple[Path, str] | None:
+def _configured_sync_target(ctx: LoopContext) -> tuple[Path, str] | None:
     """The (repo root, integration target) planning must contain, if any."""
     config: object = getattr(ctx, "config", None)
     general: object = getattr(config, "general", None)
@@ -2047,7 +2132,7 @@ def _configured_sync_target(ctx: _LoopContext) -> tuple[Path, str] | None:
     return root, target
 
 
-def _planning_sync_gap(ctx: _LoopContext) -> str | None:
+def _planning_sync_gap(ctx: LoopContext) -> str | None:
     """Why committed feature work and the integration target are not synchronized.
 
     Ground truth only: ``git merge-base --is-ancestor <target> HEAD``. No
@@ -2090,7 +2175,7 @@ def _reconcile_dispatch_state(state: PipelineState) -> PipelineState:
     return state if reconciled is state.rebase else state.copy_with(rebase=reconciled)
 
 
-def _route_planning_commit(state: PipelineState, ctx: _LoopContext) -> PipelineState:
+def _route_planning_commit(state: PipelineState, ctx: LoopContext) -> PipelineState:
     """Route dirty completed work through policy cleanup and commit phases."""
     from ralph.git.operations import has_uncommitted_changes
     from ralph.pipeline._planning_obstruction import (
@@ -2152,7 +2237,7 @@ def _route_planning_commit(state: PipelineState, ctx: _LoopContext) -> PipelineS
 
 def _resume_planning_after_commit(
     state: PipelineState | int,
-    ctx: _LoopContext,
+    ctx: LoopContext,
     previous: PipelineState,
     *,  # keyword-only seam for backend injection
     backend: FileBackend = DEFAULT_FILE_BACKEND,
@@ -2180,7 +2265,7 @@ def _resume_planning_after_commit(
 
 def _ensure_planning_in_sync(
     state: PipelineState,
-    ctx: _LoopContext,
+    ctx: LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, tuple[PipelineState, str, int] | None]:
     """Synchronize safely before using normal commit recovery for obstructions.
@@ -2236,7 +2321,7 @@ def _ensure_planning_in_sync(
     return state, (state, prev_phase, 0)
 
 
-def _exhaustion_still_binds(ctx: _LoopContext, rebase: RebaseState | None) -> bool:
+def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> bool:
     """Whether a recorded exhaustion still describes the conflict on disk.
 
     The conflict budget already owns this judgement for the post-commit
@@ -2283,7 +2368,7 @@ def _exhaustion_still_binds(ctx: _LoopContext, rebase: RebaseState | None) -> bo
     return True
 
 
-def _repair_pending_merge_commit(ctx: _LoopContext, failure: str) -> None:
+def _repair_pending_merge_commit(ctx: LoopContext, failure: str) -> None:
     from ralph.pipeline._pending_merge_repair import repair_pending_merge
     from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 
@@ -2312,14 +2397,14 @@ def _repair_pending_merge_commit(ctx: _LoopContext, failure: str) -> None:
         logger.critical("Merge commit retained; repair agent unavailable: {}", exc)
 
 
-def _diagnose_retained_integration(ctx: _LoopContext, failure: str) -> None:
+def _diagnose_retained_integration(ctx: LoopContext, failure: str) -> None:
     from ralph.pipeline._integration_diagnostic import diagnose_retained_integration
 
     diagnose_retained_integration(ctx, failure)
 
 
 def _persist_unreadable_intervention(
-    ctx: _LoopContext,
+    ctx: LoopContext,
     failure: str,
     unreadable_reason: str | None,
 ) -> None:
@@ -2361,11 +2446,15 @@ def _persist_unreadable_intervention(
 
 
 def _handoff_retained_failure(
-    ctx: _LoopContext,
+    ctx: LoopContext,
     failure: str,
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
+    hooks = _retry_hooks(ctx)
+    if hooks.handoff_retained_failure is not None:
+        hooks.handoff_retained_failure(ctx, failure)
+        return
     from ralph.pipeline._integration_diagnostic import diagnostic_needed
     from ralph.pipeline.auto_integrate_record import (
         RecordReadOutcomeDisposition,
@@ -2391,9 +2480,7 @@ def _handoff_retained_failure(
                 ctx,
                 ctx.latest_state[0].rebase if ctx.latest_state else None,
             )
-            recovered = _run_auto_integrate_recovery_preamble(
-                ctx.workspace_scope, config, backend=backend
-            )
+            recovered = _recovery_preamble_for(ctx, backend)(ctx.workspace_scope, config)
             if (
                 recovered is not None
                 and not recovered.is_intervention_required
@@ -2424,9 +2511,7 @@ def _handoff_retained_failure(
             ctx,
             ctx.latest_state[0].rebase if ctx.latest_state else None,
         )
-        recovered = _run_auto_integrate_recovery_preamble(
-            ctx.workspace_scope, config_absent, backend=backend
-        )
+        recovered = _recovery_preamble_for(ctx, backend)(ctx.workspace_scope, config_absent)
         if (
             recovered is not None
             and not recovered.is_intervention_required
@@ -2455,7 +2540,7 @@ def _handoff_retained_failure(
 
 
 def _dispatch_retained_handoff(
-    ctx: _LoopContext,
+    ctx: LoopContext,
     detail: str,
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
@@ -2472,7 +2557,7 @@ def _dispatch_retained_handoff(
 
 def _handle_retained_integration(
     state: PipelineState,
-    ctx: _LoopContext,
+    ctx: LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, tuple[PipelineState, str, int] | None]:
     """Handle retained integration reason on disk."""
@@ -2514,7 +2599,7 @@ def _handle_retained_integration(
 
 def _block_unresolved_integration(
     state: PipelineState,
-    ctx: _LoopContext,
+    ctx: LoopContext,
     prev_phase: str,
 ) -> tuple[PipelineState, str, int] | None:
     """Route blocking evidence through recovery before ordinary dispatch.
@@ -2591,7 +2676,7 @@ def _block_unresolved_integration(
     return state, prev_phase, 1
 
 
-def _blocking_record(ctx: _LoopContext) -> tuple[IntegrationRecord | None, bool]:
+def _blocking_record(ctx: LoopContext) -> tuple[IntegrationRecord | None, bool]:
     """Read the durable integration record for the blocking decision.
 
     The read OUTCOME is a durable record fact, so it is decided by the
@@ -2631,7 +2716,7 @@ def _blocking_record(ctx: _LoopContext) -> tuple[IntegrationRecord | None, bool]
 
 
 def _post_recovery_verdict(
-    ctx: _LoopContext,
+    ctx: LoopContext,
     state: PipelineState,
     prev_phase: str,
     verdict: IntegrationResolutionVerdict,
@@ -2666,7 +2751,7 @@ def _post_recovery_verdict(
 
 def _run_inner_loop(
     state: PipelineState,
-    ctx: _LoopContext,
+    ctx: LoopContext,
     prev_phase: str,
     *,  # keyword-only seam for backend injection
     backend: FileBackend = DEFAULT_FILE_BACKEND,
@@ -2692,7 +2777,7 @@ def _run_inner_loop(
 
 def _continue_after_startup_integration(
     state: PipelineState,
-    ctx: _LoopContext,
+    ctx: LoopContext,
     prev_phase: str,
     *,  # keyword-only seam for backend injection
     backend: FileBackend = DEFAULT_FILE_BACKEND,
@@ -2717,7 +2802,7 @@ def _with_run_ledger(
 
 
 def _iteration_pipeline_deps(
-    ctx: _LoopContext,
+    ctx: LoopContext,
     connectivity_provider: Callable[[], str | None],
     waiting_provider: Callable[[], bool],
 ) -> PipelineDeps | None:
@@ -2731,8 +2816,8 @@ def _iteration_pipeline_deps(
     )
 
 
-def _initialize_loop_timeboxes(state: PipelineState, ctx: _LoopContext) -> PipelineState:
-    pipeline_deps = ctx.pipeline_deps if isinstance(ctx, _LoopContext) else None
+def _initialize_loop_timeboxes(state: PipelineState, ctx: LoopContext) -> PipelineState:
+    pipeline_deps = ctx.pipeline_deps if isinstance(ctx, LoopContext) else None
     return _initialize_resumed_timeboxes(
         state,
         ctx.policy_bundle.pipeline,
@@ -2740,7 +2825,7 @@ def _initialize_loop_timeboxes(state: PipelineState, ctx: _LoopContext) -> Pipel
     )
 
 
-def _publish_state_snapshot(ctx: _LoopContext, state: PipelineState) -> None:
+def _publish_state_snapshot(ctx: LoopContext, state: PipelineState) -> None:
     """Publish the step's state to the snapshot registry, when one is attached."""
     if ctx.snapshot_registry is None:
         return
@@ -2749,8 +2834,11 @@ def _publish_state_snapshot(ctx: _LoopContext, state: PipelineState) -> None:
     ctx.snapshot_registry.publish(build_pipeline_state_snapshot(state, ctx.workspace_scope.root))
 
 
-def _effective_conflict_cap(ctx: _LoopContext) -> int:
+def _effective_conflict_cap(ctx: LoopContext) -> int:
     """Resolve the effective consecutive-conflict counter-cap."""
+    hooks = _retry_hooks(ctx)
+    if hooks.effective_conflict_cap is not None:
+        return hooks.effective_conflict_cap(ctx)
     from ralph.pipeline.auto_integrate_remote_sync import resolver_attempt_limit
 
     return max(1, resolver_attempt_limit(ctx.config))
@@ -2793,7 +2881,7 @@ def _render_current_observation_detail(rebase: RebaseState) -> str:
 
 def _wait_for_integration_retry(
     state: PipelineState,
-    ctx: _LoopContext,
+    ctx: LoopContext,
     *,  # keyword-only seam for backend injection
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> PipelineState:
@@ -2936,7 +3024,7 @@ def _wait_for_integration_retry(
 
 def _handle_intervention_required_retry(
     state: PipelineState,
-    ctx: _LoopContext,
+    ctx: LoopContext,
     rebase: RebaseState,
     alarm: str,
     detail: str,
@@ -2958,9 +3046,7 @@ def _handle_intervention_required_retry(
     permanent dead end. The flag ``ctx._session_handoff_dispatched``
     guards against repeat handoffs within the same session.
     """
-    recovered = _run_auto_integrate_recovery_preamble(
-        ctx.workspace_scope, ctx.config, backend=backend
-    )
+    recovered = _recovery_preamble_for(ctx, backend)(ctx.workspace_scope, ctx.config)
     if (
         recovered is not None
         and not recovered.is_intervention_required
@@ -3019,7 +3105,7 @@ def _handle_intervention_required_retry(
 _MAX_COOLDOWN_SLEEP_SECONDS = 30.0
 
 
-def _resolver_cooldown_wait_ms(ctx: _LoopContext) -> int:
+def _resolver_cooldown_wait_ms(ctx: LoopContext) -> int:
     """Milliseconds until an installed resolver is selectable; 0 when one already is."""
     from ralph.pipeline.conflict_resolution.resolver_health import choose_resolver
     from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
@@ -3035,7 +3121,7 @@ def _resolver_cooldown_wait_ms(ctx: _LoopContext) -> int:
 
 def _handle_pending_retry(
     state: PipelineState,
-    ctx: _LoopContext,
+    ctx: LoopContext,
     rebase: RebaseState,
     detail: str,
     backend: FileBackend,
@@ -3065,9 +3151,7 @@ def _handle_pending_retry(
         ctx.latest_state[:] = [state]
         ctx.sleep(min(cooldown_ms / 1000.0, _MAX_COOLDOWN_SLEEP_SECONDS))
         return state.clear_waiting()
-    recovered = _run_auto_integrate_recovery_preamble(
-        ctx.workspace_scope, ctx.config, backend=backend
-    )
+    recovered = _recovery_preamble_for(ctx, backend)(ctx.workspace_scope, ctx.config)
     if recovered is not None and not recovered.integration_unresolved:
         # The remote-publication authority is a separate obligation from
         # Git-side integration. A nonterminal publication decision
@@ -3295,7 +3379,7 @@ def _durable_record_intervention_guard(
     return rebase, True
 
 
-def _handle_cooldown_delay(state: PipelineState, ctx: _LoopContext) -> PipelineState:
+def _handle_cooldown_delay(state: PipelineState, ctx: LoopContext) -> PipelineState:
     """Handle cooldown wait when last_retry_delay_ms is set."""
     delay_ms = state.last_retry_delay_ms
     if not isinstance(delay_ms, int) or delay_ms <= 0:
@@ -3376,7 +3460,7 @@ def _retry_guard_requires_intervention(state: PipelineState) -> bool:
     return RetryProgressGuard.from_dict(raw).requires_operator_intervention
 
 
-def _cycle_cap_exhausted(state: PipelineState, ctx: _LoopContext) -> bool:
+def _cycle_cap_exhausted(state: PipelineState, ctx: LoopContext) -> bool:
     """Whether the recovery controller's cycle cap is exceeded at ``failed_route``.
 
     When the controller emits ``ExitFailureEffect`` for a cap-exceeded cycle,
@@ -3391,7 +3475,7 @@ def _cycle_cap_exhausted(state: PipelineState, ctx: _LoopContext) -> bool:
 
 def _run_inner_loop_after_startup(
     state: PipelineState,
-    ctx: _LoopContext,
+    ctx: LoopContext,
     prev_phase: str,
     *,  # keyword-only seam for backend injection
     backend: FileBackend = DEFAULT_FILE_BACKEND,
@@ -3855,7 +3939,7 @@ def _resolve_effective_subscriber(
 
 def _handle_keyboard_interrupt(
     state: PipelineState,
-    loop_ctx: _LoopContext,
+    loop_ctx: LoopContext,
 ) -> int:
     """Handle KeyboardInterrupt during pipeline execution; return exit_code 130."""
     logger.warning("Interrupted by user; shutting down tracked processes.")
@@ -3898,7 +3982,7 @@ def _run_cleanup_step(resource: str, stage: str, action: Callable[[], None]) -> 
 
 
 def _cleanup_pipeline(
-    loop_ctx: _LoopContext,
+    loop_ctx: LoopContext,
     unsubscribe_bus: Callable[[], None],
     unsubscribe_display: Callable[[], None],
     display_stop: Callable[[], None],
@@ -3969,7 +4053,7 @@ def _cleanup_pipeline(
     _run_cleanup_step("process_teardown", "teardown", teardown)
 
 
-def _report_pending_remote_publication(state: PipelineState, ctx: _LoopContext) -> PipelineState:
+def _report_pending_remote_publication(state: PipelineState, ctx: LoopContext) -> PipelineState:
     """Record a final unpublished remote result without retrying or waiting."""
     pending_status = state.rebase.last_push_status
     if pending_status in (None, "pushed", "created"):
@@ -4003,7 +4087,7 @@ def _report_pending_remote_publication(state: PipelineState, ctx: _LoopContext) 
 
 def _execute_with_cleanup(
     initial_state: PipelineState,
-    loop_ctx: _LoopContext,
+    loop_ctx: LoopContext,
     prev_phase: str,
     unsubscribe_bus: Callable[[], None],
     unsubscribe_display: Callable[[], None],
@@ -4271,13 +4355,13 @@ def run(
         now=time.monotonic,
     )
     # The catch-up worker starts as the LAST setup step, inside the
-    # _LoopContext construction that feeds straight into
+    # LoopContext construction that feeds straight into
     # _execute_with_cleanup's try/finally -- nothing may run between
     # the worker starting and the cleanup guarantee attaching, or a
     # setup exception would strand the ticking thread (it is daemonic,
     # so the process could still exit, but the guarantee should not
     # have gaps).
-    loop_ctx = _LoopContext(
+    loop_ctx = LoopContext(
         policy_bundle=policy_bundle,
         workspace_scope=workspace_scope,
         config=config,
@@ -4325,7 +4409,7 @@ def _start_pro_marker_watcher(
     The watcher polls for the marker and adopts it on first
     appearance. The heartbeat client (if any) is the one created
     by the watcher's heartbeat_factory on adoption. Both are
-    returned so the run loop can attach them to _LoopContext.
+    returned so the run loop can attach them to LoopContext.
 
     When the marker is missing at engine start time, the watcher
     is started in daemon mode and will adopt the marker later.

@@ -48,6 +48,9 @@ from ralph.process.manager._process_event import ProcessEvent
 from ralph.process.manager._process_liveness import LivenessResult, verify_process_liveness
 from ralph.process.manager._process_manager import ProcessManager
 from ralph.process.manager._process_manager_policy import ProcessManagerPolicy
+from ralph.process.manager._process_manager_runtime import (
+    loguru_event_listener as loguru_event_listener,
+)
 from ralph.process.manager._process_manager_types import (
     _AsyncProcessLike,
     _PtyProcessLike,
@@ -67,16 +70,19 @@ from ralph.process.manager._process_manager_types import (
     _SyncProcessLike as SyncProcessLike,
 )
 from ralph.process.manager._process_record import ProcessRecord
-from ralph.process.manager._process_status import ProcessStatus
+from ralph.process.manager._process_status import ProcessStatus, is_terminal_status
 from ralph.process.manager._process_termination_error import ProcessTerminationError
 from ralph.process.manager._pty_spawn_options import PtySpawnOptions
 from ralph.process.manager._singleton import (
     _pm_state,
     get_process_manager,
+    install_process_manager,
     process_phase_scope,
     reset_process_manager,
+    shutdown_process_manager,
 )
 from ralph.process.manager._spawn_options import SpawnOptions
+from ralph.process.manager.liveness_verifier import LivenessVerifier
 from ralph.process.pty import spawn_pty_process
 
 if TYPE_CHECKING:
@@ -347,6 +353,15 @@ _set_defaults(
     _default_pty_process_factory,
 )
 
+#: Public handle on the production default sync process factory.
+#:
+#: The factory is the seam every caller that does NOT inject its own
+#: ``sync_process_factory`` ends up on.  Exposing it publicly lets a
+#: caller (or a test) drive the REAL spawn path -- argument shaping,
+#: environment sanitisation, supervisor wrapping -- without reaching
+#: into the module's private namespace.
+default_sync_process_factory = _default_sync_process_factory
+
 __all__ = [
     "AsyncProcessLike",
     "DeadlineTimeoutExpired",
@@ -354,6 +369,7 @@ __all__ = [
     "LivenessProc",
     "LivenessResult",
     "LivenessVerdict",
+    "LivenessVerifier",
     "LivenessWindow",
     "ManagedAsyncProcess",
     "ManagedProcess",
@@ -379,14 +395,19 @@ __all__ = [
     "cpu_busy",
     "death_preexec",
     "default_liveness_config",
+    "default_sync_process_factory",
     "evaluate_rules",
     "get_process_manager",
+    "install_process_manager",
     "io_active",
     "is_git_name",
+    "is_terminal_status",
+    "loguru_event_listener",
     "output_recent",
     "process_phase_scope",
     "repetitive",
     "reset_process_manager",
+    "shutdown_process_manager",
     "step_with_assessment",
     "tree_active",
     "verify_process_liveness",

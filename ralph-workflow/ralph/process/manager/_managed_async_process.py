@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 from typing import TYPE_CHECKING
 
+from ralph import timeout_defaults
 from ralph.process.manager._process_status import _TERMINAL_STATUSES, ProcessStatus
 from ralph.timeout_defaults import PROCESS_EXIT_WAIT_SECONDS
 
@@ -73,7 +74,7 @@ class ManagedAsyncProcess:
         try:
             rc = await asyncio.wait_for(
                 self._proc.wait(),  # mcp-timeout-ok: bounded via wait_for(timeout)
-                timeout=PROCESS_EXIT_WAIT_SECONDS,
+                timeout=timeout_defaults.PROCESS_EXIT_WAIT_SECONDS,
             )
         except TimeoutError:
             # Inner task was cancelled by wait_for; skip _mark_exited
@@ -88,7 +89,7 @@ class ManagedAsyncProcess:
         try:
             comm_result = await asyncio.wait_for(
                 self._proc.communicate(input),  # mcp-timeout-ok: bounded via wait_for(timeout)
-                timeout=PROCESS_EXIT_WAIT_SECONDS,
+                timeout=timeout_defaults.PROCESS_EXIT_WAIT_SECONDS,
             )
         except TimeoutError:
             # Inner task was cancelled by wait_for; propagate so the

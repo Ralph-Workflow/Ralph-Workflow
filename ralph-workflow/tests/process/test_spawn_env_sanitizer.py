@@ -7,7 +7,7 @@ from importlib import import_module
 
 import pytest
 
-from ralph.process._spawn_env import (
+from ralph.process import (
     MALLOC_DEBUG_NOISE_VARS,
     sanitize_process_environment,
     strip_malloc_debug_noise,

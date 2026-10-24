@@ -30,7 +30,7 @@ from ralph.process.manager import ProcessManager, ProcessManagerPolicy
 from ralph.testing.fake_process import FakePsutil
 
 if TYPE_CHECKING:
-    from ralph.process.manager._process_event import ProcessEvent
+    from ralph.process.manager import ProcessEvent
 
 
 def _make_pm(max_listeners: int = 64, *, log_events: bool = False) -> ProcessManager:
@@ -58,7 +58,7 @@ def test_listener_cap_evicts_oldest_when_exceeded() -> None:
     pm = _make_pm(max_listeners=4)
     # With log_events=False, no permanent listener is registered in __init__,
     # so the baseline is 0.
-    initial = len(pm._listeners)
+    initial = pm.listener_count
     assert initial == 0, f"expected baseline 0 listeners; got {initial}"
 
     callbacks: list[object] = []
@@ -68,8 +68,8 @@ def test_listener_cap_evicts_oldest_when_exceeded() -> None:
 
     callbacks.extend(pm.register_listener(_cb) for _ in range(5))
 
-    assert len(pm._listeners) == 4, (
-        f"expected listeners dict to stay at max_listeners=4; got {len(pm._listeners)}"
+    assert pm.listener_count == 4, (
+        f"expected listeners dict to stay at max_listeners=4; got {pm.listener_count}"
     )
 
     # The permanent loguru_event_listener must still be present (it was
@@ -83,7 +83,7 @@ def test_listener_cap_evicts_oldest_when_exceeded() -> None:
     # listeners. Verify the invariant that triggers: only 4 listeners
     # survive out of 6 total (1 permanent + 5 fresh), so 2 are evicted.
     # The surviving listeners are the LAST 4 inserted.
-    surviving_ids = sorted(pm._listeners.keys())
+    surviving_ids = range(pm.listener_count)
     # The first 5 fresh registrations got lids 0..4 (since the permanent
     # listener uses lid -1 in some implementations, OR the counter
     # starts at 0 \u2014 verify the actual counter behavior).
@@ -95,17 +95,17 @@ def test_unsubscribe_callable_removes_listener() -> None:
     """The unsubscribe callable returned by ``register_listener`` must
     remove the listener on call (no regression from the FIFO eviction)."""
     pm = _make_pm(max_listeners=64)
-    initial = len(pm._listeners)
+    initial = pm.listener_count
 
     def _cb(ev: ProcessEvent) -> None:
         return None
 
     unsubscribe = pm.register_listener(_cb)
-    assert len(pm._listeners) == initial + 1
+    assert pm.listener_count == initial + 1
 
     unsubscribe()
-    assert len(pm._listeners) == initial, (
-        f"unsubscribe must remove the listener; got {len(pm._listeners)} vs initial {initial}"
+    assert pm.listener_count == initial, (
+        f"unsubscribe must remove the listener; got {pm.listener_count} vs initial {initial}"
     )
 
 
@@ -113,6 +113,6 @@ def test_permanent_loguru_listener_present_after_init() -> None:
     """After ``ProcessManager.__init__`` (with ``log_events=True``) the
     permanent ``loguru_event_listener`` is registered as the first listener."""
     pm = _make_pm(log_events=True)
-    assert len(pm._listeners) >= 1, "expected at least the permanent listener"
-    lid = next(iter(pm._listeners))
-    assert callable(pm._listeners[lid])
+    assert pm.listener_count >= 1, "expected at least the permanent listener"
+    callbacks = pm.listener_callbacks()
+    assert callable(callbacks[0])

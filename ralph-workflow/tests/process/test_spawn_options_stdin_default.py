@@ -37,11 +37,9 @@ import subprocess
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 
-from ralph.process.manager import SpawnOptions
-from ralph.process.manager._process_manager import ProcessManager
-from ralph.process.manager._process_manager_policy import ProcessManagerPolicy
-from ralph.testing._fake_popen import FakePopen
-from ralph.testing._process_state import ProcessState
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy, SpawnOptions
+from ralph.testing import FakePopen
+from ralph.testing.fake_process import ProcessState
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _RALPH_PACKAGE_ROOT = _REPO_ROOT / "ralph"

@@ -4,9 +4,13 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ralph.process.manager import ManagedPtyProcess, ProcessManager, ProcessManagerPolicy
-from ralph.process.manager._process_record import ProcessRecord
-from ralph.process.manager._process_status import ProcessStatus
+from ralph.process.manager import (
+    ManagedPtyProcess,
+    ProcessManager,
+    ProcessManagerPolicy,
+    ProcessRecord,
+    ProcessStatus,
+)
 
 pytestmark = pytest.mark.timeout_seconds(5)
 

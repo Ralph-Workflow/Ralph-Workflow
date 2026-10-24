@@ -15,12 +15,23 @@ All child processes go through `ProcessManager`. No direct `subprocess.Popen`,
 | `spawn_pty(command, *, label, ...)` | Spawn a PTY-backed child; returns `ManagedPtyProcess` |
 | `spawn_async(command, *, label, ...)` | Spawn an async child; returns `ManagedAsyncProcess` |
 | `register_listener(callback)` | Subscribe to `ProcessEvent` stream; returns unsubscribe callable |
+| `listener_count` | Number of currently registered listeners (capped by `policy.max_listeners`) |
+| `listener_callbacks()` | Snapshot tuple of the registered listener callbacks, in registration order |
 | `terminate(handle, ...)` | Escalated termination for a `ManagedProcess` |
+| `terminate_executor` | The dedicated bounded termination executor, or `None` while unallocated |
 | `shutdown_all(*)` | Terminate all tracked active processes |
 | `shutdown_all_for_label(prefix, *)` | Terminate active processes whose label starts with `prefix` |
 | `process_phase_scope(phase_name)` | Context manager: tears down `phase:<phase>` processes on exit |
 | `get_process_manager()` | Module-level singleton |
-| `reset_process_manager()` | Replace singleton; use in test teardown |
+| `install_process_manager(manager)` | Install a caller-built manager as the module-level singleton |
+| `shutdown_process_manager(*)` | Shut the module-level singleton down; the `atexit` hook body |
+| `reset_process_manager(*)` | Replace singleton; use in test teardown |
+| `is_terminal_status(status)` | True when a `ProcessStatus` is a terminal lifecycle state |
+
+The `ProcessManager` constructor accepts two dependency-injection seams:
+`sync_process_factory` / `async_process_factory` / `pty_process_factory`
+replace the spawn path, and `terminate_executor_factory` replaces the
+builder of the dedicated termination executor.
 
 ## Lifecycle state machine
 
@@ -188,6 +199,7 @@ environments or when starting with a clean slate.
 ## atexit safety net
 
 `get_process_manager()` registers an `atexit` hook on first call that calls
+`shutdown_process_manager()`, which shuts the singleton down with
 `shutdown_all(grace_period_s=0.5)`. This is a last-resort net for crash/abort
 scenarios — always prefer explicit `shutdown_all` or `process_phase_scope`.
 

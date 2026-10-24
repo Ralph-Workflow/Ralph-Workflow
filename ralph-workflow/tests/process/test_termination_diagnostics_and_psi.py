@@ -18,9 +18,12 @@ import pytest
 from loguru import logger
 
 from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
-from ralph.process.manager import ProcessManager, ProcessManagerPolicy
-from ralph.process.manager._process_status import ProcessStatus
-from ralph.process.manager._process_termination_error import ProcessTerminationError
+from ralph.process.manager import (
+    ProcessManager,
+    ProcessManagerPolicy,
+    ProcessStatus,
+    ProcessTerminationError,
+)
 from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.testing.fake_process import (
     FakePsutil,

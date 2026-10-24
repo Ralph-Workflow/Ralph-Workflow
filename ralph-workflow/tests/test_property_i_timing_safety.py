@@ -11,7 +11,7 @@ import-time guard uses ``if``/``raise RuntimeError`` (NOT ``assert``) so
 from __future__ import annotations
 
 import importlib
-from pathlib import Path
+import inspect
 
 import pytest
 
@@ -165,11 +165,11 @@ def test_timing_safety_guard_uses_runtimeerror_not_assert() -> None:
     without failing this test.
 
     This is a fast, deterministic, no-IO static check (no subprocess, no
-    ``time.sleep``, no real file I/O outside the import-time
-    ``read_text``).
+    ``time.sleep``, no direct filesystem access): the module source is
+    obtained through ``inspect.getsource`` on the already-imported
+    module.
     """
-    repo = Path(__file__).resolve().parents[1]
-    text = (repo / "ralph" / "mcp" / "server" / "_timing_safety.py").read_text()
+    text = inspect.getsource(_timing_safety)
     # The strip-resistant pattern: at least one ``raise RuntimeError`` is
     # present in the source so a future guard regression to ``assert``
     # would be visible by side-by-side diff with this assertion.

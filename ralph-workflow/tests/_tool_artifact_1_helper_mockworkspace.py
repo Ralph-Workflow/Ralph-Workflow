@@ -1,14 +1,10 @@
-from __future__ import annotations
+"""Re-export shim for the shared tool-artifact helpers.
 
-from typing import TYPE_CHECKING
+The implementation now lives in ``tests/_tool_artifact_helpers.py``; this
+module keeps the legacy ``_tool_artifact_1_helper_mockworkspace`` import path
+working for existing consumers.
+"""
 
-if TYPE_CHECKING:
-    from pathlib import Path
+from tests._tool_artifact_helpers import MockWorkspace
 
-
-class MockWorkspace:
-    def __init__(self, root: Path) -> None:
-        self.root = root
-
-    def absolute_path(self, path: str) -> str:
-        return str(self.root / path)
+__all__ = ["MockWorkspace"]

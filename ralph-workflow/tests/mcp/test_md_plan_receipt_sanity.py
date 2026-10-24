@@ -39,7 +39,9 @@ class Utf8Backend(MemoryBackend):
 
     def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
         content.encode(encoding)
-        super().write_text(path, content, encoding=encoding)
+        # Explicit unbound call to the in-memory backend: the parent write
+        # is a dict assignment, never a filesystem write.
+        MemoryBackend.write_text(self, path, content, encoding=encoding)
 
 
 _PROSE = "Inspect code then implement independent changes and verify all behavior carefully."
