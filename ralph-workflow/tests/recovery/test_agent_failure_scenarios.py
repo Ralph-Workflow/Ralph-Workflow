@@ -143,15 +143,14 @@ def test_scenario_5_all_agents_dead_ends_through_exhaustion_path_bounded(tmp_pat
         tmp_path,
         script=script,
         agents=("agent_a", "agent_b"),
-        max_iterations=20,
+        max_iterations=25,
     )
 
-    # Must terminate without infinite loop
+    # Must terminate without infinite loop and end through exhaustion path
     assert len(outcome.invocations) <= 20
-    # Must reach failed_terminal or waiting state; never running development
-    assert outcome.final_state.phase == "failed_terminal" or outcome.final_state.is_waiting_state
-    if outcome.final_state.phase == "failed_terminal":
-        assert outcome.exit_code == 1
+    assert outcome.final_state.phase == "failed_terminal"
+    assert outcome.exit_code == 1
+    assert not outcome.final_state.is_waiting_state
 
 
 @pytest.mark.parametrize(

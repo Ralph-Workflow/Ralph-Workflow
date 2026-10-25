@@ -95,3 +95,19 @@ def test_general_config_to_recovery_controller_options() -> None:
     )
     assert options.agent_max_consecutive_unproductive == 5
     assert options.agent_max_total_unproductive == 12
+
+
+@pytest.mark.parametrize(
+    "removed_key",
+    [
+        "agent_max_same_shape_resumes",
+        "agent_max_broken_agent_same_shape_resumes",
+        "in_session_retry_escalation_limit",
+    ],
+)
+def test_general_config_rejects_removed_retry_settings(removed_key: str) -> None:
+    """Removed retry settings are rejected during validation with a clear error."""
+    with pytest.raises(ValueError) as excinfo:
+        GeneralConfig.model_validate({removed_key: 3})
+    assert removed_key in str(excinfo.value)
+    assert "removed" in str(excinfo.value).lower()

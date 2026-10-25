@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.recovery.agent_failure_ledger import AttemptFact
+from ralph.recovery.failure_category import FailureCategory
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -90,35 +91,28 @@ def bench_resolver(
     controller: RecoveryController,
     agent: str,
     raw_failure: BaseException | str,
+    *,
+    workspace_changed: bool = False,
 ) -> None:
-    """Bench ``agent`` in the resolution phase using the shared ledger."""
-    from ralph.recovery.unavailability_reason import (
-        DEFAULT_UNAVAILABILITY_BACKOFF_POLICY,
-        UnavailabilityReason,
-    )
-
-    reason_str: str | None = None
-    duration_ms: int | None = None
-    try:
+    """Record an unproductive resolution attempt for ``agent`` in the resolution phase."""
+    is_free_retry = False
+    with suppress(Exception):
         classified = controller.classify_conflict_attempt(
             raw_failure, agent=agent, connectivity_state="online"
         )
-        reason = classified.unavailability_reason or UnavailabilityReason.PROCESS_EXITED
-        reason_str = str(reason.value if hasattr(reason, "value") else reason)
-        policy = DEFAULT_UNAVAILABILITY_BACKOFF_POLICY.get(reason)
-        duration_ms = policy.base_backoff_ms if policy is not None else 5_000
-    except (AttributeError, Exception):
-        pass
-
-    try:
-        controller.ledger.bench(PHASE_RESOLUTION, agent, reason=reason_str, duration_ms=duration_ms)
-    except (AttributeError, Exception):
-        _record_resolver_fact(
-            controller,
-            agent,
-            artifact_valid=False,
-            workspace_changed=False,
+        is_free_retry = classified.category in (
+            FailureCategory.ENVIRONMENTAL,
+            FailureCategory.ARTIFACT_VALIDATION,
+            FailureCategory.AMBIGUOUS,
         )
+
+    _record_resolver_fact(
+        controller,
+        agent,
+        artifact_valid=False,
+        workspace_changed=workspace_changed,
+        free_retry_category=is_free_retry,
+    )
 
 
 def clear_resolver(controller: RecoveryController, agent: str) -> None:

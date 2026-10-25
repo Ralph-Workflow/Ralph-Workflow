@@ -316,46 +316,6 @@ class AgentFailureLedger:
                 total_unproductive=entry.total_unproductive,
             )
 
-    def bench(
-        self,
-        phase: str,
-        agent: str,
-        *,
-        reason: str | None = None,
-        duration_ms: int | None = None,
-    ) -> Cooldown:
-        """Immediately place an agent on cooldown in the given phase."""
-        with self._lock:
-            key = (phase, agent)
-            now_ms = int(self._clock.monotonic() * 1000)
-            entry = self._entries.get(key)
-            if entry is None:
-                entry = _LedgerEntry()
-                self._entries[key] = entry
-
-            self._sync_cooldown_expiry(entry, now_ms)
-            entry.consecutive_unproductive += 1
-            entry.total_unproductive += 1
-            cooldown_reason = reason or _COOLDOWN_REASON_CONSECUTIVE
-
-            exponent = min(entry.cooldown_count, 30)
-            base_s = (
-                (duration_ms / 1000.0)
-                if duration_ms is not None and duration_ms > 0
-                else self._base_cooldown_seconds
-            )
-            duration_seconds = min(
-                base_s * (self._backoff_factor**exponent),
-                self._max_cooldown_seconds,
-            )
-            final_duration_ms = int(duration_seconds * 1000)
-
-            until_ms = now_ms + final_duration_ms
-            entry.cooldown_until_ms = until_ms
-            entry.cooldown_reason = cooldown_reason
-            entry.cooldown_count += 1
-            return Cooldown(until_ms=until_ms, reason=cooldown_reason)
-
     def snapshot(self) -> dict[str, object]:
         """Return a serializable dictionary snapshot of ledger state."""
         with self._lock:

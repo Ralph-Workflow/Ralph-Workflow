@@ -1513,6 +1513,9 @@ def _finalize_agent_invocation(
             verbosity=verbosity,
             state=state,
             run_id=run_id,
+            workspace_probe=(
+                recovery_controller.workspace_probe if recovery_controller is not None else None
+            ),
         )
     else:
         # F6 / DoD 12: a required-artifact phase whose agent invocation did

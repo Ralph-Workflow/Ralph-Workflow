@@ -460,6 +460,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentChainConfig, PipelinePolicy, PolicyBundle
     from ralph.recovery.unavailability_reason import UnavailabilityReason
+    from ralph.workspace.probe import WorkspaceChangeProbe
 
 
 def _build_exit_failure_effect(*, reason: str) -> Effect:
@@ -566,7 +567,7 @@ class RecoveryController:
                 consecutive_limit=self._consecutive_unproductive_limit,
                 total_limit=self._total_unproductive_limit,
             )
-        self._workspace_probe: object | None = opts.workspace_probe
+        self._workspace_probe: WorkspaceChangeProbe | None = opts.workspace_probe
         self._spent_agents: dict[str, set[str]] = {
             k: set(v) for k, v in (opts.spent_agents or {}).items()
         }  # bounded-accumulator-ok: keyed by phase, drained by reset_backoff
@@ -591,7 +592,7 @@ class RecoveryController:
         return self._ledger
 
     @property
-    def workspace_probe(self) -> object | None:
+    def workspace_probe(self) -> WorkspaceChangeProbe | None:
         """Probe for detecting filesystem changes across invocations."""
         return self._workspace_probe
 
@@ -1357,40 +1358,60 @@ class RecoveryController:
         # (available agents have no budget/retries left), so fail the phase.
         if all(not self._is_agent_available(phase, agent) for agent in chain.agents):
             wait_ms = self._earliest_unavailable_wait_ms(phase, chain)
-            unavail_reason = (
-                failure.unavailability_reason.value if failure.unavailability_reason else "unknown"
+            if wait_ms > 0:
+                unavail_reason = (
+                    failure.unavailability_reason.value
+                    if failure.unavailability_reason
+                    else "unknown"
+                )
+                reason = (
+                    f"all agents unavailable (last reason: {unavail_reason});"
+                    " waiting for cooldown expiry"
+                )
+                logger.info(
+                    "{} in phase={} (wait_ms={} unavailability_reason={})",
+                    reason,
+                    phase,
+                    wait_ms,
+                    failure.unavailability_reason,
+                )
+                updated_evt = replace(failure_evt, retry_delay_ms=wait_ms)
+                self._bus.publish(updated_evt)
+                return (
+                    state.copy_with(
+                        last_error=reason,
+                        last_retry_delay_ms=wait_ms,
+                        # Structured wait-state flag: the run loop keys off this
+                        # boolean to detect the wait state. ``last_error`` text
+                        # is operator-readable context only and is NOT a contract
+                        # the run loop parses. The flag is the single source of
+                        # truth; setting it here ensures the WAITING / RESUMED
+                        # structured log path is taken on the next loop
+                        # iteration.
+                    ).set_waiting(WaitReason.ALL_AGENTS_UNAVAILABLE, None),
+                    [],
+                    updated_evt,
+                )
+
+        if len(chain.agents) == 1 and not self._is_agent_available(phase, chain.agents[0]):
+            sole_agent = chain.agents[0]
+            st = self._ledger.status(phase, sole_agent)
+            demote_reason = (
+                st.reason if isinstance(st, (Cooldown, Spent)) and st.reason else failure.reason
             )
-            reason = (
-                f"all agents unavailable (last reason: {unavail_reason});"
-                " waiting for cooldown expiry"
+            exhaustion_reason = (
+                f"Sole agent '{sole_agent}' demoted in phase '{phase}': "
+                f"unproductive attempt limit reached ({demote_reason})"
             )
-            logger.info(
-                "{} in phase={} (wait_ms={} unavailability_reason={})",
-                reason,
-                phase,
-                wait_ms,
-                failure.unavailability_reason,
+        elif all(not self._is_agent_available(phase, agent) for agent in chain.agents):
+            exhaustion_reason = (
+                f"All agents in phase '{phase}' demoted or exhausted: {failure.reason}"
             )
-            updated_evt = replace(failure_evt, retry_delay_ms=wait_ms)
-            self._bus.publish(updated_evt)
-            return (
-                state.copy_with(
-                    last_error=reason,
-                    last_retry_delay_ms=wait_ms,
-                    # Structured wait-state flag: the run loop keys off this
-                    # boolean to detect the wait state. ``last_error`` text
-                    # is operator-readable context only and is NOT a contract
-                    # the run loop parses. The flag is the single source of
-                    # truth; setting it here ensures the WAITING / RESUMED
-                    # structured log path is taken on the next loop
-                    # iteration.
-                ).set_waiting(WaitReason.ALL_AGENTS_UNAVAILABLE, None),
-                [],
-                updated_evt,
-            )
+        else:
+            exhaustion_reason = failure.reason
 
         new_state = state.copy_with(recovery_cycle_count=state.recovery_cycle_count + 1)
-        failed_state = self._enter_phase_failed(new_state, failure.reason, failure.category)
+        failed_state = self._enter_phase_failed(new_state, exhaustion_reason, failure.category)
         # Enforce the cap HERE, at the single funnel where a phase gives up and
         # the cycle counter advances, not only on the AGENT path in ``handle``.
         # The technical categories (ENVIRONMENTAL / ARTIFACT_VALIDATION /
@@ -1531,6 +1552,10 @@ class RecoveryController:
             cooldown_ms = 0
             if isinstance(timeout_ms, int):
                 cooldown_ms = max(0, timeout_ms - now_ms)
+            ledger_status = self._ledger.status(phase, agent)
+            if isinstance(ledger_status, Cooldown):
+                ledger_cooldown_ms = max(0, ledger_status.until_ms - now_ms)
+                cooldown_ms = max(cooldown_ms, ledger_cooldown_ms)
             result.append((agent, attempt_int, cooldown_ms))
         return result
 
@@ -1549,7 +1574,7 @@ class RecoveryController:
             A list of agent names that are currently available, preserving
             the input order.
         """
-        return [a for a in agents if self._unavailability_tracker.is_available(phase, a)]
+        return [a for a in agents if self._is_agent_available(phase, a)]
 
     def _enter_phase_failed(
         self,

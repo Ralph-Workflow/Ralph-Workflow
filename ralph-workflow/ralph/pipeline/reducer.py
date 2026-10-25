@@ -929,6 +929,18 @@ def _handle_agent_failure(
             if chain.agents and chain.current_index < len(chain.agents)
             else None
         )
+        if current_agent is not None:
+            from ralph.recovery.agent_failure_ledger import AttemptFact
+
+            recovery.ledger.record(
+                AttemptFact(
+                    phase=state.phase,
+                    agent=current_agent,
+                    artifact_valid=False,
+                    workspace_changed=False,
+                    free_retry_category=True,
+                )
+            )
         if chain.retries >= max_retries and current_agent is not None:
             recovery.note_retry_exhaustion(state.phase, current_agent)
         selection = recovery.preferred_agent_index(

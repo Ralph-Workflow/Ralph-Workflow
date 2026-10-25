@@ -65,7 +65,8 @@ def test_pass_with_every_resolver_cooling_down_waits_without_working_or_charging
     sleeps: list[float] = []
     ctx = _ctx(tmp_path, sleeps, FakeClock())
     for agent in resolution_chain_agents(ctx.policy_bundle):
-        bench_resolver(ctx.controller, agent, "kaboom")
+        for _ in range(3):
+            bench_resolver(ctx.controller, agent, "kaboom")
     preamble_calls: list[object] = []
 
     def preamble(*_args: object, **_kwargs: object) -> RebaseState | None:
@@ -117,7 +118,8 @@ def test_pass_that_needs_no_resolver_still_runs_recovery_while_every_resolver_co
     sleeps: list[float] = []
     ctx = _ctx(tmp_path, sleeps, FakeClock())
     for agent in resolution_chain_agents(ctx.policy_bundle):
-        bench_resolver(ctx.controller, agent, "kaboom")
+        for _ in range(3):
+            bench_resolver(ctx.controller, agent, "kaboom")
     preamble_calls: list[object] = []
 
     def preamble(*_args: object, **_kwargs: object) -> RebaseState | None:

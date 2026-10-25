@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 from loguru import logger
 
-from ralph.agents.invoke import AgentInvocationError
+from ralph.agents.invoke import AgentInactivityTimeoutError, AgentInvocationError
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import Verbosity
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -41,6 +41,7 @@ from ralph.policy.models import (
     RecoveryPolicy,
 )
 from ralph.recovery.agent_failure_ledger import Cooldown
+from ralph.recovery.failure_category import FailureCategory
 from ralph.recovery.testing import FakeConnectivityMonitor
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
@@ -50,9 +51,7 @@ from tests._resolver_controller import make_resolver_controller
 if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.pipeline.factory import PipelineDeps
-    from ralph.recovery.agent_failure_ledger import AttemptFact, AttemptOutcome
     from ralph.recovery.controller import RecoveryController
-    from ralph.recovery.failure_category import FailureCategory
 
 
 @dataclass(frozen=True)
@@ -192,7 +191,15 @@ def _apply_attempt_side_effects(
     if result.raise_error is not None:
         raise result.raise_error
 
-    if result.exit_code != 0 and not result.produce_artifact:
+    if result.failure_category is not None:
+        if result.failure_category == FailureCategory.ENVIRONMENTAL:
+            raise ConnectionRefusedError(f"Simulated environmental connection refusal for {agent}")
+        if result.failure_category == FailureCategory.AMBIGUOUS:
+            raise RuntimeError(f"Simulated ambiguous failure for {agent}")
+        if result.failure_category == FailureCategory.AGENT:
+            raise AgentInactivityTimeoutError(agent, 60.0)
+
+    if result.exit_code != 0:
         raise AgentInvocationError(
             agent, result.exit_code, f"Simulated process exit code {result.exit_code} for {agent}"
         )
@@ -213,9 +220,13 @@ def _run_scenario_loop(
     stop_after_invocations: int | None,
     invocations: list[str],
     advance_clock_on_wait: bool,
+    cooldown_durations: dict[str, list[float]],
+    effective_clock: FakeClock,
+    agents: list[str] | tuple[str, ...],
 ) -> tuple[PipelineState, int]:
     terminal_phases = {"complete", "failed_terminal"}
     exit_code = 0
+    seen_cooldown_until: dict[str, set[int]] = {}
     for _iteration in range(1, max_iterations + 1):
         if stop_after_invocations is not None and len(invocations) >= stop_after_invocations:
             break
@@ -235,6 +246,16 @@ def _run_scenario_loop(
             recovery_controller=controller,
             pipeline_deps=deps,
         )
+
+        for ag in agents:
+            stat = controller.ledger.status(state.phase, ag)
+            if isinstance(stat, Cooldown) and stat.until_ms not in seen_cooldown_until.get(
+                ag, set()
+            ):
+                seen_cooldown_until.setdefault(ag, set()).add(stat.until_ms)
+                now_ms = int(effective_clock.monotonic() * 1000)
+                dur = (stat.until_ms - now_ms) / 1000.0
+                cooldown_durations.setdefault(ag, []).append(dur)
 
         if isinstance(step_result, int):
             exit_code = step_result
@@ -292,11 +313,14 @@ def run_scenario(
         controller if controller is not None else make_resolver_controller(effective_clock)
     )
 
+    from ralph.phases.required_artifacts import resolve_phase_required_artifact
+
     deps = make_test_pipeline_deps(
         display_context,
         recovery_controller_factory=lambda _s, _b, _c: (effective_controller, 0),
         policy_bundle=bundle,
         registry_factory=lambda _cfg: _ScenarioRegistry(),
+        artifact_requirements_resolver=resolve_phase_required_artifact,
     )
 
     invocations: list[str] = []
@@ -306,16 +330,6 @@ def run_scenario(
 
     def log_sink(msg: object) -> None:
         captured_logs.append(str(msg))
-
-    orig_record = effective_controller.ledger.record
-
-    def tracking_record(fact: AttemptFact) -> AttemptOutcome:
-        outcome = orig_record(fact)
-        if isinstance(outcome.status, Cooldown):
-            now_ms = int(effective_clock.monotonic() * 1000)
-            dur = (outcome.status.until_ms - now_ms) / 1000.0
-            cooldown_durations.setdefault(fact.agent, []).append(dur)
-        return outcome
 
     def resolve_attempt_result(agent: str, phase: str, attempt_num: int) -> AgentAttemptResult:
         if callable(script):
@@ -376,7 +390,6 @@ def run_scenario(
 
     try:
         with (
-            patch.object(effective_controller.ledger, "record", side_effect=tracking_record),
             patch("ralph.pipeline.effect_executor.invoke_agent", side_effect=fake_invoke_agent),
             patch("ralph.agents.invoke.invoke_agent", side_effect=fake_invoke_agent),
         ):
@@ -394,6 +407,9 @@ def run_scenario(
                 stop_after_invocations=stop_after_invocations,
                 invocations=invocations,
                 advance_clock_on_wait=advance_clock_on_wait,
+                cooldown_durations=cooldown_durations,
+                effective_clock=effective_clock,
+                agents=agents,
             )
 
         return ScenarioOutcome(

@@ -62,24 +62,27 @@ def test_failed_repair_agent_is_replaced_by_the_next_candidate() -> None:
     backend, invoked = _RecordBackend(), []
 
     controller = _controller(FakeClock())
-    _run(backend, controller, invoked)
+    for _ in range(3):
+        _run(backend, controller, invoked)
     _run(backend, controller, invoked)
 
-    assert invoked == ["first", "second"]
+    assert invoked == ["first", "first", "first", "second"]
 
 
 def test_all_agents_cooling_down_invokes_nothing_and_spends_no_attempt() -> None:
     backend, invoked = _RecordBackend(), []
     controller = _controller(FakeClock())
-    _run(backend, controller, invoked)
-    _run(backend, controller, invoked)
+    for _ in range(3):
+        _run(backend, controller, invoked)
+    for _ in range(3):
+        _run(backend, controller, invoked)
     before = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(ROOT)))
 
     for _ in range(20):
         assert _run(backend, controller, invoked) is False
 
     after = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(ROOT)))
-    assert invoked == ["first", "second"]
+    assert invoked == ["first"] * 3 + ["second"] * 3
     assert after.merge_commit_repair_attempts == before.merge_commit_repair_attempts
 
 
@@ -87,23 +90,24 @@ def test_agent_that_raises_is_benched_too() -> None:
     backend, invoked = _RecordBackend(), []
     controller = _controller(FakeClock())
 
-    _run(backend, controller, invoked, raises=True)
+    for _ in range(3):
+        _run(backend, controller, invoked, raises=True)
     _run(backend, controller, invoked)
 
-    assert invoked == ["first", "second"]
+    assert invoked == ["first", "first", "first", "second"]
 
 
 def test_agent_returns_after_its_cooldown() -> None:
     backend, invoked = _RecordBackend(), []
     clock = FakeClock()
     controller = _controller(clock)
-    _run(backend, controller, invoked)
-    _run(backend, controller, invoked)
+    for _ in range(3):
+        _run(backend, controller, invoked)
 
     clock.advance(3600.0)
     _run(backend, controller, invoked)
 
-    assert invoked == ["first", "second", "first"]
+    assert invoked == ["first", "first", "first", "first"]
 
 
 def test_successful_repairs_of_unrelated_integrations_never_accumulate_a_cooldown() -> None:
@@ -120,8 +124,8 @@ def test_success_that_leaves_the_same_operation_pending_benches_the_agent() -> N
     backend, invoked = _RecordBackend(), []
     controller = _controller(FakeClock())
 
-    _run(backend, controller, invoked, succeeds=True)
-    _run(backend, controller, invoked, succeeds=True)
+    for _ in range(4):
+        _run(backend, controller, invoked, succeeds=True)
     _run(backend, controller, invoked, succeeds=True)
 
-    assert invoked == ["first", "first", "second"]
+    assert invoked == ["first", "first", "first", "first", "second"]

@@ -180,7 +180,7 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `agent_idle_activity_evidence_ttl_seconds` | `30.0` | Per-channel activity TTL: while any non-stdout channel is fresher than this, the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns `CONTINUE`. Set to `0.0` to opt out and restore the legacy stdout-only behaviour. |
 | `agent_workspace_change_weights` | `{ source = 1.0 }` | Per-kind workspace file-change weights used by the activity-aware watchdog. Operators who previously relied on log-file activity can opt in with `agent_workspace_change_weights = { source = 1.0, log = 1.0 }`. See [Watchdogs and Timeouts](concepts.md#watchdogs). |
 | `agent_max_consecutive_unproductive` | `3` | Maximum consecutive unproductive attempts (ending without an accepted artifact) by the same agent in a phase before cooldown and fallover to the next candidate; minimum 1; workspace modifications reset the consecutive counter. |
-| `agent_max_total_unproductive` | `9` | Maximum total unproductive attempts by an agent in a phase across workspace modifications before demoting the agent to cooldown; minimum 1. |
+| `agent_max_total_unproductive` | `9` | Maximum total unproductive attempts by an agent in a phase across workspace modifications before permanently demoting the agent to Spent for the phase; minimum 1. |
 
 ### `[conflict_resolution]`
 

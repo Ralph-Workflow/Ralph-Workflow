@@ -58,6 +58,7 @@ _EXCLUDED: dict[str, str] = {
     "mcp.artifacts.plan_item_proof": "internal artifact type, not public API",
     "mcp.artifacts.smoke_test_result_validation_error": "internal artifact type, not public API",
     "mcp.upstream.upstream_config_error": "internal upstream type, not public API",
+    "workspace.probe": "internal workspace change observation seam protocol and default probe, not public API",
     "mcp.upstream.upstream_tool": "internal upstream type, not public API",
     "phases.commit_attempt_log": "internal phases type, not public API",
     "phases.phase_context": "internal phases type, not public API",

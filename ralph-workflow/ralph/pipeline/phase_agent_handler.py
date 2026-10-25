@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.workspace import FsWorkspace
+    from ralph.workspace.probe import WorkspaceChangeProbe
     from ralph.workspace.scope import WorkspaceScope
 
     class _HandlePhaseFn(Protocol):
@@ -121,6 +122,7 @@ def _phase_event_after_agent_run(
     handle_phase_fn: _HandlePhaseFn | None = None,
     run_id: str | None = None,
     shared_capture: bool = False,
+    workspace_probe: WorkspaceChangeProbe | None = None,
 ) -> Event:
     ctx = PhaseContext.model_construct(
         workspace=workspace,
@@ -131,6 +133,7 @@ def _phase_event_after_agent_run(
         artifacts_policy=policy_bundle.artifacts,
         config=config,
         console=get_display_context(display, display_context).console,
+        workspace_probe=workspace_probe,
     )
     try:
         _hp = handle_phase_fn or handle_phase

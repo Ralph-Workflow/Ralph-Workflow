@@ -49,7 +49,7 @@ def test_missing_evidence_rotates_inspection_without_clearing_ownership() -> Non
         return False
 
     controller = make_resolver_controller()
-    for _attempt in range(2):
+    for _attempt in range(4):
         assert not diagnostic.handoff_integration_diagnostic(
             controller=controller,
             root=root,
@@ -62,7 +62,7 @@ def test_missing_evidence_rotates_inspection_without_clearing_ownership() -> Non
         record = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
         assert record.resolving_rebase and record.phase == "integrating"
         assert record.pre_feature_sha == "feature" and record.pre_target_sha == "target"
-    assert agents == ["first", "second"]
+    assert agents == ["first", "first", "first", "second"]
 
 
 @pytest.mark.parametrize("changed", ["reflog", "ownership"])

@@ -57,7 +57,7 @@ def test_repair_handoff_preserves_snapshot_and_rotates_after_failed_agent(
         return False
 
     controller = make_resolver_controller()
-    for _ in range(2):
+    for _ in range(4):
         handoff_pending_merge_repair(
             controller=controller,
             root=root,
@@ -69,7 +69,7 @@ def test_repair_handoff_preserves_snapshot_and_rotates_after_failed_agent(
         )
         record = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
 
-    assert [agent for agent, _ in received] == ["first", "second"]
+    assert [agent for agent, _ in received] == ["first", "first", "first", "second"]
     assert record.merge_commit_tree == "tree"
     assert record.merge_commit_pending
     for _, prompt in received:

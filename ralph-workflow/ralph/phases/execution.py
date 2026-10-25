@@ -16,7 +16,6 @@ pre-validation for plan and development_result drains.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from contextlib import suppress
 from dataclasses import replace
@@ -55,7 +54,6 @@ from ralph.pipeline.events import (
     PhaseFailureEvent,
     PipelineEvent,
 )
-from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
@@ -67,61 +65,14 @@ if TYPE_CHECKING:
     )
     from ralph.workspace import Workspace
 
-_IN_MEMORY_PRE_EXECUTION_SNAPSHOTS: dict[
-    str, dict[str, str]
-] = {}  # bounded-accumulator-ok: keyed by phase name, drained when phase finishes
-_LAST_SEEN_SNAPSHOTS: dict[
-    str, dict[str, str]
-] = {}  # bounded-accumulator-ok: keyed by phase name, updated on attempt completion
+from ralph.workspace.probe import WorkspaceChangeProbe, take_workspace_snapshot
 
 
-def _is_ignored_workspace_path(path: str) -> bool:
-    parts = Path(path).parts
-    if not parts:
-        return True
-    first = parts[0]
-    if first in (".agent", ".git", ".tmp", "tmp"):
-        return True
-    if first.startswith("checkpoint"):
-        return True
-    return any(part in RECURSIVE_SKIP_DIRECTORY_NAMES for part in parts)
-
-
-def take_workspace_snapshot(workspace: Workspace) -> dict[str, str]:
-    """Capture a snapshot of workspace files and their fingerprints.
-
-    Excludes VCS internals, temporary files, build caches, and Ralph internal
-    directories (.agent, .git, checkpoint files).
-    """
-    snapshot: dict[str, str] = {}
-    file_paths: tuple[str, ...] | list[str]
-    try:
-        if hasattr(workspace, "iter_files"):
-            file_paths = workspace.iter_files("")
-        else:
-            file_paths = [f for f in workspace.list_dir(".") if workspace.is_file(f)]
-    except Exception:
-        return {}
-
-    for raw_path in sorted(file_paths):
-        p = str(raw_path).replace("\\", "/").lstrip("./")
-        if _is_ignored_workspace_path(p):
-            continue
-        try:
-            st = workspace.stat(p)
-            if st.get("type") != "file":
-                continue
-            mtime = st.get("modified_unix")
-            size = st.get("size_bytes", 0)
-            if mtime is not None:
-                snapshot[p] = f"{size}:{mtime}"
-            else:
-                content = workspace.read(p)
-                digest = hashlib.sha256(content.encode("utf-8", errors="replace")).hexdigest()
-                snapshot[p] = f"{size}:{digest}"
-        except Exception:
-            continue
-    return snapshot
+def _probe_from_context(ctx: PhaseContext) -> WorkspaceChangeProbe | None:
+    probe_candidate: object = getattr(ctx, "workspace_probe", None)
+    if isinstance(probe_candidate, WorkspaceChangeProbe):
+        return probe_candidate
+    return None
 
 
 def _snapshot_file_path(phase: str) -> str:
@@ -131,7 +82,6 @@ def _snapshot_file_path(phase: str) -> str:
 def record_workspace_snapshot(workspace: Workspace, phase: str) -> dict[str, str]:
     """Capture and record the pre-execution workspace snapshot for a phase."""
     snap = take_workspace_snapshot(workspace)
-    _IN_MEMORY_PRE_EXECUTION_SNAPSHOTS[phase] = snap
     snap_path = _snapshot_file_path(phase)
     with suppress(Exception):
         workspace.write(snap_path, json.dumps(snap))
@@ -139,21 +89,20 @@ def record_workspace_snapshot(workspace: Workspace, phase: str) -> dict[str, str
 
 
 def _load_pre_execution_snapshot(workspace: Workspace, phase: str) -> dict[str, str] | None:
-    """Load recorded pre-execution snapshot, prioritizing disk then in-memory."""
+    """Load recorded pre-execution snapshot from disk."""
     snap_path = _snapshot_file_path(phase)
     try:
         if workspace.exists(snap_path):
             raw = workspace.read(snap_path)
             with suppress(Exception):
                 workspace.remove(snap_path)
-            _IN_MEMORY_PRE_EXECUTION_SNAPSHOTS.pop(phase, None)
             parsed: object = json.loads(raw)
             if isinstance(parsed, dict):
                 parsed_dict = cast("dict[object, object]", parsed)
                 return {str(k): str(v) for k, v in parsed_dict.items()}
     except Exception:
         pass
-    return _IN_MEMORY_PRE_EXECUTION_SNAPSHOTS.pop(phase, None)
+    return None
 
 
 def detect_workspace_files_changed(
@@ -165,30 +114,68 @@ def detect_workspace_files_changed(
     """Detect whether any workspace files were added, removed, or modified.
 
     Compares the current workspace state to the recorded pre-execution baseline.
-    If no baseline was recorded, checks against last-seen state across attempts.
     Pre-existing files (e.g. README, source code) do NOT falsely count as changes.
     """
     after = take_workspace_snapshot(workspace)
     before = baseline if baseline is not None else _load_pre_execution_snapshot(workspace, phase)
 
     if before is not None:
-        _LAST_SEEN_SNAPSHOTS[phase] = after
         return before != after
 
-    if phase in _LAST_SEEN_SNAPSHOTS:
-        prev = _LAST_SEEN_SNAPSHOTS[phase]
-        _LAST_SEEN_SNAPSHOTS[phase] = after
-        return prev != after
-
-    _LAST_SEEN_SNAPSHOTS[phase] = after
-    # First attempt with no prior baseline recorded:
-    # Check if any explicit modification markers exist from test harnesses
-    return any(Path(path).name.startswith("workspace_changed_") for path in after)
+    return False
 
 
 def _detect_workspace_files_changed(workspace: Workspace, phase: str = "") -> bool:
     """Backward-compatible wrapper for detect_workspace_files_changed."""
     return detect_workspace_files_changed(workspace, phase)
+
+
+def _handle_prepare_prompt(effect: PreparePromptEffect, ctx: PhaseContext) -> list[Event]:
+    phase = effect.phase
+    phase_def = ctx.pipeline_policy.phases.get(phase)
+    drain = phase_def.drain if phase_def is not None else phase
+    ra = resolve_phase_required_artifact(
+        ctx.pipeline_policy, ctx.artifacts_policy, phase=phase, drain=drain
+    )
+
+    if ra is not None and ra.artifact_type == "plan":
+        _clear_stale_plan_draft_if_needed(ctx)
+
+    probe = _probe_from_context(ctx)
+    if probe is not None:
+        probe.observe_before(phase, ctx.workspace)
+    else:
+        record_workspace_snapshot(ctx.workspace, phase)
+
+    logger.info("Execution phase '{}': preparing prompt", phase)
+    return [PipelineEvent.PROMPT_PREPARED]
+
+
+def _apply_workspace_changes(
+    events: list[Event],
+    ctx: PhaseContext,
+    phase: str,
+    pre_execution_snapshot: dict[str, str] | None,
+) -> list[Event]:
+    probe = _probe_from_context(ctx)
+    if any(isinstance(evt, PhaseFailureEvent) for evt in events):
+        if probe is not None:
+            changed = probe.has_changed(phase, ctx.workspace)
+        else:
+            changed = detect_workspace_files_changed(
+                ctx.workspace,
+                phase,
+                baseline=pre_execution_snapshot,
+            )
+        return [
+            replace(evt, workspace_changed=changed) if isinstance(evt, PhaseFailureEvent) else evt
+            for evt in events
+        ]
+    if probe is not None:
+        probe.has_changed(phase, ctx.workspace)
+    else:
+        _load_pre_execution_snapshot(ctx.workspace, phase)
+    return events
 
 
 def handle_execution_phase(
@@ -212,20 +199,7 @@ def handle_execution_phase(
         List of events to emit.
     """
     if isinstance(effect, PreparePromptEffect):
-        phase = effect.phase
-        phase_def = ctx.pipeline_policy.phases.get(phase)
-        drain = phase_def.drain if phase_def is not None else phase
-        ra = resolve_phase_required_artifact(
-            ctx.pipeline_policy, ctx.artifacts_policy, phase=phase, drain=drain
-        )
-
-        if ra is not None and ra.artifact_type == "plan":
-            _clear_stale_plan_draft_if_needed(ctx)
-
-        record_workspace_snapshot(ctx.workspace, phase)
-
-        logger.info("Execution phase '{}': preparing prompt", phase)
-        return [PipelineEvent.PROMPT_PREPARED]
+        return _handle_prepare_prompt(effect, ctx)
 
     if not isinstance(effect, InvokeAgentEffect):
         return []
@@ -278,18 +252,12 @@ def handle_execution_phase(
     if events is None:
         events = [PipelineEvent.AGENT_SUCCESS]
 
-    if any(isinstance(evt, PhaseFailureEvent) for evt in events):
-        changed = detect_workspace_files_changed(
-            ctx.workspace,
-            phase,
-            baseline=pre_execution_snapshot,
-        )
-        events = [
-            replace(evt, workspace_changed=changed) if isinstance(evt, PhaseFailureEvent) else evt
-            for evt in events
-        ]
-    else:
-        _load_pre_execution_snapshot(ctx.workspace, phase)
+    events = _apply_workspace_changes(
+        events,
+        ctx,
+        phase,
+        pre_execution_snapshot,
+    )
     return _clear_retry_hint_after_accepted_artifact(
         events,
         ctx,

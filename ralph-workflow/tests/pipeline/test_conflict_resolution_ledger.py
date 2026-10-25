@@ -154,11 +154,13 @@ def test_clear_resolver_resets_resolution_history() -> None:
     clock = FakeClock()
     controller = _make_controller(clock)
 
-    bench_resolver(controller, "agentA", "fail 1")
+    for _ in range(3):
+        bench_resolver(controller, "agentA", "fail 1")
     assert choose_resolver(controller, ("agentA", "agentB")).agent == "agentB"
 
     clear_resolver(controller, "agentA")
     assert choose_resolver(controller, ("agentA", "agentB")).agent == "agentA"
 
-    bench_resolver(controller, "agentA", "fail after clear")
+    for _ in range(3):
+        bench_resolver(controller, "agentA", "fail after clear")
     assert choose_resolver(controller, ("agentA", "agentB")).agent == "agentB"

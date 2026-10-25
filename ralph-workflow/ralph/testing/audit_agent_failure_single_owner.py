@@ -481,6 +481,33 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
     return violations
 
 
+def _check_test_subscript(node: ast.Subscript, rel_path: str) -> list[SingleOwnerViolation]:
+    """Flag direct access to ledger streak/counter snapshot fields in tests outside ledger unit tests."""
+    if rel_path == "tests/recovery/test_agent_failure_ledger.py":
+        return []
+    if (
+        isinstance(node.slice, ast.Constant)
+        and isinstance(node.slice.value, str)
+        and node.slice.value
+        in (
+            "consecutive_unproductive",
+            "total_unproductive",
+        )
+    ):
+        return [
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="test_private_ledger_access",
+                detail=(
+                    f"Test accesses private ledger counter '{node.slice.value}' via snapshot subscript; "
+                    "tests must assert on observable behavior through the public seam only."
+                ),
+            )
+        ]
+    return []
+
+
 def audit_test_source(rel_path: str, source: str) -> list[SingleOwnerViolation]:
     """Audit a single test module under tests/."""
     if rel_path in TEMPORARY_TEST_ALLOWLIST:
@@ -506,6 +533,8 @@ def audit_test_source(rel_path: str, source: str) -> list[SingleOwnerViolation]:
             violations.extend(_check_test_attribute(node, rel_path))
         elif isinstance(node, ast.Call):
             violations.extend(_check_test_call(node, rel_path))
+        elif isinstance(node, ast.Subscript):
+            violations.extend(_check_test_subscript(node, rel_path))
     return violations
 
 

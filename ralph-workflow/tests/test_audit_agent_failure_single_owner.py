@@ -179,6 +179,30 @@ def test_controller():
     assert "technical_retry_cap" in violations[0].detail
 
 
+def test_test_subscript_counter_flagged() -> None:
+    source = """
+def test_snapshot_counters(controller):
+    snap = controller.ledger.snapshot()
+    count = snap["entries"]["dev:agent"]["consecutive_unproductive"]
+"""
+    violations = audit_test_source("tests/test_durability.py", source)
+    assert len(violations) >= 1
+    assert any(
+        v.rule == "test_private_ledger_access" and "consecutive_unproductive" in v.detail
+        for v in violations
+    )
+
+
+def test_test_subscript_counter_allowed_in_ledger_unit_test() -> None:
+    source = """
+def test_snapshot_counters(controller):
+    snap = controller.ledger.snapshot()
+    count = snap["entries"]["dev:agent"]["consecutive_unproductive"]
+"""
+    violations = audit_test_source("tests/recovery/test_agent_failure_ledger.py", source)
+    assert not violations
+
+
 def test_transitional_allowed_file_bypasses_check(monkeypatch: pytest.MonkeyPatch) -> None:
     from ralph.testing import audit_agent_failure_single_owner as audit_mod
 

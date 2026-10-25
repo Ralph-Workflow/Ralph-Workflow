@@ -94,6 +94,7 @@ from ralph.timeout_defaults import (
     AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT,
     WAITING_STATUS_INTERVAL_SECONDS,
 )
+from ralph.workspace.probe import DefaultWorkspaceChangeProbe, WorkspaceChangeProbe
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -3701,6 +3702,7 @@ def _build_recovery_controller(
     policy_bundle: PolicyBundle,
     config: UnifiedConfig,
     clock: Clock | None = None,
+    workspace_probe: WorkspaceChangeProbe | None = None,
 ) -> tuple[RecoveryController, int]:
     """Build recovery controller from policy bundle; return (controller, cycle_cap)."""
     _cycle_cap: int = 200
@@ -3736,6 +3738,9 @@ def _build_recovery_controller(
             cast("Mapping[str, object]", ledger_snap),
             clock=effective_clock,
         )
+    effective_probe = (
+        workspace_probe if workspace_probe is not None else DefaultWorkspaceChangeProbe()
+    )
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=_cycle_cap,
@@ -3745,6 +3750,7 @@ def _build_recovery_controller(
             agent_max_total_unproductive=total_limit,
             clock=clock,
             ledger=ledger,
+            workspace_probe=effective_probe,
         )
     )
     return controller, _cycle_cap
@@ -3755,13 +3761,16 @@ def build_recovery_controller(
     policy_bundle: PolicyBundle,
     config: UnifiedConfig,
     clock: Clock | None = None,
+    workspace_probe: WorkspaceChangeProbe | None = None,
 ) -> tuple[RecoveryController, int]:
     """Build a recovery controller from runtime configuration.
 
     This public seam exposes the configuration-to-controller wiring for
     deterministic callers without bypassing the runtime's canonical builder.
     """
-    return _build_recovery_controller(state, policy_bundle, config, clock=clock)
+    return _build_recovery_controller(
+        state, policy_bundle, config, clock=clock, workspace_probe=workspace_probe
+    )
 
 
 def _subscribe_recovery_logger(controller: RecoveryController) -> Callable[[], None]:

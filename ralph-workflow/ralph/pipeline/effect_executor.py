@@ -595,6 +595,38 @@ def _handle_recovery_attempt_failure(
     raise exc
 
 
+def _has_valid_terminal_artifact(
+    ctx: _AgentInvocationCtx,
+    resolved_required_artifact: RequiredArtifact | None,
+    exc: Exception,
+) -> bool:
+    returncode_obj: object = getattr(exc, "returncode", 0)
+    if not isinstance(returncode_obj, int) or returncode_obj == 0 or resolved_required_artifact is None:
+        return False
+    if not (ctx.workspace_scope.root / resolved_required_artifact.artifact_path).exists():
+        return False
+    try:
+        from ralph.phases.artifacts import (
+            load_phase_artifact,
+            unwrap_phase_artifact_content,
+        )
+        from ralph.workspace import FsWorkspace
+
+        ws = FsWorkspace(ctx.workspace_scope.root)
+        art = load_phase_artifact(
+            ws,
+            resolved_required_artifact.artifact_path,
+            artifact_type=resolved_required_artifact.artifact_type,
+        )
+        unwrap_phase_artifact_content(
+            art,
+            expected_type=resolved_required_artifact.artifact_type,
+        )
+        return True
+    except Exception:
+        return False
+
+
 def _invoke_agent_with_recovery(
     ctx: _AgentInvocationCtx,
     pipeline_deps: PipelineDeps,
@@ -708,6 +740,12 @@ def _invoke_agent_with_recovery(
                 _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
                 return _AttemptResult(PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id)
             except ctx.deps.agent_invocation_error as exc:
+                if _has_valid_terminal_artifact(ctx, resolved_required_artifact, exc):
+                    progress_guard.reset()
+                    _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
+                    return _AttemptResult(
+                        PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id
+                    )
                 return _handle_recovery_attempt_failure(
                     ctx=ctx,
                     exc=exc,

@@ -32,7 +32,7 @@ Readers mark matching lines as harness echoes, so `IdleWatchdog.has_meaningful_o
 
 The default `BROKEN_AGENT` backoff starts at 5 seconds and caps at 60 seconds. Recovery publishes the normal fallover event and advances the agent chain.
 
-Repeated unproductive attempts (including broken-agent exits and missing-artifact outcomes) are bounded by the single failure authority, `AgentFailureLedger`. The agent is demoted to cooldown after `agent_max_consecutive_unproductive` (default `3`) consecutive unproductive attempts in the phase, or `agent_max_total_unproductive` (default `9`) total attempts if file changes occurred. The first failure advances to the next available agent when the chain has one; a sole-agent chain waits for its cooldown until reaching the consecutive limit, at which point the phase fails with a clear diagnostic message instead of retrying indefinitely.
+Repeated unproductive attempts (including broken-agent exits and missing-artifact outcomes) are bounded by the single failure authority, `AgentFailureLedger`. The agent is demoted to cooldown after `agent_max_consecutive_unproductive` (default `3`) consecutive unproductive attempts in the phase, or demoted to permanently Spent after `agent_max_total_unproductive` (default `9`) total attempts across workspace modifications. The first failure advances to the next available agent when the chain has one; a sole-agent chain waits for its cooldown until reaching the consecutive limit, at which point the phase fails with a clear diagnostic message instead of retrying indefinitely.
 
 ## Operator Response
 

@@ -18,6 +18,7 @@ if TYPE_CHECKING:
         ArtifactsPolicy,
         PipelinePolicy,
     )
+    from ralph.workspace.probe import WorkspaceChangeProbe
     from ralph.workspace.protocol import Workspace
 
     class _PhaseContextArgs(TypedDict):
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
         artifacts_policy: ArtifactsPolicy
         config: NotRequired[UnifiedConfig | None]
         console: NotRequired[Console | None]
+        workspace_probe: NotRequired[WorkspaceChangeProbe | None]
 
 
 @dataclass(frozen=True)
@@ -37,13 +39,14 @@ class PhaseContext:
 
     Attributes:
         workspace: Workspace for file I/O.
-        registry: Agent registry for looking up agent configs.
+        registry: AgentRegistry for looking up agent configs.
         chain_manager: Chain manager for drain-to-chain resolution.
         pipeline_policy: Pipeline policy (phase graph).
         agents_policy: Agents policy (chains and drain bindings).
         artifacts_policy: Artifacts policy (artifact contracts).
         config: Optional legacy unified config for backward compatibility.
         console: Rich console for output (optional).
+        workspace_probe: Optional injected probe for workspace modification detection.
     """
 
     workspace: Workspace
@@ -54,6 +57,7 @@ class PhaseContext:
     artifacts_policy: ArtifactsPolicy
     config: UnifiedConfig | None = None
     console: Console | None = None
+    workspace_probe: WorkspaceChangeProbe | None = None
 
     @classmethod
     def construct(cls, **kwargs: Unpack[_PhaseContextArgs]) -> PhaseContext:

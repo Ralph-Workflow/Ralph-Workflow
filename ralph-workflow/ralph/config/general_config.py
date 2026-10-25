@@ -500,6 +500,24 @@ class GeneralConfig(RalphBaseModel):
         ),
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_removed_retry_settings(cls, data: object) -> object:
+        if isinstance(data, dict):
+            removed_keys = {
+                "agent_max_same_shape_resumes",
+                "agent_max_broken_agent_same_shape_resumes",
+                "in_session_retry_escalation_limit",
+            }
+            present = removed_keys.intersection(data.keys())
+            if present:
+                sorted_keys = sorted(present)
+                raise ValueError(
+                    f"Configuration setting(s) {sorted_keys} have been removed. "
+                    "Use 'agent_max_consecutive_unproductive' and 'agent_max_total_unproductive' instead."
+                )
+        return data
+
     @model_validator(mode="after")
     def _validate_session_ceiling(self) -> Self:
         if (

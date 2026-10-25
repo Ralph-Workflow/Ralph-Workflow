@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from ralph.recovery.events import FailureEventBus
     from ralph.recovery.failure_classifier import FailureClassifier
     from ralph.recovery.unavailability_reason import ReasonBackoffPolicy, UnavailabilityReason
+    from ralph.workspace.probe import WorkspaceChangeProbe
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ class RecoveryControllerOptions:
     backoff_attempts: dict[str, int] | None = None
     # Single-owner failure and recovery ledger.
     ledger: AgentFailureLedger | None = None
-    workspace_probe: object | None = None
+    workspace_probe: WorkspaceChangeProbe | None = None
     agent_max_consecutive_unproductive: int = AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT
     agent_max_total_unproductive: int = AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT
     # Initial unavailable timeout state, keyed by "phase:agent" with values as
