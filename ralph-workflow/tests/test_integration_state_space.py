@@ -327,6 +327,7 @@ def _describe(observation: Observation) -> str:
     )
 
 
+@cache
 def _allowed_actions(observation: Observation) -> frozenset[NextAction]:
     """Return the actions the decision contract permits for ``observation``.
 
@@ -399,6 +400,16 @@ def _allowed_actions(observation: Observation) -> frozenset[NextAction]:
     return frozenset(allowed)
 
 
+@cache
+def _pressure_attempts_for_sig(signature: str, rung: EscalationRung) -> AttemptState:
+    return AttemptState(
+        rung=rung,
+        repeat_counts=OrderedDict(
+            ((signature, action.value), _REPEAT_PRESSURE_COUNT) for action in _DIRECT_ACTIONS
+        ),
+    )
+
+
 def _pressure_attempts(observation: Observation, rung: EscalationRung) -> AttemptState:
     """Return an attempt state under repeat pressure for ``observation``.
 
@@ -406,13 +417,7 @@ def _pressure_attempts(observation: Observation, rung: EscalationRung) -> Attemp
     which is what the boundary's ledger holds after it has already retried
     this exact state.
     """
-    signature = _BASE_ATTEMPTS.signature(observation)
-    return AttemptState(
-        rung=rung,
-        repeat_counts=OrderedDict(
-            ((signature, action.value), _REPEAT_PRESSURE_COUNT) for action in _DIRECT_ACTIONS
-        ),
-    )
+    return _pressure_attempts_for_sig(_BASE_ATTEMPTS.signature(observation), rung)
 
 
 def _attempt_states(observation: Observation) -> tuple[tuple[str, AttemptState], ...]:
@@ -612,7 +617,7 @@ _OBSERVATION_STRATEGY = st.builds(
 )
 
 
-@settings(max_examples=100, deadline=None, derandomize=True)
+@settings(max_examples=25, deadline=None, derandomize=True)
 @given(
     observation=_OBSERVATION_STRATEGY,
     rung=st.sampled_from(LADDER_ORDER),

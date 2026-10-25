@@ -17,13 +17,12 @@ labeled violation.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import pytest
 
 import ralph.testing.audit_skill_auto_commit as audit_module
 from ralph.testing.audit_skill_auto_commit import main as audit_main
 
-if TYPE_CHECKING:
-    import pytest
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 # NOTE: ``test_audit_returns_zero_when_all_invariants_satisfied``,

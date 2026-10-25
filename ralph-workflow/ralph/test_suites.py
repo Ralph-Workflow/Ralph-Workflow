@@ -503,7 +503,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_explore_mcp_timeout.py": 40,
     "tests/test_timing_safety_transports.py": 30,
     "tests/test_retained_resolution_handoff.py": 240,
-    "tests/test_commit_executor.py": 250,
+    "tests/test_commit_executor.py": 320,
     "tests/test_integration_state_coverage.py": 50,
     "tests/test_liveness_termination.py": 30,
     "tests/test_integration_decision_table.py": 70,
@@ -512,6 +512,17 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_integration_diagnostic_resolver_health.py": 180,
     "tests/project_policy/test_policy_handback_working_tree.py": 180,
     "tests/test_public_workflow_exhaustion_restart.py": 120,
+    "tests/test_integration_state_space.py": 160,
+    "tests/test_integration_termination_model.py": 60,
+    "tests/test_integration_seam_wiring.py": 50,
+    "tests/test_catchup_ticker_adversity.py": 30,
+    "tests/test_fault_classification_totality.py": 30,
+    "tests/test_stale_intent_startup_replay.py": 35,
+    "tests/test_pending_merge_repair_real_git.py": 170,
+    "tests/pipeline/test_run_time_report_shutdown.py": 60,
+    "tests/recovery/test_single_agent_broken_chain_failfast.py": 60,
+    "tests/recovery/test_broken_agent_advances_chain.py": 50,
+    "tests/test_pty_line_reader_pending_bound.py": 50,
 }
 
 

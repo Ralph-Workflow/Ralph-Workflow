@@ -114,6 +114,7 @@ class _FakeRaisingAsyncProcess:
         self._returncode = -9
 
 
+@pytest.mark.timeout_seconds(5)
 def test_run_process_captures_stdout_stderr_and_exit_code(tmp_path: Path) -> None:
     """Synchronous execution should capture output and preserve exit code."""
     result = run_process(
@@ -129,6 +130,7 @@ def test_run_process_captures_stdout_stderr_and_exit_code(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout_seconds(5)
 async def test_run_process_async_captures_output(tmp_path: Path) -> None:
     """Async execution should capture output from completed processes."""
     result = await run_process_async(
@@ -521,6 +523,7 @@ async def test_run_process_async_cleans_up_on_non_timeout_communicate_exception(
 _FOREIGN_FAMILY_LABEL = "agents:agy-models"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_run_process_reaps_child_spawned_under_foreign_family_label(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

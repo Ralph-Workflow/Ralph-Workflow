@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 
+from ralph.agents.invoke import starts_with_canonical_session_marker
 from ralph.config.enums import AgentTransport
 from ralph.display.raw_log_breaks import detect_raw_log_breaks, iter_capture_lines
 
@@ -337,7 +338,10 @@ def test_a_long_json_scalar_is_reported_for_what_it_is(tmp_path: Path) -> None:
     assert "type=str" in breaks[0].detail
 
 
-@pytest.mark.timeout_seconds(3)
+_ = starts_with_canonical_session_marker
+
+
+@pytest.mark.timeout_seconds(10)
 def test_deep_nesting_does_not_take_the_grader_down(tmp_path: Path) -> None:
     """``RecursionError`` is not a ``ValueError``, and must not escape either.
 

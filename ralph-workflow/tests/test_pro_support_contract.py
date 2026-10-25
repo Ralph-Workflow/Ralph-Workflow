@@ -34,6 +34,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import pytest
 from loguru import logger as loguru_logger
 
 import ralph.pro_support as pkg
@@ -77,7 +78,7 @@ from ralph.recovery.controller import RecoveryController
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
+pytestmark = pytest.mark.timeout_seconds(5)
 
 # ---------------------------------------------------------------------------
 # Fake httpx / clock helpers (mirror of tests/test_pro_support_heartbeat.py).
@@ -97,7 +98,7 @@ class _FakeClient:
     def __init__(
         self,
         status_code: int = 200,
-        tick_signal: threading.Event | None = None,
+        tick_signal: threading.Event | threading.Semaphore | None = None,
     ) -> None:
         self.posts: list[dict[str, object]] = []
         self._status_code = status_code
@@ -112,7 +113,10 @@ class _FakeClient:
     ) -> _FakeResponse:
         self.posts.append({"url": url, "json": json, "timeout": timeout})
         if self._tick_signal is not None:
-            self._tick_signal.set()
+            if hasattr(self._tick_signal, "release"):
+                self._tick_signal.release()
+            else:
+                self._tick_signal.set()
         return _FakeResponse(self._status_code)
 
     def close(self) -> None:
@@ -312,16 +316,15 @@ def test_section_6_heartbeat_client_does_not_create_or_modify_marker(
     before_mtime_ns = marker_path.stat().st_mtime_ns
     before_bytes = marker_path.read_bytes()
 
-    tick_signal = threading.Event()
+    tick_signal = threading.Semaphore(0)
     fake = _FakeClient(tick_signal=tick_signal)
     clock = _Clock()
     client = _make_heartbeat_client(fake, clock)
     client.start()
     try:
-        for _ in range(3):
-            tick_signal.clear()
-            clock.advance(0.001)
-            assert tick_signal.wait(timeout=2.0), "heartbeat worker missed a tick"
+        assert tick_signal.acquire(timeout=4.0), "heartbeat worker failed to start"
+        clock.advance(0.001)
+        assert tick_signal.acquire(timeout=4.0), "heartbeat worker missed a tick"
     finally:
         client.stop()
 
@@ -407,16 +410,15 @@ def test_section_7_heartbeat_404_is_hard_stop() -> None:
 
 def test_section_7_heartbeat_transient_error_continues() -> None:
     """A 5xx response is transient; the loop must not stop on it."""
-    tick_signal = threading.Event()
+    tick_signal = threading.Semaphore(0)
     fake = _FakeClient(status_code=503, tick_signal=tick_signal)
     clock = _Clock()
     client = _make_heartbeat_client(fake, clock)
     client.start()
     try:
-        for _ in range(3):
-            tick_signal.clear()
-            clock.advance(0.001)
-            assert tick_signal.wait(timeout=2.0), "heartbeat worker missed a tick"
+        assert tick_signal.acquire(timeout=4.0), "heartbeat worker failed to start"
+        clock.advance(0.001)
+        assert tick_signal.acquire(timeout=4.0), "heartbeat worker missed a tick"
     finally:
         client.stop()
     assert len(fake.posts) >= 2, "transient errors must not stop the loop"

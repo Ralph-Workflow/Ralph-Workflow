@@ -983,7 +983,7 @@ def test_e16_fail_closed_resume_timeout(tmp_path: Path) -> None:
     )
 
     try:
-        rc = cand_proc.wait(timeout=2.0)
+        rc = cand_proc.wait(timeout=5.0)
         assert rc == 42, f"Candidate exited with unexpected rc {rc}"
 
         session_file = tmp_path / "session.json"

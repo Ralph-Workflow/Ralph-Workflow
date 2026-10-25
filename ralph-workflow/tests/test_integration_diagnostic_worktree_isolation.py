@@ -41,6 +41,8 @@ from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
 from ralph.workspace.scope import WorkspaceScope
 
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
+
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(

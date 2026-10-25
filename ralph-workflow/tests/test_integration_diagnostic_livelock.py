@@ -245,6 +245,7 @@ def test_ralph_moves_head_does_not_block(tmp_path: Path) -> None:
     assert next_integration_action(on_disk) != IntegrationAction.REQUIRE_INTERVENTION
 
 
+@pytest.mark.timeout_seconds(5)
 def test_ralph_moves_real_head_does_not_block(tmp_path: Path) -> None:
     """AC4 with a real-Git fixture: a real fast-forward does not block release.
 

@@ -259,6 +259,7 @@ def test_a_broken_degraded_renderer_still_emits_a_minimal_valid_report(
     assert "Agent calls: 0; retries: 0; continuations: 0; fallbacks: 0; pushes: 0." in report
 
 
+@pytest.mark.timeout_seconds(5)
 def test_interrupted_integration_stall_emits_a_valid_run_time_report(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
