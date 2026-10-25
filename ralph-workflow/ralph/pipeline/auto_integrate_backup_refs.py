@@ -13,6 +13,7 @@ from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 #: ``git ls-tree`` rows are ``<mode> <type> <object>``.
@@ -341,6 +342,69 @@ def _stale_resolution_ref_name(
         f"refs/ralph-backup/{component}-{head_sha[:8]}-"
         f"{staged_tree[:8]}-{worktree_tree[:8]}-{worktree_id}"
     )
+
+
+def preserve_dirt_commit(
+    root: Path,
+    head_sha: str,
+    owning_worktree: str | None = None,
+) -> str:
+    """Preserve uncommitted work in a durable ref without touching tree or index.
+
+    Fallback-ladder rung 2 (:mod:`ralph.pipeline.integration_ladder`)
+    calls this when the normal backup-ref route cannot run. The commit
+    is built from plumbing only (see :func:`create_stale_resolution_snapshot`):
+    the working tree and the real index are never mutated, so the call
+    is safe while a writer keeps dirtying the tree. Returns the backup
+    ref name; raises :class:`RuntimeError` when the snapshot could not
+    be created or the ref could not be written.
+    """
+    backup_ref, _feature_sha = create_stale_resolution_snapshot(
+        root,
+        None,
+        head_sha,
+        owning_worktree,
+    )
+    return backup_ref
+
+
+def list_ralph_backup_refs(root: Path) -> tuple[str, ...]:
+    """Return every Ralph-owned backup ref under ``refs/rebase-backup/`` and ``refs/ralph-backup/``.
+
+    ``-z`` NUL-delimited output keeps ref names with spaces or escapes
+    intact. A failed read yields an empty tuple: ref listing is
+    best-effort and never blocks the ladder.
+    """
+    result = run_git(
+        ("for-each-ref", "--format=%(refname)", "-z", "refs/rebase-backup/", "refs/ralph-backup/"),
+        cwd=root,
+        label="auto-integrate:backup-ref-list",
+    )
+    if result.returncode != 0:
+        return ()
+    return tuple(name for name in result.stdout.split("\0") if name)
+
+
+def prune_verified_landed_backup_refs(
+    root: Path,
+    is_landed: Callable[[str], bool],
+) -> tuple[str, ...]:
+    """Delete Ralph backup refs whose work is verified landed; return the pruned names.
+
+    Rung 2 of the fallback ladder frees space before writing a patch /
+    tar sidecar. Only refs whose contained work :func:`is_landed` confirms
+    in the target are pruned — a ref that is not proven landed is NEVER
+    touched, so preserved copies stay recoverable until landing is
+    verified. Deletion is best-effort: a failing delete is skipped, never
+    fatal.
+    """
+    pruned: list[str] = []
+    for ref in list_ralph_backup_refs(root):
+        if not is_landed(ref):
+            continue
+        delete_rebase_backup_ref(root, ref)
+        pruned.append(ref)
+    return tuple(pruned)
 
 
 def delete_rebase_backup_ref(root: Path, backup_ref: str | None) -> None:

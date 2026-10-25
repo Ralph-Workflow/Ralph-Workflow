@@ -129,6 +129,12 @@ _MAX_SATURATED_REPEATS: Final[int] = (1 << 31) - 1
 #: Number of fields a repeat_counts entry must carry on disk.
 _REPEAT_KEY_TUPLE_LEN = 2
 
+#: Hard cap on the fallback-ladder evidence map. The key universe the
+#: ladder writes is ~20 static keys, so the cap is never approached; it
+#: exists so a corrupt payload with a forged, unbounded evidence object
+#: cannot grow the in-memory map without bound.
+_LADDER_EVIDENCE_CAP: Final[int] = 64
+
 #: Schema version of the tombstone payload.
 _TOMBSTONE_SCHEMA_VERSION: Final[int] = 1
 
@@ -198,6 +204,21 @@ class AttemptLedgerState:
 
     global_actions_charged: int = 0
     """Monotone count of exhausted/pending births spent from :data:`GLOBAL_ACTION_BOUND`."""
+
+    ladder_evidence: dict[str, str] = field(
+        default_factory=dict,
+    )  # bounded-accumulator-ok: static key universe written only by ralph.pipeline.integration_ladder (6 rung keys + 3 salvage keys + 6 precondition keys + preserved locations); capped at _LADDER_EVIDENCE_CAP on every parse
+    """Evidence log of the dirty-tree fallback ladder (:mod:`ralph.pipeline.integration_ladder`).
+
+    Every rung records intent-before and outcome-after under a
+    ``rung:<action>`` key, salvage attempts under ``salvage:<kind>``,
+    the six last-resort preconditions under ``precondition:<name>``
+    and the location of each preserved copy under ``preserved:<rung>``.
+    A restart reads this map to resume at the recorded rung without
+    repeating finished rungs or losing preserved copies. Keys are a
+    fixed, closed universe owned by ``integration_ladder`` — the map
+    can never grow past it.
+    """
 
     def __post_init__(self) -> None:
         if self.unknown_attempts < 0:
@@ -403,6 +424,7 @@ class AttemptLedger:
             unknown_attempts=0,
             unknown_budget=self._default_unknown_budget,
             repeat_threshold=self._default_repeat_threshold,
+            ladder_evidence={},
         )
 
     @staticmethod
@@ -429,6 +451,7 @@ class AttemptLedger:
             repeat_threshold=state.repeat_threshold,
             saturated_repeats=state.saturated_repeats,
             global_actions_charged=charged,
+            ladder_evidence=dict(state.ladder_evidence),
         )
 
     @staticmethod
@@ -596,6 +619,7 @@ class AttemptLedger:
                 repeat_threshold=state.repeat_threshold,
                 saturated_repeats=state.saturated_repeats,
                 global_actions_charged=state.global_actions_charged,
+                ladder_evidence=dict(state.ladder_evidence),
             )
         key = (signature, action)
         updated: OrderedDict[tuple[str, str], int] = OrderedDict(state.repeat_counts)
@@ -621,6 +645,7 @@ class AttemptLedger:
             repeat_threshold=state.repeat_threshold,
             saturated_repeats=saturated,
             global_actions_charged=state.global_actions_charged,
+            ladder_evidence=dict(state.ladder_evidence),
         )
 
     def _on_persist_failure(
@@ -680,6 +705,8 @@ class AttemptLedger:
             merged_counts,
             saturated=max(state.saturated_repeats, disk.saturated_repeats),
         )
+        merged_evidence = dict(disk.ladder_evidence)
+        merged_evidence.update(state.ladder_evidence)
         return AttemptLedgerState(
             rung=_further_rung(state.rung, disk.rung),
             repeat_counts=merged_counts,
@@ -689,6 +716,7 @@ class AttemptLedger:
             version=CURRENT_SCHEMA_VERSION,
             saturated_repeats=saturated,
             global_actions_charged=max(state.global_actions_charged, disk.global_actions_charged),
+            ladder_evidence=dict(list(merged_evidence.items())[:_LADDER_EVIDENCE_CAP]),
         )
 
     @staticmethod
@@ -706,6 +734,7 @@ class AttemptLedger:
             "repeat_counts": repeat_counts_obj,
             "saturated_repeats": state.saturated_repeats,
             "global_actions_charged": state.global_actions_charged,
+            "ladder_evidence": dict(sorted(state.ladder_evidence.items())),
         }
         return json.dumps(payload, indent=2, sort_keys=False)
 
@@ -913,6 +942,7 @@ class AttemptLedger:
             version=CURRENT_SCHEMA_VERSION,
             saturated_repeats=saturated,
             global_actions_charged=_non_negative_int(payload, "global_actions_charged"),
+            ladder_evidence=_parse_ladder_evidence(payload.get("ladder_evidence")),
         )
 
     @staticmethod
@@ -934,6 +964,27 @@ class AttemptLedger:
         if count_raw < 0:
             return None
         return (sig_raw, action_raw), count_raw
+
+
+def _parse_ladder_evidence(raw: object) -> dict[str, str]:
+    """Coerce a parsed ``ladder_evidence`` payload value into a bounded str map.
+
+    Only ``str -> str`` entries survive and the map is capped at
+    :data:`_LADDER_EVIDENCE_CAP`, so a corrupt or foreign payload can
+    never grow an unbounded in-memory map. A missing or malformed
+    block yields an empty map — evidence is best-effort on read, never
+    a blocker.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    evidence: dict[str, str] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            continue
+        evidence[key] = value
+        if len(evidence) >= _LADDER_EVIDENCE_CAP:
+            break
+    return evidence
 
 
 def _non_negative_int(payload: Mapping[str, object], key: str) -> int:

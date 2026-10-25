@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.git.branch_relation import branch_relation
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline._planning_obstruction import identify_planning_obstruction
@@ -35,8 +37,60 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
+    from ralph.pipeline.integration_cleanup import PlanningBaseline
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.workspace.scope import WorkspaceScope
+
+
+def capture_pre_planning_baseline(root: Path) -> PlanningBaseline | None:
+    """Record the pre-planning-dispatch baseline for the residue executor.
+
+    Called by the run loop immediately before every planning dispatch so
+    planning residue (tracked files a planning agent touched outside its
+    ``.agent/`` artifact contract) can be detected against the tree state
+    planning was given. ``None`` when the tree state is unreadable — the
+    run loop treats that as "no residue enforcement for this dispatch",
+    never as "clean". Never raises.
+    """
+    from ralph.pipeline.integration_cleanup import RunGitCleanupPort, capture_planning_baseline
+
+    try:
+        return capture_planning_baseline(root, git=RunGitCleanupPort())
+    except Exception as exc:  # pragma: no cover -- defensive: baseline capture never blocks planning
+        logger.warning("pre-planning baseline capture failed: {}", exc)
+        return None
+
+
+def resolve_planning_residue(
+    root: Path,
+    baseline: PlanningBaseline,
+    *,
+    target: str | None = None,
+) -> None:
+    """Detect and clear planning residue left by one planning dispatch.
+
+    Save-to-backup-ref, restore-to-baseline, one WARNING naming the paths
+    and the backup ref, charged against the repository-wide attempt ledger
+    with ladder escalation on repeat failure. Residue is never committed as
+    feature work and never discarded without the backup ref. Never raises:
+    cleanup is the dispatch's own janitor, not a new way to crash a run.
+    """
+    from ralph.pipeline.integration_cleanup import (
+        OwnerResidueLedgerPort,
+        RunGitCleanupPort,
+        run_residue_cleanup,
+    )
+
+    try:
+        run_residue_cleanup(
+            root,
+            baseline=baseline,
+            git=RunGitCleanupPort(),
+            ledger=OwnerResidueLedgerPort(),
+            target=target,
+        )
+    except Exception as exc:  # pragma: no cover -- defensive: see module docstring contract
+        logger.warning("planning residue cleanup failed: {}", exc)
 
 
 def integrate_before_planning(

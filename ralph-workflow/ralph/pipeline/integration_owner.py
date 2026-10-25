@@ -117,7 +117,9 @@ from typing import TYPE_CHECKING, Final
 from ralph.pipeline._integration_action import IntegrationAction
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_decision import (
+    CLEANUP_LADDER_ORDER,
     AttemptState,
+    CleanupLadderRung,
     DecisionContext,
     NextAction,
     decide,
@@ -134,11 +136,13 @@ if TYPE_CHECKING:
 __all__ = [
     "MUTATION_CLASS_ACTIONS",
     "NEXT_ACTION_TO_INTEGRATION_ACTION",
+    "NEXT_ACTION_TO_LADDER_RUNG",
     "IntegrationOwnerDecision",
     "charge_integration_attempt",
     "decide_integration",
     "decide_integration_verdict",
     "is_chargeable",
+    "ladder_rung_for_action",
     "load_integration_attempts",
     "project_integration_action",
 ]
@@ -223,17 +227,53 @@ NEXT_ACTION_TO_INTEGRATION_ACTION: Final[dict[NextAction, IntegrationAction]] = 
     NextAction.LAST_RESORT_RECOVERY: IntegrationAction.CONTINUE_GIT_OPERATION,
 }
 
+#: Rung-level projection of the cleanup-ladder decisions onto the
+#: executor entry points in
+#: :mod:`ralph.pipeline.integration_ladder`. The coarse
+#: :class:`IntegrationAction` vocabulary cannot express the distinction
+#: between the ladder rungs (that is why they share
+#: ``CONTINUE_GIT_OPERATION`` / ``REINTEGRATE_AGAINST_TARGET`` /
+#: ``WAIT_FOR_BOUNDED_RETRY`` above); this table restores it: a caller
+#: that holds an :class:`IntegrationOwnerDecision` with a non-None
+#: ``ladder_rung`` dispatches the rung through
+#: :func:`ralph.pipeline.integration_ladder.run_ladder_rung` instead of
+#: treating the action as a generic git continuation. ``None`` means the
+#: decision is not a cleanup-ladder rung and no ladder executor runs.
+#: The mapping is total over the cleanup-ladder actions and constant —
+#: it MUST NOT be mutated at runtime.
+NEXT_ACTION_TO_LADDER_RUNG: Final[dict[NextAction, CleanupLadderRung]] = {
+    NextAction.SAVE_AND_RESTORE: CleanupLadderRung.NORMAL_CLEANUP,
+    NextAction.PRESERVE_VIA_TEMP_INDEX: CleanupLadderRung.ALTERNATE_PRESERVATION,
+    NextAction.QUARANTINE_AND_RESTORE: CleanupLadderRung.QUARANTINE,
+    NextAction.REBUILD_IN_FRESH_WORKTREE: CleanupLadderRung.FRESH_WORKTREE,
+    NextAction.ADAPT_ENVIRONMENT_AND_RETRY: CleanupLadderRung.ENVIRONMENT_DEGRADE,
+    NextAction.LAST_RESORT_RECOVERY: CleanupLadderRung.LAST_RESORT,
+}
+
+#: Import-time invariant: the rung projection covers exactly the rungs
+#: of the cleanup ladder, in order — a new rung without routing breaks
+#: the import instead of silently defaulting to no executor.
+if set(NEXT_ACTION_TO_LADDER_RUNG.values()) != set(CLEANUP_LADDER_ORDER):
+    raise RuntimeError(
+        "NEXT_ACTION_TO_LADDER_RUNG must route exactly the CLEANUP_LADDER_ORDER rungs"
+    )
+
 
 @dataclass(frozen=True)
 class IntegrationOwnerDecision:
     """The owner's full verdict for one integration decision.
 
     ``action`` is the projected integration action, ``reason`` explains
-    it from the CURRENT observation, ``observation`` is the seven
+    it from the CURRENT observation, ``observation`` is the seven-
     dimension snapshot the decision was made from, ``attempts`` is the
     durable ledger state AFTER the charge, and ``escalation_charged``
     records whether the decision consumed escalation budget (a
     mutation-class decision) rather than being a pure wait.
+    ``ladder_rung`` is the rung-level projection of a cleanup-ladder
+    decision (``None`` for every other decision): when it is not
+    ``None`` the caller dispatches the rung through
+    :func:`ralph.pipeline.integration_ladder.run_ladder_rung` instead
+    of acting on the coarse ``action`` alone.
     """
 
     action: IntegrationAction
@@ -241,6 +281,7 @@ class IntegrationOwnerDecision:
     observation: Observation
     attempts: AttemptLedgerState
     escalation_charged: bool
+    ladder_rung: CleanupLadderRung | None = None
 
 
 def project_integration_action(next_action: NextAction) -> IntegrationAction:
@@ -265,6 +306,18 @@ def is_chargeable(next_action: NextAction) -> bool:
     budget. See :data:`MUTATION_CLASS_ACTIONS` and the module docstring.
     """
     return next_action in MUTATION_CLASS_ACTIONS
+
+
+def ladder_rung_for_action(next_action: NextAction) -> CleanupLadderRung | None:
+    """Project ``next_action`` onto its fallback-ladder rung, if it has one.
+
+    ``None`` means the decision is not a cleanup-ladder rung; a rung
+    means the caller executes it through
+    :func:`ralph.pipeline.integration_ladder.run_ladder_rung`. The
+    routing is a pure projection over :data:`NEXT_ACTION_TO_LADDER_RUNG`:
+    the decision core never learns about executors.
+    """
+    return NEXT_ACTION_TO_LADDER_RUNG.get(next_action)
 
 
 def decide_integration(
@@ -378,6 +431,7 @@ def decide_integration_verdict(
         observation=current,
         attempts=charged,
         escalation_charged=is_chargeable(next_action),
+        ladder_rung=ladder_rung_for_action(next_action),
     )
 
 

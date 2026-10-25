@@ -40,7 +40,11 @@ from ralph.pipeline._integration_action import (
 )
 from ralph.pipeline._integration_executor import default_rebase_continuation_executor
 from ralph.pipeline._integration_log_dedupe import integration_outcome_log
-from ralph.pipeline._integration_owner_seam import decide_seam_action
+from ralph.pipeline._integration_owner_seam import (
+    PlanningSyncVerdict,
+    decide_planning_sync,
+    decide_seam_action,
+)
 from ralph.pipeline._integration_record_facts import busy_refusal_outcome
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
@@ -111,6 +115,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.integration_cleanup import PlanningBaseline
     from ralph.pipeline.integration_resolution_types import (
         IntegrationResolutionVerdict,
     )
@@ -2137,6 +2142,43 @@ def _configured_sync_target(ctx: LoopContext) -> tuple[Path, str] | None:
     return root, target
 
 
+def _capture_planning_baseline_if_entry(
+    state: PipelineState, ctx: LoopContext
+) -> PlanningBaseline | None:
+    """Capture the residue executor's baseline when this iteration dispatches planning.
+
+    Planning is read-only for source files; the baseline recorded here is
+    the restore target the residue executor compares the post-dispatch tree
+    against. ``None`` both when this iteration dispatches another phase and
+    when the baseline is unreadable — an unreadable baseline disables
+    residue enforcement for that dispatch, never reports it as clean.
+    """
+    if not _is_planning_entry(state, ctx):
+        return None
+    from ralph.pipeline.auto_integrate_planning import capture_pre_planning_baseline
+
+    with suppress(Exception):
+        return capture_pre_planning_baseline(Path(ctx.workspace_scope.root))
+    return None
+
+
+def _resolve_planning_residue_after_dispatch(
+    ctx: LoopContext,
+    baseline: PlanningBaseline,
+) -> None:
+    """Clear tracked residue a planning dispatch left outside its artifact contract.
+
+    Save-to-backup-ref, restore-to-baseline, one WARNING; charged against
+    the repository-wide attempt ledger with ladder escalation on repeats.
+    Never raises: cleanup is the dispatch's own janitor, not a new crash path.
+    """
+    from ralph.pipeline.auto_integrate_planning import resolve_planning_residue
+
+    configured = _configured_sync_target(ctx)
+    target = configured[1] if configured is not None else None
+    resolve_planning_residue(Path(ctx.workspace_scope.root), baseline, target=target)
+
+
 def _planning_sync_gap(ctx: LoopContext) -> str | None:
     """Why committed feature work and the integration target are not synchronized.
 
@@ -2277,18 +2319,45 @@ def _ensure_planning_in_sync(
 
     Dirty work is committed only after integration reports that it obstructs
     synchronization; cleanup and commit retain their existing artifact contracts.
-    Repeated unchanged integration failures return a blocked verdict so the caller alarms and cools down before retrying.
+
+    The retry loop is driven by the typed planning-sync seam
+    (:func:`~ralph.pipeline._integration_owner_seam.decide_planning_sync`),
+    not by prose parsing: every iteration asks the owner for the typed
+    verdict, which charges the durable attempt ledger through the single
+    owner charge path. A hold that repeats the same observation therefore
+    climbs the owner's escalation ladder instead of re-running the
+    identical action forever: the verdict the owner returns moves off the
+    action it served for the unchanged observation, the gate stops
+    re-running integration and returns the blocked verdict so the caller
+    alarms and cools down before the next bounded retry.
     """
     from ralph.pipeline.auto_integrate_remote_sync import resolver_attempt_limit
 
     if not _is_planning_entry(state, ctx):
         return state, None
+    # _planning_sync_gap is the SOLE gate authority: whether the gate
+    # applies at all is decided there and only there. The configuration
+    # resolved below only parameterises the owner seam's observation
+    # (target / remote / record) -- it must never gate control flow, or
+    # a caller that drives the gap through its own seam (tests, exotic
+    # configurations) would be second-guessed here.
     gap = _planning_sync_gap(ctx)
     if gap is None:
         return state, None
+    root = Path(ctx.workspace_scope.root)
+    configured = _configured_sync_target(ctx)
+    target = configured[1] if configured is not None else None
     config_obj: object = getattr(ctx, "config", None)
+    general_obj: object = getattr(config_obj, "general", None)
+    remote_obj: object = getattr(general_obj, "auto_integrate_remote", None)
+    remote = remote_obj if isinstance(remote_obj, str) and remote_obj.strip() else None
+    # The durable record the owner reconciles against the live
+    # observation; the seam's own record-fact overlay is applied inside
+    # the verdict exactly as every other boundary's seam call does.
+    record = read_record(root)
     attempts = max(1, resolver_attempt_limit(config_obj))
     previous_failure: tuple[str, str | None, str | None] | None = None
+    previous_action: IntegrationAction | None = None
     for attempt in range(1, attempts + 1):
         # Log-hygiene rule (observability catalogue F): a repeated
         # identical outcome logs once with a count, not once per retry.
@@ -2312,10 +2381,39 @@ def _ensure_planning_in_sync(
         routed = _route_planning_commit(state, ctx)
         if routed is not state:
             return routed, None
+        # The typed owner verdict is the gate's escalation oracle. The
+        # call charges the durable ledger exactly once through the
+        # single owner charge path, so a hold that repeats the same
+        # observation accumulates evidence even when the integration
+        # attempt itself defers silently (busy worktree, unreadable
+        # probe): the owner's answer moves off the repeated action and
+        # the loop stops instead of re-running it. An unreadable seam
+        # degrades to "no escalation signal" -- the gate must survive
+        # an owner-seam outage exactly as it survives an unreadable
+        # integration probe.
+        sync_verdict: PlanningSyncVerdict | None
+        try:
+            sync_verdict = decide_planning_sync(
+                root,
+                record=record,
+                target=target,
+                remote=remote,
+            )
+        except Exception as seam_exc:  # pragma: no cover -- defensive
+            logger.debug("planning sync: owner seam unreadable: {}", seam_exc)
+            sync_verdict = None
         failure = (gap, state.rebase.last_outcome, state.rebase.last_reason)
         if failure == previous_failure:
             break
         previous_failure = failure
+        if sync_verdict is not None:
+            if previous_action is not None and sync_verdict.action is not previous_action:
+                # The owner escalated for the same observation: the
+                # verdict moved to the next action, so the gate moves
+                # with it instead of re-running the action observation
+                # shows cannot change the state.
+                break
+            previous_action = sync_verdict.action
     outcome = (
         state.rebase.last_reason
         or (state.rebase.last_outcome.value if state.rebase.last_outcome is not None else None)
@@ -3606,6 +3704,7 @@ def _run_inner_loop_after_startup(
         runner_step = cast(
             "_RunPipelineStepFn", _runner_module.run_pipeline_step
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        planning_baseline = _capture_planning_baseline_if_entry(state, ctx)
         step_result = runner_step(
             state=state,
             policy_bundle=ctx.policy_bundle,
@@ -3624,6 +3723,11 @@ def _run_inner_loop_after_startup(
             _cycle_sample_box=cycle_sample_box,
             _development_sample_box=development_sample_box,
         )
+        if planning_baseline is not None and not isinstance(step_result, int):
+            # The planning dispatch actually ran; clear whatever tracked
+            # residue it left before the next phase reads the tree.
+            with suppress(Exception):
+                _resolve_planning_residue_after_dispatch(ctx, planning_baseline)
         step_result = _resume_planning_after_commit(step_result, ctx, state, backend=backend)
         if isinstance(step_result, int):
             return state, prev_phase, step_result

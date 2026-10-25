@@ -7,6 +7,30 @@ known blocked with a typed kind, or unknown -- and only a PROVEN conflict
 blocks.  A timeout, a kill, lock contention, or any other environmental
 failure is ``unknown``: it mints no blocking reason, dispatches no resolver,
 and is never persisted as "unresolved".  The caller backs off and re-observes.
+
+Decision authority
+------------------
+
+This module is OBSERVATION PLUMBING, not a decision authority. It answers
+only the dispatch-gate question -- "may an ordinary phase dispatch proceed
+against this tree and durable state?" -- in its own three-valued
+:class:`IntegrationResolutionVerdict` vocabulary
+(:data:`RESOLVED` / :data:`RECOVERABLE` / :data:`EXHAUSTED`). The sole
+decision authority for what INTEGRATION does next -- the mutation ladder --
+is :mod:`ralph.pipeline.integration_owner`, reached only through
+:func:`ralph.pipeline._integration_owner_seam.decide_seam_action` (and the
+planning gate's typed
+:func:`ralph.pipeline._integration_owner_seam.decide_planning_sync`).
+This module never derives a mutation-ladder action and never re-implements
+a decision table of its own; its probes and assessments are inputs the
+owner-adjacent seams compose with their verdicts (for example the run
+loop's blocking seam asks the owner seam first, then consults
+:func:`inspect_integration_resolution` for the dispatch invariant). The
+injectable probe callables on the assessment entry points exist so the
+probe layer stays pure and black-box testable; routing the dispatch-gate
+question through the owner seam would charge the durable attempt ledger on
+every phase-dispatch check, which is exactly what this observation layer
+must not do.
 """
 
 from __future__ import annotations
@@ -398,6 +422,14 @@ def inspect_integration_resolution(
     merge_status: Callable[[Path], str] = merge_state,
 ) -> _AssessedIntegrationResolutionVerdict:
     """Return the three-valued dispatch verdict for ``root`` and ``state``.
+
+    Authority boundary: this function is the dispatch gate's observation
+    plumbing (see the module docstring). The owner seam
+    (:func:`ralph.pipeline._integration_owner_seam.decide_seam_action`) is
+    the sole mutation-ladder decision authority; this verdict never
+    names what integration does next -- only whether ordinary dispatch
+    may proceed, in the three-valued :class:`IntegrationResolutionVerdict`
+    vocabulary.
 
     Git evidence is an UNMERGED index entry, an in-progress rebase, or an
     in-progress merge.  Ordinary staged, modified, or untracked changes are

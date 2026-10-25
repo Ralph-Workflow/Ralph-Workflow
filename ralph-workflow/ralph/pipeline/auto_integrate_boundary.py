@@ -187,7 +187,19 @@ def defer_dirty_boundary(
     readiness: TreeReadinessAssessment | None = None,
     get_head_sha_fn: Callable[[Path | str], str] | None = None,
 ) -> RebaseState | None:
-    """Defer dirty-boundary integration, recording only meaningful missed catch-up."""
+    """Defer dirty-boundary integration, recording only meaningful missed catch-up.
+
+    The deferral DECISION is typed and made before this function: the
+    caller's :attr:`TreeReadinessAssessment.integration_ready` check plus
+    the ``diverged`` probe below. The reason string composed here is
+    display/record prose only -- it is never a decision input. Every
+    downstream consumer decides from typed values: the run loop routes
+    on the closed :class:`~ralph.pipeline._planning_obstruction.PlanningObstructionKind`
+    vocabulary (translated, for legacy checkpoints only, by the single
+    sanctioned parser :func:`~ralph.pipeline._planning_obstruction.identify_planning_obstruction`),
+    and BOTH candidate strings below translate to non-``NONE`` kinds that
+    route identically, so the canonicalization cannot change behavior.
+    """
     if readiness is None:
         readiness = assess_tree_readiness(root)
     refresh = REFRESH_SUPPRESSED
@@ -206,6 +218,14 @@ def defer_dirty_boundary(
         target_sha = branch_sha(root, target)
         diverged = target_is_ahead(root, target_sha)
     if diverged:
+        # Display-only canonicalization (see the docstring): the recorded
+        # reason always names the cleanliness deferral so an operator
+        # reading the durable record sees the same deferral phrase for
+        # every blocked boundary. This substring check decides NO
+        # behavior -- both the readiness reason it may keep and the
+        # canonical phrase it may substitute translate, through the one
+        # sanctioned prose-to-kind parser, to non-NONE obstruction kinds
+        # that the run loop routes identically.
         reason = (
             readiness.blocking_reasons[0]
             if readiness and readiness.blocking_reasons
