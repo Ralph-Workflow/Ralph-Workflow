@@ -140,7 +140,11 @@ def diagnostic_evidence_verdict(
 evaluate_held_diagnostic_evidence = diagnostic_evidence_verdict
 
 
-def snapshot_has_unreadable(root: Path, record: IntegrationRecord) -> bool:
+def snapshot_has_unreadable(
+    root: Path,
+    record: IntegrationRecord,
+    collector: OperationEvidenceCollector | None = None,
+) -> bool:
     """Run the snapshot and report whether any fact is UNREADABLE.
 
     The snapshot is preserved public API (tests in
@@ -151,7 +155,7 @@ def snapshot_has_unreadable(root: Path, record: IntegrationRecord) -> bool:
     merge state and must block the atomic transition proof.
     """
     try:
-        col = operation_evidence_collector()
+        col = collector if collector is not None else operation_evidence_collector()
         snapshot = col.snapshot(root, record)
     except Exception:
         return True

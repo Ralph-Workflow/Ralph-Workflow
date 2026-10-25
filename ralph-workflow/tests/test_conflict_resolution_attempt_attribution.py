@@ -152,6 +152,7 @@ def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
         failed_index: int = 0,
         policy_bundle: PolicyBundle | None = None,
         bench: bool = False,
+        **kwargs: object,
     ) -> None:
         charged.append(agent_name)
         original(
@@ -162,6 +163,7 @@ def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
             failed_index=failed_index,
             policy_bundle=policy_bundle,
             bench=bench,
+            **kwargs,
         )
 
     monkeypatch.setattr(driver_module, "classify_failed_resolution_attempt", _spy)

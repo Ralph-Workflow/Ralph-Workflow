@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Protocol
 
 # Add the ralph-workflow package to sys.path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -59,8 +60,7 @@ html_theme_options = {
 }
 html_title = "Ralph Workflow"
 html_description = (
-    "Ralph Workflow is the maintained Python CLI for running an "
-    "autonomous coding-agent loop."
+    "Ralph Workflow is the maintained Python CLI for running an autonomous coding-agent loop."
 )
 language = "en"
 html_show_sourcelink = True
@@ -124,4 +124,21 @@ linkcheck_ignore = [
 ]
 
 
+class _SphinxApp(Protocol):
+    def connect(self, event: str, callback: object) -> None: ...
 
+
+def _on_autodoc_process_docstring(
+    app: object,
+    what: object,
+    name: object,
+    obj: object,
+    options: object,
+    lines: object,
+) -> None:
+    sys.stdout.write(".")
+    sys.stdout.flush()
+
+
+def setup(app: _SphinxApp) -> None:
+    app.connect("autodoc-process-docstring", _on_autodoc_process_docstring)

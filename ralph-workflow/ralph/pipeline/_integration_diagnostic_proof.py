@@ -245,7 +245,7 @@ def _check_atomic_transition_proof(
     # half-removed marker). The proof refuses to release while the
     # live state cannot be observed; the diagnostic re-derives on the
     # next seam.
-    if snapshot_has_unreadable(effective_root, record):
+    if snapshot_has_unreadable(effective_root, record, collector=collector):
         return False, "diagnostic evidence status is UNKNOWN (observations unreadable)"
     return True, "atomic transition verified"
 

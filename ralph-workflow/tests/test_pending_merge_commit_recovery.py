@@ -107,6 +107,7 @@ def test_crash_after_merge_commit_recovers_landing_without_recommitting(tmp_git_
     assert read_record(root) is None
 
 
+@pytest.mark.timeout_seconds(15)  # Headroom under concurrent 9-shard CPU load
 def test_moving_target_preserves_completed_pending_merge(tmp_git_repo: Path) -> None:
     root = tmp_git_repo
     target, record = _prepared(root)

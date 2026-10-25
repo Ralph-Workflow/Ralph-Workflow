@@ -30,6 +30,12 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
+@pytest.fixture(autouse=True)
+def _no_real_cooldown_waits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed agent is benched and the driver waits out its cooldown; never for real here."""
+    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
+
+
 def _deps(store: AgentUnavailabilityTracker) -> PipelineDeps:
     context = make_display_context(console=Console(file=StringIO()))
     return dataclasses.replace(make_test_pipeline_deps(context), unavailability_store=store)
@@ -64,7 +70,8 @@ def test_resolver_that_failed_in_an_earlier_session_is_not_offered_first(
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
     )
-    deps = _deps(AgentUnavailabilityTracker(clock=FakeClock()))
+    clock = FakeClock()
+    deps = _deps(AgentUnavailabilityTracker(clock=clock))
     first: list[str] = []
     second: list[str] = []
 
@@ -103,8 +110,8 @@ def test_when_every_candidate_is_benched_the_one_returning_soonest_goes_first(
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
     )
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
-    store = AgentUnavailabilityTracker(clock=FakeClock())
+    clock = FakeClock()
+    store = AgentUnavailabilityTracker(clock=clock)
     store.mark_unavailable("x", "primary", UnavailabilityReason.OUT_OF_CREDITS)
     store.mark_unavailable("x", "fallback", UnavailabilityReason.PROCESS_EXITED)
     calls: list[str] = []

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import importlib
 import runpy
 import tomllib
@@ -13,6 +14,13 @@ PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
 GITIGNORE_PATH = REPO_ROOT.parent / ".gitignore"
 INDEX_RST_PATH = REPO_ROOT / "docs" / "sphinx" / "index.rst"
 GETTING_STARTED_PATH = REPO_ROOT / "docs" / "sphinx" / "getting-started.md"
+
+
+@functools.cache
+def _get_getting_started_content() -> str:
+    return GETTING_STARTED_PATH.read_text(encoding="utf-8")
+
+
 SPHINX_DIR = REPO_ROOT / "docs" / "sphinx"
 DEVELOPER_INTERNALS_PATH = SPHINX_DIR / "developer-internals.md"
 REFERENCE_MD_PATH = SPHINX_DIR / "reference.md"
@@ -109,7 +117,7 @@ def test_getting_started_file_exists_and_has_required_content() -> None:
         f"docs/sphinx/getting-started.md does not exist at {GETTING_STARTED_PATH}"
     )
 
-    content = GETTING_STARTED_PATH.read_text(encoding="utf-8")
+    content = _get_getting_started_content()
 
     # Must contain the literal 'ralph --init' command
     assert "ralph --init" in content, (

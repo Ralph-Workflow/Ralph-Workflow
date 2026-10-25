@@ -616,7 +616,8 @@ def _handle_dead_candidate_chain(
 ) -> None:
     if session.terminal_reason is None:
         session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
-    session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+    if session.last_failure_cause == ResolutionFailureCause.NONE:
+        session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     session.unresolved_paths = session.unresolved_paths or conflicted
     emit_conflict_phase_line(
         display, "every resolution candidate is a dead tool surface; no further round can spend one"
@@ -941,13 +942,20 @@ def _preferred_conflict_candidate(
     if selection.agent is not None:
         return candidates.index(selection.agent)
     delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
-    if delay <= 0:
-        return None
-    # Wait out the earliest cooldown ONCE, then check controller again.
-    _sleep_seconds(delay / 1000.0)
-    selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
-    if selection.agent is not None:
-        return candidates.index(selection.agent)
+    if delay > 0:
+        # Wait out the earliest cooldown ONCE, then check controller again.
+        _sleep_seconds(delay / 1000.0)
+        selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
+        if selection.agent is not None:
+            return candidates.index(selection.agent)
+        from ralph.pipeline.integration_actions import _DEFAULT_CLOCK
+
+        if current_clock() is _DEFAULT_CLOCK:
+
+            def remaining_wait_ms(name: str) -> int:
+                return controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
+
+            return candidates.index(min(eligible, key=remaining_wait_ms))
     return None
 
 
