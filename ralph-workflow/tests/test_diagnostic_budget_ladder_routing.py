@@ -59,13 +59,14 @@ from tests._integration_ladder_fakes import _FakePlumbing
 
 
 def _record(**overrides: object) -> IntegrationRecord:
-    return IntegrationRecord(
-        phase="integrating",
-        target="main",
-        pre_feature_sha="a" * 40,
-        pre_target_sha="b" * 40,
-        **overrides,
-    )
+    base: dict[str, object] = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+    }
+    base.update(overrides)
+    return IntegrationRecord.model_validate(base)
 
 
 def test_cap_exhaustion_stamps_typed_outcome_and_reaches_a_ladder_rung(tmp_path: Path) -> None:

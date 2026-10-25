@@ -61,7 +61,6 @@ from ralph.pipeline.integration_observation import (
     WorktreeState,
     read_in_progress_kind,
 )
-from ralph.pipeline.operation_evidence import identity_fingerprint
 
 pytestmark = pytest.mark.timeout_seconds(30)
 
@@ -275,7 +274,7 @@ def test_director_landed_work_short_circuits_to_land_and_releases_record(
     assert not record_file.exists(), "director should have cleared the retained record"
 
 
-def test_director_landed_work_preserves_operator_intervention_record(
+def test_director_landed_work_preserves_reintegrate_pending_record(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     overrides = _ProbeOverrides()
@@ -287,15 +286,9 @@ def test_director_landed_work_preserves_operator_intervention_record(
         target="main",
         pre_feature_sha="0" * 40,
         pre_target_sha="0" * 40,
-        diagnostic_evidence=(("head", "0" * 40),),
-        diagnostic_intervention_required=True,
+        reintegrate_pending=True,
     )
-    write_record(
-        tmp_path,
-        held_record.model_copy(
-            update={"diagnostic_ownership": f"{identity_fingerprint(held_record)}:9999999999"}
-        ),
-    )
+    write_record(tmp_path, held_record)
 
     decision = _default_director(tmp_path, overrides).decide_and_act()
 

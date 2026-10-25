@@ -36,14 +36,14 @@ def test_select_resolution_action_continue_agent_round() -> None:
     assert action is ResolutionAction.CONTINUE_AGENT_ROUND
 
 
-def test_select_resolution_action_escalate_to_intervention() -> None:
-    """When round cap is reached with unresolved paths, escalate to intervention."""
+def test_select_resolution_action_does_not_escalate_on_round_cap() -> None:
+    """Action selection does not independently cap rounds; ledger and operator caps decide."""
     session = ResolutionSession(
         unresolved_paths=("conflict.py",),
         terminal_reason=None,
     )
     action = select_resolution_action(session, round_index=3, cap=3)
-    assert action is ResolutionAction.ESCALATE_TO_INTERVENTION
+    assert action is ResolutionAction.CONTINUE_AGENT_ROUND
 
 
 def test_select_resolution_action_escalate_to_intervention_out_of_reach() -> None:

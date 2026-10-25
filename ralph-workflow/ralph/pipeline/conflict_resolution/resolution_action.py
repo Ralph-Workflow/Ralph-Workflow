@@ -24,12 +24,13 @@ class ResolutionAction(StrEnum):
 
 def select_resolution_action(
     session: ResolutionSession,
-    round_index: int,
-    cap: int,
+    round_index: int = 1,
+    cap: int = 0,
     *,
     resolved: bool | None = None,
 ) -> ResolutionAction:
     """Select the typed resolution action for the current round and session state."""
+    del round_index, cap
     if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS or bool(
         session.out_of_reach_paths
     ):
@@ -42,9 +43,6 @@ def select_resolution_action(
             if session.terminal_reason is not None
             else ResolutionAction.PROCEED_TO_FAST_FORWARD
         )
-
-    if round_index >= cap:
-        return ResolutionAction.ESCALATE_TO_INTERVENTION
 
     return ResolutionAction.CONTINUE_AGENT_ROUND
 

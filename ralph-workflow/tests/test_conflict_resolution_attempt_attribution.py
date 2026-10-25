@@ -83,8 +83,6 @@ def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Rounds re-spend the chain, so pin the ceiling that bounds the cost."""
-    from ralph.pipeline.conflict_resolution.session import conflict_chain_max_retries
-
     chain = ("one", "two", "three")
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: chain)
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
@@ -110,17 +108,16 @@ def test_one_stop_cannot_exceed_its_configured_invocation_ceiling(
         )
         is False
     )
-    # With the shared failure ledger, candidates have up to 3 consecutive
-    # attempts before cooldown. In round 1, each candidate is tried 3 times (9 calls).
-    # In rounds 2 and 3, candidates are tried once each per round (6 calls).
-    rounds = config.conflict_resolution.max_rounds_per_stop
-    assert len(called) == 15
-    for round_index in range(1, rounds + 1):
+    # With the shared failure ledger as the sole authority governing retries,
+    # round-count caps do not independently truncate rounds. Candidates progress
+    # until their total unproductive limit (9 attempts each) is reached.
+    assert len(called) == 27
+    rounds_spent = max(index for index, _ in called)
+    for round_index in range(1, rounds_spent + 1):
         spent = [agent for index, agent in called if index == round_index]
         assert set(spent) == set(chain), f"round {round_index} spent {spent}"
-    assert len(called) <= (
-        rounds * len(chain) * max(1, conflict_chain_max_retries(_policy_bundle()))
-    )
+    for agent in chain:
+        assert [a for _, a in called].count(agent) == 9
 
 
 def test_a_failed_attempt_is_charged_to_recovery_exactly_once(
@@ -340,7 +337,7 @@ def test_an_unavailable_candidate_does_not_answer_for_the_one_after_it(
         )
         is False
     )
-    assert called == ["ghost", "healthy", "healthy", "healthy"]
+    assert called == ["ghost"] + ["healthy"] * 9
     assert "ghost" in session.dead_tool_surfaces
     assert "healthy" not in session.dead_tool_surfaces
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED

@@ -290,6 +290,7 @@ def test_post_http_jsonrpc_accepts_injected_http_post() -> None:
     assert seen["url"] == "http://demo/mcp"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_post_http_jsonrpc_with_session_ignores_missing_ssl_cert_env_for_plain_http(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

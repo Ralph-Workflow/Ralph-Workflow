@@ -44,6 +44,9 @@ from ralph.pipeline.conflict_resolution._driver_rounds import (
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
+from ralph.pipeline.conflict_resolution.chain_candidates import (
+    skipped_candidates,
+)
 from ralph.pipeline.conflict_resolution.graph import (
     PHASE_RESOLUTION,
 )
@@ -360,7 +363,18 @@ def _run_rounds(
         session.unavailability_store = pipeline_deps.unavailability_store
     ensure_session_controller(session, policy_bundle, pipeline_deps=pipeline_deps)
     if session.workspace is None and workspace_scope is not None:
-        session.workspace = getattr(workspace_scope, "workspace", None)
+        ws_obj: object = getattr(workspace_scope, "workspace", None)
+        from ralph.workspace.protocol import Workspace
+
+        if isinstance(ws_obj, Workspace):
+            session.workspace = ws_obj
+        else:
+            from ralph.workspace.fs import FsWorkspace
+
+            session.workspace = FsWorkspace(
+                workspace_scope.root,
+                allowed_roots=workspace_scope.allowed_roots,
+            )
     if session.workspace_probe is None:
         rc = session.recovery_controller
         if rc is not None and rc.workspace_probe is not None:
@@ -462,15 +476,22 @@ def _execute_round_loop(
 ) -> bool:
     prompt_path: Path | None = None
     try:
-        start_round = session.rounds_spent + 1
-        for round_index in range(start_round, round_cap + 1):
-            session.rounds_spent = round_index
+        round_index = session.rounds_spent
+        while True:
+            round_index += 1
             if _operator_cap_expired(session, clock):
                 _emit_expired_operator_cap(display, session, conflicted, clock)
                 return False
-            _push_round_status(display, root, target, round_index, round_cap, stop)
+            _push_round_status(display, root, target, round_index, max(round_index, round_cap), stop)
             prompt_path = _render_round_prompt(
-                root, target, conflicted, round_index, round_cap, session, stop, strategy_history
+                root,
+                target,
+                conflicted,
+                round_index,
+                max(round_index, round_cap),
+                session,
+                stop,
+                strategy_history,
             )
             if prompt_path is None:
                 session.terminal_reason = ResolutionTerminationReason.PROMPT_UNAVAILABLE
@@ -551,14 +572,32 @@ def _execute_round_loop(
             if not attempt.invoked:
                 _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
                 break
+            session.rounds_spent = round_index
             if action == ResolutionAction.ESCALATE_TO_INTERVENTION:
                 _escalate_unreachable_remainder(session, display)
+                break
+            if not _can_continue_rounds(session, candidates):
                 break
     finally:
         if prompt_path is not None:
             with contextlib.suppress(OSError):
                 prompt_path.unlink()
     return False
+
+
+def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]) -> bool:
+    skipped = skipped_candidates(session, candidates)
+    live = [name for name in candidates if name not in skipped]
+    if not live:
+        return False
+    controller = session.recovery_controller
+    if controller is not None:
+        if any(controller._is_agent_available(PHASE_RESOLUTION, name) for name in live):
+            return True
+        return controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0
+    if session.ledger is not None:
+        return any(session.ledger.is_available(PHASE_RESOLUTION, name) for name in live)
+    return True
 
 
 def _record_unconfigured_resolver(

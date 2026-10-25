@@ -531,9 +531,9 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/agents/test_terminal_state_restored_on_exit.py": 270,
     "tests/test_auto_integrate_local_fleet_target_e2e.py": 55,
     # Recalibrated after the rewrite to a REAL git rebase: the file now
-    # drives real git plumbing and measures ~3.8 s of wall clock.
-    # 75 keeps all shards evenly balanced within the 60s verify budget.
-    "tests/pipeline/test_auto_integrate_agent_failure.py": 75,
+    # drives real git plumbing and measures ~7.8 s of wall clock.
+    # 220 keeps all shards evenly balanced within the 60s verify budget.
+    "tests/pipeline/test_auto_integrate_agent_failure.py": 220,
 }
 
 

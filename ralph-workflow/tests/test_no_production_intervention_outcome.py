@@ -36,6 +36,8 @@ import tokenize
 from pathlib import Path
 from typing import Final
 
+import pytest
+
 _PRODUCTION_ROOT: Final = Path(__file__).resolve().parent.parent / "ralph"
 
 _NEEDLES: Final = (
@@ -318,6 +320,7 @@ def _scan_tree(sources: dict[str, str]) -> list[str]:
     return violations
 
 
+@pytest.mark.timeout_seconds(5)
 def test_no_production_module_produces_an_intervention_outcome() -> None:
     """AC cross-tree guard: the retired hand-off has no live producer anywhere."""
     violations = _scan_tree(_production_sources())

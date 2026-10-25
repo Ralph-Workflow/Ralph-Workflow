@@ -63,17 +63,18 @@ def test_exhaustion_restart_prevents_budget_replenishment(tmp_path: Path) -> Non
     )
     assert handoff_success is False
 
-    # Fault-injection checkpoint: confirm record was written to disk with intervention flag
+    # Fault-injection checkpoint: confirm record was written to disk with budget spent reason
     saved_after = read_record(tmp_path)
     assert saved_after is not None
-    assert saved_after.diagnostic_intervention_required is True
+    assert saved_after.diagnostic_intervention_required is False
+    assert "diagnostic repair budget spent" in (saved_after.repair_cap_reason or "")
     assert saved_after.merge_commit_repair_attempts == 3
 
     # 3. Simulate process restart by reloading from disk with exhausted record
     restarted_record = read_record(tmp_path)
     assert restarted_record is not None
     assert restarted_record.merge_commit_repair_attempts == 3
-    assert restarted_record.diagnostic_intervention_required is True
+    assert restarted_record.diagnostic_intervention_required is False
 
     # Restart public recovery with the reloaded exhausted record; assert zero agent calls occur
     mock_invoke = MagicMock()
@@ -93,21 +94,21 @@ def test_exhaustion_restart_prevents_budget_replenishment(tmp_path: Path) -> Non
     after_restart = read_record(tmp_path)
     assert after_restart is not None
     assert after_restart.merge_commit_repair_attempts == 3
-    assert after_restart.diagnostic_intervention_required is True
+    assert after_restart.diagnostic_intervention_required is False
 
-    # 4. Verify reducer with clean state yields REPORT_INTERVENTION_REQUIRED from durable record
+    # 4. Verify reducer with clean state yields BLOCK_FOR_RECOVERY from durable record
     state = PipelineState(phase="development", rebase=RebaseState())
     policy = _policy()
     new_state, _ = reduce(
         state, PipelineEvent.AGENT_SUCCESS, policy, integration_record=after_restart
     )
-    assert new_state.rebase.last_decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED.value
+    assert new_state.rebase.last_decision == PhaseDecision.BLOCK_FOR_RECOVERY.value
 
-    # Direct authority evaluation also confirms REPORT_INTERVENTION_REQUIRED
+    # Direct authority evaluation also confirms BLOCK_FOR_RECOVERY
     decision = decide_phase_transition(
         state,
         policy,
         integration_record=after_restart,
         rebase_state=state.rebase,
     )
-    assert decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    assert decision == PhaseDecision.BLOCK_FOR_RECOVERY

@@ -401,7 +401,7 @@ def test_auto_integrate_on_phase_transition_tries_rebase_first(
             yield True
 
         monkeypatch.setattr(
-            "ralph.pipeline._auto_integrate_once.integration_transaction",
+            "ralph.pipeline.auto_integrate.integration_transaction",
             _fake_tx,
         )
         monkeypatch.setattr(

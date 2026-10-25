@@ -37,6 +37,7 @@ from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState, ResolutionFailureCause
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.scope import WorkspaceScope
 from tests.pipeline._auto_integrate_agent_failure_fixtures import (
     TARGET,
@@ -278,28 +279,97 @@ def test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_r
         )
 
 
-def test_scenario_c_integration_demotion_leaves_other_phases_untouched() -> None:
-    """§7.5 (c): a demoted integration agent keeps its standing elsewhere."""
+def test_scenario_c_integration_demotion_leaves_other_phases_untouched(
+    tmp_path: Path,
+    _template_repo: Path,
+) -> None:
+    """§7.5 (c): a demoted integration agent keeps its standing elsewhere.
+
+    Demoting an agent through the outer integration entry point does not
+    alter its eligibility or selection in the development and review phases.
+    """
+    repo_root = _clone_repo(_template_repo, tmp_path / "repo")
     clock = FrozenClock()
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
-    for _ in range(3):
-        ledger.record(AttemptFact(phase=_RESOLUTION_PHASE, agent="agentA", artifact_valid=False))
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock), ledger=ledger)
 
-    # The agent is demoted in the integration phase ...
-    assert not ledger.is_available(_RESOLUTION_PHASE, "agentA")
-    # ... and untouched in every other phase.
+    outcome, invocations, logs = _run_integration(
+        repo_root,
+        clock=clock,
+        ledger=ledger,
+        candidates=("agentA", "agentB"),
+        resolving_agents=("agentB",),
+    )
+
+    # In integration, agentA failed three times and was demoted; agentB resolved.
+    assert invocations == ["agentA", "agentA", "agentA", "agentB"]
+    assert outcome is not None
+    assert outcome.last_outcome == RebaseOutcomeKind.REBASED
+    assert outcome.fast_forwarded is True
+    assert not outcome.is_intervention_required
+
+    # The integration demotion was logged.
+    assert any(f"Agent 'agentA' demoted in phase '{_RESOLUTION_PHASE}'" in line for line in logs)
+
+    # But in development and review, agentA's standing is untouched:
+    # agentA is selected first with no skipped agents.
+    with _captured_logs() as other_logs:
+        for phase in _OTHER_PHASES:
+            selection = controller.preferred_agent_index(phase, ("agentA", "agentB"))
+            assert selection.index == 0
+            assert selection.agent == "agentA"
+            assert not any(skipped_agent == "agentA" for skipped_agent, _ in selection.skipped_reasons)
+            assert any(f"Phase {phase}: Selected agent agentA" in line for line in other_logs)
+
+
+def test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact(
+    tmp_path: Path,
+    _template_repo: Path,
+) -> None:
+    """§7.5 (c): a demotion in another phase does not demote the integration.
+
+    Demoting an agent in development and review phases does not alter its
+    standing in the integration phase when driven through the outer entry point.
+    """
+    repo_root = _clone_repo(_template_repo, tmp_path / "repo")
+    clock = FrozenClock()
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock), ledger=ledger)
+
+    # Demote agentA in development and review phases.
     for phase in _OTHER_PHASES:
-        assert ledger.is_available(phase, "agentA")
+        for _ in range(3):
+            ledger.record(AttemptFact(phase=phase, agent="agentA", artifact_valid=False))
 
+    # In development and review, agentA is demoted and skipped in favor of agentB.
+    with _captured_logs() as other_logs:
+        for phase in _OTHER_PHASES:
+            selection = controller.preferred_agent_index(phase, ("agentA", "agentB"))
+            assert selection.index == 1
+            assert selection.agent == "agentB"
+            assert any(skipped_agent == "agentA" for skipped_agent, _ in selection.skipped_reasons)
+            assert any(
+                f"Phase {phase}: Selected agent agentB (skipped agentA:" in line
+                for line in other_logs
+            )
 
-def test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact() -> None:
-    """§7.5 (c): a demotion in another phase does not demote the integration."""
-    clock = FrozenClock()
-    ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
-    for _ in range(3):
-        ledger.record(AttemptFact(phase="development", agent="agentA", artifact_valid=False))
+    # Now drive the outer integration entry point: agentA's standing in
+    # integration is untouched, so agentA is selected first and resolves.
+    outcome, invocations, logs = _run_integration(
+        repo_root,
+        clock=clock,
+        ledger=ledger,
+        candidates=("agentA", "agentB"),
+        resolving_agents=("agentA",),
+    )
 
-    # The agent is unavailable in development ...
-    assert not ledger.is_available("development", "agentA")
-    # ... and fully eligible in the integration phase.
-    assert ledger.is_available(_RESOLUTION_PHASE, "agentA")
+    # agentA was chosen first and resolved in one attempt; agentB was not invoked.
+    assert invocations == ["agentA"]
+    assert outcome is not None
+    assert outcome.last_outcome == RebaseOutcomeKind.REBASED
+    assert outcome.fast_forwarded is True
+    assert not outcome.is_intervention_required
+
+    # agentA was neither demoted nor skipped in the integration phase.
+    assert not any(f"Agent 'agentA' demoted in phase '{_RESOLUTION_PHASE}'" in line for line in logs)
+    assert not any("skipped agentA" in line for line in logs)

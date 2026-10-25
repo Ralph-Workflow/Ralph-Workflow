@@ -300,7 +300,7 @@ def test_intervention_required_rendered_prefix() -> None:
     msg = format_auto_integrate_message(
         operation_display_state=OperationDisplayState.INTERVENTION_REQUIRED, target="main"
     )
-    assert msg.startswith("intervention required")
+    assert msg.startswith("escalating through the autonomous fallback ladder")
 
 
 def test_terminal_rendered_prefix() -> None:
@@ -314,7 +314,10 @@ def test_terminal_rendered_prefix() -> None:
 def test_all_operation_display_states_rendered_prefix(state: OperationDisplayState) -> None:
     """Every OperationDisplayState value formats with its canonical prefix."""
     msg = format_auto_integrate_message(operation_display_state=state, target="main")
-    expected_prefix = state.value.replace("_", " ")
+    if state is OperationDisplayState.INTERVENTION_REQUIRED:
+        expected_prefix = "escalating through the autonomous fallback ladder"
+    else:
+        expected_prefix = state.value.replace("_", " ")
     assert msg.startswith(expected_prefix)
 
 
@@ -325,7 +328,10 @@ def test_all_rebase_outcome_kinds_project_and_render_prefix(kind: RebaseOutcomeK
     assert display_state is not None
     assert isinstance(display_state, OperationDisplayState)
     msg = format_auto_integrate_message(last_outcome=kind, target="main")
-    expected_prefix = display_state.value.replace("_", " ")
+    if display_state is OperationDisplayState.INTERVENTION_REQUIRED:
+        expected_prefix = "escalating through the autonomous fallback ladder"
+    else:
+        expected_prefix = display_state.value.replace("_", " ")
     assert msg.startswith(expected_prefix)
 
 
@@ -359,4 +365,4 @@ def test_format_auto_integrate_message_with_rebase_object() -> None:
 
     state_unknown = RebaseState(last_outcome=RebaseOutcomeKind.UNKNOWN)
     msg_unknown = format_auto_integrate_message(rebase=state_unknown, target="main")
-    assert msg_unknown.startswith("intervention required")
+    assert msg_unknown.startswith("escalating through the autonomous fallback ladder")

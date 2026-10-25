@@ -22,31 +22,56 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 
 if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
 __all__ = ["next_unvisited", "remember_dead_surface", "skipped_candidates"]
 
 
+def _ledger_for_session(session: ResolutionSession) -> AgentFailureLedger | None:
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+
+    if session.ledger is not None and isinstance(session.ledger, AgentFailureLedger):
+        return session.ledger
+    controller = session.recovery_controller
+    if controller is not None and hasattr(controller, "ledger"):
+        ledger = controller.ledger
+        if isinstance(ledger, AgentFailureLedger):
+            return ledger
+    return None
+
+
 def skipped_candidates(session: ResolutionSession, candidates: tuple[str, ...]) -> frozenset[str]:
-    """Candidates this round must not launch, for either reason."""
-    barred = (*session.dead_tool_surfaces, *session.stop_dead_surfaces)
-    return frozenset(name for name in candidates if name in barred)
+    """Candidates this round must not launch, consulting the ledger as authority."""
+    ledger = _ledger_for_session(session)
+    if ledger is not None:
+        from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+        from ralph.recovery.agent_failure_ledger import Spent
+
+        barred: set[str] = set(session.dead_tool_surfaces)
+        for name in candidates:
+            status = ledger.status(PHASE_RESOLUTION, name)
+            if isinstance(status, Spent) or (
+                session.recovery_controller is None and not status.is_eligible
+            ):
+                barred.add(name)
+        return frozenset(name for name in candidates if name in barred)
+    barred_tuple = (*session.dead_tool_surfaces, *session.stop_dead_surfaces)
+    return frozenset(name for name in candidates if name in barred_tuple)
 
 
 def remember_dead_surface(session: ResolutionSession, agent_name: str) -> None:
     """Bar a candidate, for the run or only for this stop.
 
-    A name the registry cannot produce will not appear mid-run, so that
-    bar holds. A tool surface that faulted is Ralph's own plumbing --
-    the recovery layer calls the very same failure retryable -- so
-    barring the agent for the whole rebase turned one transport hiccup
-    into a run that could never resolve anything again, which is exactly
-    what the shipped one-agent chain does when its only agent is barred.
+    When the failure ledger is configured, the ledger is the sole authority
+    for agent health and exclusion; dead tool surfaces are only remembered
+    when the registry permanently cannot produce the candidate.
     """
     if session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE:
         if agent_name not in session.dead_tool_surfaces:
             session.dead_tool_surfaces = (*session.dead_tool_surfaces, agent_name)
         return
-    if agent_name not in session.stop_dead_surfaces:
+    ledger = _ledger_for_session(session)
+    if ledger is None and agent_name not in session.stop_dead_surfaces:
         session.stop_dead_surfaces = (*session.stop_dead_surfaces, agent_name)
 
 

@@ -71,14 +71,14 @@ def test_entry_points_agree_on_unreadable_record(tmp_path: Path) -> None:
     # Startup (recovery boundary).
     outcome = recover_incomplete_integration(WorkspaceScope(tmp_path))
     assert outcome is not None
-    assert outcome.last_outcome == RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
-    assert outcome.last_decision == "report_intervention_required"
+    assert outcome.last_outcome == RebaseOutcomeKind.LADDER_ESCALATION
+    assert outcome.last_decision == PhaseDecision.BLOCK_FOR_RECOVERY.value
     assert outcome.recovery_record_retained is True
 
     # Phase boundary.
     state = PipelineState(phase="development", rebase=outcome)
     decision = decide_phase_transition(state, None, integration_record=None, rebase_state=outcome)
-    assert decision is PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    assert decision is PhaseDecision.BLOCK_FOR_RECOVERY
 
 
 def test_legacy_checkpoint_migration_yields_one_authoritative_state(

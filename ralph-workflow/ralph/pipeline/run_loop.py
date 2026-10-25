@@ -3018,6 +3018,9 @@ def _handoff_retained_failure(
             # preserved copy lives and which rung runs next -- never a
             # terminal block on a person.
             rung = ladder_rung_for_record_fact_outcome(RecordFactOutcome.STALE_INTENT)
+            if recovered is not None and ctx.latest_state:
+                ctx.latest_state[:] = [ctx.latest_state[0].copy_with(rebase=recovered)]
+                _save_recovered_rebase_checkpoint(ctx.latest_state[0], ctx)
             message = (
                 f"durable integration record unreadable "
                 f"({outcome.unreadable_reason or 'unknown reason'}); "

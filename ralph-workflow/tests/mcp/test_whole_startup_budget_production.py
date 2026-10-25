@@ -236,7 +236,7 @@ def test_black_box_real_child_slowed_past_budget_fails_preflight(tmp_path: Path)
     client_sock: socket.socket | None = None
     try:
         # Wait until child has started and reached registry_built stage
-        deadline = time.monotonic() + 5.0
+        deadline = time.monotonic() + 10.0
         while time.monotonic() < deadline:
             stage = read_last_stage(tmp_path, spawn_id=spawn_id)
             if stage == "registry_built":

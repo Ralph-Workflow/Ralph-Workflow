@@ -46,9 +46,56 @@ TEMPORARY_PRODUCTION_ALLOWLIST: frozenset[str] = frozenset()
 
 TEMPORARY_TEST_ALLOWLIST: frozenset[str] = frozenset()
 
-# Transitional allowlist for competing shapes (e.g. technical_retry_cap)
-# until WU-4 deletes them.
-TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {}
+# Transitional allowlist for competing shapes (e.g. technical_retry_cap, fault hits)
+# until WU-1 deletes them from conflict resolution session.
+TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
+    "ralph/pipeline/conflict_resolution/session.py": frozenset(
+        {
+            "ralph_fault_hits",
+            "_ralph_fault_hits",
+            "stop_dead_surfaces",
+            "_stop_dead_surfaces",
+            "dead_tool_surfaces",
+            "_dead_tool_surfaces",
+            "RALPH_FAULT_ESCALATION_HITS",
+            "ralph_fault_escalation_hits",
+        }
+    ),
+    "ralph/pipeline/conflict_resolution/_driver_rounds.py": frozenset(
+        {
+            "stop_dead_surfaces",
+            "_stop_dead_surfaces",
+            "dead_tool_surfaces",
+            "_dead_tool_surfaces",
+        }
+    ),
+    "ralph/pipeline/conflict_resolution/chain_candidates.py": frozenset(
+        {
+            "stop_dead_surfaces",
+            "_stop_dead_surfaces",
+            "dead_tool_surfaces",
+            "_dead_tool_surfaces",
+        }
+    ),
+    "tests/pipeline/test_conflict_resolution_ledger.py": frozenset(
+        {"stop_dead_surfaces", "dead_tool_surfaces"}
+    ),
+    "tests/test_conflict_resolution_attempt_attribution.py": frozenset(
+        {"stop_dead_surfaces", "dead_tool_surfaces"}
+    ),
+    "tests/test_conflict_resolution_futile_loop.py": frozenset(
+        {"stop_dead_surfaces", "dead_tool_surfaces"}
+    ),
+    "tests/test_conflict_resolution_phase_parity.py": frozenset(
+        {"stop_dead_surfaces", "dead_tool_surfaces"}
+    ),
+    "tests/test_conflict_resolution_pipeline.py": frozenset(
+        {"stop_dead_surfaces", "dead_tool_surfaces"}
+    ),
+    "tests/test_conflict_resolution_relay_failure.py": frozenset(
+        {"stop_dead_surfaces", "dead_tool_surfaces"}
+    ),
+}
 
 
 def is_transitional_allowed(rel_path: str, name: str) -> bool:
@@ -110,6 +157,27 @@ _FORBIDDEN_TRACKER_NAMES: frozenset[str] = frozenset(
         "_resolver_retry_count",
         "_resolver_retry_cap",
         "_resolver_health_counter",
+        # RC-1: Competing fault-hit counters and ad-hoc agent exclusion lists
+        "ralph_fault_hits",
+        "_ralph_fault_hits",
+        "fault_hits",
+        "_fault_hits",
+        "fault_hit_count",
+        "_fault_hit_count",
+        "ralph_fault_escalation_hits",
+        "_ralph_fault_escalation_hits",
+        "RALPH_FAULT_ESCALATION_HITS",
+        "fault_escalation_hits",
+        "stop_dead_surfaces",
+        "_stop_dead_surfaces",
+        "dead_tool_surfaces",
+        "_dead_tool_surfaces",
+        "dead_surfaces",
+        "_dead_surfaces",
+        "barred_agents",
+        "_barred_agents",
+        "excluded_agents",
+        "_excluded_agents",
     }
 )
 
@@ -128,6 +196,14 @@ def _is_forbidden_target_name(name: str) -> bool:
         or "technical_retry_cap" in lower
         or "resolver_retry" in lower
         or "resolver_health" in lower
+        or "fault_hits" in lower
+        or "fault_hit" in lower
+        or "dead_surfaces" in lower
+        or "dead_tool_surfaces" in lower
+        or "stop_dead_surfaces" in lower
+        or "barred_agents" in lower
+        or "excluded_agents" in lower
+        or "fault_escalation" in lower
     )
 
 
@@ -185,9 +261,11 @@ def _check_production_function(
 
 
 def _check_production_assignment(
-    node: ast.Assign | ast.AnnAssign, rel_path: str
+    node: ast.Assign | ast.AnnAssign | ast.AugAssign, rel_path: str
 ) -> list[SingleOwnerViolation]:
-    targets: list[ast.expr] = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
+    targets: list[ast.expr] = (
+        list(node.targets) if isinstance(node, ast.Assign) else [node.target]
+    )
     violations: list[SingleOwnerViolation] = []
     for target in targets:
         target_name: str | None = None
@@ -292,6 +370,32 @@ def _check_production_call(node: ast.Call, rel_path: str) -> list[SingleOwnerVio
                 ),
             )
         )
+    if (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr in ("append", "add", "extend")
+    ):
+        recv = node.func.value
+        recv_name: str | None = None
+        if isinstance(recv, ast.Name):
+            recv_name = recv.id
+        elif isinstance(recv, ast.Attribute):
+            recv_name = recv.attr
+        if (
+            recv_name is not None
+            and _is_forbidden_target_name(recv_name)
+            and not is_transitional_allowed(rel_path, recv_name)
+        ):
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule="production_streak_counter_state",
+                    detail=(
+                        f"Mutation '{ast.unparse(node)}' modifies competing agent "
+                        "exclusion collection outside AgentFailureLedger."
+                    ),
+                )
+            )
     return violations
 
 
@@ -344,29 +448,49 @@ def _check_production_compare(node: ast.Compare, rel_path: str) -> list[SingleOw
     for operand in [node.left, *node.comparators]:
         attrs = [n.attr for n in ast.walk(operand) if isinstance(n, ast.Attribute)]
         names = [n.id for n in ast.walk(operand) if isinstance(n, ast.Name)]
-        if ("retries" in attrs or "retries" in names) and any(
-            isinstance(op, (ast.GtE, ast.Gt)) for op in node.ops
-        ):
-            for other in [node.left, *node.comparators]:
-                if other is operand:
-                    continue
-                other_attrs = [n.attr for n in ast.walk(other) if isinstance(n, ast.Attribute)]
-                other_names = [n.id for n in ast.walk(other) if isinstance(n, ast.Name)]
-                if any(
-                    k in other_attrs or k in other_names
-                    for k in ("max_retries", "cap", "limit", "retries")
-                ):
-                    return [
-                        SingleOwnerViolation(
-                            path=rel_path,
-                            line=node.lineno,
-                            rule="production_streak_counter_state",
-                            detail=(
-                                f"Comparison '{ast.unparse(node)}' implements an independent "
-                                "retry cap or health cutoff outside AgentFailureLedger."
-                            ),
-                        )
-                    ]
+        all_idents = attrs + names
+        is_counter = any(
+            ident in ("retries", "_retries")
+            or _is_forbidden_target_name(ident)
+            for ident in all_idents
+        )
+        if not is_counter:
+            continue
+        if any(is_transitional_allowed(rel_path, ident) for ident in all_idents):
+            continue
+        has_forbidden = any(_is_forbidden_target_name(ident) for ident in all_idents)
+        if not has_forbidden and not any(isinstance(op, (ast.GtE, ast.Gt)) for op in node.ops):
+            continue
+        for other in [node.left, *node.comparators]:
+            if other is operand:
+                continue
+            other_attrs = [n.attr for n in ast.walk(other) if isinstance(n, ast.Attribute)]
+            other_names = [n.id for n in ast.walk(other) if isinstance(n, ast.Name)]
+            other_idents = [k.lower() for k in (other_attrs + other_names)]
+            is_cap = (
+                any(
+                    k in other_idents
+                    for k in ("max_retries", "cap", "limit", "retries", "hits")
+                )
+                or any(
+                    "escalation" in k or "cap" in k or "limit" in k or "hits" in k
+                    for k in other_idents
+                )
+                or any(_is_forbidden_target_name(k) for k in (other_attrs + other_names))
+                or (isinstance(other, ast.Constant) and isinstance(other.value, (int, float)))
+            )
+            if is_cap:
+                return [
+                    SingleOwnerViolation(
+                        path=rel_path,
+                        line=node.lineno,
+                        rule="production_streak_counter_state",
+                        detail=(
+                            f"Comparison '{ast.unparse(node)}' implements an independent "
+                            "retry cap or health cutoff outside AgentFailureLedger."
+                        ),
+                    )
+                ]
     return []
 
 
@@ -430,7 +554,7 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
             violations.extend(_check_production_class(node, rel_path))
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             violations.extend(_check_production_function(node, rel_path))
-        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
             violations.extend(_check_production_assignment(node, rel_path))
         elif isinstance(node, ast.Attribute):
             violations.extend(_check_production_attribute(node, rel_path))
@@ -753,6 +877,21 @@ def test_sample(snap):
         for v in v5
     ), (
         f"Expected test_private_ledger_access violation for .get(consecutive_unproductive), got: {v5}"
+    )
+
+    # Negative test 6: RC-1 fault hits increment, cap comparison, and dead surfaces exclusion
+    src_rc1 = """
+def handle_fault(session, agent_name):
+    session.ralph_fault_hits += 1
+    if session.ralph_fault_hits >= 5:
+        session.stop_dead_surfaces = (*session.stop_dead_surfaces, agent_name)
+"""
+    v6 = audit_production_source("ralph/pipeline/worker.py", src_rc1)
+    assert any("ralph_fault_hits" in v.detail for v in v6), (
+        f"Expected violation for ralph_fault_hits, got: {v6}"
+    )
+    assert any("stop_dead_surfaces" in v.detail for v in v6), (
+        f"Expected violation for stop_dead_surfaces, got: {v6}"
     )
 
 

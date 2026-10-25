@@ -276,7 +276,6 @@ def test_a_watchdog_authored_fault_still_bars_the_surface(
 
     for _ in range(RALPH_FAULT_ESCALATION_HITS):
         listener(faulting)
-    assert session.stop_dead_surfaces == ("claude",)
     assert session.dead_tool_surfaces == (), "a plumbing fault is never run-scoped"
     assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
 

@@ -728,3 +728,57 @@ def test_all_cooldown_outer_integration_preserves_rebase_state_not_failed(
         assert choice.wait_ms > 0
     finally:
         reset_executors(token)
+
+
+def test_fault_activity_text_does_not_add_agent_to_stop_dead_surfaces() -> None:
+    """WU-1: Observing fault text does NOT exclude the agent or add to excluded surfaces."""
+    from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidates
+    from ralph.pipeline.conflict_resolution.session import wrap_activity_listener
+
+    session = ResolutionSession()
+    listener = wrap_activity_listener(None, session, agent_name="agentA")
+    assert listener is not None
+
+    class FakeEvent:
+        def __init__(self) -> None:
+            self.diagnostic = {"last_activity_kind": "transport_loop_detected"}
+
+        def __str__(self) -> str:
+            return "transport_loop_detected: some event"
+
+    event = FakeEvent()
+    # Send event multiple times
+    for _ in range(10):
+        listener(event)
+
+    # Candidate is not excluded: skipped_candidates does not skip agentA
+    assert "agentA" not in skipped_candidates(session, ("agentA", "agentB"))
+
+
+def test_ledger_is_sole_authority_for_candidate_exclusion() -> None:
+    """WU-1: Ledger availability is the sole health/exclusion authority."""
+    from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidates
+    from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=1)
+    session = ResolutionSession(ledger=ledger)
+
+    # Initial state: agentA is eligible in the ledger, so not skipped
+    skipped = skipped_candidates(session, ("agentA", "agentB"))
+    assert "agentA" not in skipped
+
+    # Now demote agentA in the ledger to Spent
+    ledger.record(
+        AttemptFact(
+            phase=PHASE_RESOLUTION,
+            agent="agentA",
+            artifact_valid=False,
+        )
+    )
+    assert not ledger.is_available(PHASE_RESOLUTION, "agentA")
+
+    # Now agentA is excluded by the ledger
+    skipped_after = skipped_candidates(session, ("agentA", "agentB"))
+    assert "agentA" in skipped_after
+    assert "agentB" not in skipped_after

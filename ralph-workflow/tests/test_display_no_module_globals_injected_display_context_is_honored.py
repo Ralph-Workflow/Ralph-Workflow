@@ -184,8 +184,11 @@ class TestInjectedDisplayContextIsHonored:
         assert isinstance(ctx.console.file, StringIO)
         output = ctx.console.file.getvalue()
         assert "auto-integrate:" in output.lower()
-        normalized_state = state.value.replace("_", " ")
-        assert normalized_state in output.lower() or state.value in output.lower()
+        if state is OperationDisplayState.INTERVENTION_REQUIRED:
+            assert "escalating through the autonomous fallback ladder" in output.lower()
+        else:
+            normalized_state = state.value.replace("_", " ")
+            assert normalized_state in output.lower() or state.value in output.lower()
 
     @pytest.mark.parametrize("kind", list(RebaseOutcomeKind))
     def test_completion_summary_rebase_outcome_kinds_use_injected_context(

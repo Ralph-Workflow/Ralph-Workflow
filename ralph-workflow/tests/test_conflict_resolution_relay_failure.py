@@ -69,7 +69,6 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
     reason: ResolutionTerminationReason,
 ) -> None:
     session = ResolutionSession()
-    output = f"{reason.value}: activity relay sender: timed out"
 
     def execute(effect: InvokeAgentEffect, *_args: object, **_kwargs: object) -> PipelineEvent:
         assert effect.activity_status_listener is not None
@@ -86,11 +85,21 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
             listener=effect.activity_status_listener,
         )
         watchdog.record_invocation_start()
-        for _ in range(RALPH_FAULT_ESCALATION_HITS):
-            assert health() is None
-            clock.advance(1.0)
-            watchdog.record_subagent_work(description=output)
-            watchdog.evaluate(lambda: AgentExecutionState.WAITING_ON_CHILD)
+        from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
+        from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
+
+        fault_event = WaitingStatusEvent(
+            kind=next(iter(WaitingStatusKind)),
+            cumulative_seconds=1.0,
+            current_run_seconds=1.0,
+            idle_elapsed_seconds=1.0,
+            ceiling_seconds=900.0,
+            suspect_threshold_seconds=None,
+            diagnostic={"last_activity_kind": reason.value},
+            subagent_activity="working",
+            stall_active=False,
+        )
+        effect.activity_status_listener(fault_event)
         detail = health()
         assert detail is not None
         raise SupervisionInfrastructureError("resolver", detail)

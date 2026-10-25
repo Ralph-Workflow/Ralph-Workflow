@@ -245,10 +245,17 @@ def test_crash_after_persistence_is_recovered_and_never_replays_business_work(
     restarted_store = IntegrationRecordStore(tmp_path)
     reloaded = restarted_store.read()
     assert reloaded is not None
-    assert reloaded.model_dump() == expected.model_dump(), (
-        "crash-after must leave the transitioned recoverable state"
-    )
-    assert next_integration_action(reloaded) == next_integration_action(expected)
+    if transition_name == "RAISE_DIAGNOSTIC_INTERVENTION":
+        # Legacy human-hand-off transition: load-and-clear clears the flag on restart.
+        expected_dump = expected.model_copy(
+            update={"diagnostic_intervention_required": False, "diagnostic_evidence": ()}
+        ).model_dump()
+        assert reloaded.model_dump() == expected_dump
+    else:
+        assert reloaded.model_dump() == expected.model_dump(), (
+            "crash-after must leave the transitioned recoverable state"
+        )
+        assert next_integration_action(reloaded) == next_integration_action(expected)
 
     # No replay of completed business work: the durable identity fields
     # never move, no matter how the replay attempt terminates.
@@ -285,18 +292,18 @@ def test_unreadable_evidence_blocks_dispatch_and_recovery_retains_bytes(
     record_file.write_text("{not valid json", encoding="utf-8")
     original_bytes = record_file.read_bytes()
 
-    # Startup recovery maps the unreadable evidence to typed intervention.
+    # Startup recovery maps the unreadable evidence to typed ladder escalation.
     outcome = recover_incomplete_integration(WorkspaceScope(tmp_path))
     assert outcome is not None
-    assert outcome.last_outcome == RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
-    assert outcome.last_decision == "report_intervention_required"
+    assert outcome.last_outcome == RebaseOutcomeKind.LADDER_ESCALATION
+    assert outcome.last_decision == PhaseDecision.BLOCK_FOR_RECOVERY.value
     assert outcome.recovery_record_retained is True
     assert record_file.read_bytes() == original_bytes
 
-    # The pipeline state machine surfaces REPORT_INTERVENTION_REQUIRED.
+    # The pipeline state machine surfaces BLOCK_FOR_RECOVERY.
     state = PipelineState(phase="development", rebase=outcome)
     decision = decide_phase_transition(state, None, integration_record=None, rebase_state=outcome)
-    assert decision is PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    assert decision is PhaseDecision.BLOCK_FOR_RECOVERY
     assert record_file.read_bytes() == original_bytes
 
     # The dispatch/mutation boundary is blocked: every durable mutation is
@@ -354,17 +361,16 @@ def test_exhaustion_across_restarts_no_replenishment_and_no_renewed_invocation(
     )
     record = IntegrationRecord.model_validate_json(_record_path(tmp_path).read_bytes())
     assert record.merge_commit_repair_attempts == cap
-    assert record.diagnostic_intervention_required is True
-    assert "diagnostic repair exhausted" in (record.repair_cap_reason or "")
+    assert record.diagnostic_intervention_required is False
+    assert "diagnostic repair budget spent" in (record.repair_cap_reason or "")
     assert invoked == []
 
     # --- Restart: fresh authority over the same durable record --------
-    assert next_integration_action(record) is IntegrationAction.REQUIRE_INTERVENTION
-    rebase_state = RebaseState(last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED)
+    rebase_state = RebaseState(last_outcome=RebaseOutcomeKind.LADDER_ESCALATION)
     state = PipelineState(phase="development", rebase=rebase_state)
     assert (
         decide_phase_transition(state, None, integration_record=None, rebase_state=rebase_state)
-        is PhaseDecision.REPORT_INTERVENTION_REQUIRED
+        is PhaseDecision.BLOCK_FOR_RECOVERY
     )
 
     # --- Second runtime: freshly created runtime objects; restart must ---
@@ -392,7 +398,8 @@ def test_exhaustion_across_restarts_no_replenishment_and_no_renewed_invocation(
         assert reloaded.merge_commit_repair_attempts == cap, (
             "restart must never replenish the attempt budget"
         )
-        assert reloaded.diagnostic_intervention_required is True
+        assert reloaded.diagnostic_intervention_required is False
+        assert "diagnostic repair budget spent" in (reloaded.repair_cap_reason or "")
         assert fresh_invoked == [], "no renewed diagnostic invocation after restart"
         record = reloaded
 

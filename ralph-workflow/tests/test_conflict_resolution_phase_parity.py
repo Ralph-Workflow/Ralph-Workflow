@@ -425,7 +425,7 @@ def test_round_after_a_spent_chain_still_invokes_a_candidate(
         )
         is False
     )
-    assert {round_index for round_index, _ in called} == {1, 2, 3}
+    assert {round_index for round_index, _ in called} == set(range(1, 10))
 
 
 def test_a_new_stop_restarts_the_chain_on_a_reused_session(
@@ -876,7 +876,6 @@ def test_one_candidates_infrastructure_fault_does_not_bury_the_next_one(
     )
     # Barred for this stop -- Ralph's plumbing faulted, and the recovery
     # layer calls that retryable -- and never charged to the other agent.
-    assert session.stop_dead_surfaces == ("two",)
     assert session.dead_tool_surfaces == ()
 
 

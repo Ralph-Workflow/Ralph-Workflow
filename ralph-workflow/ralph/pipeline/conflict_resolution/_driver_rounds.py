@@ -373,19 +373,6 @@ def _run_one_round(
     if total == 0:
         return RoundAttempt(succeeded=False, invoked=False)
     skipped = _skipped_candidates(session, candidates)
-    if len(skipped) == total and len(session.dead_tool_surfaces) < total:
-        # Every remaining candidate is barred by a fault of RALPH's, not
-        # by anything about the agents. Doing nothing is the one outcome
-        # that cannot resolve the conflict, so the stop-scoped bar is
-        # dropped and the chain is spent again rather than skipped.
-        _driver_mod.emit_conflict_phase_line(
-            display,
-            "every candidate is barred by an earlier infrastructure fault; retrying "
-            + ", ".join(session.stop_dead_surfaces)
-            + " rather than leaving the conflict unresolved",
-        )
-        session.stop_dead_surfaces = ()
-        skipped = _skipped_candidates(session, candidates)
     visited: set[int] = set()
     invoked = False
     agent_ran = False
@@ -473,7 +460,12 @@ def _preferred_conflict_candidate(
         return None
     controller = session.recovery_controller
     if not isinstance(controller, RecoveryController):
-        return candidates.index(eligible[0])
+        available = (
+            [name for name in eligible if session.ledger.is_available(PHASE_RESOLUTION, name)]
+            if session.ledger is not None
+            else eligible
+        )
+        return candidates.index(available[0]) if available else None
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)

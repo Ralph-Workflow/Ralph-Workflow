@@ -14,7 +14,6 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.attempt_fault import (
-    INFRASTRUCTURE_TERMINATION_REASONS,
     classify_ralph_origin_fault,
 )
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
@@ -99,8 +98,6 @@ class ResolutionSession:
     last_attempt_evidence: str | None = None
     last_attempt_failure: BaseException | str | None = None
     last_attempt_saw_activity: bool = False
-    ralph_fault_hits: int = 0
-    last_fault_progress_at: float | None = None
     rounds_spent: int = 0
     last_failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
     workspace: Workspace | None = None
@@ -379,8 +376,6 @@ def invoke_resolution_agent(
         session.last_attempt_evidence = None
         session.last_attempt_failure = None
         session.last_attempt_saw_activity = False
-        session.ralph_fault_hits = 0
-        session.last_fault_progress_at = None
     # The retry intent is a thread-local the executor writes on failure
     # and clears only on SUCCESS, so a candidate that failed through one
     # of the exception paths below parks its intent there. Discarding it
@@ -475,18 +470,35 @@ def _candidate_cannot_be_launched(
     Ralph's own refusal, decided before any agent runs, so it must not
     reach the driver as a resolver's verdict.
     """
-    if session is not None and agent_name in (
-        *session.dead_tool_surfaces,
-        *session.stop_dead_surfaces,
-    ):
-        logger.warning(
-            "conflict_resolution: refusing to re-enter known-dead tool surface '{}'",
-            agent_name,
-        )
-        session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
-        session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-        session.charge_conflict_budget = False
-        return True
+    if session is not None:
+        if agent_name in session.dead_tool_surfaces:
+            logger.warning(
+                "conflict_resolution: refusing to re-enter known-dead tool surface '{}'",
+                agent_name,
+            )
+            session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
+            session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+            session.charge_conflict_budget = False
+            return True
+        if session.ledger is not None:
+            if not session.ledger.is_available(PHASE_RESOLUTION, agent_name):
+                logger.warning(
+                    "conflict_resolution: refusing to launch unavailable agent '{}'",
+                    agent_name,
+                )
+                session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
+                session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+                session.charge_conflict_budget = False
+                return True
+        elif agent_name in session.stop_dead_surfaces:
+            logger.warning(
+                "conflict_resolution: refusing to re-enter known-dead tool surface '{}'",
+                agent_name,
+            )
+            session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
+            session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+            session.charge_conflict_budget = False
+            return True
     return False
 
 
@@ -685,43 +697,27 @@ def _observed_ralph_fault(
 ) -> ResolutionTerminationReason | None:
     """Classify an activity event as Ralph's own fault, on evidence.
 
-    Two channels, because they deserve different trust. The watchdog's
-    own typed fields cannot be written by an agent, so one is enough.
-    The rest of the event carries the agent's raw output, where Ralph's
-    markers are ALSO just words -- and words a resolver working in this
-    repository reads and echoes constantly, which is how the only agent
-    in the shipped one-agent chain got itself recorded as a dead tool
-    surface for quoting a comment. Scanning that text is still worth it,
-    because the 503 frame a tripped MCP breaker returns is only ever
-    seen there; it just has to be corroborated. A real breaker answers
-    every tool call, so :data:`RALPH_FAULT_ESCALATION_HITS` sightings
-    arrive immediately, while a quotation does not repeat.
+    Only Ralph-authored diagnostic fields represent observable infrastructure
+    events. Raw agent activity text is unobservable and cannot be trusted for
+    exclusion decisions, but any fault pattern found in it is logged for
+    diagnostic reporting.
     """
+    del session
     observed = classify_ralph_origin_fault(_ralph_authored_fault_text(event))
-    if observed is None:
-        observed = classify_ralph_origin_fault(str(event))
-        progress_at: object = getattr(event, "last_subagent_progress_at", None)
-        if isinstance(progress_at, (float, int)) and session is not None:
-            if session.last_fault_progress_at == progress_at:
-                return None
-            session.last_fault_progress_at = float(progress_at)
-    if observed is None or session is None:
-        return None
-    # Corroboration applies to BOTH channels. A tripped MCP breaker
-    # answers every tool call, so a real fault clears this immediately;
-    # a single tick -- from either channel -- is not enough to bar an
-    # agent and throw away whatever it had already repaired.
-    session.ralph_fault_hits += 1
-    if session.ralph_fault_hits < RALPH_FAULT_ESCALATION_HITS:
-        return None
-    echoed = observed
-    logger.warning(
-        "conflict_resolution: '{}' seen in agent activity {} times; "
-        "treating it as Ralph's own fault rather than quoted text",
-        echoed.value,
-        session.ralph_fault_hits,
-    )
-    return echoed
+    if observed is not None:
+        logger.warning(
+            "conflict_resolution: '{}' observed in Ralph diagnostic event",
+            observed.value,
+        )
+        return observed
+    raw_fault = classify_ralph_origin_fault(str(event))
+    if raw_fault is not None:
+        logger.info(
+            "conflict_resolution: fault pattern '{}' observed in agent activity text; "
+            "retaining for diagnostic reporting",
+            raw_fault.value,
+        )
+    return None
 
 
 def wrap_activity_listener(
@@ -743,17 +739,6 @@ def wrap_activity_listener(
         if reason is not None and session is not None:
             session.terminal_reason = reason
             session.charge_conflict_budget = False
-            # Stop-scoped, like every other infrastructure fault. A
-            # transport loop or an unanswered relay is Ralph's own
-            # plumbing -- the recovery layer calls the very same failure
-            # retryable, and the MCP breaker that raises it resets
-            # itself -- so barring the agent for the whole rebase ended
-            # conflict resolution outright on the shipped one-agent chain.
-            if (
-                reason in INFRASTRUCTURE_TERMINATION_REASONS
-                and agent_name not in session.stop_dead_surfaces
-            ):
-                session.stop_dead_surfaces = (*session.stop_dead_surfaces, agent_name)
             if on_fault is not None:
                 on_fault(reason)
             return

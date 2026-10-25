@@ -233,3 +233,75 @@ class RecoveryController:
 """
     violations = audit_production_source("ralph/recovery/controller.py", source)
     assert not violations
+
+
+def test_competing_ralph_fault_hits_assignment_flagged() -> None:
+    source = """
+class ConflictResolutionSession:
+    def __init__(self):
+        self.ralph_fault_hits = 0
+"""
+    violations = audit_production_source("ralph/pipeline/conflict_handler.py", source)
+    assert len(violations) >= 1
+    assert any(
+        v.rule == "production_streak_counter_state" and "ralph_fault_hits" in v.detail
+        for v in violations
+    )
+
+
+def test_competing_fault_hits_augassign_flagged() -> None:
+    source = """
+def record_fault(session):
+    session.ralph_fault_hits += 1
+"""
+    violations = audit_production_source("ralph/pipeline/conflict_handler.py", source)
+    assert len(violations) >= 1
+    assert any("ralph_fault_hits" in v.detail for v in violations)
+
+
+def test_competing_fault_hits_cap_comparison_flagged() -> None:
+    source = """
+def check_fault_limit(session):
+    if session.ralph_fault_hits < RALPH_FAULT_ESCALATION_HITS:
+        return None
+"""
+    violations = audit_production_source("ralph/pipeline/conflict_handler.py", source)
+    assert len(violations) >= 1
+    assert any(
+        v.rule == "production_streak_counter_state" and "retry cap" in v.detail
+        for v in violations
+    )
+
+
+def test_competing_dead_surfaces_exclusion_flagged() -> None:
+    source = """
+def bar_agent(session, agent_name):
+    session.stop_dead_surfaces = (*session.stop_dead_surfaces, agent_name)
+"""
+    violations = audit_production_source("ralph/pipeline/conflict_handler.py", source)
+    assert len(violations) >= 1
+    assert any("stop_dead_surfaces" in v.detail for v in violations)
+
+
+def test_competing_dead_surfaces_call_mutation_flagged() -> None:
+    source = """
+def bar_agent(dead_surfaces, agent):
+    dead_surfaces.append(agent)
+"""
+    violations = audit_production_source("ralph/pipeline/conflict_handler.py", source)
+    assert len(violations) >= 1
+    assert any("dead_surfaces" in v.detail for v in violations)
+
+
+def test_rc1_fault_hits_and_dead_surfaces_pattern_flagged() -> None:
+    source = """
+def observe_fault(session, event, agent_name):
+    session.ralph_fault_hits += 1
+    if session.ralph_fault_hits >= RALPH_FAULT_ESCALATION_HITS:
+        session.stop_dead_surfaces = (*session.stop_dead_surfaces, agent_name)
+"""
+    violations = audit_production_source("ralph/pipeline/custom_observer.py", source)
+    assert len(violations) >= 3
+    assert any("ralph_fault_hits" in v.detail for v in violations)
+    assert any("stop_dead_surfaces" in v.detail for v in violations)
+

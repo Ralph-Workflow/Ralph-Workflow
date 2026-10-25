@@ -339,6 +339,7 @@ _EXTENDED_ATTENTION_KEYS: frozenset[str] = frozenset(
         "intervention",
         "conflict_resolution",
         "evidence_diagnosis",
+        "ladder_escalation",
         "integration",
         "integrating",
         "landing",

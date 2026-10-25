@@ -331,7 +331,7 @@ def test_entry_point_matrix_evaluates_consistent_phase_decision(tmp_path: Path) 
             True,
             {},
             "development",
-            PhaseDecision.REPORT_INTERVENTION_REQUIRED,
+            PhaseDecision.BLOCK_FOR_RECOVERY,
             False,
         ),
         (
@@ -581,8 +581,8 @@ def test_unreadable_record_startup_reports_intervention(
     shared_state = PipelineState(phase="development", rebase=shared_rebase)
     st_recovery = recover_incomplete_integration(WorkspaceScope(tmp_path))
     assert st_recovery is not None
-    assert st_recovery.last_decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED.value
-    assert st_recovery.operation_display_state == "intervention_required"
+    assert st_recovery.last_decision == PhaseDecision.BLOCK_FOR_RECOVERY.value
+    assert st_recovery.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
     assert cause in (st_recovery.last_reason or "")
     assert st_recovery.recovery_record_retained is True
     assert record_file.read_bytes() == payload
@@ -597,7 +597,7 @@ def test_unreadable_record_startup_reports_intervention(
         integration_record=None,
         rebase_state=st_recovery,
     )
-    assert decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    assert decision == PhaseDecision.BLOCK_FOR_RECOVERY
 
 
 def test_integrating_record_empty_sha_blocks_at_all_six_seams(tmp_path: Path) -> None:

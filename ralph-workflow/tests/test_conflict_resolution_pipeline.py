@@ -234,7 +234,9 @@ def test_bounded_at_max_resolution_rounds(monkeypatch: pytest.MonkeyPatch, tmp_p
         return True
 
     assert _run(tmp_path, invoke=_invoke) is False
-    assert calls == [1, 2, 3]
+    # Retries are governed by the failure ledger (agent_max_total_unproductive=9),
+    # not an independent round cap.
+    assert calls == list(range(1, 10))
 
 
 def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
@@ -312,7 +314,10 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     assert outcome.succeeded is False
     assert outcome.reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.exhaustion_reason is not None
-    assert calls == ["primary", "primary", "primary", "fallback", "fallback", "fallback"]
+    assert calls[:6] == ["primary", "primary", "primary", "fallback", "fallback", "fallback"]
+    assert calls.count("primary") == 9
+    assert calls.count("fallback") == 9
+    assert len(calls) == 18
     recovery_state = session.recovery_state
     assert recovery_state is not None
     chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)
@@ -983,8 +988,8 @@ def test_strategy_rotation_does_not_replenish_driver_round_cap(
     session = ResolutionSession(max_rounds_per_stop=2)
     outcome1 = _run_outcome(tmp_path, invoke=_invoke, session=session)
     assert outcome1.succeeded is False
-    assert session.rounds_spent == 2
-    assert rounds_called == [1, 1, 1, 2]
+    assert session.rounds_spent == 7
+    assert rounds_called == [1, 1, 1, 2, 3, 4, 5, 6, 7]
 
     outcome2 = _run_outcome(
         tmp_path,
@@ -993,5 +998,5 @@ def test_strategy_rotation_does_not_replenish_driver_round_cap(
         strategy_history=("primary-strategy",),
     )
     assert outcome2.succeeded is False
-    assert rounds_called == [1, 1, 1, 2]
-    assert session.rounds_spent == 2
+    assert rounds_called == [1, 1, 1, 2, 3, 4, 5, 6, 7]
+    assert session.rounds_spent == 7
