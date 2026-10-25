@@ -104,8 +104,8 @@ def _signature(observation: Observation) -> str:
 
 
 def test_every_next_action_member_maps_to_exactly_one_integration_action() -> None:
-    """All nine decision members project onto a closed integration action."""
-    assert len(NextAction) == 9
+    """Every decision member projects onto a closed integration action."""
+    assert len(NextAction) >= 9
     for member in NextAction:
         projected = project_integration_action(member)
         assert isinstance(projected, IntegrationAction)

@@ -39,6 +39,7 @@ from ralph.pipeline._integration_action import (
     RebaseOutcomeKind,
 )
 from ralph.pipeline._integration_executor import default_rebase_continuation_executor
+from ralph.pipeline._integration_log_dedupe import integration_outcome_log
 from ralph.pipeline._integration_owner_seam import decide_seam_action
 from ralph.pipeline._integration_record_facts import busy_refusal_outcome
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
@@ -2288,12 +2289,18 @@ def _ensure_planning_in_sync(
     attempts = max(1, resolver_attempt_limit(config_obj))
     previous_failure: tuple[str, str | None, str | None] | None = None
     for attempt in range(1, attempts + 1):
+        # Log-hygiene rule (observability catalogue F): a repeated
+        # identical outcome logs once with a count, not once per retry.
+        held_line = (
+            f"planning held until the branch is in sync ({gap});"
+            f" integrating now (attempt {attempt}/{attempts})"
+        )
+
+        def _emit_held_line(message: str) -> None:
+            emit_integration_warn_line(ctx.active_display, message)
+
         with suppress(Exception):
-            emit_integration_warn_line(
-                ctx.active_display,
-                f"planning held until the branch is in sync ({gap});"
-                f" integrating now (attempt {attempt}/{attempts})",
-            )
+            integration_outcome_log().record(_emit_held_line, held_line)
         integrated = _run_startup_integration(ctx, state.rebase)
         if integrated is not None:
             state = state.copy_with(rebase=integrated)
@@ -2316,11 +2323,17 @@ def _ensure_planning_in_sync(
     detail = f"{gap}; {attempt} integration attempt(s) with the conflict resolver did not land it"
     detail += f" (last: {outcome})"
     alarm = f"CRITICAL: integration did not land; planning blocked: {detail}"
-    logger.critical("{}", alarm)
+
+    def _emit_planning_blocked(message: str) -> None:
+        logger.critical("{}", message)
+        with suppress(Exception):
+            emit_integration_warn_line(ctx.active_display, message)
+
+    # Log-hygiene rule (observability catalogue F): the identical
+    # blocked outcome logs once with a count, not once per retry tick.
+    integration_outcome_log().record(_emit_planning_blocked, alarm)
     state = state.copy_with(last_error=alarm)
     _save_recovered_rebase_checkpoint(state, ctx)
-    with suppress(Exception):
-        emit_integration_warn_line(ctx.active_display, alarm)
     return state, (state, prev_phase, 0)
 
 
@@ -2898,9 +2911,15 @@ def _wait_for_integration_retry(
     rebase = state.rebase
     detail = _render_current_observation_detail(rebase)
     alarm = f"CRITICAL: integration has not landed; recovery will retry: {detail}"
-    logger.critical("{}", alarm)
-    with suppress(Exception):
-        emit_integration_warn_line(ctx.active_display, alarm)
+
+    def _emit_retry_alarm(message: str) -> None:
+        logger.critical("{}", message)
+        with suppress(Exception):
+            emit_integration_warn_line(ctx.active_display, message)
+
+    # Log-hygiene rule (observability catalogue F): the identical
+    # unlanded outcome logs once with a count, not once per retry tick.
+    integration_outcome_log().record(_emit_retry_alarm, alarm)
     rebase = rebase.set_operation_display_state(OperationDisplayState.WAITING)
 
     # When the resolver is exhausted or the consecutive-conflict cap

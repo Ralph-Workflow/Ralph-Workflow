@@ -16,6 +16,7 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline._integration_action import RebaseOutcomeKind
+from ralph.pipeline._integration_continuation import _promote_completed_resolution
 from ralph.pipeline._owned_landing_reintegration import replay_stale_resolution
 from ralph.pipeline.auto_integrate_backup_refs import create_stale_resolution_snapshot
 from ralph.pipeline.auto_integrate_record import (
@@ -23,7 +24,9 @@ from ralph.pipeline.auto_integrate_record import (
     read_record,
     write_record,
 )
+from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.workspace.scope import WorkspaceScope
 from tests.test_pending_merge_commit_recovery import _commit, _git
 
 if TYPE_CHECKING:
@@ -168,3 +171,181 @@ def test_stale_resolution_replay_preserves_work_and_retries_auto_rebase(
         assert _git(root, "show", f"{backup_ref}:staged.txt").stdout == "staged work\n"
         assert _git(root, "show", f"{backup_ref}:untracked.txt").stdout == "untracked work\n"
         assert _git(root, "show", f"{backup_ref}^2:staged.txt").stdout == "unstaged work\n"
+
+
+def _recovery_config(target: str) -> UnifiedConfig:
+    return UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_enabled": True,
+                "auto_integrate_target": target,
+                "auto_integrate_remote_enabled": False,
+            }
+        }
+    )
+
+
+def _backup_refs(root: Path) -> list[str]:
+    return [
+        line.strip()
+        for line in _git(
+            root,
+            "for-each-ref",
+            "--format=%(refname)",
+            "refs/ralph-backup/",
+        ).stdout.splitlines()
+        if line.strip()
+    ]
+
+
+def test_recovery_releases_a_resolution_record_whose_work_already_landed(
+    tmp_git_repo: Path,
+) -> None:
+    """Git outranks the record: contained work releases the retained resolution.
+
+    The retained record still claims "resolving rebase", but Git shows
+    no operation and the feature work is contained in the target: the
+    obligation is finished.  Recovery must release the record (and
+    reconcile publication) instead of retaining it as a "malformed
+    integrated record" on every startup.
+    """
+    root = tmp_git_repo
+    target, _base, _feature = _setup_stale_record(root)
+    # The obligation was discharged elsewhere: the feature work is now
+    # contained in the target and no operation is in progress.
+    assert _git(root, "switch", target).returncode == 0
+    assert _git(root, "merge", "--ff-only", "feature").returncode == 0
+
+    outcome = recover_incomplete_integration(
+        WorkspaceScope(root),
+        config=_recovery_config(target),
+    )
+
+    assert outcome is not None
+    assert not outcome.recovery_record_retained
+    assert "malformed integrated record" not in (outcome.last_reason or "")
+    assert "lacks verified completion proof" not in (outcome.last_reason or "")
+    # The record is released, not replayed: no backup ref is created and
+    # the target keeps the landing it already had.
+    assert read_record(root) is None
+    assert _backup_refs(root) == []
+
+
+def test_unresolved_integrating_record_with_moved_head_replays_into_auto_rebase(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An integrating record Git disproves is stale intent, never retained forever.
+
+    The record claims an integration ("phase=integrating") that Git does
+    not show; the work is not contained in the target and HEAD has moved
+    on.  The only escape hatch used to be "HEAD equals the recorded
+    pre-feature SHA and the tree is clean"; every other state retained
+    with OWNED_TARGET_PRECONDITION_FAILED on every startup.  Now the
+    recovery preserves the moved HEAD work in a backup ref and re-enters
+    at step 1 (the automatic rebase).
+    """
+    root = tmp_git_repo
+    target = _git(root, "branch", "--show-current").stdout.strip()
+    base = _commit(root, "base.txt", "base\n")
+    assert _git(root, "switch", "-c", "feature").returncode == 0
+    feature = _commit(root, "feature.txt", "feature work\n")
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrating",
+            target=target,
+            pre_feature_sha=feature,
+            pre_target_sha=base,
+        ),
+    )
+    # HEAD moved on: the recorded pre-feature identity can never be
+    # restored, so retaining the record loops forever.
+    moved = _commit(root, "operator.txt", "operator work\n")
+    assert moved != feature
+
+    calls: list[tuple[str, str | None]] = []
+    switches: list[dict[str, object]] = []
+
+    def fake_integrate_once_owned(
+        _config: UnifiedConfig,
+        _root: Path,
+        target_name: str,
+        _conflict_resolver: ConflictResolver | None,
+        *,
+        rebase_stop_resolver: RebaseStopResolver | None = None,
+        owned_record: IntegrationRecord | None = None,
+        **kwargs: object,
+    ) -> tuple[RebaseState | None, bool]:
+        del rebase_stop_resolver
+        calls.append((target_name, owned_record.pre_feature_sha if owned_record else None))
+        switches.append(kwargs)
+        return RebaseState(last_outcome=RebaseOutcomeKind.REBASED, last_target=target_name), False
+
+    monkeypatch.setattr(
+        "ralph.pipeline.auto_integrate._integrate_once_owned",
+        fake_integrate_once_owned,
+    )
+
+    outcome = recover_incomplete_integration(
+        WorkspaceScope(root),
+        config=_recovery_config(target),
+    )
+
+    assert outcome is not None
+    # The replay re-entered the ORDINARY integration entry: the automatic
+    # rebase is the first attempt again after the crash.
+    assert calls and calls[0][0] == target
+    assert switches
+    assert not switches[0].get("prefer_merge")
+    assert not switches[0].get("force_endpoint_merge")
+    # The retention escape hatch ("unchanged feature tip") and the
+    # "lacks proof" withholding are both gone.
+    assert "unchanged feature tip" not in (outcome.last_reason or "")
+    assert "lacks verified completion proof" not in (outcome.last_reason or "")
+    current = read_record(root)
+    assert current is not None
+    assert current.resolving_rebase is False
+    assert current.resolving_merge is False
+    # The moved HEAD work is preserved in exactly one backup ref.
+    refs = _backup_refs(root)
+    assert len(refs) == 1
+    assert _git(root, "show", f"{refs[0]}:feature.txt").stdout == "feature work\n"
+    assert _git(root, "show", f"{refs[0]}:operator.txt").stdout == "operator work\n"
+
+
+def test_promote_completed_resolution_names_a_leftover_operation_marker_instead_of_raising(
+    tmp_git_repo: Path,
+) -> None:
+    """A leftover cherry-pick marker is live Git state, not completion proof.
+
+    ``_promote_completed_resolution`` must refuse with a typed reason the
+    recovery maps onto its retained-conflict state; it must not raise the
+    terminal-state violation into the generic recovery-failure wrapper.
+    """
+    root = tmp_git_repo
+    target = _git(root, "branch", "--show-current").stdout.strip()
+    base = _commit(root, "file.txt", "base\n")
+    assert _git(root, "switch", "-c", "feature").returncode == 0
+    feature = _commit(root, "feature.txt", "feature work\n")
+    assert _git(root, "switch", target).returncode == 0
+    main_work = _commit(root, "file.txt", "conflicting main work\n")
+    assert _git(root, "switch", "feature").returncode == 0
+    _commit(root, "file.txt", "conflicting feature work\n")
+    # A cherry-pick that stops on the conflict leaves CHERRY_PICK_HEAD:
+    # an operation marker that is neither a rebase nor a merge.
+    pick = _git(root, "cherry-pick", main_work)
+    assert pick.returncode != 0
+    assert (root / ".git" / "CHERRY_PICK_HEAD").exists()
+    record = IntegrationRecord(
+        phase="integrating",
+        target=target,
+        pre_feature_sha=feature,
+        pre_target_sha=base,
+        resolving_rebase=True,
+    )
+
+    result = _promote_completed_resolution(root, record)
+
+    assert isinstance(result, str)
+    assert "operation marker" in result

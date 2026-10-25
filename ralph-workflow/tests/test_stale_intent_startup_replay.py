@@ -122,3 +122,64 @@ def test_startup_recovery_replays_a_stale_resolution_into_a_fresh_auto_rebase(
     # endpoint merge would have left one behind.
     assert _git(root, "rev-list", "--merges", f"{base}..{target}").stdout.strip() == ""
     assert _git(root, "rev-list", "--count", f"{base}..{target}").stdout.strip() != "0"
+
+
+def test_startup_recovery_replays_an_unresolved_integrating_record_with_a_moved_head(
+    tmp_git_repo: Path,
+) -> None:
+    """An integrating record Git disproves re-enters at the automatic rebase.
+
+    Variant of the symptom state: the record claims "integrating" (no
+    resolver flags), Git shows NO operation, the work is not contained in
+    the target, and HEAD moved on.  The previous escape hatch only fired
+    when HEAD equalled the recorded pre-feature SHA with a clean tree;
+    this state retained with OWNED_TARGET_PRECONDITION_FAILED on every
+    startup and deferred the catch-up forever.  Stale intent must replay:
+    observe Git, save the work to a backup ref, drop the stale identity
+    and re-enter at step 1.
+    """
+    root = tmp_git_repo
+    target = _git(root, "branch", "--show-current").stdout.strip()
+    base = _commit(root, "base.txt", "base\n")
+    assert _git(root, "switch", "-c", "feature").returncode == 0
+    feature = _commit(root, "feature.txt", "feature work\n")
+    write_record(
+        root,
+        IntegrationRecord(
+            phase="integrating",
+            target=target,
+            pre_feature_sha=feature,
+            pre_target_sha=base,
+        ),
+    )
+    # HEAD moved on: the recorded pre-feature identity is unrecoverable.
+    moved = _commit(root, "operator.txt", "operator work\n")
+    assert moved != feature
+
+    outcome = recover_incomplete_integration(
+        WorkspaceScope(root),
+        config=_make_config(target),
+    )
+
+    assert outcome is not None
+    # The startup catch-up is NOT deferred: recovery did not come back
+    # still owning the durable record.
+    assert not outcome.recovery_record_retained
+    assert "lacks verified completion proof" not in (outcome.last_reason or "")
+    assert "unchanged feature tip" not in (outcome.last_reason or "")
+    # The stale identity is gone and the record released.
+    assert read_record(root) is None
+    # The moved HEAD work was preserved in a backup ref.
+    backup_refs = _git(
+        root,
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/ralph-backup/",
+    ).stdout.split()
+    assert backup_refs
+    # A FRESH automatic rebase ran and the feature landed on the target:
+    # the operator work is in the target and NO merge commit was created
+    # on the way there.
+    assert _git(root, "show", f"{target}:operator.txt").stdout == "operator work\n"
+    assert _git(root, "show", f"{target}:feature.txt").stdout == "feature work\n"
+    assert _git(root, "rev-list", "--merges", f"{base}..{target}").stdout.strip() == ""

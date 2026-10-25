@@ -21,11 +21,14 @@ enum member from a successful value.
 
 This module also owns **the single worktree classifier**,
 :func:`classify_worktree`, which turns one worktree observation into a
-:class:`WorktreeState` plus a :class:`WorktreeDispatch` verdict. The
-clean/blocked question was previously answered by four or five
-independent probes with four or five definitions; that disagreement is
-what let one seam integrate while another refused. Every gate must call
-:func:`classify_worktree` instead of re-deriving cleanliness.
+:class:`WorktreeState` plus a :class:`WorktreeDispatch` verdict and a
+:class:`DirtShape` refinement. The clean/blocked question was previously
+answered by four or five independent probes with four or five
+definitions; that disagreement is what let one seam integrate while
+another refused. Every gate must call :func:`classify_worktree` instead
+of re-deriving cleanliness. The dirt shape is the typed answer to "what
+KIND of uncommitted content is this" — the decision table maps each
+shape to exactly one deterministic cleanup action.
 """
 
 from __future__ import annotations
@@ -35,7 +38,12 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS, parse_porcelain_z, unmerged_paths_z
+from ralph.git.hardening import (
+    COMMIT_PIN_CONFIG_ARGS,
+    PorcelainEntry,
+    parse_porcelain_z,
+    unmerged_paths_z,
+)
 from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
@@ -148,6 +156,66 @@ class WorktreeState(Enum):
     UNKNOWN = "unknown"
 
 
+class DirtShape(Enum):
+    """Typed refinement of WHAT KIND of dirt the worktree carries.
+
+    :class:`WorktreeState` answers "does the tree block a gate"; the dirt
+    shape answers "what kind of uncommitted content is this", which the
+    decision table needs to pick the deterministic cleanup action
+    (commit-phase commit for phase-owned dirt, save-and-restore for
+    residue, nothing at all for dirt that a refresh or a per-file git
+    refusal already handles).
+
+    The vocabulary is closed and total: every observable tree maps to
+    exactly one shape. ``NONE`` is a clean tree, ``UNMERGED`` is a real
+    conflict (the operation ladder owns it, never the cleanup path), and
+    ``UNKNOWN`` is an unreadable probe.
+    """
+
+    NONE = "none"
+    UNSTAGED_MODIFICATION = "unstaged_modification"
+    STAGED_ONLY = "staged_only"
+    STAGED_AND_UNSTAGED = "staged_and_unstaged"
+    MODE_ONLY = "mode_only"
+    INTENT_TO_ADD = "intent_to_add"
+    TYPE_CHANGE = "type_change"
+    DELETED = "deleted"
+    RENAMED_OR_COPIED = "renamed_or_copied"
+    UNTRACKED_ONLY = "untracked_only"
+    UNTRACKED_BLOCKING = "untracked_blocking"
+    LINE_ENDING_ONLY = "line_ending_only"
+    UNMERGED = "unmerged"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class DirtEvidence:
+    """Optional probe evidence that refines the dirt shape beyond porcelain.
+
+    Porcelain alone cannot distinguish several dirt shapes. A caller that
+    has run the cheap content probes hands their answers in; every field
+    defaults to "no evidence", in which case the shape falls back to what
+    porcelain alone can prove. All collections are frozensets: the
+    evidence is immutable, hashable and cannot grow at runtime.
+
+    * ``mode_only_paths`` — paths whose only change is a file-mode change
+      (``git diff --summary`` evidence). Mode-only dirt is real tracked
+      dirt, but it is typed so the cleanup can restore modes without
+      touching content.
+    * ``empty_diff_paths`` — paths porcelain reports dirty whose content
+      diff is empty (autocrlf renormalisation, racy-git index entries).
+      A dirty verdict with an empty content diff is "clean after
+      refresh", never a block.
+    * ``incoming_overwrite_paths`` — untracked paths the incoming target
+      commits would overwrite. Those block a rebase even though untracked
+      dirt is normally scratch: git would refuse mid-rebase, per-file.
+    """
+
+    mode_only_paths: frozenset[str] = frozenset()
+    empty_diff_paths: frozenset[str] = frozenset()
+    incoming_overwrite_paths: frozenset[str] = frozenset()
+
+
 class HeadState(Enum):
     """Whether HEAD is attached to a branch or detached (or unknown)."""
 
@@ -240,14 +308,19 @@ class WorktreeVerdict:
 
     ``state`` is what was observed, ``is_clean`` is the dispatch/boundary
     cleanliness the classifier contract defines, ``dispatch`` is the
-    three-valued action for a gate, and ``reason`` is the operator-facing
-    text derived from the SAME observation (never a stored string).
+    three-valued action for a gate, ``reason`` is the operator-facing
+    text derived from the SAME observation (never a stored string), and
+    ``dirt_shape`` is the typed refinement of what kind of dirt the tree
+    carries (``NONE`` for a clean tree). The shape defaults to ``NONE``
+    only so legacy positional construction keeps working;
+    :func:`classify_worktree` always sets it explicitly.
     """
 
     state: WorktreeState
     is_clean: bool
     dispatch: WorktreeDispatch
     reason: str
+    dirt_shape: DirtShape = DirtShape.NONE
 
     @property
     def dispatch_allowed(self) -> bool:
@@ -276,40 +349,46 @@ _IGNORED_CODE: Final[str] = "!!"
 #: First (``X``) status codes that mean "staged into the index".
 _INDEX_STATUS_CODES: Final[frozenset[str]] = frozenset({"M", "A", "D", "R", "C", "T"})
 
-#: Second (``Y``) status codes that mean "modified in the worktree".
-_WORKTREE_STATUS_CODES: Final[frozenset[str]] = frozenset({"M", "D", "T"})
+#: Second (``Y``) status codes that mean "modified in the worktree". ``A``
+#: is the intent-to-add code: ``git add -N`` renders as `` A <path>`` and
+#: is real uncommitted work, not scratch.
+_WORKTREE_STATUS_CODES: Final[frozenset[str]] = frozenset({"M", "D", "T", "A"})
 
 _CLEAN: Final[WorktreeVerdict] = WorktreeVerdict(
     state=WorktreeState.CLEAN,
     is_clean=True,
     dispatch=WorktreeDispatch.ALLOWED,
     reason="worktree clean",
+    dirt_shape=DirtShape.NONE,
 )
 _TRACKED_CHANGES: Final[WorktreeVerdict] = WorktreeVerdict(
     state=WorktreeState.TRACKED_CHANGES,
     is_clean=False,
     dispatch=WorktreeDispatch.BLOCKED,
     reason="uncommitted tracked changes in the worktree",
+    dirt_shape=DirtShape.UNSTAGED_MODIFICATION,
 )
 _STAGED: Final[WorktreeVerdict] = WorktreeVerdict(
     state=WorktreeState.STAGED,
     is_clean=False,
     dispatch=WorktreeDispatch.BLOCKED,
     reason="staged changes waiting to be committed",
+    dirt_shape=DirtShape.STAGED_ONLY,
 )
 _UNMERGED: Final[WorktreeVerdict] = WorktreeVerdict(
     state=WorktreeState.UNMERGED,
     is_clean=False,
     dispatch=WorktreeDispatch.BLOCKED,
     reason="unmerged paths remain from an unfinished rebase or merge",
+    dirt_shape=DirtShape.UNMERGED,
 )
 _UNTRACKED: Final[WorktreeVerdict] = WorktreeVerdict(
     state=WorktreeState.UNTRACKED,
     is_clean=True,
     dispatch=WorktreeDispatch.ALLOWED,
     reason="untracked scratch paths only; they never block a gate",
+    dirt_shape=DirtShape.UNTRACKED_ONLY,
 )
-
 
 def _verdict_for_state(state: WorktreeState) -> WorktreeVerdict:
     """Return the frozen verdict the contract assigns to ``state``.
@@ -334,6 +413,7 @@ def _verdict_for_state(state: WorktreeState) -> WorktreeVerdict:
         is_clean=False,
         dispatch=WorktreeDispatch.UNKNOWN,
         reason="worktree probe did not answer",
+        dirt_shape=DirtShape.UNKNOWN,
     )
 
 
@@ -372,7 +452,130 @@ def _porcelain_to_state(text: str) -> WorktreeState:
     return WorktreeState.CLEAN
 
 
-def classify_worktree(observation: Reading[str] | WorktreeState) -> WorktreeVerdict:
+def _porcelain_to_shape(text: str, evidence: DirtEvidence | None) -> DirtShape:
+    """Map one porcelain blob plus optional evidence onto a :class:`DirtShape`.
+
+    Accepts both the line-oriented and the NUL-delimited porcelain shape
+    (see :func:`_porcelain_to_state`). The precedence is deterministic
+    and documented, most specific first:
+
+    1. Any unmerged code is a real conflict: ``UNMERGED`` (the canonical
+       table in :func:`ralph.git.hardening.unmerged_paths_z` decides, so
+       the unmerged vocabulary exists exactly once).
+    2. Evidence refinements: when every dirty tracked path is provably
+       mode-only, the shape is ``MODE_ONLY``; when every dirty tracked
+       path has an empty content diff (autocrlf renormalisation, a racy
+       index entry), the shape is ``LINE_ENDING_ONLY`` — "clean after
+       refresh", not a block.
+    3. Intent-to-add (`` A``) is the most specific tracked shape: it
+       names work git will lose on checkout unless it is staged.
+    4. A type change (``T``), a deletion (``D``), a rename/copy (``R`` /
+       ``C``), then the staged/unstaged split.
+    5. Untracked-only trees are ``UNTRACKED_BLOCKING`` when evidence
+       proves an incoming target commit would overwrite one of the paths
+       (git would refuse mid-rebase, per-file), else ``UNTRACKED_ONLY``.
+    """
+    blob = text.replace("\n", "\0")
+    if unmerged_paths_z(blob):
+        return DirtShape.UNMERGED
+    return _shape_for_tracked(parse_porcelain_z(blob), evidence)
+
+
+def _shape_for_tracked(
+    entries: list[PorcelainEntry],
+    evidence: DirtEvidence | None,
+) -> DirtShape:
+    """Map parsed entries onto a shape once the unmerged check passed."""
+    tracked = [entry for entry in entries if entry.xy not in (_UNTRACKED_CODE, _IGNORED_CODE)]
+    untracked_paths = [entry.path for entry in entries if entry.xy == _UNTRACKED_CODE]
+    shape = DirtShape.NONE
+    if not tracked:
+        blocked = evidence is not None and any(
+            path in evidence.incoming_overwrite_paths for path in untracked_paths
+        )
+        shape = DirtShape.UNTRACKED_BLOCKING if blocked else DirtShape.UNTRACKED_ONLY
+        if not untracked_paths:
+            shape = DirtShape.NONE
+        return shape
+    paths = {entry.path for entry in tracked}
+    paths |= {entry.rename_source for entry in tracked if entry.rename_source is not None}
+    if evidence is not None:
+        if paths and paths <= evidence.mode_only_paths:
+            return DirtShape.MODE_ONLY
+        if paths <= evidence.empty_diff_paths:
+            return DirtShape.LINE_ENDING_ONLY
+    if any(entry.xy[1] == "A" for entry in tracked):
+        shape = DirtShape.INTENT_TO_ADD
+    elif any("T" in entry.xy for entry in tracked):
+        shape = DirtShape.TYPE_CHANGE
+    elif any("D" in entry.xy for entry in tracked):
+        shape = DirtShape.DELETED
+    elif any(entry.xy[0] in ("R", "C") for entry in tracked):
+        shape = DirtShape.RENAMED_OR_COPIED
+    else:
+        has_staged = any(entry.xy[0] in _INDEX_STATUS_CODES for entry in tracked)
+        has_unstaged = any(entry.xy[1] in _WORKTREE_STATUS_CODES for entry in tracked)
+        if has_staged and has_unstaged:
+            shape = DirtShape.STAGED_AND_UNSTAGED
+        elif has_staged:
+            shape = DirtShape.STAGED_ONLY
+        else:
+            shape = DirtShape.UNSTAGED_MODIFICATION
+    return shape
+
+
+def _verdict_for_porcelain(
+    text: str,
+    evidence: DirtEvidence | None,
+) -> WorktreeVerdict:
+    """Build the verdict for a KNOWN porcelain blob, refining it by shape.
+
+    The base verdict comes from the one state table
+    (:func:`_verdict_for_state`), so ``is_clean``/``dispatch`` keep their
+    contract meaning; the shape then refines two cases the state alone
+    cannot express:
+
+    * ``LINE_ENDING_ONLY`` — a dirty-looking tree whose content diff is
+      empty is clean after an index refresh: it never blocks a gate.
+    * ``UNTRACKED_BLOCKING`` — untracked paths that incoming target
+      commits would overwrite DO block (git refuses per-file, mid-rebase),
+      unlike scratch untracked paths.
+    """
+    state = _porcelain_to_state(text)
+    shape = _porcelain_to_shape(text, evidence)
+    verdict = _verdict_for_state(state)
+    if verdict.dirt_shape is shape:
+        return verdict
+    if shape is DirtShape.LINE_ENDING_ONLY:
+        return WorktreeVerdict(
+            state=state,
+            is_clean=True,
+            dispatch=WorktreeDispatch.ALLOWED,
+            reason="line-ending-only changes; clean after index refresh",
+            dirt_shape=shape,
+        )
+    if shape is DirtShape.UNTRACKED_BLOCKING:
+        return WorktreeVerdict(
+            state=state,
+            is_clean=False,
+            dispatch=WorktreeDispatch.BLOCKED,
+            reason="untracked paths would be overwritten by incoming target commits",
+            dirt_shape=shape,
+        )
+    return WorktreeVerdict(
+        state=state,
+        is_clean=verdict.is_clean,
+        dispatch=verdict.dispatch,
+        reason=verdict.reason,
+        dirt_shape=shape,
+    )
+
+
+def classify_worktree(
+    observation: Reading[str] | WorktreeState,
+    *,
+    evidence: DirtEvidence | None = None,
+) -> WorktreeVerdict:
     """Classify ONE worktree observation into a state and a dispatch verdict.
 
     This is the single owner of "is this tree clean?" and "does this tree
@@ -403,8 +606,13 @@ def classify_worktree(observation: Reading[str] | WorktreeState) -> WorktreeVerd
       The caller backs off and reads again.
 
     ``observation`` is either the raw :class:`Reading` porcelain probe or
-    a :class:`WorktreeState` a caller projected elsewhere. Both arms run
-    through :func:`_verdict_for_state`, so the two can never disagree.
+    a :class:`WorktreeState` a caller projected elsewhere. The state arm
+    runs through :func:`_verdict_for_state`; the porcelain arm refines
+    the shape per entry through :func:`_porcelain_to_shape`. ``evidence``
+    is optional probe evidence (mode-only paths, empty content diffs,
+    incoming overwrites) that refines the shape; it only ever narrows a
+    block (``LINE_ENDING_ONLY`` is clean after refresh), never invents
+    one without a dirty porcelain entry to hang it on.
     """
     if isinstance(observation, WorktreeState):
         return _verdict_for_state(observation)
@@ -414,8 +622,9 @@ def classify_worktree(observation: Reading[str] | WorktreeState) -> WorktreeVerd
             is_clean=False,
             dispatch=WorktreeDispatch.UNKNOWN,
             reason=observation.reason or "worktree probe did not answer",
+            dirt_shape=DirtShape.UNKNOWN,
         )
-    return _verdict_for_state(_porcelain_to_state(observation.value or ""))
+    return _verdict_for_porcelain(observation.value or "", evidence)
 
 
 # ---------------------------------------------------------------------------
@@ -578,6 +787,8 @@ def read_worktree(root: Path) -> Reading[WorktreeVerdict]:
 
 
 __all__ = [
+    "DirtEvidence",
+    "DirtShape",
     "HeadState",
     "InProgressKind",
     "InProgressOwnership",

@@ -28,7 +28,9 @@ import pytest
 from loguru import logger
 
 from ralph.config.models import UnifiedConfig
+from ralph.pipeline import IntegrationAction
 from ralph.pipeline import auto_integrate_catchup as catchup
+from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_decision import EscalationRung
 from tests._fake_git_env import LIVE_OWNER, STALE_OWNER, SimulatedGitEnvironment
@@ -296,6 +298,125 @@ def test_no_progress_window_surfaces_a_visible_stall_state(tmp_path: Path) -> No
     assert stall is not None
     assert stall.cause == outcome
     assert stall.elapsed_seconds >= stall.window_seconds
+
+
+# ---------------------------------------------------------------------------
+# The tick asks the single owner through the completed seam (remote + record).
+# ---------------------------------------------------------------------------
+
+
+def _spy_seam(
+    monkeypatch: pytest.MonkeyPatch,
+    verdict: IntegrationAction,
+) -> list[dict[str, object]]:
+    """Record the bindings the tick hands the owner seam; answer ``verdict``."""
+    calls: list[dict[str, object]] = []
+
+    def _spy(root: Path, **kwargs: object) -> IntegrationAction:
+        calls.append({"root": root, **kwargs})
+        return verdict
+
+    monkeypatch.setattr(catchup, "decide_seam_action", _spy)
+    return calls
+
+
+def test_tick_asks_the_owner_seam_with_the_remote_and_the_loaded_record(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The completed seam call carries ``remote`` and the durable ``record``.
+
+    The catch-up ticker holds no private view of the durable record: it
+    loads the record from disk and hands it, together with the configured
+    remote, to the single owner — the same facts every other seam supplies.
+    """
+    state = SimulatedGitEnvironment()
+    merges = _install_seams(monkeypatch, state)
+    calls = _spy_seam(monkeypatch, IntegrationAction.WAIT_FOR_BOUNDED_RETRY)
+    (tmp_path / ".git").mkdir()
+    record = IntegrationRecord(
+        phase="integrating",
+        target=_TARGET,
+        pre_feature_sha=_HEAD_SHA,
+        pre_target_sha=_TARGET_SHA,
+    )
+    write_record(tmp_path, record)
+
+    outcome = catchup.attempt_catchup_fast_forward(
+        _config(),
+        tmp_path,
+        target=_TARGET,
+        remote="upstream",
+        ledger=_ledger(tmp_path),
+        clock=state.clock,
+    )
+
+    assert outcome == catchup.CATCHUP_FAST_FORWARDED
+    assert merges == [_TARGET_SHA]
+    assert len(calls) == 1
+    seam_kwargs = calls[0]
+    assert seam_kwargs["root"] == tmp_path
+    assert seam_kwargs["remote"] == "upstream"
+    assert seam_kwargs["target"] == _TARGET
+    # The mutation lease is held, so the observation records no active agent.
+    assert seam_kwargs["agent_active"] is False
+    passed_record = seam_kwargs["record"]
+    assert isinstance(passed_record, IntegrationRecord)
+    assert passed_record.target == _TARGET
+
+
+def test_tick_seam_remote_falls_back_to_the_configured_remote_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Without an explicit ``remote`` the seam observes the configured name."""
+    state = SimulatedGitEnvironment()
+    _install_seams(monkeypatch, state)
+    calls = _spy_seam(monkeypatch, IntegrationAction.WAIT_FOR_BOUNDED_RETRY)
+    (tmp_path / ".git").mkdir()
+    config = UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_enabled": True,
+                "auto_integrate_remote_enabled": False,
+                "auto_integrate_remote": "fork",
+            }
+        }
+    )
+
+    outcome = catchup.attempt_catchup_fast_forward(
+        config,
+        tmp_path,
+        target=_TARGET,
+        ledger=_ledger(tmp_path),
+        clock=state.clock,
+    )
+
+    assert outcome == catchup.CATCHUP_FAST_FORWARDED
+    assert len(calls) == 1
+    assert calls[0]["remote"] == "fork"
+
+
+def test_owner_seam_refusal_blocks_the_merge_without_a_ledger_charge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A seam verdict that fails closed refuses the mutation before any charge."""
+    state = SimulatedGitEnvironment()
+    merges = _install_seams(monkeypatch, state)
+    _spy_seam(monkeypatch, IntegrationAction.REQUIRE_INTERVENTION)
+    (tmp_path / ".git").mkdir()
+    ledger = _ledger(tmp_path)
+
+    outcome = catchup.attempt_catchup_fast_forward(
+        _config(),
+        tmp_path,
+        target=_TARGET,
+        ledger=ledger,
+        clock=state.clock,
+    )
+
+    assert merges == []
+    assert outcome.startswith(catchup.CATCHUP_REFUSED)
+    assert IntegrationAction.REQUIRE_INTERVENTION.value in outcome
+    assert ledger.read().repeat_counts == {}
 
 
 def test_a_settled_tick_never_reports_a_stall(tmp_path: Path) -> None:

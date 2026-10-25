@@ -57,9 +57,17 @@ the operator configured rather than against a hardcoded pair.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.pipeline._integration_record_facts import apply_record_facts
+from ralph.pipeline.integration_observation import (
+    DirtShape,
+    TargetVsFeature,
+    WorktreeVerdict,
+    classify_worktree,
+    read_worktree_porcelain,
+)
 from ralph.pipeline.integration_owner import decide_integration_verdict
 
 if TYPE_CHECKING:
@@ -67,10 +75,46 @@ if TYPE_CHECKING:
 
     from ralph.pipeline._integration_action import IntegrationAction
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
+    from ralph.pipeline.integration_observation import Observation
 
 __all__ = [
+    "PlanningSyncVerdict",
+    "decide_planning_sync",
     "decide_seam_action",
 ]
+
+
+@dataclass(frozen=True)
+class PlanningSyncVerdict:
+    """Typed verdict for the planning gate's "is the branch in sync?" question.
+
+    The planning gate consumes this instead of branching on prose reason
+    strings: the same observation always yields the same verdict, at the
+    planning gate, the boundary and the resolution gate alike.
+
+    * ``action`` — the seam action integration will take next (the
+      boundary's answer, overlaid with the durable record facts).
+    * ``observation`` — the live seven-dimension snapshot behind the
+      decision (reasons are rendered from it, never stored).
+    * ``worktree`` / ``dirt_shape`` — the single classifier's verdict for
+      the same tree and its typed dirt refinement; a blocking shape is
+      the signal that residue cleanup (save-and-restore) must run before
+      planning proceeds.
+    * ``in_sync`` — the feature contains the target tip (``EQUAL`` or
+      ``AHEAD`` on the target/feature axis).
+    * ``may_plan`` — planning may start: the branch is in sync AND the
+      classifier allows dispatch. An unknown worktree probe, blocking
+      dirt or an out-of-sync branch all hold planning, each with the
+      ``reason`` naming the current observation.
+    """
+
+    action: IntegrationAction
+    observation: Observation
+    worktree: WorktreeVerdict
+    dirt_shape: DirtShape
+    in_sync: bool
+    may_plan: bool
+    reason: str
 
 
 def decide_seam_action(
@@ -129,4 +173,71 @@ def decide_seam_action(
         record,
         retained=retained,
         observation=verdict.observation,
+    )
+
+
+def decide_planning_sync(
+    root: Path,
+    *,
+    record: IntegrationRecord | None = None,
+    agent_active: bool = False,
+    ledger_path: Path | None = None,
+    retained: bool = False,
+    target: str | None = None,
+    remote: str | None = None,
+) -> PlanningSyncVerdict:
+    """Ask the owner whether planning may start, and return the typed verdict.
+
+    The decision is charged to the durable ledger exactly once, through
+    :func:`decide_integration_verdict` — the same single charge path
+    every other seam uses — so a planning hold that repeats the same
+    observation escalates through the owner's budget instead of looping.
+    The durable record facts are overlaid on the owner's action exactly
+    as :func:`decide_seam_action` does; a stale durable claim never
+    turns a current, healthy Git observation into a terminal block.
+
+    The worktree verdict comes from the ONE classifier
+    (:func:`classify_worktree`) on the same root, so the planning gate,
+    the boundary and the resolution gate cannot disagree about the tree.
+    ``may_plan`` is derived, not decided per seam: the branch is in
+    sync (the feature contains the target tip) and the classifier
+    allows dispatch.
+    """
+    verdict = decide_integration_verdict(
+        root,
+        record=record,
+        agent_active=agent_active,
+        ledger_path=ledger_path,
+        target=target,
+        remote=remote,
+    )
+    action = apply_record_facts(
+        verdict.action,
+        record,
+        retained=retained,
+        observation=verdict.observation,
+    )
+    worktree = classify_worktree(read_worktree_porcelain(root))
+    in_sync = verdict.observation.target_vs_feature in (
+        TargetVsFeature.EQUAL,
+        TargetVsFeature.AHEAD,
+    )
+    may_plan = in_sync and worktree.dispatch_allowed
+    if may_plan:
+        reason = "planning may proceed: branch is in sync and the worktree gate allows dispatch"
+    elif not in_sync:
+        reason = (
+            "planning held: branch does not contain the target tip "
+            f"({verdict.observation.target_vs_feature.value}); integration will run first"
+        )
+    else:
+        reason = f"planning held: {worktree.reason}"
+    return PlanningSyncVerdict(
+        action=action,
+        observation=verdict.observation,
+        worktree=worktree,
+        dirt_shape=worktree.dirt_shape,
+        in_sync=in_sync,
+        may_plan=may_plan,
+        reason=reason,
     )

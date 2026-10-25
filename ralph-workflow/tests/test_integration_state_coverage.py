@@ -585,9 +585,11 @@ def test_action_vocabulary_contains_no_discard_class_member() -> None:
     assert offenders == [], f"discard-class actions in the vocabulary: {offenders}"
 
     rebuild_shaped = [member for member in NextAction if "rebuild" in member.name.lower()]
-    assert rebuild_shaped == [NextAction.REBUILD_ON_TARGET], (
-        "the only rebuild-shaped action must be REBUILD_ON_TARGET, "
-        "whose contract is 'backup refs first' (work is preserved, never dropped)"
+    assert rebuild_shaped == [NextAction.REBUILD_ON_TARGET, NextAction.REBUILD_IN_FRESH_WORKTREE], (
+        "every rebuild-shaped action must be preservation-first: "
+        "REBUILD_ON_TARGET is 'backup refs first' and REBUILD_IN_FRESH_WORKTREE "
+        "rebuilds from the preserved copy on the current target, "
+        "never dropping uncommitted work"
     )
 
 

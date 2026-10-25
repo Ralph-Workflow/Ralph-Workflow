@@ -42,6 +42,7 @@ already finished*.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -145,6 +146,63 @@ def busy_refusal_outcome(
     seam keeps the deadline rule; see the module docstring.
     """
     return _canonical_busy_refusal_outcome(retry_deadline, clock=clock)
+
+
+class _StartupRecoveryRoute(StrEnum):
+    """The startup recovery path the owner's seam verdict selects.
+
+    The startup boundary never picks a recovery path from raw record
+    flags; it consumes the single owner's verdict
+    (:func:`ralph.pipeline._integration_owner_seam.decide_seam_action`)
+    projected onto this closed route vocabulary.
+    """
+
+    RECOVERY_OWNS_OPERATION = "recovery_owns_operation"
+    LANDING_CONTINUATION = "landing_continuation"
+    DEFER_INTERVENTION = "defer_intervention"
+    DEFER_RETRY = "defer_retry"
+
+
+def _startup_recovery_route(
+    action: IntegrationAction,
+    record: IntegrationRecord,
+) -> _StartupRecoveryRoute:
+    """Map the owner's seam verdict onto the startup recovery route.
+
+    The owner is always asked first; its verdict gates every state that
+    is not a durable record fact.  Three record facts cannot be expressed
+    by the owner's pure observation and stay with the seam (see
+    :mod:`ralph.pipeline._integration_record_facts`):
+
+    * an owned in-flight Git operation, a target reconciliation or a
+      scheduled re-integration (``classify_git_operation(record)`` is not
+      ``NONE``, ``operation_kind == "target_reconcile"``,
+      ``reintegrate_pending``) keeps the pending-merge recovery path that
+      performs the owed operation -- including the stale-intent replay
+      that re-enters at the automatic rebase;
+    * an ``integrated`` record whose fast-forward landing is still owed:
+      until the landing the target is behind the feature, so the owner
+      reads the state as "re-integrate" and the record fact decides the
+      landing split.
+
+    For everything else the seam verdict is the whole decision:
+    ``REQUIRE_INTERVENTION`` and ``WAIT_FOR_BOUNDED_RETRY`` defer without
+    mutating, and every mutation-ladder action routes to the recovery
+    path that owns the obligation.
+    """
+    if (
+        classify_git_operation(record) is not GitOperationKind.NONE
+        or record.operation_kind == "target_reconcile"
+        or record.reintegrate_pending
+    ):
+        return _StartupRecoveryRoute.RECOVERY_OWNS_OPERATION
+    if record.phase == "integrated":
+        return _StartupRecoveryRoute.LANDING_CONTINUATION
+    if action is IntegrationAction.REQUIRE_INTERVENTION:
+        return _StartupRecoveryRoute.DEFER_INTERVENTION
+    if action is IntegrationAction.WAIT_FOR_BOUNDED_RETRY:
+        return _StartupRecoveryRoute.DEFER_RETRY
+    return _StartupRecoveryRoute.RECOVERY_OWNS_OPERATION
 
 
 def recovery_retained_record(state: RebaseState | None) -> bool:
@@ -318,19 +376,14 @@ def _recover_incomplete_integration_owned(
             remote=remote_target_name(config) if config is not None else DEFAULT_REMOTE,
         )
 
-        if (
-            classify_git_operation(record) is not GitOperationKind.NONE
-            or (record.operation_kind == "target_reconcile")
-            or record.reintegrate_pending
-        ):
-            # An owned Git operation, a target reconciliation or a
-            # scheduled re-integration is in flight: the pending-merge
-            # recovery path owns the obligation.
-            return _recover_pending_merge(
-                root, record, config, conflict_resolver, rebase_stop_resolver
-            )
+        # The owner decided the mutation ladder above; the boundary now
+        # consumes its verdict through the ONE typed route.  No inline
+        # record-flag decision is made here beyond the durable record
+        # facts the owner's projection cannot express (documented on
+        # :func:`_startup_recovery_route`).
+        route = _startup_recovery_route(action, record)
 
-        if record.phase == "integrated":
+        if route is _StartupRecoveryRoute.LANDING_CONTINUATION:
             # Record-fact completion: the work is integrated and the
             # fast-forward landing path owns it. The owner's verdict
             # cannot express that landing -- until the fast-forward
@@ -341,20 +394,20 @@ def _recover_incomplete_integration_owned(
                 root, record, config, conflict_resolver, rebase_stop_resolver
             )
 
-        if action is IntegrationAction.REQUIRE_INTERVENTION:
+        if route is _StartupRecoveryRoute.DEFER_INTERVENTION:
             # The durable record demands operator intervention and the
             # live Git state does not prove the claim stale, so the
             # boundary must not mutate: the record is retained for the
             # operator. (The seam can only ever turn the owner's rung
             # into this one; the owner's own answer never carries it.)
-            deferred = RebaseState(
+            deferred: RebaseState | None = RebaseState(
                 last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
                 last_reason="recovery: durable integration record requires operator intervention",
                 last_target=record.target,
                 recovery_record_retained=True,
                 recovery_record_retained_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
             )
-        elif action is IntegrationAction.WAIT_FOR_BOUNDED_RETRY:
+        elif route is _StartupRecoveryRoute.DEFER_RETRY:
             # The owner could not read the environment (or the escalation
             # ladder is exhausted): the boundary must not mutate. Defer
             # with the record retained so the next startup re-observes.
@@ -369,8 +422,12 @@ def _recover_incomplete_integration_owned(
         if deferred is not None:
             return deferred
 
-        # RESOLVE, CONTINUE and REINTEGRATE all mean the integration is
-        # still owed; the pending-merge recovery path performs it.
+        # RECOVERY_OWNS_OPERATION: an owned Git operation, a target
+        # reconciliation, a scheduled re-integration, or a
+        # mutation-ladder verdict (RESOLVE / CONTINUE / REINTEGRATE) all
+        # mean the integration is still owed; the pending-merge recovery
+        # path performs it, including the stale-intent replay that drops
+        # flags Git disproves and re-enters at the automatic rebase.
         return _recover_pending_merge(root, record, config, conflict_resolver, rebase_stop_resolver)
 
     except Exception as exc:

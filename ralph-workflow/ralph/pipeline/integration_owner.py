@@ -92,7 +92,7 @@ can never charge twice either.
 Projection contract
 -------------------
 
-:data:`NEXT_ACTION_TO_INTEGRATION_ACTION` is total over the nine
+:data:`NEXT_ACTION_TO_INTEGRATION_ACTION` is total over the
 :class:`~ralph.pipeline.integration_decision.NextAction` members: every
 member maps to exactly one
 :class:`~ralph.pipeline._integration_action.IntegrationAction`. A member
@@ -157,6 +157,17 @@ MUTATION_CLASS_ACTIONS: Final[frozenset[NextAction]] = frozenset(
         NextAction.REPAIR,
         NextAction.DISPATCH_RESOLVER,
         NextAction.REBUILD_ON_TARGET,
+        # Dirty-tree cleanup ladder (U1 contract): every rung mutates
+        # refs, the index, the tree or the git config, so every rung is
+        # charged against the durable budget — intent before, outcome
+        # after.
+        NextAction.COMMIT_VIA_COMMIT_PHASE,
+        NextAction.SAVE_AND_RESTORE,
+        NextAction.PRESERVE_VIA_TEMP_INDEX,
+        NextAction.QUARANTINE_AND_RESTORE,
+        NextAction.REBUILD_IN_FRESH_WORKTREE,
+        NextAction.ADAPT_ENVIRONMENT_AND_RETRY,
+        NextAction.LAST_RESORT_RECOVERY,
     }
 )
 
@@ -196,6 +207,20 @@ NEXT_ACTION_TO_INTEGRATION_ACTION: Final[dict[NextAction, IntegrationAction]] = 
     NextAction.REBUILD_ON_TARGET: IntegrationAction.REINTEGRATE_AGAINST_TARGET,
     NextAction.CONTINUE_WITH_INTEGRATION_PENDING: IntegrationAction.WAIT_FOR_BOUNDED_RETRY,
     NextAction.WAIT_FOR_ENVIRONMENT: IntegrationAction.WAIT_FOR_BOUNDED_RETRY,
+    # Dirty-tree cleanup ladder (U1 contract). The coarse lifecycle
+    # vocabulary cannot express the distinction between "commit via the
+    # commit phase" and "save to a backup ref and restore" — the seams
+    # that need it consume the typed NextAction / PlanningSyncVerdict —
+    # so the projection groups them by what the boundary does at this
+    # seam: git plumbing (continue), a rebuild against the target
+    # (reintegrate), or a bounded wait on the machine (wait).
+    NextAction.COMMIT_VIA_COMMIT_PHASE: IntegrationAction.CONTINUE_GIT_OPERATION,
+    NextAction.SAVE_AND_RESTORE: IntegrationAction.CONTINUE_GIT_OPERATION,
+    NextAction.PRESERVE_VIA_TEMP_INDEX: IntegrationAction.CONTINUE_GIT_OPERATION,
+    NextAction.QUARANTINE_AND_RESTORE: IntegrationAction.CONTINUE_GIT_OPERATION,
+    NextAction.REBUILD_IN_FRESH_WORKTREE: IntegrationAction.REINTEGRATE_AGAINST_TARGET,
+    NextAction.ADAPT_ENVIRONMENT_AND_RETRY: IntegrationAction.WAIT_FOR_BOUNDED_RETRY,
+    NextAction.LAST_RESORT_RECOVERY: IntegrationAction.CONTINUE_GIT_OPERATION,
 }
 
 
@@ -221,7 +246,7 @@ class IntegrationOwnerDecision:
 def project_integration_action(next_action: NextAction) -> IntegrationAction:
     """Project ``next_action`` onto the closed ``IntegrationAction`` vocabulary.
 
-    The projection is total over the nine ``NextAction`` members. A
+    The projection is total over the ``NextAction`` members. A
     member without a mapping raises :class:`ValueError`: an unmapped
     member must never silently default to a permissive action, because
     the projected action is what the pipeline acts on.

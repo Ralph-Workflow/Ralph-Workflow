@@ -87,12 +87,33 @@ def active_operation_matches(root: Path, record: IntegrationRecord) -> bool:
     )
 
 
-def _promote_completed_resolution(root: Path, record: IntegrationRecord) -> IntegrationRecord | str:
-    from ralph.pipeline.auto_integrate_recovery_terminal import post_attempt_verify
+def _terminal_state_refusal(root: Path) -> str | None:
+    """Verify the operation left no live markers; name the refusal when it did.
 
-    post_attempt_verify(root, expected_head_sha=None, owns_resolution=False)
-    if rebase_in_progress_at(root) or merge_state(root) != MERGE_STATE_NONE:
-        return "retained integration operation remains active; continuation required"
+    A leftover operation marker Git still shows (cherry-pick, sequencer,
+    merge state) is live Git state, not completion proof.  Named as a
+    typed refusal the caller retains through the conflict /
+    identity-mismatch mapping -- never as "lacks proof" withholding,
+    which must not exist.
+    """
+    from ralph.pipeline.auto_integrate_recovery_terminal import (
+        TerminalStateViolationError,
+        post_attempt_verify,
+    )
+
+    try:
+        post_attempt_verify(root, expected_head_sha=None, owns_resolution=False)
+    except TerminalStateViolationError as exc:
+        return f"retained integration completion unproven; Git still shows an operation marker: {exc}"
+    return None
+
+
+def _promote_completed_resolution(root: Path, record: IntegrationRecord) -> IntegrationRecord | str:
+    refusal = _terminal_state_refusal(root)
+    if refusal is None and (rebase_in_progress_at(root) or merge_state(root) != MERGE_STATE_NONE):
+        refusal = "retained integration operation remains active; continuation required"
+    if refusal is not None:
+        return refusal
     current = read_record(root)
     if current is None:
         return "retained integration ownership unreadable after continuation"

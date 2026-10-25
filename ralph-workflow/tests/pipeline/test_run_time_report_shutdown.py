@@ -259,6 +259,68 @@ def test_a_broken_degraded_renderer_still_emits_a_minimal_valid_report(
     assert "Agent calls: 0; retries: 0; continuations: 0; fallbacks: 0; pushes: 0." in report
 
 
+def test_zero_agent_stall_with_rejected_full_report_still_emits_valid_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC-8(d): validation rejection of a zero-agent stall report never loses it.
+
+    The observed shutdown failure was ``run_time_report emission failed:
+    run_time_report validation failed`` with no report persisted at all.
+    When the full report of an interrupted, zero-agent stalled run is
+    rejected, the degraded replacement must still validate, keep the
+    zero counts truthful, carry the rejection reason, and name the
+    unresolved integration.
+    """
+    submitted: list[str] = []
+    monkeypatch.setattr(
+        run_time_report_module,
+        "submit_artifact_canonical",
+        _capture_submission(submitted),
+    )
+
+    def _invalid_render(**_kwargs: object) -> str:
+        return (
+            "---\n"
+            "type: run_time_report\n"
+            "outcome: interrupted\n"
+            "elapsed_seconds: 17880.000\n"
+            "final_phase: development\n"
+            "---\n\n"
+            "## Unexpected Section\n"
+            "- [X-1] The stalled run's full report was rejected.\n"
+        )
+
+    monkeypatch.setattr(run_time_report_module, "render_run_time_report", _invalid_render)
+    state = PipelineState(
+        phase="development",
+        metrics=RunMetrics(
+            total_agent_calls=0,
+            total_continuations=0,
+            total_fallbacks=0,
+            total_retries=0,
+        ),
+        push_count=0,
+        dev_timebox_active=True,
+        dev_timebox_consumed_seconds=_STALL_SECONDS,
+        rebase=RebaseState(unresolved_integration_carried=True),
+    )
+
+    run_time_report_module.emit_run_time_report_safely(
+        Path("/unused"),
+        state=state,
+        outcome="interrupted",
+        elapsed_seconds=_STALL_SECONDS,
+    )
+
+    assert len(submitted) == 1
+    report = submitted[0]
+    _assert_valid(report)
+    assert "Degraded run-time report" in report
+    assert "run_time_report validation failed" in report
+    assert "Agent calls: 0; retries: 0; continuations: 0; fallbacks: 0; pushes: 0." in report
+    assert "Integration status: unresolved at report time." in report
+
+
 @pytest.mark.timeout_seconds(5)
 def test_interrupted_integration_stall_emits_a_valid_run_time_report(
     monkeypatch: pytest.MonkeyPatch,

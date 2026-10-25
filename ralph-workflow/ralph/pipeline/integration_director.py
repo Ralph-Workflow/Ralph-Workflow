@@ -47,7 +47,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
 
 from ralph.git.merge import observe_branch_sha
-from ralph.git.operations import get_head_sha, is_repo_clean
+from ralph.git.operations import get_head_sha
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline.auto_integrate_record import (
     RecordReadOutcomeDisposition,
@@ -70,9 +70,11 @@ from ralph.pipeline.integration_observation import (
     TargetVsFeature,
     TargetVsRemote,
     WorktreeState,
+    classify_worktree,
     read_head_state,
     read_in_progress_kind,
     read_merge_base,
+    read_worktree_porcelain,
     reading_from_callable,
 )
 from ralph.pipeline.integration_owner import (
@@ -139,18 +141,17 @@ class DirectorDecision:
 
 
 def _read_porcelain(root: Path) -> Reading[str]:
-    """Run the porcelain probe through the ``reading_from_callable`` lift."""
-    from ralph.git.subprocess_runner import run_git  # PLC0415: lazy import
+    """Read the worktree porcelain through the ONE shared probe.
 
-    def _probe() -> str:
-        result = run_git(
-            ("status", "--porcelain", "--untracked-files=no"),
-            cwd=root,
-            label="integration-director-porcelain",
-        )
-        return result.stdout if result.returncode == 0 else ""
-
-    return reading_from_callable(_probe)
+    The director no longer carries its own porcelain command: the probe
+    flags (``-z``, ``--untracked-files=normal``), the config pins and
+    the failure semantics live in
+    :func:`ralph.pipeline.integration_observation.read_worktree_porcelain`,
+    so the director and every gate read the tree with identical flags
+    and an identical three-valued failure contract (a non-zero exit or a
+    raised error is ``Unknown``, never a known-empty "clean" blob).
+    """
+    return read_worktree_porcelain(root)
 
 
 def _read_branch_sha(root: Path, ref: str) -> tuple[str | None, bool]:
@@ -214,14 +215,6 @@ def _read_merge_base(
         return probe(root, left, right)
     except Exception:
         return None, False
-
-
-def _read_repo_clean(root: Path) -> bool:
-    """Best-effort :func:`is_repo_clean` — return ``True`` on unreadable."""
-    try:
-        return bool(is_repo_clean(root))
-    except Exception:
-        return True
 
 
 def _read_remote_sha(
@@ -387,27 +380,22 @@ def _project_target_vs_remote(
     return _TARGET_VS_REMOTE_BY_RELATION[relation]
 
 
-_PORCELAIN_CODE_LEN = 2
-_UNTRACKED_CODE = "??"
-_PORCELAIN_INDEX_STATUSES = frozenset({"M", "A", "D", "R", "C", "T"})
-_PORCELAIN_WORKTREE_STATUSES = frozenset({"M", "D", "T"})
-
-
 def _project_worktree(
     porcelain: Reading[str],
     in_progress_kind: InProgressKind,
-    repo_clean: bool,
 ) -> WorktreeState:
     """Project the worktree probes into :class:`WorktreeState`.
 
-    A known in-progress Git operation short-circuits to ``UNMERGED``
-    because conflict markers or unmerged index entries are present in
-    the states the integration boundary resumes. An unreadable
-    operation probe is projected as ``NONE`` by the caller and therefore
-    never becomes evidence of an unmerged tree. A readable porcelain
-    with content is dispatched via the per-line classification; ``M ``
-    in the second column beats ``A `` in the first column when both are
-    present, and untracked ``?? `` lines map to ``UNTRACKED``.
+    The porcelain classification is delegated to the ONE worktree
+    classifier (:func:`classify_worktree`), so the director and every
+    gate share one definition of clean/blocked and one dirt-shape
+    vocabulary; this module no longer parses porcelain of its own. Only
+    the operation short-circuit stays here: a known in-progress Git
+    operation projects to ``UNMERGED`` because conflict markers or
+    unmerged index entries are present in the states the integration
+    boundary resumes, and that is an operation fact, not a tree fact.
+    An unreadable operation probe is projected as ``NONE`` by the caller
+    and therefore never becomes evidence of an unmerged tree.
     """
     if in_progress_kind in (
         InProgressKind.REBASE,
@@ -415,56 +403,7 @@ def _project_worktree(
         InProgressKind.CHERRY_PICK,
     ):
         return WorktreeState.UNMERGED
-    if not porcelain.is_known_good:
-        return WorktreeState.UNKNOWN
-    flags = _classify_porcelain(
-        porcelain.value or "",
-        code_len=_PORCELAIN_CODE_LEN,
-        index_statuses=_PORCELAIN_INDEX_STATUSES,
-        worktree_statuses=_PORCELAIN_WORKTREE_STATUSES,
-    )
-    selected = _select_worktree_state(flags, repo_clean)
-    return selected
-
-
-def _select_worktree_state(flags: dict[str, bool], repo_clean: bool) -> WorktreeState:
-    """Map a per-line porcelain flag dict onto a closed :class:`WorktreeState`."""
-    if flags["has_tracked"]:
-        return WorktreeState.TRACKED_CHANGES
-    if flags["has_staged"]:
-        return WorktreeState.STAGED
-    if flags["has_untracked"]:
-        return WorktreeState.UNTRACKED
-    return WorktreeState.CLEAN if repo_clean else WorktreeState.UNKNOWN
-
-
-def _classify_porcelain(
-    text: str,
-    *,
-    code_len: int,
-    index_statuses: frozenset[str],
-    worktree_statuses: frozenset[str],
-) -> dict[str, bool]:
-    """Classify porcelain output into a typed dict."""
-    has_staged = False
-    has_tracked = False
-    has_untracked = False
-    for raw_line in text.splitlines():
-        if len(raw_line) < code_len:
-            continue
-        head = raw_line[:code_len]
-        if head == _UNTRACKED_CODE:
-            has_untracked = True
-            continue
-        if head[0] in index_statuses:
-            has_staged = True
-        if head[1] in worktree_statuses:
-            has_tracked = True
-    return {
-        "has_staged": has_staged,
-        "has_tracked": has_tracked,
-        "has_untracked": has_untracked,
-    }
+    return classify_worktree(porcelain).state
 
 
 def _project_head(head_state: Reading[HeadState]) -> HeadState:
@@ -692,7 +631,6 @@ def _build_observation(
     porcelain = _read_porcelain(root)
     in_progress_reading = _read_in_progress_kind(root, in_progress_probe)
     head = _project_head(_read_head_state(root, head_probe))
-    repo_clean = _read_repo_clean(root)
 
     disposition, durable_record, unreadable_reason = _read_durable_record(root)
     in_progress_kind, in_progress_ownership = _project_in_progress(
@@ -704,7 +642,6 @@ def _build_observation(
     worktree = _project_worktree(
         porcelain,
         in_progress_kind,
-        repo_clean,
     )
 
     target_sha = _read_branch_sha(root, target)

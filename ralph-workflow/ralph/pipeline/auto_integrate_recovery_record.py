@@ -18,7 +18,10 @@ from loguru import logger
 from ralph.git.merge import (
     MERGE_STATE_IN_PROGRESS,
     MERGE_STATE_NONE,
+    observe_unmerged_paths,
 )
+from ralph.git.merge_obstructions import ancestry_state
+from ralph.git.operations import get_head_sha
 from ralph.pipeline._git_operation_authority import (
     GitOperationKind,
     classify_git_operation,
@@ -53,6 +56,7 @@ from ralph.pipeline.auto_integrate_record import (
     read_record_outcome,
 )
 from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
+from ralph.pipeline.integration_observation import InProgressKind, read_in_progress_kind
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
 if TYPE_CHECKING:
@@ -389,12 +393,180 @@ def _recover_unresolved_integrating(
             retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
             record_retained=True,
         )
+    if _retained_resolution_is_stale(root, record) and _recorded_identity_changed_or_dirty(
+        root, record
+    ):
+        # Git outranks the record (root cause 2): the record claims an
+        # integration Git does not show, the work is not contained in the
+        # target, and the recorded pre-feature identity is unrecoverable
+        # (HEAD moved or the tree went dirty) -- stale intent.  Preserve
+        # the current HEAD work in a backup ref, drop the stale identity
+        # and re-enter at step 1 (the automatic rebase).  Retaining here
+        # loops forever, because the recorded pre-feature SHA can never
+        # be restored once HEAD moved on.
+        return _replay_stale_resolution(
+            root,
+            record,
+            config,
+            conflict_resolver,
+            rebase_stop_resolver,
+        )
     return _reintegrate_owned_landing(
         root,
         record,
         config,
         conflict_resolver,
         rebase_stop_resolver,
+    )
+
+
+def _recorded_identity_changed_or_dirty(root: Path, record: IntegrationRecord) -> bool:
+    """True when the recorded pre-feature identity cannot be reintegrated as-is.
+
+    With HEAD on the recorded pre-feature SHA and a clean tree the
+    ordinary owned reintegration keeps ownership (its config/refresh
+    gates stay authoritative); once HEAD moved or the tree went dirty
+    that identity is gone for good, so retaining the record can only
+    loop.
+    """
+    expected = record.pre_feature_sha
+    try:
+        import ralph.git.operations as _git_ops
+
+        head = _git_ops.get_head_sha(root)
+    except Exception:
+        return True
+    if head != expected:
+        return True
+    return _has_tracked_uncommitted_work(root)
+
+
+def _has_tracked_uncommitted_work(root: Path) -> bool:
+    """True when tracked files carry uncommitted changes (untracked-only is not dirty).
+
+    Mirrors the :func:`ralph.git.operations.is_repo_clean` porcelain so
+    the identity check cannot fire on a tree the ordinary owned
+    reintegration would accept.  A failed probe is unknown and reports
+    "not dirty", keeping the conservative owned-reintegration path.
+    """
+    from ralph.git.subprocess_runner import run_git
+
+    status = run_git(
+        ("status", "--porcelain", "--untracked-files=no"),
+        cwd=root,
+        label="recovery:recorded-identity-status",
+    )
+    if status.returncode != 0:
+        return False
+    return bool(status.stdout.splitlines())
+
+
+def _recover_pending_merge_preflight(
+    root: Path,
+    record: IntegrationRecord,
+    config: UnifiedConfig | None,
+    conflict_resolver: ConflictResolver | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+) -> RebaseState | None:
+    """Route the record facts that keep their own recovery path.
+
+    Returns ``None`` when neither fact applies and the caller proceeds to
+    the operation-kind classification.
+    """
+    if record.operation_kind == "target_reconcile":
+        from ralph.pipeline._remote_reconcile_recovery import recover_target_resolution
+
+        return recover_target_resolution(
+            root, record, config, conflict_resolver, rebase_stop_resolver
+        )
+    if record.integrated_feature_sha is None and _recorded_work_is_verifiably_landed(
+        root, record
+    ):
+        # Git outranks the record (root cause 2): a record with no
+        # verified feature SHA whose work Git shows contained in the
+        # target has no landing left to prove.  Retaining here repeats
+        # the CRITICAL "malformed integrated record" retention on every
+        # startup even though the work is in the target.  A record that
+        # DOES carry a verified feature SHA keeps its landing path: the
+        # fast-forward continuation owns the obligation and reconciles
+        # publication after it.
+        return _release_verifiably_landed_record(root, record, config)
+    return None
+
+
+def _recorded_work_is_verifiably_landed(root: Path, record: IntegrationRecord) -> bool:
+    """Positive Git proof that the record's owed work is already contained in <target>.
+
+    Every leg below must be POSITIVE evidence.  An in-progress operation,
+    an unmerged path, or an unreadable probe is unknown (root cause 1),
+    and unknown never releases a durable record: only a proven-healthy
+    Git observation may discharge the retained obligation.
+    """
+    kind = read_in_progress_kind(root)
+    if not kind.is_known_good or kind.value is not InProgressKind.NONE:
+        return False
+    unmerged = observe_unmerged_paths(root)
+    if not unmerged.query_ok or unmerged.paths:
+        return False
+    target_sha = _get_branch_sha(root, record.target)
+    if target_sha is None:
+        return False
+    work_sha = record.integrated_feature_sha or _read_head_sha_or_none(root)
+    if work_sha is None:
+        return False
+    ancestry = ancestry_state(root, work_sha, target_sha)
+    return ancestry is True
+
+
+def _read_head_sha_or_none(root: Path) -> str | None:
+    try:
+        return get_head_sha(root)
+    except Exception:
+        return None
+
+
+def _release_verifiably_landed_record(
+    root: Path,
+    record: IntegrationRecord,
+    config: UnifiedConfig | None,
+) -> RebaseState:
+    """Clear a record Git proves finished, then reconcile publication.
+
+    Mirrors the "already landed" branch of
+    :func:`_continue_fast_forward_from_record`: containment in the target
+    is the landing proof, so the durable record is released and the
+    configured remote is reconciled from the current observation.
+    """
+    refresh, pointer_is_fresh = _refresh_before_verdict(config, root, record.target)
+    if not pointer_is_fresh:
+        return record_refresh(
+            _record_skip(
+                reason=(
+                    "recovery: landed work observed but the target pointer"
+                    " could not be refreshed, record retained for retry"
+                ),
+                target=record.target,
+                retention_reason=StartupRetentionReason.OWNED_TARGET_PRECONDITION_FAILED,
+                record_retained=True,
+            ),
+            refresh,
+        )
+    _clear_record(root)
+    from ralph.pipeline.auto_integrate_remote_sync import reconcile_remote_publication
+
+    return record_refresh(
+        reconcile_remote_publication(
+            config,
+            root,
+            record.target,
+            source_state=RebaseState(
+                last_outcome=RebaseOutcomeKind.RECOVERED,
+                last_reason="recorded work already contained in target",
+                last_target=record.target,
+                fast_forwarded=True,
+            ),
+        ),
+        refresh,
     )
 
 
@@ -405,12 +577,11 @@ def _recover_pending_merge(
     conflict_resolver: ConflictResolver | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
 ) -> RebaseState:
-    if record.operation_kind == "target_reconcile":
-        from ralph.pipeline._remote_reconcile_recovery import recover_target_resolution
-
-        return recover_target_resolution(
-            root, record, config, conflict_resolver, rebase_stop_resolver
-        )
+    preflight = _recover_pending_merge_preflight(
+        root, record, config, conflict_resolver, rebase_stop_resolver
+    )
+    if preflight is not None:
+        return preflight
     kind = classify_git_operation(record)
     if kind in (GitOperationKind.RESOLVING_MERGE, GitOperationKind.RESOLVING_REBASE):
         if _retained_resolution_is_stale(root, record):

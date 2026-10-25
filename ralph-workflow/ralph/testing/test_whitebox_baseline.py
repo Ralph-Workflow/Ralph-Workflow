@@ -267,6 +267,7 @@ tests/pipeline/_terminal_mcp_error_seams.py|0,2,1
 tests/pipeline/test_development_phase_missing_plan_handoff_status_bar_visible.py|1,3,2
 tests/pipeline/test_integration_resolution_dispatch_inventory.py|0,0,9
 tests/pipeline/test_interrupt_reports_the_state_reached.py|2,0,3
+tests/pipeline/test_integration_log_dedupe.py|3,1,5
 tests/pipeline/test_kimi_smoke_harness.py|0,3,0
 tests/pipeline/test_next_attempt_gets_fresh_bridge.py|0,1,1
 tests/pipeline/test_phase_close_failed_no_artifact.py|2,1,3

@@ -50,6 +50,7 @@ from ralph.pipeline.auto_integrate_catchup_coordination import (
 from ralph.pipeline.auto_integrate_ff import (
     fast_forward_target,
 )
+from ralph.pipeline.auto_integrate_record import read_record
 from ralph.pipeline.auto_integrate_remote_sync import (
     FETCH_TIMEOUT_SECONDS,
     remote_sync_enabled,
@@ -318,10 +319,15 @@ def attempt_catchup_fast_forward(
             if remote_outcome == CATCHUP_FAST_FORWARDED
             else CATCHUP_ON_TARGET
         )
+    # The owner seam observes against the CONFIGURED remote, exactly like
+    # the remote-sync half of the tick: an explicit ``remote`` argument
+    # wins, the configured name supplies the default.
+    seam_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
     return _fast_forward_if_strictly_behind(
         root,
         resolved_target,
         current,
+        remote=seam_remote,
         ledger=ledger,
         clock=effective_clock,
         jitter=jitter,
@@ -620,7 +626,7 @@ def observe_remote_target_sha(root: Path, remote: str, target: str) -> str | Non
         _close_repo(repo)
 
 
-def _mutation_refusal(root: Path, target: str, current: str) -> str:
+def _mutation_refusal(root: Path, target: str, current: str, *, remote: str | None) -> str:
     """Return why the checkout must not be mutated, or ``""`` when it is safe."""
 
     if not _worktree_is_clean(root):
@@ -628,7 +634,19 @@ def _mutation_refusal(root: Path, target: str, current: str) -> str:
     if not _still_safe_to_merge(root, current):
         return CATCHUP_REFUSED
     if (root / ".git").exists():
-        action = decide_seam_action(root, target=target)
+        # The single owner decides against the SAME facts the other seams
+        # hand it: the durable record loaded from disk (``None`` when none
+        # or corrupt — the seam reconciles that too) and the CONFIGURED
+        # remote. The mutation lease is held here, so no agent phase is
+        # active in the worktree and the observation records that.
+        record = read_record(root)
+        action = decide_seam_action(
+            root,
+            record=record,
+            agent_active=False,
+            target=target,
+            remote=remote,
+        )
         if action in (
             IntegrationAction.REQUIRE_INTERVENTION,
             IntegrationAction.RESOLVE_ACTIVE_OPERATION,
@@ -642,6 +660,7 @@ def _fast_forward_if_strictly_behind(
     target: str,
     current: str,
     *,
+    remote: str | None = None,
     ledger: AttemptLedger | None = None,
     clock: Clock | None = None,
     jitter: Callable[[], float] | None = None,
@@ -660,7 +679,7 @@ def _fast_forward_if_strictly_behind(
                 observation.summary,
             )
             return _lease_failure(lease_verdict)
-        refusal = _mutation_refusal(root, target, current)
+        refusal = _mutation_refusal(root, target, current, remote=remote)
         if refusal:
             return refusal
         lock_reason = _recover_stale_locks(root)

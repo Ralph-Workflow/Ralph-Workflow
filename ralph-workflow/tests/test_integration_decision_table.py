@@ -129,9 +129,33 @@ def test_observation_has_unknown_is_consistent_with_enum_membership() -> None:
 _LADDER_ATTEMPTS: tuple[AttemptState, ...] = tuple(AttemptState(rung=rung) for rung in LADDER_ORDER)
 
 
+#: Members the default (shape-free) context must reach across the
+#: exhaustive observation space. The dirty-tree cleanup members are
+#: deliberately excluded: they require an explicit DirtShape refinement
+#: in the context, and their reachability across the dirt-shape space is
+#: proven by ``tests/test_integration_dirt_decisions.py``.
+_DEFAULT_CONTEXT_MEMBERS: frozenset[NextAction] = frozenset(
+    set(NextAction)
+    - {
+        NextAction.COMMIT_VIA_COMMIT_PHASE,
+        NextAction.SAVE_AND_RESTORE,
+        NextAction.PRESERVE_VIA_TEMP_INDEX,
+        NextAction.QUARANTINE_AND_RESTORE,
+        NextAction.REBUILD_IN_FRESH_WORKTREE,
+        NextAction.ADAPT_ENVIRONMENT_AND_RETRY,
+        NextAction.LAST_RESORT_RECOVERY,
+    }
+)
+
+
 def test_decide_total_mapping_covers_every_state_and_reaches_every_member() -> None:
     """Every observation crossed with every rung yields one NextAction; the full
     enum is reachable (rule 7 completeness).
+
+    The default (shape-free) context must reach every member that does
+    not require a dirt-shape refinement; the cleanup-ladder members are
+    reachable only through a shaped context, which the exhaustive
+    dirt-shape suite walks.
     """
     observations = _build_observations()
     assert len(observations) == 77760
@@ -147,7 +171,10 @@ def test_decide_total_mapping_covers_every_state_and_reaches_every_member() -> N
                 f"non-action returned for {observation} at rung {attempts.rung}: {action!r}"
             )
             reached.add(action)
-    assert reached == set(NextAction), f"unreachable members: {set(NextAction) - reached}"
+    assert reached == _DEFAULT_CONTEXT_MEMBERS, (
+        f"unreachable members: {_DEFAULT_CONTEXT_MEMBERS - reached}; "
+        f"unexpected members: {reached - _DEFAULT_CONTEXT_MEMBERS}"
+    )
 
 
 # ---------------------------------------------------------------------------

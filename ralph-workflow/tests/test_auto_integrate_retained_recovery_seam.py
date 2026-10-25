@@ -42,6 +42,7 @@ from rich.console import Console
 
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.pipeline._integration_action import IntegrationAction
 from ralph.pipeline.auto_integrate import recovery_retained_record
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.integration_resolution import (
@@ -318,6 +319,95 @@ def test_an_unexpected_recovery_crash_keeps_integration_blocked(
 
     assert outcome is not None
     assert recovery_retained_record(outcome) is True
+
+
+# --------------------------------------------------------------------
+# The startup route is consumed from the owner's seam verdict.
+# --------------------------------------------------------------------
+
+
+def _route_record(**overrides: object) -> IntegrationRecord:
+    data: dict[str, object] = {
+        "phase": "integrating",
+        "target": "main",
+        "pre_feature_sha": "a" * 40,
+        "pre_target_sha": "b" * 40,
+    }
+    data.update(overrides)
+    return IntegrationRecord.model_validate(data)
+
+
+def test_the_startup_route_is_consumed_from_the_owner_verdict() -> None:
+    """No raw record flags decide the startup path beyond the documented record facts.
+
+    The seam verdict gates every state that is not a durable record
+    fact; the record facts (an owned operation, a target reconciliation,
+    a scheduled re-integration, an integrated-but-not-landed record)
+    keep their owning recovery path even when the owner would defer.
+    """
+    recovery = _recovery_module()
+    route = recovery._startup_recovery_route
+    route_kind = recovery._StartupRecoveryRoute
+
+    plain = _route_record()
+    resolving = _route_record(resolving_rebase=True)
+    reconcile = _route_record(operation_kind="target_reconcile")
+    reintegrate = _route_record(reintegrate_pending=True)
+    integrated = _route_record(phase="integrated", integrated_feature_sha="c" * 40)
+
+    # Record-owned operation facts keep the pending-merge recovery path,
+    # even for verdicts that would otherwise defer: the recovery path
+    # re-derives stale intent from Git (Git outranks the record) and
+    # replays it at the automatic rebase.
+    assert route(IntegrationAction.WAIT_FOR_BOUNDED_RETRY, resolving) is (
+        route_kind.RECOVERY_OWNS_OPERATION
+    )
+    assert route(IntegrationAction.REQUIRE_INTERVENTION, reconcile) is (
+        route_kind.RECOVERY_OWNS_OPERATION
+    )
+    assert route(IntegrationAction.WAIT_FOR_BOUNDED_RETRY, reintegrate) is (
+        route_kind.RECOVERY_OWNS_OPERATION
+    )
+    # The integrated -> landing split is a record fact the owner's pure
+    # observation cannot express (until the landing the owner reads the
+    # state as "re-integrate").
+    assert route(IntegrationAction.REINTEGRATE_AGAINST_TARGET, integrated) is (
+        route_kind.LANDING_CONTINUATION
+    )
+    assert route(IntegrationAction.LAND_TARGET, integrated) is (
+        route_kind.LANDING_CONTINUATION
+    )
+    # For everything else the seam verdict is the whole decision.
+    assert route(IntegrationAction.REQUIRE_INTERVENTION, plain) is route_kind.DEFER_INTERVENTION
+    assert route(IntegrationAction.WAIT_FOR_BOUNDED_RETRY, plain) is route_kind.DEFER_RETRY
+    for verdict in (
+        IntegrationAction.RESOLVE_ACTIVE_OPERATION,
+        IntegrationAction.CONTINUE_GIT_OPERATION,
+        IntegrationAction.REINTEGRATE_AGAINST_TARGET,
+        IntegrationAction.LAND_TARGET,
+    ):
+        assert route(verdict, plain) is route_kind.RECOVERY_OWNS_OPERATION
+
+
+def test_startup_recovery_asks_the_owner_before_it_routes(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """The seam is consulted for the route, and a deferred verdict retains."""
+    recovery = _recovery_module()
+    asked: list[bool] = []
+
+    def fake_seam(root: object, **kwargs: object) -> IntegrationAction:
+        del root, kwargs
+        asked.append(True)
+        return IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+
+    monkeypatch.setattr(recovery, "decide_seam_action", fake_seam)
+    _stub_clean_git(recovery, monkeypatch, _route_record())
+
+    outcome = recovery.recover_incomplete_integration(WorkspaceScope(tmp_path))
+
+    assert asked, "the startup boundary must ask the single owner before routing"
+    assert recovery.recovery_retained_record(outcome)
 
 
 # --------------------------------------------------------------------

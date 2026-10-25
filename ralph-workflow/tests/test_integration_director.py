@@ -30,7 +30,7 @@ from types import SimpleNamespace
 import pytest
 
 from ralph.git.git_run_result import GitRunResult
-from ralph.pipeline import integration_director
+from ralph.pipeline import integration_director, integration_observation
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     RecordReadOutcome,
@@ -80,7 +80,6 @@ class _ProbeOverrides:
         self.in_progress: Reading[InProgressKind] = Reading.known(InProgressKind.NONE)
         self.merge_base: tuple[str | None, bool] = ("deadbeef" * 5, True)
         self.head_sha: str = "deadbeef" * 5
-        self.repo_clean: bool = True
         self.branch_shas: dict[str, str | None] = {DEFAULT_TARGET_BRANCH: "deadbeef" * 5}
         self.remote_probe: tuple[str | None, bool] = ("deadbeef" * 5, True)
         self.record_disposition: RecordReadOutcomeDisposition = RecordReadOutcomeDisposition.ABSENT
@@ -128,9 +127,6 @@ def _install_probe_overrides(
         del root, left, right
         return overrides.merge_base
 
-    def _fake_repo_clean(root: Path) -> bool:
-        return overrides.repo_clean
-
     def _fake_get_head(root: Path) -> str:
         return overrides.head_sha
 
@@ -177,6 +173,10 @@ def _install_probe_overrides(
 
     del tmp_path  # unused; kept for signature parity with test arguments.
     monkeypatch.setattr("ralph.git.subprocess_runner.run_git", _fake_run_git)
+    # The director reads porcelain through the ONE shared observation
+    # probe, whose module binds ``run_git`` at import time; patch the
+    # binding the probe actually resolves.
+    monkeypatch.setattr(integration_observation, "run_git", _fake_run_git)
     monkeypatch.setattr(integration_director, "read_head_state", _fake_head_state)
     monkeypatch.setattr(
         integration_director,
@@ -184,7 +184,6 @@ def _install_probe_overrides(
         _fake_in_progress,
     )
     monkeypatch.setattr(integration_director, "read_merge_base", _fake_merge_base)
-    monkeypatch.setattr(integration_director, "is_repo_clean", _fake_repo_clean)
     monkeypatch.setattr(integration_director, "get_head_sha", _fake_get_head)
     monkeypatch.setattr(
         integration_director,
@@ -491,7 +490,6 @@ def test_director_initial_state_returns_default_rung(
     """A first-run director consumes a default-state ledger."""
     overrides = _ProbeOverrides()
     overrides.porcelain = "M  some_modified.py\n"
-    overrides.repo_clean = False
     _install_probe_overrides(monkeypatch, tmp_path=tmp_path, overrides=overrides)
 
     director = _default_director(tmp_path, overrides)

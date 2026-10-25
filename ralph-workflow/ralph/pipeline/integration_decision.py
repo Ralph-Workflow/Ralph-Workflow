@@ -80,7 +80,30 @@ names):
 8. :attr:`NextAction.REPAIR` handles repairable known-blocked states
    (stale / unreadable / older_version / foreign records, detached HEAD);
    a dirty / staged / untracked worktree WITHOUT conflict yields
-   :attr:`NextAction.COMMIT`.
+   :attr:`NextAction.COMMIT` when the context carries no dirt-shape
+   refinement.
+9. **Dirty-tree cleanup is deterministic and never blocks forever.** When
+   the context carries a blocking :class:`DirtShape` refinement and no
+   in-progress operation owns the tree, the direct action is
+   :attr:`NextAction.COMMIT_VIA_COMMIT_PHASE` for
+   :attr:`DirtAttribution.PHASE_OWNED` dirt (a phase's own work waits
+   for that phase's commit seam; integration never runs around it and
+   never waits on it) and :attr:`NextAction.SAVE_AND_RESTORE` for
+   residue / unowned dirt and for unknown attribution (ambiguous
+   attribution is pre-existing human work: save, never revert
+   silently). Non-blocking shapes (``LINE_ENDING_ONLY`` — clean after
+   refresh) fall through to the clean-tree rows. Under repeat pressure
+   the answer climbs :data:`CLEANUP_LADDER_ORDER` one rung per repeat
+   (``_cleanup_escalation_action``) — a different, stronger action each
+   time, saturating at :attr:`CleanupLadderRung.LAST_RESORT`. Dirt
+   never maps to ``SKIP``, ``WAIT`` or :attr:`NextAction.DISPATCH_RESOLVER`:
+   it is a condition no resolver agent can change.
+10. **The ordering rule.** The dirt-shape rows are unreachable while an
+    operation is in progress: the real-conflict and owned-operation
+    branches precede the dirty branch in :func:`decide`, so cleanup
+    never runs a restore/reset against an operation's conflict state.
+    An operation is resolved first; dirt is cleaned only when no
+    operation owns the tree.
 """
 
 from __future__ import annotations
@@ -91,6 +114,7 @@ from enum import Enum
 from typing import Final
 
 from ralph.pipeline.integration_observation import (
+    DirtShape,
     HeadState,
     InProgressKind,
     InProgressOwnership,
@@ -107,7 +131,9 @@ class NextAction(Enum):
     The members define every safe next step for the integration
     boundary. There is no ``DISCARD`` member by design: the table never
     returns an action that throws away uncommitted work or unresolved
-    conflicts.
+    conflicts. The cleanup-ladder members name preservation-first
+    actions: even the last-resort member preserves what it can before it
+    touches the tree.
     """
 
     COMMIT = "commit"
@@ -119,6 +145,62 @@ class NextAction(Enum):
     REBUILD_ON_TARGET = "rebuild_on_target"
     CONTINUE_WITH_INTEGRATION_PENDING = "continue_with_integration_pending"
     WAIT_FOR_ENVIRONMENT = "wait_for_environment"
+    COMMIT_VIA_COMMIT_PHASE = "commit_via_commit_phase"
+    SAVE_AND_RESTORE = "save_and_restore"
+    PRESERVE_VIA_TEMP_INDEX = "preserve_via_temp_index"
+    QUARANTINE_AND_RESTORE = "quarantine_and_restore"
+    REBUILD_IN_FRESH_WORKTREE = "rebuild_in_fresh_worktree"
+    ADAPT_ENVIRONMENT_AND_RETRY = "adapt_environment_and_retry"
+    LAST_RESORT_RECOVERY = "last_resort_recovery"
+
+
+class DirtAttribution(Enum):
+    """Who owns the dirt: decides which cleanup action the table maps to.
+
+    The attribution is a *decision-context* dimension, never an
+    observation fact the classifier could prove: it comes from the phase
+    ledger (which phase was running when the dirt appeared). ``UNKNOWN``
+    is conservative by design — ambiguous attribution is treated as
+    pre-existing human work and answered with save-and-restore, never a
+    silent revert.
+    """
+
+    PHASE_OWNED = "phase_owned"
+    UNOWNED = "unowned"
+    UNKNOWN = "unknown"
+
+
+class CleanupLadderRung(Enum):
+    """The autonomous fallback ladder for a tree that stays dirty.
+
+    Rungs are ordered weakest to strongest; every rung preserves work
+    before it acts, and only the terminal rung may touch the tree with
+    anything stronger than a restore. The ladder is the escalation
+    destination of the dirty-tree decision rows: each repeat past the
+    threshold climbs exactly one rung, so the boundary never re-runs an
+    action observation shows cannot change the state.
+    """
+
+    NORMAL_CLEANUP = "normal_cleanup"
+    ALTERNATE_PRESERVATION = "alternate_preservation"
+    QUARANTINE = "quarantine"
+    FRESH_WORKTREE = "fresh_worktree"
+    ENVIRONMENT_DEGRADE = "environment_degrade"
+    LAST_RESORT = "last_resort"
+
+
+#: Ordered ladder of dirty-tree fallback rungs. ``NORMAL_CLEANUP`` is the
+#: direct action the table returns on first contact with a dirty
+#: signature; the remaining rungs are the escalation destinations, each a
+#: different, stronger action than the one before.
+CLEANUP_LADDER_ORDER: tuple[CleanupLadderRung, ...] = (
+    CleanupLadderRung.NORMAL_CLEANUP,
+    CleanupLadderRung.ALTERNATE_PRESERVATION,
+    CleanupLadderRung.QUARANTINE,
+    CleanupLadderRung.FRESH_WORKTREE,
+    CleanupLadderRung.ENVIRONMENT_DEGRADE,
+    CleanupLadderRung.LAST_RESORT,
+)
 
 
 class EscalationRung(Enum):
@@ -352,12 +434,43 @@ class AttemptState:
         return self._with_updated_repeat_counts(updated)
 
 
+def cleanup_action_for(rung: CleanupLadderRung) -> NextAction:
+    """Map one dirty-tree fallback rung onto the action that rung takes.
+
+    The mapping is total over :class:`CleanupLadderRung`. Rungs 2-6
+    preserve first: alternate preservation commits the dirt with
+    plumbing over a temporary index, quarantine moves unrestorable paths
+    aside by rename, the fresh-worktree rung rebuilds on the current
+    target away from the dirty tree, the environment-degrade rung adapts
+    the machine config and retries with capped backoff, and the
+    last-resort rung runs only after every preservation that could still
+    run has run.
+    """
+    return {
+        CleanupLadderRung.NORMAL_CLEANUP: NextAction.SAVE_AND_RESTORE,
+        CleanupLadderRung.ALTERNATE_PRESERVATION: NextAction.PRESERVE_VIA_TEMP_INDEX,
+        CleanupLadderRung.QUARANTINE: NextAction.QUARANTINE_AND_RESTORE,
+        CleanupLadderRung.FRESH_WORKTREE: NextAction.REBUILD_IN_FRESH_WORKTREE,
+        CleanupLadderRung.ENVIRONMENT_DEGRADE: NextAction.ADAPT_ENVIRONMENT_AND_RETRY,
+        CleanupLadderRung.LAST_RESORT: NextAction.LAST_RESORT_RECOVERY,
+    }[rung]
+
+
 @dataclass(frozen=True)
 class DecisionContext:
-    """Immutable input to :func:`decide`."""
+    """Immutable input to :func:`decide`.
+
+    ``dirt_shape`` and ``dirt_attribution`` refine the dirty-worktree
+    rows (see rule 9 in the module docstring). Both default to the
+    legacy projection — no shape refinement and unknown attribution —
+    so a caller that predates the dirt-shape contract keeps the exact
+    behaviour it had: a dirty tree answers ``COMMIT``.
+    """
 
     observation: Observation
     attempts: AttemptState = field(default_factory=AttemptState)
+    dirt_shape: DirtShape = DirtShape.NONE
+    dirt_attribution: DirtAttribution = DirtAttribution.UNKNOWN
 
 
 def _is_real_conflict(observation: Observation) -> bool:
@@ -536,6 +649,118 @@ def _wait_or_continue(attempts: AttemptState) -> NextAction:
     return NextAction.WAIT_FOR_ENVIRONMENT
 
 
+#: Dirt shapes a porcelain-only probe can over-report: the tree LOOKS
+#: dirty but the evidence says no content change is present. Both are
+#: non-blocking — they fall through to the clean-tree rows.
+_NON_BLOCKING_SHAPES: frozenset[DirtShape] = frozenset(
+    {
+        DirtShape.LINE_ENDING_ONLY,
+    }
+)
+
+#: Dirt shapes that refine a blocking tracked tree. Every one maps to the
+#: same deterministic pair of direct actions (phase-owned vs residue);
+#: the shape is carried on the verdict so the executor and the log line
+#: name WHAT is being cleaned up.
+_BLOCKING_SHAPES: frozenset[DirtShape] = frozenset(
+    {
+        DirtShape.UNSTAGED_MODIFICATION,
+        DirtShape.STAGED_ONLY,
+        DirtShape.STAGED_AND_UNSTAGED,
+        DirtShape.MODE_ONLY,
+        DirtShape.INTENT_TO_ADD,
+        DirtShape.TYPE_CHANGE,
+        DirtShape.DELETED,
+        DirtShape.RENAMED_OR_COPIED,
+        DirtShape.UNTRACKED_BLOCKING,
+    }
+)
+
+
+def _cleanup_escalation_action(
+    attempts: AttemptState,
+    observation: Observation,
+    *,
+    direct: NextAction,
+) -> NextAction | None:
+    """Return the cleanup-ladder destination under repeat pressure, or ``None``.
+
+    The climb is driven by the durable per-signature attempt total: every
+    charged dirt decision at this signature counts one, so each repeat
+    is answered with a different, stronger rung and the boundary never
+    re-runs an action observation shows cannot change the state. The
+    first escalation lands on ``ALTERNATE_PRESERVATION`` (the direct
+    action IS rung 1, normal cleanup) and the climb saturates at the
+    terminal ``LAST_RESORT`` rung.
+
+    The repeat-pressure gate is the same two-half test the shared ladder
+    uses: the per-``(signature, action)`` count must have reached the
+    threshold AND the signature must have been attempted at least
+    :data:`MIN_SIGNATURE_ATTEMPTS_FOR_ESCALATION` times.
+    """
+    if not attempts.repeat_pressure(
+        repeat_count=attempts.repeat_count_for(observation, direct),
+        signature_attempts=attempts.signature_attempts(observation) + 1,
+    ):
+        return None
+    climbed = attempts.signature_attempts(observation) - attempts.repeat_threshold
+    index = max(0, min(climbed, len(CLEANUP_LADDER_ORDER) - 2))
+    return cleanup_action_for(CLEANUP_LADDER_ORDER[index + 1])
+
+
+def _decide_dirty_tree(context: DecisionContext) -> NextAction:
+    """Resolve a dirty-worktree observation through the dirt-shape rows.
+
+    Encodes rule 9 (dirty-tree cleanup) and the ordering rule from the
+    dirty-tree edge cases: this function is only reached when NO
+    in-progress operation owns the tree (the real-conflict and
+    owned-operation branches of :func:`decide` run first), so cleanup
+    never runs ``restore``/``reset``/``checkout`` against an operation's
+    conflict state.
+
+    * No shape refinement (``NONE``) or legacy callers keep the original
+      ``COMMIT`` direct action — a dirty tree without conflict has
+      always been the commit seam's job.
+    * ``UNTRACKED_ONLY`` scratch keeps the legacy non-blocking path.
+    * ``LINE_ENDING_ONLY`` is clean after refresh: the tree falls
+      through to the clean-tree rows (land / reintegrate / ladder).
+    * A blocking shape maps to exactly one direct action by
+      attribution: ``COMMIT_VIA_COMMIT_PHASE`` for phase-owned dirt
+      (development work waiting for the commit phase — run that phase's
+      commit first, never integrate around it), ``SAVE_AND_RESTORE`` for
+      residue and for unknown attribution (ambiguous attribution is
+      pre-existing human work: save, never revert silently).
+    * Under repeat pressure the answer is the cleanup-ladder rung
+      :func:`_cleanup_escalation_action` selects — never a re-run of
+      the direct action, and never a resolver dispatch: dirt is a
+      condition no agent can change.
+    """
+    observation = context.observation
+    attempts = context.attempts
+    shape = context.dirt_shape
+
+    if shape in _NON_BLOCKING_SHAPES:
+        return _ladder_action_for(observation, attempts)
+    if shape not in _BLOCKING_SHAPES:
+        # NONE (legacy projection), UNTRACKED_ONLY, UNMERGED and UNKNOWN
+        # shapes keep the original dirty-tree behaviour: the commit seam
+        # packages the leftovers.
+        return _ladder_dispatch_or_direct(
+            attempts,
+            observation,
+            direct=NextAction.COMMIT,
+        )
+    direct = (
+        NextAction.COMMIT_VIA_COMMIT_PHASE
+        if context.dirt_attribution is DirtAttribution.PHASE_OWNED
+        else NextAction.SAVE_AND_RESTORE
+    )
+    escalated = _cleanup_escalation_action(attempts, observation, direct=direct)
+    if escalated is not None:
+        return escalated
+    return direct
+
+
 def decide(context: DecisionContext) -> NextAction:
     """Return the integration next action for ``context``.
 
@@ -578,23 +803,23 @@ def decide(context: DecisionContext) -> NextAction:
         )
 
     if _is_dirty_without_conflict(observation):
-        return _ladder_dispatch_or_direct(
-            attempts,
-            observation,
-            direct=NextAction.COMMIT,
-        )
+        return _decide_dirty_tree(context)
 
     return _ladder_action_for(observation, attempts)
 
 
 __all__ = [
+    "CLEANUP_LADDER_ORDER",
     "ESCALATED_RUNG_STRIDE",
     "LADDER_ORDER",
     "MIN_SIGNATURE_ATTEMPTS_FOR_ESCALATION",
     "AttemptState",
+    "CleanupLadderRung",
     "DecisionContext",
+    "DirtAttribution",
     "EscalationRung",
     "NextAction",
     "RepeatCounts",
+    "cleanup_action_for",
     "decide",
 ]
