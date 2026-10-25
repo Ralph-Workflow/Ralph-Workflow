@@ -11,9 +11,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.pipeline import run_loop
-from ralph.pipeline._integration_action import IntegrationAction
-from ralph.pipeline._integration_owner_seam import PlanningSyncVerdict
+from ralph.pipeline import IntegrationAction, PlanningSyncVerdict, run_loop
 from ralph.pipeline.integration_decision import CleanupLadderRung
 from ralph.pipeline.integration_observation import (
     DirtShape,
@@ -313,11 +311,11 @@ def test_selected_ladder_rung_executes_once_and_the_gate_reobserves(
     dispatched: list[CleanupLadderRung | None] = []
     monkeypatch.setattr(
         run_loop,
-        "_execute_owner_ladder_rung",
+        "execute_owner_ladder_rung",
         lambda _ctx, _root, verdict, _target: dispatched.append(verdict.ladder_rung),
     )
 
-    _after, blocked = run_loop._ensure_planning_in_sync(
+    _after, blocked = run_loop.ensure_planning_in_sync(
         PipelineState(phase="planning"), _ctx(tmp_path), "planning"
     )
 
@@ -344,11 +342,11 @@ def test_ladder_rung_is_never_dispatched_twice_without_a_state_change(
     dispatched: list[CleanupLadderRung | None] = []
     monkeypatch.setattr(
         run_loop,
-        "_execute_owner_ladder_rung",
+        "execute_owner_ladder_rung",
         lambda _ctx, _root, verdict, _target: dispatched.append(verdict.ladder_rung),
     )
 
-    _after, blocked = run_loop._ensure_planning_in_sync(
+    _after, blocked = run_loop.ensure_planning_in_sync(
         PipelineState(phase="planning"), _ctx(tmp_path), "planning"
     )
 
@@ -387,11 +385,11 @@ def test_record_fact_overlaid_ladder_rung_dispatches_preserve_first(
     dispatched: list[CleanupLadderRung | None] = []
     monkeypatch.setattr(
         run_loop,
-        "_execute_owner_ladder_rung",
+        "execute_owner_ladder_rung",
         lambda _ctx, _root, verdict, _target: dispatched.append(verdict.ladder_rung),
     )
 
-    _after, blocked = run_loop._ensure_planning_in_sync(
+    _after, blocked = run_loop.ensure_planning_in_sync(
         PipelineState(phase="planning"), _ctx(tmp_path), "planning"
     )
 

@@ -43,10 +43,12 @@ from ralph.pipeline._auto_integrate_attempt_loop import (
 from ralph.pipeline._auto_integrate_config import configured_target as _configured_target
 from ralph.pipeline._auto_integrate_once import (
     _integrate_once,
-    _integrate_once_owned as _integrate_once_owned,
-    _reintegrate_after_remote_reconcile as _reintegrate_after_remote_reconcile,
+    _integrate_once_owned,
+    _reintegrate_after_remote_reconcile,
 )
-from ralph.pipeline._integration_action import RebaseOutcomeKind
+from ralph.pipeline._commit_completion_authority import (
+    complete_commit as _complete_commit,
+)
 from ralph.pipeline._integration_continuation import (
     recover_before_attempt,
 )
@@ -64,7 +66,9 @@ from ralph.pipeline.auto_integrate_budget_seam import (
 )
 from ralph.pipeline.auto_integrate_catchup import resolve_integration_target
 from ralph.pipeline.auto_integrate_conflict_budget import (
+    MAX_TRACKED_CONFLICT_ATTEMPTS,
     ConflictIdentity,
+    prior_conflict_count,
     resolve_failure_ledger,
     resolver_allowed,
 )
@@ -92,6 +96,7 @@ from ralph.pipeline.auto_integrate_rebase_merge import (
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     RecordReadOutcomeDisposition,
+    read_record,
     read_record_outcome,
     write_record,
 )
@@ -99,14 +104,11 @@ from ralph.pipeline.auto_integrate_record import (
     clear_record as _clear_record,
 )
 from ralph.pipeline.auto_integrate_record import (
-    read_record as read_record,
-)
-from ralph.pipeline.auto_integrate_record import (
     write_record as _write_record,
 )
 from ralph.pipeline.auto_integrate_recovery import (
     TerminalStateViolationError,
-    post_attempt_verify as post_attempt_verify,
+    post_attempt_verify,
     recover_incomplete_integration,
     recovery_retained_record,
 )
@@ -119,30 +121,32 @@ from ralph.pipeline.auto_integrate_refresh import (
 from ralph.pipeline.auto_integrate_remote_sync import (
     RemoteSyncStatus,
     pull_and_reconcile_target,
+    reconcile_remote_publication,
     remote_sync_enabled,
 )
 from ralph.pipeline.auto_integrate_resolution_state import (
-    CONFLICT_RESOLUTION_STRATEGIES,
+    contained_land,
     containment_release,
     preserve_unresolved_resolution_state,
 )
-from ralph.pipeline.auto_integrate_resolution_state import (
-    contained_land as contained_land,
+from ralph.pipeline.auto_integrate_transaction import (
+    integration_transaction,
 )
 from ralph.pipeline.commit_executor import (
     reattach_head_if_detached as _reattach_head_if_detached,
 )
 from ralph.pipeline.integration_actions import create_backup_ref as _create_rebase_backup_ref
-from ralph.pipeline.integration_actions import (
-    current_clock,
-    install_executors,
-    reset_executors,
-)
 from ralph.pipeline.integration_actions import delete_backup_ref as _delete_rebase_backup_ref
 from ralph.pipeline.integration_actions import (
     fast_forward_target as _fast_forward_target,
 )
+from ralph.pipeline.integration_actions import (
+    install_executors,
+    reset_executors,
+)
 from ralph.pipeline.rebase_state import StartupRetentionReason
+
+complete_commit = _complete_commit
 
 _random = (
     random.Random()
@@ -231,15 +235,65 @@ def _current_branch_probe(root: Path) -> str | None:
     return fn(root)
 
 
+def _repository_conflict_exhausted(
+    state: RebaseState,
+    target: str,
+    identity: ConflictIdentity,
+) -> bool:
+    """Return whether resolver refusal is repository, not agent, state.
+
+    With no ledger, :func:`resolver_allowed` can refuse only when this
+    conflict exhausted the durable strategy ladder.  A refusal that appears
+    only with the ledger is agent cooldown/unavailability and must retain the
+    active integration for retry.
+    """
+    return not resolver_allowed(state, target, identity, ledger=None, candidates=())
+
+
+def _pending_for_unavailable_agents(
+    recovered: RebaseState,
+    *,
+    prior: RebaseState,
+    target: str,
+    identity: ConflictIdentity,
+) -> RebaseState:
+    """Retain recovery state without charging an unmade repository attempt."""
+    carried = prior_conflict_count(
+        prior,
+        target,
+        identity,
+        attempts=MAX_TRACKED_CONFLICT_ATTEMPTS,
+    )
+    deadline = recovered.retry_deadline or prior.retry_deadline
+    return (
+        recovered.record_consecutive_conflicts(carried, cap=MAX_TRACKED_CONFLICT_ATTEMPTS)
+        .set_retry_deadline(deadline)
+        .project_conflict_strategy_from(prior)
+        .model_copy(
+            update={
+                "last_reason": (
+                    f"conflict resolution pending for '{target}': no resolver candidate is "
+                    "currently eligible; retrying when one comes off cooldown"
+                ),
+                "last_conflict_feature_sha": identity.feature_sha,
+                "last_conflict_target_sha": identity.target_sha,
+                "last_conflict_paths": identity.conflicted_paths,
+                "last_conflict_stage_oids": identity.stage_oids,
+                "last_conflict_scope": identity.scope,
+                "last_conflict_strategy_index": prior.conflict_strategy_index,
+            }
+        )
+    )
+
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from ralph.config.models import UnifiedConfig
     from ralph.display.parallel_display import ParallelDisplay
-    from ralph.pipeline._auto_integrate_reclaim import ReclaimResult
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
-    from ralph.pipeline.integration_actions import AgentRunner, Clock, GitOps
+    from ralph.pipeline.integration_actions import AgentRunner, GitOps
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.workspace.scope import WorkspaceScope
@@ -301,6 +355,12 @@ def auto_integrate_after_commit(
         )
         effective_resolver = conflict_resolver if allowed else None
         resolver_suppressed = conflict_resolver is not None and not allowed
+        repository_conflict_exhausted = bool(
+            resolver_suppressed
+            and target
+            and _repository_conflict_exhausted(state, target, identity)
+        )
+        agents_unavailable = resolver_suppressed and not repository_conflict_exhausted
         recovered = _recover_before_attempt_probe(
             config,
             workspace_scope,
@@ -310,14 +370,23 @@ def auto_integrate_after_commit(
         )
         if recovered is not None:
             if target:
-                recovered = apply_completed_attempt_budget(
-                    recovered,
-                    prior=state,
-                    target=target,
-                    identity=identity,
-                    resolver_suppressed=resolver_suppressed,
+                recovered = (
+                    _pending_for_unavailable_agents(
+                        recovered,
+                        prior=state,
+                        target=target,
+                        identity=identity,
+                    )
+                    if agents_unavailable
+                    else apply_completed_attempt_budget(
+                        recovered,
+                        prior=state,
+                        target=target,
+                        identity=identity,
+                        resolver_suppressed=resolver_suppressed,
+                    )
                 )
-            if resolver_suppressed:
+            if repository_conflict_exhausted:
                 from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
                 from ralph.pipeline.auto_integrate_record import clear_record
                 from ralph.pipeline.auto_integrate_resolve import _abort_merge_safely
@@ -565,22 +634,6 @@ def _freshen_attempt_target(
     return record, refresh
 
 
-def _record_attempt_budget_spent(record: RebaseState) -> RebaseState:
-    """Append the spent-attempt-budget fact to a record's skip reason.
-
-    The underlying concurrency reason is kept as the headline -- it is
-    what an operator needs in order to act -- and the exhaustion is
-    appended, so the ``auto-integrate:`` line says both WHY the landing
-    kept failing and that the bounded loop stopped trying.
-    """
-    base = record.last_reason or "fast-forward did not land"
-    return record.model_copy(
-        update={
-            "last_reason": (f"{base}; exhausted {_MAX_INTEGRATION_ATTEMPTS} integration attempts")
-        }
-    )
-
-
 def _check_early_skips(
     ctx: tuple[Path, str | None, str | None, str | None] | None,
     *,
@@ -702,11 +755,27 @@ def _auto_integrate_check_skip_conditions(
 __all__ = [
     "_MAX_INTEGRATION_ATTEMPTS",
     "IntegrationRecord",
+    "_clear_record",
     "_create_rebase_backup_ref",
     "_delete_rebase_backup_ref",
+    "_fast_forward_target",
+    "_integrate_once",
+    "_integrate_once_owned",
     "_record_attempt_budget_spent",
+    "_record_rebase_outcome",
+    "_reintegrate_after_remote_reconcile",
+    "_run_rebase_or_merge",
     "auto_integrate_after_commit",
     "auto_integrate_on_phase_transition",
+    "branch_sha",
+    "complete_commit",
+    "contained_land",
+    "get_head_sha",
+    "integration_transaction",
+    "post_attempt_verify",
+    "read_record",
+    "read_record_outcome",
+    "reconcile_remote_publication",
     "recover_incomplete_integration",
     "recovery_retained_record",
     "resolve_integration_target",

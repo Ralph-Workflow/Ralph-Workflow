@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.git.merge import MERGE_STATE_NONE, merge_state
 from ralph.git.merge_obstructions import clear_untracked_merge_obstructions
 from ralph.git.rebase.rebase import (
     RebaseConflicts,
@@ -34,10 +35,10 @@ from ralph.pipeline._auto_integrate_rebase_merge_failure import (
 )
 from ralph.pipeline._auto_integrate_rebase_resolve import (
     RebaseRunResult,
-    verify_terminal_state,
     _clear_record_if_no_inflight_op,
     _resolve_conflicted_rebase,
     _resolve_rebase_with_config,
+    verify_terminal_state,
 )
 from ralph.pipeline.auto_integrate_outcome import (
     record_conflict,
@@ -45,8 +46,8 @@ from ralph.pipeline.auto_integrate_outcome import (
     record_skip,
 )
 from ralph.pipeline.auto_integrate_record import (
-    read_record as read_record,
-    set_resolving_rebase as set_resolving_rebase,
+    read_record,
+    set_resolving_rebase,
 )
 from ralph.pipeline.auto_integrate_recovery import post_attempt_verify
 from ralph.pipeline.auto_integrate_resolve import (
@@ -54,7 +55,7 @@ from ralph.pipeline.auto_integrate_resolve import (
     endpoint_merge_with_resolution,
 )
 from ralph.pipeline.conflict_resolution import (
-    resolve_rebase_in_progress as resolve_rebase_in_progress,
+    resolve_rebase_in_progress,
 )
 from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_progress
 from ralph.pipeline.rebase_state import RebaseState, ResolutionFailureCause, StartupRetentionReason
@@ -156,6 +157,7 @@ SKIP_REASON_REGISTRY: dict[str, tuple[str, str]] = {
 }
 
 __all__ = [
+    "MERGE_STATE_NONE",
     "REBASE_SKIPPED_FOR_MERGE",
     "SKIP_ALL_EMPTY_REPLAY",
     "SKIP_CASE_FOLDING_COLLISION",
@@ -164,9 +166,15 @@ __all__ = [
     "SKIP_RETRY_AFTER_MERGE_COMMIT",
     "SKIP_ROOT_COMMITS_IN_RANGE",
     "RebaseRunResult",
+    "_resolve_rebase_with_config",
     "is_registered_skip_reason",
+    "merge_state",
+    "read_record",
+    "rebase_in_progress",
     "registered_skip_slugs",
+    "resolve_rebase_in_progress",
     "run_rebase_or_merge",
+    "set_resolving_rebase",
     "skip_reason_description",
     "skip_reason_observation",
     "skip_reason_slug",
@@ -250,8 +258,6 @@ def _registered_spec(slug: str) -> tuple[str, str]:
             f"the closed set is {sorted(SKIP_REASON_REGISTRY)}"
         )
     return spec
-
-
 
 
 def _environmental_rebase_result(

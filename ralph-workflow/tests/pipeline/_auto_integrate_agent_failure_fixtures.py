@@ -31,10 +31,8 @@ from typing import TYPE_CHECKING
 
 from git import Repo
 
-from ralph.pipeline.conflict_resolution import (
-    active_rebase_resolution_session,
-    run_rebase_conflict_resolution_pipeline,
-)
+from ralph.pipeline.conflict_resolution import run_rebase_conflict_resolution_pipeline
+from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.policy.loader import default_dir, load_policy
 from ralph.policy.models import AgentChainConfig
 
@@ -186,15 +184,13 @@ def make_rebase_stop_resolver(
     production. Only the agent PROCESS behind it is replaced.
     """
 
+    # The resolution pipeline accepts the session as an explicit public
+    # input. Constructing it with the shared ledger keeps the run's agent
+    # health decisions on the same owner without mutating whichever
+    # session the outer rebase loop happens to have active.
+    session = ResolutionSession(ledger=ledger)
+
     def _resolver(root: Path, target: str, stop: RebaseStop) -> bool:
-        session = active_rebase_resolution_session()
-        if session is not None:
-            # The run's shared failure ledger reaches the resolution
-            # session through the session itself, which is where
-            # production keeps it: the session is created by the rebase
-            # loop, so it is the only seam that carries the ledger into
-            # the resolution pipeline.
-            session.ledger = ledger
         return run_rebase_conflict_resolution_pipeline(
             root=root,
             target=target,

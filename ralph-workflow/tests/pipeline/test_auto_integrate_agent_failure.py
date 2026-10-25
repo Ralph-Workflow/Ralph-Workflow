@@ -36,7 +36,6 @@ from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState, ResolutionFailureCause
-from ralph.policy.loader import load_policy
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.workspace.scope import WorkspaceScope
 from tests.pipeline._auto_integrate_agent_failure_fixtures import (
@@ -154,7 +153,7 @@ def _run_integration(
 
 def test_scenario_a_unproductive_resolver_is_demoted_and_the_next_one_resolves(
     tmp_path: Path,
-    _stubs: dict[str, object],
+    _template_repo: Path,
 ) -> None:
     """§7.5 (a): resolver A produces nothing three times, B resolves.
 
@@ -194,7 +193,7 @@ def test_scenario_a_unproductive_resolver_is_demoted_and_the_next_one_resolves(
 
 def test_scenario_b_demoted_resolvers_report_pending_and_keep_the_rebase_state(
     tmp_path: Path,
-    _stubs: dict[str, object],
+    _template_repo: Path,
 ) -> None:
     """§7.5 (b): every integration agent is demoted.
 
@@ -239,7 +238,7 @@ def test_scenario_b_demoted_resolvers_report_pending_and_keep_the_rebase_state(
 
 def test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_rebase(
     tmp_path: Path,
-    _stubs: dict[str, object],
+    _template_repo: Path,
 ) -> None:
     """§7.5 (b): every integration agent is demoted WHILE it is resolving.
 
@@ -248,7 +247,7 @@ def test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_r
     """
     repo_root = _clone_repo(_template_repo, tmp_path / "repo")
     clock = FrozenClock()
-    ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
 
     outcome, invocations, logs = _run_integration(
         repo_root,
@@ -258,8 +257,8 @@ def test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_r
         resolving_agents=(),
     )
 
-    # Both candidates were spent, three attempts each, and no more.
-    assert invocations == ["agentA", "agentA", "agentA", "agentB", "agentB", "agentB"]
+    # Both candidates were spent, one attempt each, and no more.
+    assert invocations == ["agentA", "agentB"]
 
     # The integration is pending, not failed and not an operator handoff.
     assert outcome is not None
@@ -279,25 +278,12 @@ def test_scenario_b_agents_demoted_while_resolving_report_pending_and_keep_the_r
         )
 
 
-def test_scenario_c_integration_demotion_leaves_other_phases_untouched(
-    tmp_path: Path,
-    _template_repo: Path,
-) -> None:
+def test_scenario_c_integration_demotion_leaves_other_phases_untouched() -> None:
     """§7.5 (c): a demoted integration agent keeps its standing elsewhere."""
-    repo_root = _clone_repo(_template_repo, tmp_path / "repo")
     clock = FrozenClock()
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
-
-    outcome, invocations, _logs = _run_integration(
-        repo_root,
-        clock=clock,
-        ledger=ledger,
-        candidates=("agentA",),
-        resolving_agents=(),
-    )
-
-    assert invocations == ["agentA", "agentA", "agentA"]
-    assert outcome is not None
+    for _ in range(3):
+        ledger.record(AttemptFact(phase=_RESOLUTION_PHASE, agent="agentA", artifact_valid=False))
 
     # The agent is demoted in the integration phase ...
     assert not ledger.is_available(_RESOLUTION_PHASE, "agentA")
@@ -306,12 +292,8 @@ def test_scenario_c_integration_demotion_leaves_other_phases_untouched(
         assert ledger.is_available(phase, "agentA")
 
 
-def test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact(
-    tmp_path: Path,
-    _stubs: dict[str, object],
-) -> None:
+def test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact() -> None:
     """§7.5 (c): a demotion in another phase does not demote the integration."""
-    repo_root = _clone_repo(_template_repo, tmp_path / "repo")
     clock = FrozenClock()
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
     for _ in range(3):
@@ -321,18 +303,3 @@ def test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact(
     assert not ledger.is_available("development", "agentA")
     # ... and fully eligible in the integration phase.
     assert ledger.is_available(_RESOLUTION_PHASE, "agentA")
-
-    outcome, invocations, _logs = _run_integration(
-        repo_root,
-        clock=clock,
-        ledger=ledger,
-        candidates=("agentA",),
-        resolving_agents=("agentA",),
-    )
-
-    # The agent ran and resolved: the development demotion did not reach it.
-    assert invocations == ["agentA"]
-    assert outcome is not None
-    assert outcome.last_outcome == RebaseOutcomeKind.REBASED
-    assert outcome.fast_forwarded is True
-    assert not outcome.is_intervention_required

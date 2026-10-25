@@ -73,13 +73,13 @@ from ralph.pipeline._integration_ladder_evidence import (
     _rung_key,
 )
 from ralph.pipeline._integration_ladder_seams import (
-    EnvironmentFailure as EnvironmentFailure,
-    EnvironmentProbe as EnvironmentProbe,
-    FileQuarantine as FileQuarantine,
-    GitPlumbing as GitPlumbing,
-    LadderOutcome as LadderOutcome,
-    LandResult as LandResult,
-    RepointResult as RepointResult,
+    EnvironmentFailure,
+    EnvironmentProbe,
+    FileQuarantine,
+    GitPlumbing,
+    LadderOutcome,
+    LandResult,
+    RepointResult,
 )
 from ralph.pipeline.integration_actions import Clock, current_clock
 from ralph.pipeline.integration_decision import (
@@ -99,9 +99,11 @@ if TYPE_CHECKING:
 __all__ = [
     "LADDER_ATTEMPT_BUDGET",
     "LAST_RESORT_PRECONDITIONS",
+    "EnvironmentFailure",
     "EnvironmentProbe",
     "FileQuarantine",
     "GitPlumbing",
+    "LadderOutcome",
     "LadderStepResult",
     "LandResult",
     "RepointResult",

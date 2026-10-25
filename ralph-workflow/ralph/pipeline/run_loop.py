@@ -971,6 +971,28 @@ def _run_startup_integration(
     return outcome
 
 
+def run_startup_integration(
+    ctx: LoopContext, state: RebaseState | None = None
+) -> RebaseState | None:
+    """Public seam for startup integration."""
+    if _run_startup_integration is not _run_startup_integration_dispatch:
+        return _run_startup_integration(ctx, state)
+    return _run_startup_integration_impl(ctx, state)
+
+
+def _run_startup_integration_dispatch(
+    ctx: LoopContext, state: RebaseState | None = None
+) -> RebaseState | None:
+    if run_startup_integration is not _public_run_startup_integration_dispatch:
+        return run_startup_integration(ctx, state)
+    return _run_startup_integration_impl(ctx, state)
+
+
+_run_startup_integration_impl = _run_startup_integration
+_run_startup_integration = _run_startup_integration_dispatch
+_public_run_startup_integration_dispatch = run_startup_integration
+
+
 def _save_recovered_rebase_checkpoint(
     state: PipelineState,
     ctx: LoopContext,
@@ -1010,6 +1032,32 @@ def _save_recovered_rebase_checkpoint(
         )
     except Exception as save_exc:  # pragma: no cover -- defensive
         logger.warning("auto_integrate recovery checkpoint save failed: {}", save_exc)
+
+
+def save_recovered_rebase_checkpoint(
+    state: PipelineState,
+    ctx: LoopContext,
+) -> None:
+    """Public seam for saving recovered rebase checkpoint."""
+    if _save_recovered_rebase_checkpoint is not _save_recovered_rebase_checkpoint_dispatch:
+        _save_recovered_rebase_checkpoint(state, ctx)
+        return
+    _save_recovered_rebase_checkpoint_impl(state, ctx)
+
+
+def _save_recovered_rebase_checkpoint_dispatch(
+    state: PipelineState,
+    ctx: LoopContext,
+) -> None:
+    if save_recovered_rebase_checkpoint is not _public_save_recovered_rebase_checkpoint_dispatch:
+        save_recovered_rebase_checkpoint(state, ctx)
+        return
+    _save_recovered_rebase_checkpoint_impl(state, ctx)
+
+
+_save_recovered_rebase_checkpoint_impl = _save_recovered_rebase_checkpoint
+_save_recovered_rebase_checkpoint = _save_recovered_rebase_checkpoint_dispatch
+_public_save_recovered_rebase_checkpoint_dispatch = save_recovered_rebase_checkpoint
 
 
 @dataclass(frozen=True)
@@ -1543,6 +1591,35 @@ def _announce_conflict_resolution_entry(
         )
 
 
+def announce_conflict_resolution_entry(
+    ctx: LoopContext,
+    verdict: IntegrationResolutionVerdict,
+) -> None:
+    """Public seam for announcing conflict resolution entry."""
+    if _announce_conflict_resolution_entry is not _announce_conflict_resolution_entry_dispatch:
+        _announce_conflict_resolution_entry(ctx, verdict)
+        return
+    _announce_conflict_resolution_entry_impl(ctx, verdict)
+
+
+def _announce_conflict_resolution_entry_dispatch(
+    ctx: LoopContext,
+    verdict: IntegrationResolutionVerdict,
+) -> None:
+    if (
+        announce_conflict_resolution_entry
+        is not _public_announce_conflict_resolution_entry_dispatch
+    ):
+        announce_conflict_resolution_entry(ctx, verdict)
+        return
+    _announce_conflict_resolution_entry_impl(ctx, verdict)
+
+
+_announce_conflict_resolution_entry_impl = _announce_conflict_resolution_entry
+_announce_conflict_resolution_entry = _announce_conflict_resolution_entry_dispatch
+_public_announce_conflict_resolution_entry_dispatch = announce_conflict_resolution_entry
+
+
 def _integration_target_or_none(ctx: LoopContext) -> str | None:
     """Resolve the integration target, or ``None`` when it cannot be read."""
     from ralph.pipeline.auto_integrate import resolve_integration_target
@@ -1578,6 +1655,33 @@ def _run_integration_conflict_resolution(
         ):
             return False
         return _run_owned_integration_conflict_resolution(ctx, rebase)
+
+
+def run_integration_conflict_resolution(
+    ctx: LoopContext,
+    rebase: RebaseState | None = None,
+) -> bool:
+    """Public seam for integration conflict resolution."""
+    if _run_integration_conflict_resolution is not _run_integration_conflict_resolution_dispatch:
+        return _run_integration_conflict_resolution(ctx, rebase)
+    return _run_integration_conflict_resolution_impl(ctx, rebase)
+
+
+def _run_integration_conflict_resolution_dispatch(
+    ctx: LoopContext,
+    rebase: RebaseState | None = None,
+) -> bool:
+    if (
+        run_integration_conflict_resolution
+        is not _public_run_integration_conflict_resolution_dispatch
+    ):
+        return run_integration_conflict_resolution(ctx, rebase)
+    return _run_integration_conflict_resolution_impl(ctx, rebase)
+
+
+_run_integration_conflict_resolution_impl = _run_integration_conflict_resolution
+_run_integration_conflict_resolution = _run_integration_conflict_resolution_dispatch
+_public_run_integration_conflict_resolution_dispatch = run_integration_conflict_resolution
 
 
 def _conflict_identity_or_default(ctx: LoopContext, target: str) -> ConflictIdentity:
@@ -2418,6 +2522,36 @@ def _execute_owner_ladder_rung(
         emit_integration_warn_line(ctx.active_display, message)
 
 
+def execute_owner_ladder_rung(
+    ctx: LoopContext,
+    root: Path,
+    sync_verdict: PlanningSyncVerdict,
+    target: str | None,
+) -> None:
+    """Public seam for executing an owner ladder rung."""
+    if _execute_owner_ladder_rung is not _execute_owner_ladder_rung_dispatch:
+        _execute_owner_ladder_rung(ctx, root, sync_verdict, target)
+        return
+    _execute_owner_ladder_rung_impl(ctx, root, sync_verdict, target)
+
+
+def _execute_owner_ladder_rung_dispatch(
+    ctx: LoopContext,
+    root: Path,
+    sync_verdict: PlanningSyncVerdict,
+    target: str | None,
+) -> None:
+    if execute_owner_ladder_rung is not _public_execute_owner_ladder_rung_dispatch:
+        execute_owner_ladder_rung(ctx, root, sync_verdict, target)
+        return
+    _execute_owner_ladder_rung_impl(ctx, root, sync_verdict, target)
+
+
+_execute_owner_ladder_rung_impl = _execute_owner_ladder_rung
+_execute_owner_ladder_rung = _execute_owner_ladder_rung_dispatch
+_public_execute_owner_ladder_rung_dispatch = execute_owner_ladder_rung
+
+
 def _dispatch_owner_ladder_rung(
     ctx: LoopContext,
     root: Path,
@@ -2451,6 +2585,50 @@ def _dispatch_owner_ladder_rung(
         return executed_rung, previous_action, "break"
     _execute_owner_ladder_rung(ctx, root, sync_verdict, target)
     return sync_verdict.ladder_rung, sync_verdict.action, "continue"
+
+
+def dispatch_owner_ladder_rung(
+    ctx: LoopContext,
+    root: Path,
+    target: str | None,
+    sync_verdict: PlanningSyncVerdict | None,
+    executed_rung: CleanupLadderRung | None,
+    previous_action: IntegrationAction | None,
+) -> tuple[
+    CleanupLadderRung | None, IntegrationAction | None, Literal["continue", "break", "fall"]
+]:
+    """Public seam for dispatching an owner ladder rung."""
+    if _dispatch_owner_ladder_rung is not _dispatch_owner_ladder_rung_dispatch:
+        return _dispatch_owner_ladder_rung(
+            ctx, root, target, sync_verdict, executed_rung, previous_action
+        )
+    return _dispatch_owner_ladder_rung_impl(
+        ctx, root, target, sync_verdict, executed_rung, previous_action
+    )
+
+
+def _dispatch_owner_ladder_rung_dispatch(
+    ctx: LoopContext,
+    root: Path,
+    target: str | None,
+    sync_verdict: PlanningSyncVerdict | None,
+    executed_rung: CleanupLadderRung | None,
+    previous_action: IntegrationAction | None,
+) -> tuple[
+    CleanupLadderRung | None, IntegrationAction | None, Literal["continue", "break", "fall"]
+]:
+    if dispatch_owner_ladder_rung is not _public_dispatch_owner_ladder_rung_dispatch:
+        return dispatch_owner_ladder_rung(
+            ctx, root, target, sync_verdict, executed_rung, previous_action
+        )
+    return _dispatch_owner_ladder_rung_impl(
+        ctx, root, target, sync_verdict, executed_rung, previous_action
+    )
+
+
+_dispatch_owner_ladder_rung_impl = _dispatch_owner_ladder_rung
+_dispatch_owner_ladder_rung = _dispatch_owner_ladder_rung_dispatch
+_public_dispatch_owner_ladder_rung_dispatch = dispatch_owner_ladder_rung
 
 
 def _configured_sync_remote(ctx: LoopContext) -> str | None:
@@ -2619,6 +2797,32 @@ def _ensure_planning_in_sync(
     state = state.copy_with(last_error=alarm)
     _save_recovered_rebase_checkpoint(state, ctx)
     return state, (state, prev_phase, 0)
+
+
+def ensure_planning_in_sync(
+    state: PipelineState,
+    ctx: LoopContext,
+    prev_phase: str,
+) -> tuple[PipelineState, tuple[PipelineState, str, int] | None]:
+    """Public seam for ensure_planning_in_sync."""
+    if _ensure_planning_in_sync is not _ensure_planning_in_sync_dispatch:
+        return _ensure_planning_in_sync(state, ctx, prev_phase)
+    return _ensure_planning_in_sync_impl(state, ctx, prev_phase)
+
+
+def _ensure_planning_in_sync_dispatch(
+    state: PipelineState,
+    ctx: LoopContext,
+    prev_phase: str,
+) -> tuple[PipelineState, tuple[PipelineState, str, int] | None]:
+    if ensure_planning_in_sync is not _public_ensure_planning_in_sync_dispatch:
+        return ensure_planning_in_sync(state, ctx, prev_phase)
+    return _ensure_planning_in_sync_impl(state, ctx, prev_phase)
+
+
+_ensure_planning_in_sync_impl = _ensure_planning_in_sync
+_ensure_planning_in_sync = _ensure_planning_in_sync_dispatch
+_public_ensure_planning_in_sync_dispatch = ensure_planning_in_sync
 
 
 def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> bool:
@@ -3146,6 +3350,34 @@ def _post_recovery_verdict(
         return None
     ctx.latest_state[:] = [state]
     return post_recovery
+
+
+def post_recovery_verdict(
+    ctx: LoopContext,
+    state: PipelineState,
+    prev_phase: str,
+    verdict: IntegrationResolutionVerdict,
+) -> IntegrationResolutionVerdict | tuple[PipelineState, str, int] | None:
+    """Public seam for post_recovery_verdict."""
+    if _post_recovery_verdict is not _post_recovery_verdict_dispatch:
+        return _post_recovery_verdict(ctx, state, prev_phase, verdict)
+    return _post_recovery_verdict_impl(ctx, state, prev_phase, verdict)
+
+
+def _post_recovery_verdict_dispatch(
+    ctx: LoopContext,
+    state: PipelineState,
+    prev_phase: str,
+    verdict: IntegrationResolutionVerdict,
+) -> IntegrationResolutionVerdict | tuple[PipelineState, str, int] | None:
+    if post_recovery_verdict is not _public_post_recovery_verdict_dispatch:
+        return post_recovery_verdict(ctx, state, prev_phase, verdict)
+    return _post_recovery_verdict_impl(ctx, state, prev_phase, verdict)
+
+
+_post_recovery_verdict_impl = _post_recovery_verdict
+_post_recovery_verdict = _post_recovery_verdict_dispatch
+_public_post_recovery_verdict_dispatch = post_recovery_verdict
 
 
 def _run_inner_loop(

@@ -28,9 +28,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.pipeline import run_loop
-from ralph.pipeline._integration_action import IntegrationAction
-from ralph.pipeline._integration_owner_seam import PlanningSyncVerdict
+from ralph.pipeline import IntegrationAction, PlanningSyncVerdict, run_loop
 from ralph.pipeline.integration_decision import CleanupLadderRung
 from ralph.pipeline.integration_observation import (
     DirtShape,
@@ -134,13 +132,13 @@ class _Gate:
 def boundary_env(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """Install the recorder stubs every boundary test uses; returns the event log."""
     events: list[str] = []
-    monkeypatch.setattr(run_loop, "_announce_conflict_resolution_entry", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_loop, "announce_conflict_resolution_entry", lambda *_a, **_k: None)
     monkeypatch.setattr(run_loop, "read_record", lambda _root: None)
-    monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *_a, **_k: None)
-    monkeypatch.setattr(run_loop, "_run_startup_integration", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_loop, "save_recovered_rebase_checkpoint", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_loop, "run_startup_integration", lambda *_a, **_k: None)
     monkeypatch.setattr(
         run_loop,
-        "_run_integration_conflict_resolution",
+        "run_integration_conflict_resolution",
         lambda *_a, **_k: events.append("resolver"),
     )
     return events
@@ -166,11 +164,11 @@ def _drive_boundary(
         if heal_after is not None and events.count("dispatch") >= heal_after:
             gate.dispatch_allowed = True
 
-    monkeypatch.setattr(run_loop, "_execute_owner_ladder_rung", _dispatch)
+    monkeypatch.setattr(run_loop, "execute_owner_ladder_rung", _dispatch)
     monkeypatch.setattr(run_loop, "inspect_integration_resolution", gate)
     verdict_iter = iter(verdicts)
     monkeypatch.setattr(run_loop, "decide_planning_sync", lambda *a, **k: next(verdict_iter))
-    result = run_loop._post_recovery_verdict(
+    result = run_loop.post_recovery_verdict(
         _ctx(tmp_path),
         PipelineState(phase="development"),
         "development",
@@ -271,16 +269,16 @@ def test_shared_ladder_helper_is_used_by_both_seams(
     tmp_path: Path,
     boundary_env: list[str],
 ) -> None:
-    """Planning gate and boundary seam both route through _dispatch_owner_ladder_rung."""
+    """Planning gate and boundary seam both route through dispatch_owner_ladder_rung."""
     del boundary_env
     helper_calls: list[str] = []
-    real_helper = run_loop._dispatch_owner_ladder_rung
+    real_helper = run_loop.dispatch_owner_ladder_rung
 
     def _recording_helper(*args: object) -> object:
         helper_calls.append("call")
         return real_helper(*args)
 
-    monkeypatch.setattr(run_loop, "_dispatch_owner_ladder_rung", _recording_helper)
+    monkeypatch.setattr(run_loop, "dispatch_owner_ladder_rung", _recording_helper)
 
     # Boundary seam drive: a rung verdict that heals on re-observation.
     _result, boundary_gate = _drive_boundary(
@@ -312,7 +310,7 @@ def test_shared_ladder_helper_is_used_by_both_seams(
         ]
     )
     monkeypatch.setattr(run_loop, "decide_planning_sync", lambda *a, **k: next(planning_verdicts))
-    _after, blocked = run_loop._ensure_planning_in_sync(
+    _after, blocked = run_loop.ensure_planning_in_sync(
         PipelineState(phase="planning"), _ctx(tmp_path), "planning"
     )
     assert blocked is not None

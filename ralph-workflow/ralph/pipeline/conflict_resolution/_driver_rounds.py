@@ -18,7 +18,6 @@ monkeypatch surface is unchanged by the split.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -38,7 +37,11 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
 )
 from ralph.pipeline.conflict_resolution.chain_candidates import (
     next_unvisited as _next_unvisited,
+)
+from ralph.pipeline.conflict_resolution.chain_candidates import (
     remember_dead_surface as _remember_dead_surface,
+)
+from ralph.pipeline.conflict_resolution.chain_candidates import (
     skipped_candidates as _skipped_candidates,
 )
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
@@ -49,6 +52,8 @@ from ralph.pipeline.conflict_resolution.resolution_action import (
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.round_verdict import (
     is_effectively_empty as _is_effectively_empty,
+)
+from ralph.pipeline.conflict_resolution.round_verdict import (
     round_termination_reason as _round_termination_reason,
 )
 from ralph.pipeline.conflict_resolution.session import ATTEMPT_FAILED_EVIDENCE
@@ -56,6 +61,7 @@ from ralph.pipeline.integration_actions import _DEFAULT_CLOCK, current_clock
 from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.display.parallel_display import ParallelDisplay

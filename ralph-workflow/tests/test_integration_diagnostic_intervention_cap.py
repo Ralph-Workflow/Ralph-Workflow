@@ -19,6 +19,8 @@ from functools import lru_cache
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import run_loop
 from ralph.pipeline._integration_diagnostic import (
@@ -41,6 +43,8 @@ from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, PolicyBundle
 from ralph.workspace.scope import WorkspaceScope
+
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 @lru_cache(maxsize=1)

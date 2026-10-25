@@ -22,9 +22,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.pipeline import integration_cleanup
+from ralph.pipeline import IntegrationAction, integration_cleanup
 from ralph.pipeline import integration_owner_seam as owner_seam
-from ralph.pipeline._integration_action import IntegrationAction
 from ralph.pipeline.auto_integrate_planning import resolve_planning_residue
 from ralph.pipeline.integration_cleanup import PlanningBaseline
 from ralph.pipeline.integration_decision import NextAction

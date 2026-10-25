@@ -38,12 +38,10 @@ from ralph.pipeline.auto_integrate_record import (
 )
 from ralph.pipeline.auto_integrate_remote_sync import (
     reconcile_after_rejected_push,
-    reconcile_remote_publication,
 )
 from ralph.pipeline.auto_integrate_terminal import (
     verify_and_cleanup_backup as _verify_and_cleanup_backup,
 )
-from ralph.pipeline.auto_integrate_transaction import integration_transaction
 from ralph.pipeline.integration_actions import (
     current_agent_runner,
     current_git_ops,
@@ -60,7 +58,7 @@ if TYPE_CHECKING:
     from ralph.pipeline._auto_integrate_reclaim import ReclaimResult
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
-    from ralph.pipeline.integration_actions import AgentRunner, Clock, GitOps
+    from ralph.pipeline.integration_actions import Clock
     from ralph.pipeline.rebase_state import RebaseState
 
 __all__ = [
@@ -109,9 +107,11 @@ def _integrate_once(
     require_in_sync: bool = False,
     clock: Clock | None = None,
 ) -> tuple[RebaseState | None, bool]:
+    from ralph.pipeline import auto_integrate as _ai
+
     clock_token = install_executors(clock=clock)
     try:
-        with integration_transaction(root) as acquired:
+        with _ai.integration_transaction(root) as acquired:
             if not acquired:
                 return _record_skip(
                     reason="integration already running in this worktree", target=target
@@ -313,7 +313,7 @@ def _integrate_once_owned(
             # ``reconcile_after_rejected_push``. The caller's
             # ``fast_forwarded`` is carried through ``source_state`` so
             # the headline "did the local land" signal survives.
-            record = reconcile_remote_publication(
+            record = _ai.reconcile_remote_publication(
                 config,
                 root,
                 target,

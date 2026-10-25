@@ -43,6 +43,17 @@ def _collector() -> InMemoryOperationEvidenceCollector:
     )
 
 
+@pytest.fixture(autouse=True)
+def _stub_decide_integration(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ralph.pipeline import IntegrationAction
+
+    monkeypatch.setattr(
+        diagnostic,
+        "decide_integration",
+        lambda _root, record=None: (IntegrationAction.WAIT_FOR_BOUNDED_RETRY, "stubbed"),
+    )
+
+
 def _controller(clock: FakeClock) -> RecoveryController:
     return RecoveryController(options=RecoveryControllerOptions(clock=clock))
 

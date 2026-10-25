@@ -25,7 +25,6 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.git.merge import MERGE_STATE_NONE, merge_state
 from ralph.git.rebase.rebase import RebaseConflicts, RebaseSuccess
 from ralph.pipeline.auto_integrate_outcome import record_conflict
 from ralph.pipeline.auto_integrate_record import clear_record
@@ -49,17 +48,16 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.git.merge import MergeResult
     from ralph.git.rebase.rebase import RebaseFailed, RebaseNoOp
-    from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
-    from ralph.pipeline.integration_actions import AgentRunner, GitOps
+    from ralph.pipeline.integration_actions import AgentRunner
     from ralph.pipeline.rebase_state import RebaseState
 
 __all__ = [
     "RebaseRunResult",
-    "verify_terminal_state",
     "_clear_record_if_no_inflight_op",
     "_resolve_conflicted_rebase",
     "_resolve_rebase_with_config",
+    "verify_terminal_state",
 ]
 
 
@@ -256,7 +254,9 @@ def _clear_record_if_no_inflight_op(root: Path) -> None:
     from ralph.pipeline import auto_integrate_rebase_merge as _merge_mod
 
     try:
-        clean = merge_state(root) == MERGE_STATE_NONE and not _merge_mod.rebase_in_progress(root)
+        clean = _merge_mod.merge_state(
+            root
+        ) == _merge_mod.MERGE_STATE_NONE and not _merge_mod.rebase_in_progress(root)
     except Exception as state_exc:
         logger.warning(
             "auto_integrate: could not prove no in-flight operation remains"

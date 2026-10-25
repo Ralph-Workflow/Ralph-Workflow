@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.merge import (
-    paths_with_conflict_markers as paths_with_conflict_markers,
+    paths_with_conflict_markers,
     unmerged_paths,
 )
 from ralph.pipeline._retained_resolution_scope import retained_merge_paths
@@ -36,16 +36,10 @@ from ralph.pipeline.conflict_resolution._driver_events import (
 )
 from ralph.pipeline.conflict_resolution._driver_rounds import (
     RoundAttempt,
-    _check_worktree_repair,
     _evaluate_round_attempt,
-    _execute_single_candidate,
-    _handle_candidate_failure,
     _paths_still_unresolved,
-    _preferred_conflict_candidate,
-    _record_invoker_outcome,
     _reset_conflict_success,
     _run_one_round,
-    _sleep_conflict_retry,
 )
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
@@ -73,6 +67,8 @@ from ralph.pipeline.conflict_resolution.resolution_action import (
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.round_status import (
     push_round_status as _push_round_status,
+)
+from ralph.pipeline.conflict_resolution.round_status import (
     restore_previous_status_bar as _restore_status_bar,
 )
 from ralph.pipeline.conflict_resolution.round_verdict import (
@@ -130,9 +126,12 @@ __all__ = [
     "ResolutionAction",
     "ResolutionInvoker",
     "RoundAttempt",
+    "_sleep_seconds",
+    "classify_failed_resolution_attempt",
     "conflict_chain_max_retries",
     "emit_conflict_phase_line",
     "invoke_resolution_agent",
+    "paths_with_conflict_markers",
     "render_conflict_prompt",
     "run_conflict_resolution_outcome",
     "run_conflict_resolution_pipeline",

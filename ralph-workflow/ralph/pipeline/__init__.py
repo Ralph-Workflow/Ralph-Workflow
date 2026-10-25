@@ -9,7 +9,10 @@ from ralph.config.enums import PipelinePhase
 from ralph.pipeline import _integration_action as integration_action
 from ralph.pipeline import _integration_owner_seam as integration_owner_seam
 from ralph.pipeline._integration_action import IntegrationAction
-from ralph.pipeline._integration_owner_seam import decide_seam_action
+from ralph.pipeline._integration_owner_seam import (
+    PlanningSyncVerdict,
+    decide_seam_action,
+)
 from ralph.pipeline._runner_session import apply_session_capture
 from ralph.pipeline.events import Event, PipelineEvent
 from ralph.pipeline.reducer import reduce
@@ -21,6 +24,7 @@ __all__ = [
     "PipelineEvent",
     "PipelinePhase",
     "PipelineState",
+    "PlanningSyncVerdict",
     "apply_session_capture",
     "decide_seam_action",
     "integration_action",

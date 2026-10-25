@@ -455,9 +455,7 @@ def test_dirty_tree_verdict_carries_the_cleanup_ladder_rung(tmp_path: Path) -> N
     assert verdict.escalation_charged is True
 
     state = _ledger_state(tmp_path)
-    assert state.repeat_counts == {
-        (_signature(verdict.observation), "save_and_restore"): 1
-    }
+    assert state.repeat_counts == {(_signature(verdict.observation), "save_and_restore"): 1}
 
 
 def test_repeated_unchanged_dirty_observation_escalates_the_rung(
@@ -474,15 +472,9 @@ def test_repeated_unchanged_dirty_observation_escalates_the_rung(
     ledger_path = _ledger_path(tmp_path)
     observation = _observation(worktree=WorktreeState.TRACKED_CHANGES)
 
-    first = decide_integration_verdict(
-        tmp_path, observation=observation, ledger_path=ledger_path
-    )
-    second = decide_integration_verdict(
-        tmp_path, observation=observation, ledger_path=ledger_path
-    )
-    third = decide_integration_verdict(
-        tmp_path, observation=observation, ledger_path=ledger_path
-    )
+    first = decide_integration_verdict(tmp_path, observation=observation, ledger_path=ledger_path)
+    second = decide_integration_verdict(tmp_path, observation=observation, ledger_path=ledger_path)
+    third = decide_integration_verdict(tmp_path, observation=observation, ledger_path=ledger_path)
 
     assert first.ladder_rung is CleanupLadderRung.NORMAL_CLEANUP
     assert second.ladder_rung is CleanupLadderRung.NORMAL_CLEANUP
@@ -537,6 +529,4 @@ def test_explicit_dirt_refinement_overrides_internal_classification(
     assert verdict.dirt_shape is DirtShape.STAGED_ONLY
     assert verdict.dirt_attribution is DirtAttribution.PHASE_OWNED
     state = _ledger_state(tmp_path)
-    assert state.repeat_counts == {
-        (_signature(verdict.observation), "commit_via_commit_phase"): 1
-    }
+    assert state.repeat_counts == {(_signature(verdict.observation), "commit_via_commit_phase"): 1}
