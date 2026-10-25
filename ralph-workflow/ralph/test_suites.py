@@ -483,7 +483,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/project_policy/test_policy_never_blocks_the_run.py": 130,
     "tests/project_policy/test_policy_handback_to_pipeline.py": 50,
     "tests/agents/test_workspace_event_backpressure.py": 56,
-    "tests/test_commit_detached_head_recovery.py": 150,
+    "tests/test_commit_detached_head_recovery.py": 330,
     "tests/test_subprocess_reader_resume_safe.py": 60,
     "tests/test_phases_retry_on_stale_session.py": 53,
     "tests/display/test_operator_display_labels.py": 52,

@@ -218,6 +218,8 @@ class PipelineState(_FrozenPipelineStateModel):
     wait_reason: WaitReason | None = None
     wait_until_monotonic_ms: int | None = None
     progress_guard: dict[str, object] | None = None
+    # Durable agent failure ledger state across process restarts.
+    ledger_snapshot: dict[str, object] | None = None
 
     @model_validator(mode="after")
     def _validate_phase_set(self) -> PipelineState:

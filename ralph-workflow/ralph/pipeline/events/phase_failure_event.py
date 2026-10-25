@@ -34,6 +34,8 @@ class PhaseFailureEvent:
         skip_same_agent_retries: When True, recoverable routing should advance
             to the next configured agent immediately instead of spending retry
             attempts on the current agent.
+        workspace_changed: Whether any workspace files were added, modified,
+            or removed during the failed attempt.
     """
 
     phase: str
@@ -42,3 +44,4 @@ class PhaseFailureEvent:
     retry_in_session: bool = False
     failure_category: FailureCategory | None = None
     skip_same_agent_retries: bool = False
+    workspace_changed: bool = False

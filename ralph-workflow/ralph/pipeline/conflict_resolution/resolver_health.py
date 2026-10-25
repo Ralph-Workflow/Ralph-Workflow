@@ -3,27 +3,30 @@
 Every path that invokes a resolver (conflict driver, retained-integration
 diagnostic, pending-merge repair) asks :func:`choose_resolver` for the next
 candidate and reports the outcome through :func:`bench_resolver` /
-:func:`clear_resolver`. They share one ``RecoveryController`` -- and so one
-unavailability store -- so a resolver that failed on one path is not offered
-by another.
+:func:`clear_resolver`. They share the run's ``AgentFailureLedger`` via the
+``RecoveryController`` public seam, ensuring resolution attempt facts are
+consistently tracked and that an agent demoted or cooling down in
+resolution is skipped by any resolver caller.
 
-The ledger is keyed by agent name, not by phase: an agent benched here is also
-unavailable to every other phase of the run (same account, same quota), and a
-verified success elsewhere clears it here.
+Health is strictly partitioned by phase identity (``PHASE_RESOLUTION``).
+Benching, cooldown, or demoting an agent in integration conflict resolution
+does not contaminate other phases such as ``development`` or ``analysis``,
+maintaining per-phase isolation.
 
-Benching is failure-agnostic: any attempt that ends without a verified result
-benches the agent with exponential backoff. The classifier only picks a longer
-cooldown when it recognises the failure (quota, auth, ...); an unrecognised
-message is never a reason to call the same agent again immediately.
+Unproductive attempts without a verified result record an attempt fact in the
+ledger. When consecutive unproductive attempts reach the configured limit,
+the agent enters cooldown with exponential backoff. A verified resolution
+clears the agent's failure history for the resolution phase.
 """
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
-from ralph.recovery.unavailability_reason import UnavailabilityReason
+from ralph.recovery.agent_failure_ledger import AttemptFact
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -59,21 +62,71 @@ def choose_resolver(controller: RecoveryController, candidates: Sequence[str]) -
     )
 
 
+def _record_resolver_fact(
+    controller: RecoveryController,
+    agent: str,
+    *,
+    artifact_valid: bool,
+    workspace_changed: bool = False,
+    free_retry_category: bool = False,
+) -> None:
+    """Route an attempt fact to the failure ledger via public seam."""
+    fact = AttemptFact(
+        phase=PHASE_RESOLUTION,
+        agent=agent,
+        artifact_valid=artifact_valid,
+        workspace_changed=workspace_changed,
+        free_retry_category=free_retry_category,
+    )
+    try:
+        ledger = controller.ledger
+        if ledger is not None:
+            ledger.record(fact)
+    except (AttributeError, Exception):
+        pass
+
+
 def bench_resolver(
     controller: RecoveryController,
     agent: str,
     raw_failure: BaseException | str,
 ) -> None:
-    """Bench ``agent`` after an attempt that produced no verified result."""
-    # A resolver that printed a quota message reached its provider, so the
-    # classifier is told the network is up; without that it never names quota.
-    classified = controller.classify_conflict_attempt(
-        raw_failure, agent=agent, connectivity_state="online"
+    """Bench ``agent`` in the resolution phase using the shared ledger."""
+    from ralph.recovery.unavailability_reason import (
+        DEFAULT_UNAVAILABILITY_BACKOFF_POLICY,
+        UnavailabilityReason,
     )
-    reason = classified.unavailability_reason or UnavailabilityReason.PROCESS_EXITED
-    controller.unavailability_store.mark_unavailable(PHASE_RESOLUTION, agent, reason)
+
+    reason_str: str | None = None
+    duration_ms: int | None = None
+    try:
+        classified = controller.classify_conflict_attempt(
+            raw_failure, agent=agent, connectivity_state="online"
+        )
+        reason = classified.unavailability_reason or UnavailabilityReason.PROCESS_EXITED
+        reason_str = str(reason.value if hasattr(reason, "value") else reason)
+        policy = DEFAULT_UNAVAILABILITY_BACKOFF_POLICY.get(reason)
+        duration_ms = policy.base_backoff_ms if policy is not None else 5_000
+    except (AttributeError, Exception):
+        pass
+
+    try:
+        controller.ledger.bench(PHASE_RESOLUTION, agent, reason=reason_str, duration_ms=duration_ms)
+    except (AttributeError, Exception):
+        _record_resolver_fact(
+            controller,
+            agent,
+            artifact_valid=False,
+            workspace_changed=False,
+        )
 
 
 def clear_resolver(controller: RecoveryController, agent: str) -> None:
-    """Forget ``agent``'s failure history after a verified result."""
-    controller.reset_backoff(PHASE_RESOLUTION, agent)
+    """Forget ``agent``'s failure history in the resolution phase after a verified result."""
+    _record_resolver_fact(
+        controller,
+        agent,
+        artifact_valid=True,
+    )
+    with suppress(AttributeError, Exception):
+        controller.reset_backoff(PHASE_RESOLUTION, agent)

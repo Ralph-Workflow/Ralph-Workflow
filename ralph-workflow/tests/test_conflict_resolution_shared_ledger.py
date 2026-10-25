@@ -71,7 +71,8 @@ def test_resolver_that_failed_in_an_earlier_session_is_not_offered_first(
     assert _resolve(tmp_path, deps, first) is True
     assert _resolve(tmp_path, deps, second) is True
 
-    assert first == ["primary", "fallback"]
+    # Primary fails 3 times (the ledger consecutive limit), then falls over to fallback.
+    assert first == ["primary", "primary", "primary", "fallback"]
     assert second == ["fallback"]
 
 

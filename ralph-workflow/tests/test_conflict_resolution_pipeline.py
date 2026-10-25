@@ -270,7 +270,7 @@ def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
         )
         is True
     )
-    assert calls == ["primary", "fallback"]
+    assert calls == ["primary", "primary", "primary", "fallback"]
     # The resolution drain uses the normal immutable chain model, not a
     # separate "failed means phase complete" cursor.  The failed primary
     # has advanced the same AgentChainState ordinary phases use.
@@ -312,7 +312,7 @@ def test_exhausted_resolver_chain_reports_typed_terminal_evidence(
     assert outcome.succeeded is False
     assert outcome.reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.exhaustion_reason is not None
-    assert calls == ["primary", "fallback"]
+    assert calls == ["primary", "primary", "primary", "fallback", "fallback", "fallback"]
     recovery_state = session.recovery_state
     assert recovery_state is not None
     chain = recovery_state.chain_for_phase(PHASE_RESOLUTION)
@@ -947,21 +947,18 @@ def test_invoker_returning_outcome_success_has_cause_none(
 def test_strategy_rotation_preserves_spent_budget_and_candidate_state() -> None:
     session = ResolutionSession()
     session.rounds_spent = 3
-    session.current_agent_retries = 2
     session.chain_cursor = 1
     session.stop_dead_surfaces = ("claude",)
     session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
 
     begin_resolution_stop(session, is_strategy_rotation=True)
     assert session.rounds_spent == 3
-    assert session.current_agent_retries == 2
     assert session.chain_cursor == 1
     assert "claude" in session.stop_dead_surfaces
     assert session.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
 
     begin_resolution_stop(session, is_strategy_rotation=False)
     assert session.rounds_spent == 0
-    assert session.current_agent_retries == 0
     assert session.chain_cursor == 0
     assert session.stop_dead_surfaces == ()
     assert session.last_failure_cause == ResolutionFailureCause.NONE
@@ -987,7 +984,7 @@ def test_strategy_rotation_does_not_replenish_driver_round_cap(
     outcome1 = _run_outcome(tmp_path, invoke=_invoke, session=session)
     assert outcome1.succeeded is False
     assert session.rounds_spent == 2
-    assert rounds_called == [1, 2]
+    assert rounds_called == [1, 1, 1, 2]
 
     outcome2 = _run_outcome(
         tmp_path,
@@ -996,5 +993,5 @@ def test_strategy_rotation_does_not_replenish_driver_round_cap(
         strategy_history=("primary-strategy",),
     )
     assert outcome2.succeeded is False
-    assert rounds_called == [1, 2]
+    assert rounds_called == [1, 1, 1, 2]
     assert session.rounds_spent == 2

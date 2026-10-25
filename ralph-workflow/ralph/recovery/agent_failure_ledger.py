@@ -158,7 +158,9 @@ class AgentFailureLedger:
         self._max_cooldown_seconds: float = max_cooldown_seconds
         self._backoff_factor: float = backoff_factor
         self._lock = threading.Lock()
-        self._entries: dict[tuple[str, str], _LedgerEntry] = {}  # bounded-accumulator-ok: per-(phase, agent) failure tracking bounded by agent chain size
+        self._entries: dict[
+            tuple[str, str], _LedgerEntry
+        ] = {}  # bounded-accumulator-ok: per-(phase, agent) failure tracking bounded by agent chain size
 
     @property
     def consecutive_limit(self) -> int:
@@ -291,7 +293,7 @@ class AgentFailureLedger:
             if entry.consecutive_unproductive >= self._consecutive_limit:
                 exponent = min(entry.cooldown_count, 30)
                 duration_seconds = min(
-                    self._base_cooldown_seconds * (self._backoff_factor ** exponent),
+                    self._base_cooldown_seconds * (self._backoff_factor**exponent),
                     self._max_cooldown_seconds,
                 )
                 duration_ms = int(duration_seconds * 1000)
@@ -313,6 +315,46 @@ class AgentFailureLedger:
                 consecutive_unproductive=entry.consecutive_unproductive,
                 total_unproductive=entry.total_unproductive,
             )
+
+    def bench(
+        self,
+        phase: str,
+        agent: str,
+        *,
+        reason: str | None = None,
+        duration_ms: int | None = None,
+    ) -> Cooldown:
+        """Immediately place an agent on cooldown in the given phase."""
+        with self._lock:
+            key = (phase, agent)
+            now_ms = int(self._clock.monotonic() * 1000)
+            entry = self._entries.get(key)
+            if entry is None:
+                entry = _LedgerEntry()
+                self._entries[key] = entry
+
+            self._sync_cooldown_expiry(entry, now_ms)
+            entry.consecutive_unproductive += 1
+            entry.total_unproductive += 1
+            cooldown_reason = reason or _COOLDOWN_REASON_CONSECUTIVE
+
+            exponent = min(entry.cooldown_count, 30)
+            base_s = (
+                (duration_ms / 1000.0)
+                if duration_ms is not None and duration_ms > 0
+                else self._base_cooldown_seconds
+            )
+            duration_seconds = min(
+                base_s * (self._backoff_factor**exponent),
+                self._max_cooldown_seconds,
+            )
+            final_duration_ms = int(duration_seconds * 1000)
+
+            until_ms = now_ms + final_duration_ms
+            entry.cooldown_until_ms = until_ms
+            entry.cooldown_reason = cooldown_reason
+            entry.cooldown_count += 1
+            return Cooldown(until_ms=until_ms, reason=cooldown_reason)
 
     def snapshot(self) -> dict[str, object]:
         """Return a serializable dictionary snapshot of ledger state."""
@@ -350,7 +392,8 @@ class AgentFailureLedger:
         """Reconstruct an AgentFailureLedger from a snapshot dictionary."""
         consecutive_limit = (
             int(snap["consecutive_limit"])
-            if "consecutive_limit" in snap and isinstance(snap["consecutive_limit"], (int, float, str))
+            if "consecutive_limit" in snap
+            and isinstance(snap["consecutive_limit"], (int, float, str))
             else 3
         )
         total_limit = (
@@ -360,12 +403,14 @@ class AgentFailureLedger:
         )
         base_cooldown_seconds = (
             float(snap["base_cooldown_seconds"])
-            if "base_cooldown_seconds" in snap and isinstance(snap["base_cooldown_seconds"], (int, float, str))
+            if "base_cooldown_seconds" in snap
+            and isinstance(snap["base_cooldown_seconds"], (int, float, str))
             else 60.0
         )
         max_cooldown_seconds = (
             float(snap["max_cooldown_seconds"])
-            if "max_cooldown_seconds" in snap and isinstance(snap["max_cooldown_seconds"], (int, float, str))
+            if "max_cooldown_seconds" in snap
+            and isinstance(snap["max_cooldown_seconds"], (int, float, str))
             else 3600.0
         )
         backoff_factor = (
@@ -401,13 +446,23 @@ class AgentFailureLedger:
                     spent_reason_val = item.get("spent_reason")
 
                     entry = _LedgerEntry(
-                        consecutive_unproductive=int(consecutive_val) if isinstance(consecutive_val, (int, float, str)) else 0,
-                        total_unproductive=int(total_val) if isinstance(total_val, (int, float, str)) else 0,
-                        cooldown_until_ms=int(until_val) if isinstance(until_val, (int, float, str)) else None,
+                        consecutive_unproductive=int(consecutive_val)
+                        if isinstance(consecutive_val, (int, float, str))
+                        else 0,
+                        total_unproductive=int(total_val)
+                        if isinstance(total_val, (int, float, str))
+                        else 0,
+                        cooldown_until_ms=int(until_val)
+                        if isinstance(until_val, (int, float, str))
+                        else None,
                         cooldown_reason=str(reason_val) if isinstance(reason_val, str) else None,
-                        cooldown_count=int(cooldown_count_val) if isinstance(cooldown_count_val, (int, float, str)) else 0,
+                        cooldown_count=int(cooldown_count_val)
+                        if isinstance(cooldown_count_val, (int, float, str))
+                        else 0,
                         is_spent=bool(is_spent_val) if is_spent_val is not None else False,
-                        spent_reason=str(spent_reason_val) if isinstance(spent_reason_val, str) else None,
+                        spent_reason=str(spent_reason_val)
+                        if isinstance(spent_reason_val, str)
+                        else None,
                     )
                     ledger._entries[(phase_val, agent_val)] = entry
         return ledger

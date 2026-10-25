@@ -38,8 +38,6 @@ controller never reaches ``failed_terminal`` via this path.
 from __future__ import annotations
 
 import ast
-from collections.abc import Mapping
-from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime
 from importlib import import_module
@@ -456,7 +454,7 @@ def _assert_never_exit_invariant() -> None:
 _assert_never_exit_invariant()
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import PipelineState
@@ -544,7 +542,6 @@ class RecoveryController:
         else:
             self._registry = AgentBudgetRegistry()
         self._policy_bundle = opts.policy_bundle
-        self._technical_retry_cap = max(0, opts.technical_retry_cap)
         self._clock: Clock = opts.clock or SystemClock()
         self._backoff_attempts: dict[str, int] = dict(
             opts.backoff_attempts or {}
@@ -559,16 +556,10 @@ class RecoveryController:
             if opts.agent_max_total_unproductive is not None
             else AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT
         )
-        snap_val: object = getattr(self._clock, "_ledger_snapshot", None)
         if ledger is not None:
             self._ledger = ledger
         elif opts.ledger is not None:
             self._ledger = opts.ledger
-        elif isinstance(snap_val, Mapping):
-            self._ledger = AgentFailureLedger.from_snapshot(
-                cast("Mapping[str, object]", snap_val),
-                clock=self._clock,
-            )
         else:
             self._ledger = AgentFailureLedger(
                 clock=self._clock,
@@ -706,13 +697,16 @@ class RecoveryController:
             free_retry_category=is_free_retry,
         )
         outcome = self._ledger.record(fact)
-        snap = self._ledger.snapshot()
-        with suppress(Exception):
-            object.__setattr__(self._clock, "_ledger_snapshot", snap)
-        with suppress(Exception):
-            object.__setattr__(state, "_ledger_snapshot", snap)
 
         if outcome.demoted:
+            logger.warning(
+                "Agent '{}' demoted in phase '{}' (consecutive={}, total={}, reason={})",
+                current_agent,
+                phase,
+                outcome.consecutive_unproductive,
+                outcome.total_unproductive,
+                outcome.reason,
+            )
             if chain is not None and len(chain.agents) == 1:
                 return (
                     f"Sole agent '{current_agent}' demoted in phase '{phase}': "
@@ -790,8 +784,24 @@ class RecoveryController:
         )
         if sole_demoted_reason is not None:
             logger.warning(sole_demoted_reason)
+            new_state = new_state.copy_with(recovery_cycle_count=new_state.recovery_cycle_count + 1)
+            failed_state = self._enter_phase_failed(
+                new_state, sole_demoted_reason, failure.category
+            )
+            if self._cap.is_exceeded(failed_state.recovery_cycle_count):
+                exit_reason = self._cap.exit_reason(
+                    failed_state.recovery_cycle_count,
+                    str(failure.category),
+                    failure.reason[:200],
+                )
+                logger.error("Recovery cycle cap exceeded: {}", exit_reason)
+                return (
+                    failed_state.copy_with(last_retry_delay_ms=0),
+                    [_build_exit_failure_effect(reason=exit_reason)],
+                    failure_evt,
+                )
             return (
-                self._enter_phase_failed(new_state, sole_demoted_reason, failure.category),
+                failed_state,
                 [],
                 failure_evt,
             )
@@ -996,7 +1006,6 @@ class RecoveryController:
             phase,
             agent,
             retry_in_session=retry_in_session,
-            max_retries=self._technical_retry_cap,
             use_budget=False,
             failure_evt=failure_evt,
         )
@@ -1247,7 +1256,7 @@ class RecoveryController:
         agent: str | None,
         *,
         retry_in_session: bool,
-        max_retries: int,
+        max_retries: int | None = None,
         use_budget: bool,
         failure_evt: FailureEvent,
     ) -> tuple[PipelineState, list[Effect], FailureEvent]:
@@ -1266,7 +1275,10 @@ class RecoveryController:
             else None
         )
         current_allowance_spent = (budget_state is not None and budget_state.exhausted) or (
-            budget_state is None and chain.retries >= max_retries
+            use_budget
+            and budget_state is None
+            and max_retries is not None
+            and chain.retries >= max_retries
         )
         if current_allowance_spent and current_agent is not None:
             self.note_retry_exhaustion(phase, current_agent)
@@ -1454,7 +1466,6 @@ class RecoveryController:
                 for (phase, agent), budget in self._registry.items()
             },
             "backoff_attempts": merged_attempts,
-            "technical_retry_cap": self._technical_retry_cap,
             "agent_max_consecutive_unproductive": self._consecutive_unproductive_limit,
             "agent_max_total_unproductive": self._total_unproductive_limit,
             "ledger": self._ledger.snapshot(),

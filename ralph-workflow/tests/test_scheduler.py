@@ -1,5 +1,7 @@
 import importlib
 
+import pytest
+
 from ralph.pipeline.parallel.scheduler import schedule_next_wave
 from ralph.pipeline.work_units import WorkUnit
 
@@ -153,6 +155,7 @@ def build_dag_units(
     return tuple(make_unit(f"unit-{index:02d}", valid_deps[index]) for index in range(num_units))
 
 
+@pytest.mark.timeout_seconds(5)
 @settings(
     max_examples=3,
     database=None,

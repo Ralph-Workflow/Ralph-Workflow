@@ -34,14 +34,8 @@ from ralph.timeout_defaults import (
 def test_general_config_defaults() -> None:
     """GeneralConfig unproductive limits default to the expected defaults."""
     config = GeneralConfig()
-    assert (
-        config.agent_max_consecutive_unproductive
-        == AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT
-    )
-    assert (
-        config.agent_max_total_unproductive
-        == AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT
-    )
+    assert config.agent_max_consecutive_unproductive == AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT
+    assert config.agent_max_total_unproductive == AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT
     assert AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT == 3
     assert AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT == 9
 
@@ -71,10 +65,7 @@ def test_general_config_default_when_toml_key_absent(tmp_path: Path) -> None:
         config.general.agent_max_consecutive_unproductive
         == AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT
     )
-    assert (
-        config.general.agent_max_total_unproductive
-        == AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT
-    )
+    assert config.general.agent_max_total_unproductive == AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT
 
 
 def test_general_config_rejects_zero_and_negative_with_field_name_in_error() -> None:

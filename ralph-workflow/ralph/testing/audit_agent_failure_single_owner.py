@@ -46,6 +46,17 @@ TEMPORARY_PRODUCTION_ALLOWLIST: frozenset[str] = frozenset()
 
 TEMPORARY_TEST_ALLOWLIST: frozenset[str] = frozenset()
 
+# Transitional allowlist for competing shapes (e.g. technical_retry_cap)
+# until WU-4 deletes them.
+TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {}
+
+
+def is_transitional_allowed(rel_path: str, name: str) -> bool:
+    """Return True if the symbol is temporarily allowed in rel_path."""
+    allowed = TEMPORARY_TRANSITIONAL_RULES.get(rel_path)
+    return bool(allowed and name in allowed)
+
+
 _FORBIDDEN_TRACKER_MODULES: frozenset[str] = frozenset(
     {
         "_same_shape_retry_tracker",
@@ -87,6 +98,18 @@ _FORBIDDEN_TRACKER_NAMES: frozenset[str] = frozenset(
         "_in_session_retry_escalation_limit",
         "_check_same_shape_bound",
         "_check_broken_agent_same_shape_bound",
+        # D-7: Competing retry caps and resolver counters
+        "technical_retry_cap",
+        "_technical_retry_cap",
+        "resolver_retries",
+        "resolver_retry_count",
+        "resolver_retry_cap",
+        "resolver_health_counter",
+        "resolver_health_state",
+        "_resolver_retries",
+        "_resolver_retry_count",
+        "_resolver_retry_cap",
+        "_resolver_health_counter",
     }
 )
 
@@ -94,12 +117,17 @@ _GETATTR_MIN_ARGS = 2
 
 
 def _is_forbidden_target_name(name: str) -> bool:
-    """Check if variable/attribute name matches forbidden duplicate tracker patterns."""
+    """Check if variable/attribute name matches forbidden duplicate tracker or competing counter patterns."""
     if name in _FORBIDDEN_TRACKER_NAMES:
         return True
     lower = name.lower()
     return (
-        "same_shape" in lower or "broken_agent_same_shape" in lower or "in_session_retry" in lower
+        "same_shape" in lower
+        or "broken_agent_same_shape" in lower
+        or "in_session_retry" in lower
+        or "technical_retry_cap" in lower
+        or "resolver_retry" in lower
+        or "resolver_health" in lower
     )
 
 
@@ -127,8 +155,9 @@ def _check_production_class(node: ast.ClassDef, rel_path: str) -> list[SingleOwn
 def _check_production_function(
     node: ast.FunctionDef | ast.AsyncFunctionDef, rel_path: str
 ) -> list[SingleOwnerViolation]:
-    if _is_forbidden_target_name(node.name):
-        return [
+    violations: list[SingleOwnerViolation] = []
+    if _is_forbidden_target_name(node.name) and not is_transitional_allowed(rel_path, node.name):
+        violations.append(
             SingleOwnerViolation(
                 path=rel_path,
                 line=node.lineno,
@@ -138,8 +167,21 @@ def _check_production_function(
                     "retry/stop decision logic outside AgentFailureLedger."
                 ),
             )
-        ]
-    return []
+        )
+    violations.extend(
+        SingleOwnerViolation(
+            path=rel_path,
+            line=arg.lineno,
+            rule="production_streak_counter_state",
+            detail=(
+                f"Parameter '{arg.arg}' in function '{node.name}' declares competing "
+                "retry cap or health counter outside AgentFailureLedger."
+            ),
+        )
+        for arg in node.args.posonlyargs + node.args.args + node.args.kwonlyargs
+        if _is_forbidden_target_name(arg.arg) and not is_transitional_allowed(rel_path, arg.arg)
+    )
+    return violations
 
 
 def _check_production_assignment(
@@ -153,7 +195,11 @@ def _check_production_assignment(
             target_name = target.id
         elif isinstance(target, ast.Attribute):
             target_name = target.attr
-        if target_name is not None and _is_forbidden_target_name(target_name):
+        if (
+            target_name is not None
+            and _is_forbidden_target_name(target_name)
+            and not is_transitional_allowed(rel_path, target_name)
+        ):
             violations.append(
                 SingleOwnerViolation(
                     path=rel_path,
@@ -166,6 +212,40 @@ def _check_production_assignment(
                 )
             )
     return violations
+
+
+def _check_production_attribute(node: ast.Attribute, rel_path: str) -> list[SingleOwnerViolation]:
+    if _is_forbidden_target_name(node.attr) and not is_transitional_allowed(rel_path, node.attr):
+        return [
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="production_streak_counter_state",
+                detail=(
+                    f"Access to competing retry cap or health counter attribute '{node.attr}' "
+                    "outside AgentFailureLedger."
+                ),
+            )
+        ]
+    return []
+
+
+def _check_production_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation]:
+    return [
+        SingleOwnerViolation(
+            path=rel_path,
+            line=node.lineno,
+            rule="production_streak_counter_state",
+            detail=(
+                f"Passing competing retry cap or health counter '{kw.arg}' "
+                "outside AgentFailureLedger."
+            ),
+        )
+        for kw in node.keywords
+        if kw.arg
+        and _is_forbidden_target_name(kw.arg)
+        and not is_transitional_allowed(rel_path, kw.arg)
+    ]
 
 
 def _check_production_import(
@@ -254,6 +334,10 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
             violations.extend(_check_production_function(node, rel_path))
         elif isinstance(node, (ast.Assign, ast.AnnAssign)):
             violations.extend(_check_production_assignment(node, rel_path))
+        elif isinstance(node, ast.Attribute):
+            violations.extend(_check_production_attribute(node, rel_path))
+        elif isinstance(node, ast.Call):
+            violations.extend(_check_production_call(node, rel_path))
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
             violations.extend(_check_production_import(node, rel_path))
     return violations
@@ -313,7 +397,7 @@ def _is_ledger_receiver(node: ast.AST) -> bool:
 
 def _check_test_attribute(node: ast.Attribute, rel_path: str) -> list[SingleOwnerViolation]:
     attr = node.attr
-    if _is_forbidden_target_name(attr):
+    if _is_forbidden_target_name(attr) and not is_transitional_allowed(rel_path, attr):
         return [
             SingleOwnerViolation(
                 path=rel_path,
@@ -342,6 +426,21 @@ def _check_test_attribute(node: ast.Attribute, rel_path: str) -> list[SingleOwne
 
 
 def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation]:
+    violations: list[SingleOwnerViolation] = [
+        SingleOwnerViolation(
+            path=rel_path,
+            line=node.lineno,
+            rule="test_deleted_tracker_access",
+            detail=f"Test passes competing tracker/counter keyword '{kw.arg}'.",
+        )
+        for kw in node.keywords
+        if (
+            kw.arg
+            and _is_forbidden_target_name(kw.arg)
+            and not is_transitional_allowed(rel_path, kw.arg)
+        )
+    ]
+
     if not (
         isinstance(node.func, ast.Name)
         and node.func.id == "getattr"
@@ -349,25 +448,25 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
         and isinstance(node.args[1], ast.Constant)
         and isinstance(node.args[1].value, str)
     ):
-        return []
+        return violations
 
     arg_val = node.args[1].value
-    if _is_forbidden_target_name(arg_val):
-        return [
+    if _is_forbidden_target_name(arg_val) and not is_transitional_allowed(rel_path, arg_val):
+        violations.append(
             SingleOwnerViolation(
                 path=rel_path,
                 line=node.lineno,
                 rule="test_deleted_tracker_access",
                 detail=f"Test accesses deleted tracker/counter attribute '{arg_val}' via getattr.",
             )
-        ]
+        )
 
     if (
         arg_val.startswith("_")
         and not (arg_val.startswith("__") and arg_val.endswith("__"))
         and _is_ledger_receiver(node.args[0])
     ):
-        return [
+        violations.append(
             SingleOwnerViolation(
                 path=rel_path,
                 line=node.lineno,
@@ -377,9 +476,9 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
                     "tests must use the public seam only."
                 ),
             )
-        ]
+        )
 
-    return []
+    return violations
 
 
 def audit_test_source(rel_path: str, source: str) -> list[SingleOwnerViolation]:

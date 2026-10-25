@@ -123,5 +123,6 @@
   "is_waiting_state": false,
   "wait_reason": null,
   "wait_until_monotonic_ms": null,
-  "progress_guard": null
+  "progress_guard": null,
+  "ledger_snapshot": null
 }

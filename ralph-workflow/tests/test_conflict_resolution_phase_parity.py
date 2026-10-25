@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
@@ -16,6 +17,7 @@ from ralph.pipeline.conflict_resolution.session import (
     classify_failed_resolution_attempt,
     invoke_resolution_agent,
 )
+from ralph.pipeline.integration_actions import install_executors, reset_executors
 from tests._conflict_resolution_phase_parity_seams import (
     _CONFLICTED,
     _config,
@@ -33,31 +35,41 @@ def test_four_agent_chain_tries_every_candidate(
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two", "three", "four")
     )
-    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
-    called: list[str] = []
+    clock = FakeClock()
+    token = install_executors(clock=clock)
+    try:
+        _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+        called: list[str] = []
 
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        called.append(agent_name)
-        return False
+        def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+            called.append(agent_name)
+            return False
 
-    assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=_invoke,
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                clock=clock.monotonic,
+            )
+            is False
         )
-        is False
-    )
-    # Every candidate gets a turn, in chain order, before the round ends.
-    # Later rounds wrap back to the head rather than invoking nobody, so
-    # the chain -- not the exact call count -- is what this pins.
-    assert called[:4] == ["one", "two", "three", "four"]
+        # Every candidate gets a turn, in chain order, before the round ends.
+        # Later rounds wrap back to the head rather than invoking nobody, so
+        # the chain -- not the exact call count -- is what this pins.
+        seen: list[str] = []
+        for name in called:
+            if not seen or seen[-1] != name:
+                seen.append(name)
+        assert seen[:4] == ["one", "two", "three", "four"]
+    finally:
+        reset_executors(token)
 
 
 def test_transient_failure_retries_the_same_agent_using_recovery_controller_handle(
@@ -350,30 +362,40 @@ def test_max_fallback_agents_does_not_truncate_a_four_agent_chain(
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two", "three", "four")
     )
-    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
-    called: list[str] = []
+    clock = FakeClock()
+    token = install_executors(clock=clock)
+    try:
+        _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+        called: list[str] = []
 
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        called.append(agent_name)
-        return False
+        def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+            called.append(agent_name)
+            return False
 
-    session = ResolutionSession(max_fallback_agents=2)
-    assert (
-        run_conflict_resolution_pipeline(
-            root=tmp_path,
-            target="main",
-            config=_config(),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=_invoke,
-            session=session,
+        session = ResolutionSession(max_fallback_agents=2)
+        assert (
+            run_conflict_resolution_pipeline(
+                root=tmp_path,
+                target="main",
+                config=_config(),
+                pipeline_deps=None,
+                workspace_scope=None,
+                policy_bundle=_policy_bundle(),
+                display=None,
+                display_context=None,
+                invoke=_invoke,
+                clock=clock.monotonic,
+                session=session,
+            )
+            is False
         )
-        is False
-    )
-    assert called[:4] == ["one", "two", "three", "four"]
+        seen: list[str] = []
+        for name in called:
+            if not seen or seen[-1] != name:
+                seen.append(name)
+        assert seen[:4] == ["one", "two", "three", "four"]
+    finally:
+        reset_executors(token)
 
 
 def test_round_after_a_spent_chain_still_invokes_a_candidate(
@@ -410,9 +432,12 @@ def test_a_new_stop_restarts_the_chain_on_a_reused_session(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """One session spans a rebase; a later stop must still spend the chain."""
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
-    session = ResolutionSession()
+    clock = FakeClock()
+    session = ResolutionSession(ledger=AgentFailureLedger(clock=clock))
     _install_seams(monkeypatch, surviving_per_round=[[]])
 
     def _first_stop(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -429,10 +454,13 @@ def test_a_new_stop_restarts_the_chain_on_a_reused_session(
             display=None,
             display_context=None,
             invoke=_first_stop,
+            clock=clock.monotonic,
             session=session,
         )
         is True
     )
+    # Between stops, time elapses past the first stop's candidate cooldown.
+    clock.advance(60.0)
     _install_seams(monkeypatch, surviving_per_round=[[]])
     second_stop: list[str] = []
 
@@ -451,6 +479,7 @@ def test_a_new_stop_restarts_the_chain_on_a_reused_session(
             display=None,
             display_context=None,
             invoke=_second_stop,
+            clock=clock.monotonic,
             session=session,
         )
         is True
@@ -766,11 +795,9 @@ def test_skip_same_agent_retries_advances_the_chain_instead_of_retrying(
         policy_bundle=_policy_bundle(),
     )
     assert session.chain_cursor == 1
-    assert session.current_agent_retries == 0
     assert session.skip_same_agent_retries is False
-    # Contrast: without the flag the same environmental failure spends a
-    # same-agent retry instead, which is what makes this assertion mean
-    # something.
+    # Contrast: without the flag the same environmental failure keeps the
+    # candidate eligible until its ledger limit is reached.
     retried = ResolutionSession()
     classify_failed_resolution_attempt(
         retried,
@@ -781,7 +808,6 @@ def test_skip_same_agent_retries_advances_the_chain_instead_of_retrying(
         policy_bundle=_policy_bundle(),
     )
     assert retried.chain_cursor == 0
-    assert retried.current_agent_retries == 1
 
 
 def test_a_live_candidate_behind_the_cursor_is_still_invoked(

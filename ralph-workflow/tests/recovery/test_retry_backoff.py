@@ -455,13 +455,13 @@ def test_zero_retry_delay_skips_sleep() -> None:
     assert sleep_calls == []  # No sleep when delay is 0
 
 
-def test_artifact_validation_retry_uses_global_technical_retry_cap() -> None:
+def test_artifact_validation_retry_uses_consecutive_unproductive_limit() -> None:
     bundle = _make_bundle_with_retry_delay(agents=["claude", "opencode"], max_retries=99)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
             policy_bundle=bundle,
-            technical_retry_cap=2,
+            agent_max_consecutive_unproductive=2,
         )
     )
     state = PipelineState(
@@ -470,7 +470,7 @@ def test_artifact_validation_retry_uses_global_technical_retry_cap() -> None:
             "development": AgentChainState(
                 agents=["claude", "opencode"],
                 current_index=0,
-                retries=2,
+                retries=0,
             )
         },
     )
@@ -484,12 +484,19 @@ def test_artifact_validation_retry_uses_global_technical_retry_cap() -> None:
         raw_message="Missing required artifact",
     )
 
-    new_state, _, evt = controller.handle(
+    state1, _, _ = controller.handle(
         state,
         "Missing required artifact",
         FailureContext(phase="development", agent="claude", classified_failure=failure),
     )
+    assert state1.chain_for_phase("development").current_index == 0
 
-    assert evt.category == "artifact_validation"
-    assert new_state.chain_for_phase("development").current_index == 1
-    assert new_state.chain_for_phase("development").retries == 0
+    state2, _, evt2 = controller.handle(
+        state1,
+        "Missing required artifact",
+        FailureContext(phase="development", agent="claude", classified_failure=failure),
+    )
+
+    assert evt2.category == "artifact_validation"
+    assert state2.chain_for_phase("development").current_index == 1
+    assert state2.chain_for_phase("development").retries == 0

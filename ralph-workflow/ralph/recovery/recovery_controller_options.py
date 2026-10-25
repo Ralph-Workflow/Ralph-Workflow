@@ -37,7 +37,6 @@ class RecoveryControllerOptions:
     budget_registry: AgentBudgetRegistry | None = None
     policy_bundle: PolicyBundle | None = None
     backoff_attempts: dict[str, int] | None = None
-    technical_retry_cap: int = 10
     # Single-owner failure and recovery ledger.
     ledger: AgentFailureLedger | None = None
     workspace_probe: object | None = None
@@ -82,10 +81,6 @@ class RecoveryControllerOptions:
         """Construct RecoveryControllerOptions by deserializing a controller snapshot."""
         cycle_cap_raw = snapshot.get("cycle_cap", 200)
         cycle_cap = int(cycle_cap_raw) if isinstance(cycle_cap_raw, (int, str)) else 200
-        technical_cap_raw = snapshot.get("technical_retry_cap", 10)
-        technical_retry_cap = (
-            int(technical_cap_raw) if isinstance(technical_cap_raw, (int, str)) else 10
-        )
         backoff_attempts = {
             k: as_int(v, field=f"backoff_attempts[{k}]")
             for k, v in as_mapping(
@@ -118,7 +113,6 @@ class RecoveryControllerOptions:
 
         return cls(
             cycle_cap=cycle_cap,
-            technical_retry_cap=technical_retry_cap,
             backoff_attempts=backoff_attempts,
             unavailable_timeouts=unavailable_timeouts,
             budgets=budgets_data,

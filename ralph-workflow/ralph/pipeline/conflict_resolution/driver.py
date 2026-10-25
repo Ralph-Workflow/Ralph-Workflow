@@ -150,6 +150,7 @@ __all__ = [
     "ResolutionAction",
     "ResolutionInvoker",
     "RoundAttempt",
+    "conflict_chain_max_retries",
     "emit_conflict_phase_line",
     "invoke_resolution_agent",
     "run_conflict_resolution_outcome",
@@ -456,7 +457,7 @@ def _run_rounds(
     begin_resolution_stop(session, is_strategy_rotation=is_rotation)
     if pipeline_deps is not None and session.unavailability_store is None:
         session.unavailability_store = pipeline_deps.unavailability_store
-    ensure_session_controller(session, policy_bundle)
+    ensure_session_controller(session, policy_bundle, pipeline_deps=pipeline_deps)
     prepared, early, decision_paths = _prepare_conflicted_paths(root, stop, session, display)
     if early is not None:
         return early
@@ -879,11 +880,9 @@ def _run_one_round(
         session.stop_dead_surfaces = ()
         skipped = _skipped_candidates(session, candidates)
     visited: set[int] = set()
-    # Bound same-agent retries independently of candidate count.
-    attempt_cap = max(1, conflict_chain_max_retries(policy_bundle))
-    attempts_here = 0
     invoked = False
     agent_ran = False
+    round_cap = session.max_rounds_per_stop or 3
     while len(visited) < total:
         selected = _preferred_conflict_candidate(session, candidates, visited, skipped)
         if selected is None:
@@ -914,7 +913,7 @@ def _run_one_round(
         )
         agent_ran = agent_ran or agent_saw
         if _check_worktree_repair(
-            session, agent_name, round_index, attempt_cap, display, worktree_resolved, agent_saw
+            session, agent_name, round_index, round_cap, display, worktree_resolved, agent_saw
         ):
             return RoundAttempt(succeeded=False, invoked=True, agent_ran=True)
         if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS:
@@ -926,15 +925,13 @@ def _run_one_round(
             offset = _next_unvisited(offset, total, visited)
             session.chain_cursor = offset
             continue
-        attempts_here += 1
-        if session.chain_cursor == offset and attempts_here < attempt_cap:
+        if session.chain_cursor == offset:
             _sleep_conflict_retry(session, policy_bundle)
             continue
         visited.add(offset)
         proposed = session.chain_cursor % total
         offset = proposed if proposed not in visited else _next_unvisited(offset, total, visited)
         session.chain_cursor = offset
-        attempts_here = 0
     return RoundAttempt(succeeded=False, invoked=invoked, agent_ran=agent_ran)
 
 
@@ -979,10 +976,11 @@ def _preferred_conflict_candidate(
 
 def _reset_conflict_success(session: ResolutionSession, agent: str) -> None:
     """Reset only the successful resolver's cooldown history."""
+    from ralph.pipeline.conflict_resolution.resolver_health import clear_resolver
     from ralph.recovery.controller import RecoveryController
 
     if isinstance(session.recovery_controller, RecoveryController):
-        session.recovery_controller.reset_backoff(PHASE_RESOLUTION, agent)
+        clear_resolver(session.recovery_controller, agent)
 
 
 def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundle) -> None:

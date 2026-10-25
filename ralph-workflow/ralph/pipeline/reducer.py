@@ -230,8 +230,7 @@ def _reduce_phase_failure(
                 raw_message=raw_message,
                 reset_session=False,
             )
-        raw_changed: object = getattr(event, "workspace_changed", False)
-        workspace_changed: bool = bool(raw_changed)
+        workspace_changed: bool = getattr(event, "workspace_changed", False)
         new_state, effects, _ = recovery.handle(
             state,
             event.reason or f"(no reason reported for phase={event.phase})",
@@ -556,6 +555,13 @@ def reduce(
         pipeline_policy,
         integration_record=integration_record,
     )
+    if recovery is not None and hasattr(recovery, "ledger"):
+        try:
+            snap = recovery.ledger.snapshot()
+            if snap != routed_state.ledger_snapshot:
+                routed_state = routed_state.copy_with(ledger_snapshot=snap)
+        except Exception:
+            pass
     return routed_state, effects
 
 

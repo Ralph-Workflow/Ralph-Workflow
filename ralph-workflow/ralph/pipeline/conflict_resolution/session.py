@@ -18,13 +18,12 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     classify_ralph_origin_fault,
 )
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
-from ralph.pipeline.conflict_resolution.resolver_health import bench_resolver
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
@@ -32,6 +31,7 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import PolicyBundle
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
@@ -85,13 +85,13 @@ class ResolutionSession:
     #: resolved; these are escalated afterwards, by name.
     out_of_reach_paths: tuple[str, ...] = ()
     last_recovery_reason: str | None = None
-    recovery_controller: object | None = None
+    recovery_controller: RecoveryController | None = None
     #: The run's shared cooldown ledger, adopted from ``PipelineDeps`` when the
     #: driver starts. The session's own controller is built on top of it.
     unavailability_store: UnavailabilityStore | None = None
+    ledger: AgentFailureLedger | None = None
     recovery_state: object | None = None
     last_retry_delay_ms: int = 0
-    current_agent_retries: int = 0
     exhaustion_reason: str | None = None
     skip_same_agent_retries: bool = False
     last_attempt_evidence: str | None = None
@@ -146,7 +146,6 @@ def begin_resolution_stop(
     if not is_strategy_rotation:
         session.chain_cursor = 0
         session.stop_dead_surfaces = ()
-        session.current_agent_retries = 0
         session.rounds_spent = 0
         session.last_failure_cause = ResolutionFailureCause.NONE
         state = session.recovery_state
@@ -190,19 +189,43 @@ def resolution_chain_agents(policy_bundle: PolicyBundle) -> tuple[str, ...]:
 def ensure_session_controller(
     session: ResolutionSession | None,
     policy_bundle: PolicyBundle | None,
+    *,
+    pipeline_deps: object | None = None,
 ) -> RecoveryController:
     """Return the session's recovery controller, building it on the shared ledger.
 
-    The controller's retry budgets are per session, but its cooldown ledger is
-    the run's (``session.unavailability_store``), so an agent benched anywhere
-    in the run is skipped here, and one benched here is skipped everywhere.
+    The controller's retry budgets are per session, and its failure ledger is
+    partitioned by phase (``PHASE_RESOLUTION``) to maintain strict phase
+    isolation.
     """
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.controller import RecoveryController
     from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
     from ralph.recovery.seed_budget_registry import seed_budget_registry
 
     if session is not None and isinstance(session.recovery_controller, RecoveryController):
         return session.recovery_controller
+    if session is not None and session.ledger is None and pipeline_deps is not None:
+        raw_ledger: object = getattr(pipeline_deps, "ledger", None)
+        if isinstance(raw_ledger, AgentFailureLedger):
+            session.ledger = raw_ledger
+        elif session.unavailability_store is not None:
+            store_ledger: object = getattr(session.unavailability_store, "_failure_ledger", None)
+            if isinstance(store_ledger, AgentFailureLedger):
+                session.ledger = store_ledger
+            else:
+                clock_inst: object = getattr(session.unavailability_store, "_clock", None)
+                from ralph.agents.clock import Clock
+
+                if isinstance(clock_inst, Clock):
+                    new_ledger = AgentFailureLedger(clock=clock_inst)
+                    session.ledger = new_ledger
+                    object.__setattr__(session.unavailability_store, "_failure_ledger", new_ledger)
+    ledger_instance = (
+        session.ledger
+        if session is not None and isinstance(session.ledger, AgentFailureLedger)
+        else None
+    )
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             policy_bundle=policy_bundle,
@@ -210,10 +233,13 @@ def ensure_session_controller(
                 seed_budget_registry(policy_bundle) if policy_bundle is not None else None
             ),
             unavailability_store=session.unavailability_store if session is not None else None,
+            ledger=ledger_instance,
         )
     )
     if session is not None:
         session.recovery_controller = controller
+        if session.ledger is None:
+            session.ledger = controller.ledger
     return controller
 
 
@@ -222,18 +248,13 @@ def classify_failed_resolution_attempt(
     agent_name: str,
     raw_failure: BaseException | str,
     *,
-    candidates: tuple[str, ...] = (),
+    candidates: Sequence[str] = (),
     failed_index: int = 0,
     policy_bundle: PolicyBundle | None = None,
     bench: bool = False,
 ) -> None:
-    """Route a failed conflict invoke through RecoveryController.handle.
-
-    ``bench`` says the attempt never reached resolver work (the agent crashed,
-    exited or raised); the agent is then benched in the shared ledger whatever
-    its error text was. A resolver that ran and left conflicts behind produced a
-    result, a bad one, which the driver's round cap bounds.
-    """
+    """Route a failed conflict invoke through RecoveryController.handle."""
+    del bench
     from ralph.pipeline.agent_chain_state import AgentChainState
     from ralph.pipeline.state import PipelineState
     from ralph.recovery.classifier import FailureContext
@@ -270,39 +291,29 @@ def classify_failed_resolution_attempt(
     session.recovery_state = new_state
     session.last_recovery_reason = classified.reason
     session.last_retry_delay_ms = new_state.last_retry_delay_ms
-    from ralph.recovery.failure_category import FailureCategory
 
-    max_retries = conflict_chain_max_retries(policy_bundle)
-    if (
-        not session.skip_same_agent_retries
-        and classified.category == FailureCategory.ENVIRONMENTAL
-        and session.current_agent_retries + 1 < max_retries
-    ):
-        session.current_agent_retries += 1
+    agent_available = False
+    if hasattr(controller, "ledger") and controller.ledger is not None:
+        agent_available = controller.ledger.is_available(PHASE_RESOLUTION, agent_name)
+
+    if not session.skip_same_agent_retries and agent_available:
         session.chain_cursor = failed_index
     else:
-        # The chain is done with this agent for now. When the attempt never
-        # reached resolver work (``bench``) and the recovery layer did not already
-        # bench it -- it only recognises known failure shapes -- bench it here so
-        # an agent that produced nothing is not offered again at once.
-        if bench and controller.unavailability_store.is_available(PHASE_RESOLUTION, agent_name):
-            bench_resolver(controller, agent_name, raw_failure)
-        elif not bench:
-            controller.reset_backoff(PHASE_RESOLUTION, agent_name)
+        session.skip_same_agent_retries = False
         if candidates:
-            session.current_agent_retries = 0
-            session.skip_same_agent_retries = False
             session.chain_cursor = controller.next_conflict_candidate(
                 candidates, failed_index=failed_index
             )
     chain_state = new_state.chain_for_phase(PHASE_RESOLUTION)
-    agents = list(chain_state.agents) if chain_state is not None else list(candidates)
+    chain_agents: list[str] = (
+        list(chain_state.agents) if chain_state is not None else list(candidates)
+    )
     session.recovery_state = new_state.with_phase_chain(
         PHASE_RESOLUTION,
         AgentChainState(
-            agents=agents,
-            current_index=min(session.chain_cursor, max(len(agents) - 1, 0)),
-            retries=session.current_agent_retries,
+            agents=chain_agents,
+            current_index=min(session.chain_cursor, max(len(chain_agents) - 1, 0)),
+            retries=0,
         ),
     )
 

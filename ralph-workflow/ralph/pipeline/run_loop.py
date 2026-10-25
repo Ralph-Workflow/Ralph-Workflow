@@ -8,6 +8,7 @@ import dataclasses
 import sys
 import threading
 import time
+from collections.abc import Mapping
 from contextlib import nullcontext, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,6 +17,7 @@ from typing import TYPE_CHECKING, Final, cast
 from loguru import logger
 
 import ralph.pipeline.runner as _runner_module
+from ralph.agents.timeout_clock import SystemClock
 from ralph.config.enums import Verbosity
 from ralph.display._run_start_orientation import RunStartOrientation
 from ralph.display.artifact_reader import plan_artifact_path
@@ -80,6 +82,7 @@ from ralph.pipeline.rebase_state import (
 from ralph.pipeline.retry_diagnostic import RetryDiagnosticHooks
 from ralph.pipeline.run_time_report import emit_run_time_report_safely
 from ralph.process.manager import get_process_manager
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
@@ -95,6 +98,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Protocol
 
+    from ralph.agents.clock import Clock
     from ralph.config.agent_config import AgentConfig
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
@@ -3451,6 +3455,9 @@ def _handle_cooldown_delay(state: PipelineState, ctx: LoopContext) -> PipelineSt
         return state.copy_with(last_retry_delay_ms=1000)
 
 
+handle_cooldown_delay = _handle_cooldown_delay
+
+
 def _retry_guard_requires_intervention(state: PipelineState) -> bool:
     """Whether the persisted retry guard demands a hard stop at ``failed_route``.
 
@@ -3674,6 +3681,7 @@ def _build_recovery_controller(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     config: UnifiedConfig,
+    clock: Clock | None = None,
 ) -> tuple[RecoveryController, int]:
     """Build recovery controller from policy bundle; return (controller, cycle_cap)."""
     _cycle_cap: int = 200
@@ -3681,16 +3689,6 @@ def _build_recovery_controller(
     if isinstance(_raw_cycle_cap, int) and _raw_cycle_cap >= 1:
         _cycle_cap = _raw_cycle_cap
 
-    raw_technical_retry_cap: object = getattr(
-        config.general,
-        "max_same_agent_retries",
-        10,
-    )
-    technical_retry_cap = (
-        raw_technical_retry_cap
-        if isinstance(raw_technical_retry_cap, int) and raw_technical_retry_cap >= 0
-        else 10
-    )
     raw_consecutive: object = getattr(
         config.general,
         "agent_max_consecutive_unproductive",
@@ -3711,14 +3709,23 @@ def _build_recovery_controller(
         if isinstance(raw_total, int) and raw_total >= 1
         else AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT
     )
+    effective_clock = clock or SystemClock()
+    ledger: AgentFailureLedger | None = None
+    ledger_snap: object = state.ledger_snapshot
+    if isinstance(ledger_snap, Mapping) and ledger_snap:
+        ledger = AgentFailureLedger.from_snapshot(
+            cast("Mapping[str, object]", ledger_snap),
+            clock=effective_clock,
+        )
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=_cycle_cap,
             policy_bundle=policy_bundle,
             budget_registry=_seed_budget_registry(policy_bundle),
-            technical_retry_cap=technical_retry_cap,
             agent_max_consecutive_unproductive=consecutive_limit,
             agent_max_total_unproductive=total_limit,
+            clock=clock,
+            ledger=ledger,
         )
     )
     return controller, _cycle_cap
@@ -3728,13 +3735,14 @@ def build_recovery_controller(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     config: UnifiedConfig,
+    clock: Clock | None = None,
 ) -> tuple[RecoveryController, int]:
     """Build a recovery controller from runtime configuration.
 
     This public seam exposes the configuration-to-controller wiring for
     deterministic callers without bypassing the runtime's canonical builder.
     """
-    return _build_recovery_controller(state, policy_bundle, config)
+    return _build_recovery_controller(state, policy_bundle, config, clock=clock)
 
 
 def _subscribe_recovery_logger(controller: RecoveryController) -> Callable[[], None]:

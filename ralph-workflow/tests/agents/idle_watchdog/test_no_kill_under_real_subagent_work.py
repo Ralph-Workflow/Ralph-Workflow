@@ -399,4 +399,3 @@ def test_r5_silent_parent_and_silent_children_still_fire(
         silent_subagent_seconds=180.0,
     )
     assert kind.value == "stuck"
-
