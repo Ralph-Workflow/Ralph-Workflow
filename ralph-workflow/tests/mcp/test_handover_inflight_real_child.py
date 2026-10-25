@@ -31,6 +31,7 @@ import contextlib
 import http.client
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -1007,6 +1008,30 @@ def test_e16_fail_closed_resume_timeout(tmp_path: Path) -> None:
         _reap_process(cand_proc)
 
 
+def _wait_child_bounded(proc: ManagedProcess, *, timeout_s: float) -> int:
+    """Wait for child process with bounded polling and slice-based wait.
+
+    Prevents spurious TimeoutExpired under loaded multi-shard runs where
+    a single rigid wait(timeout=5.0) can be starved by scheduler contention.
+    """
+    deadline = time.monotonic() + timeout_s
+    while True:
+        rc = proc.poll()
+        if rc is not None:
+            return rc
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            return proc.wait(timeout=min(remaining, 1.0))
+        except subprocess.TimeoutExpired:
+            pass
+    rc = proc.poll()
+    if rc is not None:
+        return rc
+    raise subprocess.TimeoutExpired(proc.record.command, timeout_s)
+
+
 # ---------------------------------------------------------------------------
 # E1.6: Two children writing shared wire ledger serialize and verify cleanly
 # ---------------------------------------------------------------------------
@@ -1037,6 +1062,7 @@ def test_e16_interleaved_ledger(tmp_path: Path) -> None:
                 "        params={'worker': worker_id, 'index': i},",
                 "        run_id=run_id,",
                 "        secret=secret,",
+                "        lock_timeout_s=5.0,",
                 "    )",
             ]
         ),
@@ -1054,8 +1080,12 @@ def test_e16_interleaved_ledger(tmp_path: Path) -> None:
     )
 
     try:
-        rc1 = p1.wait(timeout=5.0)
-        rc2 = p2.wait(timeout=5.0)
+        # Bounded wait within the module's 10s per-test timeout budget
+        overall_deadline = time.monotonic() + 8.0
+        remaining_1 = max(1.0, overall_deadline - time.monotonic())
+        rc1 = _wait_child_bounded(p1, timeout_s=remaining_1)
+        remaining_2 = max(1.0, overall_deadline - time.monotonic())
+        rc2 = _wait_child_bounded(p2, timeout_s=remaining_2)
         assert rc1 == 0, f"Child 1 exited with {rc1}"
         assert rc2 == 0, f"Child 2 exited with {rc2}"
 

@@ -258,7 +258,7 @@ def _check_production_attribute(node: ast.Attribute, rel_path: str) -> list[Sing
 
 
 def _check_production_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation]:
-    return [
+    violations: list[SingleOwnerViolation] = [
         SingleOwnerViolation(
             path=rel_path,
             line=node.lineno,
@@ -273,6 +273,26 @@ def _check_production_call(node: ast.Call, rel_path: str) -> list[SingleOwnerVio
         and _is_forbidden_target_name(kw.arg)
         and not is_transitional_allowed(rel_path, kw.arg)
     ]
+    if (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == "get"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+        and node.args[0].value in ("consecutive_unproductive", "total_unproductive")
+    ):
+        violations.append(
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="production_streak_counter_state",
+                detail=(
+                    f"Production code accesses ledger counter '{node.args[0].value}' via .get(); "
+                    "all failure and retry decisions must use AgentFailureLedger public status."
+                ),
+            )
+        )
+    return violations
 
 
 def _check_production_import(
@@ -542,6 +562,26 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
                     )
                 )
 
+    if (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == "get"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+        and node.args[0].value in ("consecutive_unproductive", "total_unproductive")
+    ):
+        violations.append(
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="test_private_ledger_access",
+                detail=(
+                    f"Test accesses private ledger counter '{node.args[0].value}' via .get(); "
+                    "tests must assert on observable behavior through the public seam only."
+                ),
+            )
+        )
+
     if not (
         isinstance(node.func, ast.Name)
         and node.func.id == "getattr"
@@ -592,9 +632,7 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
 
 
 def _check_test_subscript(node: ast.Subscript, rel_path: str) -> list[SingleOwnerViolation]:
-    """Flag direct access to ledger streak/counter snapshot fields in tests outside ledger unit tests."""
-    if rel_path == "tests/recovery/test_agent_failure_ledger.py":
-        return []
+    """Flag direct access to ledger streak/counter snapshot fields in tests."""
     if (
         isinstance(node.slice, ast.Constant)
         and isinstance(node.slice.value, str)
@@ -702,6 +740,19 @@ def check(ledger):
     v4 = audit_production_source("ralph/pipeline/worker.py", src_prod_attr)
     assert any("consecutive_unproductive" in v.detail for v in v4), (
         f"Expected violation for non-ledger counter access, got: {v4}"
+    )
+
+    # Negative test 5: test reading counter via .get()
+    src_test_get = """
+def test_sample(snap):
+    count = snap.get("consecutive_unproductive")
+"""
+    v5 = audit_test_source("tests/recovery/test_sample.py", src_test_get)
+    assert any(
+        v.rule == "test_private_ledger_access" and "consecutive_unproductive" in v.detail
+        for v in v5
+    ), (
+        f"Expected test_private_ledger_access violation for .get(consecutive_unproductive), got: {v5}"
     )
 
 

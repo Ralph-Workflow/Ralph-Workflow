@@ -19,6 +19,9 @@ from ralph.pipeline._auto_integrate_config import configured_target as _configur
 from ralph.pipeline._commit_completion_authority import complete_commit
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._integration_continuation import (
+    recover_before_attempt,
+)
+from ralph.pipeline._integration_continuation import (
     recover_before_attempt as _recover_before_attempt,
 )
 from ralph.pipeline._target_reconciliation_handoff import scheduled_landing
@@ -34,14 +37,16 @@ from ralph.pipeline.auto_integrate_budget_seam import (
 )
 from ralph.pipeline.auto_integrate_catchup import resolve_integration_target
 from ralph.pipeline.auto_integrate_conflict_budget import (
+    MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
     ConflictIdentity,
     resolver_allowed,
 )
 from ralph.pipeline.auto_integrate_context import (
-    current_branch_or_detached_marker as _current_branch_or_detached_marker,
+    current_branch_or_detached_marker,
+    record_refresh,
 )
 from ralph.pipeline.auto_integrate_context import (
-    record_refresh,
+    current_branch_or_detached_marker as _current_branch_or_detached_marker,
 )
 from ralph.pipeline.auto_integrate_ff import (
     is_retryable_fast_forward_failure,
@@ -55,6 +60,7 @@ from ralph.pipeline.auto_integrate_outcome import (
 from ralph.pipeline.auto_integrate_precondition import (
     _handle_precondition_failure,
     _read_post_integration_head_sha,
+    read_post_integration_head_sha,
 )
 from ralph.pipeline.auto_integrate_rebase_merge import (
     run_rebase_or_merge as _run_rebase_or_merge,
@@ -68,6 +74,7 @@ from ralph.pipeline.auto_integrate_record import (
     RecordReadOutcomeDisposition,
     read_record,
     read_record_outcome,
+    write_record,
 )
 from ralph.pipeline.auto_integrate_record import (
     clear_record as _clear_record,
@@ -80,6 +87,9 @@ from ralph.pipeline.auto_integrate_recovery import (
     post_attempt_verify,
     recover_incomplete_integration,
     recovery_retained_record,
+)
+from ralph.pipeline.auto_integrate_refresh import (
+    refresh_target,
 )
 from ralph.pipeline.auto_integrate_refresh import (
     refresh_target as _refresh_target,
@@ -121,8 +131,91 @@ _random = (
     random.Random()
 )  # module-local RNG: thread-safe jitter without mutating global random state
 
+
+_DEFAULT_RECOVER_BEFORE_ATTEMPT = recover_before_attempt
+_DEFAULT_WRITE_RECORD = write_record
+_DEFAULT_REFRESH_TARGET = refresh_target
+_DEFAULT_READ_POST_HEAD_SHA = read_post_integration_head_sha
+_DEFAULT_CURRENT_BRANCH_MARKER = current_branch_or_detached_marker
+
+
+def _recover_before_attempt_probe(
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    record: RebaseState | None,
+    conflict_resolver: ConflictResolver | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+) -> RebaseState | None:
+    fn = (
+        recover_before_attempt
+        if recover_before_attempt is not _DEFAULT_RECOVER_BEFORE_ATTEMPT
+        else (
+            _recover_before_attempt
+            if _recover_before_attempt is not _DEFAULT_RECOVER_BEFORE_ATTEMPT
+            else _DEFAULT_RECOVER_BEFORE_ATTEMPT
+        )
+    )
+    return fn(
+        config,
+        workspace_scope,
+        record,
+        conflict_resolver,
+        rebase_stop_resolver,
+    )
+
+
+def _write_record_probe(root: Path, attempt_record: IntegrationRecord) -> None:
+    fn = (
+        write_record
+        if write_record is not _DEFAULT_WRITE_RECORD
+        else (
+            _write_record if _write_record is not _DEFAULT_WRITE_RECORD else _DEFAULT_WRITE_RECORD
+        )
+    )
+    fn(root, attempt_record)
+
+
+def _refresh_target_probe(config: UnifiedConfig, root: Path, target: str) -> str | None:
+    fn = (
+        refresh_target
+        if refresh_target is not _DEFAULT_REFRESH_TARGET
+        else (
+            _refresh_target
+            if _refresh_target is not _DEFAULT_REFRESH_TARGET
+            else _DEFAULT_REFRESH_TARGET
+        )
+    )
+    return fn(config, root, target)
+
+
+def _read_post_integration_head_sha_probe(root: Path, target: str) -> str | None:
+    fn = (
+        read_post_integration_head_sha
+        if read_post_integration_head_sha is not _DEFAULT_READ_POST_HEAD_SHA
+        else (
+            _read_post_integration_head_sha
+            if _read_post_integration_head_sha is not _DEFAULT_READ_POST_HEAD_SHA
+            else _DEFAULT_READ_POST_HEAD_SHA
+        )
+    )
+    return fn(root, target)
+
+
+def _current_branch_probe(root: Path) -> str | None:
+    fn = (
+        current_branch_or_detached_marker
+        if current_branch_or_detached_marker is not _DEFAULT_CURRENT_BRANCH_MARKER
+        else (
+            _current_branch_or_detached_marker
+            if _current_branch_or_detached_marker is not _DEFAULT_CURRENT_BRANCH_MARKER
+            else _DEFAULT_CURRENT_BRANCH_MARKER
+        )
+    )
+    return fn(root)
+
+
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from ralph.config.models import UnifiedConfig
     from ralph.display.parallel_display import ParallelDisplay
@@ -131,7 +224,17 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.integration_actions import AgentRunner, Clock, GitOps
     from ralph.pipeline.rebase_state import RebaseState
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.workspace.scope import WorkspaceScope
+
+
+def _get_resolver_attempts(config: UnifiedConfig) -> int:
+    raw_attempts: object = getattr(
+        config.conflict_resolution,
+        "max_consecutive_resolver_attempts",
+        MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+    )
+    return raw_attempts if isinstance(raw_attempts, int) else MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
 
 
 def auto_integrate_after_commit(
@@ -146,6 +249,8 @@ def auto_integrate_after_commit(
     jitter: Callable[[], float] | None = None,
     git_ops: GitOps | None = None,
     agent_runner: AgentRunner | None = None,
+    ledger: AgentFailureLedger | None = None,
+    candidates: Sequence[str] = (),
 ) -> RebaseState | None:
     """Integrate after a commit, recording skips and terminal-state violations.
 
@@ -162,6 +267,7 @@ def auto_integrate_after_commit(
         # Git is ground truth: release a contained integration before blocking.
         state = containment_release(root, target, state)
         # A non-git workspace has no target to probe, so exclude it here.
+        resolver_attempts = _get_resolver_attempts(config)
         if retained_integration_reason(root) is None and (root / ".git").exists():
             ctx = _auto_integrate_resolve_context(config, workspace_scope)
             early_skip, _usable_ctx = _check_early_skips(
@@ -172,19 +278,35 @@ def auto_integrate_after_commit(
                 return carry_budget_through_skip(
                     early_skip,
                     prior=state,
-                    attempts=config.conflict_resolution.max_consecutive_resolver_attempts,
+                    attempts=resolver_attempts,
                 )
 
         identity = observe_conflict_identity(root, target or "") if target else ConflictIdentity()
-        resolver_attempts = config.conflict_resolution.max_consecutive_resolver_attempts
+        from ralph.pipeline.conflict_resolution.rebase_loop import (
+            active_rebase_resolution_session,
+        )
+
+        active_session = active_rebase_resolution_session()
+        effective_ledger = (
+            ledger
+            if ledger is not None
+            else (active_session.ledger if active_session is not None else None)
+        )
         allowed = (
-            _configured_resolver_allowed(state, target, identity, resolver_attempts)
+            _configured_resolver_allowed(
+                state,
+                target,
+                identity,
+                ledger=effective_ledger,
+                candidates=candidates,
+                attempts=resolver_attempts,
+            )
             if target
             else True
         )
         effective_resolver = conflict_resolver if allowed else None
         resolver_suppressed = conflict_resolver is not None and not allowed
-        recovered = _recover_before_attempt(
+        recovered = _recover_before_attempt_probe(
             config,
             workspace_scope,
             None,
@@ -221,6 +343,8 @@ def auto_integrate_after_commit(
                 display=display,
                 sleep=sleep,
                 jitter=jitter,
+                ledger=effective_ledger,
+                candidates=candidates,
             ),
             prior=state,
         )
@@ -293,7 +417,7 @@ def _auto_integrate_on_phase_transition_inner(
         root = Path(workspace_scope.root)
         if not (root / ".git").exists():
             return None
-        recovered = _recover_before_attempt(
+        recovered = _recover_before_attempt_probe(
             config,
             workspace_scope,
             None,
@@ -357,6 +481,8 @@ def _auto_integrate_after_commit_inner(
     display: ParallelDisplay | None = None,
     sleep: Callable[[float], None] | None = None,
     jitter: Callable[[], float] | None = None,
+    ledger: AgentFailureLedger | None = None,
+    candidates: Sequence[str] = (),
 ) -> RebaseState | None:
     """Resolve context, integrate, and retry bounded fast-forward races."""
     ctx = _auto_integrate_resolve_context(config, workspace_scope)
@@ -368,11 +494,12 @@ def _auto_integrate_after_commit_inner(
         ctx,
         missing_target=_configured_target(config),
     )
+    resolver_attempts = _get_resolver_attempts(config)
     if early_skip is not None:
         return carry_budget_through_skip(
             early_skip,
             prior=state,
-            attempts=config.conflict_resolution.max_consecutive_resolver_attempts,
+            attempts=resolver_attempts,
         )
     if usable_ctx is None:
         # R2/AC8: ladder rung 3 -- only the explicit disabled AC-01 path
@@ -383,8 +510,24 @@ def _auto_integrate_after_commit_inner(
     remote_record: RebaseState | None = None
     identity = observe_conflict_identity(root, target)
     strategy_attempt = state.conflict_strategy_index == 1
-    resolver_attempts = config.conflict_resolution.max_consecutive_resolver_attempts
-    allowed = _configured_resolver_allowed(state, target, identity, resolver_attempts)
+    from ralph.pipeline.conflict_resolution.rebase_loop import (
+        active_rebase_resolution_session,
+    )
+
+    active_session = active_rebase_resolution_session()
+    effective_ledger = (
+        ledger
+        if ledger is not None
+        else (active_session.ledger if active_session is not None else None)
+    )
+    allowed = _configured_resolver_allowed(
+        state,
+        target,
+        identity,
+        ledger=effective_ledger,
+        candidates=candidates,
+        attempts=resolver_attempts,
+    )
     effective_resolver = conflict_resolver if allowed else None
     resolver_suppressed = conflict_resolver is not None and not allowed
     if resolver_suppressed:
@@ -405,7 +548,7 @@ def _auto_integrate_after_commit_inner(
         for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
             if attempt:
                 wait_before_retry(attempt, sleep=sleep, jitter=jitter)
-            recovered = _recover_before_attempt(
+            recovered = _recover_before_attempt_probe(
                 config,
                 workspace_scope,
                 record,
@@ -530,15 +673,26 @@ def _configured_resolver_allowed(
     state: RebaseState,
     target: str,
     identity: ConflictIdentity,
-    attempts: int,
+    *,
+    ledger: AgentFailureLedger | None = None,
+    candidates: Sequence[str] = (),
+    attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
 ) -> bool:
-    """Apply the configured budget while tolerating legacy predicate doubles."""
+    """Apply resolver selection/suppression via AgentFailureLedger while tolerating test doubles."""
     try:
-        return resolver_allowed(state, target, identity, attempts=attempts)
+        return resolver_allowed(
+            state,
+            target,
+            identity,
+            ledger=ledger,
+            candidates=candidates,
+            attempts=attempts,
+        )
     except TypeError as exc:
-        if "unexpected keyword argument 'attempts'" not in str(exc):
-            raise
-        return resolver_allowed(state, target, identity)
+        msg = str(exc)
+        if "unexpected keyword argument" in msg:
+            return resolver_allowed(state, target, identity)
+        raise
 
 
 def _freshen_attempt_target(
@@ -555,7 +709,7 @@ def _freshen_attempt_target(
     """Return the current remote verdict or local-fleet observation."""
     if not remote_sync_enabled(config):
         if attempt or force_refresh:
-            return None, _refresh_target(config, root, target)
+            return None, _refresh_target_probe(config, root, target)
         return None, initial_refresh
     record = pull_and_reconcile_target(
         config, root, target, rebase_stop_resolver=rebase_stop_resolver, prior=prior
@@ -564,7 +718,7 @@ def _freshen_attempt_target(
         return None, None
     refresh = record.last_refresh
     if record.last_remote_sync == RemoteSyncStatus.NO_REMOTE:
-        refresh = _refresh_target(config, root, target)
+        refresh = _refresh_target_probe(config, root, target)
     return record, refresh
 
 
@@ -696,7 +850,7 @@ def _integrate_once_owned(
             pre_target_sha=pre_target_sha,
         )
     )
-    _write_record(root, attempt_record)
+    _write_record_probe(root, attempt_record)
     # B11/E5: backup the original feature tip on a uniquely named
     # ``refs/rebase-backup/<id>`` ref BEFORE any mutation so a
     # concurrent ``git gc --prune`` cannot reclaim the in-flight commits.
@@ -727,7 +881,7 @@ def _integrate_once_owned(
                 _verify_and_cleanup_backup(root, backup_ref, pre_feature_sha, owns_resolution)
             return record_refresh(rebase_result.short_circuit, refresh), False
 
-        feature_sha = _read_post_integration_head_sha(root, target)
+        feature_sha = _read_post_integration_head_sha_probe(root, target)
         if feature_sha is None:
             _verify_and_cleanup_backup(root, backup_ref, pre_feature_sha, owns_resolution)
             return record_refresh(
@@ -740,7 +894,7 @@ def _integrate_once_owned(
         # a crash between this point and the fast-forward will be
         # recoverable as a continue-fast-forward rather than a restore
         # (AC-11).
-        _write_record(
+        _write_record_probe(
             root,
             complete_commit(attempt_record, integrated_feature_sha=feature_sha).record,
         )
@@ -925,14 +1079,14 @@ def _auto_integrate_resolve_context(
     # Typed-exception guard: detached HEAD surfaces as
     # ``current_branch is None`` (recorded skip) rather than being
     # absorbed into the broad ``except Exception`` above.
-    current_branch: str | None = _current_branch_or_detached_marker(root)
+    current_branch: str | None = _current_branch_probe(root)
     target: str | None = resolve_integration_target(config, root)
     refresh: str | None = None
     if target is not None and not remote_sync_enabled(config):
         # Local-only runs retain the historical observe-only refresh. The
         # opted-in path performs its one configured-remote fetch below, so it
         # never issues an extra origin probe before remote preflight.
-        refresh = _refresh_target(config, root, target)
+        refresh = _refresh_target_probe(config, root, target)
 
     return root, current_branch, target, refresh
 

@@ -59,7 +59,10 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from ralph.pipeline.rebase_state import RebaseState
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
 #: Consecutive unresolved conflicts against the same target that may
 #: each pay for a dev-agent conflict resolution. The sixty-fifth and later
@@ -163,20 +166,56 @@ def prior_conflict_count(
     return min(attempts, max(0, state.consecutive_conflicts))
 
 
+def _ledger_candidates_available(
+    ledger: AgentFailureLedger,
+    phase: str,
+    candidates: Sequence[str],
+) -> bool:
+    """Return True if any candidate in the ledger is available for phase."""
+    if candidates:
+        return any(ledger.is_available(phase, a) for a in candidates)
+    snap = ledger.snapshot()
+    raw_entries = snap.get("entries")
+    if isinstance(raw_entries, dict):
+        phase_agents: list[str] = []
+        for val in raw_entries.values():
+            if isinstance(val, dict):
+                p = val.get("phase")
+                a = val.get("agent")
+                if isinstance(p, str) and p == phase and isinstance(a, str) and a:
+                    phase_agents.append(a)
+        if phase_agents:
+            return any(ledger.is_available(phase, a) for a in phase_agents)
+    return True
+
+
 def resolver_allowed(
     state: RebaseState,
     target: str,
     identity: ConflictIdentity = _UNKNOWN_IDENTITY,
     *,
+    ledger: AgentFailureLedger | None = None,
+    candidates: Sequence[str] = (),
+    phase: str = "rebase_conflict_resolution",
     attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
 ) -> bool:
     """Whether this attempt may invoke the dev-agent conflict resolver.
 
-    True for the first :data:`MAX_CONSECUTIVE_RESOLVER_ATTEMPTS`
-    consecutive unresolved conflicts against the same ``target`` AND
-    the same ``identity``. A fresh :class:`RebaseState` always yields
-    True, so the first attempt of a run is never suppressed.
+    Resolver selection and suppression is owned by ``AgentFailureLedger``:
+    an attempt is allowed only when candidate resolvers are eligible/available
+    in the failure ledger for ``phase``. Repository conflict identity logic
+    is preserved: a changed conflict identity starts fresh.
     """
+    if ledger is not None and hasattr(ledger, "is_available"):
+        is_same_conflict = (
+            state.last_target == target
+            and identity.matches(state)
+            and state.last_conflict_strategy_index == state.conflict_strategy_index
+        )
+        if is_same_conflict and state.resolution_exhausted:
+            return False
+        return _ledger_candidates_available(ledger, phase, candidates)
+
     return prior_conflict_count(state, target, identity, attempts=attempts) < attempts
 
 

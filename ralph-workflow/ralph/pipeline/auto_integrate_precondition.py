@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
 
 
-def _read_post_integration_head_sha(root: Path, target: str) -> str | None:
+def read_post_integration_head_sha(root: Path, target: str) -> str | None:
     """Read the feature branch's HEAD after a successful rebase/merge.
 
     Returns the SHA on success; clears the crash record and returns
@@ -44,6 +44,9 @@ def _read_post_integration_head_sha(root: Path, target: str) -> str | None:
         _clear_record(root)
         logger.warning("auto_integrate: get_head_sha failed post-merge: {}", exc)
         return None
+
+
+_read_post_integration_head_sha = read_post_integration_head_sha
 
 
 @dataclass(frozen=True)

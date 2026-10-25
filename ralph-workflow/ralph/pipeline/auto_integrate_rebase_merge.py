@@ -346,7 +346,7 @@ def _environmental_rebase_result(
         post_attempt_verify(root, expected_head_sha=None, owns_resolution=False)
         state = state.set_recovery_record_retained(StartupRetentionReason.FAILED_ABORT)
     else:
-        _verify_terminal_state(root, expected_head_sha=None, owns_resolution=False)
+        _verify_terminal_probe(root, expected_head_sha=None, owns_resolution=False)
     return RebaseRunResult(
         rebase_outcome=failure,
         merge_attempted=False,
@@ -437,7 +437,7 @@ def run_rebase_or_merge(
     # WHY the merge was chosen; the headline ``merged`` comes from
     # the endpoint merge that follows. The same registered reason text
     # rides back on the result so the durable state records it too.
-    routing_reason = _range_routing_reason(root, target)
+    routing_reason = _range_routing_probe(root, target)
     if routing_reason is not None:
         logger.info("auto_integrate: {} (target '{}')", routing_reason, target)
         return replace(
@@ -493,7 +493,7 @@ def run_rebase_or_merge(
     return _fallback_to_endpoint_merge(root, target, rebase_outcome, conflict_resolver, git_ops)
 
 
-def _range_routing_reason(root: Path, target: str) -> str | None:
+def range_routing_reason(root: Path, target: str) -> str | None:
     """Decide whether the feature range must skip ``rebase_onto``.
 
     Returns the routing reason text (``"<slug>: <description>"``) the
@@ -560,6 +560,23 @@ def _range_topology_reason(root: Path, target: str, total: int) -> str | None:
     if _range_has_case_collision(root, target):
         return skip_reason_text(SKIP_CASE_FOLDING_COLLISION)
     return None
+
+
+_DEFAULT_RANGE_ROUTING = range_routing_reason
+_range_routing_reason = range_routing_reason
+
+
+def _range_routing_probe(root: Path, target: str) -> str | None:
+    fn = (
+        range_routing_reason
+        if range_routing_reason is not _DEFAULT_RANGE_ROUTING
+        else (
+            _range_routing_reason
+            if _range_routing_reason is not _DEFAULT_RANGE_ROUTING
+            else _DEFAULT_RANGE_ROUTING
+        )
+    )
+    return fn(root, target)
 
 
 def _range_has_case_collision(root: Path, target: str) -> bool:
@@ -822,14 +839,14 @@ def _fallback_to_endpoint_merge(
                 )
             ),
         )
-    _verify_terminal_state(
+    _verify_terminal_probe(
         root, expected_head_sha=None, owns_resolution=conflict_resolver is not None
     )
 
     return _endpoint_merge_result(root, target, rebase_outcome, conflict_resolver)
 
 
-def _verify_terminal_state(
+def verify_terminal_state(
     root: Path,
     *,
     expected_head_sha: str | None,
@@ -861,6 +878,28 @@ def _verify_terminal_state(
             "leaked state.",
             exc,
         )
+
+
+_DEFAULT_VERIFY_TERMINAL = verify_terminal_state
+_verify_terminal_state = verify_terminal_state
+
+
+def _verify_terminal_probe(
+    root: Path,
+    *,
+    expected_head_sha: str | None,
+    owns_resolution: bool,
+) -> None:
+    fn = (
+        verify_terminal_state
+        if verify_terminal_state is not _DEFAULT_VERIFY_TERMINAL
+        else (
+            _verify_terminal_state
+            if _verify_terminal_state is not _DEFAULT_VERIFY_TERMINAL
+            else _DEFAULT_VERIFY_TERMINAL
+        )
+    )
+    fn(root, expected_head_sha=expected_head_sha, owns_resolution=owns_resolution)
 
 
 def _endpoint_merge_result(

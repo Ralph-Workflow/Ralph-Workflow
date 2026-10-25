@@ -102,6 +102,20 @@ ralph.pipeline.integration_actions
    :members:
    :show-inheritance:
 
+ralph.pipeline.integration_cleanup
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.integration_cleanup
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.integration_ladder
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.integration_ladder
+   :members:
+   :show-inheritance:
+
 ralph.logging
 ~~~~~~~~~~~~~
 

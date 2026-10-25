@@ -27,7 +27,10 @@ class ConflictResolutionConfig(RalphBaseModel):
     max_consecutive_resolver_attempts: int = Field(
         default=64,
         ge=1,
-        description="Resolver attempts per conflict-resolution strategy before escalation.",
+        description=(
+            "Compatibility field retained for older configs. It does not cap "
+            "resolver attempts; AgentFailureLedger alone decides candidate availability."
+        ),
     )
     max_fallback_agents: int = Field(
         default=2,

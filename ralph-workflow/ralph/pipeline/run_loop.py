@@ -1604,6 +1604,9 @@ def _cold_capped_escalation_due(
     target: str,
     identity: ConflictIdentity,
     resolver_attempts: int,
+    *,
+    ledger: AgentFailureLedger | None = None,
+    candidates: tuple[str, ...] = (),
 ) -> bool:
     """Whether the session-scoped cold-capped escalation must run now.
 
@@ -1633,7 +1636,14 @@ def _cold_capped_escalation_due(
 
     if not (rebase.resolution_exhausted or rebase.consecutive_conflicts >= resolver_attempts):
         return False
-    if resolver_allowed(rebase, target, identity, attempts=resolver_attempts):
+    if resolver_allowed(
+        rebase,
+        target,
+        identity,
+        ledger=ledger,
+        candidates=candidates,
+        attempts=resolver_attempts,
+    ):
         return False
     session_attempted: bool = getattr(ctx, "cold_capped_escalation_attempted", False)
     if session_attempted:
@@ -1736,12 +1746,36 @@ def _run_owned_integration_conflict_resolution(
         return False
     identity = _conflict_identity_or_default(ctx, target)
     resolver_attempts = resolver_attempt_limit(ctx.config)
+    from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
+
+    installed = tuple(
+        agent
+        for agent in resolution_chain_agents(ctx.policy_bundle)
+        if ctx.registry.get(agent) is not None
+    )
+    controller_candidate: object = getattr(ctx, "controller", None)
+    ledger: AgentFailureLedger | None = (
+        controller_candidate.ledger
+        if isinstance(controller_candidate, RecoveryController)
+        else None
+    )
     if rebase is not None and _cold_capped_escalation_due(
-        ctx, rebase, target, identity, resolver_attempts
+        ctx,
+        rebase,
+        target,
+        identity,
+        resolver_attempts,
+        ledger=ledger,
+        candidates=installed,
     ):
         return _run_cold_capped_escalation(ctx, target, rebase)
     if rebase is not None and not resolver_allowed(
-        rebase, target, identity, attempts=resolver_attempts
+        rebase,
+        target,
+        identity,
+        ledger=ledger,
+        candidates=installed,
+        attempts=resolver_attempts,
     ):
         logger.warning(
             "integration resolution: resolver budget spent for target '{}'; escalating",
@@ -2468,10 +2502,25 @@ def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> boo
     except Exception as exc:
         logger.debug("integration resolution: conflict identity unreadable: {}", exc)
         identity = ConflictIdentity()
+    from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
+
+    installed = tuple(
+        agent
+        for agent in resolution_chain_agents(ctx.policy_bundle)
+        if ctx.registry.get(agent) is not None
+    )
+    controller_candidate: object = getattr(ctx, "controller", None)
+    ledger: AgentFailureLedger | None = (
+        controller_candidate.ledger
+        if isinstance(controller_candidate, RecoveryController)
+        else None
+    )
     if resolver_allowed(
         rebase,
         target,
         identity,
+        ledger=ledger,
+        candidates=installed,
         attempts=resolver_attempt_limit(ctx.config),
     ):
         logger.info(

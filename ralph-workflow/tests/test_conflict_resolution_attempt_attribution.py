@@ -349,9 +349,7 @@ def test_an_unavailable_candidate_does_not_answer_for_the_one_after_it(
     assert session.exhaustion_reason.startswith(ResolutionTerminationReason.ATTEMPT_FAILED.value)
 
 
-def test_the_executor_names_a_missing_agent_instead_of_failing_anonymously(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_the_executor_names_a_missing_agent_instead_of_failing_anonymously() -> None:
     """The registry lookup lives in the executor; only it should do it.
 
     Duplicating the check in conflict resolution meant building an

@@ -118,7 +118,7 @@ def apply_completed_attempt_budget(
     target: str,
     identity: ConflictIdentity,
     resolver_suppressed: bool,
-    attempts: int,
+    attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
 ) -> RebaseState:
     """Charge only actual repository conflicts to the resolver budget."""
     if record.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE:

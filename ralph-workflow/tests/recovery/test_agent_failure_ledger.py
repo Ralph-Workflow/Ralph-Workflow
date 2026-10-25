@@ -459,6 +459,13 @@ def test_snapshot_round_trip() -> None:
     status_c = restored.status("dev", "c")
     assert isinstance(status_c, Eligible)
 
+    # Agent C had 2 failures prior to snapshot. Recording 1 more unproductive
+    # attempt on restored ledger reaches the consecutive limit of 3 and demotes
+    # Agent C to Cooldown, behaviorally proving streak state was preserved.
+    outcome_c = restored.record(AttemptFact(phase="dev", agent="c", artifact_valid=False))
+    assert outcome_c.demoted is True
+    assert isinstance(outcome_c.status, Cooldown)
+
     # Advance clock past cooldown: restored ledger expires cooldown accurately
     clock.advance(50.0)
     assert isinstance(restored.status("dev", "a"), Eligible)

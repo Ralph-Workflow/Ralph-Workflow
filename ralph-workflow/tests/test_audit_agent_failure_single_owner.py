@@ -193,14 +193,29 @@ def test_snapshot_counters(controller):
     )
 
 
-def test_test_subscript_counter_allowed_in_ledger_unit_test() -> None:
+def test_test_subscript_counter_flagged_in_ledger_unit_test() -> None:
     source = """
 def test_snapshot_counters(controller):
     snap = controller.ledger.snapshot()
     count = snap["entries"]["dev:agent"]["consecutive_unproductive"]
 """
     violations = audit_test_source("tests/recovery/test_agent_failure_ledger.py", source)
-    assert not violations
+    assert len(violations) >= 1
+    assert any(
+        v.rule == "test_private_ledger_access" and "consecutive_unproductive" in v.detail
+        for v in violations
+    )
+
+
+def test_test_get_counter_flagged() -> None:
+    source = """
+def test_get_counters(snap):
+    count = snap.get("consecutive_unproductive")
+    total = snap.get("total_unproductive")
+"""
+    violations = audit_test_source("tests/pipeline/test_sample.py", source)
+    assert len(violations) >= 2
+    assert all(v.rule == "test_private_ledger_access" for v in violations)
 
 
 def test_transitional_allowed_file_bypasses_check(monkeypatch: pytest.MonkeyPatch) -> None:
