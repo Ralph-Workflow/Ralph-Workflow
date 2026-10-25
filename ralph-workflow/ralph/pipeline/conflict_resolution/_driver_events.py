@@ -12,7 +12,8 @@ from ralph.pipeline.conflict_resolution.status import emit_conflict_phase_line
 from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
+    from pathlib import Path
 
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
@@ -99,9 +100,57 @@ def emit_attempt_outcome(display: ParallelDisplay | None, outcome: ResolutionOut
     )
 
 
+def render_round_prompt(
+    root: Path,
+    target: str,
+    conflicted: Sequence[str],
+    round_index: int,
+    round_cap: int,
+    session: ResolutionSession,
+    stop: RebaseStop | None,
+    strategy_history: tuple[str, ...],
+) -> Path | None:
+    """Render one round without breaking legacy spy seams on empty history."""
+    from ralph.pipeline.conflict_resolution import driver as driver_mod
+
+    render_fn = driver_mod.render_conflict_prompt
+    sha = stop.sha if stop is not None else None
+    subj = stop.subject if stop is not None else None
+    idx = stop.stop_index if stop is not None else None
+    cap = stop.stop_cap if stop is not None else None
+    surviving = () if round_index == 1 else session.unresolved_paths
+    if strategy_history:
+        return render_fn(
+            root=root,
+            target=target,
+            conflicted_paths=conflicted,
+            round_index=round_index,
+            round_cap=round_cap,
+            surviving_marker_paths=surviving,
+            replaying_commit_sha=sha,
+            replaying_commit_subject=subj,
+            stop_index=idx,
+            stop_cap=cap,
+            strategy_history=strategy_history,
+        )
+    return render_fn(
+        root=root,
+        target=target,
+        conflicted_paths=conflicted,
+        round_index=round_index,
+        round_cap=round_cap,
+        surviving_marker_paths=surviving,
+        replaying_commit_sha=sha,
+        replaying_commit_subject=subj,
+        stop_index=idx,
+        stop_cap=cap,
+    )
+
+
 __all__ = [
     "announce_declared_decisions",
     "emit_attempt_outcome",
     "emit_expired_operator_cap",
     "emit_success",
+    "render_round_prompt",
 ]

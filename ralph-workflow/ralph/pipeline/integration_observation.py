@@ -390,6 +390,7 @@ _UNTRACKED: Final[WorktreeVerdict] = WorktreeVerdict(
     dirt_shape=DirtShape.UNTRACKED_ONLY,
 )
 
+
 def _verdict_for_state(state: WorktreeState) -> WorktreeVerdict:
     """Return the frozen verdict the contract assigns to ``state``.
 

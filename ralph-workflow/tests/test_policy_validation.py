@@ -1328,6 +1328,7 @@ class TestValidatePhaseExistsInPolicy:
 
 
 # === consolidated from test_policy_validation_validate_policy_completeness_new_rules.py ===
+@pytest.mark.timeout_seconds(3.0)
 class TestValidatePolicyCompletenessNewRules:
     """Tests for vocab superset check, commit_policy, loop_resets, and failed_route."""
 

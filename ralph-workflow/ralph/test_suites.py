@@ -502,7 +502,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_cli_run_skill_sync_warnings.py": 45,
     "tests/test_explore_mcp_timeout.py": 40,
     "tests/test_timing_safety_transports.py": 30,
-    "tests/test_retained_resolution_handoff.py": 240,
+    "tests/test_retained_resolution_handoff.py": 580,
     "tests/test_commit_executor.py": 320,
     "tests/test_integration_state_coverage.py": 50,
     "tests/test_liveness_termination.py": 30,
@@ -523,6 +523,8 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/recovery/test_single_agent_broken_chain_failfast.py": 60,
     "tests/recovery/test_broken_agent_advances_chain.py": 50,
     "tests/test_pty_line_reader_pending_bound.py": 50,
+    "tests/agents/test_terminal_state_restored_on_exit.py": 270,
+    "tests/test_auto_integrate_local_fleet_target_e2e.py": 55,
 }
 
 

@@ -47,9 +47,7 @@ from ralph.pipeline.auto_integrate_catchup_coordination import (
     RemoteSyncLease,
     remote_sync_transaction,
 )
-from ralph.pipeline.auto_integrate_ff import (
-    fast_forward_target,
-)
+from ralph.pipeline.auto_integrate_ff import fast_forward_target
 from ralph.pipeline.auto_integrate_record import read_record
 from ralph.pipeline.auto_integrate_remote_sync import (
     FETCH_TIMEOUT_SECONDS,
@@ -143,13 +141,8 @@ class _CatchupObservation:
     @property
     def signature(self) -> str:
         """Return the durable state signature for the observed checkout."""
-        return "|".join(
-            (
-                "catchup",
-                f"target={self.target}@{self.target_sha}",
-                f"head={self.current}@{self.current_sha}",
-            )
-        )
+        t, h = self.target, self.current
+        return f"catchup|target={t}@{self.target_sha}|head={h}@{self.current_sha}"
 
     @property
     def summary(self) -> str:
@@ -399,19 +392,19 @@ def _classify_git_exception(exc: Exception) -> GitOutcomeKind:
     return classify_git_exception(exc).kind
 
 
+_FAILURE_REASONS: dict[GitOutcomeKind, str] = {
+    GitOutcomeKind.SUCCEEDED: CATCHUP_FAST_FORWARDED,
+    GitOutcomeKind.FAILED: CATCHUP_DEFEDITELY_FAILED,
+    GitOutcomeKind.TIMED_OUT: CATCHUP_TIMEOUT,
+    GitOutcomeKind.KILLED: CATCHUP_KILLED,
+    GitOutcomeKind.UNKNOWN: CATCHUP_UNKNOWN,
+}
+
+
 def _failure_reason(kind: GitOutcomeKind, observation: str) -> str:
     """Render a typed Git outcome as a named, observation-backed reason."""
-    reasons: dict[GitOutcomeKind, str] = {
-        GitOutcomeKind.SUCCEEDED: CATCHUP_FAST_FORWARDED,
-        GitOutcomeKind.FAILED: CATCHUP_DEFEDITELY_FAILED,
-        GitOutcomeKind.TIMED_OUT: CATCHUP_TIMEOUT,
-        GitOutcomeKind.KILLED: CATCHUP_KILLED,
-        GitOutcomeKind.UNKNOWN: CATCHUP_UNKNOWN,
-    }
-    reason = reasons[kind]
-    if kind == GitOutcomeKind.SUCCEEDED:
-        return reason
-    return f"{reason}; {observation}"
+    reason = _FAILURE_REASONS[kind]
+    return reason if kind == GitOutcomeKind.SUCCEEDED else f"{reason}; {observation}"
 
 
 def _backoff_after_failure(
@@ -639,13 +632,8 @@ def _mutation_refusal(root: Path, target: str, current: str, *, remote: str | No
         # or corrupt — the seam reconciles that too) and the CONFIGURED
         # remote. The mutation lease is held here, so no agent phase is
         # active in the worktree and the observation records that.
-        record = read_record(root)
         action = decide_seam_action(
-            root,
-            record=record,
-            agent_active=False,
-            target=target,
-            remote=remote,
+            root, record=read_record(root), agent_active=False, target=target, remote=remote
         )
         if action in (
             IntegrationAction.REQUIRE_INTERVENTION,
@@ -757,15 +745,8 @@ def _observe_strictly_behind(
         return None, CATCHUP_UP_TO_DATE
     if not is_ancestor(root, current_sha, target_sha):
         return None, CATCHUP_DIVERGED
-    return (
-        _CatchupObservation(
-            target=target,
-            current=current,
-            target_sha=target_sha,
-            current_sha=current_sha,
-        ),
-        "",
-    )
+    obs = _CatchupObservation(target, current, target_sha, current_sha)
+    return obs, ""
 
 
 @dataclass(frozen=True)

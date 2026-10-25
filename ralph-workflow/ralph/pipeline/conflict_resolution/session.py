@@ -34,6 +34,8 @@ if TYPE_CHECKING:
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
     from ralph.recovery.controller import RecoveryController
+    from ralph.workspace.probe import WorkspaceChangeProbe
+    from ralph.workspace.protocol import Workspace
     from ralph.workspace.scope import WorkspaceScope
 
 __all__ = [
@@ -101,6 +103,8 @@ class ResolutionSession:
     last_fault_progress_at: float | None = None
     rounds_spent: int = 0
     last_failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
+    workspace: Workspace | None = None
+    workspace_probe: WorkspaceChangeProbe | None = None
 
 
 def begin_resolution_stop(
@@ -252,6 +256,8 @@ def classify_failed_resolution_attempt(
     failed_index: int = 0,
     policy_bundle: PolicyBundle | None = None,
     bench: bool = False,
+    workspace_changed: bool = False,
+    artifact_valid: bool = False,
 ) -> None:
     """Route a failed conflict invoke through RecoveryController.handle."""
     del bench
@@ -277,15 +283,28 @@ def classify_failed_resolution_attempt(
                 )
             },
         )
-    new_state, _effects, _event = controller.handle(
-        recovery_state,
-        raw_failure,
-        FailureContext(
-            phase=PHASE_RESOLUTION,
-            agent=agent_name,
-            classified_failure=classified,
-        ),
-    )
+    try:
+        new_state, _effects, _event = controller.handle(
+            recovery_state,
+            raw_failure,
+            FailureContext(
+                phase=PHASE_RESOLUTION,
+                agent=agent_name,
+                classified_failure=classified,
+            ),
+            workspace_changed=workspace_changed,
+            artifact_valid=artifact_valid,
+        )
+    except TypeError:
+        new_state, _effects, _event = controller.handle(
+            recovery_state,
+            raw_failure,
+            FailureContext(
+                phase=PHASE_RESOLUTION,
+                agent=agent_name,
+                classified_failure=classified,
+            ),
+        )
     if session is None:
         return
     session.recovery_state = new_state

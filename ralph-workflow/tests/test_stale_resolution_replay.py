@@ -16,7 +16,7 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline._integration_action import RebaseOutcomeKind
-from ralph.pipeline._integration_continuation import _promote_completed_resolution
+from ralph.pipeline._integration_continuation import promote_completed_resolution
 from ralph.pipeline._owned_landing_reintegration import replay_stale_resolution
 from ralph.pipeline.auto_integrate_backup_refs import create_stale_resolution_snapshot
 from ralph.pipeline.auto_integrate_record import (
@@ -345,7 +345,7 @@ def test_promote_completed_resolution_names_a_leftover_operation_marker_instead_
         resolving_rebase=True,
     )
 
-    result = _promote_completed_resolution(root, record)
+    result = promote_completed_resolution(root, record)
 
     assert isinstance(result, str)
     assert "operation marker" in result

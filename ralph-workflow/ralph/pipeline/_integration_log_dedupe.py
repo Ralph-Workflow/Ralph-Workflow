@@ -22,19 +22,10 @@ from __future__ import annotations
 import threading
 import time
 from collections import OrderedDict
-from typing import Protocol
+from collections.abc import Callable
 
-
-class OutcomeEmit(Protocol):
-    """Sink for a user-visible outcome line."""
-
-    def __call__(self, message: str) -> None: ...
-
-
-class MonotonicClock(Protocol):
-    """Injectable monotonic clock (seconds)."""
-
-    def __call__(self) -> float: ...
+type OutcomeEmit = Callable[[str], None]
+type MonotonicClock = Callable[[], float]
 
 
 class IntegrationOutcomeLog:

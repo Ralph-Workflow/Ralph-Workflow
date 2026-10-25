@@ -42,7 +42,7 @@ from rich.console import Console
 
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
-from ralph.pipeline._integration_action import IntegrationAction
+from ralph.pipeline import IntegrationAction
 from ralph.pipeline.auto_integrate import recovery_retained_record
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.integration_resolution import (
@@ -374,9 +374,7 @@ def test_the_startup_route_is_consumed_from_the_owner_verdict() -> None:
     assert route(IntegrationAction.REINTEGRATE_AGAINST_TARGET, integrated) is (
         route_kind.LANDING_CONTINUATION
     )
-    assert route(IntegrationAction.LAND_TARGET, integrated) is (
-        route_kind.LANDING_CONTINUATION
-    )
+    assert route(IntegrationAction.LAND_TARGET, integrated) is (route_kind.LANDING_CONTINUATION)
     # For everything else the seam verdict is the whole decision.
     assert route(IntegrationAction.REQUIRE_INTERVENTION, plain) is route_kind.DEFER_INTERVENTION
     assert route(IntegrationAction.WAIT_FOR_BOUNDED_RETRY, plain) is route_kind.DEFER_RETRY

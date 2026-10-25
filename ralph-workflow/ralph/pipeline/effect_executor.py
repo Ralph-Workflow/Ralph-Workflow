@@ -601,7 +601,11 @@ def _has_valid_terminal_artifact(
     exc: Exception,
 ) -> bool:
     returncode_obj: object = getattr(exc, "returncode", 0)
-    if not isinstance(returncode_obj, int) or returncode_obj == 0 or resolved_required_artifact is None:
+    if (
+        not isinstance(returncode_obj, int)
+        or returncode_obj == 0
+        or resolved_required_artifact is None
+    ):
         return False
     if not (ctx.workspace_scope.root / resolved_required_artifact.artifact_path).exists():
         return False

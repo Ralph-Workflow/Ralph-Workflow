@@ -18,7 +18,9 @@ pytestmark = pytest.mark.timeout_seconds(5)
 CHAIN = ("codex/a", "cursor/auto", "opencode/b")
 
 
-def _record(root: Path, attempts: int = 0, backend: _RecordBackend | None = None) -> IntegrationRecord:
+def _record(
+    root: Path, attempts: int = 0, backend: _RecordBackend | None = None
+) -> IntegrationRecord:
     record = IntegrationRecord(
         phase="integrating",
         target="main",

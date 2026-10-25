@@ -197,8 +197,17 @@ def _check_production_assignment(
             target_name = target.attr
         if (
             target_name is not None
-            and _is_forbidden_target_name(target_name)
             and not is_transitional_allowed(rel_path, target_name)
+            and (
+                target_name
+                in (
+                    "consecutive_unproductive",
+                    "total_unproductive",
+                    "_consecutive_unproductive",
+                    "_total_unproductive",
+                )
+                or _is_forbidden_target_name(target_name)
+            )
         ):
             violations.append(
                 SingleOwnerViolation(
@@ -215,18 +224,36 @@ def _check_production_assignment(
 
 
 def _check_production_attribute(node: ast.Attribute, rel_path: str) -> list[SingleOwnerViolation]:
-    if _is_forbidden_target_name(node.attr) and not is_transitional_allowed(rel_path, node.attr):
-        return [
-            SingleOwnerViolation(
-                path=rel_path,
-                line=node.lineno,
-                rule="production_streak_counter_state",
-                detail=(
-                    f"Access to competing retry cap or health counter attribute '{node.attr}' "
-                    "outside AgentFailureLedger."
-                ),
-            )
-        ]
+    if not is_transitional_allowed(rel_path, node.attr):
+        if node.attr in (
+            "consecutive_unproductive",
+            "total_unproductive",
+            "_consecutive_unproductive",
+            "_total_unproductive",
+        ) and _is_ledger_receiver(node.value):
+            return [
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule="production_streak_counter_state",
+                    detail=(
+                        f"Access to ledger counter attribute '{node.attr}' "
+                        "outside AgentFailureLedger."
+                    ),
+                )
+            ]
+        if _is_forbidden_target_name(node.attr):
+            return [
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule="production_streak_counter_state",
+                    detail=(
+                        f"Access to competing retry cap or health counter attribute '{node.attr}' "
+                        "outside AgentFailureLedger."
+                    ),
+                )
+            ]
     return []
 
 
@@ -292,6 +319,26 @@ def _check_production_import(
     return violations
 
 
+def _check_production_subscript(node: ast.Subscript, rel_path: str) -> list[SingleOwnerViolation]:
+    if (
+        isinstance(node.slice, ast.Constant)
+        and isinstance(node.slice.value, str)
+        and node.slice.value in ("consecutive_unproductive", "total_unproductive")
+    ):
+        return [
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="production_streak_counter_state",
+                detail=(
+                    f"Production code accesses ledger counter '{node.slice.value}' via subscript; "
+                    "all failure and retry decisions must use AgentFailureLedger public status."
+                ),
+            )
+        ]
+    return []
+
+
 def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViolation]:
     """Audit a single production module under ralph/recovery/ or ralph/pipeline/."""
     # The single failure ledger is the authoritative owner.
@@ -336,6 +383,8 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
             violations.extend(_check_production_assignment(node, rel_path))
         elif isinstance(node, ast.Attribute):
             violations.extend(_check_production_attribute(node, rel_path))
+        elif isinstance(node, ast.Subscript):
+            violations.extend(_check_production_subscript(node, rel_path))
         elif isinstance(node, ast.Call):
             violations.extend(_check_production_call(node, rel_path))
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -397,6 +446,18 @@ def _is_ledger_receiver(node: ast.AST) -> bool:
 
 def _check_test_attribute(node: ast.Attribute, rel_path: str) -> list[SingleOwnerViolation]:
     attr = node.attr
+    if attr in ("consecutive_unproductive", "total_unproductive"):
+        return [
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="test_counter_access",
+                detail=(
+                    f"Test accesses counter attribute '{attr}'; "
+                    "tests must observe public status, demoted, and behavior rather than internal counters."
+                ),
+            )
+        ]
     if _is_forbidden_target_name(attr) and not is_transitional_allowed(rel_path, attr):
         return [
             SingleOwnerViolation(
@@ -426,20 +487,27 @@ def _check_test_attribute(node: ast.Attribute, rel_path: str) -> list[SingleOwne
 
 
 def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation]:
-    violations: list[SingleOwnerViolation] = [
-        SingleOwnerViolation(
-            path=rel_path,
-            line=node.lineno,
-            rule="test_deleted_tracker_access",
-            detail=f"Test passes competing tracker/counter keyword '{kw.arg}'.",
-        )
-        for kw in node.keywords
-        if (
-            kw.arg
-            and _is_forbidden_target_name(kw.arg)
-            and not is_transitional_allowed(rel_path, kw.arg)
-        )
-    ]
+    violations: list[SingleOwnerViolation] = []
+    for kw in node.keywords:
+        if kw.arg and not is_transitional_allowed(rel_path, kw.arg):
+            if kw.arg in ("consecutive_unproductive", "total_unproductive"):
+                violations.append(
+                    SingleOwnerViolation(
+                        path=rel_path,
+                        line=node.lineno,
+                        rule="test_counter_access",
+                        detail=f"Test passes ledger counter keyword argument '{kw.arg}'.",
+                    )
+                )
+            elif _is_forbidden_target_name(kw.arg):
+                violations.append(
+                    SingleOwnerViolation(
+                        path=rel_path,
+                        line=node.lineno,
+                        rule="test_deleted_tracker_access",
+                        detail=f"Test passes competing tracker/counter keyword '{kw.arg}'.",
+                    )
+                )
 
     if not (
         isinstance(node.func, ast.Name)
@@ -451,7 +519,16 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
         return violations
 
     arg_val = node.args[1].value
-    if _is_forbidden_target_name(arg_val) and not is_transitional_allowed(rel_path, arg_val):
+    if arg_val in ("consecutive_unproductive", "total_unproductive"):
+        violations.append(
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="test_counter_access",
+                detail=f"Test accesses ledger counter attribute '{arg_val}' via getattr.",
+            )
+        )
+    elif _is_forbidden_target_name(arg_val) and not is_transitional_allowed(rel_path, arg_val):
         violations.append(
             SingleOwnerViolation(
                 path=rel_path,
@@ -543,8 +620,59 @@ def _violation_sort_key(violation: SingleOwnerViolation) -> tuple[str, int]:
     return (violation.path, violation.line)
 
 
+def verify_counter_access_detection() -> None:
+    """Verify that AST audit detects direct counter coupling in test and production sources.
+
+    Ensures an audit negative verification confirms that direct counter coupling
+    and competing counter declarations are detected and enforced.
+    """
+    # Negative test 1: test asserting on outcome.consecutive_unproductive
+    src_test_attr = """
+def test_sample(ledger, fact):
+    outcome = ledger.record(fact)
+    assert outcome.consecutive_unproductive == 1
+"""
+    v1 = audit_test_source("tests/recovery/test_sample.py", src_test_attr)
+    assert any(
+        v.rule == "test_counter_access" and "consecutive_unproductive" in v.detail for v in v1
+    ), f"Expected test_counter_access violation for consecutive_unproductive, got: {v1}"
+
+    # Negative test 2: test asserting on outcome.total_unproductive
+    src_test_total = """
+def test_sample(ledger, fact):
+    outcome = ledger.record(fact)
+    assert outcome.total_unproductive == 1
+"""
+    v2 = audit_test_source("tests/recovery/test_sample.py", src_test_total)
+    assert any(v.rule == "test_counter_access" and "total_unproductive" in v.detail for v in v2), (
+        f"Expected test_counter_access violation for total_unproductive, got: {v2}"
+    )
+
+    # Negative test 3: non-ledger production code declaring counter state
+    src_prod_decl = """
+class Worker:
+    def __init__(self):
+        self.consecutive_unproductive = 0
+"""
+    v3 = audit_production_source("ralph/pipeline/worker.py", src_prod_decl)
+    assert any("consecutive_unproductive" in v.detail for v in v3), (
+        f"Expected violation for non-ledger counter declaration, got: {v3}"
+    )
+
+    # Negative test 4: non-ledger production code accessing ledger counter directly
+    src_prod_attr = """
+def check(ledger):
+    return ledger.consecutive_unproductive > 0
+"""
+    v4 = audit_production_source("ralph/pipeline/worker.py", src_prod_attr)
+    assert any("consecutive_unproductive" in v.detail for v in v4), (
+        f"Expected violation for non-ledger counter access, got: {v4}"
+    )
+
+
 def audit_single_owner(repo_root: Path) -> list[SingleOwnerViolation]:
     """Scan production and test subtrees for single-owner failure ledger violations."""
+    verify_counter_access_detection()
     violations: list[SingleOwnerViolation] = []
 
     # 1. Scan production subtrees: ralph/recovery and ralph/pipeline

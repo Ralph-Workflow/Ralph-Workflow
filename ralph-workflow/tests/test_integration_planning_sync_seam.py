@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.pipeline import _integration_owner_seam, integration_director
+from ralph.pipeline import integration_director, integration_owner_seam
 from ralph.pipeline._integration_action import IntegrationAction
 from ralph.pipeline._integration_owner_seam import decide_planning_sync
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
@@ -110,7 +110,7 @@ def _install(
 
     monkeypatch.setattr(integration_director, "IntegrationDirector", _factory)
     monkeypatch.setattr(
-        _integration_owner_seam,
+        integration_owner_seam,
         "read_worktree_porcelain",
         lambda _root: Reading.known(porcelain),
     )
@@ -205,7 +205,7 @@ def test_unknown_probe_holds_planning_without_a_verdict_guess(
     observation = _observation(worktree=WorktreeState.UNKNOWN)
     _install(monkeypatch, tmp_path, observation, " M src/app.py\n")
     monkeypatch.setattr(
-        _integration_owner_seam,
+        integration_owner_seam,
         "read_worktree_porcelain",
         lambda _root: Reading.unknown("git status timed out"),
     )
@@ -294,7 +294,7 @@ def test_configured_target_reaches_the_observation(
 
     monkeypatch.setattr(integration_director, "IntegrationDirector", _factory)
     monkeypatch.setattr(
-        _integration_owner_seam,
+        integration_owner_seam,
         "read_worktree_porcelain",
         lambda _root: Reading.known(""),
     )

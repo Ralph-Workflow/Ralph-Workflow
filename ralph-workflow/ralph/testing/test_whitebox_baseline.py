@@ -602,6 +602,7 @@ tests/test_integration_obstruction_real_git.py|1,2,1
 tests/test_integration_owner.py|0,1,0
 tests/test_integration_owner_config.py|0,4,0
 tests/test_integration_phase_proof.py|0,1,3
+tests/test_integration_planning_sync_seam.py|0,2,0
 tests/test_integration_public_entry_trace.py|6,1,0
 tests/test_integration_record_legacy_migration.py|0,2,0
 tests/test_integration_remote_ops.py|0,2,0
@@ -839,7 +840,7 @@ tests/test_smoke_capability_breaks_when_supported_but_unrendered.py|0,0,4
 tests/test_smoke_ccs.py|0,1,2
 tests/test_smoke_multimodal_end_to_end.py|1,0,1
 tests/test_smoke_plumbing_uses_canonical_submit.py|0,3,0
-tests/test_stale_resolution_replay.py|1,2,0
+tests/test_stale_resolution_replay.py|2,3,0
 tests/test_startup_timeouts_invariants.py|7,18,14
 tests/test_state_db_schema_guard.py|0,0,4
 tests/test_strategy_escalation_e2e.py|2,0,2

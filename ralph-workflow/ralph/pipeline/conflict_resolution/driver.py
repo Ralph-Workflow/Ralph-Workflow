@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -23,6 +23,9 @@ from ralph.pipeline.conflict_resolution._driver_events import (
 )
 from ralph.pipeline.conflict_resolution._driver_events import (
     emit_success as _emit_success,
+)
+from ralph.pipeline.conflict_resolution._driver_events import (
+    render_round_prompt as _render_round_prompt,
 )
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
@@ -46,7 +49,9 @@ from ralph.pipeline.conflict_resolution.graph import (
     PHASE_RESOLUTION,
 )
 from ralph.pipeline.conflict_resolution.invoker import default_invoker as _default_invoker
-from ralph.pipeline.conflict_resolution.operator_cap import MonotonicClock
+from ralph.pipeline.conflict_resolution.operator_cap import (
+    MonotonicClock,
+)
 from ralph.pipeline.conflict_resolution.operator_cap import (
     operator_cap_expired as _operator_cap_expired,
 )
@@ -153,6 +158,7 @@ __all__ = [
     "conflict_chain_max_retries",
     "emit_conflict_phase_line",
     "invoke_resolution_agent",
+    "render_conflict_prompt",
     "run_conflict_resolution_outcome",
     "run_conflict_resolution_pipeline",
     "run_rebase_conflict_resolution_outcome",
@@ -342,46 +348,6 @@ def _prepare_conflicted_paths(
     return (), True, ()
 
 
-def _render_round_prompt(
-    root: Path,
-    target: str,
-    conflicted: Sequence[str],
-    round_index: int,
-    round_cap: int,
-    session: ResolutionSession,
-    stop: RebaseStop | None,
-    strategy_history: tuple[str, ...],
-) -> Path | None:
-    """Render one round without breaking legacy spy seams on empty history."""
-    # Keep legacy monkeypatched render seams callable until history exists.
-    if strategy_history:
-        return render_conflict_prompt(
-            root=root,
-            target=target,
-            conflicted_paths=conflicted,
-            round_index=round_index,
-            round_cap=round_cap,
-            surviving_marker_paths=() if round_index == 1 else session.unresolved_paths,
-            replaying_commit_sha=stop.sha if stop is not None else None,
-            replaying_commit_subject=stop.subject if stop is not None else None,
-            stop_index=stop.stop_index if stop is not None else None,
-            stop_cap=stop.stop_cap if stop is not None else None,
-            strategy_history=strategy_history,
-        )
-    return render_conflict_prompt(
-        root=root,
-        target=target,
-        conflicted_paths=conflicted,
-        round_index=round_index,
-        round_cap=round_cap,
-        surviving_marker_paths=() if round_index == 1 else session.unresolved_paths,
-        replaying_commit_sha=stop.sha if stop is not None else None,
-        replaying_commit_subject=stop.subject if stop is not None else None,
-        stop_index=stop.stop_index if stop is not None else None,
-        stop_cap=stop.stop_cap if stop is not None else None,
-    )
-
-
 def _evaluate_round_attempt(
     attempt: RoundAttempt,
     session: ResolutionSession,
@@ -458,6 +424,16 @@ def _run_rounds(
     if pipeline_deps is not None and session.unavailability_store is None:
         session.unavailability_store = pipeline_deps.unavailability_store
     ensure_session_controller(session, policy_bundle, pipeline_deps=pipeline_deps)
+    if session.workspace is None and workspace_scope is not None:
+        session.workspace = getattr(workspace_scope, "workspace", None)
+    if session.workspace_probe is None:
+        rc = session.recovery_controller
+        if rc is not None and rc.workspace_probe is not None:
+            session.workspace_probe = rc.workspace_probe
+        else:
+            from ralph.workspace.probe import DefaultWorkspaceChangeProbe
+
+            session.workspace_probe = DefaultWorkspaceChangeProbe()
     prepared, early, decision_paths = _prepare_conflicted_paths(root, stop, session, display)
     if early is not None:
         return early
@@ -501,21 +477,21 @@ def _run_rounds(
         path for path in present_at_entry if not _is_effectively_empty(root / path)
     )
     resolved = _execute_round_loop(
-        root=root,
-        target=target,
-        runner=runner,
-        candidates=candidates,
-        session=session,
-        display=display,
-        conflicted=conflicted,
-        decision_paths=decision_paths,
-        present_at_entry=present_at_entry,
-        substantive_at_entry=substantive_at_entry,
-        round_cap=round_cap,
-        clock=clock,
-        stop=stop,
-        strategy_history=strategy_history,
-        policy_bundle=policy_bundle,
+        root,
+        target,
+        runner,
+        candidates,
+        session,
+        display,
+        conflicted,
+        decision_paths,
+        present_at_entry,
+        substantive_at_entry,
+        round_cap,
+        clock,
+        stop,
+        strategy_history,
+        policy_bundle,
     )
     if resolved:
         return True
@@ -533,7 +509,6 @@ def _run_rounds(
 
 
 def _execute_round_loop(
-    *,
     root: Path,
     target: str,
     runner: ResolutionInvoker,
@@ -570,6 +545,16 @@ def _execute_round_loop(
                 return False
             attempt_started = clock()
             _reset_round_reporting(session)
+
+            def _unresolved() -> tuple[str, ...]:
+                return _paths_still_unresolved(
+                    root,
+                    conflicted,
+                    decision_paths,
+                    present_before=present_at_entry,
+                    substantive=substantive_at_entry,
+                )
+
             attempt = _run_one_round(
                 runner,
                 candidates,
@@ -578,24 +563,9 @@ def _execute_round_loop(
                 display,
                 session,
                 policy_bundle,
-                worktree_resolved=lambda: (
-                    not decision_paths
-                    and not _paths_still_unresolved(
-                        root,
-                        conflicted,
-                        decision_paths,
-                        present_before=present_at_entry,
-                        substantive=substantive_at_entry,
-                    )
-                ),
+                worktree_resolved=lambda: not decision_paths and not _unresolved(),
             )
-            session.unresolved_paths = _paths_still_unresolved(
-                root,
-                conflicted,
-                decision_paths,
-                present_before=present_at_entry,
-                substantive=substantive_at_entry,
-            )
+            session.unresolved_paths = _unresolved()
             action = _evaluate_round_attempt(
                 attempt,
                 session,
@@ -632,11 +602,6 @@ def _record_unconfigured_resolver(
     conflicted: tuple[str, ...],
     display: ParallelDisplay | None,
 ) -> None:
-    """Type an exit that would otherwise carry no reason at all.
-
-    Without it the caller records "conflict resolution failed" for a
-    resolution that was never configured to happen.
-    """
     session.terminal_reason = ResolutionTerminationReason.NO_RESOLVER_CONFIGURED
     session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     session.unresolved_paths = conflicted
@@ -649,28 +614,26 @@ def _handle_dead_candidate_chain(
     conflicted: tuple[str, ...],
     display: ParallelDisplay | None,
 ) -> None:
-    """Record that every candidate is dead and cannot spend a round."""
-    session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
+    if session.terminal_reason is None:
+        session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
     session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     session.unresolved_paths = session.unresolved_paths or conflicted
     emit_conflict_phase_line(
-        display,
-        "every resolution candidate is a dead tool surface; no further round can spend one",
+        display, "every resolution candidate is a dead tool surface; no further round can spend one"
     )
 
 
 def _escalate_unreachable_remainder(
     session: ResolutionSession, display: ParallelDisplay | None
 ) -> bool:
-    """Report paths no resolver can repair after the rest were resolved."""
     if not session.out_of_reach_paths:
         return False
     session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
     session.unresolved_paths = session.out_of_reach_paths
+    paths = ", ".join(session.out_of_reach_paths)
     emit_conflict_phase_line(
         display,
-        "the resolvable conflicts are repaired, but no resolver can repair "
-        + ", ".join(session.out_of_reach_paths),
+        f"the resolvable conflicts are repaired, but no resolver can repair {paths}",
     )
     return True
 
@@ -697,22 +660,24 @@ def _paths_still_unresolved(
     # A path both sides wrote content into, now empty, is not a
     # resolution: a truncating resolver dropped BOTH sides, and with the
     # markers gone the scan had nothing left to object to.
-    emptied = [
+    emptied = (
         path
         for path in conflicted
         if path in substantive and path not in marked and _is_effectively_empty(root / path)
-    ]
-    vanished = [
+    )
+    vanished = (
         path
         for path in conflicted
         if path in present_before
         and path not in decisions
         and path not in marked
         and not (root / path).exists()
-    ]
+    )
+    seen: set[str] = set()
     unresolved: list[str] = []
     for path in (*marked, *emptied, *vanished):
-        if path not in unresolved:
+        if path not in seen:
+            seen.add(path)
             unresolved.append(path)
     return tuple(unresolved)
 
@@ -743,6 +708,8 @@ def _handle_candidate_failure(
     candidates: tuple[str, ...],
     offset: int,
     policy_bundle: PolicyBundle,
+    *,
+    workspace_changed: bool = False,
 ) -> None:
     if not isinstance(invoker_result, ResolutionOutcome):
         fault = classify_attempt_fault(session.last_attempt_evidence)
@@ -766,6 +733,7 @@ def _handle_candidate_failure(
             session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
             and session.terminal_reason != ResolutionTerminationReason.ATTEMPT_FAILED
         ),
+        workspace_changed=workspace_changed,
     )
 
 
@@ -782,20 +750,24 @@ def _execute_single_candidate(
     session.terminal_reason = None
     session.charge_conflict_budget = True
     invoker_result: ResolutionOutcome | bool = False
+    probe = session.workspace_probe
+    workspace = session.workspace
+    if probe is not None and workspace is not None:
+        probe.observe_before(PHASE_RESOLUTION, workspace)
     try:
         invoker_result = runner(agent_name, prompt_path, round_index)
-        if isinstance(invoker_result, ResolutionOutcome):
-            if invoker_result.succeeded:
-                session.chain_cursor = 0
-                session.last_failure_cause = ResolutionFailureCause.NONE
-                _reset_conflict_success(session, agent_name)
-                return True, invoker_result
-            _record_invoker_outcome(session, invoker_result)
-        elif invoker_result:
+        succeeded = (
+            invoker_result.succeeded
+            if isinstance(invoker_result, ResolutionOutcome)
+            else bool(invoker_result)
+        )
+        if succeeded:
             session.chain_cursor = 0
             session.last_failure_cause = ResolutionFailureCause.NONE
             _reset_conflict_success(session, agent_name)
             return True, invoker_result
+        if isinstance(invoker_result, ResolutionOutcome):
+            _record_invoker_outcome(session, invoker_result)
     except Exception as exc:
         logger.warning(
             "conflict_resolution: round {} with '{}' raised: {}", round_index, agent_name, exc
@@ -810,11 +782,22 @@ def _execute_single_candidate(
             failed_index=offset,
             policy_bundle=policy_bundle,
             bench=True,
+            workspace_changed=bool(
+                probe and workspace and probe.has_changed(PHASE_RESOLUTION, workspace)
+            ),
         )
         return False, False
     else:
         _handle_candidate_failure(
-            session, agent_name, invoker_result, candidates, offset, policy_bundle
+            session,
+            agent_name,
+            invoker_result,
+            candidates,
+            offset,
+            policy_bundle,
+            workspace_changed=bool(
+                probe and workspace and probe.has_changed(PHASE_RESOLUTION, workspace)
+            ),
         )
         return False, invoker_result
 
@@ -833,15 +816,15 @@ def _check_worktree_repair(
     session.unresolved_paths = ()
     if (
         select_resolution_action(session, round_index, attempt_cap)
-        == ResolutionAction.ACCEPT_WORKTREE_REPAIR
+        != ResolutionAction.ACCEPT_WORKTREE_REPAIR
     ):
-        emit_conflict_phase_line(
-            display,
-            f"round {round_index}: {agent_name} ended badly but the worktree shows "
-            "every marker repaired; not spending another candidate",
-        )
-        return True
-    return False
+        return False
+    emit_conflict_phase_line(
+        display,
+        f"round {round_index}: {agent_name} ended badly but the worktree shows "
+        "every marker repaired; not spending another candidate",
+    )
+    return True
 
 
 def _run_one_round(
@@ -960,26 +943,19 @@ def _preferred_conflict_candidate(
     delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, eligible)
     if delay <= 0:
         return None
-    # Wait out the earliest cooldown ONCE, then go on with the candidate that
-    # was closest to returning. Looping until the ledger says "available" would
-    # spin forever whenever the sleep does not actually advance the clock.
+    # Wait out the earliest cooldown ONCE, then check controller again.
     _sleep_seconds(delay / 1000.0)
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, eligible)
     if selection.agent is not None:
         return candidates.index(selection.agent)
-
-    def remaining_wait_ms(name: str) -> int:
-        return controller.earliest_available_wait_ms(PHASE_RESOLUTION, [name])
-
-    return candidates.index(min(eligible, key=remaining_wait_ms))
+    return None
 
 
 def _reset_conflict_success(session: ResolutionSession, agent: str) -> None:
     """Reset only the successful resolver's cooldown history."""
-    from ralph.pipeline.conflict_resolution.resolver_health import clear_resolver
-    from ralph.recovery.controller import RecoveryController
+    if session.recovery_controller is not None:
+        from ralph.pipeline.conflict_resolution.resolver_health import clear_resolver
 
-    if isinstance(session.recovery_controller, RecoveryController):
         clear_resolver(session.recovery_controller, agent)
 
 
@@ -988,8 +964,7 @@ def _sleep_conflict_retry(session: ResolutionSession, policy_bundle: PolicyBundl
     delay_ms = session.last_retry_delay_ms
     if delay_ms <= 0:
         drain = policy_bundle.agents.agent_drains.get(PHASE_RESOLUTION)
-        chain = policy_bundle.agents.agent_chains.get(drain.chain) if drain is not None else None
-        if chain is not None:
-            delay_ms = chain.retry_delay_ms
+        chain = policy_bundle.agents.agent_chains.get(drain.chain) if drain else None
+        delay_ms = chain.retry_delay_ms if chain else 0
     if delay_ms > 0:
         _sleep_seconds(delay_ms / 1000.0)

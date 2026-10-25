@@ -479,9 +479,7 @@ def _recover_pending_merge_preflight(
         return recover_target_resolution(
             root, record, config, conflict_resolver, rebase_stop_resolver
         )
-    if record.integrated_feature_sha is None and _recorded_work_is_verifiably_landed(
-        root, record
-    ):
+    if record.integrated_feature_sha is None and _recorded_work_is_verifiably_landed(root, record):
         # Git outranks the record (root cause 2): a record with no
         # verified feature SHA whose work Git shows contained in the
         # target has no landing left to prove.  Retaining here repeats

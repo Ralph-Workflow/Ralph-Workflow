@@ -26,7 +26,7 @@ def test_initial_status_is_eligible() -> None:
     assert ledger.is_available("development", "agent-a")
 
 
-def test_unproductive_attempts_increment_consecutive_and_total() -> None:
+def test_unproductive_attempts_remain_eligible_until_consecutive_limit() -> None:
     clock = FakeClock(start=100.0)
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3, total_limit=9)
 
@@ -40,8 +40,7 @@ def test_unproductive_attempts_increment_consecutive_and_total() -> None:
     assert isinstance(outcome1.status, Eligible)
     assert not outcome1.demoted
     assert outcome1.reason is None
-    assert outcome1.consecutive_unproductive == 1
-    assert outcome1.total_unproductive == 1
+    assert ledger.is_available("development", "agent-a")
 
     fact2 = AttemptFact(
         phase="development",
@@ -51,8 +50,15 @@ def test_unproductive_attempts_increment_consecutive_and_total() -> None:
     )
     outcome2 = ledger.record(fact2)
     assert isinstance(outcome2.status, Eligible)
-    assert outcome2.consecutive_unproductive == 2
-    assert outcome2.total_unproductive == 2
+    assert not outcome2.demoted
+    assert outcome2.reason is None
+    assert ledger.is_available("development", "agent-a")
+
+    # 3rd failure reaches consecutive limit -> demoted to Cooldown
+    outcome3 = ledger.record(fact2)
+    assert isinstance(outcome3.status, Cooldown)
+    assert outcome3.demoted
+    assert not ledger.is_available("development", "agent-a")
 
 
 def test_consecutive_limit_triggers_cooldown() -> None:
@@ -86,8 +92,6 @@ def test_consecutive_limit_triggers_cooldown() -> None:
     assert isinstance(outcome.status, Cooldown)
     assert outcome.demoted
     assert outcome.reason == "consecutive_unproductive_limit_reached"
-    assert outcome.consecutive_unproductive == 3
-    assert outcome.total_unproductive == 3
     # 10.0 s + 60.0 s = 70.0 s -> 70000 ms
     assert outcome.status.until_ms == 70000
     assert outcome.status.reason == "consecutive_unproductive_limit_reached"
@@ -130,8 +134,8 @@ def test_cooldown_expiry_resets_consecutive_and_returns_eligible() -> None:
     assert isinstance(status, Eligible)
     assert ledger.is_available("development", "agent-a")
 
-    # Next unproductive attempt starts consecutive count at 1 (fresh count)
-    outcome = ledger.record(
+    # Next unproductive attempt after expiry: agent starts a fresh consecutive streak
+    outcome1 = ledger.record(
         AttemptFact(
             phase="development",
             agent="agent-a",
@@ -139,10 +143,32 @@ def test_cooldown_expiry_resets_consecutive_and_returns_eligible() -> None:
             workspace_changed=False,
         )
     )
-    assert isinstance(outcome.status, Eligible)
-    assert outcome.consecutive_unproductive == 1
-    # Total count continues from previous attempts (3 + 1 = 4)
-    assert outcome.total_unproductive == 4
+    assert isinstance(outcome1.status, Eligible)
+    assert not outcome1.demoted
+    assert ledger.is_available("development", "agent-a")
+
+    outcome2 = ledger.record(
+        AttemptFact(
+            phase="development",
+            agent="agent-a",
+            artifact_valid=False,
+            workspace_changed=False,
+        )
+    )
+    assert isinstance(outcome2.status, Eligible)
+    assert not outcome2.demoted
+
+    # 3rd consecutive attempt triggers cooldown again, proving streak started fresh at 1
+    outcome3 = ledger.record(
+        AttemptFact(
+            phase="development",
+            agent="agent-a",
+            artifact_valid=False,
+            workspace_changed=False,
+        )
+    )
+    assert isinstance(outcome3.status, Cooldown)
+    assert outcome3.demoted
 
 
 def test_growing_backoff_on_subsequent_cooldowns() -> None:
@@ -187,30 +213,43 @@ def test_workspace_changed_resets_consecutive_count() -> None:
     clock = FakeClock(start=0.0)
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3, total_limit=9)
 
-    # 2 failures without workspace change
-    ledger.record(
+    # 2 failures without workspace change: remains eligible
+    outcome1 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
     )
+    assert isinstance(outcome1.status, Eligible)
+    assert not outcome1.demoted
     outcome2 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
     )
-    assert outcome2.consecutive_unproductive == 2
-    assert outcome2.total_unproductive == 2
+    assert isinstance(outcome2.status, Eligible)
+    assert not outcome2.demoted
 
-    # 3rd failure with workspace change -> resets consecutive count to 0, increments total
+    # 3rd failure with workspace change -> resets consecutive count, agent remains eligible
+    # (if consecutive had not reset, attempt 3 would have triggered cooldown)
     outcome3 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=True)
     )
     assert isinstance(outcome3.status, Eligible)
-    assert outcome3.consecutive_unproductive == 0
-    assert outcome3.total_unproductive == 3
+    assert not outcome3.demoted
+    assert ledger.is_available("dev", "a")
 
-    # Next failure without workspace change starts consecutive count at 1
+    # 2 more failures without workspace change: remains eligible
     outcome4 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
     )
-    assert outcome4.consecutive_unproductive == 1
-    assert outcome4.total_unproductive == 4
+    assert isinstance(outcome4.status, Eligible)
+    outcome5 = ledger.record(
+        AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
+    )
+    assert isinstance(outcome5.status, Eligible)
+
+    # 3rd failure without workspace change (attempt 6 overall) triggers cooldown
+    outcome6 = ledger.record(
+        AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
+    )
+    assert isinstance(outcome6.status, Cooldown)
+    assert outcome6.demoted
 
 
 def test_total_limit_demotes_agent_to_spent() -> None:
@@ -218,13 +257,13 @@ def test_total_limit_demotes_agent_to_spent() -> None:
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3, total_limit=9)
 
     # 8 failures with workspace changed: not demoted after 3, remains eligible
-    for i in range(1, 9):
+    for _ in range(8):
         outcome = ledger.record(
             AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=True)
         )
         assert isinstance(outcome.status, Eligible)
-        assert outcome.consecutive_unproductive == 0
-        assert outcome.total_unproductive == i
+        assert not outcome.demoted
+        assert ledger.is_available("dev", "a")
 
     # 9th failure reaches total_limit: demoted to Spent
     outcome9 = ledger.record(
@@ -234,7 +273,6 @@ def test_total_limit_demotes_agent_to_spent() -> None:
     assert outcome9.demoted
     assert outcome9.reason == "total_unproductive_limit_reached"
     assert outcome9.status.reason == "total_unproductive_limit_reached"
-    assert outcome9.total_unproductive == 9
 
     # Status query returns Spent
     status = ledger.status("dev", "a")
@@ -276,8 +314,9 @@ def test_total_limit_reached_on_non_workspace_change() -> None:
         AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
     )
     assert isinstance(outcome.status, Spent)
+    assert outcome.demoted
     assert outcome.reason == "total_unproductive_limit_reached"
-    assert outcome.total_unproductive == 9
+    assert not ledger.is_available("dev", "a")
 
 
 def test_artifact_valid_clears_all_history() -> None:
@@ -307,39 +346,49 @@ def test_artifact_valid_clears_all_history() -> None:
         )
     )
     assert isinstance(outcome.status, Eligible)
-    assert outcome.consecutive_unproductive == 0
-    assert outcome.total_unproductive == 0
     assert not outcome.demoted
 
-    # Verify history is completely fresh: next 2 failures leave agent eligible
+    # Verify history is completely fresh: next 2 failures leave agent eligible, 3rd demotes to Cooldown
     outcome1 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
     )
-    assert outcome1.consecutive_unproductive == 1
-    assert outcome1.total_unproductive == 1
+    assert isinstance(outcome1.status, Eligible)
+    assert not outcome1.demoted
+    outcome2 = ledger.record(
+        AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
+    )
+    assert isinstance(outcome2.status, Eligible)
+    assert not outcome2.demoted
+    outcome3 = ledger.record(
+        AttemptFact(phase="dev", agent="a", artifact_valid=False, workspace_changed=False)
+    )
+    assert isinstance(outcome3.status, Cooldown)
+    assert outcome3.demoted
 
 
 def test_free_retry_category_treated_identically() -> None:
     clock = FakeClock(start=0.0)
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3, total_limit=9)
 
-    # Free retry category attempts still count as unproductive
+    # Free retry category attempts still count as unproductive and demote after consecutive_limit
     o1 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, free_retry_category=True)
     )
-    assert o1.consecutive_unproductive == 1
-    assert o1.total_unproductive == 1
+    assert isinstance(o1.status, Eligible)
+    assert not o1.demoted
 
     o2 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, free_retry_category=False)
     )
-    assert o2.consecutive_unproductive == 2
-    assert o2.total_unproductive == 2
+    assert isinstance(o2.status, Eligible)
+    assert not o2.demoted
 
     o3 = ledger.record(
         AttemptFact(phase="dev", agent="a", artifact_valid=False, free_retry_category=True)
     )
     assert isinstance(o3.status, Cooldown)
+    assert o3.demoted
+    assert o3.reason == "consecutive_unproductive_limit_reached"
 
 
 def test_independent_tracking_per_phase_and_agent() -> None:
@@ -466,24 +515,22 @@ def test_invalid_init_arguments_raise_value_error() -> None:
 
 
 def test_attempt_outcome_properties() -> None:
-    eligible_outcome = AttemptOutcome(
-        status=Eligible(), consecutive_unproductive=0, total_unproductive=0
-    )
+    eligible_outcome = AttemptOutcome(Eligible(), 0, 0)
     assert not eligible_outcome.demoted
     assert eligible_outcome.reason is None
 
     cooldown_outcome = AttemptOutcome(
-        status=Cooldown(until_ms=1000, reason="test_reason"),
-        consecutive_unproductive=3,
-        total_unproductive=3,
+        Cooldown(until_ms=1000, reason="test_reason"),
+        3,
+        3,
     )
     assert cooldown_outcome.demoted
     assert cooldown_outcome.reason == "test_reason"
 
     spent_outcome = AttemptOutcome(
-        status=Spent(reason="spent_reason"),
-        consecutive_unproductive=0,
-        total_unproductive=9,
+        Spent(reason="spent_reason"),
+        0,
+        9,
     )
     assert spent_outcome.demoted
     assert spent_outcome.reason == "spent_reason"

@@ -104,7 +104,9 @@ def _terminal_state_refusal(root: Path) -> str | None:
     try:
         post_attempt_verify(root, expected_head_sha=None, owns_resolution=False)
     except TerminalStateViolationError as exc:
-        return f"retained integration completion unproven; Git still shows an operation marker: {exc}"
+        return (
+            f"retained integration completion unproven; Git still shows an operation marker: {exc}"
+        )
     return None
 
 
@@ -129,6 +131,9 @@ def _promote_completed_resolution(root: Path, record: IntegrationRecord) -> Inte
         return legacy.record
     replay = _stale_replay_record(root, current)
     return current if replay is None else replay
+
+
+promote_completed_resolution = _promote_completed_resolution
 
 
 def _stale_replay_record(root: Path, record: IntegrationRecord) -> IntegrationRecord | None:

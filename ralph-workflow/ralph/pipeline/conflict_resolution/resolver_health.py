@@ -25,6 +25,8 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.recovery.agent_failure_ledger import AttemptFact
 from ralph.recovery.failure_category import FailureCategory
@@ -34,7 +36,12 @@ if TYPE_CHECKING:
 
     from ralph.recovery.controller import RecoveryController
 
-__all__ = ["ResolverChoice", "bench_resolver", "choose_resolver", "clear_resolver"]
+__all__ = [
+    "ResolverChoice",
+    "bench_resolver",
+    "choose_resolver",
+    "clear_resolver",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,10 +88,27 @@ def _record_resolver_fact(
     )
     try:
         ledger = controller.ledger
-        if ledger is not None:
-            ledger.record(fact)
-    except (AttributeError, Exception):
-        pass
+    except AttributeError:
+        ledger = None
+    if ledger is None:
+        logger.error(
+            "Cannot record resolver fact: RecoveryController has no ledger (agent='{}', phase='{}')",
+            agent,
+            PHASE_RESOLUTION,
+        )
+        raise RuntimeError(
+            f"Cannot record resolver fact: RecoveryController has no ledger for agent '{agent}'"
+        )
+    try:
+        ledger.record(fact)
+    except Exception as exc:
+        logger.error(
+            "Failed to record resolver fact for agent '{}' in phase '{}': {}",
+            agent,
+            PHASE_RESOLUTION,
+            exc,
+        )
+        raise RuntimeError(f"Failed to record resolver fact for agent '{agent}': {exc}") from exc
 
 
 def bench_resolver(
