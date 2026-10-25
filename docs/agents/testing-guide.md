@@ -699,7 +699,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/mcp/test_respawn_no_discovery.py` | 0 | 1 | 7 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
 | `tests/mcp/test_root_cause_real_child_bridge.py` | 0 | 9 | 13 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
 | `tests/mcp/test_runtime_blocked_registry_built_surfaces_typed_error.py` | 0 | 3 | 2 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
-| `tests/mcp/test_runtime_blocked_workspace_read_surfaces_typed_error.py` | 1 | 2 | 0 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
+| `tests/mcp/test_runtime_blocked_workspace_read_surfaces_typed_error.py` | 1 | 0 | 0 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
 | `tests/mcp/test_runtime_respawn_precheck.py` | 0 | 1 | 0 | mcp-bridge | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: mcp public-seam unit |
 | `tests/mcp/test_s1_independent_counters_contract.py` | 0 | 2 | 1 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
 | `tests/mcp/test_session_id_persisted_across_respawn.py` | 0 | 1 | 0 | mcp-bridge | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: mcp public-seam unit |

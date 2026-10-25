@@ -440,11 +440,8 @@ def test_recover_incomplete_integration_tries_rebase_first(
             lambda *_args, **_kwargs: record,
         )
         monkeypatch.setattr(
-            "ralph.pipeline.auto_integrate_recovery.decide_integration",
-            lambda *_args, **_kwargs: (
-                IntegrationAction.REINTEGRATE_AGAINST_TARGET,
-                "reintegrate",
-            ),
+            "ralph.pipeline.auto_integrate_recovery.decide_seam_action",
+            lambda *_args, **_kwargs: IntegrationAction.REINTEGRATE_AGAINST_TARGET,
         )
         outcome = recover_incomplete_integration(
             WorkspaceScope(tmp_path),

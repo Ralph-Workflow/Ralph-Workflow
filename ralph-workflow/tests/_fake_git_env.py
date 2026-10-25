@@ -36,6 +36,56 @@ if TYPE_CHECKING:
 STALE_OWNER = "stale"
 LIVE_OWNER = "live"
 
+#: The faults that move the ELAPSED time without moving the monotonic
+#: clock the deadlines are read from: the wall clock jumps, or the host
+#: is suspended and resumed.
+_ELAPSED_TIME_JUMPS: tuple[FaultKind, ...] = (
+    FaultKind.WALL_CLOCK_JUMP,
+    FaultKind.SYSTEM_SUSPEND_RESUME,
+)
+
+#: The catalogue SUB-ROWS the simulated environment can now inject, mapped
+#: to the fault kind that names each of them. The key is the catalogue
+#: text of the sub-row, so the coverage of the failure-mode catalogue is
+#: reviewable against the request without reading the tests.
+SIMULATED_CATALOGUE_ROWS: dict[str, FaultKind] = {
+    "A.3 empty or corrupt loose object": FaultKind.CORRUPT_LOOSE_OBJECT,
+    "A.3 half-written rebase-merge/, MERGE_HEAD and ORIG_HEAD": (
+        FaultKind.HALF_WRITTEN_OPERATION_STATE
+    ),
+    "A.5 fsmonitor hung": FaultKind.FSMONITOR_HUNG,
+    "B.1 quota exceeded": FaultKind.QUOTA_EXCEEDED,
+    "B.1 slow disk": FaultKind.SLOW_DISK,
+    "B.2 system suspend/resume": FaultKind.SYSTEM_SUSPEND_RESUME,
+    "B.3 SIGINT or SIGTERM arriving inside a critical section": (
+        FaultKind.SIGNAL_IN_CRITICAL_SECTION
+    ),
+    "B.4 worktree moved or prunable": FaultKind.WORKTREE_MOVED_OR_PRUNABLE,
+    "B.4 sparse checkout": FaultKind.SPARSE_CHECKOUT,
+    "B.4 submodules": FaultKind.SUBMODULES_PRESENT,
+    "B.4 case-insensitive filesystem": FaultKind.CASE_INSENSITIVE_FILESYSTEM,
+    "C.1 connection reset": FaultKind.REMOTE_CONNECTION_RESET,
+    "C.1 401/403": FaultKind.REMOTE_FORBIDDEN,
+    "C.1 slow but alive fetch": FaultKind.REMOTE_SLOW_FETCH,
+    "C.1 LFS failure": FaultKind.REMOTE_LFS_FAILURE,
+    "C.2 push rejected: protected branch": FaultKind.REMOTE_PUSH_PROTECTED_BRANCH,
+    "C.2 push rejected: server-side hook": FaultKind.REMOTE_PUSH_HOOK_REJECTED,
+    "C.2 push rejected: size limit": FaultKind.REMOTE_PUSH_SIZE_LIMIT,
+    "C.2 remote branch deleted": FaultKind.REMOTE_BRANCH_DELETED,
+    "C.2 remote renamed or repointed": FaultKind.REMOTE_REPOINTED,
+    "C.2 remote repository replaced": FaultKind.REMOTE_REPLACED,
+    "C.3 remote reachable for push but not for fetch": FaultKind.REMOTE_PUSH_ONLY,
+    "D.1 the other worktree is dirty": FaultKind.OTHER_WORKTREE_DIRTY,
+    "D.1 the other worktree is mid-operation": FaultKind.OTHER_WORKTREE_MID_OPERATION,
+    "D.2 branch unborn": FaultKind.BRANCH_UNBORN,
+    "D.2 branch deleted": FaultKind.BRANCH_DELETED,
+    "D.2 HEAD pointing at a ref that does not exist": FaultKind.HEAD_REF_MISSING,
+    "D.2 feature branch renamed": FaultKind.FEATURE_BRANCH_RENAMED,
+    "D.3 record locked by a dead process": FaultKind.RECORD_LOCKED_BY_DEAD_PROCESS,
+    "D.3 record on a different filesystem than the worktree": FaultKind.RECORD_OTHER_FILESYSTEM,
+    "E.1 agent output touches paths outside the conflict": FaultKind.AGENT_OUTSIDE_CONFLICT_PATHS,
+}
+
 
 class SimulatedGitEnvironment:
     """In-memory state and fault-injection controller for integration."""
@@ -147,10 +197,11 @@ class SimulatedGitEnvironment:
             classification = classification_for(fault)
             if classification.effect == "recover":
                 self._apply_recovery(fault)
-            if classification.effect == "defer" and fault is FaultKind.WALL_CLOCK_JUMP:
-                # The wall clock jumps; the monotonic clock the deadlines
-                # are read from does not. The simulated clock moves so the
-                # jump is visible, without any real waiting.
+            if classification.effect == "defer" and fault in _ELAPSED_TIME_JUMPS:
+                # The wall clock jumps, or the host is suspended and
+                # resumed; the monotonic clock the deadlines are read from
+                # does not. The simulated clock moves so the jump is
+                # visible, without any real waiting.
                 self.clock.sleep(3600.0)
         self.recover_stale_locks()
 
@@ -231,6 +282,10 @@ class SimulatedGitEnvironment:
             # A killed Ralph child left a lock behind: the observation
             # finds it, proves the owner is dead and removes it.
             self.leave_stale_lock()
+        elif kind is FaultKind.REF_LOCK_LEFT_BEHIND:
+            # The same for a ref lock: the observation proves the owner
+            # is dead and removes it.
+            self.leave_stale_lock("packed-refs.lock")
         elif kind is FaultKind.HEAD_DETACHED:
             # Ralph's own move of HEAD is never tampering: the observation
             # reattaches HEAD to the feature branch.
@@ -263,6 +318,9 @@ def make_fake_environment(
 
 
 __all__ = [
+    "LIVE_OWNER",
+    "SIMULATED_CATALOGUE_ROWS",
+    "STALE_OWNER",
     "FakeAgentRunner",
     "FakeClock",
     "FakeGitOps",

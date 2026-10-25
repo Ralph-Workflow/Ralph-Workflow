@@ -5,9 +5,10 @@ Decision ownership
 
 The **mutation ladder** -- which integration rung the boundary must climb
 next -- is decided by the single owner
-:func:`ralph.pipeline.integration_owner.decide_integration`. This module
-asks the owner and acts on its verdict; it never re-derives the rung from
-the durable record.
+:func:`ralph.pipeline.integration_owner.decide_integration`, reached through
+the one seam :func:`ralph.pipeline._integration_owner_seam.decide_seam_action`.
+This module asks the seam and acts on its verdict; it never re-derives the
+rung from the durable record.
 
 The **record facts the pure observation table cannot express** stay with
 the seam:
@@ -32,6 +33,7 @@ from typing import TYPE_CHECKING
 from ralph.git.merge import branch_sha
 from ralph.git.operations import get_head_sha
 from ralph.pipeline._integration_action import IntegrationAction
+from ralph.pipeline._integration_owner_seam import decide_seam_action
 from ralph.pipeline.auto_integrate_record import (
     MARK_REINTEGRATE_PENDING,
     START_INTEGRATING,
@@ -40,8 +42,7 @@ from ralph.pipeline.auto_integrate_record import (
     read_record,
     write_record,
 )
-from ralph.pipeline.integration_director import DEFAULT_REMOTE, IntegrationDirector
-from ralph.pipeline.integration_owner import decide_integration
+from ralph.pipeline.integration_director import DEFAULT_REMOTE
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -116,8 +117,9 @@ def scheduled_landing(root: Path, target: str) -> IntegrationRecord | None:
     re-integration intent, the target and the pre-integration feature SHA
     -- is a record fact and stays with the seam. The *decision* whether
     the boundary may act on that record belongs to the single owner: this
-    function asks :func:`ralph.pipeline.integration_owner.decide_integration`
-    and adopts the record only for the actions that keep the integration
+    function asks through the one seam
+    (:func:`ralph.pipeline._integration_owner_seam.decide_seam_action`) and
+    adopts the record only for the actions that keep the integration
     owed (see :data:`_ADOPTED_ACTIONS`).
 
     Returning ``None`` leaves the durable record on disk; the caller then
@@ -137,17 +139,13 @@ def scheduled_landing(root: Path, target: str) -> IntegrationRecord | None:
         return None
     if get_head_sha(root) != record.pre_feature_sha:
         return None
-    action, _reason = decide_integration(
+    action = decide_seam_action(
         root,
         record=record,
         agent_active=False,
         ledger_path=None,
-        observation=IntegrationDirector(
-            root,
-            target=target,
-            remote=DEFAULT_REMOTE,
-            agent_active=False,
-        ).observe(),
+        target=target,
+        remote=DEFAULT_REMOTE,
     )
     return record if action in _ADOPTED_ACTIONS else None
 

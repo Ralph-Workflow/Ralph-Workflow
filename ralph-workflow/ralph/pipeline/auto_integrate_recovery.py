@@ -20,9 +20,10 @@ Decision ownership
 
 The **mutation ladder** -- which integration rung the boundary must
 climb next -- is decided by the single owner
-:func:`ralph.pipeline.integration_owner.decide_integration`. This module
-asks the owner and acts on its verdict; it never re-derives the rung
-from the durable record.
+:func:`ralph.pipeline.integration_owner.decide_integration`, reached
+through the one seam :func:`ralph.pipeline._integration_owner_seam.decide_seam_action`.
+This module asks the seam and acts on its verdict; it never re-derives
+the rung from the durable record.
 
 The **record facts the pure observation table cannot express** stay
 with the seam:
@@ -62,6 +63,7 @@ from ralph.pipeline._integration_action import (
 from ralph.pipeline._integration_diagnostic import (
     busy_refusal_outcome as _canonical_busy_refusal_outcome,
 )
+from ralph.pipeline._integration_owner_seam import decide_seam_action
 from ralph.pipeline._publication_state_machine import PublicationDecision
 from ralph.pipeline._recovery_fast_forward_landing import (
     _land_and_reconcile,
@@ -103,8 +105,7 @@ from ralph.pipeline.auto_integrate_remote_sync import (
 from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 from ralph.pipeline.auto_integrate_transaction import integration_transaction
 from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_progress
-from ralph.pipeline.integration_director import DEFAULT_REMOTE, IntegrationDirector
-from ralph.pipeline.integration_owner import decide_integration
+from ralph.pipeline.integration_director import DEFAULT_REMOTE
 from ralph.pipeline.integration_resolution import retained_integration_reason
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
@@ -279,9 +280,9 @@ def _recover_incomplete_integration_owned(
       must not start a fresh integration in the same startup: the
       integration writes its own durable record before mutating git
       and would overwrite the unreconciled one.
-    * The mutation ladder is asked of the single owner
-      (:func:`ralph.pipeline.integration_owner.decide_integration`); the
-      durable record decides only whether the obligation is still an
+    * The mutation ladder is asked of the single owner through the one
+      seam (:func:`ralph.pipeline._integration_owner_seam.decide_seam_action`);
+      the durable record decides only whether the obligation is still an
       integration or already a landing.
 
     Args:
@@ -304,18 +305,17 @@ def _recover_incomplete_integration_owned(
         # observation records that fact. The observation itself is built
         # by the director -- the one observation owner -- against the
         # CONFIGURED target and remote (``main`` and ``origin`` are
-        # defaults only), and the owner then decides on it.
-        action, _owner_reason = decide_integration(
+        # defaults only), and the owner then decides on it. The boundary
+        # asks through the ONE seam, so the durable record facts are
+        # overlaid on the owner's answer.
+        action = decide_seam_action(
             root,
             record=record,
             agent_active=False,
             ledger_path=None,
-            observation=IntegrationDirector(
-                root,
-                target=_configured_target(config) if config is not None else record.target,
-                remote=remote_target_name(config) if config is not None else DEFAULT_REMOTE,
-                agent_active=False,
-            ).observe(),
+            retained=True,
+            target=_configured_target(config) if config is not None else record.target,
+            remote=remote_target_name(config) if config is not None else DEFAULT_REMOTE,
         )
 
         if (
@@ -341,16 +341,33 @@ def _recover_incomplete_integration_owned(
                 root, record, config, conflict_resolver, rebase_stop_resolver
             )
 
-        if action is IntegrationAction.WAIT_FOR_BOUNDED_RETRY:
+        if action is IntegrationAction.REQUIRE_INTERVENTION:
+            # The durable record demands operator intervention and the
+            # live Git state does not prove the claim stale, so the
+            # boundary must not mutate: the record is retained for the
+            # operator. (The seam can only ever turn the owner's rung
+            # into this one; the owner's own answer never carries it.)
+            deferred = RebaseState(
+                last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+                last_reason="recovery: durable integration record requires operator intervention",
+                last_target=record.target,
+                recovery_record_retained=True,
+                recovery_record_retained_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
+            )
+        elif action is IntegrationAction.WAIT_FOR_BOUNDED_RETRY:
             # The owner could not read the environment (or the escalation
             # ladder is exhausted): the boundary must not mutate. Defer
             # with the record retained so the next startup re-observes.
-            return _record_skip(
+            deferred = _record_skip(
                 reason="recovery: integration ladder deferred; durable record retained for retry",
                 target=record.target,
                 retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
                 record_retained=True,
             )
+        else:
+            deferred = None
+        if deferred is not None:
+            return deferred
 
         # RESOLVE, CONTINUE and REINTEGRATE all mean the integration is
         # still owed; the pending-merge recovery path performs it.

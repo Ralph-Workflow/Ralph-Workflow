@@ -247,7 +247,7 @@ tests/mcp/test_reserved_socket_held_across_respawn.py|0,2,1
 tests/mcp/test_respawn_no_discovery.py|0,1,7
 tests/mcp/test_root_cause_real_child_bridge.py|0,9,13
 tests/mcp/test_runtime_blocked_registry_built_surfaces_typed_error.py|0,3,2
-tests/mcp/test_runtime_blocked_workspace_read_surfaces_typed_error.py|1,2,0
+tests/mcp/test_runtime_blocked_workspace_read_surfaces_typed_error.py|1,0,0
 tests/mcp/test_runtime_respawn_precheck.py|0,1,0
 tests/mcp/test_s1_independent_counters_contract.py|0,2,1
 tests/mcp/test_session_id_persisted_across_respawn.py|0,1,0

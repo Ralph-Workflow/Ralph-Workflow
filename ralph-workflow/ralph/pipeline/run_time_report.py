@@ -262,6 +262,15 @@ def render_run_time_report(
                 else ""
             )
             + (
+                # The degraded report carries this fact, so the full report
+                # carries it too: a run that ends with an unresolved
+                # integration must not look like a run that ended without
+                # one just because the full report validated.
+                "- [SG-3] Integration status: unresolved at report time.\n"
+                if state.rebase.integration_unresolved
+                else ""
+            )
+            + (
                 (
                     "\n## Development Timebox\n"
                     + (
@@ -423,6 +432,110 @@ def _emit_degraded_run_time_report(
     _submit_validated_markdown(workspace_root, markdown)
 
 
+def _guarded_final_phase(state: PipelineState) -> str:
+    """Read the final phase without letting a broken state lose the report.
+
+    The last-resort report is the only report left when both renderers
+    already failed, so it must not depend on a state that just proved it
+    can fail. An unreadable phase is reported as unknown rather than
+    taking the report with it.
+    """
+    try:
+        return _safe_text(state.phase) or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _guarded_signals_line(state: PipelineState) -> str:
+    """Render the counts line without letting a broken state lose the report.
+
+    Zero counts are evidence, not a failure: a run that stalled before
+    any agent call reports zero calls. When the counts cannot be read at
+    all, the report says so instead of claiming a number it never saw.
+    """
+    try:
+        metrics = state.metrics
+        return (
+            "- [SG-1] Agent calls: "
+            + _format_count(metrics.total_agent_calls)
+            + "; retries: "
+            + _format_count(metrics.total_retries)
+            + "; continuations: "
+            + _format_count(metrics.total_continuations)
+            + "; fallbacks: "
+            + _format_count(metrics.total_fallbacks)
+            + "; pushes: "
+            + _format_count(state.push_count)
+            + "."
+        )
+    except Exception:
+        return "- [SG-1] Metric counts are unavailable in the minimal report."
+
+
+def _render_minimal_run_time_report(
+    *,
+    outcome: str,
+    elapsed_seconds: float,
+    final_phase: str,
+    failure_reason: str,
+    signals_line: str,
+) -> str:
+    """Render the smallest spec-conformant report that still carries a reason.
+
+    This is the last tier of the emission chain: it is reached only when
+    both the full and the degraded report failed. It therefore depends on
+    no pipeline state at all -- every value it carries is a bounded
+    scalar or a caller-supplied line -- so a state that already broke two
+    renderers cannot break this one. The document carries every section
+    the closed grammar requires, so it validates.
+    """
+    elapsed_text = _format_elapsed(max(0.0, elapsed_seconds))
+    safe_outcome = _safe_text(outcome) or "unknown"
+    safe_phase = _safe_text(final_phase) or "unknown"
+    reason = _safe_failure_reason(failure_reason)
+    return (
+        "---\n"
+        "type: run_time_report\n"
+        f"outcome: {safe_outcome}\n"
+        f"elapsed_seconds: {elapsed_text}\n"
+        f"final_phase: {safe_phase}\n"
+        "---\n\n"
+        "## Summary\n"
+        "- [SUM-1] Minimal run-time report; the full and degraded reports could not be emitted.\n"
+        f"Degradation reason: {reason}\n\n"
+        "## Timing\n"
+        f"- [T-1] Total wall-clock time: {elapsed_text}s.\n\n"
+        "## Phases\n"
+        f"- [P-1] Final phase: {safe_phase}.\n\n"
+        "## Slowest Steps\n"
+        "- [SS-1] Slowest-step details are unavailable in the minimal report.\n\n"
+        "## Signals\n"
+        f"{signals_line}\n"
+    )
+
+
+def _emit_minimal_run_time_report(
+    workspace_root: Path,
+    *,
+    outcome: str,
+    elapsed_seconds: float,
+    final_phase: str,
+    failure_reason: str,
+    signals_line: str,
+) -> None:
+    """Persist the last-resort report after the degraded report was rejected."""
+    markdown = _render_minimal_run_time_report(
+        outcome=outcome,
+        elapsed_seconds=elapsed_seconds,
+        final_phase=final_phase,
+        failure_reason=failure_reason,
+        signals_line=signals_line,
+    )
+    if len(markdown) > _REPORTING_BUDGET_CHARACTERS:
+        raise ValueError("run_time_report minimal report exceeds its reporting budget")
+    _submit_validated_markdown(workspace_root, markdown)
+
+
 def emit_run_time_report(
     workspace_root: Path,
     *,
@@ -489,6 +602,27 @@ def emit_run_time_report_safely(
                 exc,
                 degraded_exc,
             )
+            # Last tier: the degraded report failed too, so the report
+            # would be lost. The minimal report depends on no pipeline
+            # state and carries the reason, so a validation failure
+            # never loses the report.
+            try:
+                _emit_minimal_run_time_report(
+                    workspace_root,
+                    outcome=outcome,
+                    elapsed_seconds=elapsed_seconds,
+                    final_phase=_guarded_final_phase(state),
+                    failure_reason=(
+                        f"degraded report failed: {degraded_exc}; full report failed: {exc}"
+                    ),
+                    signals_line=_guarded_signals_line(state),
+                )
+            except Exception as minimal_exc:
+                logger.error(
+                    "run_time_report minimal emission failed after {}: {}",
+                    degraded_exc,
+                    minimal_exc,
+                )
 
 
 __all__ = ["emit_run_time_report_safely", "render_run_time_report"]

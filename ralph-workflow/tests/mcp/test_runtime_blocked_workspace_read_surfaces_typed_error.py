@@ -21,6 +21,12 @@ The in-process assertions use the PUBLIC seams only:
   covered by the ``subprocess_e2e`` siblings in
   ``tests/mcp/test_bounded_catalog_publish.py`` and
   ``tests/mcp/test_whole_startup_budget_production.py``.
+
+Every symbol this module needs is imported from the PUBLIC ``ralph.mcp.server``
+facade (``McpServerError``, ``StageEventRecorder``, ``StageRecorder``,
+``ExitHandler``, and the ``stage_recorder_override`` /
+``overrun_handler_override`` / ``exit_handler_override`` context managers), so
+the module carries no private-import coupling.
 """
 
 from __future__ import annotations
@@ -33,11 +39,11 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.mcp.protocol.session import AgentSession
-from ralph.mcp.server import lifecycle
-from ralph.mcp.server._mcp_server_error import McpServerError
-from ralph.mcp.server._pre_serve_overrun import (
+from ralph.mcp.server import (
+    McpServerError,
     StageEventRecorder,
     exit_handler_override,
+    lifecycle,
     overrun_handler_override,
     stage_recorder_override,
 )
@@ -46,8 +52,7 @@ from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
-    from ralph.mcp.server._exit_handler import ExitHandler
-    from ralph.mcp.server._stage_recorder import StageRecorder
+    from ralph.mcp.server import ExitHandler, StageRecorder
 
 #: Startup stages the runtime records before the registry build starts. The
 #: blocked workspace read happens INSIDE the registry build, so

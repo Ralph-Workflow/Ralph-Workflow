@@ -15,9 +15,10 @@ Decision ownership
 
 The **integration rung** -- which integration mutation the boundary owes
 next -- is decided by the single owner
-:func:`ralph.pipeline.integration_owner.decide_integration`. This module
-asks the owner and acts on its verdict; it never re-derives the rung from
-the durable record.
+:func:`ralph.pipeline.integration_owner.decide_integration`, reached through
+the one seam :func:`ralph.pipeline._integration_owner_seam.decide_seam_action`.
+This module asks the seam and acts on its verdict; it never re-derives the
+rung from the durable record.
 
 The **record facts the pure observation table cannot express** stay with
 the seam:
@@ -43,13 +44,12 @@ from ralph.pipeline._integration_action import (
     IntegrationAction,
     RebaseOutcomeKind,
 )
+from ralph.pipeline._integration_owner_seam import decide_seam_action
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline.integration_director import (
     DEFAULT_REMOTE,
     DEFAULT_TARGET_BRANCH,
-    IntegrationDirector,
 )
-from ralph.pipeline.integration_owner import decide_integration
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -130,8 +130,9 @@ def _owner_action(
     durable attempt ledger to. ``config`` supplies the CONFIGURED
     integration target and remote -- ``main`` and ``origin`` are defaults
     only, and the observation has to compare the configured refs. The
-    observation is built by the director (the one observation owner) and
-    handed to the owner, which then decides.
+    boundary asks through the ONE seam, so the observation is built by
+    the director (the one observation owner) and the durable record facts
+    are overlaid on the owner's answer.
 
     Without a workspace root the seam cannot observe Git at all. It then
     falls back to the durable record fact: a retained record proves the
@@ -140,18 +141,13 @@ def _owner_action(
     """
     if root is None:
         return IntegrationAction.RESOLVE_ACTIVE_OPERATION
-    observation = IntegrationDirector(
-        root,
-        target=_configured_target(config),
-        remote=_configured_remote(config),
-        agent_active=agent_active,
-    ).observe()
-    action, _reason = decide_integration(
+    action = decide_seam_action(
         root,
         record=record,
         agent_active=agent_active,
         ledger_path=None,
-        observation=observation,
+        target=_configured_target(config),
+        remote=_configured_remote(config),
     )
     return action
 

@@ -910,6 +910,19 @@ def test_stale_resolution_replay_clears_intent_and_retries_auto_rebase(
     )
     written: list[IntegrationRecord] = []
     replayed: list[IntegrationRecord] = []
+    # The ORDER the replay acts in: the work is saved to a backup ref
+    # BEFORE the stale resolution flags are cleared, so a crash between
+    # the two can never lose the work the cleared record used to point at.
+    sequence: list[str] = []
+
+    def fake_snapshot(*_args: object, **_kwargs: object) -> tuple[str, str]:
+        sequence.append("backup_ref")
+        return ("refs/ralph-backup/feature-abcdef12", "c" * 40)
+
+    def fake_write(_root: Path, rec: IntegrationRecord) -> None:
+        sequence.append("record")
+        written.append(rec)
+
     monkeypatch.setattr(
         owned, "read_in_progress_kind", lambda _root: Reading.known(InProgressKind.NONE)
     )
@@ -926,10 +939,10 @@ def test_stale_resolution_replay_clears_intent_and_retries_auto_rebase(
     monkeypatch.setattr(
         owned,
         "create_stale_resolution_snapshot",
-        lambda *_args, **_kwargs: ("refs/ralph-backup/feature-abcdef12", "c" * 40),
+        fake_snapshot,
     )
     monkeypatch.setattr(owned, "_move_feature_to_snapshot", lambda *_args: True)
-    monkeypatch.setattr(owned, "write_record", lambda _root, rec: written.append(rec))
+    monkeypatch.setattr(owned, "write_record", fake_write)
 
     def fake_reintegrate(
         _root: Path,
@@ -950,5 +963,8 @@ def test_stale_resolution_replay_clears_intent_and_retries_auto_rebase(
     assert written[0].resolving_rebase is False
     assert written[0].resolving_merge is False
     assert written[0].pre_feature_sha == "c" * 40
+    # The backup ref is written BEFORE the durable record changes: the
+    # work is preserved first, the stale intent is dropped second.
+    assert sequence == ["backup_ref", "record"]
     assert replayed and replayed[0].resolving_rebase is False
     assert replayed[0].reintegrate_pending is True

@@ -5,9 +5,10 @@ Decision ownership
 
 The **mutation ladder** -- which integration rung the boundary must climb
 next -- is decided by the single owner
-:func:`ralph.pipeline.integration_owner.decide_integration`. This module
-asks the owner and acts on its verdict; it never re-derives the rung from
-the durable record.
+:func:`ralph.pipeline.integration_owner.decide_integration`, reached through
+the one seam :func:`ralph.pipeline._integration_owner_seam.decide_seam_action`.
+This module asks the seam and acts on its verdict; it never re-derives the
+rung from the durable record.
 
 The **record facts the pure observation table cannot express** stay with
 the seam:
@@ -48,6 +49,7 @@ from ralph.pipeline._integration_continuation import (
     active_operation_matches,
     continue_retained_resolution,
 )
+from ralph.pipeline._integration_owner_seam import decide_seam_action
 from ralph.pipeline._pending_rebase_continue import resume_pending_rebase
 from ralph.pipeline._target_reconciliation_handoff import finish_target_substep
 from ralph.pipeline.auto_integrate_record import (
@@ -65,9 +67,7 @@ from ralph.pipeline.auto_integrate_transaction import integration_transaction
 from ralph.pipeline.integration_director import (
     DEFAULT_REMOTE,
     DEFAULT_TARGET_BRANCH,
-    IntegrationDirector,
 )
-from ralph.pipeline.integration_owner import decide_integration
 from ralph.pipeline.integration_resolution import retained_integration_reason
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
@@ -332,22 +332,22 @@ def _owner_reenters_against_target(
 
     The observation is built by the director -- the one observation owner
     -- against the CONFIGURED target and remote (``main`` and ``origin``
-    are defaults only), and the owner then decides on it.
+    are defaults only), and the owner then decides on it. The boundary
+    asks through the ONE seam, so the durable record facts (a retained
+    obligation that demands operator intervention) are overlaid on the
+    owner's answer: an intervention verdict keeps the retained
+    reconciliation where it is instead of re-entering it.
     """
     target = _configured_target(config) if config is not None else record.target
     remote = _remote_target_name(config) if config is not None else DEFAULT_REMOTE
-    observation = IntegrationDirector(
-        root,
-        target=target or DEFAULT_TARGET_BRANCH,
-        remote=remote or DEFAULT_REMOTE,
-        agent_active=False,
-    ).observe()
-    action, _reason = decide_integration(
+    action = decide_seam_action(
         root,
         record=record,
         agent_active=False,
         ledger_path=None,
-        observation=observation,
+        retained=True,
+        target=target or DEFAULT_TARGET_BRANCH,
+        remote=remote or DEFAULT_REMOTE,
     )
     return action in _REENTRY_ACTIONS
 
