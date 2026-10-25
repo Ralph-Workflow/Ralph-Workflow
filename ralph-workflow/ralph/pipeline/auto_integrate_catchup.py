@@ -577,7 +577,7 @@ def _advance_target_to_remote(
         return charge_reason
     effective_clock = clock if clock is not None else default_clock()
     try:
-        advanced, reason = fast_forward_target(
+        advanced, refusal_reason = fast_forward_target(
             root,
             target,
             remote_sha,
@@ -595,7 +595,7 @@ def _advance_target_to_remote(
     # cause. Surface it as a definite failure with the cause appended
     # (the named-reason design: operators must see WHY without prose
     # parsing), consistent with how other definite failures classify.
-    return f"{CATCHUP_DEFEDITELY_FAILED}; {reason}"
+    return f"{CATCHUP_DEFEDITELY_FAILED}; {refusal_reason}"
 
 
 def observe_remote_target_sha(root: Path, remote: str, target: str) -> str | None:
