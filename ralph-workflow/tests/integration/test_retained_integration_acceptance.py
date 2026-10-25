@@ -8,11 +8,8 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.subprocess_runner import GitRunOptions, run_git
-from ralph.pipeline._integration_action import (
-    IntegrationAction,
-    RebaseOutcomeKind,
-    next_integration_action,
-)
+from ralph.pipeline import IntegrationAction
+from ralph.pipeline._integration_action import RebaseOutcomeKind, next_integration_action
 from ralph.pipeline._integration_diagnostic import (
     DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
     diagnose_retained_integration,

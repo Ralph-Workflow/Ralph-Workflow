@@ -78,9 +78,10 @@ def _waiting_state() -> RebaseState:
 
 
 def _intervention_state() -> RebaseState:
-    # Real producer state: the unreadable-evidence intervention projection
-    # persisted by run_loop._persist_unreadable_intervention / the startup
-    # handoff (diagnostic_intervention_required + retained record).
+    # Legacy checkpoint value: the retired diagnostic-intervention outcome
+    # survives only as a parse input for legacy persisted records (loaded
+    # and cleared into the fallback ladder at startup, see
+    # _auto_integrate_record_restamp); no live run produces it.
     state = RebaseState(
         last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
         recovery_record_retained=True,

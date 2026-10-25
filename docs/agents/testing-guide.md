@@ -450,15 +450,15 @@ The ratchet and the whole-tree reconciliation are what keep the table honest.
 
 | cluster | files | setattr_private | private_import | private_attr | total | owner |
 | --- | --- | --- | --- | --- | --- | --- |
-| root | 459 | 395 | 857 | 866 | 2118 | follow-up: backlog white-box conversion unit |
+| root | 461 | 397 | 861 | 866 | 2124 | follow-up: backlog white-box conversion unit |
 | mcp-bridge | 82 | 23 | 267 | 142 | 432 | mcp-bridge |
 | agents | 97 | 34 | 281 | 100 | 415 | agents |
-| auto-integrate | 40 | 160 | 37 | 54 | 251 | auto-integrate |
+| auto-integrate | 41 | 162 | 37 | 54 | 253 | auto-integrate |
 | project-policy | 28 | 4 | 53 | 161 | 218 | project-policy |
 | run-loop | 17 | 100 | 27 | 84 | 211 | run-loop |
 | display | 21 | 22 | 85 | 75 | 182 | display |
-| pipeline | 31 | 70 | 32 | 74 | 176 | pipeline |
-| integration | 22 | 21 | 39 | 98 | 158 | integration |
+| pipeline | 31 | 69 | 32 | 74 | 175 | pipeline |
+| integration | 22 | 21 | 40 | 98 | 159 | integration |
 | property | 11 | 0 | 60 | 35 | 95 | property |
 | recovery | 28 | 7 | 42 | 32 | 81 | recovery |
 | tool-exec | 9 | 0 | 36 | 29 | 65 | tool-exec |
@@ -629,7 +629,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/integration/test_plumbing_pipeline_core.py` | 2 | 1 | 0 | integration | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: integration public-seam unit |
 | `tests/integration/test_plumbing_shared_deps.py` | 6 | 1 | 4 | integration | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: integration public-seam unit |
 | `tests/integration/test_process_zombie_cleanup.py` | 0 | 5 | 0 | integration | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: integration public-seam unit |
-| `tests/integration/test_retained_integration_acceptance.py` | 0 | 3 | 0 | integration | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: integration public-seam unit |
+| `tests/integration/test_retained_integration_acceptance.py` | 0 | 4 | 0 | integration | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: integration public-seam unit |
 | `tests/integration/test_runner_default_display.py` | 3 | 0 | 0 | integration | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: integration public-seam unit |
 | `tests/integration/test_single_agent_e2e.py` | 4 | 0 | 0 | integration | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: integration public-seam unit |
 | `tests/integration/test_transcript_end_to_end.py` | 1 | 0 | 0 | integration | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: integration public-seam unit |
@@ -718,6 +718,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/mcp/websearch/test_brave_backend.py` | 0 | 0 | 1 | mcp-bridge | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: mcp public-seam unit |
 | `tests/pipeline/_terminal_mcp_error_seams.py` | 0 | 2 | 1 | pipeline | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: pipeline public-seam unit |
 | `tests/pipeline/test_development_phase_missing_plan_handoff_status_bar_visible.py` | 1 | 3 | 2 | pipeline | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: pipeline public-seam unit |
+| `tests/pipeline/test_integration_log_dedupe.py` | 2 | 1 | 5 | pipeline | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: pipeline public-seam unit |
 | `tests/pipeline/test_integration_resolution_dispatch_inventory.py` | 0 | 0 | 9 | pipeline | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: pipeline public-seam unit |
 | `tests/pipeline/test_interrupt_reports_the_state_reached.py` | 2 | 0 | 3 | pipeline | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: pipeline public-seam unit |
 | `tests/pipeline/test_kimi_smoke_harness.py` | 0 | 3 | 0 | pipeline | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: pipeline public-seam unit |
@@ -893,6 +894,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_busy_refusal_state_factory.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_canonical_artifact_submit.py` | 2 | 1 | 4 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_capability_state_idempotent.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_catchup_observed_case_composed.py` | 2 | 0 | 0 | auto-integrate | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: auto-integrate public-seam unit |
 | `tests/test_checkpoint_idempotent.py` | 0 | 0 | 6 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
 | `tests/test_claude_interactive_parser.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_claude_interactive_pty.py` | 1 | 1 | 0 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
@@ -954,6 +956,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_cycle_survives_recovery_hops.py` | 0 | 2 | 4 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_deterministic_writers_clean_tree.py` | 1 | 3 | 1 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_developer_prompt_subagent_guidance.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_diagnostic_budget_ladder_routing.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_diagnostic_evidence_gate_reason.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_diagnostic_transition_helpers.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_direct_mcp_recovery.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |

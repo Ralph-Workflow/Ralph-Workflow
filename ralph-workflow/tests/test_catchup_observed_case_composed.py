@@ -276,6 +276,17 @@ def _capture_errors(captured: list[str]) -> int:
     return logger.add(captured.append, level="ERROR", format="{message}")
 
 
+class _LoopContextView(Protocol):
+    """Structural view of the run-loop context the interrupt driver writes.
+
+    The driver only ever assigns the single-slot ``latest_state`` sink, so
+    the test depends on that one attribute rather than on the loop's
+    private context class.
+    """
+
+    latest_state: list[PipelineState]
+
+
 def _stall_state() -> PipelineState:
     """The pipeline state the observed run had reached when it was interrupted.
 
@@ -352,7 +363,7 @@ def _interrupt_in_stall_state(
 
     def _advance_then_interrupt(
         _state: PipelineState,
-        ctx: run_loop._LoopContext,
+        ctx: _LoopContextView,
         _prev_phase: str,
     ) -> tuple[PipelineState, str, int | None]:
         ctx.latest_state[:] = [_stall_state()]

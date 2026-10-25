@@ -33,10 +33,7 @@ from ralph.display.auto_integrate_message import (
     format_integration_label,
 )
 from ralph.display.integration_display_label import IntegrationDisplayLabel
-from ralph.pipeline._integration_diagnostic import (
-    DIAGNOSTIC_BUDGET_SPENT_REASON,
-    DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
-)
+from ralph.pipeline._integration_diagnostic import DIAGNOSTIC_REPAIR_ATTEMPT_CAP
 from ralph.pipeline._integration_diagnostic_handoff import (
     budget_spent_record,
     escalate_diagnostic_budget_to_ladder,
@@ -51,6 +48,7 @@ from ralph.pipeline.auto_integrate_record import (
     record_path,
     write_record,
 )
+from ralph.pipeline.auto_integrate_transition import DIAGNOSTIC_BUDGET_SPENT_REASON
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_owner import RecordFactOutcome
 from ralph.pipeline.rebase_state import RebaseState

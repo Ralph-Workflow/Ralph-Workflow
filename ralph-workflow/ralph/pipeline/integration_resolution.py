@@ -54,6 +54,7 @@ from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.git.subprocess_runner import run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline.integration_dispatch_blocked_error import IntegrationDispatchBlockedError
+from ralph.pipeline.integration_observation import _decode_quoted_porcelain_path
 from ralph.pipeline.integration_resolution_status import IntegrationResolutionStatus
 from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
 from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
@@ -601,7 +602,8 @@ def unmerged_porcelain_paths(porcelain_output: str) -> tuple[str, ...]:
             continue
         code = raw_line[:2]
         if code[0] == "U" or code[1] == "U" or code in _BOTH_SIDES_UNMERGED_CODES:
-            unmerged.append(raw_line[3:].strip() or raw_line.strip())
+            path = raw_line[3:].strip() or raw_line.strip()
+            unmerged.append(_decode_quoted_porcelain_path(path))
     return tuple(unmerged)
 
 

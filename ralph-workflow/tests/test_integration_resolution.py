@@ -59,6 +59,27 @@ def test_unmerged_paths_block_non_resolution_dispatch(tmp_path: Path, porcelain:
         assert_non_resolution_dispatch_allowed("development_commit", verdict)
 
 
+def test_c_quoted_unmerged_path_is_decoded_in_blocking_reason(tmp_path: Path) -> None:
+    """Line-oriented porcelain C-quotes non-ASCII paths; the reason must be raw.
+
+    ``git status --porcelain`` quotes paths per ``core.quotePath``, so a
+    conflicted file with non-ASCII bytes appears as ``UU "conf\\303\\251lict.py"``.
+    The user-facing blocking reason must carry the decoded spelling.
+    """
+    verdict = inspect_integration_resolution(
+        tmp_path,
+        RebaseState(),
+        porcelain=lambda _: (True, 'UU "conf\\303\\251lict.py"\n'),
+        rebase_active=lambda _: False,
+        merge_status=lambda _: MERGE_STATE_NONE,
+    )
+
+    assert verdict.status is RECOVERABLE
+    reason = "unmerged paths remain from an unfinished rebase or merge: conf\u00e9lict.py"
+    assert reason in verdict.reasons
+    assert "conf\\303\\251lict.py" not in verdict.reasons[0]
+
+
 @pytest.mark.parametrize(
     "porcelain",
     (

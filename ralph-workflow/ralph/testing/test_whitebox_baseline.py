@@ -176,7 +176,7 @@ tests/integration/test_pipeline_iterations.py|1,0,0
 tests/integration/test_plumbing_pipeline_core.py|2,1,0
 tests/integration/test_plumbing_shared_deps.py|6,1,4
 tests/integration/test_process_zombie_cleanup.py|0,5,0
-tests/integration/test_retained_integration_acceptance.py|0,3,0
+tests/integration/test_retained_integration_acceptance.py|0,4,0
 tests/integration/test_runner_default_display.py|3,0,0
 tests/integration/test_single_agent_e2e.py|4,0,0
 tests/integration/test_transcript_end_to_end.py|1,0,0
@@ -265,9 +265,9 @@ tests/mcp/test_wire_ledger_lock_contention.py|0,5,0
 tests/mcp/websearch/test_brave_backend.py|0,0,1
 tests/pipeline/_terminal_mcp_error_seams.py|0,2,1
 tests/pipeline/test_development_phase_missing_plan_handoff_status_bar_visible.py|1,3,2
+tests/pipeline/test_integration_log_dedupe.py|2,1,5
 tests/pipeline/test_integration_resolution_dispatch_inventory.py|0,0,9
 tests/pipeline/test_interrupt_reports_the_state_reached.py|2,0,3
-tests/pipeline/test_integration_log_dedupe.py|3,1,5
 tests/pipeline/test_kimi_smoke_harness.py|0,3,0
 tests/pipeline/test_next_attempt_gets_fresh_bridge.py|0,1,1
 tests/pipeline/test_phase_close_failed_no_artifact.py|2,1,3
@@ -439,6 +439,7 @@ tests/test_bridge_lifetime_primitive.py|0,1,0
 tests/test_busy_refusal_state_factory.py|0,4,0
 tests/test_canonical_artifact_submit.py|2,1,4
 tests/test_capability_state_idempotent.py|0,4,0
+tests/test_catchup_observed_case_composed.py|2,0,0
 tests/test_checkpoint_idempotent.py|0,0,6
 tests/test_claude_interactive_parser.py|0,2,0
 tests/test_claude_interactive_pty.py|1,1,0
@@ -500,6 +501,7 @@ tests/test_cycle_baseline_diff_cycle_baseline_diff.py|0,0,2
 tests/test_cycle_survives_recovery_hops.py|0,2,4
 tests/test_deterministic_writers_clean_tree.py|1,3,1
 tests/test_developer_prompt_subagent_guidance.py|0,3,0
+tests/test_diagnostic_budget_ladder_routing.py|0,4,0
 tests/test_diagnostic_evidence_gate_reason.py|0,1,0
 tests/test_diagnostic_transition_helpers.py|0,2,0
 tests/test_direct_mcp_recovery.py|0,2,0
