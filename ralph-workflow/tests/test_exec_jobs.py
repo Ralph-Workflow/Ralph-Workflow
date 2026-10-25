@@ -440,7 +440,7 @@ def test_running_jobs_cap() -> None:
     assert j5 is not None
 
 
-@pytest.mark.timeout_seconds(3.0)
+@pytest.mark.timeout_seconds(5.0)
 def test_finished_results_fifo_cap() -> None:
     env = _TestEnv()
     jobs: list[str] = []

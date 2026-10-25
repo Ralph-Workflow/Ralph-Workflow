@@ -101,6 +101,11 @@ def _assert_planning_agrees(
             planning_block.last_planning_obstruction
             == PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION.value
         )
+    elif state_name == "modified-tracked":
+        assert (
+            planning_block.last_planning_obstruction
+            == PlanningObstructionKind.TRACKED_CHANGES_BLOCKS_INTEGRATION.value
+        )
     else:
         assert planning_block.last_planning_obstruction in (
             PlanningObstructionKind.NONE.value,
@@ -464,7 +469,10 @@ def test_planning_modified_tracked_records_skip_without_force_merge(
     assert result is not None
     assert result.last_action == "skipped"
     assert result.last_reason == canonical_reason
-    assert result.last_planning_obstruction == PlanningObstructionKind.NONE.value
+    assert (
+        result.last_planning_obstruction
+        == PlanningObstructionKind.TRACKED_CHANGES_BLOCKS_INTEGRATION.value
+    )
     assert result.integration_unresolved is False
 
 

@@ -2630,7 +2630,14 @@ def _block_unresolved_integration(
         # and overlays the durable record facts. The reducer is the single
         # last_decision writer; the typed authority derives the blocking
         # decision from current evidence and the next reduce re-persists it.
-        record_action = decide_seam_action(ctx.workspace_scope.root, record=record)
+        target = ctx.config.general.auto_integrate_target
+        remote = ctx.config.general.auto_integrate_remote
+        record_action = decide_seam_action(
+            ctx.workspace_scope.root,
+            record=record,
+            target=target,
+            remote=remote,
+        )
         # The record facts map diagnostic_intervention_required=True to
         # REQUIRE_INTERVENTION themselves; no direct checkpoint-field read.
         if record_action == IntegrationAction.REQUIRE_INTERVENTION:

@@ -1905,6 +1905,7 @@ def _apply_step_integration_outcome(
     workspace_scope: WorkspaceScope,
     policy_bundle: PolicyBundle,
     auto_integrate_outcome: RebaseState | None,
+    config: UnifiedConfig | None = None,
 ) -> PipelineState:
     if auto_integrate_outcome is None:
         return next_state
@@ -1914,10 +1915,14 @@ def _apply_step_integration_outcome(
         # The dispatch invariant asks the SINGLE owner for the mutation
         # ladder and overlays the durable record facts. The runner never
         # re-derives the rung from the record itself.
+        target = config.general.auto_integrate_target if config is not None else None
+        remote = config.general.auto_integrate_remote if config is not None else None
         action = decide_seam_action(
             workspace_scope.root,
             record=record,
             retained=reconciled_rebase.recovery_record_retained,
+            target=target,
+            remote=remote,
         )
         decision = decide_phase_transition(
             next_state,
@@ -1968,6 +1973,7 @@ def _handle_blocked_dispatch_recovery(
     workspace_scope: WorkspaceScope,
     pipeline_policy: PipelinePolicy,
     exc: BaseException,
+    config: UnifiedConfig | None = None,
 ) -> PipelineState:
     if not isinstance(exc, IntegrationDispatchBlockedError):
         return recovered_state
@@ -1975,10 +1981,14 @@ def _handle_blocked_dispatch_recovery(
     # The blocked-dispatch recovery asks the SINGLE owner for the
     # mutation ladder and overlays the durable record facts. A retained
     # obligation with no record behind it fails closed to intervention.
+    target = config.general.auto_integrate_target if config is not None else None
+    remote = config.general.auto_integrate_remote if config is not None else None
     action = decide_seam_action(
         workspace_scope.root,
         record=record,
         retained=timed_state.rebase.recovery_record_retained,
+        target=target,
+        remote=remote,
     )
     decision = decide_phase_transition(
         timed_state,
@@ -2282,7 +2292,7 @@ def _run_pipeline_step(
         # consistent) and BEFORE _save_checkpoint_or_log (so the
         # outcome survives a crash right after the phase).
         next_state = _apply_step_integration_outcome(
-            next_state, workspace_scope, policy_bundle, _auto_integrate_outcome
+            next_state, workspace_scope, policy_bundle, _auto_integrate_outcome, config=config
         )
         skipped_phases = record_phase_transition_metadata(
             display,
@@ -2345,7 +2355,12 @@ def _run_pipeline_step(
                     display, None, status_text("Recovery exhausted", _eff.reason, "red")
                 )
         recovered_state = _handle_blocked_dispatch_recovery(
-            recovered_state, timed_state, workspace_scope, policy_bundle.pipeline, exc
+            recovered_state,
+            timed_state,
+            workspace_scope,
+            policy_bundle.pipeline,
+            exc,
+            config=config,
         )
         _notify_pipeline_subscriber(pipeline_subscriber, recovered_state)
         _save_checkpoint_or_log(

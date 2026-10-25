@@ -45,6 +45,8 @@ from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, PolicyBundle
 from ralph.workspace.scope import WorkspaceScope
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 class _StopInnerLoopError(Exception):
     pass

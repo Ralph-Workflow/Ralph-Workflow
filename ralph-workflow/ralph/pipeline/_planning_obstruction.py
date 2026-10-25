@@ -29,6 +29,9 @@ Members
   uncommitted work that blocks a forced integration; the planning
   seam must call the cleanup phase to commit or unstage the work
   before integration can proceed.
+* :attr:`TRACKED_CHANGES_BLOCKS_INTEGRATION` -- the worktree has unstaged
+  or modified tracked changes that block integration; the planning
+  seam must route through cleanup and commit before catch-up.
 """
 
 from __future__ import annotations
@@ -45,6 +48,7 @@ class PlanningObstructionKind(StrEnum):
     LOCAL_OVERWRITE = "local_overwrite"
     UNTRACKED_OVERWRITE = "untracked_overwrite"
     STAGED_BLOCKS_INTEGRATION = "staged_blocks_integration"
+    TRACKED_CHANGES_BLOCKS_INTEGRATION = "tracked_changes_blocks_integration"
 
 
 # Substring table is module-private. Every substring here must map to
@@ -59,6 +63,10 @@ _UNTRACKED_OVERWRITE_SUBSTRINGS: tuple[str, ...] = (
     "untracked working tree files would be overwritten",
 )
 _STAGED_BLOCKS_SUBSTRINGS: tuple[str, ...] = ("staged uncommitted work blocks integration",)
+_TRACKED_CHANGES_BLOCKS_SUBSTRINGS: tuple[str, ...] = (
+    "uncommitted tracked changes",
+    "tracked changes block",
+)
 
 
 def identify_planning_obstruction(reason: str) -> PlanningObstructionKind:
@@ -80,6 +88,9 @@ def identify_planning_obstruction(reason: str) -> PlanningObstructionKind:
     for needle in _STAGED_BLOCKS_SUBSTRINGS:
         if needle in lowered:
             return PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION
+    for needle in _TRACKED_CHANGES_BLOCKS_SUBSTRINGS:
+        if needle in lowered:
+            return PlanningObstructionKind.TRACKED_CHANGES_BLOCKS_INTEGRATION
     for needle in _LOCAL_OVERWRITE_SUBSTRINGS:
         if needle in lowered:
             return PlanningObstructionKind.LOCAL_OVERWRITE
