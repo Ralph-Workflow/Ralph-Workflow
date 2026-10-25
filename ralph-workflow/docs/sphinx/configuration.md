@@ -195,7 +195,7 @@ Use this section to tune **routing limits** for merge and rebase conflict resolu
 | `max_fallback_agents` | `2` | integer `>= 1` | Retained for compatibility. It does **not** truncate the bound chain. How many agents run, and in what order, is the `rebase_conflict_resolution` chain in `agents.toml`. A one-agent chain is warned at load because this phase then has no fallback. |
 | `total_resolution_cap_seconds` | `None` | `None` or finite number `> 0` | Optional operator cap for one complete merge resolution or all stops of one paused rebase. It is disabled by default. When configured, it can stop active work and is reported as `OPERATOR_CAP_REACHED`, never as an idle timeout. |
 
-The legacy `max_consecutive_resolver_attempts` setting has been removed in favor of `agent_max_consecutive_unproductive` and `agent_max_total_unproductive` in `[general]`.
+The legacy `max_consecutive_resolver_attempts` setting has been removed in favor of `agent_max_consecutive_unproductive` and `agent_max_total_unproductive` in `[general]`. Those two limits are enforced by the agent failure ledger, which is the single owner of resolver eligibility: the recorded conflict count is repository bookkeeping and never suppresses an agent.
 
 For example, an operator who deliberately wants a one-hour total cap can add:
 

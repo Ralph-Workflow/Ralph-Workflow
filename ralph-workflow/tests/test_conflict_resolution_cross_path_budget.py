@@ -1,18 +1,36 @@
-"""Shared conflict identity and budget across rebase, endpoint merge, and remote refresh."""
+"""Shared conflict identity and bookkeeping across rebase, endpoint merge, and remote refresh."""
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 import pytest
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.auto_integrate_conflict_budget import (
-    MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+    MAX_TRACKED_CONFLICT_ATTEMPTS,
     ConflictIdentity,
     apply_conflict_budget,
     resolver_allowed,
 )
 from ralph.pipeline.rebase_state import RebaseState
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
+
+_RESOLUTION_PHASE = "rebase_conflict_resolution"
+
+
+def _ledger() -> AgentFailureLedger:
+    """A ledger with no recorded agent failure: every candidate is eligible."""
+    return AgentFailureLedger(clock=FakeClock())
+
+
+def _benched_ledger(agent: str = "resolver") -> AgentFailureLedger:
+    """A ledger whose candidate is on cooldown for the resolution phase."""
+    ledger = _ledger()
+    for _ in range(3):
+        ledger.record(AttemptFact(phase=_RESOLUTION_PHASE, agent=agent, artifact_valid=False))
+    return ledger
 
 
 def test_unchanged_paths_and_oids_are_the_same_conflict() -> None:
@@ -25,7 +43,7 @@ def test_unchanged_paths_and_oids_are_the_same_conflict() -> None:
     state = RebaseState(
         last_action="conflict",
         last_target="main",
-        consecutive_conflicts=MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+        consecutive_conflicts=MAX_TRACKED_CONFLICT_ATTEMPTS,
         last_conflict_feature_sha="feat",
         last_conflict_target_sha="main",
         last_conflict_paths=("a.py",),
@@ -33,7 +51,7 @@ def test_unchanged_paths_and_oids_are_the_same_conflict() -> None:
         resolution_exhausted=True,
     )
     assert identity.matches(state) is True
-    assert resolver_allowed(state, "main", identity) is False
+    assert resolver_allowed(state, "main", identity, ledger=_ledger()) is False
 
 
 def test_changed_stage_oids_are_a_new_conflict() -> None:
@@ -53,7 +71,7 @@ def test_changed_stage_oids_are_a_new_conflict() -> None:
         last_conflict_stage_oids=("oid-a",),
     )
     assert identity.matches(state) is False
-    assert resolver_allowed(state, "main", identity) is True
+    assert resolver_allowed(state, "main", identity, ledger=_ledger()) is True
 
 
 def test_apply_conflict_budget_persists_path_identity() -> None:
@@ -294,7 +312,7 @@ def test_endpoint_merge_fallback_keeps_resolver_when_rebase_ownership_cannot_be_
 
 
 def test_exhausted_feature_budget_does_not_block_a_distinct_remote_identity() -> None:
-    """Remote reconciliation must keep its own budget even when feature spend is done."""
+    """Remote reconciliation keeps its own bookkeeping even when feature spend is done."""
     feature = ConflictIdentity(
         feature_sha="feat",
         target_sha="main",
@@ -311,7 +329,7 @@ def test_exhausted_feature_budget_does_not_block_a_distinct_remote_identity() ->
     state = RebaseState(
         last_action="conflict",
         last_target="main",
-        consecutive_conflicts=MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+        consecutive_conflicts=MAX_TRACKED_CONFLICT_ATTEMPTS,
         last_conflict_feature_sha="feat",
         last_conflict_target_sha="main",
         last_conflict_paths=("a.py",),
@@ -319,5 +337,69 @@ def test_exhausted_feature_budget_does_not_block_a_distinct_remote_identity() ->
         last_conflict_scope="feature",
         resolution_exhausted=True,
     )
-    assert resolver_allowed(state, "main", feature) is False
-    assert resolver_allowed(state, "main", remote) is True
+    assert resolver_allowed(state, "main", feature, ledger=_ledger()) is False
+    assert resolver_allowed(state, "main", remote, ledger=_ledger()) is True
+
+
+def test_resolver_eligibility_follows_the_ledger_not_the_stored_count() -> None:
+    """A high stored conflict count must not suppress an eligible resolver.
+
+    The stored counter describes the repository, not the health of an
+    agent. A resolver the failure ledger still has available is eligible
+    however many times this conflict has been observed unresolved.
+    """
+    identity = ConflictIdentity(feature_sha="feat", target_sha="main")
+    state = RebaseState(
+        last_action="conflict",
+        last_target="main",
+        consecutive_conflicts=MAX_TRACKED_CONFLICT_ATTEMPTS,
+        last_conflict_feature_sha="feat",
+        last_conflict_target_sha="main",
+    )
+
+    assert resolver_allowed(state, "main", identity, ledger=_ledger()) is True
+
+
+def test_a_benched_resolver_is_refused_whatever_the_stored_count_says() -> None:
+    """The ledger owns the refusal: a benched candidate never runs."""
+    identity = ConflictIdentity(feature_sha="feat", target_sha="main")
+    state = RebaseState(
+        last_action="conflict",
+        last_target="main",
+        consecutive_conflicts=0,
+        last_conflict_feature_sha="feat",
+        last_conflict_target_sha="main",
+    )
+
+    assert (
+        resolver_allowed(
+            state,
+            "main",
+            identity,
+            ledger=_benched_ledger(),
+            candidates=("resolver",),
+        )
+        is False
+    )
+
+
+def test_the_predicate_carries_no_attempt_budget() -> None:
+    """No count-based selector survives behind the ledger.
+
+    The predicate takes no attempt budget at all, and a stored count at
+    its maximum never suppresses a resolver the ledger has available --
+    not even when no ledger could be reached, because the count is not a
+    second opinion about agent health.
+    """
+    assert "attempts" not in inspect.signature(resolver_allowed).parameters
+
+    identity = ConflictIdentity(feature_sha="feat", target_sha="main")
+    state = RebaseState(
+        last_action="conflict",
+        last_target="main",
+        consecutive_conflicts=MAX_TRACKED_CONFLICT_ATTEMPTS,
+        last_conflict_feature_sha="feat",
+        last_conflict_target_sha="main",
+    )
+
+    assert resolver_allowed(state, "main", identity, ledger=None) is True

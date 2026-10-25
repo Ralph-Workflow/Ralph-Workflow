@@ -1,4 +1,4 @@
-"""Bounded dev-agent budget for repeatedly unresolvable integration conflicts.
+"""Bookkeeping for repeatedly unresolvable integration conflicts.
 
 Auto-integration runs at four seams: after every commit, at every clean
 phase boundary (eleven events), at the fan-out join and at run startup.
@@ -11,43 +11,50 @@ fresh ceiling every seam.
 Nothing bounded that repetition and nothing escalated, so a single
 unresolvable conflict made the run look stalled.
 
-This module owns the bound and nothing else:
+This module owns the REPOSITORY-SIDE bookkeeping and nothing else:
 
-* :data:`MAX_CONSECUTIVE_RESOLVER_ATTEMPTS` -- how many CONSECUTIVE
-  unresolved conflicts against the same target may pay for an agent.
+* :data:`MAX_TRACKED_CONFLICT_ATTEMPTS` -- how many CONSECUTIVE
+  unresolved conflicts against the same target are STORED on the
+  record. It bounds the stored counter only: the conflict identity
+  and the operator escalation that reads it. It never selects,
+  suppresses or demotes an agent.
 * :class:`ConflictIdentity` -- the observation pair that decides
   whether the next seam is looking at the SAME unresolved conflict.
 * :func:`resolver_allowed` -- the predicate the integration seam
-  consults before handing the resolver down.
+  consults before handing the resolver down. Agent eligibility is
+  decided by :class:`~ralph.recovery.agent_failure_ledger.AgentFailureLedger`
+  and by NOTHING else: this module holds no second, count-based
+  selector.
 * :func:`apply_conflict_budget` -- carries the counter forward onto the
   outcome, resets it on any successful land, and rewrites the recorded
   reason to name the exhausted budget and the blocked target when the
   agent was suppressed.
 
-The budget only reduces how OFTEN the agent is invoked; it never widens
-what the agent may do, and it never suppresses the endpoint merge. When
-the budget is exhausted the seam passes ``conflict_resolver=None``, so
-the merge still runs and still aborts cleanly and the feature branch is
-left bit-identical -- the contract
-``tests/test_auto_integrate.py::test_both_conflicted_leaves_feature_bit_identical``
-pins for the no-resolver case.
+Agent selection is a single-owner decision. The stored
+``consecutive_conflicts`` counter describes the REPOSITORY (how many
+times this one conflict has been observed unresolved), never the health
+of an agent; the health of an agent lives in the failure ledger, which
+owns cooldown, demotion and eligibility. A resolver with a high stored
+conflict count is therefore still eligible whenever the ledger says so,
+and a resolver the ledger has benched is never eligible however low the
+stored count is.
 
 The counter is CONSECUTIVE by design: any successful land resets it to
-zero, so a transient conflict can never permanently consume the budget.
-Run startup passes a fresh :class:`RebaseState`, which deliberately
-grants one clean attempt per run.
+zero, so a transient conflict can never permanently consume the
+bookkeeping. Run startup passes a fresh :class:`RebaseState`, which
+deliberately grants one clean observation per run.
 
 The counter is also scoped to ONE conflict, not merely to one target
 branch NAME. The mainline this run integrates onto is shared: other
 agents move its tip continuously, and the developer keeps adding
-feature commits between seams. A budget keyed only on ``last_target``
-would therefore keep suppressing the resolver for a conflict that no
-longer exists -- new feature work against ``main`` would inherit the
-exhausted budget of an older, unrelated conflict and never be offered
-to the agent at all. :class:`ConflictIdentity` closes that: the count
-is carried forward only while the feature tip AND the target tip are
-both unchanged, which is exactly the situation in which re-invoking
-the agent would replay work it has already failed.
+feature commits between seams. A counter keyed only on ``last_target``
+would therefore describe a conflict that no longer exists -- new
+feature work against ``main`` would inherit the recorded history of an
+older, unrelated conflict and be escalated with it.
+:class:`ConflictIdentity` closes that: the count is carried forward
+only while the feature tip AND the target tip are both unchanged, which
+is exactly the situation in which the recorded observation still
+describes the conflict on disk.
 """
 
 from __future__ import annotations
@@ -64,19 +71,21 @@ if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
-#: Consecutive unresolved conflicts against the same target that may
-#: each pay for a dev-agent conflict resolution. The sixty-fifth and later
-#: attempts record an escalation instead of invoking the agent.
-MAX_CONSECUTIVE_RESOLVER_ATTEMPTS = 64
-
-_ACTION_CONFLICT = RebaseOutcomeKind.CONFLICT.value
+#: Upper bound on the STORED consecutive-conflict counter: how many
+#: CONSECUTIVE unresolved conflicts against the same target are kept on
+#: the record. The counter describes the REPOSITORY -- it scopes the
+#: conflict identity and feeds the operator escalation -- and it is NOT
+#: an agent-selection input: a resolver is eligible whenever the
+#: failure ledger says so, whatever this count holds.
+MAX_TRACKED_CONFLICT_ATTEMPTS = 64
 
 __all__ = [
-    "MAX_CONSECUTIVE_RESOLVER_ATTEMPTS",
+    "MAX_TRACKED_CONFLICT_ATTEMPTS",
     "ConflictIdentity",
     "apply_conflict_budget",
     "finish_conflict_attempt",
     "prior_conflict_count",
+    "resolve_failure_ledger",
     "resolver_allowed",
     "start_conflict_attempt",
 ]
@@ -145,6 +154,10 @@ def prior_conflict_count(
 ) -> int:
     """Consecutive unresolved conflicts carried in from the previous seam.
 
+    The count describes the REPOSITORY: how many times THIS conflict has
+    been observed unresolved. It is bookkeeping for the conflict identity
+    and for the operator escalation -- never an agent-selection input.
+
     The count only applies to the SAME conflict, which takes two
     checks:
 
@@ -155,7 +168,7 @@ def prior_conflict_count(
       another agent has since moved, is also a different conflict even
       though the branch name did not change.
 
-    Either difference starts with a full budget.
+    Either difference starts with a fresh count.
     """
     if state.last_target != target:
         return 0
@@ -192,49 +205,102 @@ def _ledger_candidates_available(
     return True
 
 
+def resolve_failure_ledger(
+    ledger: AgentFailureLedger | None,
+) -> AgentFailureLedger | None:
+    """Resolve the failure ledger that owns resolver eligibility.
+
+    The injected ledger wins. Otherwise the ledger of the ACTIVE
+    conflict-resolution session is used: that is the ledger the resolver
+    itself records its failures in, so the seam and the resolver agree
+    on which candidate is benched.
+
+    ``None`` means no ledger could be reached. The caller then has no
+    authority to suppress a resolver, and :func:`resolver_allowed` keeps
+    the resolver eligible -- see its docstring.
+    """
+    if ledger is not None:
+        return ledger
+    try:
+        from ralph.pipeline.conflict_resolution.rebase_loop import (
+            active_rebase_resolution_session,
+        )
+
+        session = active_rebase_resolution_session()
+    except Exception:
+        return None
+    if session is None:
+        return None
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger as _Ledger
+
+    session_ledger = session.ledger
+    return session_ledger if isinstance(session_ledger, _Ledger) else None
+
+
+def _is_same_conflict(
+    state: RebaseState,
+    target: str,
+    identity: ConflictIdentity,
+) -> bool:
+    """Whether ``state`` recorded the conflict ``identity`` describes."""
+    return (
+        state.last_target == target
+        and identity.matches(state)
+        and state.last_conflict_strategy_index == state.conflict_strategy_index
+    )
+
+
 def resolver_allowed(
     state: RebaseState,
     target: str,
     identity: ConflictIdentity = _UNKNOWN_IDENTITY,
     *,
-    ledger: AgentFailureLedger | None = None,
+    ledger: AgentFailureLedger | None,
     candidates: Sequence[str] = (),
     phase: str = "rebase_conflict_resolution",
-    attempts: int | None = None,
 ) -> bool:
     """Whether this attempt may invoke the dev-agent conflict resolver.
 
-    Resolver selection and suppression is owned by ``AgentFailureLedger``:
-    an attempt is allowed only when candidate resolvers are eligible/available
-    in the failure ledger for ``phase``. Repository conflict identity logic
-    is preserved: a changed conflict identity starts fresh.
+    Agent eligibility is owned by
+    :class:`~ralph.recovery.agent_failure_ledger.AgentFailureLedger` and
+    by NOTHING else. ``ledger`` is a REQUIRED keyword argument: there is
+    no second, count-based selector behind it, and the stored
+    ``consecutive_conflicts`` counter never selects, suppresses or demotes
+    an agent. A resolver whose ledger entry is available is eligible even
+    when the recorded conflict count is high; a resolver the ledger has
+    benched is refused even when the count is zero.
+
+    ``ledger`` is ``None`` when no ledger could be reached. The ledger
+    owns every SUPPRESSION decision, and a ledger that cannot be reached
+    has recorded no agent failure, so nothing suppresses the resolver:
+    the resolver stays eligible and the conflict is recorded as an
+    unresolved conflict. That is NOT a second opinion -- no other
+    counter, streak or cap is consulted.
+
+    The one non-ledger gate is REPOSITORY state, not agent health: when
+    the record says THIS conflict already exhausted the durable
+    conflict-strategy ladder (``resolution_exhausted``) the resolver is
+    refused and the run escalates to the operator. A conflict whose
+    identity differs is a different conflict and starts over.
+
+    Args:
+        state: The record the seam is standing on.
+        target: The integration target branch.
+        identity: The observed conflict identity for this attempt.
+        ledger: The failure ledger that owns resolver eligibility.
+        candidates: The resolver agents this attempt could invoke.
+        phase: The ledger phase the candidates belong to.
+
+    Returns:
+        ``True`` when this attempt may invoke the conflict resolver.
     """
-    effective_ledger = ledger
-    if effective_ledger is None:
-        try:
-            from ralph.pipeline.conflict_resolution.rebase_loop import (
-                active_rebase_resolution_session,
-            )
-
-            session = active_rebase_resolution_session()
-            if session is not None and hasattr(session, "ledger"):
-                effective_ledger = session.ledger
-        except Exception:
-            pass
-
-    is_same_conflict = (
-        state.last_target == target
-        and identity.matches(state)
-        and state.last_conflict_strategy_index == state.conflict_strategy_index
-    )
-    if is_same_conflict and state.resolution_exhausted:
+    if _is_same_conflict(state, target, identity) and state.resolution_exhausted:
         return False
 
-    if effective_ledger is not None and hasattr(effective_ledger, "is_available"):
-        return _ledger_candidates_available(effective_ledger, phase, candidates)
+    if ledger is None:
+        return True
 
-    effective_attempts = attempts if attempts is not None else MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
-    return prior_conflict_count(state, target, identity, attempts=effective_attempts) < effective_attempts
+    return _ledger_candidates_available(ledger, phase, candidates)
 
 
 @runtime_checkable
@@ -283,7 +349,7 @@ def apply_conflict_budget(
     target: str,
     resolver_suppressed: bool,
     identity: ConflictIdentity = _UNKNOWN_IDENTITY,
-    attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+    attempts: int = MAX_TRACKED_CONFLICT_ATTEMPTS,
     retry_deadline: float | None = None,
     clock: object = None,
     cooldown_seconds: float | None = None,
@@ -298,7 +364,12 @@ def apply_conflict_budget(
       it is looking at the same conflict.
     * Any other outcome (a skip, for instance) carries the prior count
       AND the prior identity forward unchanged, so an unrelated skip
-      neither consumes nor forgives the budget.
+      neither consumes nor forgives the recorded history.
+
+    ``attempts`` is the cap on the STORED counter (see
+    :data:`MAX_TRACKED_CONFLICT_ATTEMPTS`). It bounds what the record
+    remembers about the repository; it is not an agent-selection input
+    and it never decides whether a resolver may run.
 
     When ``resolver_suppressed`` is True and the outcome is still a
     conflict, the recorded reason is rewritten to name the exhausted

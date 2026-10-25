@@ -24,6 +24,22 @@ from ralph.git.rebase import (
     RebasePreconditionError,
     check_rebase_preconditions,
 )
+
+#: Maximum end-to-end integration attempts per commit. Attempt N+1 runs
+#: only when attempt N completed a rebase/merge but the fast-forward did
+#: not land (AC-08); the retry re-integrates onto the moved tip. The
+#: exhausted budget is not silent: the record names it (see
+#: :func:`_record_attempt_budget_spent`).
+from ralph.pipeline._auto_integrate_attempt_loop import (
+    MAX_INTEGRATION_ATTEMPTS as _MAX_INTEGRATION_ATTEMPTS,
+)
+from ralph.pipeline._auto_integrate_attempt_loop import (
+    AttemptLoopSeams,
+    run_attempt_loop,
+)
+from ralph.pipeline._auto_integrate_attempt_loop import (
+    record_attempt_budget_spent as _record_attempt_budget_spent,
+)
 from ralph.pipeline._auto_integrate_config import configured_target as _configured_target
 from ralph.pipeline._auto_integrate_once import (
     _integrate_once,
@@ -44,12 +60,12 @@ from ralph.pipeline.auto_integrate_boundary import (
 from ralph.pipeline.auto_integrate_budget_seam import (
     apply_completed_attempt_budget,
     carry_budget_through_skip,
-    charge_failed_attempt,
     observe_conflict_identity,
 )
 from ralph.pipeline.auto_integrate_catchup import resolve_integration_target
 from ralph.pipeline.auto_integrate_conflict_budget import (
     ConflictIdentity,
+    resolve_failure_ledger,
     resolver_allowed,
 )
 from ralph.pipeline.auto_integrate_context import (
@@ -271,16 +287,7 @@ def auto_integrate_after_commit(
                 )
 
         identity = observe_conflict_identity(root, target or "") if target else ConflictIdentity()
-        from ralph.pipeline.conflict_resolution.rebase_loop import (
-            active_rebase_resolution_session,
-        )
-
-        active_session = active_rebase_resolution_session()
-        effective_ledger = (
-            ledger
-            if ledger is not None
-            else (active_session.ledger if active_session is not None else None)
-        )
+        effective_ledger = resolve_failure_ledger(ledger)
         allowed = (
             _configured_resolver_allowed(
                 state,
@@ -450,12 +457,25 @@ def _auto_integrate_on_phase_transition_inner(
     )
 
 
-#: Maximum end-to-end integration attempts per commit. Attempt N+1 runs
-#: only when attempt N completed a rebase/merge but the fast-forward did
-#: not land (AC-08); the retry re-integrates onto the moved tip. The
-#: exhausted budget is not silent: the record names it (see
-#: :func:`_record_attempt_budget_spent`).
-_MAX_INTEGRATION_ATTEMPTS = 3
+def _attempt_loop_seams() -> AttemptLoopSeams:
+    """Hand the extracted attempt loop this module's patchable seams.
+
+    The snapshot is taken at CALL time, so a seam patched on this module
+    stays in effect inside the extracted loop: the loop uses the seam the
+    engine patched, not the one the loop module imported.
+    """
+    return AttemptLoopSeams(
+        resolve_context=_auto_integrate_resolve_context,
+        early_skips=_check_early_skips,
+        observe_conflict_identity=observe_conflict_identity,
+        configured_resolver_allowed=_configured_resolver_allowed,
+        recover_before_attempt=_recover_before_attempt_probe,
+        freshen_target=_freshen_attempt_target,
+        integrate_once=_integrate_once,
+        wait_before_retry=wait_before_retry,
+        read_record_outcome=read_record_outcome,
+        jitter_value=_random.random,
+    )
 
 
 def _auto_integrate_after_commit_inner(
@@ -472,184 +492,18 @@ def _auto_integrate_after_commit_inner(
     candidates: Sequence[str] = (),
 ) -> RebaseState | None:
     """Resolve context, integrate, and retry bounded fast-forward races."""
-    ctx = _auto_integrate_resolve_context(config, workspace_scope)
-    # The refresh outcome every decision below is made against; carried
-    # down so the conflict and short-circuit records say how fresh the
-    # mainline pointer was too (AC-04).
-    refresh: str | None = ctx[3] if ctx is not None else None
-    early_skip, usable_ctx = _check_early_skips(
-        ctx,
-        missing_target=_configured_target(config),
-    )
-    if early_skip is not None:
-        return carry_budget_through_skip(
-            early_skip,
-            prior=state,
-        )
-    if usable_ctx is None:
-        # R2/AC8: ladder rung 3 -- only the explicit disabled AC-01 path
-        # reaches this bare None; enabled lookup failures are recorded above.
-        return None
-    root, _current_branch, target = usable_ctx
-
-    remote_record: RebaseState | None = None
-    identity = observe_conflict_identity(root, target)
-    strategy_attempt = state.conflict_strategy_index == 1
-    from ralph.pipeline.conflict_resolution.rebase_loop import (
-        active_rebase_resolution_session,
-    )
-
-    active_session = active_rebase_resolution_session()
-    effective_ledger = (
-        ledger
-        if ledger is not None
-        else (active_session.ledger if active_session is not None else None)
-    )
-    allowed = _configured_resolver_allowed(
+    return run_attempt_loop(
+        config,
+        workspace_scope,
         state,
-        target,
-        identity,
-        ledger=effective_ledger,
+        conflict_resolver,
+        rebase_stop_resolver=rebase_stop_resolver,
+        display=display,
+        sleep=sleep,
+        jitter=jitter,
+        ledger=ledger,
         candidates=candidates,
-    )
-    effective_resolver = conflict_resolver if allowed else None
-    resolver_suppressed = conflict_resolver is not None and not allowed
-    if resolver_suppressed:
-        strategy_index = min(state.conflict_strategy_index, len(CONFLICT_RESOLUTION_STRATEGIES) - 1)
-        logger.warning(
-            "auto_integrate: conflict resolution budget exhausted for '{}'; "
-            "moving to resolution strategy '{}'",
-            target,
-            CONFLICT_RESOLUTION_STRATEGIES[strategy_index],
-        )
-
-    record: RebaseState | None = None
-    prefer_merge = False
-    attempts_exhausted = False
-    sleep = sleep if sleep is not None else current_clock().sleep
-    jitter = jitter if jitter is not None else _random.random
-    try:
-        for attempt in range(_MAX_INTEGRATION_ATTEMPTS):
-            if attempt:
-                wait_before_retry(attempt, sleep=sleep, jitter=jitter)
-            recovered = _recover_before_attempt_probe(
-                config,
-                workspace_scope,
-                record,
-                effective_resolver,
-                rebase_stop_resolver if allowed else None,
-            )
-            if recovered is not None:
-                record = recovered
-                break
-            remote_record, refresh = _freshen_attempt_target(
-                config,
-                root,
-                target,
-                attempt=attempt,
-                initial_refresh=refresh,
-                rebase_stop_resolver=rebase_stop_resolver if allowed else None,
-                prior=state,
-                force_refresh=strategy_attempt,
-                ledger=effective_ledger,
-                candidates=candidates,
-            )
-            if remote_record is not None and not remote_record.freshness_safe:
-                return remote_record
-            identity = observe_conflict_identity(root, target)
-            # Rebase-first on EVERY attempt, including a retry after the conflict
-            # ladder escalated: the escalation changes the RESOLUTION strategy,
-            # never the order of the integration.
-            record, retry_ff = _integrate_once(
-                config,
-                root,
-                target,
-                effective_resolver,
-                prefer_merge=prefer_merge,
-                refresh=refresh,
-                rebase_stop_resolver=(rebase_stop_resolver if allowed else None),
-                display=display,
-                clock=current_clock(),
-            )
-            if not retry_ff:
-                break
-            prefer_merge = record is not None and record.last_outcome == RebaseOutcomeKind.MERGED
-            if attempt + 1 < _MAX_INTEGRATION_ATTEMPTS:
-                logger.info(
-                    "auto_integrate: fast-forward did not land on attempt {}; "
-                    "re-integrating onto the moved target",
-                    attempt + 1,
-                )
-                continue
-            # Last iteration: the range ends here and NOTHING
-            # re-integrates. Promising a retry that never runs, and
-            # recording only the last fast-forward skip reason, left the
-            # operator with no way to tell "the target moved once" from
-            # "the target kept moving until I ran out of attempts".
-            attempts_exhausted = True
-            logger.warning(
-                "auto_integrate: fast-forward did not land after {} integration "
-                "attempts; giving up until the next seam",
-                _MAX_INTEGRATION_ATTEMPTS,
-            )
-    except TerminalStateViolationError:
-        # R6/AC-06: a terminal-state violation is loud, not silent. The
-        # durable record is RETAINED so the recovery preamble can reclaim
-        # the leaked state using the recorded pre-attempt SHA. Re-raise so
-        # the outer guard propagates the failure instead of recording a
-        # skip the operator would never correlate with the leak.
-        raise
-    except Exception as exc:
-        # Caught here, not only in the caller's broad guard: this is
-        # the first frame knowing the target/identity to scope by.
-        logger.warning("auto_integrate: integration attempt failed: {}", exc)
-        charged = record_refresh(
-            _record_skip(reason=f"unexpected failure: {exc}", target=target),
-            refresh,
-        )
-        # Conditional expression, not an if-statement: this handler already
-        # sits at the function's PLR0912 branch budget.
-        charged = (
-            charged.set_recovery_record_retained(StartupRetentionReason.OBSERVED_RETAINED_ON_DISK)
-            if read_record_outcome(root).disposition
-            in (
-                RecordReadOutcomeDisposition.PRESENT,
-                RecordReadOutcomeDisposition.UNREADABLE,
-                RecordReadOutcomeDisposition.BUSY,
-            )
-            else charged
-        )
-        return charge_failed_attempt(
-            charged,
-            prior=state,
-            target=target,
-            identity=identity,
-        )
-    if record is None:
-        # The normal local seam can be a no-op while remote sync still has a
-        # useful visible outcome (for example a failed fetch). Preserve it.
-        return remote_record
-    if remote_record is not None:
-        record = record.model_copy(
-            update={
-                "last_remote_sync": remote_record.last_remote_sync,
-                "last_remote": remote_record.last_remote,
-                "last_refresh": remote_record.last_refresh or record.last_refresh,
-                "last_reason": record.last_reason or remote_record.last_reason,
-                "freshness_verdict": remote_record.freshness_verdict,
-                "freshness_source": remote_record.freshness_source,
-                "freshness_safe": remote_record.freshness_safe,
-                "freshness_target_sha": remote_record.freshness_target_sha,
-            }
-        )
-    if attempts_exhausted:
-        record = _record_attempt_budget_spent(record)
-    return apply_completed_attempt_budget(
-        record,
-        prior=state,
-        target=target,
-        identity=identity,
-        resolver_suppressed=resolver_suppressed,
+        seams=_attempt_loop_seams(),
     )
 
 
@@ -661,17 +515,19 @@ def _configured_resolver_allowed(
     ledger: AgentFailureLedger | None = None,
     candidates: Sequence[str] = (),
 ) -> bool:
-    """Apply resolver selection/suppression via AgentFailureLedger while tolerating test doubles."""
-    try:
-        return resolver_allowed(
-            state,
-            target,
-            identity,
-            ledger=ledger,
-            candidates=candidates,
-        )
-    except TypeError:
-        return resolver_allowed(state, target, identity)
+    """Ask the failure ledger whether this attempt may invoke the resolver.
+
+    Resolver eligibility is owned by ``AgentFailureLedger`` alone. There
+    is no second opinion here: the stored conflict count never selects,
+    suppresses or demotes an agent.
+    """
+    return resolver_allowed(
+        state,
+        target,
+        identity,
+        ledger=resolve_failure_ledger(ledger),
+        candidates=candidates,
+    )
 
 
 def _freshen_attempt_target(
@@ -844,9 +700,11 @@ def _auto_integrate_check_skip_conditions(
 
 
 __all__ = [
+    "_MAX_INTEGRATION_ATTEMPTS",
     "IntegrationRecord",
     "_create_rebase_backup_ref",
     "_delete_rebase_backup_ref",
+    "_record_attempt_budget_spent",
     "auto_integrate_after_commit",
     "auto_integrate_on_phase_transition",
     "recover_incomplete_integration",

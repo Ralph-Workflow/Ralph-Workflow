@@ -62,7 +62,7 @@ def _inject_integration_runner(
     monkeypatch.setattr(
         auto_integrate,
         "resolver_allowed",
-        lambda _state, _target, _identity: True,
+        lambda _state, _target, _identity, **_kwargs: True,
     )
 
     def _run(*_args: object, **kwargs: object) -> tuple[RebaseState, bool]:

@@ -239,11 +239,12 @@ class RebaseState(RalphBaseModel):
     last_push_status: str | None = None
 
     # ``consecutive_conflicts`` counts unresolved integration conflicts
-    # against ``last_target`` in a row. It bounds how often the
-    # dev-agent conflict resolver is invoked for the same conflict (see
-    # ``ralph.pipeline.auto_integrate_conflict_budget``) and resets to 0
-    # on any successful land. Defaulted, so legacy checkpoints load
-    # unchanged.
+    # against ``last_target`` in a row. It describes the REPOSITORY: it
+    # scopes the conflict identity and feeds the operator escalation
+    # (see ``ralph.pipeline.auto_integrate_conflict_budget``). It is not
+    # an agent-selection input -- resolver eligibility is owned by
+    # ``AgentFailureLedger`` -- and it resets to 0 on any successful
+    # land. Defaulted, so legacy checkpoints load unchanged.
     consecutive_conflicts: int = 0
     integration_retry_attempt: int = Field(
         default=0,
@@ -520,10 +521,16 @@ class RebaseState(RalphBaseModel):
         Single writer of :attr:`consecutive_conflicts`; ``value`` is
         clamped to ``[0, effective_cap]`` where ``effective_cap`` is
         ``cap`` if supplied (clamped to >= 1), or
-        ``MAX_CONSECUTIVE_RESOLVER_ATTEMPTS`` by default.
+        ``MAX_TRACKED_CONFLICT_ATTEMPTS`` by default.
         This ensures that a caller that hands in a stale or oversized
         count cannot push the ladder past the configured cap.
         ``None`` is treated as 0.
+
+        The counter describes the REPOSITORY -- how many times this one
+        conflict has been observed unresolved -- and feeds the conflict
+        identity and the operator escalation. It is NOT an
+        agent-selection input: resolver eligibility is owned by
+        ``AgentFailureLedger``.
         """
         # Lazy import: auto_integrate_conflict_budget imports
         # ``RebaseState`` only under ``TYPE_CHECKING``, but importing
@@ -532,10 +539,10 @@ class RebaseState(RalphBaseModel):
         # -> ``rebase_state`` at module load. Doing it inside the
         # function body keeps the import graph clean.
         from ralph.pipeline.auto_integrate_conflict_budget import (
-            MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+            MAX_TRACKED_CONFLICT_ATTEMPTS,
         )
 
-        effective_cap = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS if cap is None else max(1, int(cap))
+        effective_cap = MAX_TRACKED_CONFLICT_ATTEMPTS if cap is None else max(1, int(cap))
         coerced = 0 if value is None else int(value)
         clamped = max(0, min(coerced, effective_cap))
         return self.model_copy(update={"consecutive_conflicts": clamped})

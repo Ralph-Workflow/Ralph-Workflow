@@ -18,7 +18,7 @@ import pytest
 
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_conflict_budget import (
-    MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+    MAX_TRACKED_CONFLICT_ATTEMPTS,
 )
 from ralph.pipeline.auto_integrate_resolution_state import (
     CONFLICT_RESOLUTION_STRATEGIES,
@@ -65,12 +65,12 @@ class TestConflictBudgetTypedSetters:
         assert RebaseState().record_consecutive_conflicts(-3).consecutive_conflicts == 0
 
     def test_record_consecutive_conflicts_oversized_clamps_to_cap(self) -> None:
-        result = RebaseState().record_consecutive_conflicts(MAX_CONSECUTIVE_RESOLVER_ATTEMPTS + 100)
-        assert result.consecutive_conflicts == MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
+        result = RebaseState().record_consecutive_conflicts(MAX_TRACKED_CONFLICT_ATTEMPTS + 100)
+        assert result.consecutive_conflicts == MAX_TRACKED_CONFLICT_ATTEMPTS
 
     def test_record_consecutive_conflicts_exact_cap_is_allowed(self) -> None:
-        result = RebaseState().record_consecutive_conflicts(MAX_CONSECUTIVE_RESOLVER_ATTEMPTS)
-        assert result.consecutive_conflicts == MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
+        result = RebaseState().record_consecutive_conflicts(MAX_TRACKED_CONFLICT_ATTEMPTS)
+        assert result.consecutive_conflicts == MAX_TRACKED_CONFLICT_ATTEMPTS
 
     def test_record_consecutive_conflicts_none_treated_as_zero(self) -> None:
         result = RebaseState().record_consecutive_conflicts(None)

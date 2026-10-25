@@ -78,7 +78,9 @@ The conflict-strategy / deadline / intervention decision fields on
   of `retry_deadline`; rejects non-finite values.
 - `record_consecutive_conflicts(value: int) -> Self` -- single writer
   of `consecutive_conflicts`; clamped to
-  `MAX_CONSECUTIVE_RESOLVER_ATTEMPTS` inside the setter.
+  `MAX_TRACKED_CONFLICT_ATTEMPTS` inside the setter. The counter
+  describes the repository (conflict identity plus the operator
+  escalation); it never selects, suppresses or demotes an agent.
 - `advance_conflict_strategy(reason: str) -> Self` -- bounded
   advancement of `conflict_strategy_index`,
   `conflict_strategies_tried`, `resolution_exhausted`,

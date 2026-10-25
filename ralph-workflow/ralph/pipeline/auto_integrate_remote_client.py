@@ -130,19 +130,9 @@ _DEFAULT_REMOTE_CLIENT = _DefaultRemoteClient()
 def _resolve_effective_ledger(
     ledger: AgentFailureLedger | None,
 ) -> AgentFailureLedger | None:
-    if ledger is not None:
-        return ledger
-    try:
-        from ralph.pipeline.conflict_resolution.rebase_loop import (
-            active_rebase_resolution_session,
-        )
+    from ralph.pipeline.auto_integrate_conflict_budget import resolve_failure_ledger
 
-        active_session = active_rebase_resolution_session()
-        if active_session is not None and hasattr(active_session, "ledger"):
-            return active_session.ledger
-    except Exception:
-        pass
-    return None
+    return resolve_failure_ledger(ledger)
 
 
 def _prepare_effective_resolver(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
 from ralph.pipeline.events import (
     PhaseFailureEvent,
@@ -25,6 +26,7 @@ from ralph.policy.models import (
     PostCommitRouteWhen,
     RecoveryPolicy,
 )
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.classifier import FailureCategory
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
@@ -33,6 +35,11 @@ DEVELOPMENT_ANALYSIS_TWO_RUN_CAP = 2
 if TYPE_CHECKING:
     from ralph.config.enums import PipelinePhase
     from ralph.pipeline.effects import Effect
+
+
+def _available_ledger() -> AgentFailureLedger:
+    """A ledger with no recorded agent failure: every candidate is eligible."""
+    return AgentFailureLedger(clock=FakeClock())
 
 
 def _reduce(
@@ -454,7 +461,7 @@ class TestPhaseFailureEvent:
             resolver_allowed(
                 first.rebase,
                 "main",
-                attempts=1,
+                ledger=_available_ledger(),
             )
             is True
         )
@@ -517,7 +524,7 @@ class TestPhaseFailureEvent:
         restored = RebaseState.model_validate(advanced.rebase.model_dump(mode="json"))
 
         assert restored.conflict_strategy_index == 1
-        assert resolver_allowed(restored, "main", attempts=1) is True
+        assert resolver_allowed(restored, "main", ledger=_available_ledger()) is True
 
     def test_phase_failure_recoverable_preserves_reason_in_last_error(self) -> None:
         """When chain exhausts, the original PhaseFailureEvent reason is preserved."""

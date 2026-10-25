@@ -381,21 +381,24 @@ def test_blocked_dispatch_announcement_never_raises(monkeypatch: Any) -> None:
 def test_direct_resolver_call_is_charged_against_the_conflict_budget(
     monkeypatch: Any,
 ) -> None:
-    """The direct resolver call must not bypass the anti-thrash budget.
+    """The direct resolver call must honour the failure ledger.
 
-    ``auto_integrate_after_commit`` gates resolver spend on
-    ``resolver_allowed``. The direct call added for the dirty-worktree
-    deadlock fix must honour the same bound, or re-running on an
-    unresolvable conflict would pay for an agent invocation every time.
+    ``auto_integrate_after_commit`` gates resolver spend on the failure
+    ledger. The direct call added for the dirty-worktree deadlock fix
+    must honour the same authority, or a benched resolver would be
+    re-invoked on every seam. The stored conflict count is not that
+    authority: it describes the repository, not the health of an agent.
     """
-    from ralph.pipeline.auto_integrate_conflict_budget import (
-        MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
-    )
     from ralph.pipeline.rebase_state import RebaseState
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 
     built: list[str] = []
     ctx = MagicMock()
     ctx.workspace_scope.root = Path("/workspace")
+    ledger = AgentFailureLedger(clock=FakeClock(), consecutive_limit=1)
+    ctx.controller = RecoveryController(
+        options=RecoveryControllerOptions(clock=FakeClock(), ledger=ledger)
+    )
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate.resolve_integration_target", lambda *_a: "main"
     )
@@ -411,11 +414,18 @@ def test_direct_resolver_call_is_charged_against_the_conflict_budget(
     assert run_loop._run_integration_conflict_resolution(ctx, RebaseState()) is True
     assert len(built) == 1
 
-    # Budget spent against the same target: suppressed, resolver never built.
+    # The ledger has benched the only candidate: the resolver is not built.
+    ledger.record(
+        AttemptFact(
+            phase="rebase_conflict_resolution",
+            agent="resolver",
+            artifact_valid=False,
+        )
+    )
     spent = RebaseState(
         last_action="conflict",
         last_target="main",
-        consecutive_conflicts=MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+        consecutive_conflicts=1,
     )
     assert run_loop._run_integration_conflict_resolution(ctx, spent) is False
     assert len(built) == 1
@@ -483,7 +493,7 @@ def test_a_recorded_exhaustion_does_not_block_a_different_conflict(monkeypatch: 
     changed was refused by evidence recorded about a different one.
     """
     from ralph.pipeline.auto_integrate_conflict_budget import (
-        MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+        MAX_TRACKED_CONFLICT_ATTEMPTS,
         ConflictIdentity,
     )
     from ralph.pipeline.rebase_state import RebaseState
@@ -502,7 +512,7 @@ def test_a_recorded_exhaustion_does_not_block_a_different_conflict(monkeypatch: 
     spent_on_another_conflict = RebaseState(
         last_action="conflict",
         last_target="main",
-        consecutive_conflicts=MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+        consecutive_conflicts=MAX_TRACKED_CONFLICT_ATTEMPTS,
         resolution_exhausted=True,
         resolution_exhaustion_reason="ATTEMPT_FAILED: conflict markers survive in: a.py",
         last_conflict_feature_sha="feature-1",
@@ -555,15 +565,15 @@ def test_an_exhausted_record_still_reaches_the_resolver_when_it_does_not_bind(
 
 
 def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: Any) -> None:
-    """The budget is spent on ONE conflict, so a new one must not inherit it.
+    """The recorded exhaustion is scoped to ONE conflict, so a new one must not inherit it.
 
-    Consulting the budget without observing which conflict is on disk
+    Consulting the record without observing which conflict is on disk
     spends the identity that matches every conflict: a genuinely new
-    conflict then inherits an older one's exhausted count and is
+    conflict then inherits an older one's exhausted record and is
     escalated without a resolver ever being invoked.
     """
     from ralph.pipeline.auto_integrate_conflict_budget import (
-        MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+        MAX_TRACKED_CONFLICT_ATTEMPTS,
         ConflictIdentity,
     )
     from ralph.pipeline.rebase_state import RebaseState
@@ -591,7 +601,8 @@ def test_a_different_conflict_gets_its_own_resolver_budget(monkeypatch: Any) -> 
     spent_on_another_conflict = RebaseState(
         last_action="conflict",
         last_target="main",
-        consecutive_conflicts=MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+        consecutive_conflicts=MAX_TRACKED_CONFLICT_ATTEMPTS,
+        resolution_exhausted=True,
         last_conflict_feature_sha="feature-1",
         last_conflict_target_sha="target-1",
         last_conflict_scope="feature",

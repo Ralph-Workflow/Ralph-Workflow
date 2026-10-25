@@ -287,7 +287,7 @@ def test_exhausted_integration_attempts_are_recorded_and_not_over_promised(
     monkeypatch.setattr(
         _ai_mod,
         "resolver_allowed",
-        lambda _state, _target, _identity: True,
+        lambda _state, _target, _identity, **_kwargs: True,
     )
     monkeypatch.setattr(
         _ai_mod,

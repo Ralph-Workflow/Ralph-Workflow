@@ -1613,8 +1613,8 @@ def _cold_capped_escalation_due(
     """Whether the session-scoped cold-capped escalation must run now.
 
     Cold-capped escalation (O1 retry-progress rule, distinct from the
-    ordinary resolver budget). The previous behaviour returned False at
-    this point WITHOUT consulting a resolver, leaving a cold-capped
+    ordinary resolver suppression). The previous behaviour returned False
+    at this point WITHOUT consulting a resolver, leaving a cold-capped
     ``RebaseState`` (one that loaded with ``resolution_exhausted=True``
     and / or ``consecutive_conflicts`` already at the cap) as an
     unresolvable dead end. The O1 contract requires that a cold-capped
@@ -1625,14 +1625,14 @@ def _cold_capped_escalation_due(
 
     The ``cold_capped_escalation_attempted`` flag makes this a
     one-shot per session, so a subsequent cold-capped call falls through
-    to the ordinary budget-spent branch (which already escalates to
+    to the ordinary suppressed branch (which already escalates to
     INTERVENTION_REQUIRED without spinning). The cap is NEVER reset or
     raised -- the escalation is purely additive, distinct from the
-    exhausted ordinary resolver budget. The cold-capped condition is
-    identity-aware (the same identity that already exhausted its budget
-    must still be the conflict on disk now): a different conflict with a
-    depleted counter inherits a fresh budget via ``resolver_allowed``
-    and falls through to the ordinary path.
+    ordinary resolver suppression. The cold-capped condition is
+    identity-aware (the same identity that already exhausted its
+    resolution ladder must still be the conflict on disk now): a
+    different conflict is not refused by ``resolver_allowed`` and falls
+    through to the ordinary path.
     """
     from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
 
@@ -1644,7 +1644,6 @@ def _cold_capped_escalation_due(
         identity,
         ledger=ledger,
         candidates=candidates,
-        attempts=resolver_attempts,
     ):
         return False
     session_attempted: bool = getattr(ctx, "cold_capped_escalation_attempted", False)
@@ -1661,7 +1660,7 @@ def _cold_capped_escalation_due(
     with suppress(Exception):
         emit_integration_warn_line(
             ctx.active_display,
-            "conflict resolution budget spent; attempting cold-capped "
+            "recorded conflict exhaustion reached; attempting cold-capped "
             "escalation that re-derives live Git state",
         )
     return True
@@ -1733,11 +1732,13 @@ def _run_owned_integration_conflict_resolution(
     instead. Call the resolver directly so unresolved integration always
     reaches conflict resolution.
 
-    The call is still charged against the SAME anti-thrash budget the
-    post-commit seam uses
-    (:func:`~ralph.pipeline.auto_integrate_conflict_budget.resolver_allowed`),
-    so re-running on an unresolvable conflict escalates instead of paying
-    for an agent every time. A fresh state always allows the first attempt.
+    The call is still gated by the SAME authority the post-commit seam
+    uses
+    (:func:`~ralph.pipeline.auto_integrate_conflict_budget.resolver_allowed`):
+    the failure ledger decides whether an eligible resolver exists, and
+    the recorded conflict state refuses a resolver whose durable
+    resolution ladder is already exhausted. The stored conflict count
+    decides neither. A fresh state always allows the first attempt.
     Suppression is announced, never silent. Never raises.
     """
     from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
@@ -1777,16 +1778,15 @@ def _run_owned_integration_conflict_resolution(
         identity,
         ledger=ledger,
         candidates=installed,
-        attempts=resolver_attempts,
     ):
         logger.warning(
-            "integration resolution: resolver budget spent for target '{}'; escalating",
+            "integration resolution: no eligible conflict resolver for target '{}'; escalating",
             target,
         )
         with suppress(Exception):
             emit_integration_warn_line(
                 ctx.active_display,
-                "conflict resolution budget spent for this unchanged conflict;"
+                "no eligible conflict resolver for this conflict;"
                 " escalating instead of re-invoking the resolver",
             )
         return False
@@ -2622,18 +2622,17 @@ def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> boo
 
     The conflict budget already owns this judgement for the post-commit
     seam: it compares the recorded ``(feature tip, target tip, paths,
-    stage oids)`` against what the worktree holds now, and allows
-    :data:`MAX_CONSECUTIVE_RESOLVER_ATTEMPTS` before it suppresses the
-    resolver. Reusing it here is what lets a NEW conflict -- or one the
-    budget has not yet given up on -- reach a resolver instead of being
-    refused by evidence recorded about a different conflict. Never
-    raises: an unreadable identity keeps the record binding, which is
-    the fail-closed answer.
+    stage oids)`` against what the worktree holds now and refuses the
+    resolver only when the recorded conflict is the one on disk AND its
+    durable resolution ladder is exhausted. Reusing it here is what lets
+    a NEW conflict -- or one the failure ledger still has an eligible
+    resolver for -- reach a resolver instead of being refused by evidence
+    recorded about a different conflict. Never raises: an unreadable
+    identity keeps the record binding, which is the fail-closed answer.
     """
     from ralph.pipeline.auto_integrate import resolve_integration_target
     from ralph.pipeline.auto_integrate_budget_seam import observe_conflict_identity
     from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity, resolver_allowed
-    from ralph.pipeline.auto_integrate_remote_sync import resolver_attempt_limit
 
     if rebase is None:
         return True
@@ -2668,7 +2667,6 @@ def _exhaustion_still_binds(ctx: LoopContext, rebase: RebaseState | None) -> boo
         identity,
         ledger=ledger,
         candidates=installed,
-        attempts=resolver_attempt_limit(ctx.config),
     ):
         logger.info(
             "integration resolution: the recorded exhaustion does not bind the conflict "

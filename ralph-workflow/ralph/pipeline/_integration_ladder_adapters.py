@@ -195,6 +195,7 @@ class _ProductionGitPlumbing:
                 if target.is_dir():
                     import shutil
 
+                    # filesystem-write-ok: git-owned in-progress operation-state dir; git recreates it, no Ralph artifact is lost
                     shutil.rmtree(target)
                     removed = True
                 elif target.is_file():
@@ -429,6 +430,7 @@ class _ProductionFileQuarantine:
         source = root / path
         dest = quarantine_dir / path
         try:
+            # filesystem-write-ok: quarantine move of residue out of the worktree; the destination is a fresh path, not a stable artifact
             os.renames(source, dest)
         except OSError:
             return None
@@ -446,6 +448,7 @@ class _ProductionFileQuarantine:
                     if entry.is_dir():
                         import shutil
 
+                        # filesystem-write-ok: transient regenerable .staging/tmp scratch under the ladder state dir
                         shutil.rmtree(entry)
                     else:
                         entry.unlink()
@@ -505,6 +508,7 @@ class _ProductionEnvironmentProbe:
         write_probe = Path(root) / ".agent" / ".ladder-write-probe"
         try:
             write_probe.parent.mkdir(parents=True, exist_ok=True)
+            # filesystem-write-ok: transient write probe byte; the file is unlinked immediately
             with write_probe.open("wb") as handle:
                 handle.write(b"probe")
             write_probe.unlink()

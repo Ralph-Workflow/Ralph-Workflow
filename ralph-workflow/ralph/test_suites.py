@@ -530,7 +530,13 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_pty_line_reader_pending_bound.py": 50,
     "tests/agents/test_terminal_state_restored_on_exit.py": 270,
     "tests/test_auto_integrate_local_fleet_target_e2e.py": 55,
-    "tests/pipeline/test_auto_integrate_agent_failure.py": 65,
+    # Recalibrated after the rewrite to a REAL git rebase: the file now
+    # drives real git plumbing and measures ~5.6-5.9 s of wall clock, so
+    # the previous 65 (~3.4 s at the calibration scale of 17 weight per
+    # second) under-counted its cost. 100 == round(5.9 s * 17) sits at the
+    # top of the measured band so the LPT balancer never packs the slow
+    # file onto an already-loaded shard.
+    "tests/pipeline/test_auto_integrate_agent_failure.py": 100,
 }
 
 

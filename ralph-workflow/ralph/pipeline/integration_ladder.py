@@ -56,12 +56,22 @@ streamed (``git diff --output=`` writes the patch straight to disk,
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
+from ralph.pipeline._integration_ladder_evidence import (
+    _LADDER_ACTION_VALUES,
+    _RUNG_ACTION_VALUE,
+    BACKOFF_BASE_SECONDS,
+    BACKOFF_CAP_SECONDS,
+    _is_terminal,
+    _record_evidence,
+    _rung_attempt_satisfied,
+    _rung_key,
+)
 from ralph.pipeline._integration_ladder_seams import (
     EnvironmentFailure as EnvironmentFailure,
     EnvironmentProbe as EnvironmentProbe,
@@ -75,7 +85,6 @@ from ralph.pipeline.integration_actions import Clock, current_clock
 from ralph.pipeline.integration_decision import (
     CLEANUP_LADDER_ORDER,
     CleanupLadderRung,
-    NextAction,
 )
 from ralph.pipeline.integration_observation import InProgressKind
 
@@ -116,11 +125,6 @@ __all__ = [
 #: never triggers a reset.
 LADDER_ATTEMPT_BUDGET: Final[int] = 16
 
-#: Capped exponential backoff for the degrade rung: ``base * 2**attempt``
-#: capped at ``cap`` seconds, slept on the INJECTABLE clock.
-BACKOFF_BASE_SECONDS: Final[float] = 1.0
-BACKOFF_CAP_SECONDS: Final[float] = 60.0
-
 #: The six last-resort preconditions, in evaluation order. Each name is
 #: recorded in the ledger under ``precondition:<name>`` with its
 #: evidence; the reset runs only when every value starts with ``met``.
@@ -132,25 +136,6 @@ LAST_RESORT_PRECONDITIONS: Final[tuple[str, ...]] = (
     "ladder_attempt_budget_spent",
     "fresh_reobservation_confirms_blocking_state",
 )
-
-#: Terminal evidence values: a rung whose recorded value starts with one
-#: of these has finished (successfully or not) and is never repeated.
-_TERMINAL_PREFIXES: Final[tuple[str, ...]] = ("succeeded", "failed", "impossible")
-
-#: Cleanup-ladder rung -> the decision-table action value the rung
-#: implements; the same string is the ``rung:<action>`` evidence key.
-_RUNG_ACTION_VALUE: Final[dict[CleanupLadderRung, str]] = {
-    CleanupLadderRung.NORMAL_CLEANUP: NextAction.SAVE_AND_RESTORE.value,
-    CleanupLadderRung.ALTERNATE_PRESERVATION: NextAction.PRESERVE_VIA_TEMP_INDEX.value,
-    CleanupLadderRung.QUARANTINE: NextAction.QUARANTINE_AND_RESTORE.value,
-    CleanupLadderRung.FRESH_WORKTREE: NextAction.REBUILD_IN_FRESH_WORKTREE.value,
-    CleanupLadderRung.ENVIRONMENT_DEGRADE: NextAction.ADAPT_ENVIRONMENT_AND_RETRY.value,
-    CleanupLadderRung.LAST_RESORT: NextAction.LAST_RESORT_RECOVERY.value,
-}
-
-#: Action values charged to the ledger for the cleanup ladder; their
-#: repeat counts (plus the saturating aggregate) are the ladder budget.
-_LADDER_ACTION_VALUES: Final[frozenset[str]] = frozenset(_RUNG_ACTION_VALUE.values())
 
 #: Salvage-attempt kinds the last-resort precondition (b) waits for,
 #: recorded under ``salvage:<kind>`` by the owning seams through
@@ -186,39 +171,6 @@ class LadderStepResult:
 
 
 # Ledger evidence helpers (intent before, outcome after; restart resume).
-
-
-def _record_evidence(ledger: AttemptLedger, key: str, value: str) -> None:
-    """Record one ladder evidence entry durably (atomic, monotone merge)."""
-    state = ledger.read()
-    evidence = dict(state.ladder_evidence)
-    evidence[key] = value
-    ledger.persist(replace(state, ladder_evidence=evidence))
-
-
-def _rung_key(rung: CleanupLadderRung) -> str:
-    return f"rung:{_RUNG_ACTION_VALUE[rung]}"
-
-
-def _is_terminal(value: str | None) -> bool:
-    return value is not None and value.startswith(_TERMINAL_PREFIXES)
-
-
-def _rung_attempt_satisfied(value: str | None) -> bool:
-    """True when a rung counts as "tried and failed or shown impossible".
-
-    A terminal outcome satisfies precondition (a) directly. The degrade
-    rung's steady state is ``waiting`` (it never "fails" — it waits on
-    the machine), so a tick whose capped backoff has REACHED the cap
-    counts as tried-and-failed: the environment had its full bounded
-    wait across the cap and never healed, and without this rule the
-    rungs precondition could never hold while rung 5 is the answer.
-    """
-    if _is_terminal(value):
-        return True
-    if value is None or not value.startswith("waiting:"):
-        return False
-    return f"delay={BACKOFF_CAP_SECONDS}" in value
 
 
 def ladder_charge_count(state: AttemptLedgerState) -> int:

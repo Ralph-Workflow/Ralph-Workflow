@@ -1,19 +1,23 @@
-"""Git-observing seam between auto-integration and its conflict budget.
+"""Git-observing seam between auto-integration and its conflict bookkeeping.
 
 Separated from :mod:`ralph.pipeline.auto_integrate` so that module
 stays under the repo-structure ``_MAX_FILE_LINES`` cap, and kept out of
 :mod:`ralph.pipeline.auto_integrate_conflict_budget` so that module
-stays a pure, trivially unit-testable policy: it decides the bound, it
-never touches a repository. This module is the other half -- the two
-places where the bound needs to look at (or reason about) real git
-state.
+stays a pure, trivially unit-testable policy: it decides the recorded
+history, it never touches a repository. This module is the other half --
+the two places where that history needs to look at (or reason about)
+real git state.
 
 * :func:`observe_conflict_identity` reads the endpoint pair that
   identifies the conflict an attempt is about to try to reconcile.
-* :func:`carry_budget_through_skip` keeps that bound intact across an
-  early skip, which short-circuits before the budget is consulted.
+* :func:`carry_budget_through_skip` keeps that history intact across an
+  early skip, which short-circuits before the bookkeeping is consulted.
 * :func:`charge_failed_attempt` keeps it intact across an unexpected
-  failure, which short-circuits before the budget is applied.
+  failure, which short-circuits before the bookkeeping is applied.
+
+Resolver ELIGIBILITY is not decided here: the failure ledger owns it
+(see :func:`~ralph.pipeline.auto_integrate_conflict_budget.resolver_allowed`).
+This module only records what the repository did.
 """
 
 from __future__ import annotations
@@ -26,7 +30,7 @@ from ralph.git.errors import GitOperationError
 from ralph.git.merge import branch_sha, conflict_stage_entries, unmerged_paths
 from ralph.git.operations import get_head_sha
 from ralph.pipeline.auto_integrate_conflict_budget import (
-    MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+    MAX_TRACKED_CONFLICT_ATTEMPTS,
     ConflictIdentity,
     apply_conflict_budget,
     prior_conflict_count,
@@ -83,19 +87,19 @@ def carry_budget_through_skip(
     skip: RebaseState,
     *,
     prior: RebaseState,
-    attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+    attempts: int = MAX_TRACKED_CONFLICT_ATTEMPTS,
 ) -> RebaseState:
-    """Preserve the conflict budget across an early skip.
+    """Preserve the conflict bookkeeping across an early skip.
 
     An early skip (dirty worktree, failed preconditions, ...)
-    short-circuits before the budget is consulted, so without this the
-    freshly built skip record would carry the model defaults --
+    short-circuits before the bookkeeping is consulted, so without this
+    the freshly built skip record would carry the model defaults --
     ``consecutive_conflicts=0`` and no identity -- and REFUND the
-    budget. A dirty worktree between two seams would then buy the
-    resolver another 900 s attempt at a conflict it has already failed,
-    which is the unbounded behaviour the budget exists to stop. A skip
+    recorded history. A dirty worktree between two seams would then
+    erase the record of a conflict the agent has already failed, which
+    is the unbounded behaviour the bookkeeping exists to stop. A skip
     changes nothing about the repository, so it must neither consume
-    nor forgive the budget.
+    nor forgive the recorded history.
 
     Skips with no resolved target (detached HEAD, AC-13) are returned
     untouched: there is no target to scope a count to.
@@ -118,9 +122,9 @@ def apply_completed_attempt_budget(
     target: str,
     identity: ConflictIdentity,
     resolver_suppressed: bool,
-    attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+    attempts: int = MAX_TRACKED_CONFLICT_ATTEMPTS,
 ) -> RebaseState:
-    """Charge only actual repository conflicts to the resolver budget."""
+    """Charge only actual repository conflicts to the recorded history."""
     if record.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE:
         return charge_failed_attempt(
             record, prior=prior, target=target, identity=identity, attempts=attempts
@@ -141,17 +145,18 @@ def charge_failed_attempt(
     prior: RebaseState,
     target: str,
     identity: ConflictIdentity,
-    attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+    attempts: int = MAX_TRACKED_CONFLICT_ATTEMPTS,
 ) -> RebaseState:
     """Account for an integration attempt that died with an exception.
 
     An unexpected failure is turned into a skip record built from the
     model defaults -- ``consecutive_conflicts=0`` and no identity --
-    which REFUNDS the budget. Preserve the existing count and identity:
-    this guard covers Ralph and resolver invocation failures as well as
-    repository conflicts, and only an observed ``last_action='conflict'``
-    is allowed to spend the rebase-resolution budget. Agent failures use
-    the conflict-resolution recovery flow's cooldown and fallover instead.
+    which REFUNDS the recorded history. Preserve the existing count and
+    identity: this guard covers Ralph and resolver invocation failures as
+    well as repository conflicts, and only an observed
+    ``last_action='conflict'`` is allowed to spend the recorded
+    rebase-resolution history. Agent failures use the
+    conflict-resolution recovery flow's cooldown and fallover instead.
     """
     carried = prior_conflict_count(prior, target, identity, attempts=attempts)
     updated = skip.record_consecutive_conflicts(carried, cap=attempts)

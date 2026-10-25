@@ -29,11 +29,11 @@ from ralph.pipeline.rebase_state import RebaseState
 def _exhausted_state(*, max_attempts: int = 1) -> RebaseState:
     """Build a state whose consecutive-conflicts already meets the cap."""
     from ralph.pipeline.auto_integrate_conflict_budget import (
-        MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+        MAX_TRACKED_CONFLICT_ATTEMPTS,
     )
 
     return RebaseState(
-        consecutive_conflicts=min(max_attempts, MAX_CONSECUTIVE_RESOLVER_ATTEMPTS),
+        consecutive_conflicts=min(max_attempts, MAX_TRACKED_CONFLICT_ATTEMPTS),
         resolution_exhausted=True,
         last_outcome=RebaseOutcomeKind.CONFLICT,
         last_reason="unit-test: previous attempt failed",
