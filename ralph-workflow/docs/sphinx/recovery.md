@@ -98,8 +98,19 @@ Operators can supply a tighter custom policy via `RecoveryControllerOptions.unav
 
 A successful invocation clears only that agent's cooldown and backoff history. The runner calls `RecoveryController.reset_backoff(phase, agent_name)` from the successful `InvokeAgentEffect` completion seam; the next failure for that agent starts at the reason's base delay, not the prior accumulated cooldown. Other agents' histories are unaffected by the reset, so a successful claude run does not erase opencode or agy's accumulated cooldown.
 
+### Unproductive agent bounds (`AgentFailureLedger`)
+
+Every attempt that ends without producing an accepted, valid artifact is classified as *unproductive*. To prevent infinite retry loops across free-retry categories (such as missing or invalid artifacts, environmental failures, and ambiguous failures that do not debit budget), agent unproductivity is tracked by a single conceptual owner: `AgentFailureLedger` in `ralph/recovery/agent_failure_ledger.py`.
+
+- **Consecutive unproductive ceiling (`agent_max_consecutive_unproductive`)**: After a configurable number of consecutive unproductive attempts by the same agent in the same phase (default `3` via `[general] agent_max_consecutive_unproductive`), the agent is placed on cooldown with exponential backoff and Ralph Workflow falls over to the next eligible agent in the chain.
+- **Total unproductive ceiling (`agent_max_total_unproductive`)**: When an attempt modifies workspace files but still ends without a valid artifact, the consecutive counter resets to allow genuine iterative progress. However, `[general] agent_max_total_unproductive` (default `9`) imposes an absolute upper limit on total unproductive attempts, demoting agents that continuously mutate files without producing the required artifact.
+- **Sole-agent exhaustion**: If a demoted agent is the only configured agent in the chain, the phase terminates immediately with an actionable error rather than silently looping.
+- **Cooldown expiry and success reset**: Upon cooldown expiry, the agent becomes eligible again with a fresh counter. Producing an accepted, valid artifact completely clears the agent's failure ledger history. In-progress counts survive restarts through persisted state.
+
 ### Lock-in regression coverage
 
+- `tests/recovery/test_agent_failure_ledger.py` — consecutive and total limits, workspace-mutation resets, cooldown transitions, and snapshot round-trip serialization.
+- `tests/recovery/test_agent_failure_scenarios.py` — black-box scenario coverage verifying unproductive demotion, workspace change tolerance, recovery on success, cooldown expiry, sole-agent failure, and restart preservation.
 - `tests/recovery/test_agent_selection.py` — `select_preferred_agent` is a pure index-0 scan; `skipped_reasons` enumerate every non-selected agent in priority order; multiple consecutive calls with identical rows return identical selections.
 - `tests/recovery/test_priority_agent_selection.py` — `RecoveryController.preferred_agent_index` returns the highest-priority available agent across consecutive invocations, across cooldown expiry, across successful preferred-agent runs, and across persisted `current_index` values that point past index 0.
 - `tests/pipeline/test_run_loop_phase_entry_prefers_available_agent.py` — `_reselect_preferred_agent` on phase entry ignores the persisted `current_index` and resets retries / session id / retry intent when the selection changes.
@@ -109,8 +120,6 @@ A successful invocation clears only that agent's cooldown and backoff history. T
 - `tests/recovery/test_agent_cooldown_enforcement.py` — the cap is universally enforced even when the supplied policy specifies a higher cap; overload, rate-limit, context-exhaustion, and bare non-zero-exit failures cool the failed agent before fallback selection.
 - `tests/recovery/test_out_of_credits_fast_fallover.py` — exponential growth and saturation for OUT_OF_CREDITS across many failures.
 - `tests/pipeline/test_run_loop_recovery_surface.py` — recoverable provider cooldowns remain operator-visible even without a watchdog reason.
-
-For in-session retries, after a configurable number of consecutive qualifying retries (`in_session_retry_escalation_limit`, default 3) for a given phase and agent, the next retry is treated as an agent failure with standard cooldown and fallover to the next eligible agent, preventing endless retry loops with the same agent. Successful completion of the retried work resets the consecutive failure count.
 
 ## Recovery-cycle cap
 
@@ -125,7 +134,7 @@ This prevents a persistently failing workflow from retrying forever without maki
 
 ### Documentation review note
 
-- **What changed:** Retry documentation now covers provider overload, context exhaustion, non-zero exits, and the operator-visible recovery line.
+- **What changed:** Documentation covers single-owner agent failure tracking via `AgentFailureLedger`, consecutive and total unproductive bounds (`agent_max_consecutive_unproductive`, `agent_max_total_unproductive`), provider overload, context exhaustion, non-zero exits, and the operator-visible recovery line.
 - **Why here:** This page owns retry, cooldown, and fallover behavior.
 - **What stayed elsewhere:** Provider-specific command and configuration guidance remains on the agent and configuration pages.
 - **Duplication:** The reason-specific delays are stated once in the recovery flow rather than repeated across troubleshooting pages.

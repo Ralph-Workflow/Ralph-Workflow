@@ -221,7 +221,12 @@ def test_retry_delay_ms_from_policy_bundle() -> None:
     """
     bundle = _make_bundle_with_retry_delay(retry_delay_ms=500, max_retries=3)
     controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=bundle)
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            policy_bundle=bundle,
+            agent_max_consecutive_unproductive=20,
+            agent_max_total_unproductive=20,
+        )
     )
     state = _make_state(["claude"])
 
@@ -244,7 +249,12 @@ def test_retry_delay_ms_doubles_on_subsequent_failure() -> None:
     """retry_delay_ms doubles on each retry attempt for the same agent."""
     bundle = _make_bundle_with_retry_delay(retry_delay_ms=500, max_retries=3)
     controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=bundle)
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            policy_bundle=bundle,
+            agent_max_consecutive_unproductive=20,
+            agent_max_total_unproductive=20,
+        )
     )
     state = _make_state(["claude"])
 
@@ -282,7 +292,12 @@ def test_retry_delay_ms_caps_at_max_backoff() -> None:
     """retry_delay_ms is capped at 30_000 ms even on many retries."""
     bundle = _make_bundle_with_retry_delay(retry_delay_ms=1000, max_retries=10)
     controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=bundle)
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            policy_bundle=bundle,
+            agent_max_consecutive_unproductive=20,
+            agent_max_total_unproductive=20,
+        )
     )
     state = _make_state(["claude"])
 
@@ -310,7 +325,12 @@ def test_retry_delay_ms_reset_after_successful_invocation() -> None:
     """reset_backoff clears the backoff counter so next failure starts fresh."""
     bundle = _make_bundle_with_retry_delay(retry_delay_ms=500, max_retries=3)
     controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=bundle)
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            policy_bundle=bundle,
+            agent_max_consecutive_unproductive=20,
+            agent_max_total_unproductive=20,
+        )
     )
     state = _make_state(["claude"])
 
@@ -355,7 +375,12 @@ def test_retry_delay_ms_applied_via_injected_sleep() -> None:
     """
     bundle = _make_bundle_with_retry_delay(retry_delay_ms=500, max_retries=3)
     controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=bundle)
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            policy_bundle=bundle,
+            agent_max_consecutive_unproductive=20,
+            agent_max_total_unproductive=20,
+        )
     )
     state = _make_state(["claude"])
 

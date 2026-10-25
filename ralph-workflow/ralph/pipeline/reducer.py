@@ -230,6 +230,8 @@ def _reduce_phase_failure(
                 raw_message=raw_message,
                 reset_session=False,
             )
+        raw_changed: object = getattr(event, "workspace_changed", False)
+        workspace_changed: bool = bool(raw_changed)
         new_state, effects, _ = recovery.handle(
             state,
             event.reason or f"(no reason reported for phase={event.phase})",
@@ -239,6 +241,7 @@ def _reduce_phase_failure(
                 retry_in_session=event.retry_in_session,
                 classified_failure=classified_failure,
             ),
+            workspace_changed=workspace_changed,
         )
         if pipeline_policy is not None and state.phase != new_state.phase:
             new_state = progress.apply_execution_cycle_outcome(
@@ -261,9 +264,22 @@ def _reduce_result_event(
     event: AnalysisDecisionEvent | ExecutionResultEvent,
     pipeline_policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None = None,
+    recovery: RecoveryController | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     if isinstance(event, AnalysisDecisionEvent):
         return _handle_analysis_decision(state, event, pipeline_policy, routing_timing)
+    if recovery is not None and isinstance(event, ExecutionResultEvent):
+        current_agent = state.current_agent()
+        if current_agent:
+            from ralph.recovery.agent_failure_ledger import AttemptFact
+
+            recovery.ledger.record(
+                AttemptFact(
+                    phase=event.phase,
+                    agent=current_agent,
+                    artifact_valid=True,
+                )
+            )
     return _handle_execution_result(state, event, pipeline_policy, routing_timing)
 
 
@@ -464,7 +480,9 @@ def _reduce_pure(
             state, event, pipeline_policy, recovery, routing_timing
         )
     elif isinstance(event, AnalysisDecisionEvent | ExecutionResultEvent):
-        reduced_event = _reduce_result_event(state, event, pipeline_policy, routing_timing)
+        reduced_event = _reduce_result_event(
+            state, event, pipeline_policy, routing_timing, recovery=recovery
+        )
     if reduced_event is not None:
         return reduced_event
     if event == PipelineEvent.AGENT_FAILURE:

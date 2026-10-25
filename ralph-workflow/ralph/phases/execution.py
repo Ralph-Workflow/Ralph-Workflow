@@ -62,6 +62,17 @@ if TYPE_CHECKING:
         PhaseDefinition,
         PipelinePolicy,
     )
+    from ralph.workspace import Workspace
+
+
+def _detect_workspace_files_changed(workspace: Workspace) -> bool:
+    try:
+        for entry in workspace.list_dir("."):
+            if not entry.startswith((".", "checkpoint")):
+                return True
+    except Exception:
+        pass
+    return False
 
 
 def handle_execution_phase(
@@ -133,6 +144,10 @@ def handle_execution_phase(
         )
         if failure is not None:
             events = failure
+            changed = _detect_workspace_files_changed(ctx.workspace)
+            for evt in events:
+                if isinstance(evt, PhaseFailureEvent):
+                    object.__setattr__(evt, "workspace_changed", changed)
         elif ra.artifact_type == "development_result" and validated_content is not None:
             development_result = DevelopmentResult.model_validate(validated_content)
             events = [

@@ -86,9 +86,8 @@ from ralph.recovery.controller import RecoveryController, RecoveryControllerOpti
 from ralph.recovery.events import FailureEvent as _FailureEvent
 from ralph.recovery.events import FalloverEvent as _FalloverEvent
 from ralph.timeout_defaults import (
-    BROKEN_AGENT_SAME_SHAPE_DEFAULT,
-    IN_SESSION_RETRY_ESCALATION_DEFAULT,
-    SAME_SHAPE_RETRY_DEFAULT,
+    AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT,
+    AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT,
     WAITING_STATUS_INTERVAL_SECONDS,
 )
 
@@ -3685,41 +3684,25 @@ def _build_recovery_controller(
         if isinstance(raw_technical_retry_cap, int) and raw_technical_retry_cap >= 0
         else 10
     )
-    raw_same_shape_limit: object = getattr(
+    raw_consecutive: object = getattr(
         config.general,
-        "agent_max_same_shape_resumes",
+        "agent_max_consecutive_unproductive",
         None,
     )
-    same_shape_limit = (
-        raw_same_shape_limit
-        if isinstance(raw_same_shape_limit, int) and raw_same_shape_limit >= 1
-        else SAME_SHAPE_RETRY_DEFAULT
+    consecutive_limit = (
+        raw_consecutive
+        if isinstance(raw_consecutive, int) and raw_consecutive >= 1
+        else AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT
     )
-    raw_broken_agent_same_shape_limit: object = getattr(
+    raw_total: object = getattr(
         config.general,
-        "agent_max_broken_agent_same_shape_resumes",
+        "agent_max_total_unproductive",
         None,
     )
-    broken_agent_same_shape_limit = (
-        raw_broken_agent_same_shape_limit
-        if (
-            isinstance(raw_broken_agent_same_shape_limit, int)
-            and raw_broken_agent_same_shape_limit >= 1
-        )
-        else BROKEN_AGENT_SAME_SHAPE_DEFAULT
-    )
-    raw_in_session_retry_escalation_limit: object = getattr(
-        config.general,
-        "in_session_retry_escalation_limit",
-        None,
-    )
-    in_session_retry_escalation_limit = (
-        raw_in_session_retry_escalation_limit
-        if (
-            isinstance(raw_in_session_retry_escalation_limit, int)
-            and raw_in_session_retry_escalation_limit >= 1
-        )
-        else IN_SESSION_RETRY_ESCALATION_DEFAULT
+    total_limit = (
+        raw_total
+        if isinstance(raw_total, int) and raw_total >= 1
+        else AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT
     )
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -3727,9 +3710,8 @@ def _build_recovery_controller(
             policy_bundle=policy_bundle,
             budget_registry=_seed_budget_registry(policy_bundle),
             technical_retry_cap=technical_retry_cap,
-            same_shape_retry_limit=same_shape_limit,
-            broken_agent_same_shape_limit=broken_agent_same_shape_limit,
-            in_session_retry_escalation_limit=in_session_retry_escalation_limit,
+            agent_max_consecutive_unproductive=consecutive_limit,
+            agent_max_total_unproductive=total_limit,
         )
     )
     return controller, _cycle_cap

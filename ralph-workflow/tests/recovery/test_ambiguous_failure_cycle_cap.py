@@ -49,6 +49,8 @@ def _controller() -> RecoveryController:
             cycle_cap=_CAP,
             budget_registry=registry,
             policy_bundle=_policy_bundle(),
+            agent_max_consecutive_unproductive=100,
+            agent_max_total_unproductive=100,
         )
     )
 

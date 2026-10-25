@@ -316,6 +316,12 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="opts key drift audit ok\n",
         ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_failure_single_owner")): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_agent_failure_single_owner"),
+            returncode=0,
+            stdout="agent failure single owner audit ok\n",
+        ),
         (
             "uv",
             ("run", "python", "-m", "ralph.testing.audit_workspace_resource_inventory"),
@@ -399,6 +405,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_canonical_session_text")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_kwargs_forwarding")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_opts_key_drift")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_failure_single_owner")),
         ("make", ("test-verification-smoke",)),
         ("uv", _MCP_AGENT_BOUNDARY_AUDIT_ARGS),
     ]

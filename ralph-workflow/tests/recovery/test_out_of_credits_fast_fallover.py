@@ -27,6 +27,8 @@ def test_out_of_credits_message_classifies_as_unavailable_with_per_reason_backof
             clock=clock,
             policy_bundle=_minimal_policy_bundle(),
             event_bus=bus,
+            agent_max_consecutive_unproductive=20,
+            agent_max_total_unproductive=20,
         )
     )
     chain_state = AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0)
@@ -102,6 +104,8 @@ def test_out_of_credits_backoff_doubles_each_retry_up_to_five_hour_cap() -> None
             clock=clock,
             policy_bundle=_minimal_policy_bundle(),
             event_bus=bus,
+            agent_max_consecutive_unproductive=20,
+            agent_max_total_unproductive=20,
         )
     )
     chain_state = AgentChainState(agents=["claude"], current_index=0, retries=0)
@@ -154,6 +158,8 @@ def test_controller_mark_agent_unavailable_caps_return_value_at_five_hours() -> 
             clock=clock,
             policy_bundle=_minimal_policy_bundle(),
             event_bus=bus,
+            agent_max_consecutive_unproductive=20,
+            agent_max_total_unproductive=20,
         )
     )
     out_of_credits_max = 18_000_000

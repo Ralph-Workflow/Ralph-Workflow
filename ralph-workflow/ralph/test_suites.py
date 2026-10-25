@@ -517,7 +517,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_integration_seam_wiring.py": 50,
     "tests/test_catchup_ticker_adversity.py": 30,
     "tests/test_fault_classification_totality.py": 30,
-    "tests/test_stale_intent_startup_replay.py": 35,
+    "tests/test_stale_intent_startup_replay.py": 120,
     "tests/test_pending_merge_repair_real_git.py": 170,
     "tests/pipeline/test_run_time_report_shutdown.py": 60,
     "tests/recovery/test_single_agent_broken_chain_failfast.py": 60,

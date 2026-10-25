@@ -150,7 +150,6 @@ tests/agents/test_workspace_cross_process_coordination.py|0,8,3
 tests/agents/test_workspace_event_backpressure.py|0,3,0
 tests/agents/test_workspace_watch_scoping.py|0,5,0
 tests/config/test_agents_config_file.py|0,0,1
-tests/config/test_general_config_same_shape_resumes.py|0,1,0
 tests/config/test_heartbeat_ceiling_config.py|0,2,0
 tests/config/test_no_output_at_start_config.py|0,2,0
 tests/config/test_retention_max_age_config.py|0,0,1
@@ -323,7 +322,6 @@ tests/recovery/test_agent_empty_output.py|0,1,0
 tests/recovery/test_agent_unavailable_tracker.py|0,4,0
 tests/recovery/test_agy_incomplete_exit_recovery.py|0,1,0
 tests/recovery/test_all_agents_unavailable_never_crashes.py|0,2,0
-tests/recovery/test_broken_agent_no_output_loop_bounds.py|1,1,1
 tests/recovery/test_broken_agent_single_agent_chain_loop_exit.py|0,0,1
 tests/recovery/test_classifier_typed_cause_chain_child_alive.py|0,4,0
 tests/recovery/test_controller_all_agents_unavailable_never_exits.py|0,2,0
@@ -340,7 +338,6 @@ tests/recovery/test_prompt_scenario_unavailability.py|0,2,0
 tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py|0,6,0
 tests/recovery/test_retry_backoff.py|0,0,7
 tests/recovery/test_runner_offline_pause_resume.py|1,0,0
-tests/recovery/test_same_shape_retry_bounds.py|0,1,0
 tests/recovery/test_two_main_retry_rules.py|0,2,0
 tests/recovery/test_two_state_invariant.py|0,2,0
 tests/recovery/test_unavailability_reason.py|0,3,0

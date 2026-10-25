@@ -59,6 +59,8 @@ def test_unavailable_failure_sets_timeout() -> None:
             cycle_cap=10,
             clock=clock,
             policy_bundle=_minimal_policy_bundle(),
+            agent_max_consecutive_unproductive=50,
+            agent_max_total_unproductive=50,
         )
     )
     state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
@@ -81,6 +83,8 @@ def test_unavailable_timeout_is_agent_scoped_across_phases() -> None:
             cycle_cap=10,
             clock=clock,
             policy_bundle=_minimal_policy_bundle(),
+            agent_max_consecutive_unproductive=50,
+            agent_max_total_unproductive=50,
         )
     )
     base_state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
@@ -475,6 +479,8 @@ def test_exponential_backoff_increases_across_cycles() -> None:
             cycle_cap=10,
             clock=clock,
             policy_bundle=_minimal_policy_bundle(),
+            agent_max_consecutive_unproductive=50,
+            agent_max_total_unproductive=50,
         )
     )
     msg = "agent produced no output for 60s"
@@ -697,6 +703,8 @@ def test_credit_exhaustion_failure_sets_timeout() -> None:
             cycle_cap=10,
             clock=clock,
             policy_bundle=_minimal_policy_bundle(),
+            agent_max_consecutive_unproductive=50,
+            agent_max_total_unproductive=50,
         )
     )
     state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
@@ -850,6 +858,8 @@ def test_permanent_account_failure_terminates_instead_of_waiting() -> None:
             cycle_cap=10,
             clock=clock,
             policy_bundle=_minimal_policy_bundle(),
+            agent_max_consecutive_unproductive=50,
+            agent_max_total_unproductive=50,
         )
     )
     state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
@@ -944,6 +954,8 @@ def test_out_of_credits_uses_30min_cap() -> None:
             clock=clock,
             unavailability_backoff_policy=policy,
             policy_bundle=_minimal_policy_bundle(),
+            agent_max_consecutive_unproductive=50,
+            agent_max_total_unproductive=50,
         )
     )
     state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
@@ -978,6 +990,8 @@ def test_no_output_at_start_uses_30s_cap() -> None:
             clock=clock,
             unavailability_backoff_policy=policy,
             policy_bundle=_minimal_policy_bundle(),
+            agent_max_consecutive_unproductive=50,
+            agent_max_total_unproductive=50,
         )
     )
     state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
@@ -1020,6 +1034,8 @@ def test_stale_child_quiet_uses_5min_cap() -> None:
             clock=clock,
             unavailability_backoff_policy=policy,
             policy_bundle=_minimal_policy_bundle(),
+            agent_max_consecutive_unproductive=50,
+            agent_max_total_unproductive=50,
         )
     )
     state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
@@ -1152,6 +1168,8 @@ def test_default_policy_saturates_at_five_hours() -> None:
             cycle_cap=20,
             clock=clock,
             policy_bundle=_minimal_policy_bundle(),
+            agent_max_consecutive_unproductive=50,
+            agent_max_total_unproductive=50,
         )
     )
     state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
@@ -1175,6 +1193,8 @@ def test_default_success_resets_history() -> None:
             cycle_cap=20,
             clock=clock,
             policy_bundle=_minimal_policy_bundle(),
+            agent_max_consecutive_unproductive=50,
+            agent_max_total_unproductive=50,
         )
     )
     state = _make_state(["claude"]).copy_with(last_connectivity_state="online")

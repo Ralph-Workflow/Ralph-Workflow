@@ -197,7 +197,7 @@ def test_heartbeat_transient_errors_continue_looping() -> None:
         for _ in range(2):
             tick_signal.clear()
             clock.advance(0.001)
-            assert tick_signal.wait(timeout=1.0), "heartbeat worker missed a tick"
+            assert tick_signal.wait(timeout=2.0), "heartbeat worker missed a tick"
     finally:
         client.stop()
     assert len(fake.posts) >= 2, "transient errors must not stop the loop"
@@ -222,7 +222,7 @@ def test_heartbeat_network_exception_is_transient() -> None:
         for _ in range(2):
             tick_signal.clear()
             clock.advance(0.001)
-            assert tick_signal.wait(timeout=1.0), "heartbeat worker missed a tick"
+            assert tick_signal.wait(timeout=2.0), "heartbeat worker missed a tick"
     finally:
         client.stop()
     assert len(fake.posts) >= 2

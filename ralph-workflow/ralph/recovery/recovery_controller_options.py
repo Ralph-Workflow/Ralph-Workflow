@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph.agents.timeout_clock import SystemClock
 from ralph.checked_accessors import as_int, as_mapping, as_str_list
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.timeout_defaults import (
-    BROKEN_AGENT_SAME_SHAPE_DEFAULT,
-    IN_SESSION_RETRY_ESCALATION_DEFAULT,
-    SAME_SHAPE_RETRY_DEFAULT,
+    AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT,
+    AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from ralph.agents.clock import Clock
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_budget_registry import AgentBudgetRegistry
@@ -38,23 +38,11 @@ class RecoveryControllerOptions:
     policy_bundle: PolicyBundle | None = None
     backoff_attempts: dict[str, int] | None = None
     technical_retry_cap: int = 10
-    # R6 (Trustworthy Idle Watchdog spec): same-shape retry loop bound.
-    # When consecutive ``AgentInactivityTimeoutError`` resumes fingerprint
-    # identically on ``(fire_reason, diagnostic_signature, no-new-artifact,
-    # workspace-change)``, the controller raises
-    # ``SameShapeRetryLoopError`` instead of resuming. The default is
-    # :data:`SAME_SHAPE_RETRY_DEFAULT` (3); operators extend the leash via
-    # ``[general] agent_max_same_shape_resumes`` in ``ralph-workflow.toml``,
-    # which is routed through this field by the runtime builder in
-    # ``ralph/pipeline/run_loop.py::_build_recovery_controller``. Must be
-    # >= 1; a bound of 0 would silently disable the R6 contract.
-    same_shape_retry_limit: int = SAME_SHAPE_RETRY_DEFAULT
-    # Consecutive identical broken-agent failures on one sole agent fail the
-    # phase instead of entering the all-agents-unavailable cooldown loop.
-    broken_agent_same_shape_limit: int = BROKEN_AGENT_SAME_SHAPE_DEFAULT
-    # Maximum consecutive qualifying in-session retries allowed for an agent
-    # before escalating to cooldown and next eligible agent selection.
-    in_session_retry_escalation_limit: int = IN_SESSION_RETRY_ESCALATION_DEFAULT
+    # Single-owner failure and recovery ledger.
+    ledger: AgentFailureLedger | None = None
+    workspace_probe: object | None = None
+    agent_max_consecutive_unproductive: int = AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT
+    agent_max_total_unproductive: int = AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT
     # Initial unavailable timeout state, keyed by "phase:agent" with values as
     # monotonic timestamps in milliseconds. Used to inject test state; in
     # production this starts empty and is populated by the controller.
@@ -79,12 +67,7 @@ class RecoveryControllerOptions:
     unavailability_store: UnavailabilityStore | None = None
     # Snapshot restoration fields for restarting across runs
     budgets: dict[str, dict[str, int]] | None = None
-    in_session_retry_counts: dict[str, int] | None = None
     spent_agents: dict[str, set[str]] | None = None
-
-    def __post_init__(self) -> None:
-        if self.in_session_retry_escalation_limit < 1:
-            raise ValueError("in_session_retry_escalation_limit must be at least 1")
 
     @classmethod
     def from_snapshot(
@@ -102,14 +85,6 @@ class RecoveryControllerOptions:
         technical_cap_raw = snapshot.get("technical_retry_cap", 10)
         technical_retry_cap = (
             int(technical_cap_raw) if isinstance(technical_cap_raw, (int, str)) else 10
-        )
-        in_session_raw = snapshot.get(
-            "in_session_retry_escalation_limit", IN_SESSION_RETRY_ESCALATION_DEFAULT
-        )
-        in_session_limit = (
-            int(in_session_raw)
-            if isinstance(in_session_raw, (int, str))
-            else IN_SESSION_RETRY_ESCALATION_DEFAULT
         )
         backoff_attempts = {
             k: as_int(v, field=f"backoff_attempts[{k}]")
@@ -130,28 +105,27 @@ class RecoveryControllerOptions:
             }
             for k, v in as_mapping(snapshot.get("budgets", {}), field="budgets").items()
         }
-        in_session_counts = {
-            k: as_int(v, field=f"in_session_retry_counts[{k}]")
-            for k, v in as_mapping(
-                snapshot.get("in_session_retry_counts", {}), field="in_session_retry_counts"
-            ).items()
-        }
         spent_agents = {
             k: set(as_str_list(v, field=f"spent_agents[{k}]"))
             for k, v in as_mapping(snapshot.get("spent_agents", {}), field="spent_agents").items()
         }
 
+        effective_clock = clock or SystemClock()
+        ledger_snap = snapshot.get("ledger")
+        ledger: AgentFailureLedger | None = None
+        if isinstance(ledger_snap, Mapping):
+            ledger = AgentFailureLedger.from_snapshot(ledger_snap, clock=effective_clock)
+
         return cls(
             cycle_cap=cycle_cap,
             technical_retry_cap=technical_retry_cap,
-            in_session_retry_escalation_limit=in_session_limit,
             backoff_attempts=backoff_attempts,
             unavailable_timeouts=unavailable_timeouts,
             budgets=budgets_data,
-            in_session_retry_counts=in_session_counts,
             spent_agents=spent_agents,
             policy_bundle=policy_bundle,
             clock=clock,
             classifier=classifier,
             event_bus=event_bus,
+            ledger=ledger,
         )

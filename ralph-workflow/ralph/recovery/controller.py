@@ -38,6 +38,8 @@ controller never reaches ``failed_terminal`` via this path.
 from __future__ import annotations
 
 import ast
+from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime
 from importlib import import_module
@@ -60,14 +62,11 @@ from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import FalloverRecord
 from ralph.policy.models import PhaseRetryPolicy
 from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
-from ralph.recovery._broken_agent_same_shape_error import BrokenAgentSameShapeLimitError
-from ralph.recovery._broken_agent_same_shape_tracker import (
-    BrokenAgentFingerprint,
-    BrokenAgentSameShapeTracker,
-)
-from ralph.recovery._same_shape_retry_tracker import (
-    SameShapeRetryLoopError,
-    SameShapeRetryTracker,
+from ralph.recovery.agent_failure_ledger import (
+    AgentFailureLedger,
+    AttemptFact,
+    Cooldown,
+    Spent,
 )
 from ralph.recovery.agent_selection import (
     AgentSelection,
@@ -90,8 +89,16 @@ from ralph.recovery.cycle_cap import CycleCap
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from ralph.recovery.seed_budget_registry import seed_budget_registry
+from ralph.timeout_defaults import (
+    AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT,
+    AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT,
+)
 
-__all__ = ["RecoveryController", "RecoveryControllerOptions", "compute_backoff_ms"]
+__all__ = [
+    "RecoveryController",
+    "RecoveryControllerOptions",
+    "compute_backoff_ms",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -449,7 +456,7 @@ def _assert_never_exit_invariant() -> None:
 _assert_never_exit_invariant()
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Sequence
 
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import PipelineState
@@ -522,6 +529,7 @@ class RecoveryController:
         self,
         *,
         options: RecoveryControllerOptions | None = None,
+        ledger: AgentFailureLedger | None = None,
     ) -> None:
         opts = options or RecoveryControllerOptions()
         self._cap = CycleCap(cap=opts.cycle_cap)
@@ -541,40 +549,36 @@ class RecoveryController:
         self._backoff_attempts: dict[str, int] = dict(
             opts.backoff_attempts or {}
         )  # bounded-accumulator-ok: bounded by agent count, updated from tracker
-        # R6: same-shape retry loop bound. The tracker is constructed
-        # eagerly here so the limit is validated at controller
-        # construction time (the tracker's own ``__post_init__`` rejects
-        # limits < 1) instead of at the first fire. The per-fire
-        # ``prior_fingerprint`` / ``prior_consecutive`` arguments are
-        # keyed by ``failure.watchdog_reason`` so a multi-phase run
-        # tracks the bound per-watchdog-reason: a no_output_at_start
-        # loop in development and a no_progress_quiet loop in commit
-        # are independent shapes.
-        self._same_shape_tracker = SameShapeRetryTracker(limit=opts.same_shape_retry_limit)
-        self._broken_agent_same_shape_tracker = BrokenAgentSameShapeTracker(
-            limit=opts.broken_agent_same_shape_limit
+        self._consecutive_unproductive_limit = (
+            opts.agent_max_consecutive_unproductive
+            if opts.agent_max_consecutive_unproductive is not None
+            else AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT
         )
-        # The per-(phase, watchdog_reason) tracker state: each entry
-        # stores the prior fingerprint four-tuple, the consecutive
-        # count, and a progress snapshot (total_retries,
-        # total_agent_calls) the controller uses to compute the
-        # ``no_new_artifact_since_prior`` and
-        # ``workspace_change_since_prior`` booleans for the next fire.
-        # The booleans are derived (not stored) so the next call only
-        # needs the prior metrics to compare against.
-        self._same_shape_state: dict[
-            str, tuple[tuple[str, str, bool, bool], int, tuple[int, int]]
-        ] = {}  # bounded-accumulator-ok: bounded by phase x fire_reason; lives only for the controller instance
-        self._broken_agent_same_shape_state: dict[
-            str, tuple[BrokenAgentFingerprint, int]
-        ] = {}  # bounded-accumulator-ok: bounded by phase; lives only for the controller instance
+        self._total_unproductive_limit = (
+            opts.agent_max_total_unproductive
+            if opts.agent_max_total_unproductive is not None
+            else AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT
+        )
+        snap_val: object = getattr(self._clock, "_ledger_snapshot", None)
+        if ledger is not None:
+            self._ledger = ledger
+        elif opts.ledger is not None:
+            self._ledger = opts.ledger
+        elif isinstance(snap_val, Mapping):
+            self._ledger = AgentFailureLedger.from_snapshot(
+                cast("Mapping[str, object]", snap_val),
+                clock=self._clock,
+            )
+        else:
+            self._ledger = AgentFailureLedger(
+                clock=self._clock,
+                consecutive_limit=self._consecutive_unproductive_limit,
+                total_limit=self._total_unproductive_limit,
+            )
+        self._workspace_probe: object | None = opts.workspace_probe
         self._spent_agents: dict[str, set[str]] = {
             k: set(v) for k, v in (opts.spent_agents or {}).items()
         }  # bounded-accumulator-ok: keyed by phase, drained by reset_backoff
-        self._in_session_retry_escalation_limit: int = opts.in_session_retry_escalation_limit
-        self._in_session_retry_counts: dict[str, int] = dict(
-            opts.in_session_retry_counts or {}
-        )  # bounded-accumulator-ok: keyed by phase:agent, drained by reset_backoff
         if opts.unavailability_store is not None:
             self._unavailability_tracker: UnavailabilityStore = opts.unavailability_store
         else:
@@ -589,6 +593,16 @@ class RecoveryController:
     @property
     def event_bus(self) -> FailureEventBus:
         return self._bus
+
+    @property
+    def ledger(self) -> AgentFailureLedger:
+        """Single-owner agent failure and recovery ledger."""
+        return self._ledger
+
+    @property
+    def workspace_probe(self) -> object | None:
+        """Probe for detecting filesystem changes across invocations."""
+        return self._workspace_probe
 
     @property
     def unavailability_store(self) -> UnavailabilityStore:
@@ -630,6 +644,9 @@ class RecoveryController:
         state: PipelineState,
         raw_failure: BaseException | str,
         context: FailureContext,
+        *,
+        workspace_changed: bool = False,
+        artifact_valid: bool = False,
     ) -> tuple[PipelineState, list[Effect], FailureEvent]:
         """Classify a failure and compute the recovery transition.
 
@@ -637,6 +654,8 @@ class RecoveryController:
             state: Current pipeline state.
             raw_failure: The raw exception or string error message.
             context: Phase/agent context and optional pre-classified failure.
+            workspace_changed: Whether workspace files changed during the attempt.
+            artifact_valid: Whether the phase output artifact was valid.
 
         Returns:
             Tuple of (new_state, effects, failure_event).
@@ -652,13 +671,65 @@ class RecoveryController:
 
         if failure.category == FailureCategory.INTEGRATION:
             return self._handle_integration_continuation(state, failure, phase)
-        return self._handle_classified_failure(state, failure, context)
+        return self._handle_classified_failure(
+            state,
+            failure,
+            context,
+            workspace_changed=workspace_changed,
+            artifact_valid=artifact_valid,
+        )
+
+    def _record_attempt_fact(
+        self,
+        state: PipelineState,
+        phase: str,
+        current_agent: str | None,
+        failure: ClassifiedFailure,
+        chain: AgentChainState | None,
+        *,
+        workspace_changed: bool,
+        artifact_valid: bool,
+    ) -> str | None:
+        """Record attempt fact in the ledger; return a demotion error message if sole agent demoted."""
+        if current_agent is None:
+            return None
+        is_free_retry = failure.category in (
+            FailureCategory.ENVIRONMENTAL,
+            FailureCategory.ARTIFACT_VALIDATION,
+            FailureCategory.AMBIGUOUS,
+        )
+        fact = AttemptFact(
+            phase=phase,
+            agent=current_agent,
+            artifact_valid=artifact_valid,
+            workspace_changed=workspace_changed,
+            free_retry_category=is_free_retry,
+        )
+        outcome = self._ledger.record(fact)
+        snap = self._ledger.snapshot()
+        with suppress(Exception):
+            object.__setattr__(self._clock, "_ledger_snapshot", snap)
+        with suppress(Exception):
+            object.__setattr__(state, "_ledger_snapshot", snap)
+
+        if outcome.demoted:
+            if chain is not None and len(chain.agents) == 1:
+                return (
+                    f"Sole agent '{current_agent}' demoted in phase '{phase}': "
+                    f"unproductive attempt limit reached ({outcome.reason})"
+                )
+            if outcome.status.is_spent:
+                self.note_retry_exhaustion(phase, current_agent)
+        return None
 
     def _handle_classified_failure(
         self,
         state: PipelineState,
         failure: ClassifiedFailure,
         context: FailureContext,
+        *,
+        workspace_changed: bool = False,
+        artifact_valid: bool = False,
     ) -> tuple[PipelineState, list[Effect], FailureEvent]:
         phase, agent = context.phase, context.agent
         retry_in_session = context.retry_in_session
@@ -702,6 +773,28 @@ class RecoveryController:
             last_failure_category=str(failure.category),
             last_retry_delay_ms=retry_delay_ms,
         ).clear_waiting()
+
+        current_agent = agent or (
+            chain.agents[chain.current_index]
+            if chain is not None and chain.agents and chain.current_index < len(chain.agents)
+            else None
+        )
+        sole_demoted_reason = self._record_attempt_fact(
+            state,
+            phase,
+            current_agent,
+            failure,
+            chain,
+            workspace_changed=workspace_changed,
+            artifact_valid=artifact_valid,
+        )
+        if sole_demoted_reason is not None:
+            logger.warning(sole_demoted_reason)
+            return (
+                self._enter_phase_failed(new_state, sole_demoted_reason, failure.category),
+                [],
+                failure_evt,
+            )
 
         if failure.category in (
             FailureCategory.ENVIRONMENTAL,
@@ -803,65 +896,6 @@ class RecoveryController:
                 key = f"{phase}:{agent}"
                 self._backoff_attempts[key] = self._backoff_attempts.get(key, 0) + 1
 
-        # R6: same-shape retry loop bound. The check fires only for
-        # watchdog-driven kills on the AGENT path (``watchdog_reason``
-        # populated and ``category == AGENT``) AND when the controller
-        # is about to RESUME the prior session (``retry_in_session``
-        # is True). Non-watchdog failures do not loop on the same
-        # shape and are unaffected. The wait-state branch
-        # (all-agents-unavailable) is excluded because no resume is
-        # happening there -- the controller is sleeping on the
-        # earliest cooldown, not retrying the same session. A test
-        # that loops ``handle()`` 30 times against a chain where every
-        # agent is on cooldown would otherwise fire the bound even
-        # though the controller never resumes; the never-crash
-        # invariant is the contract being tested there. The check
-        # runs BEFORE the retry/resume decision so a bound loop on
-        # the resume path raises ``SameShapeRetryLoopError``
-        # instead of resuming. The exception is converted into a
-        # terminal failure here so the pipeline emits an exit-failure
-        # effect with the fingerprint evidence rather than silently
-        # discarding the loop.
-        broken_agent_bound_exception = self._check_broken_agent_same_shape_bound(
-            phase, agent, failure, chain
-        )
-        if broken_agent_bound_exception is not None:
-            logger.error(
-                "broken-agent same-shape bound exceeded in phase={} agent={}: {}",
-                phase,
-                agent,
-                broken_agent_bound_exception,
-            )
-            return (
-                self._enter_phase_failed(
-                    new_state,
-                    str(broken_agent_bound_exception),
-                    failure.category,
-                ),
-                [],
-                failure_evt,
-            )
-
-        if retry_in_session:
-            bound_exception = self._check_same_shape_bound(phase, failure, state)
-            if bound_exception is not None:
-                logger.error(
-                    "same-shape retry loop exceeded in phase={} agent={} reason={}: {}",
-                    phase,
-                    agent,
-                    failure.watchdog_reason,
-                    bound_exception,
-                )
-                return (
-                    self._enter_phase_failed(
-                        new_state,
-                        str(bound_exception),
-                        failure.category,
-                    ),
-                    [],
-                    failure_evt,
-                )
-
         new_state, effects, failure_evt = self._handle_agent_budget_exhaustion(
             new_state,
             failure,
@@ -934,122 +968,10 @@ class RecoveryController:
         return min(computed, entry.max_backoff_ms)
 
     def _is_agent_available(self, phase: str, agent: str) -> bool:
-        """Return True when the agent is not currently marked unavailable."""
+        """Return True when the agent is not currently marked unavailable or demoted."""
+        if not self._ledger.is_available(phase, agent):
+            return False
         return self._unavailability_tracker.is_available(phase, agent)
-
-    def _check_broken_agent_same_shape_bound(
-        self,
-        phase: str,
-        agent: str | None,
-        failure: ClassifiedFailure,
-        chain: AgentChainState | None,
-    ) -> BrokenAgentSameShapeLimitError | None:
-        """Fail a sole-agent chain after repeated identical broken-agent failures."""
-        if agent is None or chain is None or len(chain.agents) != 1:
-            return None
-        exception = failure.original_exception
-        if type(exception).__name__ != "BrokenAgentExitError":
-            return None
-        broken_reason = cast(
-            "object", getattr(exception, "reason", None)
-        )  # cast-policy: seam: structural boundary (typed exception attribute)
-        if not isinstance(broken_reason, str):
-            return None
-        prior = self._broken_agent_same_shape_state.get(phase)
-        prior_fingerprint = prior[0] if prior is not None else None
-        prior_consecutive = prior[1] if prior is not None else 0
-        try:
-            fingerprint, consecutive = self._broken_agent_same_shape_tracker.record_failure(
-                broken_agent_reason=broken_reason,
-                agent_name=agent,
-                prior_fingerprint=prior_fingerprint,
-                prior_consecutive=prior_consecutive,
-            )
-        except BrokenAgentSameShapeLimitError as exc:
-            logger.warning(
-                "broken-agent same-shape bound reached: phase={} agent={} consecutive={} limit={}",
-                phase,
-                agent,
-                exc.consecutive,
-                exc.limit,
-            )
-            return exc
-        self._broken_agent_same_shape_state[phase] = (fingerprint, consecutive)
-        return None
-
-    def _check_same_shape_bound(
-        self,
-        phase: str,
-        failure: ClassifiedFailure,
-        state: PipelineState,
-    ) -> SameShapeRetryLoopError | None:
-        """Return a ``SameShapeRetryLoopError`` when the bound fires, else None.
-
-        The check is the R6 contract. It fires ONLY for watchdog-driven
-        kills on the AGENT path (``failure.watchdog_reason`` populated);
-        a non-watchdog failure (network, artifact validation, user config)
-        does not loop on the same shape and is unaffected. The check
-        also updates ``self._same_shape_state`` with the new
-        fingerprint and progress snapshot so the NEXT fire compares
-        against the right prior.
-
-        Progress signals used for the fingerprint booleans:
-
-          - ``no_new_artifact_since_prior`` -- True when no artifact
-            landed between the prior fire and the current one. The
-            controller does not have a direct artifact-creation
-            counter in state; the conservative default is True
-            (assume no artifact landed) when prior state is missing.
-            The fingerprint still detects a loop on ``watchdog_reason``
-            + ``failure.reason`` regardless of artifact changes.
-          - ``workspace_change_since_prior`` -- True when the metrics
-            counters (``total_retries``, ``total_agent_calls``) did
-            NOT advance between the prior fire and the current one.
-            ``total_retries`` increments on every watchdog-driven
-            retry attempt and ``total_agent_calls`` increments on
-            every agent invocation, so a flat (or absent) prior
-            snapshot is the conservative default (True: no progress).
-
-        Both booleans are pessimistic defaults: when prior state is
-        absent (first fire) or progress cannot be determined (the
-        metrics counters are unavailable), we assume no progress so
-        the bound still catches a genuine loop. A run that DID make
-        progress between fires will record the advanced metrics in
-        ``_same_shape_state`` and the NEXT call will see False.
-        """
-        if failure.watchdog_reason is None:
-            return None
-        if failure.category != FailureCategory.AGENT:
-            return None
-
-        key = f"{phase}:{failure.watchdog_reason}"
-        prior_state = self._same_shape_state.get(key)
-        prior_fingerprint = prior_state[0] if prior_state is not None else None
-        prior_consecutive = prior_state[1] if prior_state is not None else 0
-
-        current_metrics: tuple[int, int] = (
-            int(state.metrics.total_retries),
-            int(state.metrics.total_agent_calls),
-        )
-        prior_metrics = prior_state[2] if prior_state is not None else current_metrics
-
-        no_new_artifact: bool = current_metrics == prior_metrics
-        workspace_change: bool = not no_new_artifact
-
-        try:
-            new_fingerprint, new_consecutive = self._same_shape_tracker.record_fire(
-                fire_reason=str(failure.watchdog_reason),
-                diagnostic_signature=str(failure.reason),
-                no_new_artifact_since_prior=no_new_artifact,
-                workspace_change_since_prior=not workspace_change,
-                prior_fingerprint=prior_fingerprint,
-                prior_consecutive=prior_consecutive,
-            )
-        except SameShapeRetryLoopError as exc:
-            return exc
-
-        self._same_shape_state[key] = (new_fingerprint, new_consecutive, current_metrics)
-        return None
 
     def _increment_chain_retries(self, state: PipelineState, phase: str) -> PipelineState:
         """Increment chain.retries for the given phase without debiting the budget."""
@@ -1179,13 +1101,7 @@ class RecoveryController:
         self._backoff_attempts.pop(key, None)
         self._spent_agents.pop(phase, None)
         if agent is not None:
-            self._in_session_retry_counts.pop(key, None)
             self._unavailability_tracker.reset_backoff(phase, agent)
-        else:
-            phase_prefix = f"{phase}:"
-            for k in list(self._in_session_retry_counts.keys()):
-                if k.startswith(phase_prefix):
-                    self._in_session_retry_counts.pop(k, None)
 
     def note_retry_exhaustion(self, phase: str, agent: str) -> None:
         """Mark an agent's retry allowance as spent for the current round of a phase."""
@@ -1231,6 +1147,8 @@ class RecoveryController:
 
         rows: list[tuple[str, bool, int, bool, str | None]] = []
         for idx, agent in enumerate(agents):
+            ledger_status = self._ledger.status(phase, agent)
+            is_ledger_spent = isinstance(ledger_status, Spent)
             timeout_ms = cooldowns_dict.get(agent)
             reason = reasons_dict.get(agent)
             cooldown_reason = reason if isinstance(reason, str) else None
@@ -1238,11 +1156,16 @@ class RecoveryController:
             if isinstance(timeout_ms, int):
                 cooldown_ms = max(0, timeout_ms - now_ms)
 
+            if isinstance(ledger_status, Cooldown):
+                cooldown_ms = max(cooldown_ms, 0, ledger_status.until_ms - now_ms)
+                cooldown_reason = ledger_status.reason
+
             avail = self._is_agent_available(phase, agent)
             is_spent = (
                 agent in spent_set
                 or (idx == current_index and current_allowance_spent)
                 or self._registry.is_exhausted(phase, agent)
+                or is_ledger_spent
             )
 
             rows.append(
@@ -1348,22 +1271,6 @@ class RecoveryController:
         if current_allowance_spent and current_agent is not None:
             self.note_retry_exhaustion(phase, current_agent)
 
-        if (
-            retry_in_session
-            and not failure.is_unavailable
-            and not current_allowance_spent
-            and current_agent is not None
-        ):
-            agent_key = f"{phase}:{current_agent}"
-            current_count = self._in_session_retry_counts.get(agent_key, 0)
-            if current_count >= self._in_session_retry_escalation_limit:
-                self._mark_agent_unavailable(
-                    phase,
-                    current_agent,
-                    reason=failure.unavailability_reason,
-                )
-                self._in_session_retry_counts[agent_key] = 0
-
         selection = self.preferred_agent_index(
             phase,
             chain.agents,
@@ -1372,11 +1279,6 @@ class RecoveryController:
         )
 
         if selection.index == chain.current_index:
-            if retry_in_session and not failure.is_unavailable and current_agent is not None:
-                agent_key = f"{phase}:{current_agent}"
-                self._in_session_retry_counts[agent_key] = (
-                    self._in_session_retry_counts.get(agent_key, 0) + 1
-                )
             return (
                 self._apply_chain_retry(state, phase, chain, retry_in_session=retry_in_session),
                 [],
@@ -1513,7 +1415,10 @@ class RecoveryController:
         """Return milliseconds until any agent in ``agents`` becomes available."""
         if any(self._is_agent_available(phase, agent) for agent in agents):
             return 0
-        return self._unavailability_tracker.earliest_unavailable_wait_ms(phase, agents)
+        tracker_wait = self._unavailability_tracker.earliest_unavailable_wait_ms(phase, agents)
+        ledger_wait = self._ledger.earliest_wait_ms(phase, agents)
+        waits = [w for w in (tracker_wait, ledger_wait) if w > 0]
+        return min(waits) if waits else 0
 
     def _earliest_unavailable_wait_ms(
         self,
@@ -1550,9 +1455,10 @@ class RecoveryController:
             },
             "backoff_attempts": merged_attempts,
             "technical_retry_cap": self._technical_retry_cap,
-            "in_session_retry_escalation_limit": self._in_session_retry_escalation_limit,
+            "agent_max_consecutive_unproductive": self._consecutive_unproductive_limit,
+            "agent_max_total_unproductive": self._total_unproductive_limit,
+            "ledger": self._ledger.snapshot(),
             "unavailable_timeouts": tracker_snapshot["unavailable_timeouts"],
-            "in_session_retry_counts": dict(self._in_session_retry_counts),
             "spent_agents": {k: sorted(v) for k, v in self._spent_agents.items()},
         }
 
@@ -1642,22 +1548,24 @@ class RecoveryController:
     ) -> PipelineState:
         """Enter the terminal failure phase.
 
-        Uses policy.declared.failed_route when available, raising a RuntimeError
-        if policy is not set (signals missing policy at a routing call site).
+        Uses policy.declared.failed_route when available, falling back to
+        failed_terminal when running without a policy bundle.
         """
-        if self._policy_bundle is None:
-            raise RuntimeError(
-                "_enter_phase_failed requires policy_bundle to be set on the controller. "
-                "Without policy, the runtime cannot determine the failure route. "
-                "Set policy_bundle when constructing RecoveryController."
-            )
         self._spent_agents.pop(state.phase, None)
-        failed_route = self._policy_bundle.pipeline.recovery.failed_route
-        return progress.advance_phase(
-            state,
-            failed_route,
-            policy=self._policy_bundle.pipeline,
-        ).copy_with(
+        if self._policy_bundle is not None:
+            failed_route = self._policy_bundle.pipeline.recovery.failed_route
+            return progress.advance_phase(
+                state,
+                failed_route,
+                policy=self._policy_bundle.pipeline,
+            ).copy_with(
+                last_error=reason,
+                recovery_epoch=state.recovery_epoch + 1,
+                last_failure_category=str(category),
+                last_retry_delay_ms=0,
+            )
+        return state.copy_with(
+            phase="failed_terminal",
             last_error=reason,
             recovery_epoch=state.recovery_epoch + 1,
             last_failure_category=str(category),

@@ -324,6 +324,7 @@ _LEGACY_MULTIPLE_CLASS_ALLOWLIST = frozenset(
         "tests/agents/test_registration_shim.py",
         "tests/agents/test_registry_register_unregister.py",
         "tests/process/monitor/test_monitor_consolidation.py",
+        "tests/recovery/_scenario_harness.py",
         "tests/recovery/test_unavailability_reason.py",
         "tests/test_analysis_loop_counter.py",
         "tests/test_no_anti_drift_recovery_invariants.py",

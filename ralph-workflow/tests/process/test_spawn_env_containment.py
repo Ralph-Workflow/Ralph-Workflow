@@ -42,6 +42,7 @@ _GUARD_ALLOWLIST: dict[str, str] = {
     **dict.fromkeys(
         (
             "ralph/testing/audit_activity_aware_watchdog.py",
+            "ralph/testing/audit_agent_failure_single_owner.py",
             "ralph/testing/audit_agent_internal_paths.py",
             "ralph/testing/audit_agent_module_state.py",
             "ralph/testing/audit_agent_registry_sync.py",

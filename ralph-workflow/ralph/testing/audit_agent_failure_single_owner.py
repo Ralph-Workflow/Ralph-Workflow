@@ -1,0 +1,474 @@
+"""Single-owner guard audit for agent failure and retry tracking.
+
+This audit enforces the single-owner architectural invariant:
+Exactly one component (:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`)
+owns the state and decision logic for whether an agent is failing, unproductive,
+or broken, and whether to retry or stop using it.
+
+Specifically, this audit validates:
+
+1. Production code: No module under ``ralph/recovery/`` or ``ralph/pipeline/``
+   (except ``ralph/recovery/agent_failure_ledger.py``) declares streak/counter
+   state or logic used for agent stop/retry decisions (such as duplicate retry
+   trackers or in-session retry counters).
+
+2. Test code: No test under ``tests/`` accesses private attributes or internal
+   counters of ``AgentFailureLedger`` (enforcing black-box testability via the
+   public seam) or imports deprecated retry tracker classes.
+"""
+
+from __future__ import annotations
+
+import ast
+import os
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class SingleOwnerViolation:
+    """A violation of the single-owner failure ledger policy."""
+
+    path: str
+    line: int
+    rule: str
+    detail: str
+
+    def __str__(self) -> str:
+        return f"{self.path}:{self.line}: [{self.rule}] {self.detail}"
+
+
+# Temporary production allowlist during single-owner consolidation.
+# U4 removed the deleted trackers, controller, options, and run_loop.
+# The remaining error modules and __init__ re-export remain until U5 removes the tests.
+TEMPORARY_PRODUCTION_ALLOWLIST: frozenset[str] = frozenset()
+
+TEMPORARY_TEST_ALLOWLIST: frozenset[str] = frozenset()
+
+_FORBIDDEN_TRACKER_MODULES: frozenset[str] = frozenset(
+    {
+        "_same_shape_retry_tracker",
+        "_broken_agent_same_shape_tracker",
+        "_same_shape_retry_error",
+        "_broken_agent_same_shape_error",
+    }
+)
+
+_FORBIDDEN_TRACKER_SYMBOLS: frozenset[str] = frozenset(
+    {
+        "SameShapeRetryTracker",
+        "BrokenAgentSameShapeTracker",
+        "SameShapeRetryLoopError",
+        "BrokenAgentSameShapeLimitError",
+        "SameShapeRetryTrackerOptions",
+    }
+)
+
+_FORBIDDEN_TRACKER_NAMES: frozenset[str] = frozenset(
+    {
+        "same_shape_retry_tracker",
+        "broken_agent_same_shape_tracker",
+        "same_shape_tracker",
+        "broken_agent_tracker",
+        "same_shape_state",
+        "broken_agent_same_shape_state",
+        "in_session_retry_counts",
+        "in_session_retry_escalation_limit",
+        "same_shape_retry_limit",
+        "broken_agent_same_shape_limit",
+        "_same_shape_retry_tracker",
+        "_broken_agent_same_shape_tracker",
+        "_same_shape_tracker",
+        "_broken_agent_tracker",
+        "_same_shape_state",
+        "_broken_agent_same_shape_state",
+        "_in_session_retry_counts",
+        "_in_session_retry_escalation_limit",
+        "_check_same_shape_bound",
+        "_check_broken_agent_same_shape_bound",
+    }
+)
+
+_GETATTR_MIN_ARGS = 2
+
+
+def _is_forbidden_target_name(name: str) -> bool:
+    """Check if variable/attribute name matches forbidden duplicate tracker patterns."""
+    if name in _FORBIDDEN_TRACKER_NAMES:
+        return True
+    lower = name.lower()
+    return (
+        "same_shape" in lower or "broken_agent_same_shape" in lower or "in_session_retry" in lower
+    )
+
+
+def _check_production_class(node: ast.ClassDef, rel_path: str) -> list[SingleOwnerViolation]:
+    if (
+        node.name in _FORBIDDEN_TRACKER_SYMBOLS
+        or "SameShape" in node.name
+        or "BrokenAgentSameShape" in node.name
+        or (node.name.endswith("RetryTracker") and node.name != "AgentFailureLedger")
+    ):
+        return [
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="production_streak_counter_state",
+                detail=(
+                    f"Class '{node.name}' declares a duplicate failure/retry tracker. "
+                    "AgentFailureLedger is the single owner."
+                ),
+            )
+        ]
+    return []
+
+
+def _check_production_function(
+    node: ast.FunctionDef | ast.AsyncFunctionDef, rel_path: str
+) -> list[SingleOwnerViolation]:
+    if _is_forbidden_target_name(node.name):
+        return [
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="production_streak_counter_state",
+                detail=(
+                    f"Function/method '{node.name}' implements duplicate agent "
+                    "retry/stop decision logic outside AgentFailureLedger."
+                ),
+            )
+        ]
+    return []
+
+
+def _check_production_assignment(
+    node: ast.Assign | ast.AnnAssign, rel_path: str
+) -> list[SingleOwnerViolation]:
+    targets: list[ast.expr] = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
+    violations: list[SingleOwnerViolation] = []
+    for target in targets:
+        target_name: str | None = None
+        if isinstance(target, ast.Name):
+            target_name = target.id
+        elif isinstance(target, ast.Attribute):
+            target_name = target.attr
+        if target_name is not None and _is_forbidden_target_name(target_name):
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule="production_streak_counter_state",
+                    detail=(
+                        f"Declaration/assignment to '{target_name}' manages duplicate "
+                        "retry/streak counter state outside AgentFailureLedger."
+                    ),
+                )
+            )
+    return violations
+
+
+def _check_production_import(
+    node: ast.Import | ast.ImportFrom, rel_path: str
+) -> list[SingleOwnerViolation]:
+    violations: list[SingleOwnerViolation] = []
+    if isinstance(node, ast.Import):
+        violations.extend(
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="production_legacy_tracker_import",
+                detail=f"Import of forbidden tracker '{alias.name}'.",
+            )
+            for alias in node.names
+            if (
+                any(m in alias.name for m in _FORBIDDEN_TRACKER_MODULES)
+                or alias.name in _FORBIDDEN_TRACKER_SYMBOLS
+            )
+        )
+    elif isinstance(node, ast.ImportFrom):
+        if node.module and any(m in node.module for m in _FORBIDDEN_TRACKER_MODULES):
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule="production_legacy_tracker_import",
+                    detail=f"Import from forbidden tracker module '{node.module}'.",
+                )
+            )
+        violations.extend(
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="production_legacy_tracker_import",
+                detail=f"Import of forbidden tracker symbol '{alias.name}'.",
+            )
+            for alias in node.names
+            if (
+                alias.name in _FORBIDDEN_TRACKER_SYMBOLS
+                or any(m in alias.name for m in _FORBIDDEN_TRACKER_MODULES)
+            )
+        )
+    return violations
+
+
+def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViolation]:
+    """Audit a single production module under ralph/recovery/ or ralph/pipeline/."""
+    # The single failure ledger is the authoritative owner.
+    if rel_path == "ralph/recovery/agent_failure_ledger.py":
+        return []
+    if rel_path in TEMPORARY_PRODUCTION_ALLOWLIST:
+        return []
+
+    file_stem = Path(rel_path).stem
+    if file_stem in _FORBIDDEN_TRACKER_MODULES:
+        return [
+            SingleOwnerViolation(
+                path=rel_path,
+                line=1,
+                rule="production_legacy_tracker_module",
+                detail=(
+                    f"Deprecated tracker module '{file_stem}' must be deleted; "
+                    "all failure and retry tracking belongs in AgentFailureLedger."
+                ),
+            )
+        ]
+
+    try:
+        tree = ast.parse(source, filename=rel_path)
+    except SyntaxError as exc:
+        return [
+            SingleOwnerViolation(
+                path=rel_path,
+                line=exc.lineno or 1,
+                rule="syntax_error",
+                detail=f"Cannot parse Python source: {exc}",
+            )
+        ]
+
+    violations: list[SingleOwnerViolation] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            violations.extend(_check_production_class(node, rel_path))
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            violations.extend(_check_production_function(node, rel_path))
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            violations.extend(_check_production_assignment(node, rel_path))
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            violations.extend(_check_production_import(node, rel_path))
+    return violations
+
+
+def _check_test_import(
+    node: ast.Import | ast.ImportFrom, rel_path: str
+) -> list[SingleOwnerViolation]:
+    violations: list[SingleOwnerViolation] = []
+    if isinstance(node, ast.Import):
+        violations.extend(
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="test_deleted_tracker_import",
+                detail=f"Test imports deleted tracker '{alias.name}'.",
+            )
+            for alias in node.names
+            if (
+                any(m in alias.name for m in _FORBIDDEN_TRACKER_MODULES)
+                or alias.name in _FORBIDDEN_TRACKER_SYMBOLS
+            )
+        )
+    elif isinstance(node, ast.ImportFrom):
+        if node.module and any(m in node.module for m in _FORBIDDEN_TRACKER_MODULES):
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule="test_deleted_tracker_import",
+                    detail=f"Test imports from deleted tracker module '{node.module}'.",
+                )
+            )
+        violations.extend(
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="test_deleted_tracker_import",
+                detail=f"Test imports deleted tracker symbol '{alias.name}'.",
+            )
+            for alias in node.names
+            if alias.name in _FORBIDDEN_TRACKER_SYMBOLS
+        )
+    return violations
+
+
+def _is_ledger_receiver(node: ast.AST) -> bool:
+    """Check if AST expression represents an AgentFailureLedger receiver."""
+    if isinstance(node, ast.Name):
+        lower = node.id.lower()
+        return "ledger" in lower or lower == "agentfailureledger"
+    if isinstance(node, ast.Attribute):
+        lower = node.attr.lower()
+        return "ledger" in lower
+    return False
+
+
+def _check_test_attribute(node: ast.Attribute, rel_path: str) -> list[SingleOwnerViolation]:
+    attr = node.attr
+    if _is_forbidden_target_name(attr):
+        return [
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="test_deleted_tracker_access",
+                detail=f"Test accesses deleted tracker/counter attribute '{attr}'.",
+            )
+        ]
+    if (
+        attr.startswith("_")
+        and not (attr.startswith("__") and attr.endswith("__"))
+        and _is_ledger_receiver(node.value)
+    ):
+        return [
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="test_private_ledger_access",
+                detail=(
+                    f"Test accesses private attribute '{attr}' on ledger object; "
+                    "tests must use the public seam only."
+                ),
+            )
+        ]
+    return []
+
+
+def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation]:
+    if not (
+        isinstance(node.func, ast.Name)
+        and node.func.id == "getattr"
+        and len(node.args) >= _GETATTR_MIN_ARGS
+        and isinstance(node.args[1], ast.Constant)
+        and isinstance(node.args[1].value, str)
+    ):
+        return []
+
+    arg_val = node.args[1].value
+    if _is_forbidden_target_name(arg_val):
+        return [
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="test_deleted_tracker_access",
+                detail=f"Test accesses deleted tracker/counter attribute '{arg_val}' via getattr.",
+            )
+        ]
+
+    if (
+        arg_val.startswith("_")
+        and not (arg_val.startswith("__") and arg_val.endswith("__"))
+        and _is_ledger_receiver(node.args[0])
+    ):
+        return [
+            SingleOwnerViolation(
+                path=rel_path,
+                line=node.lineno,
+                rule="test_private_ledger_access",
+                detail=(
+                    f"Test accesses private attribute '{arg_val}' on ledger object via getattr; "
+                    "tests must use the public seam only."
+                ),
+            )
+        ]
+
+    return []
+
+
+def audit_test_source(rel_path: str, source: str) -> list[SingleOwnerViolation]:
+    """Audit a single test module under tests/."""
+    if rel_path in TEMPORARY_TEST_ALLOWLIST:
+        return []
+
+    try:
+        tree = ast.parse(source, filename=rel_path)
+    except SyntaxError as exc:
+        return [
+            SingleOwnerViolation(
+                path=rel_path,
+                line=exc.lineno or 1,
+                rule="syntax_error",
+                detail=f"Cannot parse test source: {exc}",
+            )
+        ]
+
+    violations: list[SingleOwnerViolation] = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            violations.extend(_check_test_import(node, rel_path))
+        elif isinstance(node, ast.Attribute):
+            violations.extend(_check_test_attribute(node, rel_path))
+        elif isinstance(node, ast.Call):
+            violations.extend(_check_test_call(node, rel_path))
+    return violations
+
+
+def _violation_sort_key(violation: SingleOwnerViolation) -> tuple[str, int]:
+    """Deterministic sort key for single-owner audit violations."""
+    return (violation.path, violation.line)
+
+
+def audit_single_owner(repo_root: Path) -> list[SingleOwnerViolation]:
+    """Scan production and test subtrees for single-owner failure ledger violations."""
+    violations: list[SingleOwnerViolation] = []
+
+    # 1. Scan production subtrees: ralph/recovery and ralph/pipeline
+    for sub in ("ralph/recovery", "ralph/pipeline"):
+        base_dir = repo_root / sub
+        # filesystem-read-ok: audit scanner checks directory existence before tree traversal
+        if not base_dir.is_dir():
+            continue
+        # filesystem-read-ok: audit scanner walks directory tree for static AST inspection
+        for parent, dirs, files in os.walk(base_dir):
+            dirs[:] = [d for d in dirs if d != "__pycache__"]
+            for name in files:
+                if not name.endswith(".py"):
+                    continue
+                file_path = Path(parent) / name
+                rel_path = file_path.relative_to(repo_root).as_posix()
+                # filesystem-read-ok: audit scanner loads module source for static AST inspection
+                source = file_path.read_text(encoding="utf-8")
+                violations.extend(audit_production_source(rel_path, source))
+
+    # 2. Scan test subtree: tests
+    tests_dir = repo_root / "tests"
+    # filesystem-read-ok: audit scanner checks directory existence before tree traversal
+    if tests_dir.is_dir():
+        # filesystem-read-ok: audit scanner walks directory tree for static AST inspection
+        for parent, dirs, files in os.walk(tests_dir):
+            dirs[:] = [d for d in dirs if d != "__pycache__"]
+            for name in files:
+                if not name.endswith(".py"):
+                    continue
+                file_path = Path(parent) / name
+                rel_path = file_path.relative_to(repo_root).as_posix()
+                # filesystem-read-ok: audit scanner loads module source for static AST inspection
+                source = file_path.read_text(encoding="utf-8")
+                violations.extend(audit_test_source(rel_path, source))
+
+    return sorted(violations, key=_violation_sort_key)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the single-owner failure ledger audit from the command line."""
+    args = argv if argv is not None else sys.argv[1:]
+    repo_root = Path(args[0]) if args else Path(__file__).resolve().parents[2]
+    violations = audit_single_owner(repo_root)
+    if violations:
+        print(f"AGENT FAILURE SINGLE OWNER AUDIT: {len(violations)} violation(s) found:")
+        for v in violations:
+            print(f"  {v}")
+        return 1
+    print("AGENT FAILURE SINGLE OWNER AUDIT: OK")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

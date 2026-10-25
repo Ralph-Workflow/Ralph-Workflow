@@ -18,6 +18,8 @@ import pytest
 
 from ralph.agents.invoke import AgentInvocationError
 from ralph.config.enums import Verbosity
+from ralph.config.general_config import GeneralConfig
+from ralph.config.models import UnifiedConfig
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.models import (
@@ -40,6 +42,15 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _CYCLE_CAP = 3
+
+
+def _test_config() -> UnifiedConfig:
+    return UnifiedConfig(
+        general=GeneralConfig(
+            agent_max_consecutive_unproductive=10,
+            agent_max_total_unproductive=20,
+        )
+    )
 
 
 def _make_policy_bundle() -> PolicyBundle:
@@ -142,7 +153,7 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 
     exit_code = runner_module.run(
-        MagicMock(),
+        _test_config(),
         initial_state=initial_state,
         verbosity=Verbosity.QUIET,
         connectivity_monitor=monitor,
@@ -221,7 +232,7 @@ def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 
     exit_code = runner_module.run(
-        MagicMock(),
+        _test_config(),
         initial_state=initial_state,
         verbosity=Verbosity.QUIET,
         connectivity_monitor=monitor,
@@ -288,7 +299,7 @@ def test_runner_fallover_history_reflects_agent_transitions(
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 
     exit_code = runner_module.run(
-        MagicMock(),
+        _test_config(),
         initial_state=initial_state,
         verbosity=Verbosity.QUIET,
         connectivity_monitor=monitor,
@@ -352,7 +363,7 @@ def test_runner_recovery_cycle_count_reaches_cap(
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 
     exit_code = runner_module.run(
-        MagicMock(),
+        _test_config(),
         initial_state=initial_state,
         verbosity=Verbosity.QUIET,
         connectivity_monitor=monitor,

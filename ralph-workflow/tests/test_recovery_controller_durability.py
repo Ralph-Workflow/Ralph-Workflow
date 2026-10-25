@@ -7,7 +7,7 @@ carries more than one top-level test class (repo-structure policy).
 from __future__ import annotations
 
 from ralph.agents.timeout_clock import FakeClock
-from ralph.checked_accessors import as_mapping
+from ralph.checked_accessors import as_int, as_mapping
 from ralph.recovery.classifier import ClassifiedFailure, FailureCategory
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
@@ -39,7 +39,6 @@ class TestRecoveryControllerDurability:
         clock = FakeClock(start=100.0)
         options = RecoveryControllerOptions(
             cycle_cap=50,
-            technical_retry_cap=5,
             backoff_attempts={"claude": 2},
             unavailable_timeouts={"development:claude": 120_000},
             clock=clock,
@@ -48,13 +47,12 @@ class TestRecoveryControllerDurability:
         snap = controller.snapshot()
 
         assert snap["cycle_cap"] == 50
-        assert snap["technical_retry_cap"] == 5
         backoff_attempts = {
-            k: int(v)
+            k: as_int(v, field=f"backoff_attempts.{k}")
             for k, v in as_mapping(snap["backoff_attempts"], field="backoff_attempts").items()
         }
         unavailable_timeouts = {
-            k: int(v)
+            k: as_int(v, field=f"unavailable_timeouts.{k}")
             for k, v in as_mapping(
                 snap["unavailable_timeouts"], field="unavailable_timeouts"
             ).items()
@@ -65,13 +63,12 @@ class TestRecoveryControllerDurability:
         restored_controller = RecoveryController.from_snapshot(snap, clock=clock)
         restored_snap = restored_controller.snapshot()
         restored_backoff = {
-            k: int(v)
+            k: as_int(v, field=f"backoff_attempts.{k}")
             for k, v in as_mapping(
                 restored_snap["backoff_attempts"], field="backoff_attempts"
             ).items()
         }
         assert restored_snap["cycle_cap"] == 50
-        assert restored_snap["technical_retry_cap"] == 5
         assert restored_backoff["claude"] == 2
 
     def test_exhausted_agent_remains_spent_in_preferred_agent_selection(self) -> None:

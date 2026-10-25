@@ -566,7 +566,7 @@ When working on `ralph/mcp/server/` or `ralph/pipeline/runner.py`, preserve thes
 
 ## Recovery architecture contract
 
-Recovery, failure classification, retry counting, and chain fallover each have a single conceptual owner in `ralph/recovery/`. Extend the owner, do not add handlers at call sites. New failure modes are added by extending the `FailureClassifier` in `ralph/recovery/classifier.py`, not by sprinkling classification logic at invoke sites.
+Recovery, failure classification, retry counting, and chain fallover each have a single conceptual owner in `ralph/recovery/`. Extend the owner, do not add handlers at call sites. Agent unproductivity, retry bounds, and demotion decisions are owned exclusively by `AgentFailureLedger` (`ralph/recovery/agent_failure_ledger.py`); no secondary tracker, counter, or ad-hoc retry cap elsewhere may make an overlapping demotion decision. New failure modes are added by extending the `FailureClassifier` in `ralph/recovery/classifier.py`, not by sprinkling classification logic at invoke sites.
 
 ### Technical retry contract (mandatory)
 
@@ -574,7 +574,7 @@ All direct technical retries must stay on one shared contract. This includes sta
 
 Required invariants:
 
-1. **Single cap family:** direct technical retries must be governed by the shared `general.max_same_agent_retries` cap (threaded into runtime owners), not ad-hoc per-call counters.
+1. **Single cap family and failure ledger:** direct technical retries must be governed by the shared `general.max_same_agent_retries` cap (threaded into runtime owners), and all unproductive/free-retry attempts are bounded by `AgentFailureLedger` via `agent_max_consecutive_unproductive` and `agent_max_total_unproductive`, not ad-hoc per-call counters or same-shape trackers.
 2. **Single error format:** retry reprompts and retry hints must use the shared formatter in `ralph/recovery/retry_prompt.py`, with the failure/error block first and prompt/context references secondary.
 3. **Loopbacks are separate:** analysis/validation loopbacks are not technical retries and must not silently reuse the technical retry counter path.
 4. **Tests are required at both seams:** changes to technical retry behavior must update (a) runner-level tests for direct retry prompt generation and (b) recovery/controller-level tests for cap enforcement and chain progression.

@@ -3523,6 +3523,13 @@ ralph.recovery.seed_budget_registry
    :members:
    :show-inheritance:
 
+ralph.recovery.agent_failure_ledger
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.agent_failure_ledger
+   :members:
+   :show-inheritance:
+
 ----
 
 Runtime
@@ -4652,6 +4659,13 @@ ralph.testing.audit_workspace_resource_inventory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.testing.audit_workspace_resource_inventory
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_agent_failure_single_owner
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_agent_failure_single_owner
    :members:
    :show-inheritance:
 

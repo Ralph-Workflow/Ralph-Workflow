@@ -395,30 +395,11 @@ NO_PROGRESS_QUIET_STRICTLY_STUCK_SECONDS: float | None = None
 #: churn.
 WATCHDOG_SUBAGENT_PROGRESS_INTERVAL_SECONDS: float = 30.0
 
-#: Default ceiling for consecutive same-shape retry attempts in the
-#: ``SameShapeRetryTracker`` (R6 contract). Each consecutive
-#: ``AgentInactivityTimeoutError`` resume that fingerprints identically on
-#: ``(last_fire_reason, fire_diagnostic_signature, no-new-artifact-since-prior,
-#: workspace-change-since-prior)`` advances the counter; when the counter
-#: reaches this ceiling the controller raises
-#: ``SameShapeRetryLoopError`` instead of resuming. The default of 3
-#: is intentionally small: the 25-minute four-cycle burn that motivated
-#: this task would have been caught after the 3rd consecutive identical
-#: fire (well before the 4th), leaving one full retry of headroom. Operators
-#: who want a longer leash override via
-#: ``[general] agent_max_same_shape_resumes`` in ralph-workflow.toml; the
-#: loader routes that value through
-#: ``RecoveryControllerOptions.same_shape_retry_limit`` so the
-#: configuration surface is single-sourced.
-SAME_SHAPE_RETRY_DEFAULT: int = 3
+#: Default maximum consecutive unproductive execution attempts before an agent enters cooldown.
+AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT: int = 3
 
-#: Default maximum consecutive identical broken-agent failures for a sole
-#: agent before recovery fails the phase instead of waiting for cooldown.
-BROKEN_AGENT_SAME_SHAPE_DEFAULT: int = 2
-
-#: Default maximum consecutive qualifying in-session retries for an agent
-#: before escalating to standard failure cooldown.
-IN_SESSION_RETRY_ESCALATION_DEFAULT: int = 3
+#: Default maximum total unproductive execution attempts across a phase before an agent is spent.
+AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT: int = 9
 
 # ---------------------------------------------------------------------------
 # Child-liveness TTL defaults

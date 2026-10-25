@@ -9,7 +9,8 @@ from ralph.config._general_workflow_flags import GeneralWorkflowFlags
 from ralph.pydantic_compat import RalphBaseModel
 from ralph.timeout_defaults import (
     AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS,
-    BROKEN_AGENT_SAME_SHAPE_DEFAULT,
+    AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT,
+    AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT,
     CHILD_EXIT_RECONCILE_SECONDS,
     CHILD_HEARTBEAT_TTL_SECONDS,
     CHILD_PROGRESS_TTL_SECONDS,
@@ -21,7 +22,6 @@ from ralph.timeout_defaults import (
     DRAIN_WINDOW_SECONDS,
     IDLE_POLL_INTERVAL_SECONDS,
     IDLE_TIMEOUT_SECONDS,
-    IN_SESSION_RETRY_ESCALATION_DEFAULT,
     LOG_GROWTH_SECONDS,
     MAX_SESSION_SECONDS,
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
@@ -39,7 +39,6 @@ from ralph.timeout_defaults import (
     REPEATED_ERROR_CONSECUTIVE_THRESHOLD,
     REPEATED_ERROR_WINDOW_COUNT,
     REPEATED_ERROR_WINDOW_SECONDS,
-    SAME_SHAPE_RETRY_DEFAULT,
     SUBAGENT_OUTPUT_CAPTURE_ENABLED,
     SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS,
     SUSPECT_WAITING_ON_CHILD_SECONDS,
@@ -83,53 +82,20 @@ class GeneralConfig(RalphBaseModel):
     provider_fallback: dict[str, list[str]] = Field(default_factory=dict)
     max_same_agent_retries: int = Field(default=10, ge=0)
     max_commit_residual_retries: int = Field(default=10, ge=0)
-    # R6 (Trustworthy Idle Watchdog spec): the same-shape retry loop
-    # bound. Consecutive ``AgentInactivityTimeoutError`` resumes that
-    # fingerprint identically on ``(watchdog_reason, failure_reason,
-    # no-new-artifact-since-prior, no-workspace-change-since-prior)``
-    # raise ``SameShapeRetryLoopError`` instead of resuming when
-    # the consecutive counter reaches this ceiling. The default
-    # (``SAME_SHAPE_RETRY_DEFAULT = 3``) is small enough to catch the
-    # 25-minute four-cycle burn that motivated this task after the
-    # 3rd consecutive identical fire (well before the 4th), leaving
-    # one full retry of headroom. Operators extend the leash via
-    # ``[general] agent_max_same_shape_resumes = N`` in
-    # ``ralph-workflow.toml``; the loader routes that value into
-    # ``RecoveryControllerOptions.same_shape_retry_limit`` so the
-    # configuration surface is single-sourced. ``ge=1`` rejects ``0``
-    # and negative values with a clear field-name error so an
-    # operator who tries to silently disable the R6 contract sees the
-    # rejection at config-load time.
-    agent_max_same_shape_resumes: int = Field(
-        default=SAME_SHAPE_RETRY_DEFAULT,
+    agent_max_consecutive_unproductive: int = Field(
+        default=AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT,
         ge=1,
         description=(
-            "Same-shape retry loop bound. Consecutive AgentInactivityTimeoutError"
-            " resumes that fingerprint identically on (watchdog_reason,"
-            " failure_reason, no-new-artifact, no-workspace-change) raise"
-            " SameShapeRetryLoopError instead of resuming when the consecutive"
-            " counter reaches this ceiling. The default is small enough to"
-            " catch the 25-minute four-cycle burn that motivated this task."
-            " Operators extend the leash by raising this value in"
-            " ralph-workflow.toml; setting it to 0 or a negative value is"
-            " rejected by the validator."
+            "Maximum consecutive unproductive execution attempts (no valid artifact produced"
+            " and no workspace change) allowed before an agent enters cooldown."
         ),
     )
-    agent_max_broken_agent_same_shape_resumes: int = Field(
-        default=BROKEN_AGENT_SAME_SHAPE_DEFAULT,
+    agent_max_total_unproductive: int = Field(
+        default=AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT,
         ge=1,
         description=(
-            "Broken-agent sole-chain bound. Consecutive identical broken-agent"
-            " failures for the same sole agent fail the phase instead of waiting"
-            " for that agent's cooldown."
-        ),
-    )
-    in_session_retry_escalation_limit: int = Field(
-        default=IN_SESSION_RETRY_ESCALATION_DEFAULT,
-        ge=1,
-        description=(
-            "Maximum consecutive qualifying in-session retries allowed for an agent"
-            " before escalating to cooldown and next eligible agent selection."
+            "Maximum total unproductive execution attempts allowed across the phase"
+            " before an agent is spent."
         ),
     )
     max_retries: int = Field(default=3, ge=0)

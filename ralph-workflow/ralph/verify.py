@@ -555,6 +555,12 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        "agent failure single owner audit (audit_agent_failure_single_owner)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_agent_failure_single_owner"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         # Preserve all installer, multimodal, and visual smoke scenarios while
         # amortizing pytest imports and worker startup across one invocation.
         # This entire aggregate remains charged to the immutable combined 60 s.

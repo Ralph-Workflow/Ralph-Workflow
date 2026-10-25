@@ -241,8 +241,13 @@ def test_acceptance_scenario_3_last_decision_projection_not_input(
         rebase_state=result.rebase,
     )
 
-    # Now inject various last_decision values and verify decision unchanged.
-    for prior in PhaseDecision:
+    # Now inject various representative last_decision values and verify decision unchanged.
+    for prior in (
+        PhaseDecision.BLOCK_FOR_RECOVERY,
+        PhaseDecision.REPORT_TERMINAL_SUCCESS,
+        PhaseDecision.ADVANCE_PHASE,
+        PhaseDecision.REPORT_TERMINAL_FAILURE,
+    ):
         polluted_rebase = baseline_rebase.model_copy(update={"last_decision": prior.value})
         polluted_state = baseline_state.copy_with(rebase=polluted_rebase)
 

@@ -50,10 +50,6 @@ from ralph.agents.idle_watchdog import (
     classify_stuck,
 )
 from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
-from ralph.recovery import (
-    SameShapeRetryLoopError,
-    SameShapeRetryTracker,
-)
 
 _FIXTURE_ROOT = Path(
     "tests/agents/invoke/fixtures/claude_interactive_real_capture/"
@@ -404,51 +400,3 @@ def test_r5_silent_parent_and_silent_children_still_fire(
     )
     assert kind.value == "stuck"
 
-
-def test_r6_same_shape_retry_loop_bounded_at_configured_threshold() -> None:
-    """R6: the same-shape retry loop is detected and bounded at the configured threshold.
-
-    This test wires the ``SameShapeRetryTracker`` directly: three
-    identical ``no_output_at_start`` fires raise
-    ``SameShapeRetryLoopError`` with the fingerprint, the
-    consecutive count, and the effective limit carried as
-    structured evidence. The recovery controller integration is
-    covered by ``tests/recovery/test_same_shape_retry_bounds.py``
-    and ``tests/config/test_general_config_same_shape_resumes.py``.
-    """
-    tracker = SameShapeRetryTracker(limit=3)
-    fp, count = tracker.record_fire(
-        fire_reason="no_output_at_start",
-        diagnostic_signature="silent_subagent",
-        no_new_artifact_since_prior=True,
-        workspace_change_since_prior=True,
-    )
-    assert count == 1
-    fp, count = tracker.record_fire(
-        fire_reason="no_output_at_start",
-        diagnostic_signature="silent_subagent",
-        no_new_artifact_since_prior=True,
-        workspace_change_since_prior=True,
-        prior_fingerprint=fp,
-        prior_consecutive=count,
-    )
-    assert count == 2
-    with pytest.raises(SameShapeRetryLoopError) as excinfo:
-        tracker.record_fire(
-            fire_reason="no_output_at_start",
-            diagnostic_signature="silent_subagent",
-            no_new_artifact_since_prior=True,
-            workspace_change_since_prior=True,
-            prior_fingerprint=fp,
-            prior_consecutive=count,
-        )
-    exc = excinfo.value
-    assert exc.consecutive == 3
-    assert exc.limit == 3
-    assert exc.fingerprint == ("no_output_at_start", "silent_subagent", True, True)
-    # The exception message names every fingerprint field so an
-    # operator can diagnose the loop from the log alone.
-    msg = str(exc)
-    assert "no_output_at_start" in msg
-    assert "silent_subagent" in msg
-    assert "limit=3" in msg
