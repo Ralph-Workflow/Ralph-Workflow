@@ -22,16 +22,9 @@ actions:
 * ``LAND_TARGET``
 * ``WAIT_FOR_BOUNDED_RETRY``
 
-The remaining three members of the closed vocabulary are statements
+The remaining two members of the closed vocabulary are statements
 about DURABLE STATE, which no live observation can express:
 
-* ``REQUIRE_INTERVENTION`` -- the durable diagnostic-intervention flag
-  on the integration record, plus the "a retained obligation with no
-  record behind it" case. It is decided by
-  :func:`ralph.pipeline._integration_record_facts.apply_record_facts`,
-  which applies the durable fact against the LIVE observation: a stale
-  durable claim never outranks a current, healthy Git observation
-  (Git outranks the record).
 * ``PUBLISH_AFTER_LANDING`` -- the remote-publication obligation. It
   lives in the rebase state and is decided by
   :mod:`ralph.pipeline._publication_state_machine`; the durable
@@ -40,6 +33,21 @@ about DURABLE STATE, which no live observation can express:
   the diagnostic path's four-condition Git proof
   (:mod:`ralph.pipeline._integration_diagnostic_proof`); the durable
   integration record does not carry it.
+
+A durable record fact that cannot prove a next step the boundary can
+act on is NOT an ``IntegrationAction`` at all: it is a typed
+:class:`~ralph.pipeline.integration_owner.RecordFactOutcome` verdict
+(``STALE_INTENT`` / ``DIAGNOSTIC_BUDGET_SPENT``), decided by
+:func:`ralph.pipeline._integration_record_facts.apply_record_facts`
+against the LIVE observation (Git outranks the record). Each outcome
+maps to a cleanup-ladder rung in
+:data:`~ralph.pipeline.integration_owner.NEXT_ACTION_TO_LADDER_RUNG`
+(the first rung: preserve the work to backup refs, then re-enter the
+rebase-first path), so a fail-closed record fact escalates autonomously
+through the ladder — never to a terminal block on an operator. The
+retired projection's ``REQUIRE_INTERVENTION`` value survives only in
+:mod:`ralph.pipeline._integration_action` with zero production
+producers.
 
 **The owner decides the mutation ladder; record-fact completion and
 publication stay with the seam.** :func:`decide_seam_action` is that
@@ -60,6 +68,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph.pipeline._integration_action import IntegrationAction
 from ralph.pipeline._integration_record_facts import apply_record_facts
 from ralph.pipeline.integration_ladder import LadderStepResult, run_ladder_rung
 from ralph.pipeline.integration_observation import (
@@ -69,12 +78,15 @@ from ralph.pipeline.integration_observation import (
     classify_worktree,
     read_worktree_porcelain,
 )
-from ralph.pipeline.integration_owner import decide_integration_verdict
+from ralph.pipeline.integration_owner import (
+    RecordFactOutcome,
+    decide_integration_verdict,
+    ladder_rung_for_record_fact_outcome,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.pipeline._integration_action import IntegrationAction
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.integration_actions import Clock
     from ralph.pipeline.integration_attempt_ledger import AttemptLedger
@@ -103,7 +115,11 @@ class PlanningSyncVerdict:
     planning gate, the boundary and the resolution gate alike.
 
     * ``action`` — the seam action integration will take next (the
-      boundary's answer, overlaid with the durable record facts).
+      boundary's answer, overlaid with the durable record facts). When
+      ``record_fact`` is not ``None`` the durable record facts could
+      not prove a next step: the action is the coarse projection of the
+      escalation rung (git plumbing) and the typed ``record_fact``
+      verdict names why the ladder runs.
     * ``observation`` — the live seven-dimension snapshot behind the
       decision (reasons are rendered from it, never stored).
     * ``worktree`` / ``dirt_shape`` — the single classifier's verdict for
@@ -113,15 +129,23 @@ class PlanningSyncVerdict:
     * ``in_sync`` — the feature contains the target tip (``EQUAL`` or
       ``AHEAD`` on the target/feature axis).
     * ``may_plan`` — planning may start: the branch is in sync AND the
-      classifier allows dispatch. An unknown worktree probe, blocking
-      dirt or an out-of-sync branch all hold planning, each with the
-      ``reason`` naming the current observation.
+      classifier allows dispatch AND no fail-closed record fact holds
+      planning. An unknown worktree probe, blocking dirt, an
+      out-of-sync branch or a typed record-fact verdict all hold
+      planning, each with the ``reason`` naming the current observation
+      or the stale durable claim.
     * ``ladder_rung`` — the rung-level projection of a cleanup-ladder
       decision (``None`` for every other decision): when it is not
       ``None`` the caller dispatches the rung through
       :func:`execute_planning_ladder_rung` (which runs
       :func:`ralph.pipeline.integration_ladder.run_ladder_rung`)
-      instead of acting on the coarse ``action`` alone.
+      instead of acting on the coarse ``action`` alone. A verdict whose
+      ``record_fact`` is not ``None`` carries the escalation rung (the
+      first rung: preserve the work to backup refs).
+    * ``record_fact`` — the typed fail-closed record-fact verdict
+      (``None`` for every ordinary decision): when it is not ``None``
+      the durable record could not prove a next step and the verdict
+      escalates through the ladder — never to an operator hand-off.
     """
 
     action: IntegrationAction
@@ -132,6 +156,7 @@ class PlanningSyncVerdict:
     may_plan: bool
     reason: str
     ladder_rung: CleanupLadderRung | None = None
+    record_fact: RecordFactOutcome | None = None
 
 
 def decide_seam_action(
@@ -143,7 +168,7 @@ def decide_seam_action(
     retained: bool = False,
     target: str | None = None,
     remote: str | None = None,
-) -> IntegrationAction:
+) -> IntegrationAction | RecordFactOutcome:
     """Ask the owner what integration does next, then overlay the record facts.
 
     Args:
@@ -162,7 +187,8 @@ def decide_seam_action(
         retained: True when the caller holds a RETAINED integration
             obligation. A retained obligation with no durable record
             behind it has nothing the boundary can act on, so the seam
-            fails closed to ``REQUIRE_INTERVENTION``.
+            fails closed to the typed
+            :attr:`RecordFactOutcome.STALE_INTENT` verdict.
         target: The CONFIGURED integration target branch name. ``None``
             uses the director's default (``main``). A caller with a
             configured target must pass it so the observation is taken
@@ -172,10 +198,14 @@ def decide_seam_action(
 
     Returns:
         The action the seam must act on: the owner's mutation-ladder
-        answer, overlaid with the durable record facts. The overlay is
-        applied against the LIVE observation, so a stale durable claim
-        never turns a current, healthy Git observation into a terminal
-        block.
+        answer, overlaid with the durable record facts. When a live
+        durable claim cannot prove a next step, the return is a typed
+        :class:`RecordFactOutcome` verdict instead of an
+        :class:`IntegrationAction`; the caller routes it to the
+        autonomous fallback ladder through
+        :func:`~ralph.pipeline.integration_owner.ladder_rung_for_record_fact_outcome`.
+        The overlay is applied against the LIVE observation, so a stale
+        durable claim never changes the owner's answer.
     """
     verdict = decide_integration_verdict(
         root,
@@ -239,8 +269,26 @@ def decide_planning_sync(
         TargetVsFeature.EQUAL,
         TargetVsFeature.AHEAD,
     )
-    may_plan = in_sync and worktree.dispatch_allowed
-    if may_plan:
+    # A fail-closed record fact holds planning and escalates through the
+    # cleanup ladder: the verdict carries the typed outcome and the
+    # escalation rung (the first rung preserves the work to backup
+    # refs), and the coarse action is the rung's git-plumbing
+    # projection. The ladder — never an operator hand-off — owns the
+    # escalation.
+    record_fact: RecordFactOutcome | None = None
+    ladder_rung = verdict.ladder_rung
+    if isinstance(action, RecordFactOutcome):
+        record_fact = action
+        ladder_rung = ladder_rung_for_record_fact_outcome(action)
+        action = IntegrationAction.CONTINUE_GIT_OPERATION
+    may_plan = in_sync and worktree.dispatch_allowed and record_fact is None
+    if record_fact is not None:
+        reason = (
+            f"planning held: durable record facts cannot prove a next step "
+            f"({record_fact.value}); preserving work to backup refs and escalating "
+            f"through cleanup-ladder rung {ladder_rung_for_record_fact_outcome(record_fact).name.lower()}"
+        )
+    elif may_plan:
         reason = "planning may proceed: branch is in sync and the worktree gate allows dispatch"
     elif not in_sync:
         reason = (
@@ -257,7 +305,8 @@ def decide_planning_sync(
         in_sync=in_sync,
         may_plan=may_plan,
         reason=reason,
-        ladder_rung=verdict.ladder_rung,
+        ladder_rung=ladder_rung,
+        record_fact=record_fact,
     )
 
 

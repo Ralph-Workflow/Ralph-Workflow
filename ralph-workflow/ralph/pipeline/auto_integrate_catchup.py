@@ -61,6 +61,7 @@ from ralph.pipeline.auto_integrate_sync import (
 )
 from ralph.pipeline.integration_actions import default_clock
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
+from ralph.pipeline.integration_owner import RecordFactOutcome
 from ralph.process.manager import ProcessTerminationError
 
 if TYPE_CHECKING:
@@ -635,10 +636,12 @@ def _mutation_refusal(root: Path, target: str, current: str, *, remote: str | No
         action = decide_seam_action(
             root, record=read_record(root), agent_active=False, target=target, remote=remote
         )
-        if action in (
-            IntegrationAction.REQUIRE_INTERVENTION,
-            IntegrationAction.RESOLVE_ACTIVE_OPERATION,
-        ):
+        if isinstance(action, RecordFactOutcome):
+            # A fail-closed record fact escalates through the autonomous
+            # cleanup ladder (preserve the work to backup refs first);
+            # the catch-up mutation defers to it -- never to a person.
+            return f"{CATCHUP_REFUSED}; owner escalated {action.value} through the cleanup ladder"
+        if action is IntegrationAction.RESOLVE_ACTIVE_OPERATION:
             return f"{CATCHUP_REFUSED}; owner required {action.value}"
     return ""
 

@@ -94,6 +94,20 @@ class Transition:
 
 # --- Concrete transitions ---
 
+#: The typed "diagnostic budget spent" outcome. Recorded on the durable
+#: record as ``repair_cap_reason`` when the repair-attempt cap is
+#: reached, it names the next autonomous action (the fallback ladder)
+#: instead of a terminal operator hand-off. The marker deliberately
+#: avoids the retired "operator intervention required" phrasing so the
+#: legacy migrator (:func:`_clear_legacy_ownership_and_intervention`)
+#: can distinguish fresh typed outcomes from stale hand-off reasons.
+#: Lives here (not in ``_integration_diagnostic_state``) because the
+#: load-time counter clamp in ``_auto_integrate_record_restamp`` must
+#: read it without an import cycle.
+DIAGNOSTIC_BUDGET_SPENT_REASON: str = (
+    "diagnostic repair budget spent; escalating through the autonomous fallback ladder"
+)
+
 
 def _is_integrating(record: IntegrationRecord) -> bool:
     return record.phase in ("integrating",)
@@ -232,9 +246,23 @@ BUMP_DIAGNOSTIC_ATTEMPT = Transition(
     {
         "merge_commit_repair_attempts": "merge_commit_repair_attempts",
         "repair_last_error": "repair_last_error",
+        # The typed "diagnostic budget spent" marker: when the bumped
+        # counter reaches the cap the same transition records WHY the
+        # budget is spent, routing the record to the autonomous
+        # fallback ladder (never to a human hand-off).
+        "repair_cap_reason": "repair_cap_reason",
     },
 )
 
+#: Retired transition, kept ONLY as a legacy-payload parsing input: the
+#: loader may still meet records whose history names this transition,
+#: and :func:`transition_by_name` resolves it. NO production path emits
+#: it: an exhausted diagnostic-repair budget is a typed
+#: ``repair_cap_reason`` outcome routed to the autonomous fallback
+#: ladder (see
+#: :mod:`ralph.pipeline._integration_diagnostic_handoff`), and legacy
+#: flagged records load-and-clear at parse time
+#: (:func:`ralph.pipeline.auto_integrate_record.parse_record_payload`).
 RAISE_DIAGNOSTIC_INTERVENTION = Transition(
     "RAISE_DIAGNOSTIC_INTERVENTION",
     {
@@ -318,6 +346,7 @@ __all__ = [
     "BUMP_DIAGNOSTIC_ATTEMPT",
     "CLEAR",
     "CLEAR_TRANSITION",
+    "DIAGNOSTIC_BUDGET_SPENT_REASON",
     "HOLD_DIAGNOSTIC_EVIDENCE",
     "MARK_LEGACY_FIELDS_PRESERVED",
     "MARK_PENDING_MERGE_COMMIT",

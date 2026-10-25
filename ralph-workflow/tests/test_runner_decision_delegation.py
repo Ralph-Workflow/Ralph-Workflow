@@ -70,27 +70,34 @@ def _write_record(
     )
 
 
-def test_intervention_action_surfaces_intervention_display_state(
+def test_stale_intent_surfaces_waiting_display_state(
     tmp_path: Path, monkeypatch: MonkeyPatch, policy_bundle: object
 ) -> None:
-    # No record + retained recovery => REQUIRE_INTERVENTION (fail-closed).
+    # No record + retained recovery => typed STALE_INTENT verdict
+    # (fail-closed), routed to the autonomous cleanup ladder: the display
+    # names the bounded wait, never an operator hand-off.
     monkeypatch.setattr(runner_module, "read_record", lambda _root: None)
     state = _state(recovery_record_retained=True)
     out = runner_module._apply_step_integration_outcome(
         state, _scope(tmp_path), policy_bundle, state.rebase
     )
-    assert out.rebase.operation_display_state == "intervention_required"
+    assert out.rebase.operation_display_state == "waiting"
+    assert out.rebase.operation_display_state != "intervention_required"
 
 
-def test_diagnostic_intervention_required_surfaces_intervention(
+def test_diagnostic_budget_spent_surfaces_waiting_display_state(
     tmp_path: Path, monkeypatch: MonkeyPatch, policy_bundle: object
 ) -> None:
+    # A record whose diagnostic repair budget is spent => typed
+    # DIAGNOSTIC_BUDGET_SPENT verdict, routed to the autonomous cleanup
+    # ladder: the display names the bounded wait, never a hand-off.
     _write_record(tmp_path, monkeypatch, diagnostic_intervention_required=True)
     state = _state()
     out = runner_module._apply_step_integration_outcome(
         state, _scope(tmp_path), policy_bundle, state.rebase
     )
-    assert out.rebase.operation_display_state == "intervention_required"
+    assert out.rebase.operation_display_state == "waiting"
+    assert out.rebase.operation_display_state != "intervention_required"
 
 
 def test_recoverable_action_blocks_display_without_intervention(

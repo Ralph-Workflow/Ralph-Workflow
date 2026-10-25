@@ -76,13 +76,17 @@ def busy_refusal_outcome(
     retry_deadline: float | None,
     *,
     clock: object = None,
-) -> IntegrationAction:
+) -> IntegrationAction | RecordFactOutcome:
     """Map a persisted ``RebaseState.retry_deadline`` to the typed retry decision.
 
-    Canonical mapping lives in :mod:`ralph.pipeline._integration_diagnostic`
-    (lazy import avoids an import cycle): an unexpired persisted deadline
-    yields ``WAIT_FOR_BOUNDED_RETRY``; a missing, malformed, or expired
-    deadline yields ``REQUIRE_INTERVENTION``.
+    Canonical mapping lives in
+    :mod:`ralph.pipeline._integration_record_facts` (lazy import avoids
+    an import cycle): an unexpired persisted deadline yields
+    ``WAIT_FOR_BOUNDED_RETRY``; a missing, malformed, or expired
+    deadline fails closed to the typed
+    :attr:`RecordFactOutcome.STALE_INTENT` verdict, which the caller
+    routes to the autonomous fallback ladder — never an operator
+    hand-off.
     """
     from ralph.pipeline._integration_diagnostic import busy_refusal_outcome as _map
 
@@ -93,6 +97,7 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
+    from ralph.pipeline.integration_owner import RecordFactOutcome
 
 
 def recover_target_resolution(
@@ -210,13 +215,16 @@ def _apply_release_or_refuse(
     BUSY refusals are mapped through the PERSISTED
     ``RebaseState.retry_deadline`` (via :func:`busy_refusal_outcome`):
     an unexpired deadline yields a bounded-wait retained skip; a
-    missing or expired deadline fails closed to
-    DIAGNOSTIC_INTERVENTION_REQUIRED. UNREADABLE refusals always map
-    to DIAGNOSTIC_INTERVENTION_REQUIRED with recovery_record_retained
-    =True and bytes preserved on disk -- never bare-written over.
+    missing or expired deadline fails closed to the typed
+    ``RecordFactOutcome.STALE_INTENT`` verdict, recorded here as the
+    typed LADDER_ESCALATION outcome. UNREADABLE refusals always map
+    to LADDER_ESCALATION with recovery_record_retained =True and bytes
+    preserved on disk -- never bare-written over. Both refusals name
+    the next autonomous action: the fallback ladder escalates
+    (preservation first, rung 6 hard reset last) -- never a person.
     Callers with access to the checkpointed RebaseState pass its
     ``retry_deadline``; without one the deadline is treated as missing
-    (REQUIRE_INTERVENTION).
+    (ladder escalation).
     """
     try:
         apply_record_transition(
@@ -235,10 +243,10 @@ def _apply_release_or_refuse(
                 "target reconciliation worktree busy; recovery will retry",
             )
         return RebaseState(
-            last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+            last_outcome=RebaseOutcomeKind.LADDER_ESCALATION,
             last_reason=(
                 "target reconciliation record busy with no persisted retry deadline; "
-                "intervention required"
+                "escalating through the autonomous fallback ladder; record retained"
             ),
             last_target=record.target,
             recovery_record_retained=True,
@@ -246,8 +254,11 @@ def _apply_release_or_refuse(
         )
     except RecordUnreadableError:
         return RebaseState(
-            last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
-            last_reason=("durable integration record unreadable at release; intervention required"),
+            last_outcome=RebaseOutcomeKind.LADDER_ESCALATION,
+            last_reason=(
+                "durable integration record unreadable at release; escalating through "
+                "the autonomous fallback ladder; record retained, bytes preserved"
+            ),
             last_target=record.target,
             recovery_record_retained=True,
             recovery_record_retained_reason=(StartupRetentionReason.OBSERVED_RETAINED_ON_DISK),

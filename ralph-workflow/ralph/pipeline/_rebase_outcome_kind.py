@@ -8,8 +8,13 @@ from enum import StrEnum
 class RebaseOutcomeKind(StrEnum):
     """The closed vocabulary for rebase/merge integration outcomes.
 
-    The 19 values represent the lossless union of all outcome verbs written
-    and asserted across the Ralph pipeline.
+    The values represent the lossless union of all outcome verbs written
+    and asserted across the Ralph pipeline. ``INTERVENTION_REQUIRED`` and
+    ``DIAGNOSTIC_INTERVENTION_REQUIRED`` are retained ONLY for parsing
+    legacy checkpoints and receipts; no production path produces them
+    after the diagnostic-cap hand-off was replaced by the typed
+    ``LADDER_ESCALATION`` outcome (the autonomous fallback ladder,
+    rung 6 hard reset as the last resort — never a person).
     """
 
     REBASED = "rebased"
@@ -22,6 +27,7 @@ class RebaseOutcomeKind(StrEnum):
     EVIDENCE_DIAGNOSIS = "evidence_diagnosis"
     INTERVENTION_REQUIRED = "intervention_required"
     DIAGNOSTIC_INTERVENTION_REQUIRED = "diagnostic_intervention_required"
+    LADDER_ESCALATION = "ladder_escalation"
     TERMINAL = "terminal"
     COMPLETED = "completed"
     REMOTE_PUSHED = "remote_pushed"

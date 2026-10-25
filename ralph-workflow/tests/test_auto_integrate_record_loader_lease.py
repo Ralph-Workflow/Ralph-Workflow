@@ -429,6 +429,7 @@ def test_alive_owner_pid_preserves_hold_at_load_time() -> None:
 def test_bump_attempt_clamps_at_cap_and_never_exceeds_cap() -> None:
     """O1: _bump_attempt clamps to cap and never increments past it."""
     from ralph.pipeline._integration_diagnostic import (
+        DIAGNOSTIC_BUDGET_SPENT_REASON,
         DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
         _bump_attempt,
     )
@@ -441,17 +442,19 @@ def test_bump_attempt_clamps_at_cap_and_never_exceeds_cap() -> None:
         pre_target_sha="b" * 40,
         merge_commit_repair_attempts=DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1,
     )
-    # Bumping from cap - 1 reaches cap and triggers intervention
+    # Bumping from cap - 1 reaches cap and stamps the typed
+    # "diagnostic budget spent" outcome (never the retired hand-off).
     bumped = _bump_attempt(record, "error 1", repair_attempt_cap=DIAGNOSTIC_REPAIR_ATTEMPT_CAP)
     assert bumped.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
-    assert bumped.diagnostic_intervention_required is True
+    assert bumped.diagnostic_intervention_required is False
+    assert bumped.repair_cap_reason == DIAGNOSTIC_BUDGET_SPENT_REASON
 
     # Bumping when ALREADY at cap stays at cap (clamped; never exceeds)
     bumped_again = _bump_attempt(
         bumped, "error 2", repair_attempt_cap=DIAGNOSTIC_REPAIR_ATTEMPT_CAP
     )
     assert bumped_again.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
-    assert bumped_again.diagnostic_intervention_required is True
+    assert bumped_again.diagnostic_intervention_required is False
 
     # Bumping a legacy record already over cap clamps down to cap
     over_cap_record = record.model_copy(update={"merge_commit_repair_attempts": 200})
@@ -459,7 +462,7 @@ def test_bump_attempt_clamps_at_cap_and_never_exceeds_cap() -> None:
         over_cap_record, "error 3", repair_attempt_cap=DIAGNOSTIC_REPAIR_ATTEMPT_CAP
     )
     assert bumped_over_cap.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
-    assert bumped_over_cap.diagnostic_intervention_required is True
+    assert bumped_over_cap.diagnostic_intervention_required is False
 
 
 def test_recovery_on_legacy_work_evidence_missing_lease_auto_releases(tmp_path: Path) -> None:

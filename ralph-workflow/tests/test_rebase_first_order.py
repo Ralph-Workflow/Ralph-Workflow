@@ -298,10 +298,6 @@ def _stub_repo_reads(monkeypatch: pytest.MonkeyPatch) -> None:
         yield True
 
     monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate.integration_transaction",
-        _fake_tx,
-    )
-    monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_transaction.integration_transaction",
         _fake_tx,
     )
@@ -399,6 +395,15 @@ def test_auto_integrate_on_phase_transition_tries_rebase_first(
     token = install_executors(recorder, recorder)
     try:
         (tmp_path / ".git").mkdir()
+
+        @contextmanager
+        def _fake_tx(_root: Path) -> Iterator[bool]:
+            yield True
+
+        monkeypatch.setattr(
+            "ralph.pipeline._auto_integrate_once.integration_transaction",
+            _fake_tx,
+        )
         monkeypatch.setattr(
             "ralph.pipeline.auto_integrate._phase_boundary_outcome",
             lambda *_args, **_kwargs: (False, None),

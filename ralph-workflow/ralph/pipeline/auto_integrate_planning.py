@@ -8,8 +8,9 @@ from loguru import logger
 
 from ralph.git.branch_relation import branch_relation
 from ralph.git.rebase.rebase import rebase_in_progress
+from ralph.pipeline._auto_integrate_once import _integrate_once
 from ralph.pipeline._planning_obstruction import identify_planning_obstruction
-from ralph.pipeline.auto_integrate import _integrate_once, auto_integrate_after_commit
+from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_catchup import resolve_integration_target
 from ralph.pipeline.auto_integrate_outcome import record_conflict, record_skip
 from ralph.pipeline.auto_integrate_recovery import (
@@ -122,13 +123,19 @@ def _route_blocked_operation(
     conflict resolver — the owner observes the live tree and answers
     with the decision table's typed operation action (continue /
     repair / rebuild), charged to the durable ledger so a repeat climbs
-    the ladder instead of looping. The route is logged for the operator;
-    the terminal REQUIRE_INTERVENTION overlay is never consumed here as
-    an operation action.
+    the ladder instead of looping.     The route is logged for the operator. A fail-closed record fact is
+    a typed RecordFactOutcome verdict, never consumed as an operation
+    action: it escalates through the autonomous cleanup ladder (the
+    first rung preserves the work to backup refs), so the log line
+    names the verdict and the rung — never a terminal block on a
+    person.
     """
-    from ralph.pipeline._integration_action import IntegrationAction
     from ralph.pipeline._integration_owner_seam import decide_seam_action
     from ralph.pipeline.auto_integrate_record import read_record
+    from ralph.pipeline.integration_owner import (
+        RecordFactOutcome,
+        ladder_rung_for_record_fact_outcome,
+    )
 
     label = "unknown-operation" if outcome.operation_kind is None else outcome.operation_kind.name
     try:
@@ -136,11 +143,15 @@ def _route_blocked_operation(
     except Exception as exc:  # pragma: no cover -- defensive
         logger.warning("planning residue: operation-ladder routing unreadable: {}", exc)
         return
-    if action is IntegrationAction.REQUIRE_INTERVENTION:
+    if isinstance(action, RecordFactOutcome):
+        rung = ladder_rung_for_record_fact_outcome(action)
         logger.warning(
-            "planning residue cleanup deferred: git {} in progress; the owner seam "
-            "holds the terminal block (intervention required)",
+            "planning residue cleanup deferred: git {} in progress; durable record "
+            "facts failed closed ({}); preserving the work to backup refs and "
+            "escalating through cleanup-ladder rung {}",
             label,
+            action.value,
+            rung.name.lower(),
         )
         return
     logger.warning(

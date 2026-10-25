@@ -116,6 +116,7 @@ directions would be an import cycle.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
 from ralph.pipeline._integration_action import IntegrationAction
@@ -147,14 +148,42 @@ __all__ = [
     "NEXT_ACTION_TO_INTEGRATION_ACTION",
     "NEXT_ACTION_TO_LADDER_RUNG",
     "IntegrationOwnerDecision",
+    "RecordFactOutcome",
     "charge_integration_attempt",
     "decide_integration",
     "decide_integration_verdict",
     "is_chargeable",
     "ladder_rung_for_action",
+    "ladder_rung_for_record_fact_outcome",
     "load_integration_attempts",
     "project_integration_action",
 ]
+
+
+class RecordFactOutcome(StrEnum):
+    """Typed fail-closed verdict for durable record facts the owner cannot express.
+
+    No live observation can prove these outcomes; they are statements about
+    DURABLE STATE, overlaid on the owner's mutation-ladder answer by
+    :func:`ralph.pipeline._integration_record_facts.apply_record_facts`.
+    Neither outcome ever ends the run blocked on a person: each maps to a
+    cleanup-ladder rung in :data:`NEXT_ACTION_TO_LADDER_RUNG`, the ladder
+    preserves the work to backup refs first and ends in rung 6 (hard
+    reset) — never an operator hand-off.
+
+    ``STALE_INTENT`` — the durable record cannot prove a next step the
+    boundary can act on (a retained obligation with no record behind it,
+    or a missing / malformed / expired bounded-retry deadline). The
+    intent the record described is stale: Git outranks the record, so
+    the seam preserves the work and re-enters the rebase-first ladder.
+
+    ``DIAGNOSTIC_BUDGET_SPENT`` — the record's diagnostic repair-attempt
+    flag is set: the repairs the record describes were tried and
+    exhausted. Escalation continues through the same autonomous ladder.
+    """
+
+    STALE_INTENT = "stale_intent"
+    DIAGNOSTIC_BUDGET_SPENT = "diagnostic_budget_spent"
 
 
 #: The mutation-class decisions: the actions that ask the boundary to
@@ -248,15 +277,33 @@ NEXT_ACTION_TO_INTEGRATION_ACTION: Final[dict[NextAction, IntegrationAction]] = 
 #: :func:`ralph.pipeline.integration_ladder.run_ladder_rung` instead of
 #: treating the action as a generic git continuation. ``None`` means the
 #: decision is not a cleanup-ladder rung and no ladder executor runs.
-#: The mapping is total over the cleanup-ladder actions and constant —
-#: it MUST NOT be mutated at runtime.
-NEXT_ACTION_TO_LADDER_RUNG: Final[dict[NextAction, CleanupLadderRung]] = {
+#:
+#: The table also routes the typed fail-closed
+#: :class:`RecordFactOutcome` verdicts (durable record facts the pure
+#: observation cannot express). Both route to the FIRST rung,
+#: ``NORMAL_CLEANUP``: the ladder preserves the work to backup refs
+#: before any destructive step and re-enters the rebase-first path, so
+#: a stale durable claim escalates autonomously — never to an operator
+#: hand-off. The mapping is total over the cleanup-ladder actions and
+#: the record-fact outcomes and constant — it MUST NOT be mutated at
+#: runtime.
+#:
+#: =====================================================
+#: Key                                    Rung
+#: =====================================================
+#: ``NextAction`` cleanup-ladder members  (see above)
+#: ``RecordFactOutcome.STALE_INTENT``     ``NORMAL_CLEANUP``
+#: ``RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT`` ``NORMAL_CLEANUP``
+#: =====================================================
+NEXT_ACTION_TO_LADDER_RUNG: Final[dict[NextAction | RecordFactOutcome, CleanupLadderRung]] = {
     NextAction.SAVE_AND_RESTORE: CleanupLadderRung.NORMAL_CLEANUP,
     NextAction.PRESERVE_VIA_TEMP_INDEX: CleanupLadderRung.ALTERNATE_PRESERVATION,
     NextAction.QUARANTINE_AND_RESTORE: CleanupLadderRung.QUARANTINE,
     NextAction.REBUILD_IN_FRESH_WORKTREE: CleanupLadderRung.FRESH_WORKTREE,
     NextAction.ADAPT_ENVIRONMENT_AND_RETRY: CleanupLadderRung.ENVIRONMENT_DEGRADE,
     NextAction.LAST_RESORT_RECOVERY: CleanupLadderRung.LAST_RESORT,
+    RecordFactOutcome.STALE_INTENT: CleanupLadderRung.NORMAL_CLEANUP,
+    RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT: CleanupLadderRung.NORMAL_CLEANUP,
 }
 
 #: Import-time invariant: the rung projection covers exactly the rungs
@@ -265,6 +312,18 @@ NEXT_ACTION_TO_LADDER_RUNG: Final[dict[NextAction, CleanupLadderRung]] = {
 if set(NEXT_ACTION_TO_LADDER_RUNG.values()) != set(CLEANUP_LADDER_ORDER):
     raise RuntimeError(
         "NEXT_ACTION_TO_LADDER_RUNG must route exactly the CLEANUP_LADDER_ORDER rungs"
+    )
+
+#: Import-time invariant: every typed fail-closed record-fact outcome
+#: has rung routing — an outcome without routing would be a dead-end
+#: verdict the boundary cannot act on (a silent return to blocking on a
+#: person). Uses ``if``/``raise`` (not ``assert``) so it survives
+#: ``python -O``.
+_RECORD_FACT_OUTCOMES_WITHOUT_RUNG = set(RecordFactOutcome) - set(NEXT_ACTION_TO_LADDER_RUNG)
+if _RECORD_FACT_OUTCOMES_WITHOUT_RUNG:
+    raise RuntimeError(
+        "RecordFactOutcome members without ladder-rung routing: "
+        + ", ".join(sorted(member.value for member in _RECORD_FACT_OUTCOMES_WITHOUT_RUNG))
     )
 
 
@@ -332,6 +391,20 @@ def ladder_rung_for_action(next_action: NextAction) -> CleanupLadderRung | None:
     the decision core never learns about executors.
     """
     return NEXT_ACTION_TO_LADDER_RUNG.get(next_action)
+
+
+def ladder_rung_for_record_fact_outcome(outcome: RecordFactOutcome) -> CleanupLadderRung:
+    """Project a typed fail-closed record-fact outcome onto its ladder rung.
+
+    The routing is a pure projection over :data:`NEXT_ACTION_TO_LADDER_RUNG`
+    and is total over :class:`RecordFactOutcome` (enforced at import
+    time): the caller that holds a typed stale-intent or
+    diagnostic-budget-spent verdict dispatches the returned rung through
+    :func:`ralph.pipeline.integration_ladder.run_ladder_rung` — the
+    ladder preserves the work to backup refs first and never ends in an
+    operator hand-off.
+    """
+    return NEXT_ACTION_TO_LADDER_RUNG[outcome]
 
 
 def decide_integration(

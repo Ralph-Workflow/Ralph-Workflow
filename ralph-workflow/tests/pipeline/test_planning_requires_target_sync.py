@@ -28,6 +28,7 @@ from ralph.pipeline.integration_observation import (
     WorktreeState,
     WorktreeVerdict,
 )
+from ralph.pipeline.integration_owner import RecordFactOutcome
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 
@@ -252,10 +253,12 @@ def _ladder_verdict(
     rung: CleanupLadderRung | None,
     *,
     action: IntegrationAction = IntegrationAction.CONTINUE_GIT_OPERATION,
+    record_fact: RecordFactOutcome | None = None,
 ) -> PlanningSyncVerdict:
     """Build the typed owner verdict the gate consumes."""
     return PlanningSyncVerdict(
         action=action,
+        record_fact=record_fact,
         observation=Observation(
             target_vs_feature=TargetVsFeature.BEHIND,
             target_vs_remote=TargetVsRemote.EQUAL,
@@ -354,21 +357,29 @@ def test_ladder_rung_is_never_dispatched_twice_without_a_state_change(
     assert repo.integrations == 2
 
 
-def test_intervention_overlaid_ladder_rung_is_not_dispatched(
+def test_record_fact_overlaid_ladder_rung_dispatches_preserve_first(
     repo: _Repo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """REQUIRE_INTERVENTION on the verdict never reaches the rung dispatcher."""
+    """A fail-closed record-fact verdict dispatches the preserve-first rung.
+
+    The verdict's ``record_fact`` names why the durable record could not
+    prove a next step; its ladder rung (the preserve-first rung) reaches
+    the rung dispatcher exactly once like any ladder verdict — the work
+    is preserved to backup refs before any destructive step, never
+    handed to a person. A repeat under the unchanged observation breaks
+    the climb and the gate returns the blocked verdict.
+    """
     repo.contained = False
     _integrate_with(monkeypatch, repo, lands=False, reason="residue blocks landing")
     verdicts = iter(
         [
             _ladder_verdict(
-                CleanupLadderRung.QUARANTINE,
-                action=IntegrationAction.REQUIRE_INTERVENTION,
+                CleanupLadderRung.NORMAL_CLEANUP,
+                record_fact=RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT,
             ),
             _ladder_verdict(
-                CleanupLadderRung.QUARANTINE,
-                action=IntegrationAction.REQUIRE_INTERVENTION,
+                CleanupLadderRung.NORMAL_CLEANUP,
+                record_fact=RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT,
             ),
         ]
     )
@@ -384,5 +395,5 @@ def test_intervention_overlaid_ladder_rung_is_not_dispatched(
         PipelineState(phase="planning"), _ctx(tmp_path), "planning"
     )
 
-    assert dispatched == []
+    assert dispatched == [CleanupLadderRung.NORMAL_CLEANUP]
     assert blocked is not None

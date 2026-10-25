@@ -590,7 +590,7 @@ tests/test_integration_clock_and_reasons.py|7,1,2
 tests/test_integration_diagnostic.py|3,1,4
 tests/test_integration_diagnostic_evidence.py|0,2,1
 tests/test_integration_diagnostic_exhaustion.py|0,1,0
-tests/test_integration_diagnostic_intervention_cap.py|0,2,4
+tests/test_integration_diagnostic_intervention_cap.py|0,2,2
 tests/test_integration_diagnostic_livelock.py|1,10,5
 tests/test_integration_diagnostic_proof.py|0,1,10
 tests/test_integration_diagnostic_resolver_health.py|0,1,0

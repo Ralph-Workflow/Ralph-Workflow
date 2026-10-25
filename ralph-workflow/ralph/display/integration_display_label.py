@@ -42,11 +42,15 @@ DISPLAY_LABEL_MAP: dict[str, str] = {
     "publish_after_landing": IntegrationDisplayLabel.PUBLICATION.value,
     "waiting": IntegrationDisplayLabel.WAITING.value,
     "wait_for_bounded_retry": IntegrationDisplayLabel.WAITING.value,
+    # The retired hand-off strings stay mapped for legacy-payload
+    # parsing; the live typed ladder escalation displays as evidence
+    # diagnosis (the reason names the next rung and preserved copy).
     "intervention_required": IntegrationDisplayLabel.INTERVENTION.value,
     "intervention": IntegrationDisplayLabel.INTERVENTION.value,
     "require_intervention": IntegrationDisplayLabel.INTERVENTION.value,
     "diagnostic_intervention_required": IntegrationDisplayLabel.INTERVENTION.value,
     "report_intervention_required": IntegrationDisplayLabel.INTERVENTION.value,
+    "ladder_escalation": IntegrationDisplayLabel.EVIDENCE_DIAGNOSIS.value,
     "resolved": IntegrationDisplayLabel.LANDING.value,
     "recoverable": IntegrationDisplayLabel.WAITING.value,
     "exhausted": IntegrationDisplayLabel.INTERVENTION.value,

@@ -23,9 +23,10 @@ rung from the durable record.
 The **record facts the pure observation table cannot express** stay with
 the seam:
 
-* ``REQUIRE_INTERVENTION`` -- derived from the durable
-  ``diagnostic_intervention_required`` flag, which is a record fact and
-  not an observation.
+* the typed fail-closed verdicts (:class:`~ralph.pipeline.integration_owner.
+  RecordFactOutcome`) -- durable record facts (a spent diagnostic budget,
+  a stale retained intent) routed to the autonomous fallback ladder,
+  never to an operator hand-off.
 * the completion / publication verdicts (``COMPLETE_WITH_PROOF``,
   ``PUBLISH_AFTER_LANDING``) -- derived from the record's landing proof
   and owned by :func:`ralph.pipeline._terminal_authority.is_terminal_success_eligible`.
@@ -50,6 +51,7 @@ from ralph.pipeline.integration_director import (
     DEFAULT_REMOTE,
     DEFAULT_TARGET_BRANCH,
 )
+from ralph.pipeline.integration_owner import RecordFactOutcome
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -123,7 +125,7 @@ def _owner_action(
     *,
     config: UnifiedConfig | None,
     agent_active: bool,
-) -> IntegrationAction:
+) -> IntegrationAction | RecordFactOutcome:
     """Ask the single owner which integration rung the boundary owes next.
 
     ``root`` is the workspace root the owner observes and anchors the
@@ -172,20 +174,28 @@ def _check_blocking_decision(
     inputs.
     """
     if integration_record is not None:
-        # Record-fact intervention: the durable diagnostic cap fired. The
-        # owner cannot decide it -- it is a fact about the record, not an
-        # observation -- so it stays with the seam.
-        if integration_record.diagnostic_intervention_required:
-            return PhaseDecision.REPORT_INTERVENTION_REQUIRED
+        # The durable record never carries the retired
+        # ``diagnostic_intervention_required`` hand-off flag into this
+        # decision: the loader load-and-clears legacy flagged payloads
+        # into the autonomous fallback ladder. A spent diagnostic budget
+        # surfaces as the typed record-fact outcome through the owner
+        # seam (a blocking recovery action), never as a terminal
+        # operator hand-off.
         action = _owner_action(
             root,
             integration_record,
             config=config,
             agent_active=agent_active,
         )
-        if action in _BLOCKING_ACTIONS:
+        if action in _BLOCKING_ACTIONS or isinstance(action, RecordFactOutcome):
             return PhaseDecision.BLOCK_FOR_RECOVERY
     if rebase_state.is_intervention_required is True:
+        if rebase_state.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION:
+            # The typed autonomous escalation (a spent diagnostic budget
+            # or a stale retained intent) blocks for recovery: the
+            # fallback ladder owns the next action. It is never the
+            # terminal operator hand-off.
+            return PhaseDecision.BLOCK_FOR_RECOVERY
         return PhaseDecision.REPORT_INTERVENTION_REQUIRED
     last_outcome = rebase_state.last_outcome
     fast_forwarded = rebase_state.fast_forwarded

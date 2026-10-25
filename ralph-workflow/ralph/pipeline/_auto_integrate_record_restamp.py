@@ -97,16 +97,31 @@ def _coerce_payload_failure_cause(data_raw: dict[str, object]) -> dict[str, obje
 #: Coerces loaded values >= cap to cap - 1. Mirrored here to avoid import cycles.
 _LOAD_TIME_DIAGNOSTIC_COUNTER_CAP: int = 5
 
+#: Prefix of the typed "diagnostic budget spent" marker
+#: (:data:`ralph.pipeline.auto_integrate_transition.DIAGNOSTIC_BUDGET_SPENT_REASON`),
+#: mirrored here to avoid import cycles. A payload carrying the marker
+#: is a FRESH typed outcome (not a stuck legacy counter), so its counter
+#: is preserved at the cap: the next diagnostic seam reads ``>= cap``
+#: and escalates straight into the autonomous fallback ladder without
+#: spending another agent call.
+_LOAD_TIME_BUDGET_SPENT_PREFIX: str = "diagnostic repair budget spent"
+
 
 def _clamp_loaded_attempt_counters(data_raw: dict[str, object]) -> dict[str, object]:
     """Clamp pre-existing over-cap attempt counters on a loaded payload.
 
     Inclusive ``>= cap`` check means clamping to ``cap - 1`` allows automated
-    recovery on next run. Clears intervention flag, stale intervention
-    Records written at or above cap (e.g. 200/541 from stuck records)
-    are clamped to cap - 1 so the diagnostic check evaluates to False
-    and the record proceeds to automated recovery on next run.
+    recovery on next run. Records written at or above cap (e.g. 200/541
+    from stuck records) are clamped to cap - 1 so the diagnostic check
+    evaluates to False and the record proceeds to automated recovery on
+    next run. The clamp does NOT touch a payload that carries the typed
+    "diagnostic budget spent" marker: that is the durable signal of a
+    spent budget, and preserving the counter at the cap routes the next
+    seam to the fallback ladder instead of re-spending the rotation.
     """
+    cap_reason = data_raw.get("repair_cap_reason")
+    if isinstance(cap_reason, str) and cap_reason.startswith(_LOAD_TIME_BUDGET_SPENT_PREFIX):
+        return data_raw
     raw = data_raw.get("merge_commit_repair_attempts", 0)
     loaded = _safe_int_from_raw(raw)
     if loaded >= _LOAD_TIME_DIAGNOSTIC_COUNTER_CAP:

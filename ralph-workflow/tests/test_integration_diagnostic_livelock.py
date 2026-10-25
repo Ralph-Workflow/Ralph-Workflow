@@ -615,29 +615,18 @@ def test_legacy_record_loads_then_next_run_progresses() -> None:
     assert next_integration_action(on_disk) != IntegrationAction.REQUIRE_INTERVENTION
 
 
-@pytest.mark.parametrize(
-    ("resolving_rebase", "expect_resolver"),
-    [
-        (False, False),
-        (True, True),
-    ],
-)
-def test_recognized_evidence_intervention_survives_load_and_releases(
-    resolving_rebase: bool,
-    expect_resolver: bool,
-) -> None:
-    """WU4-a: recognized evidence with intervention survives load and executes release.
+@pytest.mark.parametrize("resolving_rebase", [False, True])
+def test_flagged_record_loads_and_clears_into_the_ladder(resolving_rebase: bool) -> None:
+    """G6: a legacy flagged record load-and-clears into the autonomous ladder.
 
-    Unlike legacy/unrecognized evidence (which is purged at parse time before
-    reaching the runtime release seam), recognized evidence keys
-    (e.g. ``head``, ``unstaged_work``) and ``diagnostic_intervention_required=True``
-    survive payload parsing intact.
-    When ``_maybe_release_diagnostic`` runs, it evaluates the held lease via
-    the runtime verifier (yielding UNCHANGED), reaches the durable release
-    transition, and clears held evidence and intervention in the backend.
-    Direct assertions on the persisted backend verify atomic persistence, and
-    the subsequent integration action either makes progress or dispatches a
-    resolver without requiring manual intervention.
+    A payload carrying ``diagnostic_intervention_required=True`` was
+    written by a version that treated the spent diagnostic-repair budget
+    as an operator hand-off (the previously asserted end state). The
+    loader now clears the flag, the held evidence and the lease
+    (fail-open) so the record re-enters the autonomous fallback ladder
+    on the next seam instead of deadlocking on a person. The runtime
+    release seam then progresses without intervention and the durable
+    backend records the cleared state.
     """
     import ralph.pipeline.auto_integrate_recovery_record as recovery_record
     from ralph.pipeline._integration_action import IntegrationAction, next_integration_action
@@ -645,7 +634,6 @@ def test_recognized_evidence_intervention_survives_load_and_releases(
         parse_record_payload,
         read_record,
         record_path,
-        write_record,
     )
     from ralph.workspace.scope import WorkspaceScope
 
@@ -668,7 +656,8 @@ def test_recognized_evidence_intervention_survives_load_and_releases(
     lease = f"{identity_fingerprint(record)}:{time.time()}"
     record = record.model_copy(update={"diagnostic_ownership": lease})
 
-    # 1. Parse verification: recognized evidence and intervention flag survive loading intact.
+    # 1. Parse verification: the legacy hand-off flag is cleared at load
+    #    together with the held evidence and lease, whatever their shape.
     raw_payload: dict[str, object] = {
         "phase": "integrating",
         "target": "main",
@@ -681,18 +670,19 @@ def test_recognized_evidence_intervention_survives_load_and_releases(
     }
     parsed = parse_record_payload(raw_payload)
     assert parsed is not None
-    assert parsed.diagnostic_evidence == evidence
-    assert parsed.diagnostic_intervention_required is True
-    assert parsed.diagnostic_ownership == lease
-    assert next_integration_action(parsed) == IntegrationAction.REQUIRE_INTERVENTION
+    assert parsed.diagnostic_evidence == ()
+    assert parsed.diagnostic_intervention_required is False
+    assert parsed.diagnostic_ownership is None
+    assert next_integration_action(parsed) != IntegrationAction.REQUIRE_INTERVENTION
 
-    # 2. Write to backend and confirm pre-release state requires intervention.
-    write_record(root, record, backend=backend)
+    # 2. Write the raw legacy payload to the backend and confirm the
+    #    runtime release seam progresses without intervention.
     rec_file = record_path(root)
-    assert backend.exists(rec_file)
+    import json
+
+    backend.write_text(rec_file, json.dumps(raw_payload))
     initial_replace_count = len(backend.replace_calls)
 
-    # 3. Runtime seam: next-run release reaches runtime verdict and applies durable release transition.
     outcome = recovery_record._maybe_release_diagnostic(
         root,
         WorkspaceScope(root),
@@ -703,7 +693,7 @@ def test_recognized_evidence_intervention_survives_load_and_releases(
     assert outcome.diagnostic_ownership is None
     assert outcome.diagnostic_intervention_required is False
 
-    # 4. Direct persistence assertion: backend contents were updated through durable transition.
+    # 3. Direct persistence assertion: the cleared state is durable.
     assert len(backend.replace_calls) > initial_replace_count, (
         "durable release transition must atomically persist updated record to backend"
     )
@@ -715,7 +705,8 @@ def test_recognized_evidence_intervention_survives_load_and_releases(
         or '"diagnostic_intervention_required": false' in raw_text
     )
 
-    # 5. Subsequent recovery action makes progress or dispatches a resolver without intervention.
+    # 4. The next action makes progress autonomously (repair, resolver or
+    #    reintegration) — never a REQUIRE_INTERVENTION hand-off.
     on_disk = read_record(root, backend=backend)
     assert on_disk is not None
     assert on_disk.diagnostic_evidence == ()
@@ -723,10 +714,6 @@ def test_recognized_evidence_intervention_survives_load_and_releases(
     assert on_disk.diagnostic_intervention_required is False
     action = next_integration_action(on_disk)
     assert action != IntegrationAction.REQUIRE_INTERVENTION
-    if expect_resolver:
-        assert action == IntegrationAction.RESOLVE_ACTIVE_OPERATION
-    else:
-        assert action == IntegrationAction.REINTEGRATE_AGAINST_TARGET
 
 
 def test_kill_mid_diagnostic_next_run_releases_dead_owner() -> None:

@@ -14,12 +14,13 @@ real git worktree whose durable record file carries unreadable bytes:
 
 Across every entry point and every unreadable cause (``corrupt_json``,
 ``unsupported_schema``, and a real ``PermissionError`` backend read
-failure) the same typed lifecycle decision
-(``REPORT_INTERVENTION_REQUIRED``) must hold, dispatch and terminal
-success stay blocked, a restart does NOT re-run the diagnosis agent,
-the checkpoint reload keeps the intervention projection, and the
-visible label is intervention -- never evidence diagnosis or conflict
-resolution. The record file bytes are preserved untouched throughout.
+failure) the same typed lifecycle decision must hold: the unreadable
+record escalates into the AUTONOMOUS FALLBACK LADDER (the typed
+``LADDER_ESCALATION`` outcome), dispatch and terminal success stay
+blocked, a restart does NOT re-run the diagnosis agent, the checkpoint
+reload keeps the escalation projection, and the visible label names the
+next autonomous action -- never a terminal intervention state. The
+record file bytes are preserved untouched throughout.
 
 The ``PermissionError`` backend read failure is driven through the
 entry points that can THREAD the failing backend into the production
@@ -79,8 +80,13 @@ from ralph.workspace.scope import WorkspaceScope
 pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
 UNREADABLE_CAUSES: tuple[str, ...] = ("corrupt_json", "unsupported_schema")
-INTERVENTION = PhaseDecision.REPORT_INTERVENTION_REQUIRED
-FORBIDDEN_LABELS = ("evidence diagnosis", "conflict resolution")
+#: The typed autonomous escalation: the unreadable durable record blocks
+#: for recovery (the fallback ladder), never on a person.
+ESCALATION = PhaseDecision.BLOCK_FOR_RECOVERY
+ESCALATION_OUTCOME = "ladder_escalation"
+#: The visible label names the next autonomous action (the ladder), so a
+#: terminal intervention label must never appear.
+FORBIDDEN_LABELS = ("intervention",)
 
 # The inner loop's cooldown executor sleeps once per blocked turn; this
 # sentinel ends the loop deterministically on the first injected sleep.
@@ -229,17 +235,24 @@ def _authority_decision(rebase: RebaseState, *, phase: str = "development") -> P
     )
 
 
-def _assert_intervention(
+def _assert_escalation(
     workspace_root: Path,
     rebase: RebaseState,
     payload: bytes,
     *,
     phase: str = "development",
 ) -> PhaseDecision:
-    """The single authority must demand intervention; evidence stays intact."""
+    """The single authority must block for the ladder; evidence stays intact."""
     decision = _authority_decision(rebase, phase=phase)
-    assert decision is INTERVENTION
+    assert decision is ESCALATION
+    assert decision is not PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    # The escalation flag marks the escalation as owning the state (the
+    # run loop's escalation machinery owns it from there); the durable
+    # outcome is the typed ladder escalation, never the retired
+    # intervention outcome.
     assert rebase.is_intervention_required is True
+    assert rebase.last_outcome is not None
+    assert rebase.last_outcome.value == ESCALATION_OUTCOME
     label = format_integration_label(rebase)
     assert label not in FORBIDDEN_LABELS
     assert _record_file(workspace_root).read_bytes() == payload
@@ -307,7 +320,7 @@ def test_unreadable_evidence_is_preserved_not_cleared(workspace_root: Path) -> N
 # --------------------------------------------------------------------------
 
 
-def test_startup_entry_point_reports_intervention(workspace_root: Path) -> None:
+def test_startup_entry_point_escalates_to_the_ladder(workspace_root: Path) -> None:
 
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
@@ -315,9 +328,9 @@ def test_startup_entry_point_reports_intervention(workspace_root: Path) -> None:
             WorkspaceScope(workspace_root), UnifiedConfig()
         )
         assert recovered is not None
-        assert recovered.last_outcome.value == "diagnostic_intervention_required"
-        assert recovered.last_decision == INTERVENTION.value
-        _assert_intervention(workspace_root, recovered, payload)
+        assert recovered.last_outcome.value == ESCALATION_OUTCOME
+        assert recovered.last_decision == ESCALATION.value
+        _assert_escalation(workspace_root, recovered, payload)
 
 
 # --------------------------------------------------------------------------
@@ -325,7 +338,7 @@ def test_startup_entry_point_reports_intervention(workspace_root: Path) -> None:
 # --------------------------------------------------------------------------
 
 
-def test_phase_boundary_entry_point_reports_intervention(workspace_root: Path) -> None:
+def test_phase_boundary_entry_point_escalates_to_the_ladder(workspace_root: Path) -> None:
 
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
@@ -349,12 +362,12 @@ def test_phase_boundary_entry_point_reports_intervention(workspace_root: Path) -
             "the phase-boundary loop must escalate an unreadable record "
             "without calling the cooldown sleep (D3)"
         )
-        assert result_state.rebase.last_decision == INTERVENTION.value
-        _assert_intervention(workspace_root, result_state.rebase, payload)
+        assert result_state.rebase.last_decision == ESCALATION.value
+        _assert_escalation(workspace_root, result_state.rebase, payload)
         # The blocked turn checkpoints through the real persistence boundary.
         reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
         assert reloaded is not None
-        assert reloaded.rebase.last_decision == INTERVENTION.value
+        assert reloaded.rebase.last_decision == ESCALATION.value
 
 
 # --------------------------------------------------------------------------
@@ -362,7 +375,7 @@ def test_phase_boundary_entry_point_reports_intervention(workspace_root: Path) -
 # --------------------------------------------------------------------------
 
 
-def test_commit_entry_point_reports_intervention(workspace_root: Path) -> None:
+def test_commit_entry_point_escalates_to_the_ladder(workspace_root: Path) -> None:
 
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
@@ -393,8 +406,8 @@ def test_commit_entry_point_reports_intervention(workspace_root: Path) -> None:
             registry=MagicMock(),
         )
         assert outcome is not None
-        assert outcome.last_outcome.value == "diagnostic_intervention_required"
-        _assert_intervention(workspace_root, outcome, payload)
+        assert outcome.last_outcome.value == ESCALATION_OUTCOME
+        _assert_escalation(workspace_root, outcome, payload)
 
 
 # --------------------------------------------------------------------------
@@ -402,7 +415,7 @@ def test_commit_entry_point_reports_intervention(workspace_root: Path) -> None:
 # --------------------------------------------------------------------------
 
 
-def test_cooldown_entry_point_reports_intervention(workspace_root: Path) -> None:
+def test_cooldown_entry_point_escalates_to_the_ladder(workspace_root: Path) -> None:
 
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
@@ -425,11 +438,11 @@ def test_cooldown_entry_point_reports_intervention(workspace_root: Path) -> None
             "the cooldown retry path must escalate an unreadable record "
             "without calling the cooldown sleep (D3)"
         )
-        assert cooled.rebase.last_decision == INTERVENTION.value
-        _assert_intervention(workspace_root, cooled.rebase, payload)
+        assert cooled.rebase.last_decision == ESCALATION.value
+        _assert_escalation(workspace_root, cooled.rebase, payload)
         reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
         assert reloaded is not None
-        assert reloaded.rebase.last_decision == INTERVENTION.value
+        assert reloaded.rebase.last_decision == ESCALATION.value
 
 
 # --------------------------------------------------------------------------
@@ -437,7 +450,7 @@ def test_cooldown_entry_point_reports_intervention(workspace_root: Path) -> None
 # --------------------------------------------------------------------------
 
 
-def test_parallel_join_entry_point_reports_intervention(workspace_root: Path) -> None:
+def test_parallel_join_entry_point_escalates_to_the_ladder(workspace_root: Path) -> None:
 
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
@@ -452,9 +465,9 @@ def test_parallel_join_entry_point_reports_intervention(workspace_root: Path) ->
             state=RebaseState(),
         )
         assert joined is not None
-        assert joined.last_outcome.value == "diagnostic_intervention_required"
-        assert joined.last_decision == INTERVENTION.value
-        _assert_intervention(workspace_root, joined, payload)
+        assert joined.last_outcome.value == ESCALATION_OUTCOME
+        assert joined.last_decision == ESCALATION.value
+        _assert_escalation(workspace_root, joined, payload)
 
 
 # --------------------------------------------------------------------------
@@ -462,7 +475,7 @@ def test_parallel_join_entry_point_reports_intervention(workspace_root: Path) ->
 # --------------------------------------------------------------------------
 
 
-def test_terminal_entry_point_reports_intervention(workspace_root: Path) -> None:
+def test_terminal_entry_point_escalates_to_the_ladder(workspace_root: Path) -> None:
 
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
@@ -473,8 +486,8 @@ def test_terminal_entry_point_reports_intervention(workspace_root: Path) -> None
         terminal_state = PipelineState(phase="complete", rebase=recovered)
         assert is_terminal_success_eligible(terminal_state, None, recovered) is False
         decision = _authority_decision(recovered, phase="complete")
-        assert decision is INTERVENTION
-        _assert_intervention(workspace_root, recovered, payload, phase="complete")
+        assert decision is ESCALATION
+        _assert_escalation(workspace_root, recovered, payload, phase="complete")
 
 
 # --------------------------------------------------------------------------
@@ -482,7 +495,7 @@ def test_terminal_entry_point_reports_intervention(workspace_root: Path) -> None
 # --------------------------------------------------------------------------
 
 
-def test_startup_entry_point_reports_intervention_on_backend_read_failure(
+def test_startup_entry_point_escalates_to_the_ladder_on_backend_read_failure(
     workspace_root: Path,
 ) -> None:
     record_file = _record_file(workspace_root)
@@ -498,9 +511,9 @@ def test_startup_entry_point_reports_intervention_on_backend_read_failure(
         backend=_FailingReadBackend(record_file),
     )
     assert recovered is not None
-    assert recovered.last_outcome.value == "diagnostic_intervention_required"
-    assert recovered.last_decision == INTERVENTION.value
-    _assert_intervention(workspace_root, recovered, b'{"phase": "integrating", "target": "main"}')
+    assert recovered.last_outcome.value == ESCALATION_OUTCOME
+    assert recovered.last_decision == ESCALATION.value
+    _assert_escalation(workspace_root, recovered, b'{"phase": "integrating", "target": "main"}')
 
 
 # --------------------------------------------------------------------------
@@ -508,7 +521,7 @@ def test_startup_entry_point_reports_intervention_on_backend_read_failure(
 # --------------------------------------------------------------------------
 
 
-def test_phase_boundary_entry_point_reports_intervention_on_backend_read_failure(
+def test_phase_boundary_entry_point_escalates_to_the_ladder_on_backend_read_failure(
     workspace_root: Path,
 ) -> None:
     record_file = _record_file(workspace_root)
@@ -538,13 +551,13 @@ def test_phase_boundary_entry_point_reports_intervention_on_backend_read_failure
         "the phase-boundary loop must escalate a backend read failure "
         "without calling the cooldown sleep (D3)"
     )
-    assert blocked.rebase.last_decision == INTERVENTION.value
-    _assert_intervention(
+    assert blocked.rebase.last_decision == ESCALATION.value
+    _assert_escalation(
         workspace_root, blocked.rebase, b'{"phase": "integrating", "target": "main"}'
     )
     reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
     assert reloaded is not None
-    assert reloaded.rebase.last_decision == INTERVENTION.value
+    assert reloaded.rebase.last_decision == ESCALATION.value
 
 
 # --------------------------------------------------------------------------
@@ -552,7 +565,7 @@ def test_phase_boundary_entry_point_reports_intervention_on_backend_read_failure
 # --------------------------------------------------------------------------
 
 
-def test_cooldown_entry_point_reports_intervention_on_backend_read_failure(
+def test_cooldown_entry_point_escalates_to_the_ladder_on_backend_read_failure(
     workspace_root: Path,
 ) -> None:
     record_file = _record_file(workspace_root)
@@ -570,8 +583,8 @@ def test_cooldown_entry_point_reports_intervention_on_backend_read_failure(
         backend=_FailingReadBackend(record_file),
     )
     assert recovered is not None
-    assert recovered.last_outcome.value == "diagnostic_intervention_required"
-    assert recovered.last_decision == INTERVENTION.value
+    assert recovered.last_outcome.value == ESCALATION_OUTCOME
+    assert recovered.last_decision == ESCALATION.value
     state = PipelineState(phase="development", rebase=recovered)
     latest_state: list[PipelineState] = [state]
     sleep = MagicMock()
@@ -589,13 +602,13 @@ def test_cooldown_entry_point_reports_intervention_on_backend_read_failure(
         "without calling the cooldown sleep (D3)"
     )
     cooled = ctx.latest_state[0]
-    assert cooled.rebase.last_decision == INTERVENTION.value
-    _assert_intervention(
+    assert cooled.rebase.last_decision == ESCALATION.value
+    _assert_escalation(
         workspace_root, cooled.rebase, b'{"phase": "integrating", "target": "main"}'
     )
     reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
     assert reloaded is not None
-    assert reloaded.rebase.last_decision == INTERVENTION.value
+    assert reloaded.rebase.last_decision == ESCALATION.value
 
 
 # --------------------------------------------------------------------------
@@ -603,7 +616,7 @@ def test_cooldown_entry_point_reports_intervention_on_backend_read_failure(
 # --------------------------------------------------------------------------
 
 
-def test_terminal_entry_point_reports_intervention_on_backend_read_failure(
+def test_terminal_entry_point_escalates_to_the_ladder_on_backend_read_failure(
     workspace_root: Path,
 ) -> None:
     record_file = _record_file(workspace_root)
@@ -616,9 +629,9 @@ def test_terminal_entry_point_reports_intervention_on_backend_read_failure(
         backend=_FailingReadBackend(record_file),
     )
     assert recovered is not None
-    assert recovered.last_outcome.value == "diagnostic_intervention_required"
-    assert recovered.last_decision == INTERVENTION.value
-    _assert_intervention(
+    assert recovered.last_outcome.value == ESCALATION_OUTCOME
+    assert recovered.last_decision == ESCALATION.value
+    _assert_escalation(
         workspace_root, recovered, b'{"phase": "integrating", "target": "main"}', phase="complete"
     )
     terminal_state = PipelineState(phase="complete", rebase=recovered)
@@ -630,7 +643,12 @@ def test_terminal_entry_point_reports_intervention_on_backend_read_failure(
 # --------------------------------------------------------------------------
 
 
-def test_operator_label_shows_intervention_not_diagnosis(workspace_root: Path) -> None:
+def test_operator_label_names_the_next_autonomous_action(workspace_root: Path) -> None:
+    """The visible label names the ladder escalation, never an intervention.
+
+    The unreadable record escalates autonomously, so the operator-facing
+    label must NOT be the retired terminal intervention state.
+    """
 
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
@@ -639,10 +657,10 @@ def test_operator_label_shows_intervention_not_diagnosis(workspace_root: Path) -
         )
         assert recovered is not None
         label = format_integration_label(recovered)
-        assert label == "intervention"
+        assert label == "evidence diagnosis"
         assert label not in FORBIDDEN_LABELS
         # The persisted checkpoint's label matches the live projection.
-        _assert_intervention(workspace_root, recovered, payload)
+        _assert_escalation(workspace_root, recovered, payload)
 
 
 # --------------------------------------------------------------------------
@@ -666,11 +684,11 @@ def test_restart_does_not_repeat_diagnosis_and_keeps_projection(workspace_root: 
         latest_state: list[PipelineState] = []
         ctx = _loop_context(workspace_root, latest_state, MagicMock())
         first, _previous, _exit = run_loop._run_inner_loop(state, ctx, "development")
-        assert first.rebase.last_decision == INTERVENTION.value
+        assert first.rebase.last_decision == ESCALATION.value
         checkpoint_path = workspace_root / "checkpoint.json"
         reloaded = checkpoint_module.load(checkpoint_path)
         assert reloaded is not None
-        assert reloaded.rebase.last_decision == INTERVENTION.value
+        assert reloaded.rebase.last_decision == ESCALATION.value
 
         # Simulated crash + restart: a FRESH loop context (no in-memory state)
         # reads the same durable evidence through the same real seams. The
@@ -688,7 +706,7 @@ def test_restart_does_not_repeat_diagnosis_and_keeps_projection(workspace_root: 
             fresh_ctx,
             "development",
         )
-        assert restarted.rebase.last_decision == INTERVENTION.value
+        assert restarted.rebase.last_decision == ESCALATION.value
         assert format_integration_label(restarted.rebase) not in FORBIDDEN_LABELS
         outcome_restart = read_record_outcome(workspace_root)
         assert outcome_restart.disposition is RecordReadOutcomeDisposition.UNREADABLE
@@ -696,8 +714,8 @@ def test_restart_does_not_repeat_diagnosis_and_keeps_projection(workspace_root: 
         assert _record_file(workspace_root).read_bytes() == payload
         reloaded_restart = checkpoint_module.load(checkpoint_path)
         assert reloaded_restart is not None
-        assert reloaded_restart.rebase.last_decision == INTERVENTION.value
-        assert reloaded_restart.rebase.last_outcome.value == "diagnostic_intervention_required"
+        assert reloaded_restart.rebase.last_decision == ESCALATION.value
+        assert reloaded_restart.rebase.last_outcome.value == ESCALATION_OUTCOME
 
 
 # --------------------------------------------------------------------------
@@ -717,5 +735,5 @@ def test_absent_record_is_the_proceeding_control(workspace_root: Path) -> None:
     # No record: the startup seam has nothing to recover.
     assert recovered is None or not recovered.is_intervention_required
     decision = _authority_decision(recovered if recovered is not None else RebaseState())
-    assert decision is not INTERVENTION
+    assert decision is not PhaseDecision.REPORT_INTERVENTION_REQUIRED
     assert not _record_file(workspace_root).exists()

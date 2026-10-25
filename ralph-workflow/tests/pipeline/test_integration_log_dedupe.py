@@ -137,11 +137,6 @@ def test_retry_wait_critical_is_logged_once_for_an_unchanged_outcome(
     outcome_log = IntegrationOutcomeLog(clock=clock, repeat_log_interval_seconds=300.0)
     monkeypatch.setattr(run_loop, "integration_outcome_log", lambda: outcome_log)
 
-    def _pass_guard(
-        _root: Path, rebase: RebaseState, *, backend: object = None
-    ) -> tuple[RebaseState, bool]:
-        return rebase, False
-
     def _pending(
         state: PipelineState,
         _ctx: object,
@@ -157,7 +152,6 @@ def test_retry_wait_critical_is_logged_once_for_an_unchanged_outcome(
     def _noop_warn(_display: object, _message: str) -> None:
         return None
 
-    monkeypatch.setattr(run_loop, "_durable_record_intervention_guard", _pass_guard)
     monkeypatch.setattr(run_loop, "_handle_pending_retry", _pending)
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", _noop_save)
 

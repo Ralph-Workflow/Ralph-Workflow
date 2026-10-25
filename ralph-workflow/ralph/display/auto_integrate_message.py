@@ -165,6 +165,10 @@ _LEGACY_ACTION_DISPLAY_MAP: dict[str, str] = {
     "terminal": OperationDisplayState.TERMINAL.value,
     "diagnosing": OperationDisplayState.EVIDENCE_DIAGNOSIS.value,
     "diagnostic_intervention_required": OperationDisplayState.INTERVENTION_REQUIRED.value,
+    # The typed ladder escalation is the live autonomous continuation
+    # of evidence diagnosis: the reason names the next rung and the
+    # preserved copy's location.
+    "ladder_escalation": OperationDisplayState.EVIDENCE_DIAGNOSIS.value,
     "completed": OperationDisplayState.TERMINAL.value,
     "rebased": OperationDisplayState.LANDING.value,
     "merged": OperationDisplayState.LANDING.value,
@@ -200,6 +204,9 @@ _ACTION_TO_DISPLAY_STATE: dict[str, OperationDisplayState] = {
     "intervention": OperationDisplayState.INTERVENTION_REQUIRED,
     "intervention_required": OperationDisplayState.INTERVENTION_REQUIRED,
     "diagnostic_intervention_required": OperationDisplayState.INTERVENTION_REQUIRED,
+    # Live production projection of the typed ladder escalation: never
+    # a terminal intervention state.
+    "ladder_escalation": OperationDisplayState.EVIDENCE_DIAGNOSIS,
     "complete_with_proof": OperationDisplayState.TERMINAL,
     "terminal": OperationDisplayState.TERMINAL,
     "completed": OperationDisplayState.TERMINAL,
@@ -459,8 +466,14 @@ def _format_typed_state_message(
         "intervention_required",
         "intervention",
     ):
+        # Legacy checkpoints may still carry the retired hand-off
+        # state; the run never terminates on it. The display names the
+        # next autonomous action — the fallback ladder — and the reason
+        # carries the rung and the preserved copy's location when a
+        # live escalation recorded them.
         message = (
-            f"intervention required{target_clause}: {reason or 'manual intervention required'}"
+            f"escalating through the autonomous fallback ladder{target_clause}: "
+            f"{reason or 'next ladder rung pending'}"
         )
     elif state_key in (OperationDisplayState.TERMINAL, "terminal"):
         message = (

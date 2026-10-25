@@ -22,12 +22,14 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline._integration_diagnostic import (
+    DIAGNOSTIC_BUDGET_SPENT_REASON,
     DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
     diagnose_retained_integration,
     set_operation_evidence_collector,
 )
 from ralph.pipeline._pipeline_state_machine import PhaseDecision, decide_phase_transition
 from ralph.pipeline.auto_integrate_record import (
+    BUMP_DIAGNOSTIC_ATTEMPT,
     START_INTEGRATING,
     IntegrationRecord,
     read_record,
@@ -203,8 +205,13 @@ def test_branch_reflog_change_does_not_invalidate_evidence(tmp_path: Path) -> No
 
 
 @pytest.mark.subprocess_e2e
-def test_exhausted_diagnostic_attempts_sets_intervention_and_blocks(tmp_path: Path) -> None:
-    """Exhausted diagnostic attempts in linked worktree drive REPORT_INTERVENTION_REQUIRED."""
+def test_exhausted_diagnostic_attempts_escalates_to_ladder_and_blocks(tmp_path: Path) -> None:
+    """Exhausted diagnostic attempts in a linked worktree escalate to the ladder.
+
+    The spent budget is the typed "diagnostic budget spent" outcome: it
+    routes the state into the autonomous fallback ladder and blocks for
+    recovery. It never produces the retired operator hand-off.
+    """
     primary = _init_repo(tmp_path / "primary")
     _add_worktree(primary, tmp_path / "other", branch="unrelated")
 
@@ -217,6 +224,11 @@ def test_exhausted_diagnostic_attempts_sets_intervention_and_blocks(tmp_path: Pa
         merge_commit_repair_attempts=DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
         owning_worktree=str(primary),
     ).with_transition(START_INTEGRATING)
+    record = record.with_transition(
+        BUMP_DIAGNOSTIC_ATTEMPT,
+        merge_commit_repair_attempts=DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
+        repair_cap_reason=DIAGNOSTIC_BUDGET_SPENT_REASON,
+    )
     write_record(primary, record)
 
     collector = SubprocessOperationEvidenceCollector()
@@ -229,7 +241,10 @@ def test_exhausted_diagnostic_attempts_sets_intervention_and_blocks(tmp_path: Pa
 
     persisted = read_record(primary)
     assert persisted is not None
-    assert persisted.diagnostic_intervention_required is True
+    # The retired hand-off flag is never set; the typed outcome names
+    # the next autonomous action.
+    assert persisted.diagnostic_intervention_required is False
+    assert persisted.repair_cap_reason == DIAGNOSTIC_BUDGET_SPENT_REASON
 
     state = PipelineState(phase="development", rebase=RebaseState())
     decision = decide_phase_transition(
@@ -238,4 +253,5 @@ def test_exhausted_diagnostic_attempts_sets_intervention_and_blocks(tmp_path: Pa
         integration_record=persisted,
         rebase_state=state.rebase,
     )
-    assert decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    assert decision != PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    assert decision == PhaseDecision.BLOCK_FOR_RECOVERY

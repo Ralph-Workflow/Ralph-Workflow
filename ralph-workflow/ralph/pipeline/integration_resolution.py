@@ -527,6 +527,13 @@ def _landing_already_happened(root: Path, record: IntegrationRecord | None) -> b
         return False
     if record.owning_worktree is not None and Path(record.owning_worktree) != root:
         return False
+    # The receipt owns integration until recovery proves and clears it:
+    # a held diagnostic lease means the diagnostic path still owns the
+    # state. The retired ``diagnostic_intervention_required`` hand-off
+    # flag never blocks the gate — the loader load-and-clears legacy
+    # flagged payloads into the autonomous fallback ladder, and a spent
+    # diagnostic budget routes through the owner seam as a typed
+    # record-fact outcome that keeps the obligation blocking.
     if record.diagnostic_ownership is not None or record.diagnostic_intervention_required:
         return False
     target_sha, query_ok = observe_branch_sha(root, record.target)

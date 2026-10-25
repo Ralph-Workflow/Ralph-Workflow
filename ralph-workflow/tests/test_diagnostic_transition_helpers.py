@@ -1,9 +1,12 @@
 """Static and behavioral guards for the diagnostic transition helpers.
 
-Every ``RAISE_DIAGNOSTIC_INTERVENTION`` / ``BUMP_DIAGNOSTIC_ATTEMPT``
-emission must route through ``_raise_intervention`` / ``_bump_attempt``
-in ``ralph.pipeline._integration_diagnostic`` so the
-``DIAGNOSTIC_REPAIR_ATTEMPT_CAP`` enforcement has a single owner.
+Every ``BUMP_DIAGNOSTIC_ATTEMPT`` emission must route through
+``_bump_attempt`` in ``ralph.pipeline._integration_diagnostic`` (or the
+``budget_spent_record`` stamp in
+``ralph.pipeline._integration_diagnostic_handoff``) so the
+``DIAGNOSTIC_REPAIR_ATTEMPT_CAP`` enforcement has a single owner, and
+the retired ``RAISE_DIAGNOSTIC_INTERVENTION`` transition must have no
+production emitter left.
 """
 
 from __future__ import annotations
@@ -20,16 +23,15 @@ _HELPER_FILE = _EMIT_FILES[0]
 
 
 def test_no_direct_diagnostic_transition_emit_outside_helpers() -> None:
-    """Static scan: the two transitions appear only inside the helper functions."""
+    """Static scan: the bump transition appears only inside the helper functions."""
     helper_src = _HELPER_FILE.read_text(encoding="utf-8")
-    helper_start = helper_src.index("def _raise_intervention(")
+    helper_start = helper_src.index("def _bump_attempt(")
     helper_end = helper_src.index("def diagnostic_needed(")
     allowed = helper_src[helper_start:helper_end]
     emit_re = re.compile(r"^\s+(RAISE_DIAGNOSTIC_INTERVENTION|BUMP_DIAGNOSTIC_ATTEMPT),$")
     for path in _EMIT_FILES:
         depth = 0
         src_lines = path.read_text(encoding="utf-8").splitlines()
-        depth = 0
         for line in src_lines:
             in_import_parens = depth > 0
             depth += line.count("(") - line.count(")")
@@ -39,9 +41,23 @@ def test_no_direct_diagnostic_transition_emit_outside_helpers() -> None:
                 )
 
 
-def test_bump_attempt_enforces_cap_on_cap_minus_one() -> None:
-    """Behavior: the over-cap handoff sets diagnostic_intervention_required."""
+def test_no_producer_of_retired_intervention_transition() -> None:
+    """Static scan: no production module emits the retired hand-off transition."""
+    scanned = (
+        *_EMIT_FILES,
+        REPO_ROOT / "ralph" / "pipeline" / "_integration_diagnostic_handoff.py",
+    )
+    for path in scanned:
+        src = path.read_text(encoding="utf-8")
+        assert "with_transition(\n        RAISE_DIAGNOSTIC_INTERVENTION" not in src, (
+            f"{path.name}: RAISE_DIAGNOSTIC_INTERVENTION still has a producer"
+        )
+
+
+def test_bump_attempt_stamps_typed_budget_spent_at_cap() -> None:
+    """Behavior: the over-cap handoff stamps the typed budget-spent outcome."""
     from ralph.pipeline._integration_diagnostic import (
+        DIAGNOSTIC_BUDGET_SPENT_REASON,
         DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
         _bump_attempt,
     )
@@ -57,7 +73,10 @@ def test_bump_attempt_enforces_cap_on_cap_minus_one() -> None:
     )
     bumped = _bump_attempt(record, "boom")
     assert bumped.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
-    assert bumped.diagnostic_intervention_required is True
+    # The retired human-hand-off flag is never set; the typed outcome
+    # names the next autonomous action (the fallback ladder).
+    assert bumped.diagnostic_intervention_required is False
+    assert bumped.repair_cap_reason == DIAGNOSTIC_BUDGET_SPENT_REASON
 
     below = _bump_attempt(
         record.model_copy(
@@ -66,6 +85,7 @@ def test_bump_attempt_enforces_cap_on_cap_minus_one() -> None:
         "boom",
     )
     assert below.diagnostic_intervention_required is False
+    assert below.repair_cap_reason is None
 
 
 def test_pending_merge_repair_bump_routes_through_shared_helper() -> None:

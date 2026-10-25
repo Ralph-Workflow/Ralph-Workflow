@@ -1,11 +1,12 @@
-"""Public surface of the integration-retry and diagnostic-intervention path.
+"""Public surface of the integration-retry and diagnostic-budget path.
 
 The retry path answers one question after a failed integration attempt:
 does Ralph keep waiting, re-derive live state, hand the conflict to the
-automated resolver, or escalate to the typed ``INTERVENTION_REQUIRED``
-transition?  The decision itself lives in :mod:`ralph.pipeline.run_loop`;
-this module is the supported entry point for driving it from outside that
-module, plus the injectable collaborators the path uses.
+automated resolver, or escalate into the autonomous fallback ladder (the
+typed "diagnostic budget spent" outcome)?  The decision itself lives in
+:mod:`ralph.pipeline.run_loop`; this module is the supported entry point
+for driving it from outside that module, plus the injectable
+collaborators the path uses.
 
 Public surface
 --------------
@@ -111,9 +112,9 @@ def wait_for_integration_retry(
     """Run one integration-retry iteration and return the resulting state.
 
     The retry iteration decides whether the run waits, re-derives live
-    state, escalates to the typed ``INTERVENTION_REQUIRED`` transition,
-    or returns immediately after clearing durable diagnostic evidence.
-    The returned state carries the decision; the durable side effects
+    state, escalates into the autonomous fallback ladder, or returns
+    immediately after clearing durable diagnostic evidence. The returned
+    state carries the decision; the durable side effects
     (checkpoint, record) are written by the path itself.
     """
     from ralph.pipeline.run_loop import _wait_for_integration_retry

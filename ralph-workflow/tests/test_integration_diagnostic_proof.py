@@ -125,7 +125,7 @@ def test_positive_completion_proof_releases_evidence(tmp_path: Path) -> None:
 
 
 @pytest.mark.subprocess_e2e
-def test_unreachable_merge_object_takes_intervention_path(tmp_path: Path) -> None:
+def test_unreachable_merge_object_spends_bounded_attempt_preserving_markers(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     root.mkdir()
     assert _git(root, "init", "-b", "main").returncode == 0
@@ -166,8 +166,11 @@ def test_unreachable_merge_object_takes_intervention_path(tmp_path: Path) -> Non
     assert not agent_called
     saved = read_record(root)
     assert saved is not None
-    assert saved.diagnostic_intervention_required is True
-    assert saved.merge_commit_repair_attempts == 2
+    # The unreachable-marker pre-pass failure spends ONE bounded repair
+    # attempt; the retired operator hand-off flag is never set.
+    assert saved.diagnostic_intervention_required is False
+    assert saved.merge_commit_repair_attempts == 3
+    assert "unreachable marker object" in (saved.repair_last_error or "")
     assert (gitdir / "MERGE_HEAD").exists()
     assert (gitdir / "MERGE_HEAD").read_text(encoding="utf-8").strip() == nonexistent_sha
 
@@ -222,13 +225,15 @@ def test_reachable_merge_head_with_unreadable_index_preserves_metadata(tmp_path:
     assert not agent_called
     saved = read_record(root)
     assert saved is not None
-    assert saved.diagnostic_intervention_required is True
-    assert saved.merge_commit_repair_attempts == 1
+    # The missing positive proof spends ONE bounded repair attempt; the
+    # retired operator hand-off flag is never set.
+    assert saved.diagnostic_intervention_required is False
+    assert saved.merge_commit_repair_attempts == 2
     assert (gitdir / "MERGE_HEAD").read_bytes() == original_merge_head_bytes
 
 
 @pytest.mark.subprocess_e2e
-def test_no_positive_proof_routes_to_intervention_without_consuming_attempt(tmp_path: Path) -> None:
+def test_no_positive_proof_spends_one_bounded_attempt(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     root.mkdir()
     assert _git(root, "init", "-b", "main").returncode == 0
@@ -266,8 +271,10 @@ def test_no_positive_proof_routes_to_intervention_without_consuming_attempt(tmp_
     assert not agent_called
     saved = read_record(root)
     assert saved is not None
-    assert saved.diagnostic_intervention_required is True
-    assert saved.merge_commit_repair_attempts == 0
+    # The missing positive proof spends ONE bounded repair attempt (the
+    # diagnostic budget), never the retired operator hand-off.
+    assert saved.diagnostic_intervention_required is False
+    assert saved.merge_commit_repair_attempts == 1
 
 
 def test_ownership_proof_requires_nonempty_matching_worktree(tmp_path: Path) -> None:
@@ -397,7 +404,7 @@ def test_index_tree_proof_treats_unknown_returncodes_and_exceptions_as_unknown(
 
 
 @pytest.mark.subprocess_e2e
-def test_handoff_uncertain_marker_query_persists_intervention_preserving_markers(
+def test_handoff_uncertain_marker_query_spends_bounded_attempt_preserving_markers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = tmp_path / "repo"
@@ -460,9 +467,11 @@ def test_handoff_uncertain_marker_query_persists_intervention_preserving_markers
     assert not agent_called
     saved = read_record(root)
     assert saved is not None
-    assert saved.diagnostic_intervention_required is True
-    assert "UNKNOWN" in (saved.repair_cap_reason or "")
-    assert saved.merge_commit_repair_attempts == 0
+    # The uncertain marker query spends ONE bounded repair attempt; the
+    # retired operator hand-off flag is never set.
+    assert saved.diagnostic_intervention_required is False
+    assert "UNKNOWN" in (saved.repair_last_error or "")
+    assert saved.merge_commit_repair_attempts == 1
     # Marker on disk preserved!
     assert (gitdir / "MERGE_HEAD").exists()
     assert (gitdir / "MERGE_HEAD").read_bytes() == marker_content

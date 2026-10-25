@@ -22,12 +22,14 @@ from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     record_path,
 )
+from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.operation_evidence import (
     EvidenceVerdict,
     InMemoryOperationEvidenceCollector,
     OperationFact,
     identity_fingerprint,
 )
+from tests._integration_ladder_fakes import _FakePlumbing
 from tests._resolver_controller import make_resolver_controller
 from tests.test_auto_integrate_record_idempotent import _RecordBackend
 
@@ -262,9 +264,10 @@ def test_unknown_evidence_verdict_refuses_atomic_transition() -> None:
     assert "UNKNOWN" in reason
 
 
-def test_handoff_integration_diagnostic_honors_injected_collector() -> None:
+def test_handoff_integration_diagnostic_honors_injected_collector(tmp_path: Path) -> None:
     backend = _RecordBackend()
     root = Path("/workspace")
+    ledger_path = tmp_path / "attempt-ledger.json"
     record = IntegrationRecord(
         phase="integrating",
         target="main",
@@ -272,7 +275,8 @@ def test_handoff_integration_diagnostic_honors_injected_collector() -> None:
         pre_target_sha="target",
         resolving_rebase=True,
     )
-    # Collector with unreachable rebase marker object should trigger intervention in pre-pass
+    # Collector with unreachable rebase marker object spends one bounded
+    # pre-pass attempt instead of raising the retired hand-off.
     collector = InMemoryOperationEvidenceCollector(
         facts=(OperationFact(kind="rebase_object_resolvable", value="False"),)
     )
@@ -285,18 +289,22 @@ def test_handoff_integration_diagnostic_honors_injected_collector() -> None:
         invoke=lambda _a, _p: True,
         backend=backend,
         collector=collector,
+        ledger=AttemptLedger(root, ledger_path=ledger_path),
     )
     assert result is False
     saved = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
-    assert saved.diagnostic_intervention_required is True
-    assert "unreachable marker object" in (saved.repair_cap_reason or "")
+    assert saved.diagnostic_intervention_required is False
+    assert saved.merge_commit_repair_attempts == 1
+    assert "unreachable marker object" in (saved.repair_last_error or "")
 
 
-def test_handoff_integration_diagnostic_repeated_missing_agents_persists_intervention_at_cap() -> (
-    None
-):
+def test_handoff_integration_diagnostic_repeated_missing_agents_persists_intervention_at_cap(
+    tmp_path: Path,
+) -> None:
     backend = _RecordBackend()
     root = Path("/workspace")
+    ledger_path = tmp_path / "attempt-ledger.json"
+    ledger = AttemptLedger(root, ledger_path=ledger_path)
     cap = diagnostic.DIAGNOSTIC_REPAIR_ATTEMPT_CAP
     record = IntegrationRecord(
         phase="integrating",
@@ -315,6 +323,9 @@ def test_handoff_integration_diagnostic_repeated_missing_agents_persists_interve
     collector = InMemoryOperationEvidenceCollector(
         facts=(OperationFact(kind="rebase_object_resolvable", value="True"),)
     )
+    # The ladder dispatch after the cap uses the injected plumbing fake:
+    # no real Git, no subprocess in this unit test.
+    plumbing = _FakePlumbing(changed=())
 
     # Attempt 1: bumps attempt count below cap
     assert not diagnostic.handoff_integration_diagnostic(
@@ -326,6 +337,7 @@ def test_handoff_integration_diagnostic_repeated_missing_agents_persists_interve
         invoke=custom_invoke,
         backend=backend,
         collector=collector,
+        ledger=ledger,
     )
     saved1 = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
     assert saved1.merge_commit_repair_attempts == cap - 1
@@ -333,7 +345,8 @@ def test_handoff_integration_diagnostic_repeated_missing_agents_persists_interve
     assert saved1.repair_last_error == "no eligible diagnostic agent available"
     assert invoked == []
 
-    # Attempt 2: reaches cap, raises intervention
+    # Attempt 2: reaches cap, stamps the typed budget-spent outcome and
+    # escalates into the autonomous fallback ladder (recorded in the ledger).
     assert not diagnostic.handoff_integration_diagnostic(
         controller=make_resolver_controller(),
         root=root,
@@ -343,27 +356,35 @@ def test_handoff_integration_diagnostic_repeated_missing_agents_persists_interve
         invoke=custom_invoke,
         backend=backend,
         collector=collector,
+        ledger=ledger,
+        git=plumbing,
     )
     saved2 = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
     assert saved2.merge_commit_repair_attempts == cap
-    assert saved2.diagnostic_intervention_required is True
-    assert "diagnostic repair exhausted" in (saved2.repair_cap_reason or "")
+    assert saved2.diagnostic_intervention_required is False
+    assert saved2.repair_cap_reason == diagnostic.DIAGNOSTIC_BUDGET_SPENT_REASON
     assert invoked == []
+    assert any(key.startswith("rung:") for key in ledger.read().ladder_evidence), (
+        "cap exhaustion must reach a ladder rung recorded in the durable ledger"
+    )
 
-    # Attempt 3: already at cap with intervention; zero later invocations occur
+    # Attempt 3: already at cap; the typed marker preserves the counter
+    # across loads and zero later invocations occur.
     assert not diagnostic.handoff_integration_diagnostic(
         controller=make_resolver_controller(),
         root=root,
         record=saved2,
         failure="receipt unreadable 3",
-        agents=(),
+        agents=("agent",),
         invoke=custom_invoke,
         backend=backend,
         collector=collector,
+        ledger=ledger,
+        git=plumbing,
     )
     saved3 = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
     assert saved3.merge_commit_repair_attempts == cap
-    assert saved3.diagnostic_intervention_required is True
+    assert saved3.diagnostic_intervention_required is False
     assert invoked == []
 
 

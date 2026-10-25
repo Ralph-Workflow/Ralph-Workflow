@@ -466,6 +466,114 @@ def _porcelain_to_state(text: str) -> WorktreeState:
     return WorktreeState.CLEAN
 
 
+#: Escape letters git's C-style path quoting (``core.quotePath``) emits
+#: inside a quoted porcelain path, mapped to the character they stand for.
+#: Mirrors git's ``quote.c`` table; any other character after ``\\`` is
+#: either a three-digit octal byte or makes the quoting malformed.
+_CQUOTE_ESCAPES: Final[dict[str, str]] = {
+    "a": "\a",
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "v": "\v",
+    "\\": "\\",
+    '"': '"',
+}
+
+#: Octal digit vocabulary of a C-quoted byte escape (``\\ooo``).
+_CQUOTE_OCTAL_DIGITS: Final[frozenset[str]] = frozenset("01234567")
+
+#: Smallest well-formed C-quoted path: both delimiters plus one payload char.
+_CQUOTE_MIN_LENGTH: Final[int] = 2
+
+#: Width of one C-quoted octal byte escape: backslash plus three digits.
+_CQUOTE_OCTAL_ESCAPE_WIDTH: Final[int] = 4
+
+#: Digit count of the octal payload inside one C-quoted byte escape.
+_CQUOTE_OCTAL_DIGIT_COUNT: Final[int] = 3
+
+#: Highest byte value git's C-style quoting treats as printable ASCII; at
+#: or below it a payload character is copied verbatim, above it git would
+#: have octal-escaped it.
+_CQUOTE_ASCII_MAX: Final[int] = 0x7F
+
+
+def _decode_quoted_porcelain_path(path: str) -> str:
+    """Decode one ``core.quotePath`` C-quoted porcelain path to its raw path.
+
+    Line-oriented porcelain (a form this classifier accepts and at least
+    one production probe feeds) quotes paths whose bytes are non-ASCII or
+    hold a quote/backslash: `` M "caf\\303\\251.py"``. ``-z`` porcelain
+    never quotes. Evidence paths (``DirtEvidence``) are raw filesystem
+    spellings, so a quoted record must be decoded before it can match —
+    otherwise a chmod on a non-ASCII path would silently miss its
+    mode-only refinement.
+
+    The quoted payload is a byte sequence: octal escapes are single bytes,
+    so the decoded bytes are re-interpreted as UTF-8 with
+    ``surrogateescape`` — exactly how Python decodes the raw ``-z`` form
+    of the same path. Anything that is not a well-formed C-quote (missing
+    delimiters, a dangling backslash, an unknown escape) returns the path
+    unchanged: a malformed record still classifies by its XY code.
+    """
+    if len(path) < _CQUOTE_MIN_LENGTH or path[0] != '"' or path[-1] != '"':
+        return path
+    inner = path[1:-1]
+    raw = bytearray()
+    i = 0
+    while i < len(inner):
+        char = inner[i]
+        if char != "\\":
+            if ord(char) > _CQUOTE_ASCII_MAX:
+                # A literal non-ASCII character inside the quotes is not
+                # something git emits (it would have octal-escaped it),
+                # but encoding it keeps the round-trip total.
+                raw.extend(char.encode("utf-8"))
+            else:
+                raw.append(ord(char))
+            i += 1
+            continue
+        if i + 1 >= len(inner):
+            return path
+        nxt = inner[i + 1]
+        if nxt in _CQUOTE_ESCAPES:
+            raw.extend(_CQUOTE_ESCAPES[nxt].encode("utf-8"))
+            i += 2
+            continue
+        octal = inner[i + 1 : i + _CQUOTE_OCTAL_ESCAPE_WIDTH]
+        if len(octal) == _CQUOTE_OCTAL_DIGIT_COUNT and all(
+            digit in _CQUOTE_OCTAL_DIGITS for digit in octal
+        ):
+            raw.append(int(octal, 8))
+            i += _CQUOTE_OCTAL_ESCAPE_WIDTH
+            continue
+        return path
+    return bytes(raw).decode("utf-8", errors="surrogateescape")
+
+
+def _decode_porcelain_entries(entries: list[PorcelainEntry]) -> list[PorcelainEntry]:
+    """Return copies of ``entries`` with C-quoted paths decoded.
+
+    Only the path spelling changes; the XY code that drives shape
+    classification is untouched. Already-raw ``-z`` paths decode to
+    themselves, so both porcelain forms share one evidence-matching path.
+    """
+    return [
+        PorcelainEntry(
+            xy=entry.xy,
+            path=_decode_quoted_porcelain_path(entry.path),
+            rename_source=(
+                _decode_quoted_porcelain_path(entry.rename_source)
+                if entry.rename_source is not None
+                else None
+            ),
+        )
+        for entry in entries
+    ]
+
+
 def _porcelain_to_shape(text: str, evidence: DirtEvidence | None) -> DirtShape:
     """Map one porcelain blob plus optional evidence onto a :class:`DirtShape`.
 
@@ -488,11 +596,16 @@ def _porcelain_to_shape(text: str, evidence: DirtEvidence | None) -> DirtShape:
     5. Untracked-only trees are ``UNTRACKED_BLOCKING`` when evidence
        proves an incoming target commit would overwrite one of the paths
        (git would refuse mid-rebase, per-file), else ``UNTRACKED_ONLY``.
+
+    Before any path is compared against evidence, C-quoted path spellings
+    (``core.quotePath`` line-oriented records) are decoded to their raw
+    form by :func:`_decode_quoted_porcelain_path`, so refinement matching
+    never depends on how git chose to spell the path.
     """
     blob = text.replace("\n", "\0")
     if unmerged_paths_z(blob):
         return DirtShape.UNMERGED
-    return _shape_for_tracked(parse_porcelain_z(blob), evidence)
+    return _shape_for_tracked(_decode_porcelain_entries(parse_porcelain_z(blob)), evidence)
 
 
 def _shape_for_tracked(

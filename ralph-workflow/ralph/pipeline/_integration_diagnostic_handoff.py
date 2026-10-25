@@ -1,13 +1,46 @@
-"""Diagnostic handoff: offer the retained-integration inspection to a resolver.
+"""Diagnostic-cap exhaustion routing: the typed "diagnostic budget spent" outcome.
 
-The handoff is the only place that calls a diagnostic agent. It owns the
-repair-attempt budget, the completion pre-pass (which may release the held
-evidence without calling any agent at all) and the resolver-health bookkeeping
-around a single invocation.
+When the diagnostic-repair attempt budget
+(:data:`~ralph.pipeline._integration_diagnostic_state.DIAGNOSTIC_REPAIR_ATTEMPT_CAP`)
+is spent, the durable record is stamped with the typed
+:data:`~ralph.pipeline._integration_diagnostic_state.DIAGNOSTIC_BUDGET_SPENT_REASON`
+marker (through the closed ``BUMP_DIAGNOSTIC_ATTEMPT`` transition) and the
+state is routed into the **autonomous fallback ladder**
+(:mod:`ralph.pipeline.integration_ladder`): ledgered rungs 1-6, ending in
+the rung 6 hard reset — never a person.
 
-Split out of ``ralph.pipeline._integration_diagnostic`` to stay within the
-repo-structure line limits; the public surface is unchanged and re-exported
-from there.
+The module is the single authority for that routing. It consumes the
+owner's typed fail-closed vocabulary
+(:class:`~ralph.pipeline.integration_owner.RecordFactOutcome`) read-only
+and owns:
+
+* :func:`budget_spent_record` — the typed durable-record stamp that
+  replaces the retired ``RAISE_DIAGNOSTIC_INTERVENTION`` emission;
+* :func:`escalate_record_fact_outcome` — the one-rung-per-call ladder
+  dispatch for a typed record-fact outcome: it records the
+  resolver-agent salvage attempt the last-resort precondition waits
+  for when the budget is spent, executes the next unfinished rung
+  through :func:`ralph.pipeline.integration_ladder.run_ladder_rung`
+  (selected by the durable ledger's own resume rule), and names the
+  preserved copy the rung produced;
+* :func:`escalate_diagnostic_budget_to_ladder` — the
+  ``DIAGNOSTIC_BUDGET_SPENT`` specialisation the diagnostic seam calls.
+
+Every rung is idempotent and records intent before acting and outcome
+after, so a restart mid-ladder resumes at the recorded rung without
+repeating finished rungs or losing preserved copies. The owner's
+vocabulary maps both typed outcomes onto ``NORMAL_CLEANUP`` — the
+ladder ENTRY the startup boundary consumes — while this seam advances
+the climb with the durable ledger's resume rule (the first rung without
+a finished recorded outcome). Rung 1 (``NORMAL_CLEANUP``) is owned by
+the startup boundary, not this seam: dispatching it through the ladder
+records the typed ``failed:not-owned-here`` outcome, which counts as
+"shown impossible" for the last-resort precondition and hands the climb
+to the next rung.
+
+The diagnostic handoff itself lives in
+:mod:`ralph.pipeline._integration_diagnostic`; this module is the
+routing seam it calls once the budget is spent.
 """
 
 from __future__ import annotations
@@ -16,44 +49,45 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
-from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
-from ralph.pipeline._integration_action import (
-    IntegrationAction,
-    last_outcome_reason,
-)
 from ralph.pipeline._integration_diagnostic_state import (
+    DIAGNOSTIC_BUDGET_SPENT_REASON,
     DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
-    _operation_root_for,
-    operation_evidence_collector,
 )
-from ralph.pipeline._integration_record_facts import apply_record_facts
-from ralph.pipeline.auto_integrate_record import (
-    RELEASE_DIAGNOSTIC_EVIDENCE,
-    RecordBusyError,
-    RecordUnreadableError,
-    write_record,
-)
-from ralph.pipeline.auto_integrate_record_store import apply_record_transition
+from ralph.pipeline.auto_integrate_record import BUMP_DIAGNOSTIC_ATTEMPT
 from ralph.pipeline.conflict_resolution.resolver_health import (
     bench_resolver,
     choose_resolver,
     clear_resolver,
 )
-from ralph.pipeline.integration_owner import decide_integration
-from ralph.pipeline.operation_fact import (
-    _KIND_MERGE_OBJECT_RESOLVABLE,
-    _KIND_REBASE_OBJECT_RESOLVABLE,
+from ralph.pipeline.integration_attempt_ledger import AttemptLedger
+from ralph.pipeline.integration_decision import CleanupLadderRung
+from ralph.pipeline.integration_ladder import (
+    LadderStepResult,
+    record_salvage_attempt,
+    resume_rung,
+    run_ladder_rung,
 )
+from ralph.pipeline.integration_owner import RecordFactOutcome
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
-    from ralph.mcp.artifacts.file_backend import FileBackend
+    from ralph.pipeline._integration_ladder_seams import (
+        EnvironmentProbe,
+        FileQuarantine,
+        GitPlumbing,
+    )
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
-    from ralph.pipeline.operation_evidence import OperationEvidenceCollector, OperationFact
+    from ralph.pipeline.integration_actions import Clock
+    from ralph.pipeline.operation_evidence import OperationEvidenceCollector
     from ralph.recovery.controller import RecoveryController
+
+__all__ = [
+    "budget_spent_record",
+    "escalate_diagnostic_budget_to_ladder",
+    "escalate_record_fact_outcome",
+]
 
 
 def _next_resolver(controller: RecoveryController, agents: Sequence[str]) -> str | None:
@@ -109,256 +143,148 @@ def _failure_text(
     return detail or f"resolver '{agent}' ended without a verified completion proof"
 
 
-def _pre_pass_intervention(
-    root: Path,
+def budget_spent_record(
     record: IntegrationRecord,
-    backend: FileBackend,
-    reason: str,
-) -> bool:
-    from ralph.pipeline._integration_diagnostic import _raise_intervention
-
-    intervention = _raise_intervention(record, reason)
-    write_record(root, intervention, backend=backend)
-    logger.critical(
-        "Operation completion proof failed ({}); operator intervention required",
-        reason,
-    )
-    return False
-
-
-def _run_completion_pre_pass(
     *,
-    root: Path,
-    inspection_root: Path,
-    record: IntegrationRecord,
-    snapshot: tuple[OperationFact, ...],
-    next_action: IntegrationAction,
-    backend: FileBackend,
-    collector: OperationEvidenceCollector | None = None,
-) -> bool | None:
-    for fact in snapshot:
-        if fact.kind in (
-            _KIND_MERGE_OBJECT_RESOLVABLE,
-            _KIND_REBASE_OBJECT_RESOLVABLE,
-        ) and fact.value in ("False", "false"):
-            return _pre_pass_intervention(
-                root,
-                record,
-                backend,
-                "unreachable marker object; operator intervention required",
-            )
-
-    if next_action in (
-        IntegrationAction.CONTINUE_GIT_OPERATION,
-        IntegrationAction.LAND_TARGET,
-    ):
-        return _complete_or_intervene(
-            root=root,
-            inspection_root=inspection_root,
-            record=record,
-            backend=backend,
-            collector=collector,
-        )
-
-    if next_action == IntegrationAction.REQUIRE_INTERVENTION:
-        reason = last_outcome_reason(record) or "operator intervention required"
-        return _pre_pass_intervention(root, record, backend, reason)
-
-    return None
-
-
-def _complete_or_intervene(
-    *,
-    root: Path,
-    inspection_root: Path,
-    record: IntegrationRecord,
-    backend: FileBackend,
-    collector: OperationEvidenceCollector | None,
-) -> bool:
-    """Run the positive-completion pre-pass through the typed record store."""
-    from ralph.pipeline._integration_diagnostic_proof import _check_operation_completion_proof
-
-    proof_ok, proof_reason = _check_operation_completion_proof(
-        inspection_root, record, collector=collector
-    )
-    if not proof_ok:
-        return _pre_pass_intervention(
-            root, record, backend, f"operation completion proof failed: {proof_reason}"
-        )
-    try:
-        apply_record_transition(
-            root,
-            RELEASE_DIAGNOSTIC_EVIDENCE,
-            backend=backend,
-            diagnostic_evidence=(),
-            diagnostic_ownership=None,
-        )
-    except RecordBusyError:
-        # Fail closed: no write, no fresh retry allowance. The caller
-        # decides bounded wait vs intervention from the PERSISTED
-        # ``RebaseState.retry_deadline`` (see :func:`busy_refusal_outcome`);
-        # with no deadline in scope this is REQUIRE_INTERVENTION. The
-        # record bytes stay untouched on disk.
-        logger.warning("Release busy; record bytes preserved for the bounded-retry authority")
-        return False
-    except RecordUnreadableError:
-        # Fail closed: NEVER bare-write over UNREADABLE bytes. The bytes
-        # on disk are the only proof of the interrupted integration; the
-        # typed DIAGNOSTIC_INTERVENTION_REQUIRED outcome is derived from
-        # the unchanged UNREADABLE read on the next seam.
-        logger.critical(
-            "Release refused: durable record unreadable; intervention required; "
-            "unreadable bytes preserved"
-        )
-        return False
-    logger.info("Positive operation-completion proof verified; released diagnostic evidence")
-    return True
-
-
-def _settle_exhausted_cap(
-    root: Path,
-    inspection_root: Path,
-    record: IntegrationRecord,
-    col: OperationEvidenceCollector,
-    backend: FileBackend,
-) -> bool:
-    """Release the hold when Git shows no diagnostic is needed; otherwise raise intervention."""
-    from ralph.pipeline._integration_diagnostic import (
-        _raise_intervention,
-        diagnostic_needed,
-    )
-    from ralph.pipeline._integration_diagnostic_proof import (
-        _check_operation_completion_proof,
-    )
-
-    proof_ok, _ = _check_operation_completion_proof(inspection_root, record, collector=col)
-    if proof_ok or not diagnostic_needed(inspection_root, record):
-        try:
-            apply_record_transition(
-                root,
-                RELEASE_DIAGNOSTIC_EVIDENCE,
-                backend=backend,
-                diagnostic_evidence=(),
-                diagnostic_ownership=None,
-                diagnostic_owner_pid=None,
-                diagnostic_owner_boot_id=None,
-                diagnostic_intervention_required=False,
-                repair_cap_reason=None,
-            )
-        except (RecordBusyError, RecordUnreadableError):
-            return False
-        logger.info("Automated recovery re-derived state; released diagnostic evidence")
-        return True
-    write_record(
-        root,
-        _raise_intervention(
-            record,
-            "diagnostic repair exhausted; operator intervention required",
-        ),
-        backend=backend,
-    )
-    logger.critical(
-        "Integration diagnostic repair exhausted after {} attempts; operator intervention required",
-        record.merge_commit_repair_attempts,
-    )
-    return False
-
-
-def handoff_integration_diagnostic(
-    *,
-    root: Path,
-    record: IntegrationRecord,
-    failure: str,
-    agents: Sequence[str],
-    invoke: Callable[[str, Path], bool],
-    backend: FileBackend = DEFAULT_FILE_BACKEND,
+    reason: str = DIAGNOSTIC_BUDGET_SPENT_REASON,
     repair_attempt_cap: int = DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
-    collector: OperationEvidenceCollector | None = None,
-    failure_detail: Callable[[], BaseException | str | None] | None = None,
-    controller: RecoveryController,
-) -> bool:
-    """Offer inspection candidates by health without authorizing publication or cleanup.
+) -> IntegrationRecord:
+    """Stamp the typed "diagnostic budget spent" outcome on ``record``.
 
-    Candidates come from the shared resolver health ledger (``controller``):
-    one that ended an attempt without a verified result is benched with
-    exponential backoff and is not offered again until its cooldown elapses.
-    While every candidate is benched nothing is invoked and no attempt is
-    spent, so the caller's retry cadence costs nothing.
-
-    The diagnostic-repair attempt counter is bounded at
-    ``repair_attempt_cap``. When the cap is reached, the function
-    emits the ``RAISE_DIAGNOSTIC_INTERVENTION`` transition and
-    returns ``False`` without calling any agent -- the next run
-    loop iteration will see ``diagnostic_intervention_required``
-    and surface ``REPORT_INTERVENTION_REQUIRED`` to the operator.
+    Single authority for the durable-record stamp that replaces the
+    retired ``RAISE_DIAGNOSTIC_INTERVENTION`` emission: the attempt
+    counter is clamped at the cap (it never increments past it) and
+    ``repair_cap_reason`` carries the typed outcome naming the next
+    autonomous action — the fallback ladder. The retired
+    ``diagnostic_intervention_required`` hand-off flag stays ``False``.
     """
-    from ralph.pipeline._integration_diagnostic import _bump_attempt
+    return record.with_transition(
+        BUMP_DIAGNOSTIC_ATTEMPT,
+        merge_commit_repair_attempts=min(record.merge_commit_repair_attempts + 1, repair_attempt_cap),
+        repair_last_error=reason,
+        repair_cap_reason=reason,
+    )
 
-    inspection_root = _operation_root_for(record, root)
-    col = collector if collector is not None else operation_evidence_collector()
-    snapshot = col.snapshot(inspection_root, record)
-    owner_action, _owner_reason = decide_integration(root, record=record)
-    next_action = apply_record_facts(owner_action, record)
 
-    pre_pass_result = _run_completion_pre_pass(
+def escalate_record_fact_outcome(
+    root: Path,
+    record: IntegrationRecord,
+    outcome: RecordFactOutcome,
+    *,
+    reason: str,
+    ledger: AttemptLedger | None = None,
+    git: GitPlumbing | None = None,
+    fs: FileQuarantine | None = None,
+    env: EnvironmentProbe | None = None,
+    clock: Clock | None = None,
+    state_dir: Path | None = None,
+    target: str | None = None,
+    branch: str = "feature",
+    feature_tip: str | None = None,
+) -> LadderStepResult:
+    """Route one typed fail-closed record-fact outcome through the fallback ladder.
+
+    Exactly one rung executes per call, ledger-charged and idempotent:
+
+    * the rung is the durable ledger's own resume answer — the first
+      rung without a finished recorded outcome — so repeated
+      escalations climb rungs 1-6 in order and a restart resumes where
+      the climb stopped. The owner's vocabulary maps the typed outcome
+      to ``NORMAL_CLEANUP`` (the ladder ENTRY the startup boundary
+      consumes); this seam advances the climb from wherever the
+      durable ledger stands. When every rung has finished (the ladder
+      is spent) the climb restarts at the last resort, whose six
+      preconditions are re-evaluated and fail closed when unmet;
+    * for ``DIAGNOSTIC_BUDGET_SPENT`` the resolver-agent salvage attempt
+      the last-resort precondition (b) waits for is recorded as
+      ``failed`` — the diagnostic rotation IS the resolver-agent
+      salvage, and its budget is spent;
+    * the single rate-limited log line names the rung, its outcome and
+      the preserved copy (ref or sidecar) when the rung produced one.
+
+    Unspecified seams resolve to the production adapters, so the
+    diagnostic boundary runs any rung with one call; tests inject fakes.
+    The caller re-observes before deciding again — acting twice on one
+    observation is what the durable ledger's escalation budget exists
+    to prevent.
+    """
+    ladder = ledger if ledger is not None else AttemptLedger(root)
+    if outcome is RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT:
+        record_salvage_attempt(ladder, "resolver_agent", f"failed:{reason}")
+    # The durable ledger's resume rule names the first rung without a
+    # finished recorded outcome, so repeated escalations climb rungs
+    # 1-6 in order and a restart resumes where the climb stopped. The
+    # owner's vocabulary maps the typed outcome onto NORMAL_CLEANUP
+    # (the ladder ENTRY the startup boundary consumes); this seam
+    # advances the climb from wherever the durable ledger stands. When
+    # every rung has finished (the ladder is spent) the climb restarts
+    # at the last resort, whose six preconditions are re-evaluated and
+    # fail closed when unmet.
+    rung = resume_rung(ladder.read())
+    if rung is None:
+        rung = CleanupLadderRung.LAST_RESORT
+    step = run_ladder_rung(
+        rung,
         root=root,
-        inspection_root=inspection_root,
-        record=record,
-        snapshot=snapshot,
-        next_action=next_action,
-        backend=backend,
-        collector=col,
+        ledger=ladder,
+        git=git,
+        fs=fs,
+        env=env,
+        clock=clock,
+        state_dir=state_dir,
+        target=record.target if target is None else target,
+        branch=branch,
+        feature_tip=feature_tip,
     )
-    if pre_pass_result is not None:
-        return pre_pass_result
+    preserved = step.preserved_ref or step.preserved_sidecar or "no preserved copy yet"
+    logger.warning(
+        "Integration diagnostic budget spent; escalated autonomously to fallback "
+        "ladder rung {} ({}): {}; preserved copy: {}; the run continues without "
+        "waiting on a person",
+        rung.value,
+        step.outcome,
+        step.reason,
+        preserved,
+    )
+    return step
 
-    if record.merge_commit_repair_attempts >= repair_attempt_cap:
-        return _settle_exhausted_cap(root, inspection_root, record, col, backend)
-    if not agents:
-        target_record = _bump_attempt(
-            record,
-            "no eligible diagnostic agent available",
-            repair_attempt_cap=repair_attempt_cap,
-        )
-        if (
-            target_record.diagnostic_intervention_required
-            and not record.diagnostic_intervention_required
-        ):
-            logger.critical(
-                "Integration diagnostic repair exhausted after {} attempts; "
-                "operator intervention required",
-                target_record.merge_commit_repair_attempts,
-            )
-        write_record(root, target_record, backend=backend)
-        return False
-    agent = _next_resolver(controller, agents)
-    if agent is None:
-        return False
-    prompt = root / ".agent" / "tmp" / "integration_diagnostic_prompt.md"
-    content = (
-        "Inspect the retained integration blocker and repair only its environment.\n"
-        f"Diagnostic data: {failure[:8192]}\n"
-        f"Recorded target: {record.target}\n"
-        f"Original feature: {record.pre_feature_sha}\n"
-        f"Original target: {record.pre_target_sha}\n"
-        f"Operation worktree: {record.owning_worktree or root}\n"
-        "Completion evidence is missing or unreadable. Examine Git history, reflogs, "
-        "operation metadata, executable availability, and the command diagnostic. "
-        "Restore access to existing evidence only when independently justified. "
-        "Do not create, alter, or delete recovery records, receipts, refs, indexes, "
-        "operation metadata, hooks, signing configuration, or source files. "
-        "Do not reset, abort, stash, commit, rebase, merge, stage, or bypass checks. "
-        "Preserve all unfinished work. Declare_complete with observed cause, "
-        "evidence locations, and any environment repair. Agent success does not "
-        "authorize landing; Ralph independently retries and verifies Git evidence.\n"
-    )
-    backend.mkdir(prompt.parent, parents=True, exist_ok=True)
-    write_text_if_changed(backend, prompt, content)
-    write_record(
+
+def escalate_diagnostic_budget_to_ladder(
+    root: Path,
+    record: IntegrationRecord,
+    *,
+    reason: str = DIAGNOSTIC_BUDGET_SPENT_REASON,
+    ledger: AttemptLedger | None = None,
+    git: GitPlumbing | None = None,
+    fs: FileQuarantine | None = None,
+    env: EnvironmentProbe | None = None,
+    clock: Clock | None = None,
+    state_dir: Path | None = None,
+    target: str | None = None,
+    branch: str = "feature",
+    feature_tip: str | None = None,
+) -> LadderStepResult:
+    """Route a spent diagnostic-repair budget into the autonomous fallback ladder.
+
+    The ``DIAGNOSTIC_BUDGET_SPENT`` specialisation of
+    :func:`escalate_record_fact_outcome`: the caller stamps the typed
+    outcome on the durable record first (:func:`budget_spent_record`),
+    then this function escalates it — the ladder preserves the work to
+    backup refs first and ends in rung 6 (hard reset) as the last
+    resort; every step is ledgered and never waits on a person.
+    """
+    return escalate_record_fact_outcome(
         root,
-        _bump_attempt(record, failure[:8192], repair_attempt_cap=repair_attempt_cap),
-        backend=backend,
-    )
-    return _invoke_and_judge(
-        agent, prompt, invoke, controller, inspection_root, record, col, failure_detail
+        record,
+        RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT,
+        reason=reason,
+        ledger=ledger,
+        git=git,
+        fs=fs,
+        env=env,
+        clock=clock,
+        state_dir=state_dir,
+        target=target,
+        branch=branch,
+        feature_tip=feature_tip,
     )

@@ -387,7 +387,12 @@ class RebaseState(RalphBaseModel):
     @model_validator(mode="after")
     def _populate_operation_display_state(self) -> Self:
         if self.last_decision is None:
-            if self.is_intervention_required:
+            if self.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION:
+                # The typed autonomous escalation blocks for recovery (the
+                # fallback ladder owns the next action) -- it is not the
+                # retired terminal operator hand-off.
+                object.__setattr__(self, "last_decision", "block_for_recovery")
+            elif self.is_intervention_required:
                 object.__setattr__(self, "last_decision", "report_intervention_required")
             elif self.integration_unresolved or self.recovery_record_retained:
                 object.__setattr__(self, "last_decision", "block_for_recovery")
@@ -420,6 +425,7 @@ class RebaseState(RalphBaseModel):
             in (
                 RebaseOutcomeKind.CONFLICT,
                 RebaseOutcomeKind.UNKNOWN,
+                RebaseOutcomeKind.LADDER_ESCALATION,
                 RebaseOutcomeKind.INTERVENTION_REQUIRED,
                 RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
             )
@@ -686,10 +692,21 @@ class RebaseState(RalphBaseModel):
 
     @property
     def is_intervention_required(self) -> bool:
-        """Whether operator intervention is required."""
+        """Whether the boundary must not dispatch and an escalation owns the state.
+
+        The property names the ESCALATION, not a person: the durable
+        ``LADDER_ESCALATION`` outcome (a spent diagnostic budget or a
+        stale retained intent routed to the autonomous fallback ladder)
+        sets it, and the run loop's escalation machinery owns the state
+        from there. The retired ``INTERVENTION_REQUIRED`` /
+        ``DIAGNOSTIC_INTERVENTION_REQUIRED`` outcomes are legacy
+        checkpoint values only: they keep the flag for compatibility
+        with legacy checkpoints and never gate a live run.
+        """
         return self.last_outcome in (
             RebaseOutcomeKind.INTERVENTION_REQUIRED,
             RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+            RebaseOutcomeKind.LADDER_ESCALATION,
             RebaseOutcomeKind.UNKNOWN,
         )
 
@@ -705,8 +722,13 @@ _OUTCOME_DISPLAY_MAP: dict[RebaseOutcomeKind, str] = {
     RebaseOutcomeKind.WAITING: "waiting",
     RebaseOutcomeKind.DIAGNOSING: "evidence_diagnosis",
     RebaseOutcomeKind.EVIDENCE_DIAGNOSIS: "evidence_diagnosis",
+    # The retired hand-off outcomes stay mapped for legacy-checkpoint
+    # parsing; the ladder escalation is the live autonomous
+    # continuation of evidence diagnosis (the reason names the next
+    # rung and the preserved copy's location).
     RebaseOutcomeKind.INTERVENTION_REQUIRED: "intervention_required",
     RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED: "intervention_required",
+    RebaseOutcomeKind.LADDER_ESCALATION: "evidence_diagnosis",
     RebaseOutcomeKind.TERMINAL: "terminal",
     RebaseOutcomeKind.COMPLETED: "terminal",
 }

@@ -1,9 +1,15 @@
 """WU-4: public-outcome tests for busy_refusal_outcome at both entry points.
 
-No private-spy pattern. All assertions are on public IntegrationAction
-values returned from the two call sites:
+No private-spy pattern. All assertions are on the public seam verdict
+returned from the two call sites:
   - ralph.pipeline._integration_diagnostic.busy_refusal_outcome
   - ralph.pipeline.auto_integrate_recovery.busy_refusal_outcome
+
+A fail-closed BUSY refusal is the typed
+:class:`~ralph.pipeline.integration_owner.RecordFactOutcome.STALE_INTENT`
+verdict — routed to the preserve-first cleanup-ladder rung, never the
+retired ``IntegrationAction.REQUIRE_INTERVENTION`` value (which has no
+production producer).
 """
 
 from __future__ import annotations
@@ -11,20 +17,27 @@ from __future__ import annotations
 from ralph.pipeline._integration_action import IntegrationAction
 from ralph.pipeline._integration_diagnostic import busy_refusal_outcome as diagnostic_outcome
 from ralph.pipeline._integration_diagnostic import busy_refusal_outcome as recovery_outcome
+from ralph.pipeline.integration_decision import CleanupLadderRung
+from ralph.pipeline.integration_owner import (
+    RecordFactOutcome,
+    ladder_rung_for_record_fact_outcome,
+)
 
 
-def test_diagnostic_busy_refusal_returns_require_intervention_when_no_deadline() -> None:
+def test_diagnostic_busy_refusal_fails_closed_to_stale_intent_when_no_deadline() -> None:
     """Without a concrete deadline the diagnostic BUSY site fails closed."""
     action = diagnostic_outcome(None, clock=lambda: 1000.0)
     assert action is not IntegrationAction.COMPLETE_WITH_PROOF
-    assert action is IntegrationAction.REQUIRE_INTERVENTION
+    assert action is RecordFactOutcome.STALE_INTENT
+    assert ladder_rung_for_record_fact_outcome(action) is CleanupLadderRung.NORMAL_CLEANUP
 
 
-def test_recovery_busy_refusal_returns_require_intervention_when_no_deadline() -> None:
+def test_recovery_busy_refusal_fails_closed_to_stale_intent_when_no_deadline() -> None:
     """Without a concrete deadline the recovery BUSY site fails closed."""
     action = recovery_outcome(None, clock=lambda: 1000.0)
     assert action is not IntegrationAction.COMPLETE_WITH_PROOF
-    assert action is IntegrationAction.REQUIRE_INTERVENTION
+    assert action is RecordFactOutcome.STALE_INTENT
+    assert ladder_rung_for_record_fact_outcome(action) is CleanupLadderRung.NORMAL_CLEANUP
 
 
 def _clock_at(t: float) -> object:
@@ -54,14 +67,16 @@ def test_unexpired_deadline_yields_wait_for_bounded_retry() -> None:
     assert ra is IntegrationAction.WAIT_FOR_BOUNDED_RETRY
 
 
-def test_expired_deadline_yields_require_intervention() -> None:
-    """An expired deadline fails closed at both sites."""
+def test_expired_deadline_fails_closed_to_stale_intent() -> None:
+    """An expired deadline fails closed to the typed ladder verdict at both sites."""
     clock = _clock_at(300.0)
     deadline = 200.0  # clock=300 > deadline=200 → expired
     da = diagnostic_outcome(deadline, clock=clock)
     ra = recovery_outcome(deadline, clock=clock)
-    assert da is IntegrationAction.REQUIRE_INTERVENTION
-    assert ra is IntegrationAction.REQUIRE_INTERVENTION
+    assert da is RecordFactOutcome.STALE_INTENT
+    assert ra is RecordFactOutcome.STALE_INTENT
+    assert ladder_rung_for_record_fact_outcome(da) is CleanupLadderRung.NORMAL_CLEANUP
+    assert ladder_rung_for_record_fact_outcome(ra) is CleanupLadderRung.NORMAL_CLEANUP
 
 
 def test_factory_result_does_not_persist(monkeypatch) -> None:

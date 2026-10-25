@@ -1044,7 +1044,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_integration_diagnostic.py` | 3 | 1 | 4 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_integration_diagnostic_evidence.py` | 0 | 2 | 1 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_integration_diagnostic_exhaustion.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_integration_diagnostic_intervention_cap.py` | 0 | 2 | 4 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
+| `tests/test_integration_diagnostic_intervention_cap.py` | 0 | 2 | 2 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_integration_diagnostic_livelock.py` | 1 | 10 | 5 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_integration_diagnostic_proof.py` | 0 | 1 | 10 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_integration_diagnostic_resolver_health.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |

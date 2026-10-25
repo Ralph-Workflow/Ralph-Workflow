@@ -39,7 +39,14 @@ def _policy_with(
     )
 
 
-def test_decide_returns_intervention_when_diagnostic_intervention_required() -> None:
+def test_decide_blocks_for_recovery_when_legacy_flagged_record_present() -> None:
+    """A legacy flagged record never ends the run on a person.
+
+    The retired ``diagnostic_intervention_required`` hand-off flag is
+    cleared when the record loads; a record that still carries it in
+    memory routes into the recovery/ladder escalation, never the
+    terminal operator hand-off.
+    """
     record = IntegrationRecord(
         phase="integrating",
         target="main",
@@ -54,7 +61,8 @@ def test_decide_returns_intervention_when_diagnostic_intervention_required() -> 
         integration_record=record,
         rebase_state=RebaseState(),
     )
-    assert decision is PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    assert decision is not PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    assert decision is PhaseDecision.BLOCK_FOR_RECOVERY
 
 
 def test_decide_returns_block_for_recovery_when_integrating() -> None:
@@ -177,7 +185,14 @@ def test_decide_returns_block_for_recovery_when_integrated_with_reintegrate_pend
     assert decision is PhaseDecision.BLOCK_FOR_RECOVERY
 
 
-def test_decide_durable_intervention_outranks_cached_block_for_recovery() -> None:
+def test_decide_durable_record_outranks_cached_block_for_recovery() -> None:
+    """A retained durable record keeps the run blocked for recovery.
+
+    The durable record is the current authority obligation; the cached
+    decision of the previous turn is only its output. The retained
+    record blocks for recovery (the ladder escalation), never on a
+    person.
+    """
     record = IntegrationRecord(
         phase="integrated",
         target="main",
@@ -194,7 +209,8 @@ def test_decide_durable_intervention_outranks_cached_block_for_recovery() -> Non
         integration_record=record,
         rebase_state=rebase_state,
     )
-    assert decision is PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    assert decision is not PhaseDecision.REPORT_INTERVENTION_REQUIRED
+    assert decision is PhaseDecision.BLOCK_FOR_RECOVERY
 
 
 def test_persisted_block_does_not_block_when_no_authority_obligation() -> None:

@@ -53,7 +53,9 @@ from ralph.pipeline.auto_integrate_record import (
     RecordBusyError,
     RecordReadOutcomeDisposition,
     RecordUnreadableError,
+    _read_record_raw,
     read_record_outcome,
+    record_path,
 )
 from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 from ralph.pipeline.integration_observation import InProgressKind, read_in_progress_kind
@@ -258,14 +260,18 @@ def _read_outcome_or_skip(root: Path, backend: FileBackend) -> RebaseState | Non
     if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
         # Decision-complete startup handoff (U4d): a PRESENT-but-unreadable
         # record cannot answer the recovery authorities, so the startup
-        # path returns the same typed intervention decision as the other
-        # entry points instead of a generic retained skip. The unreadable
-        # bytes stay untouched on disk as ownership evidence.
-        reason = "durable integration record unreadable; intervention required" + (
-            f" ({outcome.unreadable_reason})" if outcome.unreadable_reason else ""
-        )
+        # path returns the typed ladder-escalation decision instead of a
+        # generic retained skip. The unreadable bytes stay untouched on
+        # disk as ownership evidence; the retained record keeps the
+        # obligation blocking while the autonomous fallback ladder
+        # escalates (preservation first, rung 6 hard reset last) — never
+        # a human hand-off.
+        reason = (
+            "durable integration record unreadable; escalating through the "
+            "autonomous fallback ladder; record retained, bytes preserved"
+        ) + (f" ({outcome.unreadable_reason})" if outcome.unreadable_reason else "")
         return RebaseState(
-            last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+            last_outcome=RebaseOutcomeKind.LADDER_ESCALATION,
             last_reason=reason,
             last_target=None,
             recovery_record_retained=True,
@@ -315,9 +321,17 @@ def _apply_release_or_typed_skip(
             record_retained=True,
         )
     except RecordUnreadableError:
+        # Fail closed: NEVER bare-write over UNREADABLE bytes. The bytes
+        # on disk are the only proof of the interrupted integration; the
+        # typed LADDER_ESCALATION outcome keeps the obligation blocking
+        # and routes the state into the autonomous fallback ladder —
+        # never a human hand-off.
         return RebaseState(
-            last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
-            last_reason=("durable integration record unreadable at release; intervention required"),
+            last_outcome=RebaseOutcomeKind.LADDER_ESCALATION,
+            last_reason=(
+                "durable integration record unreadable at release; escalating through "
+                "the autonomous fallback ladder; record retained, bytes preserved"
+            ),
             last_target=record.target,
             recovery_record_retained=True,
             recovery_record_retained_reason=(StartupRetentionReason.OBSERVED_RETAINED_ON_DISK),
@@ -351,6 +365,16 @@ def _maybe_release_diagnostic(
             record.diagnostic_intervention_required
             or record.merge_commit_repair_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP
         ):
+            return _apply_release_or_typed_skip(root, record, backend)
+        # Legacy load-and-clear migration (G6): the parser cleared the
+        # retired ``diagnostic_intervention_required`` hand-off flag in
+        # memory, but the on-disk bytes still carry it. Persist the
+        # cleared state through the release transition — mirroring the
+        # run loop's durable-record intervention guard — so the record
+        # re-enters the autonomous fallback ladder instead of deadlock-
+        # ing on a person.
+        raw_payload = _read_record_raw(record_path(root), backend=backend)
+        if isinstance(raw_payload, dict) and raw_payload.get("diagnostic_intervention_required") is True:
             return _apply_release_or_typed_skip(root, record, backend)
         return record
     from ralph.pipeline._diagnostic_evidence_gate import diagnostic_evidence_gate_reason

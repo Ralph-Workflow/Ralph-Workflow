@@ -45,7 +45,7 @@ from ralph.pipeline._integration_action import IntegrationAction
 from ralph.pipeline._integration_owner_seam import decide_seam_action
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger, AttemptLedgerState
-from ralph.pipeline.integration_decision import AttemptState, EscalationRung
+from ralph.pipeline.integration_decision import AttemptState, CleanupLadderRung, EscalationRung
 from ralph.pipeline.integration_observation import (
     HeadState,
     InProgressKind,
@@ -56,7 +56,11 @@ from ralph.pipeline.integration_observation import (
     TargetVsRemote,
     WorktreeState,
 )
-from ralph.pipeline.integration_owner import decide_integration
+from ralph.pipeline.integration_owner import (
+    RecordFactOutcome,
+    decide_integration,
+    ladder_rung_for_record_fact_outcome,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers.
@@ -255,15 +259,17 @@ def test_a_stale_record_claim_does_not_block_a_healthy_git_observation(
     assert action is IntegrationAction.LAND_TARGET
 
 
-def test_a_live_intervention_claim_still_fails_closed(
+def test_a_live_intervention_claim_still_fails_closed_to_the_ladder(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A live durable claim still blocks while its obligation is live.
+    """A live durable claim still escalates while its obligation is live.
 
     The target has NOT received the feature, so the durable repair-cap
     fact still describes a real situation: the boundary fails closed to
-    ``REQUIRE_INTERVENTION``.
+    the typed ``DIAGNOSTIC_BUDGET_SPENT`` verdict, routed to the
+    preserve-first cleanup rung — never to ``REQUIRE_INTERVENTION``,
+    which no production path may produce.
     """
     _install_director(
         monkeypatch,
@@ -277,7 +283,8 @@ def test_a_live_intervention_claim_still_fails_closed(
         ledger_path=_ledger_path(tmp_path),
     )
 
-    assert action is IntegrationAction.REQUIRE_INTERVENTION
+    assert action is RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT
+    assert ladder_rung_for_record_fact_outcome(action) is CleanupLadderRung.NORMAL_CLEANUP
 
 
 def test_a_record_owned_by_another_worktree_does_not_block_this_workspace(
@@ -333,7 +340,8 @@ def test_an_unknown_environment_never_releases_a_durable_claim(
         ledger_path=_ledger_path(tmp_path),
     )
 
-    assert action is IntegrationAction.REQUIRE_INTERVENTION
+    assert action is RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT
+    assert ladder_rung_for_record_fact_outcome(action) is CleanupLadderRung.NORMAL_CLEANUP
 
 
 # ---------------------------------------------------------------------------

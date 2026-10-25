@@ -146,16 +146,19 @@ class IntegrationRecord(RalphBaseModel):
     diagnostic_ownership: str | None = None
     diagnostic_owner_pid: int | None = None
     diagnostic_owner_boot_id: str | None = None
-    # ``diagnostic_intervention_required`` is set by the diagnostic path
-    # when the repair-attempt cap is reached. The run-loop's
-    # :func:`ralph.pipeline._pipeline_state_machine.decide_phase_transition`
-    # surfaces it as ``REPORT_INTERVENTION_REQUIRED`` and the record
-    # refuses to clear until the operator acts. Defaulted, so legacy
-    # on-disk records load cleanly.
+    # ``diagnostic_intervention_required`` is the RETIRED human-hand-off
+    # flag: no production path sets it. An exhausted diagnostic-repair
+    # budget is a typed ``repair_cap_reason`` outcome routed to the
+    # autonomous fallback ladder, never a terminal gate. Records that
+    # still carry the flag on disk are legacy products of an older
+    # version; the loader clears them (fail-open) so they re-enter the
+    # autonomous ladder instead of deadlocking on a person (see
+    # :func:`parse_record_payload`). Defaulted, so ordinary records
+    # load cleanly.
     diagnostic_intervention_required: bool = False
-    # ``repair_cap_reason`` is the human-readable reason the cap fired.
-    # Used as the operator-facing alert (e.g. "diagnostic repair
-    # exhausted; operator intervention required") and as the canonical
+    # ``repair_cap_reason`` is the typed marker for a spent diagnostic
+    # budget ("diagnostic repair budget spent; ..."), routing the
+    # record into the autonomous fallback ladder, and the canonical
     # migration marker when the one-way legacy-key migrator drops an
     # obsolete observation (the common-dir reflog, see
     # :func:`_migrate_legacy_diagnostic_evidence`).
@@ -686,6 +689,17 @@ def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | Non
     closed transition table on the durable record), and the
     diagnostic path re-derives state from Git on the next seam.
 
+    Load-and-clear into the autonomous ladder (G6): a payload that
+    still carries ``diagnostic_intervention_required=True`` was
+    written by a version that treated the spent diagnostic-repair
+    budget as an operator hand-off. That flag is no longer a
+    terminal gate: the loader clears it (together with the held
+    evidence/lease and the stale operator-facing cap reason) so the
+    record re-enters the autonomous fallback ladder on the next
+    seam — mirroring the run-loop's durable-record intervention
+    guard. Every on-disk flag is legacy by definition: no current
+    producer exists.
+
     After the record is validated, a held lease whose fingerprint
     does not match the freshly-computed ``identity_fingerprint`` is
     treated as a schema-migration candidate: the record is
@@ -706,6 +720,10 @@ def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | Non
     phase_value = data_raw.get("phase")
     if not isinstance(phase_value, str) or phase_value not in _VALID_PHASES:
         return None
+    if data_raw.get("diagnostic_intervention_required") is True:
+        # Legacy human-hand-off flag: load-and-clear into the ladder.
+        data_raw = _clear_legacy_ownership_and_intervention(data_raw)
+    migrated = _migrate_payload_evidence(data_raw)
     migrated = _migrate_payload_evidence(data_raw)
     if migrated is None:
         return None
@@ -796,11 +814,12 @@ def clear_record(
 ) -> None:
     """Unlink the durable record; missing-ok.
 
-    The gate is tighter than the pre-fix behaviour: a record
-    carrying ``diagnostic_intervention_required=True`` MUST NOT be
-    cleared silently (the operator must act), and a record whose
+    The gate is tighter than the pre-fix behaviour: a record whose
     phase is ``integrating`` with a non-empty resolution flag
-    cannot be cleared (the operation has unfinished work).
+    cannot be cleared (the operation has unfinished work). Legacy
+    ``diagnostic_intervention_required=True`` payloads are
+    load-and-cleared by the parser, so the retired hand-off flag
+    never gates release.
 
     UNREADABLE evidence is refused: a record that exists but cannot
     be parsed MUST NOT be unlinked, because it is the only durable
@@ -820,27 +839,24 @@ def clear_record(
             "bounded retry with a persisted deadline owns the backoff"
         )
     record = outcome.record
-    if record is not None:
-        if record.diagnostic_intervention_required:
-            raise RuntimeError(
-                "Integration diagnostic requires operator intervention; "
-                "the durable record cannot be released automatically"
-            )
-        if record.reintegrate_pending:
-            from ralph.git.merge import branch_sha
-            from ralph.git.operations import get_head_sha
-            from ralph.pipeline.auto_integrate_recovery_terminal import post_attempt_verify
+    # A legacy ``diagnostic_intervention_required=True`` payload is
+    # load-and-cleared by :func:`parse_record_payload`, so a parsed
+    # record never carries the retired hand-off flag; an exhausted
+    # diagnostic budget routes to the autonomous fallback ladder
+    # instead of gating release on a person.
+    if record is not None and record.reintegrate_pending:
+        from ralph.git.merge import branch_sha
+        from ralph.git.operations import get_head_sha
+        from ralph.pipeline.auto_integrate_recovery_terminal import post_attempt_verify
 
-            post_attempt_verify(workspace_root, expected_head_sha=None, owns_resolution=False)
-            if (
-                record.phase != "integrated"
-                or record.integrated_feature_sha is None
-                or branch_sha(workspace_root, record.target) != record.integrated_feature_sha
-                or get_head_sha(workspace_root) != record.integrated_feature_sha
-            ):
-                raise RuntimeError(
-                    "owned reintegration cannot release its unfinished target landing"
-                )
+        post_attempt_verify(workspace_root, expected_head_sha=None, owns_resolution=False)
+        if (
+            record.phase != "integrated"
+            or record.integrated_feature_sha is None
+            or branch_sha(workspace_root, record.target) != record.integrated_feature_sha
+            or get_head_sha(workspace_root) != record.integrated_feature_sha
+        ):
+            raise RuntimeError("owned reintegration cannot release its unfinished target landing")
     record_file = record_path(workspace_root)
     try:
         backend.unlink(record_file, missing_ok=True)

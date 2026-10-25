@@ -17,9 +17,18 @@ from ralph.pipeline._integration_diagnostic import (
     DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
     diagnose_retained_integration,
 )
+from ralph.pipeline._integration_record_facts import (
+    apply_record_facts,
+    record_requires_intervention,
+)
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record, write_record
 from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
+from ralph.pipeline.integration_decision import CleanupLadderRung
+from ralph.pipeline.integration_owner import (
+    RecordFactOutcome,
+    ladder_rung_for_record_fact_outcome,
+)
 from ralph.pipeline.integration_resolution import (
     IntegrationResolutionStatus,
     inspect_integration_resolution,
@@ -261,10 +270,10 @@ def test_acceptance_scenario_5_conflict_resolved_landing_pending(
     )
 
 
-def test_acceptance_scenario_4_public_boundary_bounded_recovery_to_intervention(
+def test_acceptance_scenario_4_public_boundary_bounded_recovery_to_ladder_escalation(
     tmp_path: Path,
 ) -> None:
-    """Scenario 4 (WU-S4): UNKNOWN evidence durable increment to intervention.
+    """Scenario 4 (WU-S4): UNKNOWN evidence durable increment to ladder escalation.
 
     ``diagnose_retained_integration`` is driven end-to-end through its
     public signature with an injected collector whose evidence returns
@@ -272,10 +281,20 @@ def test_acceptance_scenario_4_public_boundary_bounded_recovery_to_intervention(
     Each call durably increments ``merge_commit_repair_attempts`` by exactly 1
     (no agents registered → ``handoff_integration_diagnostic`` bumps the
     counter instead of dispatching).  After exactly
-    ``DIAGNOSTIC_REPAIR_ATTEMPT_CAP`` calls the record carries
-    ``diagnostic_intervention_required=True``.  A simulated restart (reload
-    from disk) confirms the exhausted state persists and a further call is a
-    no-op — no extra attempt, no counter reset.
+    ``DIAGNOSTIC_REPAIR_ATTEMPT_CAP`` calls the diagnostic repair budget is
+    spent.  A simulated restart (reload from disk) confirms the exhausted
+    state persists and a further call is a no-op — no extra attempt, no
+    counter reset.
+
+    The HARD RULE end state: a spent diagnostic budget NEVER ends the run
+    blocked on a person.  The fail-closed record fact is a typed
+    :class:`RecordFactOutcome` verdict (``DIAGNOSTIC_BUDGET_SPENT``) routed
+    to the autonomous cleanup ladder — the first rung preserves the work to
+    backup refs, then re-enters the rebase-first path.  No production path
+    may project ``IntegrationAction.REQUIRE_INTERVENTION`` as the run's
+    outcome (that value survives only in the retired
+    :func:`next_integration_action` projection, tested for its DATA
+    semantics elsewhere).
     """
     root = tmp_path / "repo"
     root.mkdir()
@@ -314,9 +333,9 @@ def test_acceptance_scenario_4_public_boundary_bounded_recovery_to_intervention(
 
     # (a) dispatch_allowed is False throughout.
     # (b) Each call increments merge_commit_repair_attempts by exactly 1
-    # in-process; the load-time counter clamp rewrites any on-disk
-    # value ``>= cap`` to ``cap - 1`` on the next read so a fresh-run
-    # never re-intervenes on a pre-existing over-cap value.
+    # until the cap; the counter is durable attempt history — it never
+    # exceeds the cap and never resets (the spent budget escalates
+    # through the autonomous ladder instead of re-arming).
     # (c) Durability: reload from disk after every write and confirm counter.
     for expected_attempts in range(1, DIAGNOSTIC_REPAIR_ATTEMPT_CAP + 1):
         assert not diagnose_retained_integration(ctx, "unreadable evidence", collector=collector), (
@@ -324,41 +343,44 @@ def test_acceptance_scenario_4_public_boundary_bounded_recovery_to_intervention(
         )
         saved = read_record(root)
         assert saved is not None
-        # The load-time clamp rewrites the on-disk value to cap - 1
-        # when the bumped value reaches the cap.
-        if expected_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP:
-            assert saved.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1, (
-                f"attempt counter should be clamped to cap-1, got "
-                f"{saved.merge_commit_repair_attempts}"
-            )
-        else:
-            assert saved.merge_commit_repair_attempts == expected_attempts, (
-                f"attempt counter should be {expected_attempts}, got "
-                f"{saved.merge_commit_repair_attempts}"
-            )
-        assert saved.diagnostic_intervention_required is (
-            expected_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+        assert saved.merge_commit_repair_attempts == min(
+            expected_attempts, DIAGNOSTIC_REPAIR_ATTEMPT_CAP
         ), (
-            f"intervention should be {expected_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP}, got {saved.diagnostic_intervention_required}"
+            f"attempt counter should be {min(expected_attempts, DIAGNOSTIC_REPAIR_ATTEMPT_CAP)}, "
+            f"got {saved.merge_commit_repair_attempts}"
         )
         assert saved.diagnostic_ownership is not None, (
             f"call {expected_attempts}: diagnostic_ownership (lease) should be set"
         )
+        # HARD RULE: whatever the record carries, the production seam
+        # verdict for it is never a human hand-off.  A spent diagnostic
+        # budget fails closed to the typed DIAGNOSTIC_BUDGET_SPENT
+        # verdict, routed to the preserve-first cleanup rung.
+        if record_requires_intervention(saved):
+            overlay = apply_record_facts(IntegrationAction.RESOLVE_ACTIVE_OPERATION, saved)
+            assert overlay is RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT
+            assert ladder_rung_for_record_fact_outcome(overlay) is CleanupLadderRung.NORMAL_CLEANUP
 
     # (c) Simulated restart: reload from disk and confirm exhausted state.
     after_restart = read_record(root)
     assert after_restart is not None
-    assert after_restart.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1
-    assert after_restart.diagnostic_intervention_required is True
+    assert after_restart.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP
+    # The exhausted record must not route the run to a person: the seam
+    # overlay answers a typed verdict (ladder) or the owner's action,
+    # never IntegrationAction.REQUIRE_INTERVENTION.
+    restart_overlay = apply_record_facts(IntegrationAction.RESOLVE_ACTIVE_OPERATION, after_restart)
+    assert restart_overlay is not IntegrationAction.REQUIRE_INTERVENTION
+    if isinstance(restart_overlay, RecordFactOutcome):
+        assert (
+            ladder_rung_for_record_fact_outcome(restart_overlay) is CleanupLadderRung.NORMAL_CLEANUP
+        )
 
     # (d) A further call after restart does NOT enter the diagnostic repair path
-    # again — no extra attempt, no counter reset. The load-time counter
-    # clamp rewrites the on-disk >= cap value to cap-1, so the
-    # "extra" call's read returns the clamped value.
+    # again — no extra attempt, no counter reset, no growth past the cap.
     assert not diagnose_retained_integration(ctx, "unreadable evidence", collector=collector)
     after_extra = read_record(root)
     assert after_extra is not None
-    assert after_extra.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1, (
+    assert after_extra.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP, (
         "counter must not grow after exhaustion"
     )
 
@@ -366,7 +388,17 @@ def test_acceptance_scenario_4_public_boundary_bounded_recovery_to_intervention(
     resolution = inspect_integration_resolution(root, RebaseState())
     assert resolution.dispatch_allowed is False
     assert resolution.status == IntegrationResolutionStatus.RECOVERABLE
-    assert next_integration_action(after_restart) == IntegrationAction.REQUIRE_INTERVENTION
+    # The production seam verdict for the exhausted record is never a
+    # human hand-off (HARD RULE): it is the owner's mutation-ladder
+    # answer or a typed RecordFactOutcome verdict routed to the
+    # preserve-first cleanup rung — never REQUIRE_INTERVENTION, which
+    # survives only in the retired projection as a fail-closed DATA value.
+    final_overlay = apply_record_facts(IntegrationAction.RESOLVE_ACTIVE_OPERATION, after_restart)
+    assert final_overlay is not IntegrationAction.REQUIRE_INTERVENTION
+    if isinstance(final_overlay, RecordFactOutcome):
+        assert (
+            ladder_rung_for_record_fact_outcome(final_overlay) is CleanupLadderRung.NORMAL_CLEANUP
+        )
     assert is_terminal_success_eligible(None, after_restart, RebaseState()) is False
 
     # One more no-op call to round out the proof.
@@ -375,4 +407,4 @@ def test_acceptance_scenario_4_public_boundary_bounded_recovery_to_intervention(
     )
     final = read_record(root)
     assert final is not None
-    assert final.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP - 1
+    assert final.merge_commit_repair_attempts == DIAGNOSTIC_REPAIR_ATTEMPT_CAP

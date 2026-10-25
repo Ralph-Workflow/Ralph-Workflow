@@ -137,14 +137,17 @@ def test_record_status_integrating_maps_to_integration_label() -> None:
 
 
 @pytest.mark.parametrize("cause", UNREADABLE_CAUSES)
-def test_unreadable_evidence_projects_to_intervention_label(tmp_path: object, cause: str) -> None:
-    """UNREADABLE record evidence routes onto the intervention label end-to-end.
+def test_unreadable_evidence_projects_to_ladder_escalation_label(
+    tmp_path: object, cause: str
+) -> None:
+    """UNREADABLE record evidence routes onto the ladder-escalation label.
 
     The real startup handoff (``recover_incomplete_integration``) turns the
-    unreadable durable record into the intervention projection; the display
-    boundary must render that projection as ``intervention`` -- never
-    evidence diagnosis or conflict resolution -- even though the handoff
-    retains the recovery record.
+    unreadable durable record into the typed ladder escalation (the
+    autonomous fallback ladder owns the next action); the display boundary
+    must render that projection as ``evidence diagnosis`` -- the label
+    that names the next autonomous action -- and NEVER as the retired
+    terminal ``intervention`` state.
     """
     from ralph.config.models import UnifiedConfig
     from ralph.git.subprocess_runner import GitRunOptions, run_git
@@ -180,10 +183,10 @@ def test_unreadable_evidence_projects_to_intervention_label(tmp_path: object, ca
         WorkspaceScope(tmp_path), UnifiedConfig()
     )
     assert recovered is not None
-    assert recovered.last_outcome.value == "diagnostic_intervention_required"
-    assert format_integration_label(recovered) == IntegrationDisplayLabel.INTERVENTION.value
+    assert recovered.last_outcome.value == "ladder_escalation"
+    assert format_integration_label(recovered) == IntegrationDisplayLabel.EVIDENCE_DIAGNOSIS.value
     assert format_integration_label(recovered) not in (
-        IntegrationDisplayLabel.EVIDENCE_DIAGNOSIS.value,
+        IntegrationDisplayLabel.INTERVENTION.value,
         IntegrationDisplayLabel.CONFLICT_RESOLUTION.value,
     )
     # The evidence bytes survive the projection.

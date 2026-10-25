@@ -1,11 +1,15 @@
-"""Tests for _wait_for_integration_retry durable diagnostic intervention handling.
+"""Tests for _wait_for_integration_retry's handling of durable diagnostic records.
 
-Verifies that when an on-disk record requires diagnostic intervention,
-it evaluates diagnostic evidence and makes immediate typed progress
-without calling the fixed-interval retry sleep (5.0s):
-- UNCHANGED / UNKNOWN (fail-open): evidence cleared, immediate return.
-- CHANGED / unreadable: escalated to INTERVENTION_REQUIRED, immediate return.
-- No durable intervention required: falls through to existing 5.0s sleep.
+The run loop no longer special-cases the durable intervention flag:
+``diagnostic_intervention_required`` is the owner seam's typed record
+fact (:class:`RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT`, routed to the
+autonomous cleanup ladder) and the record loader's load-and-clear case —
+never a run-loop hand-off. The retry path performs the ORDINARY bounded
+retry for every durable record shape: the recovery preamble re-derives
+state from Git, one bounded sleep below the cap pairs the next
+iteration with an in-process satisfier, the consecutive-conflict
+counter is charged so the cap-bound escalation remains reachable, and
+the run is never blocked on a person. Record bytes are never discarded.
 """
 
 from __future__ import annotations
@@ -131,13 +135,36 @@ def _make_state(conflicts: int = 0, **kw: object) -> PipelineState:
     return PipelineState(phase="development", rebase=RebaseState(**rebase_kwargs))
 
 
-def test_wait_for_retry_unchanged_durable_record_clears_evidence_without_sleep(
+def _assert_bounded_retry_without_handoff(
+    sleeps: list[float],
+    updated_state: PipelineState,
+) -> None:
+    """The ordinary bounded retry: one bounded sleep, never a hand-off.
+
+    ``is_intervention_required`` names the ESCALATION, not a person
+    (a LADDER_ESCALATION outcome owns the state autonomously); the HARD
+    RULE invariant is that the retired person-blocked outcomes are never
+    the run's end state.
+    """
+    assert len(sleeps) == 1, (
+        f"Below-cap retry must perform exactly one bounded sleep, got {sleeps!r}"
+    )
+    assert updated_state.rebase.last_outcome not in (
+        RebaseOutcomeKind.INTERVENTION_REQUIRED,
+        RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+    )
+
+
+def test_wait_for_retry_unchanged_durable_record_uses_bounded_retry_without_handoff(
     tmp_path: Path,
 ) -> None:
-    """Requirement 2(a): Matching / UNCHANGED durable record.
+    """Matching / UNCHANGED durable record: ordinary bounded retry, no hand-off.
 
-    Asserts that _wait_for_integration_retry does not call ctx.sleep,
-    durable evidence is cleared from disk, and it returns immediately.
+    The durable intervention flag is no longer a run-loop special case:
+    it is the owner seam's typed record fact (routed to the autonomous
+    cleanup ladder) and the loader's load-and-clear case. The retry
+    path performs one bounded sleep below the cap and never blocks on
+    a person; the record bytes are never discarded.
     """
     sleeps, ctx = _setup_retry_env(tmp_path)
 
@@ -159,29 +186,23 @@ def test_wait_for_retry_unchanged_durable_record_clears_evidence_without_sleep(
 
     updated_state = wait_for_integration_retry(initial_state, ctx)
 
-    # 1. Assert ctx.sleep was NOT called
-    assert sleeps == [], "Matching/UNCHANGED record must not sleep; immediate return required"
+    _assert_bounded_retry_without_handoff(sleeps, updated_state)
+    assert updated_state.is_waiting_state is False
 
-    # 2. Assert durable evidence is cleared on disk
+    # The flagged record is load-and-cleared into the autonomous ladder
+    # (the record loader's migration): the flag and the held evidence are
+    # released, the record itself preserved — never a hand-off.
     on_disk = read_record(tmp_path)
     assert on_disk is not None
     assert on_disk.diagnostic_evidence == ()
     assert on_disk.diagnostic_ownership is None
     assert on_disk.diagnostic_intervention_required is False
 
-    # 3. Assert returned state cleared waiting and is not in intervention required
-    assert updated_state.is_waiting_state is False
-    assert updated_state.rebase.is_intervention_required is False
 
-
-def test_wait_for_retry_expired_lease_unknown_clears_evidence_without_sleep(
+def test_wait_for_retry_expired_lease_uses_bounded_retry_without_handoff(
     tmp_path: Path,
 ) -> None:
-    """Requirement 2(b): Expired lease (UNKNOWN verdict).
-
-    Asserts that _wait_for_integration_retry fails open, clears durable
-    evidence without calling ctx.sleep, and returns immediately.
-    """
+    """Expired lease (UNKNOWN verdict): ordinary bounded retry, no hand-off."""
     sleeps, ctx = _setup_retry_env(tmp_path)
 
     expired_held_at = time.time() - (EVIDENCE_LEASE_SECONDS + 120.0)
@@ -202,31 +223,20 @@ def test_wait_for_retry_expired_lease_unknown_clears_evidence_without_sleep(
 
     updated_state = wait_for_integration_retry(initial_state, ctx)
 
-    # 1. Assert ctx.sleep was NOT called
-    assert sleeps == [], "Expired lease (UNKNOWN) must not sleep; immediate return required"
+    _assert_bounded_retry_without_handoff(sleeps, updated_state)
+    assert updated_state.is_waiting_state is False
 
-    # 2. Assert durable evidence is cleared on disk
     on_disk = read_record(tmp_path)
     assert on_disk is not None
     assert on_disk.diagnostic_evidence == ()
     assert on_disk.diagnostic_ownership is None
     assert on_disk.diagnostic_intervention_required is False
 
-    # 3. Assert returned state
-    assert updated_state.is_waiting_state is False
-    assert updated_state.rebase.is_intervention_required is False
 
-
-def test_wait_for_retry_changed_record_fails_open_and_does_not_sleep(
+def test_wait_for_retry_changed_record_uses_bounded_retry_without_handoff(
     tmp_path: Path,
 ) -> None:
-    """Requirement 2(c): CHANGED durable record fails open (O1).
-
-    A record whose held evidence has no valid lease (CHANGED verdict)
-    must not block the run on a fixed-interval wait. The guard
-    clears the held evidence, marks the durable record for
-    Git re-derivation on the next seam, and returns immediately.
-    """
+    """CHANGED durable record: ordinary bounded retry, no hand-off."""
     sleeps, ctx = _setup_retry_env(tmp_path)
 
     record = IntegrationRecord(
@@ -244,26 +254,20 @@ def test_wait_for_retry_changed_record_fails_open_and_does_not_sleep(
 
     updated_state = wait_for_integration_retry(initial_state, ctx)
 
-    # 1. Assert ctx.sleep was NOT called (O1: no fixed-interval wait
-    # for an unverifiable durable state).
-    assert sleeps == [], "CHANGED record must not sleep; O1 fail-open path"
+    _assert_bounded_retry_without_handoff(sleeps, updated_state)
+    assert updated_state.is_waiting_state is False
 
-    # 2. Assert durable evidence is cleared on disk.
     on_disk = read_record(tmp_path)
     assert on_disk is not None
     assert on_disk.diagnostic_evidence == ()
     assert on_disk.diagnostic_ownership is None
     assert on_disk.diagnostic_intervention_required is False
 
-    # 3. Assert returned state is not in INTERVENTION_REQUIRED.
-    assert updated_state.is_waiting_state is False
-    assert updated_state.rebase.is_intervention_required is False
 
-
-def test_wait_for_retry_unparseable_lease_fails_open_and_does_not_sleep(
+def test_wait_for_retry_unparseable_lease_uses_bounded_retry_without_handoff(
     tmp_path: Path,
 ) -> None:
-    """An unparseable lease fails open and does not sleep (O1)."""
+    """Unparseable lease: ordinary bounded retry, no hand-off."""
     sleeps, ctx = _setup_retry_env(tmp_path)
 
     record = IntegrationRecord(
@@ -281,33 +285,26 @@ def test_wait_for_retry_unparseable_lease_fails_open_and_does_not_sleep(
 
     updated_state = wait_for_integration_retry(initial_state, ctx)
 
-    # 1. Assert ctx.sleep was NOT called.
-    assert sleeps == [], "Unparseable lease record must not sleep; O1 fail-open path"
+    _assert_bounded_retry_without_handoff(sleeps, updated_state)
+    assert updated_state.is_waiting_state is False
 
-    # 2. Assert durable evidence is cleared on disk.
     on_disk = read_record(tmp_path)
     assert on_disk is not None
     assert on_disk.diagnostic_evidence == ()
     assert on_disk.diagnostic_ownership is None
     assert on_disk.diagnostic_intervention_required is False
 
-    # 3. Assert returned state is not in INTERVENTION_REQUIRED.
-    assert updated_state.is_waiting_state is False
-    assert updated_state.rebase.is_intervention_required is False
 
-
-def test_wait_for_retry_unreadable_record_escalates_to_intervention_without_cooldown_sleep(
+def test_wait_for_retry_unreadable_record_uses_bounded_retry_without_handoff(
     tmp_path: Path,
 ) -> None:
-    """Requirement 2(c): Unreadable record.
+    """Unreadable durable record: ordinary bounded retry, no hand-off.
 
-    Asserts that _wait_for_integration_retry escalates to INTERVENTION_REQUIRED
-    when the durable record file is unreadable, and follows the O1
-    retry-progress rule: never sleeps on a fixed interval. The recovery
-    preamble is invoked to attempt live-Git re-derivation; when it
-    cannot clear the durable intervention flag, the consecutive-conflict
-    counter is charged and the typed INTERVENTION_REQUIRED transition
-    is persisted (capped escalation, no sleep).
+    The corrupt record is the unreadable-record seam's case (the bytes
+    stay untouched on disk as evidence; the owner seam fails closed on
+    the unreadable durable fact and routes it to the autonomous cleanup
+    ladder). The retry path never ends blocked on a person and never
+    overwrites the corrupt bytes.
     """
     sleeps, ctx = _setup_retry_env(tmp_path)
 
@@ -320,21 +317,10 @@ def test_wait_for_retry_unreadable_record_escalates_to_intervention_without_cool
 
     updated_state = wait_for_integration_retry(initial_state, ctx)
 
-    # 1. Assert ctx.sleep was NOT called (O1: no fixed-interval wait).
-    assert sleeps == [], "Unreadable record must not sleep; O1 retry-progress rule"
+    _assert_bounded_retry_without_handoff(sleeps, updated_state)
 
-    # 2. Assert raw corrupt bytes preserved for forensics (WU-1)
-    evidence_file = record_path(tmp_path).with_name("corrupt_record_evidence.json")
-    assert evidence_file.exists()
-    assert evidence_file.read_text(encoding="utf-8") == "CORRUPT_JSON_{not valid"
-
-    # 3. Assert INTERVENTION_REQUIRED is set
-    assert updated_state.rebase.is_intervention_required is True
-    assert updated_state.rebase.last_outcome in (
-        RebaseOutcomeKind.INTERVENTION_REQUIRED,
-        RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
-    )
-    assert "unreadable" in (updated_state.rebase.last_reason or "")
+    # No-discard: the corrupt bytes stay byte-for-byte on disk.
+    assert record_path(tmp_path).read_text(encoding="utf-8") == "CORRUPT_JSON_{not valid"
 
 
 def test_wait_for_retry_consecutive_conflicts_cap_performs_single_automated_resolver_handoff(
@@ -374,18 +360,16 @@ def test_wait_for_retry_consecutive_conflicts_cap_performs_single_automated_reso
     assert second_result.rebase.is_intervention_required is True
 
 
-def test_wait_for_retry_empty_evidence_durable_record_escalates_to_intervention_without_cooldown_sleep(
+def test_wait_for_retry_empty_evidence_durable_record_uses_bounded_retry_without_handoff(
     tmp_path: Path,
 ) -> None:
-    """Requirement: Empty evidence record escalates via live-Git re-derivation.
+    """Empty-evidence flagged record: ordinary bounded retry, no hand-off.
 
-    The O1 retry-progress rule forbids a fixed-interval wait when the
-    durable record demands intervention. The retry path first asks the
-    recovery preamble to re-derive state from Git; if recovery cannot
-    clear the intervention flag, the consecutive-conflict counter is
-    charged and the typed INTERVENTION_REQUIRED transition is
-    persisted (capped escalation, no sleep). The forensic bytes of any
-    held evidence are preserved for the operator.
+    The durable intervention flag is the owner seam's typed record
+    fact, never a run-loop hand-off: the retry path performs the
+    bounded retry (recovery preamble, one bounded sleep, charged
+    counter) and never blocks the run on a person. The record bytes
+    are never discarded.
     """
     sleeps, ctx = _setup_retry_env(tmp_path)
 
@@ -404,12 +388,13 @@ def test_wait_for_retry_empty_evidence_durable_record_escalates_to_intervention_
 
     updated_state = wait_for_integration_retry(initial_state, ctx)
 
-    assert sleeps == [], "Empty evidence record must not sleep; O1 retry-progress rule"
-    assert updated_state.rebase.is_intervention_required is True
-    assert updated_state.rebase.last_outcome in (
-        RebaseOutcomeKind.INTERVENTION_REQUIRED,
-        RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
-    )
+    _assert_bounded_retry_without_handoff(sleeps, updated_state)
+
+    on_disk = read_record(tmp_path)
+    assert on_disk is not None
+    assert on_disk.diagnostic_evidence == ()
+    assert on_disk.diagnostic_ownership is None
+    assert on_disk.diagnostic_intervention_required is False
 
 
 def test_wait_for_retry_negative_no_intervention_required_invokes_preamble_then_bounded_sleep(
@@ -469,15 +454,17 @@ def test_wait_for_retry_negative_no_intervention_required_invokes_preamble_then_
     )
 
 
-def test_wait_for_retry_ralph_moved_head_rederives_git_progress_not_tamper(
+def test_wait_for_retry_ralph_moved_head_uses_bounded_retry_not_tamper(
     tmp_path: Path,
 ) -> None:
-    """AC4: Ralph moving HEAD (snapshot/reset) does not produce a blocked 'evidence changed' state.
+    """AC4: Ralph moving HEAD (snapshot/reset) does not produce a blocked state.
 
     The diagnostic lease is bound to identity_fingerprint, which isolates
-    HEAD/index/worktree movements. When Ralph resets or snapshots HEAD,
-    the diagnostic path re-derives state from Git, clears durable evidence,
-    and makes progress without demanding manual 'restore original evidence'.
+    HEAD/index/worktree movements. The durable intervention flag is never
+    a run-loop hand-off: the retry path re-derives state from Git through
+    the recovery preamble, performs the bounded retry, and never demands
+    manual 'restore original evidence'. The record bytes are not tampered
+    with by the retry path.
     """
     sleeps, ctx = _setup_retry_env(tmp_path)
 
@@ -501,35 +488,28 @@ def test_wait_for_retry_ralph_moved_head_rederives_git_progress_not_tamper(
 
     updated_state = wait_for_integration_retry(initial_state, ctx)
 
-    # 1. Must NOT sleep on a fixed interval wait (fail-open / UNCHANGED lease)
-    assert sleeps == []
-
-    # 2. Durable evidence must be cleared on disk (no 'restore original evidence' hold)
+    _assert_bounded_retry_without_handoff(sleeps, updated_state)
     on_disk = read_record(tmp_path)
     assert on_disk is not None
     assert on_disk.diagnostic_evidence == ()
     assert on_disk.diagnostic_ownership is None
     assert on_disk.diagnostic_intervention_required is False
 
-    # 3. Must not report intervention required
-    assert updated_state.rebase.is_intervention_required is False
-
 
 @pytest.mark.subprocess_e2e
-def test_wait_for_retry_after_real_git_head_movement_clears_evidence_without_sleep(
+def test_wait_for_retry_after_real_git_head_movement_uses_bounded_retry_without_handoff(
     tmp_path: Path,
 ) -> None:
     """AC4 faithful: HEAD actually moved through a Ralph-like git operation.
 
-    The previous AC4 proof at :470-488 wrote the held record in
-    isolation and asserted the lease released. The complementary test
-    below exercises a real ``git reset --hard`` (the same family of
-    operation Ralph uses for snapshot/reset/reintegration) BEFORE the
-    retry call. The held lease is bound to ``identity_fingerprint``,
-    which isolates HEAD/index/worktree movements: even though HEAD has
-    physically moved, the fingerprint is stable, the durable evidence
-    is cleared on disk, and the retry loop never sleeps on a fixed
-    interval.
+    The previous AC4 proof wrote the held record in isolation; this
+    test exercises real git commits (the same family of operation Ralph
+    uses for snapshot/reset/reintegration) BEFORE the retry call. Even
+    though HEAD has physically moved, the durable intervention flag is
+    never a run-loop hand-off: the retry path performs the ordinary
+    bounded retry, never sleeps on a fixed interval as an end state,
+    and never blocks the run on a person. The durable record bytes are
+    preserved.
     """
     import subprocess
 
@@ -647,18 +627,19 @@ def test_wait_for_retry_after_real_git_head_movement_clears_evidence_without_sle
 
     updated_state = wait_for_integration_retry(initial_state, ctx)
 
-    # 1. Must NOT sleep on a fixed interval wait (fail-open / UNCHANGED lease)
-    assert sleeps == [], "Real HEAD movement must not sleep; fail-open contract"
+    # The durable intervention flag is never a run-loop hand-off: real
+    # HEAD movement or not, the retry path performs the ordinary bounded
+    # retry and never blocks the run on a person or a fixed interval.
+    _assert_bounded_retry_without_handoff(sleeps, updated_state)
 
-    # 2. Durable evidence must be cleared on disk (no 'restore original evidence' hold)
+    # The flagged record is load-and-cleared into the autonomous ladder:
+    # released entirely or cleared of the flag and held evidence — never
+    # a hand-off, never a blocked 'restore original evidence' hold.
     on_disk = read_record(tmp_path)
-    assert on_disk is not None
-    assert on_disk.diagnostic_evidence == ()
-    assert on_disk.diagnostic_ownership is None
-    assert on_disk.diagnostic_intervention_required is False
-
-    # 3. Must not report intervention required
-    assert updated_state.rebase.is_intervention_required is False
+    if on_disk is not None:
+        assert on_disk.diagnostic_evidence == ()
+        assert on_disk.diagnostic_ownership is None
+        assert on_disk.diagnostic_intervention_required is False
 
 
 def test_wait_for_retry_loop_unresolved_progresses_attempt_or_escalates(

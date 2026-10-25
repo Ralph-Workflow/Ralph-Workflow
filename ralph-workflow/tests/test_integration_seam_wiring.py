@@ -15,9 +15,14 @@ These tests pin three contracts:
   target-reconciliation handoff -- reach the seam, and the seam's
   record-fact overlay is the ONLY difference between the decision a
   boundary took before the migration and the one it takes now.
-* **The overlay only ever escalates.** The overlay can turn the owner's
-  rung into ``REQUIRE_INTERVENTION`` and into nothing else, so every
-  decision diff is either empty or a fail-closed escalation.
+* **The overlay only ever escalates — to the ladder, never to a
+  person.** The overlay can turn the owner's rung into a typed
+  :class:`~ralph.pipeline.integration_owner.RecordFactOutcome` verdict
+  (``STALE_INTENT`` / ``DIAGNOSTIC_BUDGET_SPENT``) and into nothing
+  else; every outcome maps to a cleanup-ladder rung (the first rung
+  preserves the work to backup refs). No production path may hand a
+  boundary ``IntegrationAction.REQUIRE_INTERVENTION``: that value
+  survives only in the retired projection as a fail-closed DATA value.
 * **The retired decider is dead.** No production module references
   ``next_integration_action`` any more.
 
@@ -47,6 +52,7 @@ from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     write_record,
 )
+from ralph.pipeline.integration_decision import CleanupLadderRung
 from ralph.pipeline.integration_observation import (
     HeadState,
     InProgressKind,
@@ -57,7 +63,11 @@ from ralph.pipeline.integration_observation import (
     TargetVsRemote,
     WorktreeState,
 )
-from ralph.pipeline.integration_owner import decide_integration
+from ralph.pipeline.integration_owner import (
+    RecordFactOutcome,
+    decide_integration,
+    ladder_rung_for_record_fact_outcome,
+)
 from ralph.workspace.scope import WorkspaceScope
 
 #: The shipped production package the retired-decider guard scans.
@@ -156,18 +166,54 @@ def _install_director(
 def _install_seam_recorder(
     monkeypatch: pytest.MonkeyPatch,
     module: ModuleType,
-) -> list[IntegrationAction]:
-    """Record the actions the seam hands to one boundary."""
-    recorded: list[IntegrationAction] = []
+) -> list[IntegrationAction | RecordFactOutcome]:
+    """Record the seam verdicts the boundary consumes.
+
+    A verdict is either the owner's mutation-ladder action or a typed
+    :class:`RecordFactOutcome` fail-closed record-fact verdict; both are
+    seam vocabulary, and neither may be a human hand-off.
+    """
+    recorded: list[IntegrationAction | RecordFactOutcome] = []
     real = module.decide_seam_action
 
-    def _recorder(*args: Any, **kwargs: Any) -> IntegrationAction:
+    def _recorder(*args: Any, **kwargs: Any) -> IntegrationAction | RecordFactOutcome:
         action = real(*args, **kwargs)
         recorded.append(action)
         return action
 
     monkeypatch.setattr(module, "decide_seam_action", _recorder)
     return recorded
+
+
+def _assert_never_a_human_hand_off(
+    recorded: list[IntegrationAction | RecordFactOutcome],
+) -> None:
+    """Every recorded seam verdict is actionable without a person."""
+    for verdict in recorded:
+        assert verdict is not IntegrationAction.REQUIRE_INTERVENTION
+        if isinstance(verdict, RecordFactOutcome):
+            assert ladder_rung_for_record_fact_outcome(verdict) is CleanupLadderRung.NORMAL_CLEANUP
+
+
+def _overlay_fails_closed_to_the_ladder(
+    owner_action: IntegrationAction,
+    record: IntegrationRecord,
+    observation: Observation,
+) -> RecordFactOutcome:
+    """The overlay on a live intervention-flagged record is a typed ladder verdict.
+
+    Driven through ``importlib`` like the boundary modules below so this
+    file keeps its zero private-import white-box coupling.
+    """
+    record_facts = importlib.import_module("ralph.pipeline._integration_record_facts")
+    overlay = record_facts.apply_record_facts(
+        owner_action,
+        record,
+        observation=observation,
+    )
+    assert isinstance(overlay, RecordFactOutcome)
+    assert ladder_rung_for_record_fact_outcome(overlay) is CleanupLadderRung.NORMAL_CLEANUP
+    return overlay
 
 
 def _owner_action_without_overlay(
@@ -218,15 +264,18 @@ def test_startup_recovery_decides_through_the_seam(
     assert state.recovery_record_retained
 
 
-def test_startup_recovery_escalates_to_intervention_through_the_overlay(
+def test_startup_recovery_fails_closed_into_the_ladder_through_the_overlay(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A retained record that demands intervention fails the boundary closed.
+    """A retained record whose diagnostic budget is spent escalates autonomously.
 
     The owner's own answer is the repair rung; ONLY the seam's record-fact
-    overlay can turn it into ``REQUIRE_INTERVENTION``. The boundary must
-    then retain the record instead of mutating the worktree.
+    overlay can change it, and the overlay fails closed to the typed
+    ``DIAGNOSTIC_BUDGET_SPENT`` verdict routed to the preserve-first
+    cleanup rung — never to ``REQUIRE_INTERVENTION`` (a value that no
+    production path may hand a boundary). The boundary preserves the
+    work (retains the record) and never surfaces an operator hand-off.
     """
     recovery = importlib.import_module("ralph.pipeline.auto_integrate_recovery")
     observation = _observation()
@@ -241,10 +290,13 @@ def test_startup_recovery_escalates_to_intervention_through_the_overlay(
     state = recovery._recover_incomplete_integration_owned(WorkspaceScope(root))
 
     assert before is IntegrationAction.RESOLVE_ACTIVE_OPERATION
-    assert recorded == [IntegrationAction.REQUIRE_INTERVENTION]
+    assert _overlay_fails_closed_to_the_ladder(before, record, observation) is (
+        RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT
+    )
+    _assert_never_a_human_hand_off(recorded)
     assert state is not None
     assert state.recovery_record_retained
-    assert state.is_intervention_required
+    assert not state.is_intervention_required
 
 
 # ---------------------------------------------------------------------------
@@ -276,11 +328,11 @@ def test_pipeline_state_machine_decides_through_the_seam(
     assert action is IntegrationAction.RESOLVE_ACTIVE_OPERATION
 
 
-def test_pipeline_state_machine_escalates_to_intervention_through_the_overlay(
+def test_pipeline_state_machine_fails_closed_into_the_ladder_through_the_overlay(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Only the overlay can turn the owner's rung into an intervention."""
+    """Only the overlay can change the owner's rung — into a ladder verdict."""
     state_machine = importlib.import_module("ralph.pipeline._pipeline_state_machine")
     observation = _observation()
     _install_director(monkeypatch, observation)
@@ -296,8 +348,11 @@ def test_pipeline_state_machine_escalates_to_intervention_through_the_overlay(
     )
 
     assert before is IntegrationAction.RESOLVE_ACTIVE_OPERATION
-    assert recorded == [IntegrationAction.REQUIRE_INTERVENTION]
-    assert action is IntegrationAction.REQUIRE_INTERVENTION
+    assert _overlay_fails_closed_to_the_ladder(before, record, observation) is (
+        RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT
+    )
+    _assert_never_a_human_hand_off(recorded)
+    assert action is not IntegrationAction.REQUIRE_INTERVENTION
 
 
 # ---------------------------------------------------------------------------
@@ -324,15 +379,18 @@ def test_remote_reconcile_recovery_decides_through_the_seam(
     assert reenters is True
 
 
-def test_remote_reconcile_recovery_keeps_a_stuck_reconciliation_retained(
+def test_remote_reconcile_recovery_keeps_a_legacy_intervention_record_retained(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A record that demands intervention is NOT re-entered against the target.
+    """A legacy intervention-flagged record is kept retained, never handed off.
 
-    The owner's rung would re-enter the reconciliation; only the seam's
-    overlay turns it into ``REQUIRE_INTERVENTION``, which keeps the
-    retained reconciliation where it is instead of retrying it forever.
+    The owner's rung would re-enter the reconciliation; the seam's
+    overlay fails closed to the typed ``DIAGNOSTIC_BUDGET_SPENT`` verdict
+    routed to the preserve-first cleanup rung — the record is never
+    escalated to ``REQUIRE_INTERVENTION`` (no production path may hand a
+    boundary that value). The retained reconciliation stays where it is
+    (bounded, ledgered) while the ladder owns the escalation.
     """
     reconcile = importlib.import_module("ralph.pipeline._remote_reconcile_recovery")
     observation = _observation()
@@ -344,7 +402,10 @@ def test_remote_reconcile_recovery_keeps_a_stuck_reconciliation_retained(
     reenters = reconcile._owner_reenters_against_target(tmp_path / "after", record, None)
 
     assert before is IntegrationAction.RESOLVE_ACTIVE_OPERATION
-    assert recorded == [IntegrationAction.REQUIRE_INTERVENTION]
+    assert _overlay_fails_closed_to_the_ladder(before, record, observation) is (
+        RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT
+    )
+    _assert_never_a_human_hand_off(recorded)
     assert reenters is False
 
 
@@ -388,11 +449,18 @@ def test_target_reconciliation_handoff_decides_through_the_seam(
     assert adopted is not None
 
 
-def test_target_reconciliation_handoff_refuses_an_intervention_record(
+def test_target_reconciliation_handoff_adopts_a_legacy_intervention_record_autonomously(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Only the overlay can stop the handoff from adopting the record."""
+    """The handoff adopts the record; the overlay escalates to the ladder.
+
+    Only the seam's record-fact overlay can change the owner's rung,
+    and it fails closed to the typed ``DIAGNOSTIC_BUDGET_SPENT`` verdict
+    routed to the preserve-first cleanup rung — never to
+    ``REQUIRE_INTERVENTION``. The handoff keeps working autonomously:
+    the scheduled landing is adopted, not refused to a person.
+    """
     handoff = importlib.import_module("ralph.pipeline._target_reconciliation_handoff")
     observation = _observation()
     _install_director(monkeypatch, observation)
@@ -407,8 +475,11 @@ def test_target_reconciliation_handoff_refuses_an_intervention_record(
     adopted = handoff.scheduled_landing(root, record.target)
 
     assert before is IntegrationAction.RESOLVE_ACTIVE_OPERATION
-    assert recorded == [IntegrationAction.REQUIRE_INTERVENTION]
-    assert adopted is None
+    assert _overlay_fails_closed_to_the_ladder(before, record, observation) is (
+        RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT
+    )
+    _assert_never_a_human_hand_off(recorded)
+    assert adopted is not None
 
 
 # ---------------------------------------------------------------------------

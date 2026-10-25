@@ -13,6 +13,7 @@ from ralph.pipeline.auto_integrate_record import (
     read_record,
     write_record,
 )
+from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.operation_evidence import (
     InMemoryOperationEvidenceCollector,
     OperationEvidenceCollector,
@@ -22,6 +23,7 @@ from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
+from tests._integration_ladder_fakes import _FakePlumbing
 from tests.test_pending_merge_commit_recovery import _commit, _git
 from tests.test_pending_merge_repair import _retained_runtime_context
 
@@ -150,8 +152,11 @@ def test_public_diagnose_retained_integration_refuses_when_proof_missing(
 
     saved = read_record(root)
     assert saved is not None
-    assert saved.diagnostic_intervention_required is True
-    assert saved.merge_commit_repair_attempts == 0
+    # The pre-pass proof failure spends one bounded repair attempt
+    # instead of raising the retired operator hand-off.
+    assert saved.diagnostic_intervention_required is False
+    assert saved.merge_commit_repair_attempts == 1
+    assert "operation completion proof failed" in (saved.repair_last_error or "")
 
 
 def _build_diagnostic_ctx(root: Path) -> MagicMock:
@@ -201,7 +206,11 @@ def test_diagnose_retained_integration_honors_injected_invoke_and_collector(tmp_
     assert invoked == []
     saved = read_record(root)
     assert saved is not None
-    assert saved.diagnostic_intervention_required is True
+    # The unreachable-marker pre-pass failure spends one bounded repair
+    # attempt instead of raising the retired operator hand-off.
+    assert saved.diagnostic_intervention_required is False
+    assert saved.merge_commit_repair_attempts == 1
+    assert "unreachable marker object" in (saved.repair_last_error or "")
 
 
 @pytest.mark.parametrize("use_raising_collector", [True, False])
@@ -263,35 +272,44 @@ def test_diagnose_retained_integration_repeated_failures_persist_intervention_at
     assert s1.diagnostic_intervention_required is False
     assert invoked == []
 
-    # Attempt 2: reaches cap, raises intervention. The load-time
-    # counter clamp rewrites any on-disk value >= cap down to cap-1
-    # on the next read, so the test asserts the intervention flag
-    # (the durable signal of exhaustion) rather than the literal
-    # counter value.
+    # Attempt 2: reaches cap, stamps the typed budget-spent outcome and
+    # escalates into the autonomous fallback ladder (recorded in the
+    # durable ledger).
+    ledger = AttemptLedger(root, ledger_path=root / ".agent" / "test-attempt-ledger.json")
+    plumbing = _FakePlumbing(changed=())
     assert not diagnostic.diagnose_retained_integration(
-        ctx, "test failure 2", invoke=custom_invoke, collector=collector
+        ctx,
+        "test failure 2",
+        invoke=custom_invoke,
+        collector=collector,
+        ledger=ledger,
+        git=plumbing,
     )
     s2 = read_record(root)
     assert s2 is not None
-    assert s2.merge_commit_repair_attempts == cap - 1  # load-time clamp
-    assert s2.diagnostic_intervention_required is True
-    expected_reason = (
-        "collector crashed" if use_raising_collector else "diagnostic repair exhausted"
-    )
-    assert expected_reason in (s2.repair_cap_reason or "")
+    # The typed marker preserves the counter at the cap across loads.
+    assert s2.merge_commit_repair_attempts == cap
+    assert s2.diagnostic_intervention_required is False
+    assert s2.repair_cap_reason == diagnostic.DIAGNOSTIC_BUDGET_SPENT_REASON
     assert invoked == []
+    assert any(key.startswith("rung:") for key in ledger.read().ladder_evidence), (
+        "cap exhaustion must reach a ladder rung recorded in the durable ledger"
+    )
 
-    # Attempt 3: already at cap with intervention; zero later invocations occur.
-    # The load-time counter clamp rewrites the on-disk >= cap value
-    # to cap-1 on the next read, so the literal counter is no longer
-    # the durable signal of exhaustion; the intervention flag is.
+    # Attempt 3: already at cap; the typed marker preserves the counter
+    # across loads and zero later invocations occur.
     calls_before = getattr(collector, "calls", 0)
     assert not diagnostic.diagnose_retained_integration(
-        ctx, "test failure 3", invoke=custom_invoke, collector=collector
+        ctx,
+        "test failure 3",
+        invoke=custom_invoke,
+        collector=collector,
+        ledger=ledger,
+        git=plumbing,
     )
     s3 = read_record(root)
     assert s3 is not None
-    assert s3.merge_commit_repair_attempts == cap - 1  # load-time clamp
-    assert s3.diagnostic_intervention_required is True
+    assert s3.merge_commit_repair_attempts == cap
+    assert s3.diagnostic_intervention_required is False
     assert getattr(collector, "calls", 0) == calls_before
     assert invoked == []

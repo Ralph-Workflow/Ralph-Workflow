@@ -9,8 +9,10 @@ shared seam helpers (:func:`run_loop._dispatch_owner_ladder_rung` /
 with the decision-time ``expected_target_sha``, and the seam re-observes
 after each dispatch. A failed cleanup advances to the next real rung —
 never a repeated identical action — and when the ladder heals the tree
-the conflict resolver is never dispatched. ``REQUIRE_INTERVENTION``-
-overlaid verdicts never dispatch a rung.
+the conflict resolver is never dispatched. A verdict whose durable
+record facts failed closed (``record_fact`` set) carries the
+preserve-first escalation rung and dispatches it like any ladder
+verdict — preservation precedes any reset, never a person.
 
 Everything is stubbed at the module boundary: the owner seam serves
 canned verdicts, the ladder executor and the conflict resolver are
@@ -43,6 +45,7 @@ from ralph.pipeline.integration_observation import (
     WorktreeState,
     WorktreeVerdict,
 )
+from ralph.pipeline.integration_owner import RecordFactOutcome
 from ralph.pipeline.state import PipelineState
 
 if TYPE_CHECKING:
@@ -77,10 +80,12 @@ def _rung_verdict(
     rung: CleanupLadderRung | None,
     *,
     action: IntegrationAction = IntegrationAction.CONTINUE_GIT_OPERATION,
+    record_fact: RecordFactOutcome | None = None,
 ) -> PlanningSyncVerdict:
     """Build the typed owner verdict the boundary seam consumes."""
     return PlanningSyncVerdict(
         action=action,
+        record_fact=record_fact,
         observation=Observation(
             target_vs_feature=TargetVsFeature.BEHIND,
             target_vs_remote=TargetVsRemote.EQUAL,
@@ -225,28 +230,40 @@ def test_boundary_failed_cleanup_advances_to_next_rung_without_repeating(
     assert gate.inspections == 3  # one re-inspection per dispatch, one post-recovery
 
 
-def test_boundary_intervention_overlaid_rung_never_dispatches(
+def test_boundary_record_fact_verdict_dispatches_the_preserve_first_rung(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     boundary_env: list[str],
 ) -> None:
-    """A REQUIRE_INTERVENTION-overlaid rung verdict falls through, no dispatch."""
+    """A fail-closed record-fact verdict carries the escalation rung and dispatches it.
+
+    The verdict's ``record_fact`` names why the durable record could not
+    prove a next step; its ladder rung (the preserve-first rung) is
+    dispatched exactly once like any ladder verdict — work is preserved
+    to backup refs before any destructive step, never handed to a
+    person. A repeat under the unchanged observation breaks the climb
+    and yields to the recovery pass.
+    """
     result, gate = _drive_boundary(
         monkeypatch,
         tmp_path,
         boundary_env,
         [
             _rung_verdict(
-                CleanupLadderRung.QUARANTINE,
-                action=IntegrationAction.REQUIRE_INTERVENTION,
-            )
+                CleanupLadderRung.NORMAL_CLEANUP,
+                record_fact=RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT,
+            ),
+            _rung_verdict(
+                CleanupLadderRung.NORMAL_CLEANUP,
+                record_fact=RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT,
+            ),
         ],
         heal_after=None,
     )
 
     assert result is not None
-    assert boundary_env == ["resolver"]
-    assert gate.inspections == 1
+    assert boundary_env == ["dispatch", "resolver"]
+    assert gate.inspections == 2
 
 
 def test_shared_ladder_helper_is_used_by_both_seams(

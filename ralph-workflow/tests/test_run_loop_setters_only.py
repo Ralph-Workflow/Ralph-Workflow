@@ -88,15 +88,15 @@ def test_setter_usage_present_in_run_loop() -> None:
     assert ".set_fan_out_decision(" in fan_out_authority
 
 
-def test_apply_step_integration_outcome_pins_intervention_display_state(
+def test_apply_step_integration_outcome_surfaces_waiting_display_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Behavior regression: the reduction path pins the post-state.
 
-    After ``_apply_step_integration_outcome`` handles a
-    REQUIRE_INTERVENTION action (no record + retained recovery =>
-    fail-closed intervention), the final rebase display state is
-    ``intervention_required`` — observable post-state only.
+    After ``_apply_step_integration_outcome`` handles a fail-closed
+    record fact (no record + retained recovery => typed STALE_INTENT
+    verdict, routed to the autonomous cleanup ladder), the final rebase
+    display state names the bounded wait — never ``intervention_required``.
     """
     from types import SimpleNamespace
 
@@ -119,4 +119,5 @@ def test_apply_step_integration_outcome_pins_intervention_display_state(
     )
     scope = SimpleNamespace(root=tmp_path)
     out = runner_module._apply_step_integration_outcome(state, scope, policy_bundle, rebase)
-    assert out.rebase.operation_display_state == "intervention_required"
+    assert out.rebase.operation_display_state == "waiting"
+    assert out.rebase.operation_display_state != "intervention_required"

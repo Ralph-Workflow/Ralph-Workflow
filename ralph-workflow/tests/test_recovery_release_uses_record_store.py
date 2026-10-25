@@ -53,6 +53,11 @@ from ralph.pipeline.auto_integrate_recovery import (
     _maybe_release_diagnostic,
 )
 from ralph.pipeline.auto_integrate_transition import RELEASE_DIAGNOSTIC_EVIDENCE
+from ralph.pipeline.integration_decision import CleanupLadderRung
+from ralph.pipeline.integration_owner import (
+    RecordFactOutcome,
+    ladder_rung_for_record_fact_outcome,
+)
 from ralph.pipeline.operation_evidence import (
     identity_fingerprint,
 )
@@ -201,13 +206,21 @@ class TestBusyRetryActionMapping:
         action = busy_refusal_outcome(10_000.0, clock=lambda: 1.0)
         assert action is IntegrationAction.WAIT_FOR_BOUNDED_RETRY
 
-    def test_missing_deadline_requires_intervention(self, busy_refusal_outcome: object) -> None:
+    def test_missing_deadline_fails_closed_to_stale_intent(
+        self, busy_refusal_outcome: object
+    ) -> None:
+        """A missing deadline is the typed STALE_INTENT verdict, never a hand-off."""
         action = busy_refusal_outcome(None, clock=lambda: 1.0)
-        assert action is IntegrationAction.REQUIRE_INTERVENTION
+        assert action is RecordFactOutcome.STALE_INTENT
+        assert ladder_rung_for_record_fact_outcome(action) is CleanupLadderRung.NORMAL_CLEANUP
 
-    def test_expired_deadline_requires_intervention(self, busy_refusal_outcome: object) -> None:
+    def test_expired_deadline_fails_closed_to_stale_intent(
+        self, busy_refusal_outcome: object
+    ) -> None:
+        """An expired deadline is the typed STALE_INTENT verdict, never a hand-off."""
         action = busy_refusal_outcome(10.0, clock=lambda: 100.0)
-        assert action is IntegrationAction.REQUIRE_INTERVENTION
+        assert action is RecordFactOutcome.STALE_INTENT
+        assert ladder_rung_for_record_fact_outcome(action) is CleanupLadderRung.NORMAL_CLEANUP
 
 
 # ---------------------------------------------------------------------------
@@ -255,17 +268,17 @@ class TestRecoveryReleaseRefusals:
         )
         _assert_bytes_unchanged(record_file, before)
 
-    def test_unreadable_refusal_maps_to_typed_intervention(
+    def test_unreadable_refusal_maps_to_typed_ladder_escalation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """UNREADABLE at the store's re-read maps to intervention, never an overwrite."""
+        """UNREADABLE at the store's re-read maps to the ladder, never an overwrite."""
         _install_unchanged_collector(monkeypatch)
         before = _write_present_record(tmp_path)
         record_file = tmp_path / RECORD_FILE
         backend = _InjectedBackend(DEFAULT_BACKEND, "unreadable", fail_on_call=2)
         outcome = _maybe_release_diagnostic(tmp_path, WorkspaceScope(tmp_path), backend)
         assert isinstance(outcome, RebaseState)
-        assert outcome.last_outcome is RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
+        assert outcome.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
         assert "unreadable" in (outcome.last_reason or "")
         assert outcome.recovery_record_retained is True
         assert outcome.recovery_record_retained_reason is (
@@ -394,15 +407,17 @@ class TestRemoteReconcileReleaseRefusals:
         if bounded:
             assert state.last_outcome is RebaseOutcomeKind.SKIPPED
         else:
-            assert state.last_outcome is RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
+            # No usable deadline: the refusal escalates into the
+            # autonomous fallback ladder, never to an operator.
+            assert state.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
         assert "busy" in (state.last_reason or "")
         assert state.recovery_record_retained is True
         _assert_bytes_unchanged(record_file, before)
 
-    def test_unreadable_refusal_maps_to_typed_intervention(
+    def test_unreadable_refusal_maps_to_typed_ladder_escalation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """UNREADABLE maps to DIAGNOSTIC_INTERVENTION_REQUIRED, never an overwrite."""
+        """UNREADABLE maps to the typed ladder escalation, never an overwrite."""
         before = _write_present_record(tmp_path)
         record_file = tmp_path / RECORD_FILE
         monkeypatch.setattr(
@@ -413,7 +428,7 @@ class TestRemoteReconcileReleaseRefusals:
             tmp_path, _verified_record(), retry_deadline=10.0, clock=lambda: 1.0
         )
         assert state is not None
-        assert state.last_outcome is RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
+        assert state.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
         assert state.recovery_record_retained is True
         assert state.recovery_record_retained_reason is (
             StartupRetentionReason.OBSERVED_RETAINED_ON_DISK

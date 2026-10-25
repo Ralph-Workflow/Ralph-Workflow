@@ -144,6 +144,7 @@ from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_p
 from ralph.pipeline.integration_dispatch_blocked_error import (
     IntegrationDispatchBlockedError,
 )
+from ralph.pipeline.integration_owner import RecordFactOutcome
 from ralph.pipeline.integration_resolution import (
     RESOLUTION_DRAIN,
     assert_non_resolution_dispatch_allowed,
@@ -1935,15 +1936,17 @@ def _apply_step_integration_outcome(
         )
         # Consume the typed decisions instead of discarding them. The
         # reducer stays the single last_decision writer; here the runner
-        # only acts on the decision by surfacing intervention or blocking
-        # the operator display state, and it fails closed on the closed
+        # only acts on the decision by surfacing the escalation in the
+        # operator display state, and it fails closed on the closed
         # vocabularies (UNKNOWN action / unrecognized decision) rather
-        # than inventing behavior.
-        if action is IntegrationAction.REQUIRE_INTERVENTION or (
-            record is not None and record.diagnostic_intervention_required
-        ):
+        # than inventing behavior. A fail-closed record fact is a typed
+        # RecordFactOutcome verdict: the owner seam routes it to the
+        # autonomous cleanup ladder (preserve the work to backup refs,
+        # then re-enter the rebase-first path) — the display names the
+        # bounded wait, never an operator hand-off.
+        if isinstance(action, RecordFactOutcome):
             reconciled_rebase = reconciled_rebase.set_operation_display_state(
-                OperationDisplayState.INTERVENTION_REQUIRED
+                OperationDisplayState.WAITING
             )
         elif action not in _KNOWN_INTEGRATION_ACTIONS:
             raise ValueError(f"Unknown integration action: {action!r}")
@@ -1983,7 +1986,8 @@ def _handle_blocked_dispatch_recovery(
     record = read_record(workspace_scope.root)
     # The blocked-dispatch recovery asks the SINGLE owner for the
     # mutation ladder and overlays the durable record facts. A retained
-    # obligation with no record behind it fails closed to intervention.
+    # obligation with no record behind it fails closed to the typed
+    # STALE_INTENT verdict, routed to the autonomous cleanup ladder.
     target = config.general.auto_integrate_target if config is not None else None
     remote = config.general.auto_integrate_remote if config is not None else None
     action = decide_seam_action(
@@ -1999,18 +2003,24 @@ def _handle_blocked_dispatch_recovery(
         integration_record=record,
         rebase_state=timed_state.rebase,
     )
-    # Consume the typed decisions: only a genuinely blocking/intervention
-    # verdict retains the recovery record; an authoritative terminal-success
-    # verdict means the dispatch block is stale and recovery retention would
-    # fabricate an obligation the authorities do not support. Unknown
-    # vocabulary values fail closed to intervention retention.
-    if decision is PhaseDecision.REPORT_TERMINAL_SUCCESS and action not in (
-        IntegrationAction.RESOLVE_ACTIVE_OPERATION,
-        IntegrationAction.CONTINUE_GIT_OPERATION,
-        IntegrationAction.REINTEGRATE_AGAINST_TARGET,
-        IntegrationAction.WAIT_FOR_BOUNDED_RETRY,
-        IntegrationAction.LAND_TARGET,
-        IntegrationAction.REQUIRE_INTERVENTION,
+    # Consume the typed decisions: only a genuinely blocking verdict
+    # retains the recovery record; an authoritative terminal-success
+    # verdict means the dispatch block is stale and recovery retention
+    # would fabricate an obligation the authorities do not support.
+    # A fail-closed record fact (typed RecordFactOutcome) is a
+    # recovery-owned verdict: the ladder must preserve the work before
+    # retention is reconsidered. Unknown vocabulary values fail closed
+    # to retention.
+    if decision is PhaseDecision.REPORT_TERMINAL_SUCCESS and not (
+        action
+        in (
+            IntegrationAction.RESOLVE_ACTIVE_OPERATION,
+            IntegrationAction.CONTINUE_GIT_OPERATION,
+            IntegrationAction.REINTEGRATE_AGAINST_TARGET,
+            IntegrationAction.WAIT_FOR_BOUNDED_RETRY,
+            IntegrationAction.LAND_TARGET,
+        )
+        or isinstance(action, RecordFactOutcome)
     ):
         return recovered_state
     return recovered_state.copy_with(

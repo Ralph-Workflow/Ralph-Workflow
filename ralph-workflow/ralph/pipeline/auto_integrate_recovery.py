@@ -107,6 +107,7 @@ from ralph.pipeline.auto_integrate_sync import REFRESH_UNREACHABLE
 from ralph.pipeline.auto_integrate_transaction import integration_transaction
 from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_progress
 from ralph.pipeline.integration_director import DEFAULT_REMOTE
+from ralph.pipeline.integration_owner import RecordFactOutcome
 from ralph.pipeline.integration_resolution import retained_integration_reason
 from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
@@ -131,14 +132,16 @@ def busy_refusal_outcome(
     retry_deadline: float | None,
     *,
     clock: object = None,
-) -> IntegrationAction:
+) -> IntegrationAction | RecordFactOutcome:
     """Map a persisted ``RebaseState.retry_deadline`` to the typed retry decision.
 
     Delegates to the canonical mapping in
-    :mod:`ralph.pipeline._integration_diagnostic` (the module that owns
-    the release-refusal BUSY sites): an unexpired persisted deadline
-    yields ``WAIT_FOR_BOUNDED_RETRY``; a missing, malformed, or expired
-    deadline yields ``REQUIRE_INTERVENTION``.
+    :mod:`ralph.pipeline._integration_record_facts`: an unexpired
+    persisted deadline yields ``WAIT_FOR_BOUNDED_RETRY``; a missing,
+    malformed, or expired deadline fails closed to the typed
+    :attr:`RecordFactOutcome.STALE_INTENT` verdict, which the caller
+    routes to the autonomous fallback ladder — never an operator
+    hand-off.
 
     The verdict is a **durable record fact**, not an observation: the
     persisted deadline is what bounds the wait and the pure observation
@@ -164,7 +167,7 @@ class _StartupRecoveryRoute(StrEnum):
 
 
 def _startup_recovery_route(
-    action: IntegrationAction,
+    action: IntegrationAction | RecordFactOutcome,
     record: IntegrationRecord,
 ) -> _StartupRecoveryRoute:
     """Map the owner's seam verdict onto the startup recovery route.
@@ -185,10 +188,13 @@ def _startup_recovery_route(
       reads the state as "re-integrate" and the record fact decides the
       landing split.
 
-    For everything else the seam verdict is the whole decision:
-    ``REQUIRE_INTERVENTION`` and ``WAIT_FOR_BOUNDED_RETRY`` defer without
-    mutating, and every mutation-ladder action routes to the recovery
-    path that owns the obligation.
+    For everything else the seam verdict is the whole decision: a typed
+    fail-closed :class:`RecordFactOutcome` verdict (a spent diagnostic
+    budget, a stale retained intent) and ``REQUIRE_INTERVENTION`` defer
+    without mutating — the typed outcome is routed to the autonomous
+    fallback ladder by the boundary that owns the durable ledger — and
+    every mutation-ladder action routes to the recovery path that owns
+    the obligation.
     """
     if (
         classify_git_operation(record) is not GitOperationKind.NONE
@@ -198,6 +204,8 @@ def _startup_recovery_route(
         return _StartupRecoveryRoute.RECOVERY_OWNS_OPERATION
     if record.phase == "integrated":
         return _StartupRecoveryRoute.LANDING_CONTINUATION
+    if isinstance(action, RecordFactOutcome):
+        return _StartupRecoveryRoute.DEFER_INTERVENTION
     if action is IntegrationAction.REQUIRE_INTERVENTION:
         return _StartupRecoveryRoute.DEFER_INTERVENTION
     if action is IntegrationAction.WAIT_FOR_BOUNDED_RETRY:
@@ -276,11 +284,20 @@ def recover_incomplete_integration(
 
         record_outcome = read_record_outcome(Path(workspace_scope.root), backend=backend)
         if record_outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
-            reason = "durable integration record unreadable; intervention required" + (
-                f" ({record_outcome.unreadable_reason})" if record_outcome.unreadable_reason else ""
+            # Fail closed: the unreadable bytes stay untouched as
+            # ownership evidence; the typed ladder-escalation outcome
+            # keeps the obligation blocking while the autonomous
+            # fallback ladder escalates — never a human hand-off.
+            reason = (
+                "durable integration record unreadable; escalating through the "
+                "autonomous fallback ladder; record retained, bytes preserved"
+            ) + (
+                f" ({record_outcome.unreadable_reason})"
+                if record_outcome.unreadable_reason
+                else ""
             )
             return RebaseState(
-                last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+                last_outcome=RebaseOutcomeKind.LADDER_ESCALATION,
                 last_reason=reason,
                 last_target=None,
                 recovery_record_retained=True,
@@ -395,14 +412,21 @@ def _recover_incomplete_integration_owned(
             )
 
         if route is _StartupRecoveryRoute.DEFER_INTERVENTION:
-            # The durable record demands operator intervention and the
+            # The durable record carries a fail-closed typed verdict (a
+            # spent diagnostic budget or a stale retained intent) and the
             # live Git state does not prove the claim stale, so the
-            # boundary must not mutate: the record is retained for the
-            # operator. (The seam can only ever turn the owner's rung
-            # into this one; the owner's own answer never carries it.)
+            # boundary must not mutate: the record is retained and the
+            # typed LADDER_ESCALATION outcome names the next autonomous
+            # action — the fallback ladder, rung 6 hard reset as the
+            # last resort, never a person. (The seam can only ever turn
+            # the owner's rung into this one; the owner's own answer
+            # never carries it.)
             deferred: RebaseState | None = RebaseState(
-                last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
-                last_reason="recovery: durable integration record requires operator intervention",
+                last_outcome=RebaseOutcomeKind.LADDER_ESCALATION,
+                last_reason=(
+                    "recovery: durable record requires autonomous ladder escalation; "
+                    "record retained, escalating through the fallback ladder"
+                ),
                 last_target=record.target,
                 recovery_record_retained=True,
                 recovery_record_retained_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,

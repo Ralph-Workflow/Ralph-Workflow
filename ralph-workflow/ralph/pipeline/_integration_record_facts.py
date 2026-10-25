@@ -18,9 +18,14 @@ Three members of the closed vocabulary are statements about DURABLE
 STATE rather than about the live worktree, so no pure observation can
 express them:
 
-* ``REQUIRE_INTERVENTION`` -- a durable, fail-closed operator handoff;
 * ``PUBLISH_AFTER_LANDING`` -- a durable publication obligation;
 * ``COMPLETE_WITH_PROOF`` -- a durable completion proof.
+
+(The retired projection's ``REQUIRE_INTERVENTION`` fail-closed value
+stays in :mod:`ralph.pipeline._integration_action` with zero production
+producers; fail-closed record facts are typed
+:class:`~ralph.pipeline.integration_owner.RecordFactOutcome` verdicts
+routed to the autonomous fallback ladder instead — see below.)
 
 **The owner decides the mutation ladder; record-fact completion and
 publication stay with the seam.** This module is that single shared
@@ -33,12 +38,29 @@ Which durable facts live here
 -----------------------------
 
 * the record's intervention flag (``diagnostic_intervention_required``)
-  -- the fail-closed operator handoff (:func:`record_requires_intervention`),
-  applied against the LIVE observation so a stale claim cannot outrank
-  Git (see "Git outranks the record" below);
+  -- the fail-closed diagnostic-budget-spent verdict
+  (:func:`record_requires_intervention`), applied against the LIVE
+  observation so a stale claim cannot outrank Git (see "Git outranks
+  the record" below);
 * the persisted bounded-retry deadline (``retry_deadline``) -- the
-  wait-versus-intervention decision at the release-refusal sites
+  wait-versus-ladder-escalation decision at the release-refusal sites
   (:func:`busy_refusal_outcome`).
+
+Fail-closed verdicts route to the ladder, never to a person
+------------------------------------------------------------
+
+When a durable record fact cannot prove a next step the boundary can
+act on — the intervention flag is set and live Git does not supersede
+it, a retained obligation has no record behind it, or a bounded-retry
+deadline is missing, malformed or expired — the overlay returns a TYPED
+:class:`~ralph.pipeline.integration_owner.RecordFactOutcome` verdict
+(``STALE_INTENT`` / ``DIAGNOSTIC_BUDGET_SPENT``), never
+``IntegrationAction.REQUIRE_INTERVENTION``. Each outcome maps to a
+cleanup-ladder rung in
+:data:`~ralph.pipeline.integration_owner.NEXT_ACTION_TO_LADDER_RUNG`:
+the ladder preserves the work to backup refs FIRST and re-enters the
+rebase-first path, ending in rung 6 (hard reset) — an autonomous
+escalation, never a terminal block on an operator.
 
 The publication obligation and the completion proof are NOT projected
 here. A durable :class:`~ralph.pipeline.auto_integrate_record.IntegrationRecord`
@@ -62,9 +84,11 @@ A durable claim therefore outranks the live Git observation ONLY while
 the obligation it describes is still live. When the live observation
 proves the obligation is discharged -- or that the record belongs to
 another worktree -- the durable claim is stale intent, and a stale
-claim must NOT turn a current, healthy Git observation into
-``REQUIRE_INTERVENTION`` (a terminal block the boundary can never
-leave). :func:`live_git_supersedes_record` is that test, and
+claim must NOT override a current, healthy Git observation. When the
+claim IS still live but cannot prove a next step, the overlay fails
+closed to a typed :class:`~ralph.pipeline.integration_owner.RecordFactOutcome`
+verdict routed to the autonomous fallback ladder — never to a terminal
+block on a person. :func:`live_git_supersedes_record` is that test, and
 :func:`apply_record_facts` applies it.
 """
 
@@ -80,6 +104,7 @@ from ralph.pipeline.integration_observation import (
     TargetVsFeature,
     WorktreeState,
 )
+from ralph.pipeline.integration_owner import RecordFactOutcome
 from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
@@ -99,18 +124,21 @@ __all__ = [
 #: The closed set of integration actions that are decided from DURABLE
 #: RECORD FACTS rather than from a live observation. The owner's
 #: projection never produces any of them; the seams overlay them from
-#: the durable facts through :func:`apply_record_facts`.
+#: the durable facts through :func:`apply_record_facts`. A fail-closed
+#: record fact that cannot prove a next step is NOT an
+#: ``IntegrationAction`` at all: it is a typed
+#: :class:`~ralph.pipeline.integration_owner.RecordFactOutcome` verdict
+#: routed to the autonomous fallback ladder.
 RECORD_FACT_ACTIONS: Final[frozenset[IntegrationAction]] = frozenset(
     {
         IntegrationAction.PUBLISH_AFTER_LANDING,
-        IntegrationAction.REQUIRE_INTERVENTION,
         IntegrationAction.COMPLETE_WITH_PROOF,
     }
 )
 
 
 def record_requires_intervention(record: IntegrationRecord | None) -> bool:
-    """True when the durable record itself demands operator intervention.
+    """True when the durable record's diagnostic repair budget is spent.
 
     The flag is written by the diagnostic path when the repair-attempt
     cap is reached. It is durable ATTEMPT HISTORY: it says "the
@@ -160,7 +188,7 @@ def apply_record_facts(
     *,
     retained: bool = False,
     observation: Observation | None = None,
-) -> IntegrationAction:
+) -> IntegrationAction | RecordFactOutcome:
     """Overlay the durable record facts on the owner's mutation-ladder answer.
 
     Args:
@@ -170,7 +198,8 @@ def apply_record_facts(
         retained: True when the caller holds a RETAINED integration
             obligation. A retained obligation with no durable record
             behind it has nothing the boundary can act on, so the seam
-            fails closed to ``REQUIRE_INTERVENTION``.
+            fails closed to
+            :attr:`RecordFactOutcome.STALE_INTENT`.
         observation: The LIVE observation the owner's answer was made
             from. When it proves the durable claim stale (see
             :func:`live_git_supersedes_record`) the durable claim does
@@ -183,14 +212,21 @@ def apply_record_facts(
         unless a durable record fact overrides it, and a durable record
         fact wins ONLY while the obligation it describes is still live:
         a stale durable claim never turns a current, healthy Git
-        observation into a terminal block.
+        observation into anything other than the owner's answer. When a
+        live durable claim cannot prove a next step, the return is a
+        typed :class:`RecordFactOutcome` verdict
+        (``DIAGNOSTIC_BUDGET_SPENT`` for the spent diagnostic repair
+        budget, ``STALE_INTENT`` for an unprovable retained obligation)
+        that the caller routes to the autonomous fallback ladder — each
+        outcome maps to a cleanup-ladder rung in
+        :data:`~ralph.pipeline.integration_owner.NEXT_ACTION_TO_LADDER_RUNG`.
     """
     if observation is not None and live_git_supersedes_record(observation):
         return action
     if record_requires_intervention(record):
-        return IntegrationAction.REQUIRE_INTERVENTION
+        return RecordFactOutcome.DIAGNOSTIC_BUDGET_SPENT
     if record is None and retained:
-        return IntegrationAction.REQUIRE_INTERVENTION
+        return RecordFactOutcome.STALE_INTENT
     return action
 
 
@@ -212,21 +248,24 @@ def busy_refusal_outcome(
     retry_deadline: float | None,
     *,
     clock: object = None,
-) -> IntegrationAction:
+) -> IntegrationAction | RecordFactOutcome:
     """Map a persisted ``retry_deadline`` to the typed retry decision.
 
     A durable, unexpired deadline authorises ``WAIT_FOR_BOUNDED_RETRY``;
-    a missing, malformed, or expired deadline fails closed to
-    ``REQUIRE_INTERVENTION``. The architecture forbids an unbounded
-    wait, so an unusable deadline is never treated as "wait forever".
+    a missing, malformed, or expired deadline fails closed to the typed
+    :attr:`RecordFactOutcome.STALE_INTENT` verdict, which the caller
+    routes to the autonomous fallback ladder (the ladder preserves the
+    work to backup refs and re-enters the rebase-first path — never an
+    operator hand-off). The architecture forbids an unbounded wait, so
+    an unusable deadline is never treated as "wait forever".
     """
     if not isinstance(retry_deadline, (int, float)) or isinstance(retry_deadline, bool):
-        return IntegrationAction.REQUIRE_INTERVENTION
+        return RecordFactOutcome.STALE_INTENT
     now = _current_time(clock)
     if now is None:
         now = time.monotonic()
     if now >= float(retry_deadline):
-        return IntegrationAction.REQUIRE_INTERVENTION
+        return RecordFactOutcome.STALE_INTENT
     return IntegrationAction.WAIT_FOR_BOUNDED_RETRY
 
 

@@ -33,6 +33,7 @@ from ralph.pipeline import auto_integrate_catchup as catchup
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_decision import EscalationRung
+from ralph.pipeline.integration_owner import RecordFactOutcome
 from tests._fake_git_env import LIVE_OWNER, STALE_OWNER, SimulatedGitEnvironment
 
 if TYPE_CHECKING:
@@ -307,12 +308,12 @@ def test_no_progress_window_surfaces_a_visible_stall_state(tmp_path: Path) -> No
 
 def _spy_seam(
     monkeypatch: pytest.MonkeyPatch,
-    verdict: IntegrationAction,
+    verdict: IntegrationAction | RecordFactOutcome,
 ) -> list[dict[str, object]]:
     """Record the bindings the tick hands the owner seam; answer ``verdict``."""
     calls: list[dict[str, object]] = []
 
-    def _spy(root: Path, **kwargs: object) -> IntegrationAction:
+    def _spy(root: Path, **kwargs: object) -> IntegrationAction | RecordFactOutcome:
         calls.append({"root": root, **kwargs})
         return verdict
 
@@ -398,10 +399,15 @@ def test_tick_seam_remote_falls_back_to_the_configured_remote_name(
 def test_owner_seam_refusal_blocks_the_merge_without_a_ledger_charge(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A seam verdict that fails closed refuses the mutation before any charge."""
+    """A fail-closed seam verdict refuses the mutation before any charge.
+
+    The typed STALE_INTENT verdict escalates through the autonomous
+    cleanup ladder — the catch-up mutation defers to it, never to a
+    person.
+    """
     state = SimulatedGitEnvironment()
     merges = _install_seams(monkeypatch, state)
-    _spy_seam(monkeypatch, IntegrationAction.REQUIRE_INTERVENTION)
+    _spy_seam(monkeypatch, RecordFactOutcome.STALE_INTENT)
     (tmp_path / ".git").mkdir()
     ledger = _ledger(tmp_path)
 
@@ -415,7 +421,7 @@ def test_owner_seam_refusal_blocks_the_merge_without_a_ledger_charge(
 
     assert merges == []
     assert outcome.startswith(catchup.CATCHUP_REFUSED)
-    assert IntegrationAction.REQUIRE_INTERVENTION.value in outcome
+    assert RecordFactOutcome.STALE_INTENT.value in outcome
     assert ledger.read().repeat_counts == {}
 
 

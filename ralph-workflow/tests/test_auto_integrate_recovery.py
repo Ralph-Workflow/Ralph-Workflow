@@ -685,27 +685,33 @@ def test_recovery_treats_bogus_phase_record_as_corrupt(
         ("unsupported_schema", b'{"totally_unknown_shape": [1, 2, 3]}'),
     ],
 )
-def test_unreadable_record_reports_intervention_not_retained_skip(
+def test_unreadable_record_reports_ladder_escalation_not_retained_skip(
     tmp_git_repo: Path,
     cause: str,
     payload: bytes,
 ) -> None:
-    """A PRESENT-but-unreadable record must yield the typed intervention state."""
+    """A PRESENT-but-unreadable record must yield the typed ladder escalation.
+
+    The unreadable bytes are the only proof of the interrupted
+    integration, so the record stays retained on disk; the typed
+    ``LADDER_ESCALATION`` outcome names the next autonomous action (the
+    fallback ladder) instead of an operator hand-off.
+    """
     record_file = tmp_git_repo / ".agent" / "auto_integrate_in_progress.json"
     record_file.parent.mkdir(parents=True, exist_ok=True)
     record_file.write_bytes(payload)
     outcome = recover_incomplete_integration(WorkspaceScope(tmp_git_repo))
     assert outcome is not None
-    assert outcome.last_outcome.value == "diagnostic_intervention_required"
-    assert outcome.last_decision == "report_intervention_required"
-    assert outcome.operation_display_state == "intervention_required"
+    assert outcome.last_outcome.value == "ladder_escalation"
+    assert outcome.last_decision == "block_for_recovery"
+    assert outcome.operation_display_state == "evidence_diagnosis"
     assert cause in (outcome.last_reason or "")
     assert outcome.recovery_record_retained is True
     # The unreadable evidence bytes stay untouched on disk.
     assert record_file.read_bytes() == payload
 
 
-def test_unreadable_exists_permission_error_reports_intervention_not_generic_skip(
+def test_unreadable_exists_permission_error_reports_ladder_escalation_not_generic_skip(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -715,8 +721,8 @@ def test_unreadable_exists_permission_error_reports_intervention_not_generic_ski
     catches ``PermissionError`` from ``backend.exists()`` and returns the typed
     ``UNREADABLE`` outcome instead of letting the exception escape to
     ``recover_incomplete_integration``\'s outer ``except Exception`` handler (which
-    would return a generic retained skip). The typed path returns the diagnostic
-    intervention decision and leaves the record file bytes untouched.
+    would return a generic retained skip). The typed path returns the ladder
+    escalation decision and leaves the record file bytes untouched.
     """
     import ralph.pipeline.auto_integrate_recovery as recovery_mod
 
@@ -783,11 +789,11 @@ def test_unreadable_exists_permission_error_reports_intervention_not_generic_ski
     # 5. The typed UNREADABLE branch must be reached (NOT the generic retained
     #    skip from the outer except handler that would catch an escaped exception).
     assert outcome is not None
-    assert outcome.last_outcome.value == "diagnostic_intervention_required"
-    assert outcome.last_decision == "report_intervention_required"
-    assert outcome.operation_display_state == "intervention_required"
+    assert outcome.last_outcome.value == "ladder_escalation"
+    assert outcome.last_decision == "block_for_recovery"
+    assert outcome.operation_display_state == "evidence_diagnosis"
     assert outcome.recovery_record_retained is True
-    # 6. The record file bytes are unchanged (the intervention path never mutates).
+    # 6. The record file bytes are unchanged (the escalation path never mutates).
     assert record_file.read_bytes() == original_bytes
 
 

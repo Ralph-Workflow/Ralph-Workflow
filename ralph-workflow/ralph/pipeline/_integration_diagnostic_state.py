@@ -20,6 +20,7 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.pipeline._auto_integrate_record_restamp import is_owner_dead
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline.auto_integrate_record import parse_lease
+from ralph.pipeline.auto_integrate_transition import DIAGNOSTIC_BUDGET_SPENT_REASON
 from ralph.pipeline.operation_evidence import (
     EvidenceVerdict,
     SubprocessOperationEvidenceCollector,
@@ -32,12 +33,30 @@ if TYPE_CHECKING:
 
 #: Default repair-attempt cap. The diagnostic path rotates inspection
 #: agents on every handoff, but the rotation must terminate: an
-#: over-cap handoff emits the ``RAISE_DIAGNOSTIC_INTERVENTION``
-#: transition and stops calling agents. Operators can raise the cap
-#: via ``conflict_resolution.diagnostic_repair_attempt_cap`` in
-#: policy configuration; the default is intentionally low so the
-#: production loop is broken on the very first incident.
+#: over-cap handoff stamps the typed ``DIAGNOSTIC_BUDGET_SPENT_REASON``
+#: marker on the durable record and routes the state into the
+#: autonomous fallback ladder
+#: (:mod:`ralph.pipeline._integration_diagnostic_handoff`), never to a
+#: human hand-off. Operators can raise the cap via
+#: ``conflict_resolution.diagnostic_repair_attempt_cap`` in policy
+#: configuration; the default is intentionally low so the production
+#: loop is broken on the very first incident.
 DIAGNOSTIC_REPAIR_ATTEMPT_CAP: int = 5
+
+#: Re-exported from :mod:`ralph.pipeline.auto_integrate_transition`,
+#: where the constant lives so the load-time counter clamp can read it
+#: without an import cycle.
+__all__ = [
+    "DIAGNOSTIC_BUDGET_SPENT_REASON",
+    "DIAGNOSTIC_REPAIR_ATTEMPT_CAP",
+    "EVIDENCE_LEASE_SECONDS",
+    "diagnostic_evidence_unchanged",
+    "diagnostic_evidence_verdict",
+    "diagnostic_needed",
+    "evaluate_held_diagnostic_evidence",
+    "operation_evidence_collector",
+    "release_verified_diagnostic",
+]
 
 #: Default lease lifetime in seconds. The diagnostic HOLD step writes
 #: ``diagnostic_ownership = f"{identity_fingerprint(record)}:{time.time()}"``.

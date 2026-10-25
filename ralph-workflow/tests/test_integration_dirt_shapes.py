@@ -219,3 +219,125 @@ def test_evidence_defaults_carry_no_refinement() -> None:
     )
 
     assert with_empty_evidence == plain
+
+
+# ---------------------------------------------------------------------------
+# Quoting-hostile paths: core.quotePath C-quoted/escaped records.
+#
+# Line-oriented porcelain (which at least one production probe feeds) quotes
+# paths holding non-ASCII bytes, quotes or backslashes; ``-z`` porcelain
+# never quotes. Both forms must classify without raising, and the decoded
+# path — not the quoted spelling — is what evidence refinements match on.
+# ---------------------------------------------------------------------------
+
+
+def test_quoted_octal_escape_path_classifies_by_xy_code() -> None:
+    """A C-quoted non-ASCII path is unstaged dirt, quoted or not."""
+    verdict = classify_worktree(Reading.known(' M "caf\\303\\251.py"\n'))
+
+    assert verdict.state is WorktreeState.TRACKED_CHANGES
+    assert verdict.dirt_shape is DirtShape.UNSTAGED_MODIFICATION
+    assert verdict.dispatch is WorktreeDispatch.BLOCKED
+
+
+def test_quoted_path_with_quote_and_backslash_escapes() -> None:
+    """Escaped ``\\"`` and ``\\\\`` sequences decode without raising."""
+    verdict = classify_worktree(Reading.known(' M "we\\"ird\\\\name.py"\n'))
+
+    assert verdict.dirt_shape is DirtShape.UNSTAGED_MODIFICATION
+
+
+def test_mode_only_evidence_matches_a_quoted_porcelain_path() -> None:
+    """A chmod on a non-ASCII path refines to MODE_ONLY via the decoded path."""
+    verdict = classify_worktree(
+        Reading.known(' M "caf\\303\\251.sh"\n'),
+        evidence=DirtEvidence(mode_only_paths=frozenset({"café.sh"})),
+    )
+
+    assert verdict.state is WorktreeState.TRACKED_CHANGES
+    assert verdict.dirt_shape is DirtShape.MODE_ONLY
+    assert verdict.dispatch is WorktreeDispatch.BLOCKED
+
+
+def test_mode_only_evidence_matches_a_raw_nul_terminated_non_ascii_path() -> None:
+    """``-z`` porcelain carries raw UTF-8; the evidence path matches verbatim."""
+    verdict = classify_worktree(
+        Reading.known(" M café.sh\0"),
+        evidence=DirtEvidence(mode_only_paths=frozenset({"café.sh"})),
+    )
+
+    assert verdict.dirt_shape is DirtShape.MODE_ONLY
+
+
+def test_line_ending_evidence_matches_a_quoted_porcelain_path() -> None:
+    """An empty content diff on a quoted path is LINE_ENDING_ONLY, not a block."""
+    verdict = classify_worktree(
+        Reading.known(' M "caf\\303\\251.py"\n'),
+        evidence=DirtEvidence(empty_diff_paths=frozenset({"café.py"})),
+    )
+
+    assert verdict.dirt_shape is DirtShape.LINE_ENDING_ONLY
+    assert verdict.dispatch is WorktreeDispatch.ALLOWED
+
+
+def test_untracked_overwrite_evidence_matches_a_quoted_untracked_path() -> None:
+    """A quoted untracked path incoming commits would overwrite still blocks."""
+    verdict = classify_worktree(
+        Reading.known('?? "caf\\303\\251/config.py"\n'),
+        evidence=DirtEvidence(incoming_overwrite_paths=frozenset({"café/config.py"})),
+    )
+
+    assert verdict.state is WorktreeState.UNTRACKED
+    assert verdict.dirt_shape is DirtShape.UNTRACKED_BLOCKING
+    assert verdict.dispatch is WorktreeDispatch.BLOCKED
+
+
+def test_quoted_unmerged_path_is_unmerged() -> None:
+    """A quoted conflicted path outranks every other shape."""
+    verdict = classify_worktree(Reading.known('UU "conf\\303\\251lict.py"\n'))
+
+    assert verdict.state is WorktreeState.UNMERGED
+    assert verdict.dirt_shape is DirtShape.UNMERGED
+
+
+def test_malformed_quoted_path_falls_back_without_raising() -> None:
+    """An unterminated quote is not a well-formed C-quote: classify by xy."""
+    verdict = classify_worktree(Reading.known(' M "broken.py\n'))
+
+    assert verdict.state is WorktreeState.TRACKED_CHANGES
+    assert verdict.dirt_shape is DirtShape.UNSTAGED_MODIFICATION
+
+
+# ---------------------------------------------------------------------------
+# Submodule (gitlink) dirt records.
+#
+# Porcelain reports submodule state on the gitlink path with the ordinary
+# XY vocabulary (modified content and new commits both render as ``M`` in
+# some position), so the classifier must map them like any tracked path.
+# ---------------------------------------------------------------------------
+
+
+def test_submodule_modified_content_is_tracked_dirt() -> None:
+    """A dirty submodule gitlink blocks like any tracked modification."""
+    verdict = classify_worktree(Reading.known(" M vendor/lib\0"))
+
+    assert verdict.state is WorktreeState.TRACKED_CHANGES
+    assert verdict.dirt_shape is DirtShape.UNSTAGED_MODIFICATION
+    assert verdict.dispatch is WorktreeDispatch.BLOCKED
+
+
+def test_submodule_new_commits_are_staged_dirt() -> None:
+    """New submodule commits staged in the index are STAGED_ONLY."""
+    verdict = classify_worktree(Reading.known("M  vendor/lib\0"))
+
+    assert verdict.state is WorktreeState.STAGED
+    assert verdict.dirt_shape is DirtShape.STAGED_ONLY
+    assert verdict.dispatch is WorktreeDispatch.BLOCKED
+
+
+def test_submodule_dirt_outranks_untracked_scratch() -> None:
+    """A dirty gitlink beside scratch untracked files stays tracked dirt."""
+    verdict = classify_worktree(Reading.known(" M vendor/lib\0?? notes.txt\0"))
+
+    assert verdict.state is WorktreeState.TRACKED_CHANGES
+    assert verdict.dirt_shape is DirtShape.UNSTAGED_MODIFICATION

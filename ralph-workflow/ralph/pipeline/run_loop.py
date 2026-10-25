@@ -70,6 +70,10 @@ from ralph.pipeline.cycle_timing import (
     initialize_legacy_development_timebox_on_resume,
 )
 from ralph.pipeline.integration_decision import CLEANUP_LADDER_ORDER
+from ralph.pipeline.integration_owner import (
+    RecordFactOutcome,
+    ladder_rung_for_record_fact_outcome,
+)
 from ralph.pipeline.integration_resolution import (
     EXHAUSTED,
     inspect_integration_resolution,
@@ -2435,13 +2439,13 @@ def _dispatch_owner_ladder_rung(
     re-observes — that is the ledger-charged escalation, never a re-run
     of the same action. The same rung re-selected with no state change
     answers ``"break"`` (never dispatch a rung twice); every non-ladder
-    verdict and every verdict the record-fact overlay escalated to
-    ``REQUIRE_INTERVENTION`` answers ``"fall"`` — the terminal block is
-    consumed by the caller's alarm, not by the ladder.
+    verdict answers ``"fall"``. A verdict whose durable record facts
+    failed closed (``record_fact`` set) CARRIES the escalation rung
+    (the first rung: preserve the work to backup refs) and dispatches
+    it like any ladder verdict — the ladder, never a terminal block on
+    an operator, owns the escalation.
     """
     if sync_verdict is None or sync_verdict.ladder_rung is None:
-        return executed_rung, previous_action, "fall"
-    if sync_verdict.action is IntegrationAction.REQUIRE_INTERVENTION:
         return executed_rung, previous_action, "fall"
     if sync_verdict.ladder_rung is executed_rung:
         return executed_rung, previous_action, "break"
@@ -2712,48 +2716,6 @@ def _diagnose_retained_integration(ctx: LoopContext, failure: str) -> None:
     diagnose_retained_integration(ctx, failure)
 
 
-def _persist_unreadable_intervention(
-    ctx: LoopContext,
-    failure: str,
-    unreadable_reason: str | None,
-) -> None:
-    """Persist the unreadable-record intervention projection (decision-complete).
-
-    Writes a minimal sentinel record carrying ``diagnostic_intervention_required``
-    so ``_check_blocking_decision`` yields REPORT_INTERVENTION_REQUIRED across
-    restarts. Idempotent: skips when the sentinel is already on disk or the
-    caller's rebase state already carries the intervention flag.
-    """
-    from ralph.pipeline._integration_action import RebaseOutcomeKind
-    from ralph.pipeline.auto_integrate_record import read_record_outcome
-
-    root = ctx.workspace_scope.root
-    outcome = read_record_outcome(root)
-    if outcome.disposition is RecordReadOutcomeDisposition.PRESENT:
-        return  # a readable record appeared; ordinary authorities decide
-    # The corrupt/unsupported record stays untouched on disk -- it is
-    # evidence. The intervention projection lives on the persisted rebase
-    # state: last_outcome DIAGNOSTIC_INTERVENTION_REQUIRED makes
-    # RebaseState.is_intervention_required True, so
-    # _check_blocking_decision yields REPORT_INTERVENTION_REQUIRED,
-    # idempotently across restarts, with a visible label distinct from
-    # evidence_diagnosis.
-    if not ctx.latest_state:
-        return
-    rebase = ctx.latest_state[0].rebase
-    updated = rebase.model_copy(
-        update={
-            "last_outcome": RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
-            "last_reason": (
-                "durable integration record unreadable; intervention required"
-                + (f" ({unreadable_reason})" if unreadable_reason else "")
-            ),
-        }
-    ).set_operation_display_state(OperationDisplayState.INTERVENTION_REQUIRED)
-    ctx.latest_state[:] = [ctx.latest_state[0].copy_with(rebase=updated)]
-    _save_recovered_rebase_checkpoint(ctx.latest_state[0], ctx)
-
-
 def _handoff_retained_failure(
     ctx: LoopContext,
     failure: str,
@@ -2840,12 +2802,32 @@ def _handoff_retained_failure(
             ctx.latest_state[:] = [ctx.latest_state[0].copy_with(rebase=rebase_resolved)]
             _save_recovered_rebase_checkpoint(ctx.latest_state[0], ctx)
         elif outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
-            # Decision-complete handoff: a corrupt or unsupported record cannot
-            # answer `diagnostic_needed`, so re-running the diagnostic would loop
-            # forever. Persist the intervention projection once so
-            # _check_blocking_decision yields REPORT_INTERVENTION_REQUIRED with a
-            # label distinct from evidence_diagnosis.
-            _persist_unreadable_intervention(ctx, failure, outcome.unreadable_reason)
+            # A corrupt or unsupported record cannot answer
+            # `diagnostic_needed`, so re-running the diagnostic would
+            # loop forever. The corrupt bytes stay untouched on disk --
+            # they are the only evidence of the interrupted
+            # integration, i.e. the preserved copy. Escalation is
+            # autonomous: the owner seam fails closed on the unreadable
+            # durable fact and the cleanup ladder preserves the work to
+            # backup refs before any destructive step. One
+            # rate-limited line names what is wrong, where the
+            # preserved copy lives and which rung runs next -- never a
+            # terminal block on a person.
+            rung = ladder_rung_for_record_fact_outcome(RecordFactOutcome.STALE_INTENT)
+            message = (
+                f"durable integration record unreadable "
+                f"({outcome.unreadable_reason or 'unknown reason'}); "
+                f"corrupt bytes preserved at the record path; escalating through "
+                f"cleanup-ladder rung {rung.name.lower()}"
+            )
+
+            def _emit_unreadable_line(line: str) -> None:
+                logger.warning("{}", line)
+                with suppress(Exception):
+                    emit_integration_warn_line(ctx.active_display, line)
+
+            with suppress(Exception):
+                integration_outcome_log().record(_emit_unreadable_line, message)
 
 
 def _dispatch_retained_handoff(
@@ -2929,11 +2911,14 @@ def _block_unresolved_integration(
         # The durable record is locked past its bounded retry deadline:
         # the read outcome is a record fact, so the canonical
         # ``busy_refusal_outcome`` helper decided it (a missing or
-        # expired deadline fails closed to REQUIRE_INTERVENTION).
+        # expired deadline fails closed to the typed STALE_INTENT
+        # verdict). The escalation runs through the autonomous cleanup
+        # ladder (preserve the work to backup refs, then re-enter the
+        # rebase-first path) — the run defers with a bounded retry
+        # while the boundary ladder recovery dispatches the rung; the
+        # display names the wait, never an operator hand-off.
         state = state.copy_with(
-            rebase=state.rebase.set_operation_display_state(
-                OperationDisplayState.INTERVENTION_REQUIRED
-            )
+            rebase=state.rebase.set_operation_display_state(OperationDisplayState.WAITING)
         )
     if record is not None:
         # The blocking seam asks the SINGLE owner for the mutation ladder
@@ -2948,19 +2933,32 @@ def _block_unresolved_integration(
             target=target,
             remote=remote,
         )
-        # The record facts map diagnostic_intervention_required=True to
-        # REQUIRE_INTERVENTION themselves; no direct checkpoint-field read.
-        if record_action == IntegrationAction.REQUIRE_INTERVENTION:
-            emit_integration_warn_line(
-                ctx.active_display,
-                "CRITICAL: diagnostic intervention required; dispatch blocked",
+        # A fail-closed record fact (typed RecordFactOutcome) names what
+        # is wrong and escalates through the cleanup ladder; the
+        # boundary ladder recovery below dispatches the rung (preserve
+        # the work to backup refs, then re-enter the rebase-first
+        # path). One rate-limited user-visible line names the verdict,
+        # where the preserved copy lands and which rung runs next; the
+        # run falls through to the retained/recovery handling — it
+        # never ends blocked on a person.
+        if isinstance(record_action, RecordFactOutcome):
+            rung = ladder_rung_for_record_fact_outcome(record_action)
+            message = (
+                f"integration record facts failed closed ({record_action.value}); "
+                f"preserving the work to backup refs and escalating through "
+                f"cleanup-ladder rung {rung.name.lower()}"
             )
+
+            def _emit_record_fact_line(line: str) -> None:
+                logger.warning("{}", line)
+                with suppress(Exception):
+                    emit_integration_warn_line(ctx.active_display, line)
+
+            with suppress(Exception):
+                integration_outcome_log().record(_emit_record_fact_line, message)
             state = state.copy_with(
-                rebase=state.rebase.set_operation_display_state(
-                    OperationDisplayState.INTERVENTION_REQUIRED
-                )
+                rebase=state.rebase.set_operation_display_state(OperationDisplayState.WAITING)
             )
-            return state, prev_phase, 1
 
     state, retained_result = _handle_retained_integration(state, ctx, prev_phase)
     if retained_result is not None:
@@ -3000,10 +2998,12 @@ def _blocking_record(ctx: LoopContext) -> tuple[IntegrationRecord | None, bool]:
 
     * a BUSY record is bounded by its persisted retry deadline. The
       canonical :func:`busy_refusal_outcome` decides it -- an absent,
-      malformed or expired deadline fails closed to
-      ``REQUIRE_INTERVENTION`` because the architecture forbids an
+      malformed or expired deadline fails closed to the typed
+      :attr:`RecordFactOutcome.STALE_INTENT` verdict (routed to the
+      autonomous cleanup ladder) because the architecture forbids an
       unbounded wait. The second return value reports that verdict so
-      the caller can surface the intervention display state.
+      the caller can surface the escalation line and the bounded
+      retry.
     * an UNREADABLE record is never silently dropped: it stays on disk
       as evidence and the unreadable-record seam owns it.
     * every other disposition yields the readable record.
@@ -3014,15 +3014,25 @@ def _blocking_record(ctx: LoopContext) -> tuple[IntegrationRecord | None, bool]:
     """
     outcome = read_record_outcome(ctx.workspace_scope.root)
     if outcome.disposition is RecordReadOutcomeDisposition.BUSY:
-        expired = (
-            busy_refusal_outcome(outcome.busy_deadline) is IntegrationAction.REQUIRE_INTERVENTION
-        )
+        expired = isinstance(busy_refusal_outcome(outcome.busy_deadline), RecordFactOutcome)
         if expired:
-            emit_integration_warn_line(
-                ctx.active_display,
-                "CRITICAL: durable integration record busy past its bounded retry deadline; "
-                "dispatch blocked",
+            # One line per escalation (rate-limited by the outcome log):
+            # what is wrong, where the work is preserved, which rung
+            # runs next. Never a terminal block on a person.
+            rung = ladder_rung_for_record_fact_outcome(RecordFactOutcome.STALE_INTENT)
+            message = (
+                "durable integration record busy past its bounded retry deadline; "
+                "preserving the work to backup refs and escalating through "
+                f"cleanup-ladder rung {rung.name.lower()}"
             )
+
+            def _emit_busy_expired_line(line: str) -> None:
+                logger.warning("{}", line)
+                with suppress(Exception):
+                    emit_integration_warn_line(ctx.active_display, line)
+
+            with suppress(Exception):
+                integration_outcome_log().record(_emit_busy_expired_line, message)
         # The record is not actionable while it is locked; the
         # retained-integration seam owns the bounded wait.
         return None, expired
@@ -3049,10 +3059,13 @@ def _boundary_ladder_recovery(
     tree and the conflict resolver must not run.
 
     Returns ``(state, verdict)`` — the re-inspection that allowed
-    dispatch — when the ladder healed the tree, and ``(state, None)``
+    dispatch — when the ladder healed the tree, and     ``(state, None)``
     when the owner selected no rung, the climb saturated under an
     unchanged observation, or integration is not configured: the caller
     then runs the recovery pass the boundary has always run.
+    A verdict whose durable record facts failed closed carries the
+    escalation rung (``record_fact`` set) and dispatches it like any
+    ladder verdict: preservation precedes any reset, never a person.
     """
     configured = _configured_sync_target(ctx)
     if configured is None:
@@ -3097,8 +3110,9 @@ def _post_recovery_verdict(
     Before any mutation the owner's cleanup-ladder selection is consumed
     through :func:`_boundary_ladder_recovery`: a rung-level verdict
     dispatches exactly once per decision (ledger-charged escalation,
-    never the same rung twice under an unchanged observation,
-    ``REQUIRE_INTERVENTION``-overlaid verdicts never dispatch) and the
+    never the same rung twice under an unchanged observation; a verdict
+    whose record facts failed closed carries the escalation rung and
+    dispatches it like any ladder verdict) and the
     seam re-observes after each dispatch. Only when the ladder did not
     heal the tree does the boundary fall through to the
     conflict-resolver recovery pass it has always run.
@@ -3370,42 +3384,14 @@ def _wait_for_integration_retry(
         # (never an operator-only dead end).
         return state.clear_waiting()
 
-    # Durable-record intervention guard (AC-1 / GAP-4 / O1 residual).
-    # The on-disk record may carry ``diagnostic_intervention_required=True``
-    # even when the in-memory ``rebase`` state shows no in-memory
-    # exhaustion -- for example, after a cold reload of a record left
-    # by a prior crashed run. The previous behaviour slept 5 s and
-    # re-ran the recovery preamble indefinitely in that case. The
-    # guard first asks the diagnostic path whether the held lease is
-    # still trustworthy: a fresh-lease record whose fingerprint
-    # matches the durable identity returns ``UNCHANGED`` (the loader
-    # already cleared any fingerprint-mismatch record via
-    # :func:`auto_integrate_record._restamp_fingerprint_mismatch`),
-    # an expired / unparseable lease returns ``UNKNOWN`` (the
-    # fail-open auto-release contract), and a fingerprint mismatch
-    # returns ``CHANGED`` (escalation). On ``UNCHANGED`` / ``UNKNOWN``
-    # the durable evidence is cleared and the guard returns without
-    # sleeping or re-running the preamble; on ``CHANGED`` /
-    # unreadable the typed ``INTERVENTION_REQUIRED`` transition is
-    # recorded (the durable flag is the source of truth -- the
-    # in-memory retry path is unchanged for the unresolved path).
-    # The guard returns a 2-tuple ``(rebase, return_now)`` so the
-    # caller can distinguish ``"no intervention, fall through"``
-    # from ``"handled, return now"`` (the O1 contract forbids a
-    # silent 5-second sleep after the durable case was resolved).
-    durable_rebase, durable_cleared = _durable_record_intervention_guard(
-        ctx.workspace_scope.root, rebase, backend=backend
-    )
-    if durable_cleared:
-        rebase = durable_rebase
-        state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
-            WaitReason.EXHAUSTED_RETRY, None
-        )
-        _save_recovered_rebase_checkpoint(state, ctx)
-        ctx.latest_state[:] = [state]
-        return state.clear_waiting()
-
-    rebase = durable_rebase
+    # A durable record whose diagnostic repair budget is spent no
+    # longer gates this retry path: the fail-closed record fact is a
+    # typed RecordFactOutcome verdict (DIAGNOSTIC_BUDGET_SPENT) routed
+    # to the autonomous cleanup ladder by the owner seam, and the
+    # boundary ladder recovery preserves the work to backup refs before
+    # any destructive step. The in-memory intervention retry below owns
+    # the RebaseState-level escalation; neither path ends blocked on a
+    # person.
     if rebase.is_intervention_required:
         return _handle_intervention_required_retry(state, ctx, rebase, alarm, detail, backend)
 
@@ -3638,140 +3624,6 @@ def _handle_pending_retry(
     # satisfier (next iteration's recovery preamble).
     ctx.sleep(5.0)
     return state.clear_waiting()
-
-
-def _durable_record_intervention_guard(
-    root: Path,
-    rebase: RebaseState,
-    *,
-    backend: FileBackend = DEFAULT_FILE_BACKEND,
-) -> tuple[RebaseState, bool]:
-    """Consult the durable record's intervention flag; return ``(rebase, durable_cleared)``.
-
-    A record carrying ``diagnostic_intervention_required=True`` was
-    set by a prior run (or a prior Ralph version) and is the source
-    of truth for the persistent operator handoff. The guard
-    attempts to release the held evidence through the diagnostic
-    path: ``UNCHANGED`` (fresh lease, fingerprint match) and
-    ``UNKNOWN`` (expired or unparseable lease) both auto-release.
-
-    If the on-disk record is unreadable or corrupted, the guard fails
-    closed: it escalates to ``INTERVENTION_REQUIRED`` and returns
-    ``(rebase, False)``, allowing the caller to persist the
-    intervention state and perform the standard cooldown retry wait.
-    Likewise, if a record requires intervention but carries no held
-    diagnostic evidence or ownership to verify, it escalates to
-    operator intervention rather than auto-releasing.
-
-    The return is a 2-tuple ``(rebase, durable_cleared)`` where:
-
-    * ``(rebase, False)`` -- durable intervention was not cleared.
-      Either no durable intervention was recorded, or an unreadable
-      record / unproven synchronization escalated to
-      ``INTERVENTION_REQUIRED``. The caller proceeds through the
-      standard 5-second cooldown retry wait.
-    * ``(rebase, True)`` -- the held evidence was released (the
-      fail-open path). The durable record's intervention flag is
-      now ``False``; the caller persists the cleared state and
-      returns immediately so the next seam re-derives state from Git.
-    """
-    from ralph.pipeline._integration_diagnostic import release_verified_diagnostic
-    from ralph.pipeline.auto_integrate_record import (
-        RecordReadOutcomeDisposition,
-        _read_record_raw,
-        read_record_outcome,
-        record_path,
-    )
-    from ralph.pipeline.auto_integrate_record_store import (
-        apply_record_transition,
-    )
-    from ralph.pipeline.auto_integrate_transition import RELEASE_DIAGNOSTIC_EVIDENCE
-    from ralph.pipeline.operation_evidence_verdict import EvidenceVerdict
-
-    unreadable_detail: str | None = None
-    is_unreadable = False
-    try:
-        outcome = read_record_outcome(root, backend=backend)
-        if outcome.disposition is RecordReadOutcomeDisposition.UNREADABLE:
-            is_unreadable = True
-            unreadable_detail = outcome.unreadable_reason
-    except Exception:
-        is_unreadable = True
-
-    if is_unreadable:
-        reason = "durable integration record unreadable; intervention required"
-        if unreadable_detail:
-            reason += f" ({unreadable_detail})"
-        with suppress(Exception):
-            rec_file = record_path(root)
-            if rec_file.exists():
-                from ralph.mcp.artifacts.idempotent_write import write_bytes_if_changed
-
-                corrupt_bytes = rec_file.read_bytes()
-                # filesystem-write-ok: forensic snapshot of corrupt durable record before escalation
-                write_bytes_if_changed(
-                    backend,
-                    rec_file.with_name("corrupt_record_evidence.json"),
-                    corrupt_bytes,
-                )
-        return (
-            rebase.set_intervention_required(reason, diagnostic=True),
-            False,
-        )
-    record_obj = outcome.record
-    raw_payload = _read_record_raw(record_path(root), backend=backend)
-    raw_intervention = isinstance(raw_payload, dict) and (
-        raw_payload.get("diagnostic_intervention_required") is True
-    )
-    if record_obj is None or (
-        not record_obj.diagnostic_intervention_required and not raw_intervention
-    ):
-        return rebase, False
-    if raw_intervention and not record_obj.diagnostic_intervention_required:
-        # Load-time migration cleared diagnostic_intervention_required in memory
-        # due to legacy global evidence or unparseable lease ownership (O1 fail-open).
-        # Persist the cleared state to disk and tell the caller to return immediately.
-        with suppress(Exception):
-            apply_record_transition(
-                root,
-                RELEASE_DIAGNOSTIC_EVIDENCE,
-                backend=backend,
-                diagnostic_evidence=(),
-                diagnostic_ownership=None,
-                diagnostic_intervention_required=False,
-                repair_cap_reason=None,
-            )
-        return rebase, True
-    if not record_obj.diagnostic_evidence and not record_obj.diagnostic_ownership:
-        return (
-            rebase.set_intervention_required(
-                "durable integration record requires intervention; "
-                "target synchronization remains unproven",
-                diagnostic=True,
-            ),
-            False,
-        )
-    verdict = release_verified_diagnostic(root, record_obj)
-    try:
-        apply_record_transition(
-            root,
-            RELEASE_DIAGNOSTIC_EVIDENCE,
-            backend=backend,
-            diagnostic_evidence=(),
-            diagnostic_ownership=None,
-            diagnostic_intervention_required=False,
-            repair_cap_reason=None,
-        )
-    except Exception:
-        if verdict is EvidenceVerdict.UNCHANGED or verdict is EvidenceVerdict.UNKNOWN:
-            return (
-                rebase.set_intervention_required(
-                    "durable integration record unreadable at release; intervention required",
-                    diagnostic=True,
-                ),
-                True,
-            )
-    return rebase, True
 
 
 def _handle_cooldown_delay(state: PipelineState, ctx: LoopContext) -> PipelineState:
