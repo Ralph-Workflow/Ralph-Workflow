@@ -168,7 +168,11 @@ _LADDER_ACTION_VALUES: Final[frozenset[str]] = frozenset(_RUNG_ACTION_VALUE.valu
 #: Salvage-attempt kinds the last-resort precondition (b) waits for,
 #: recorded under ``salvage:<kind>`` by the owning seams through
 #: :func:`record_salvage_attempt`.
-SALVAGE_KINDS: Final[tuple[str, ...]] = ("resolver_agent", "rebase_first_retry", "fresh_worktree_rebuild")
+SALVAGE_KINDS: Final[tuple[str, ...]] = (
+    "resolver_agent",
+    "rebase_first_retry",
+    "fresh_worktree_rebuild",
+)
 
 
 @dataclass(frozen=True)
@@ -297,13 +301,12 @@ class _GitPlumbing(Protocol):
 GitPlumbing = _GitPlumbing
 """Public alias of the git-plumbing seam; see the module docstring."""
 
+
 @runtime_checkable
 class _FileQuarantine(Protocol):
     """Filesystem seam of the fallback ladder (rename, prune, verify)."""
 
-    def rename_into_quarantine(
-        self, root: Path, quarantine_dir: Path, path: str
-    ) -> str | None:
+    def rename_into_quarantine(self, root: Path, quarantine_dir: Path, path: str) -> str | None:
         """Rename ``root/path`` into ``quarantine_dir``; return the new location."""
         ...
 
@@ -322,6 +325,7 @@ class _FileQuarantine(Protocol):
 
 FileQuarantine = _FileQuarantine
 """Public alias of the filesystem-quarantine seam."""
+
 
 @runtime_checkable
 class _EnvironmentProbe(Protocol):
@@ -525,14 +529,18 @@ def preserve_via_temp_index(
         len(pruned_refs),
     )
     preserved_dir = state_dir / "preserved"
-    preserved_dir.mkdir(parents=True, exist_ok=True)  # filesystem-write-ok: ladder sidecar dir under the Ralph .agent state dir
+    preserved_dir.mkdir(
+        parents=True, exist_ok=True
+    )  # filesystem-write-ok: ladder sidecar dir under the Ralph .agent state dir
     digest = hashlib.sha256("\0".join(paths).encode(errors="surrogateescape")).hexdigest()
     token = f"{digest[:12]}-{head[:8] if head else 'nohead'}"
     patch_path = preserved_dir / f"{token}.patch"
     tar_path = preserved_dir / f"{token}.tar"
     patch_ok = git.write_patch(root, paths, patch_path)
     tar_ok = git.archive_paths(root, paths, tar_path)
-    verified = patch_ok and tar_ok and fs.path_is_readable(patch_path) and fs.path_is_readable(tar_path)
+    verified = (
+        patch_ok and tar_ok and fs.path_is_readable(patch_path) and fs.path_is_readable(tar_path)
+    )
     if verified:
         value = f"succeeded:sidecar={patch_path}"
         _record_evidence(ledger, key, value)
@@ -577,7 +585,9 @@ def quarantine_and_restore(
             value = f"impossible:rename-failed:{path}"
             _record_evidence(ledger, key, value)
             return LadderStepResult(
-                rung, "impossible", value,
+                rung,
+                "impossible",
+                value,
                 quarantined_paths=tuple(quarantined),
                 next_rung=CleanupLadderRung.FRESH_WORKTREE,
                 evidence={key: value},
@@ -638,9 +648,11 @@ def rebuild_in_fresh_worktree(
         ("create-worktree", lambda: git.create_worktree(root, fresh_path, target)),
         (
             "apply-preserved",
-            lambda: True
-            if preserved_ref is None
-            else git.apply_preserved(root, fresh_path, preserved_ref),
+            lambda: (
+                True
+                if preserved_ref is None
+                else git.apply_preserved(root, fresh_path, preserved_ref)
+            ),
         ),
         ("land", lambda: git.land_in_worktree(root, fresh_path, target)),
         ("repoint-original", lambda: git.repoint_original(root, fresh_path)),
@@ -667,7 +679,9 @@ def rebuild_in_fresh_worktree(
 
 #: Rate-limited reminder registry: the failure class -> last reminder
 #: timestamp. Static key universe (the five EnvironmentFailure members).
-_REMINDED_AT: dict[str, float] = {}  # bounded-accumulator-ok: static key universe of the five EnvironmentFailure classes; every entry is overwritten in place, never appended
+_REMINDED_AT: dict[
+    str, float
+] = {}  # bounded-accumulator-ok: static key universe of the five EnvironmentFailure classes; every entry is overwritten in place, never appended
 
 
 def _remind_once(
@@ -803,9 +817,7 @@ def last_resort_recovery(
     )
     for name, evidence_value in preconditions.items():
         _record_evidence(ledger, f"precondition:{name}", evidence_value)
-    unmet = next(
-        (name for name, value in preconditions.items() if value.startswith("unmet")), None
-    )
+    unmet = next((name for name, value in preconditions.items() if value.startswith("unmet")), None)
     if unmet is not None:
         value = f"failed:precondition-unmet:{unmet}"
         _record_evidence(ledger, key, value)

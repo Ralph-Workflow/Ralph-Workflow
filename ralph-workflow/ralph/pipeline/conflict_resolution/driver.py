@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -133,12 +133,9 @@ class RoundAttempt:
 
     succeeded: bool
     invoked: bool
-    #: Whether ANY candidate this round reached a supervised session.
-    #: Per-round, not per-invocation: an earlier candidate can repair the
-    #: worktree and a later one never start, and the round is judged on
-    #: what is on disk by then, so the last invocation's flag would
-    #: discard work a different agent had already finished.
     agent_ran: bool = False
+    agent_name: str | None = None
+    candidate_offset: int = 0
 
 
 def _sleep_seconds(
@@ -566,6 +563,33 @@ def _execute_round_loop(
                 worktree_resolved=lambda: not decision_paths and not _unresolved(),
             )
             session.unresolved_paths = _unresolved()
+            if attempt.succeeded and session.unresolved_paths and attempt.agent_name is not None:
+                logger.warning(
+                    "conflict_resolution: round {} with '{}' reported success, but unresolved paths remain in worktree",
+                    round_index,
+                    attempt.agent_name,
+                )
+                session.last_attempt_failure = (
+                    "unresolved paths remain in worktree after candidate reported success"
+                )
+                session.last_attempt_evidence = (
+                    "unresolved paths remain in worktree after candidate reported success"
+                )
+                session.terminal_reason = ResolutionTerminationReason.RESOLUTION_INCOMPLETE
+                session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
+                classify_failed_resolution_attempt(
+                    session,
+                    attempt.agent_name,
+                    session.last_attempt_failure,
+                    candidates=candidates,
+                    failed_index=attempt.candidate_offset,
+                    policy_bundle=policy_bundle,
+                    workspace_changed=bool(
+                        session.workspace_probe
+                        and session.workspace
+                        and session.workspace_probe.has_changed(PHASE_RESOLUTION, session.workspace)
+                    ),
+                )
             action = _evaluate_round_attempt(
                 attempt,
                 session,
@@ -583,9 +607,11 @@ def _execute_round_loop(
                 if _escalate_unreachable_remainder(session, display):
                     break
                 _emit_success(display, round_index, stop)
+                if attempt.agent_name is not None:
+                    _reset_conflict_success(session, attempt.agent_name)
                 return True
             if not attempt.invoked:
-                _handle_dead_candidate_chain(session, conflicted, display)
+                _handle_dead_candidate_chain(session, conflicted, display, candidates=candidates)
                 break
             if action == ResolutionAction.ESCALATE_TO_INTERVENTION:
                 _escalate_unreachable_remainder(session, display)
@@ -613,15 +639,33 @@ def _handle_dead_candidate_chain(
     session: ResolutionSession,
     conflicted: tuple[str, ...],
     display: ParallelDisplay | None,
+    candidates: Sequence[str] = (),
 ) -> None:
+    from ralph.recovery.controller import RecoveryController
+
+    controller = session.recovery_controller
     if session.terminal_reason is None:
-        session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
+        if isinstance(controller, RecoveryController) and candidates:
+            delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
+            if delay > 0:
+                session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+            else:
+                session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
+        else:
+            session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
     if session.last_failure_cause == ResolutionFailureCause.NONE:
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     session.unresolved_paths = session.unresolved_paths or conflicted
-    emit_conflict_phase_line(
-        display, "every resolution candidate is a dead tool surface; no further round can spend one"
-    )
+    if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_UNAVAILABLE:
+        emit_conflict_phase_line(
+            display,
+            "all resolution candidates are unavailable or on cooldown; conflict resolution remains pending",
+        )
+    else:
+        emit_conflict_phase_line(
+            display,
+            "every resolution candidate is a dead tool surface; no further round can spend one",
+        )
 
 
 def _escalate_unreachable_remainder(
@@ -765,7 +809,6 @@ def _execute_single_candidate(
         if succeeded:
             session.chain_cursor = 0
             session.last_failure_cause = ResolutionFailureCause.NONE
-            _reset_conflict_success(session, agent_name)
             return True, invoker_result
         if isinstance(invoker_result, ResolutionOutcome):
             _record_invoker_outcome(session, invoker_result)
@@ -888,7 +931,13 @@ def _run_one_round(
             policy_bundle,
         )
         if succeeded:
-            return RoundAttempt(succeeded=True, invoked=True, agent_ran=True)
+            return RoundAttempt(
+                succeeded=True,
+                invoked=True,
+                agent_ran=True,
+                agent_name=agent_name,
+                candidate_offset=offset,
+            )
         agent_saw = session.last_attempt_saw_activity or (
             isinstance(invoker_result, ResolutionOutcome)
             and (
@@ -899,7 +948,14 @@ def _run_one_round(
         if _check_worktree_repair(
             session, agent_name, round_index, round_cap, display, worktree_resolved, agent_saw
         ):
-            return RoundAttempt(succeeded=False, invoked=True, agent_ran=True)
+            _reset_conflict_success(session, agent_name)
+            return RoundAttempt(
+                succeeded=False,
+                invoked=True,
+                agent_ran=True,
+                agent_name=agent_name,
+                candidate_offset=offset,
+            )
         if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS:
             _remember_dead_surface(session, agent_name)
             skipped = _skipped_candidates(session, candidates)

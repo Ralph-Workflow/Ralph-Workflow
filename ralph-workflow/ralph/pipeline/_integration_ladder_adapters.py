@@ -338,9 +338,7 @@ class _ProductionGitPlumbing:
 class _ProductionFileQuarantine:
     """Production :data:`FileQuarantine` over the real filesystem."""
 
-    def rename_into_quarantine(
-        self, root: Path, quarantine_dir: Path, path: str
-    ) -> str | None:
+    def rename_into_quarantine(self, root: Path, quarantine_dir: Path, path: str) -> str | None:
         source = root / path
         dest = quarantine_dir / path
         try:

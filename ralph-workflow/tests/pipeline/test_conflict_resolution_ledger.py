@@ -525,3 +525,213 @@ def test_fake_clock_shows_no_invocation_before_eligibility(
         assert invocations == ["agentA"]
     finally:
         reset_executors(token)
+
+
+def test_false_positive_resolver_success_remains_unproductive_and_demotes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A resolver reporting success when files still have conflict markers is treated as unproductive."""
+    resolved = False
+
+    def _fake_markers(root: Path, paths: Sequence[str]) -> list[str]:
+        return [] if resolved else list(paths)
+
+    _install_seams(monkeypatch, unmerged=_CONFLICTED)
+    monkeypatch.setattr(driver_module, "paths_with_conflict_markers", _fake_markers)
+    monkeypatch.setattr(
+        driver_module, "resolution_chain_agents", lambda _bundle: ("agentA", "agentB")
+    )
+
+    invocations: list[str] = []
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        del prompt_path, round_index
+        invocations.append(agent_name)
+        nonlocal resolved
+        if agent_name == "agentA":
+            # agentA claims success (returns True), but leaves conflict markers in place!
+            resolved = False
+            return True
+        # agentB actually resolves the markers
+        resolved = True
+        return True
+
+    clock = FakeClock()
+    token = install_executors(clock=clock)
+    try:
+        ledger = AgentFailureLedger(clock=clock, consecutive_limit=2)
+        session = ResolutionSession(ledger=ledger)
+
+        succeeded = driver_module.run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+            clock=clock.monotonic,
+            session=session,
+        )
+
+        assert succeeded is True
+        # agentA reported false success twice -> both treated as unproductive -> demoted to cooldown
+        # agentB was then selected and genuinely resolved the conflict!
+        assert invocations == ["agentA", "agentA", "agentB"]
+        assert session.unresolved_paths == ()
+    finally:
+        reset_executors(token)
+
+
+def test_resolver_restart_mid_streak_honors_configured_limit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Resolver streak preserved across session snapshot/restoration and honors configured limit."""
+    _install_seams(monkeypatch, unmerged=_CONFLICTED)
+    monkeypatch.setattr(
+        driver_module, "resolution_chain_agents", lambda _bundle: ("agentA", "agentB")
+    )
+
+    clock = FakeClock()
+    token = install_executors(clock=clock)
+    try:
+        # Configured consecutive limit = 4; record 2 failures mid-streak in session 1
+        ledger_1 = AgentFailureLedger(clock=clock, consecutive_limit=4)
+        for _ in range(2):
+            ledger_1.record(
+                AttemptFact(
+                    phase=driver_module.PHASE_RESOLUTION,
+                    agent="agentA",
+                    artifact_valid=False,
+                )
+            )
+        # Snapshot the ledger
+        snap = ledger_1.snapshot()
+        entries = snap.get("entries")
+        assert isinstance(entries, dict)
+        agent_entry = entries.get(f"{driver_module.PHASE_RESOLUTION}:agentA")
+        assert isinstance(agent_entry, dict)
+        assert agent_entry.get("consecutive_unproductive") == 2
+
+        # Session 2: restore ledger from snapshot with fresh clock
+        fresh_clock = FakeClock(start=0.0)
+        ledger_2 = AgentFailureLedger.from_snapshot(snap, clock=fresh_clock)
+        assert ledger_2.consecutive_limit == 4
+        entries2 = ledger_2.snapshot().get("entries")
+        assert isinstance(entries2, dict)
+        agent_entry2 = entries2.get(f"{driver_module.PHASE_RESOLUTION}:agentA")
+        assert isinstance(agent_entry2, dict)
+        assert agent_entry2.get("consecutive_unproductive") == 2
+
+        invocations_2: list[str] = []
+        resolved = False
+
+        def _fake_markers(root: Path, paths: Sequence[str]) -> list[str]:
+            return [] if resolved else list(paths)
+
+        monkeypatch.setattr(driver_module, "paths_with_conflict_markers", _fake_markers)
+
+        def _invoke_2(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+            nonlocal resolved
+            del prompt_path, round_index
+            invocations_2.append(agent_name)
+            if agent_name == "agentA":
+                raise RuntimeError("agentA failed again")
+            resolved = True
+            return True
+
+        session_2 = ResolutionSession(ledger=ledger_2)
+        succeeded = driver_module.run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke_2,
+            clock=fresh_clock.monotonic,
+            session=session_2,
+        )
+
+        assert succeeded is True
+        # In session 2, agentA failed 2 more times (reaching total 4 streak), was demoted, then agentB ran and succeeded!
+        assert invocations_2 == ["agentA", "agentA", "agentB"]
+    finally:
+        reset_executors(token)
+
+
+def test_all_cooldown_outer_integration_preserves_rebase_state_not_failed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """When all resolvers are cooling down, outer integration reports pending/waiting, not failed, and preserves rebase state."""
+    from ralph.pipeline.auto_integrate_outcome import record_conflict
+    from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+        ResolutionTerminationReason,
+    )
+    from ralph.pipeline.rebase_state import ResolutionFailureCause
+
+    _install_seams(monkeypatch, unmerged=_CONFLICTED)
+    monkeypatch.setattr(
+        driver_module, "resolution_chain_agents", lambda _bundle: ("agentA", "agentB")
+    )
+
+    invocations: list[str] = []
+
+    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
+        del prompt_path, round_index
+        invocations.append(agent_name)
+        raise RuntimeError(f"{agent_name} failed")
+
+    clock = FakeClock()
+    monkeypatch.setattr(clock, "sleep", lambda _s: None)
+    token = install_executors(clock=clock)
+    try:
+        ledger = AgentFailureLedger(
+            clock=clock,
+            consecutive_limit=1,
+            base_cooldown_seconds=60.0,
+        )
+        session = ResolutionSession(ledger=ledger)
+
+        succeeded = driver_module.run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=_invoke,
+            clock=clock.monotonic,
+            session=session,
+        )
+
+        assert succeeded is False
+        assert invocations == ["agentA", "agentB"]
+        # Terminal reason records the failure from invocation
+        assert session.terminal_reason == ResolutionTerminationReason.EXCEPTION
+        assert session.unresolved_paths == tuple(_CONFLICTED)
+
+        # Outer rebase outcome records unresolved conflict without aborting
+        short_circuit = record_conflict(
+            reason=session.exhaustion_reason,
+            target="main",
+            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        )
+
+        assert not short_circuit.is_intervention_required
+        assert not short_circuit.fast_forwarded
+        assert short_circuit.last_failure_cause == ResolutionFailureCause.UNRESOLVED_CONFLICT
+
+        # Both agents are on cooldown in resolution phase
+        assert session.recovery_controller is not None
+        choice = choose_resolver(session.recovery_controller, ("agentA", "agentB"))
+        assert choice.agent is None
+        assert choice.wait_ms > 0
+    finally:
+        reset_executors(token)

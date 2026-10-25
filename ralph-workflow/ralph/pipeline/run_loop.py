@@ -2917,10 +2917,14 @@ def _with_run_ledger(
     pipeline_deps: PipelineDeps | None,
     controller: RecoveryController,
 ) -> PipelineDeps | None:
-    """Make the run controller's unavailability store the one ledger resolver paths share."""
+    """Make the run controller's unavailability store and ledger the ones resolver paths share."""
     if pipeline_deps is None:
         return None
-    return dataclasses.replace(pipeline_deps, unavailability_store=controller.unavailability_store)
+    return dataclasses.replace(
+        pipeline_deps,
+        unavailability_store=controller.unavailability_store,
+        ledger=controller.ledger,
+    )
 
 
 def _iteration_pipeline_deps(

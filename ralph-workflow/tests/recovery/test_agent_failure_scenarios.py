@@ -7,6 +7,7 @@ and log output) through public interfaces without inspecting private counters.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -15,7 +16,6 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline import checkpoint
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.failure_category import FailureCategory
-from tests._resolver_controller import make_resolver_controller
 from tests.recovery._scenario_harness import (
     AgentAttemptResult,
     run_scenario,
@@ -115,7 +115,7 @@ def test_scenario_4_cooldown_expiry_retries_preferred_agent_with_longer_next_coo
         tmp_path,
         script=script,
         agents=("agent_a", "agent_b"),
-        max_iterations=20,
+        stop_after_invocations=10,
         advance_clock_on_wait=True,
     )
 
@@ -123,10 +123,18 @@ def test_scenario_4_cooldown_expiry_retries_preferred_agent_with_longer_next_coo
     assert outcome.invocations[:3] == ["agent_a", "agent_a", "agent_a"]
     assert "agent_a" in outcome.invocations[4:], "Agent A must be retried after cooldown expiry"
 
-    a_cooldowns = outcome.cooldown_durations.get("agent_a", [])
-    assert len(a_cooldowns) >= 2, f"Expected at least 2 cooldowns for agent_a, got {a_cooldowns}"
-    assert a_cooldowns[1] > a_cooldowns[0], (
-        f"Next cooldown must be longer (growing backoff): got {a_cooldowns}"
+    # Assert growing backoff from observable transcript selection logs
+    log_text = " ".join(outcome.logs)
+    matches = [int(m) for m in re.findall(r"skipped agent_a: cooldown \((\d+)ms", log_text)]
+    distinct_cooldowns: list[int] = []
+    for m in matches:
+        if not distinct_cooldowns or m != distinct_cooldowns[-1]:
+            distinct_cooldowns.append(m)
+    assert len(distinct_cooldowns) >= 2, (
+        f"Expected at least 2 distinct cooldowns for agent_a in logs, got {distinct_cooldowns}"
+    )
+    assert distinct_cooldowns[1] > distinct_cooldowns[0], (
+        f"Next cooldown must be longer (growing backoff): got {distinct_cooldowns}"
     )
 
 
@@ -283,18 +291,13 @@ def test_scenario_9_restart_preserves_remaining_attempts_across_resumption(
     loaded_state = checkpoint.load(checkpoint_path)
     assert loaded_state is not None
 
-    # Second run: resume with fresh clock and fresh controller restored from snapshot
+    # Second run: resume with fresh clock and fresh controller restored from disk checkpoint snapshot
     fresh_clock = FakeClock(start=0.0)
-    snapshot_dict: dict[str, object] = {}
-    if loaded_state.ledger_snapshot is not None:
-        snapshot_dict["ledger"] = loaded_state.ledger_snapshot
-    elif outcome_run_1.final_state.ledger_snapshot is not None:
-        snapshot_dict["ledger"] = outcome_run_1.final_state.ledger_snapshot
-
-    fresh_controller = (
-        RecoveryController.from_snapshot(snapshot_dict, clock=fresh_clock)
-        if snapshot_dict
-        else make_resolver_controller(fresh_clock)
+    assert loaded_state.ledger_snapshot is not None, (
+        "Disk checkpoint must persist and restore ledger_snapshot"
+    )
+    fresh_controller = RecoveryController.from_snapshot(
+        {"ledger": loaded_state.ledger_snapshot}, clock=fresh_clock
     )
 
     def script_run_2(

@@ -418,7 +418,9 @@ class CleanupGitPort(Protocol):
         """Restore worktree+index ``paths`` from ``source`` (baseline commit)."""
         ...
 
-    def preserve_dirt_commit(self, root: Path, *, head_sha: str, paths: Sequence[str]) -> str | None:
+    def preserve_dirt_commit(
+        self, root: Path, *, head_sha: str, paths: Sequence[str]
+    ) -> str | None:
         """Alternate-preservation rung: commit the dirt via plumbing.
 
         Returns the preservation ref, or ``None`` when there was nothing to
@@ -542,9 +544,7 @@ def _str_list(value: object) -> list[str]:
 def _str_dict(value: object) -> dict[str, str]:
     if not isinstance(value, dict):
         return {}
-    return {
-        str(key): str(item) for key, item in value.items() if isinstance(item, str)
-    }
+    return {str(key): str(item) for key, item in value.items() if isinstance(item, str)}
 
 
 # ---------------------------------------------------------------------------
@@ -603,7 +603,9 @@ def run_residue_cleanup(
     """
     emit = warn if warn is not None else _default_warn
     try:
-        return _run_residue_cleanup(root, baseline=baseline, git=git, ledger=ledger, target=target, emit=emit)
+        return _run_residue_cleanup(
+            root, baseline=baseline, git=git, ledger=ledger, target=target, emit=emit
+        )
     except Exception as exc:  # pragma: no cover -- defensive: cleanup never crashes planning
         logger.warning("planning-residue cleanup raised; leaving tree untouched: {}", exc)
         return ResidueCleanupOutcome(refused=True)
@@ -651,7 +653,9 @@ def _run_residue_cleanup(
             f"to touch it: {', '.join(residue.unmerged_paths)}"
         )
         return ResidueCleanupOutcome(unmerged=True)
-    if not (residue.tracked_paths or residue.ambiguous_paths or residue.overwritten_untracked_paths):
+    if not (
+        residue.tracked_paths or residue.ambiguous_paths or residue.overwritten_untracked_paths
+    ):
         # Untracked-only residue does not block: planning continues with the
         # files in place. No ledger charge — nothing mutated.
         return ResidueCleanupOutcome(untracked_only=True)
@@ -680,9 +684,7 @@ def _cleanup_blocking_residue(
     resumed = progress.backup_ref is not None
     _ensure_backup_ref(root, git, baseline, progress)
     moved_untracked = _quarantine_overwrite_blockers(root, git, progress, residue)
-    restore_targets = _execute_rung_and_restore(
-        root, git, baseline, action, progress, emit
-    )
+    restore_targets = _execute_rung_and_restore(root, git, baseline, action, progress, emit)
     remaining, restored = _finalize_progress(root, git, baseline, progress, restore_targets)
     _report_residue_cleanup(
         emit,
@@ -792,9 +794,7 @@ def _finalize_progress(
             after_diff_hash=final_diff,
         )
         still_dirty = set(final_residue.tracked_paths) if final_residue is not None else set()
-    progress.restored_paths = [
-        path for path in progress.restore_paths if path not in still_dirty
-    ]
+    progress.restored_paths = [path for path in progress.restore_paths if path not in still_dirty]
     progress.completed = not still_dirty
     git.store_state(root, progress.to_payload())
     if progress.completed and not progress.quarantined_untracked:
@@ -834,8 +834,7 @@ def _report_residue_cleanup(
         )
     if action in _DEGRADED_RUNGS:
         message_parts.append(
-            f"rung {action.value} needs machinery owned elsewhere; executed at "
-            "quarantine strength"
+            f"rung {action.value} needs machinery owned elsewhere; executed at quarantine strength"
         )
     if remaining:
         message_parts.append(f"still dirty after restore: {', '.join(remaining)}")
@@ -1049,7 +1048,9 @@ class RunGitCleanupPort:
         )
         return result.returncode == 0
 
-    def preserve_dirt_commit(self, root: Path, *, head_sha: str, paths: Sequence[str]) -> str | None:
+    def preserve_dirt_commit(
+        self, root: Path, *, head_sha: str, paths: Sequence[str]
+    ) -> str | None:
         """Preserve the dirt as a normal commit over a plumbing-built tree.
 
         ``git stash create`` materializes the current index+worktree state

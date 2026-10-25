@@ -174,9 +174,7 @@ class _FakePlumbing:
     def reset_hard(self, root: Path, revision: str) -> bool:
         self.calls.append(f"reset_hard:{revision}")
         self.fail_reset_count += 1
-        failed = self.fail_reset_forever or (
-            self.fail_first_reset and self.fail_reset_count == 1
-        )
+        failed = self.fail_reset_forever or (self.fail_first_reset and self.fail_reset_count == 1)
         return not failed
 
     def clean_untracked(self, root: Path, paths: tuple[str, ...]) -> bool:
@@ -832,9 +830,7 @@ def test_restart_resumes_at_the_recorded_rung_without_repeating(tmp_path: Path) 
 
     state = _ledger(tmp_path).read()
     assert resume_rung(state) is CleanupLadderRung.ALTERNATE_PRESERVATION
-    assert state.ladder_evidence["preserved:alternate_preservation"] == (
-        "refs/ralph-backup/one"
-    )
+    assert state.ladder_evidence["preserved:alternate_preservation"] == ("refs/ralph-backup/one")
 
     _record(ledger, "rung:preserve_via_temp_index", "succeeded:ref=refs/ralph-backup/two")
     _record(ledger, "rung:quarantine_and_restore", "impossible:rename-failed:x")
@@ -963,9 +959,7 @@ def test_owner_verdict_carries_the_rung_field_and_defaults_to_none(tmp_path: Pat
 
 
 def test_ladder_step_result_defaults() -> None:
-    result = LadderStepResult(
-        CleanupLadderRung.QUARANTINE, "failed", "failed:restore-tree-to-head"
-    )
+    result = LadderStepResult(CleanupLadderRung.QUARANTINE, "failed", "failed:restore-tree-to-head")
     assert result.preserved_ref is None
     assert result.preserved_sidecar is None
     assert result.quarantined_paths == ()

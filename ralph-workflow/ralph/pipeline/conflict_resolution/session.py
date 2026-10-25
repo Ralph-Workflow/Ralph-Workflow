@@ -194,7 +194,7 @@ def ensure_session_controller(
     session: ResolutionSession | None,
     policy_bundle: PolicyBundle | None,
     *,
-    pipeline_deps: object | None = None,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> RecoveryController:
     """Return the session's recovery controller, building it on the shared ledger.
 
@@ -209,11 +209,10 @@ def ensure_session_controller(
 
     if session is not None and isinstance(session.recovery_controller, RecoveryController):
         return session.recovery_controller
-    if session is not None and session.ledger is None and pipeline_deps is not None:
-        raw_ledger: object = getattr(pipeline_deps, "ledger", None)
-        if isinstance(raw_ledger, AgentFailureLedger):
-            session.ledger = raw_ledger
-        elif session.unavailability_store is not None:
+    if session is not None and session.ledger is None:
+        if pipeline_deps is not None and pipeline_deps.ledger is not None:
+            session.ledger = pipeline_deps.ledger
+        if session.ledger is None and session.unavailability_store is not None:
             store_ledger: object = getattr(session.unavailability_store, "_failure_ledger", None)
             if isinstance(store_ledger, AgentFailureLedger):
                 session.ledger = store_ledger

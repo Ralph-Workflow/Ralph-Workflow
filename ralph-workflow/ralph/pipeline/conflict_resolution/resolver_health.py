@@ -100,7 +100,16 @@ def _record_resolver_fact(
             f"Cannot record resolver fact: RecoveryController has no ledger for agent '{agent}'"
         )
     try:
-        ledger.record(fact)
+        outcome = ledger.record(fact)
+        if outcome.demoted:
+            logger.warning(
+                "Agent '{}' demoted in phase '{}' (consecutive={}, total={}, reason={})",
+                agent,
+                PHASE_RESOLUTION,
+                outcome.consecutive_unproductive,
+                outcome.total_unproductive,
+                outcome.reason,
+            )
     except Exception as exc:
         logger.error(
             "Failed to record resolver fact for agent '{}' in phase '{}': {}",

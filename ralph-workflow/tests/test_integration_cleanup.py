@@ -134,7 +134,9 @@ class _FakeCleanupGit:
             self.staged.pop(path, None)
         return True
 
-    def preserve_dirt_commit(self, root: Path, *, head_sha: str, paths: Sequence[str]) -> str | None:
+    def preserve_dirt_commit(
+        self, root: Path, *, head_sha: str, paths: Sequence[str]
+    ) -> str | None:
         self.preserve_calls.append(tuple(paths))
         ref = "refs/ralph-planning-residue/preserved-fake01"
         self.existing_refs.add(ref)
@@ -269,7 +271,12 @@ def _clean_baseline() -> PlanningBaseline:
 
 def test_detect_residue_none_when_unchanged() -> None:
     baseline = _clean_baseline()
-    assert detect_planning_residue(baseline, baseline.status_blob, after_diff_hash=baseline.tracked_diff_hash) is None
+    assert (
+        detect_planning_residue(
+            baseline, baseline.status_blob, after_diff_hash=baseline.tracked_diff_hash
+        )
+        is None
+    )
 
 
 def test_detect_residue_new_tracked_path() -> None:
@@ -315,7 +322,9 @@ def test_detect_residue_vanished_baseline_dirt_is_ambiguous() -> None:
 def test_detect_residue_agent_artifacts_not_residue() -> None:
     baseline = _clean_baseline()
     after = baseline.status_blob + "?? .agent/plan/out.md\0"
-    assert detect_planning_residue(baseline, after, after_diff_hash=baseline.tracked_diff_hash) is None
+    assert (
+        detect_planning_residue(baseline, after, after_diff_hash=baseline.tracked_diff_hash) is None
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -613,7 +622,9 @@ def test_owner_ledger_port_charges_through_real_decision_table(tmp_path: Path) -
         head_sha="head-sha-1",
         status_blob="",
         tracked_diff_hash="h",
-        fingerprint=compute_fingerprint(head_sha="head-sha-1", tracked_entries={}, tracked_diff_hash="h"),
+        fingerprint=compute_fingerprint(
+            head_sha="head-sha-1", tracked_entries={}, tracked_diff_hash="h"
+        ),
         human_work_ref=None,
     )
     residue = PlanningResidue(

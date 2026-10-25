@@ -923,7 +923,6 @@ def _handle_agent_failure(
 
     selection: AgentSelection | None = None
     if recovery is not None:
-        max_retries = 3
         current_agent = (
             chain.agents[chain.current_index]
             if chain.agents and chain.current_index < len(chain.agents)
@@ -932,7 +931,7 @@ def _handle_agent_failure(
         if current_agent is not None:
             from ralph.recovery.agent_failure_ledger import AttemptFact
 
-            recovery.ledger.record(
+            outcome = recovery.ledger.record(
                 AttemptFact(
                     phase=state.phase,
                     agent=current_agent,
@@ -941,19 +940,39 @@ def _handle_agent_failure(
                     free_retry_category=True,
                 )
             )
-        if chain.retries >= max_retries and current_agent is not None:
-            recovery.note_retry_exhaustion(state.phase, current_agent)
+            if outcome.demoted and len(chain.agents) == 1:
+                demoted_reason = (
+                    f"Sole agent '{current_agent}' demoted in phase '{state.phase}': "
+                    f"unproductive attempt limit reached ({outcome.reason})"
+                )
+                logger.warning(demoted_reason)
+                return _enter_failed_recovery(state, demoted_reason, policy)
         selection = recovery.preferred_agent_index(
             state.phase,
             chain.agents,
             current_index=chain.current_index,
-            current_allowance_spent=(chain.retries >= max_retries),
         )
 
     selected_attempt = _selection_attempt(state, chain, selection, recovery)
     if selected_attempt is not None:
         return selected_attempt
 
+    return _handle_chain_exhausted(
+        state,
+        chain,
+        policy,
+        routing_timing,
+        failure_category,
+    )
+
+
+def _handle_chain_exhausted(
+    state: PipelineState,
+    chain: AgentChainState,
+    policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None,
+    failure_category: FailureCategory | None,
+) -> tuple[PipelineState, list[Effect]]:
     # Chain exhausted: check for per-phase workflow_fallback before global failure route.
     if policy is not None:
         phase_def = policy.phases.get(state.phase)

@@ -40,7 +40,6 @@ from ralph.policy.models import (
     PolicyBundle,
     RecoveryPolicy,
 )
-from ralph.recovery.agent_failure_ledger import Cooldown
 from ralph.recovery.failure_category import FailureCategory
 from ralph.recovery.testing import FakeConnectivityMonitor
 from ralph.workspace.fs import FsWorkspace
@@ -226,7 +225,6 @@ def _run_scenario_loop(
 ) -> tuple[PipelineState, int]:
     terminal_phases = {"complete", "failed_terminal"}
     exit_code = 0
-    seen_cooldown_until: dict[str, set[int]] = {}
     for _iteration in range(1, max_iterations + 1):
         if stop_after_invocations is not None and len(invocations) >= stop_after_invocations:
             break
@@ -246,16 +244,6 @@ def _run_scenario_loop(
             recovery_controller=controller,
             pipeline_deps=deps,
         )
-
-        for ag in agents:
-            stat = controller.ledger.status(state.phase, ag)
-            if isinstance(stat, Cooldown) and stat.until_ms not in seen_cooldown_until.get(
-                ag, set()
-            ):
-                seen_cooldown_until.setdefault(ag, set()).add(stat.until_ms)
-                now_ms = int(effective_clock.monotonic() * 1000)
-                dur = (stat.until_ms - now_ms) / 1000.0
-                cooldown_durations.setdefault(ag, []).append(dur)
 
         if isinstance(step_result, int):
             exit_code = step_result

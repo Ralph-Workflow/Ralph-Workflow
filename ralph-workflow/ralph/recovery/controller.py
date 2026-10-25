@@ -38,6 +38,7 @@ controller never reaches ``failed_terminal`` via this path.
 from __future__ import annotations
 
 import ast
+from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime
 from importlib import import_module
@@ -581,6 +582,8 @@ class RecoveryController:
                 initial_entries=opts.unavailability_entries,
                 initial_backoff_attempts=opts.backoff_attempts,
             )
+        with suppress(Exception):
+            object.__setattr__(self._unavailability_tracker, "_failure_ledger", self._ledger)
 
     @property
     def event_bus(self) -> FailureEventBus:
@@ -1275,12 +1278,7 @@ class RecoveryController:
             if use_budget and current_agent is not None
             else None
         )
-        current_allowance_spent = (budget_state is not None and budget_state.exhausted) or (
-            use_budget
-            and budget_state is None
-            and max_retries is not None
-            and chain.retries >= max_retries
-        )
+        current_allowance_spent = budget_state is not None and budget_state.exhausted
         if current_allowance_spent and current_agent is not None:
             self.note_retry_exhaustion(phase, current_agent)
 

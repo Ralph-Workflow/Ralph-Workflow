@@ -82,7 +82,19 @@ def test_reducer_fallover_skips_agent_in_cooldown() -> None:
         )
     )
     # Index 1 (opencode), claude in cooldown (5000ms). Retries at cap (3).
-    state = _three_agent_state(current_index=1, retries=3)
+    from ralph.recovery.agent_failure_ledger import AttemptFact
+
+    for _ in range(2):
+        controller.ledger.record(
+            AttemptFact(
+                phase="development",
+                agent="opencode",
+                artifact_valid=False,
+                workspace_changed=False,
+                free_retry_category=True,
+            )
+        )
+    state = _three_agent_state(current_index=1, retries=2)
     policy = _minimal_policy()
 
     reduced_state, _effects = reduce(

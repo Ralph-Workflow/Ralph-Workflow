@@ -56,7 +56,9 @@ def capture_pre_planning_baseline(root: Path) -> PlanningBaseline | None:
 
     try:
         return capture_planning_baseline(root, git=RunGitCleanupPort())
-    except Exception as exc:  # pragma: no cover -- defensive: baseline capture never blocks planning
+    except (
+        Exception
+    ) as exc:  # pragma: no cover -- defensive: baseline capture never blocks planning
         logger.warning("pre-planning baseline capture failed: {}", exc)
         return None
 

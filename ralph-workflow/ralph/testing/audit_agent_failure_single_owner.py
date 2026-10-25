@@ -319,6 +319,37 @@ def _check_production_import(
     return violations
 
 
+def _check_production_compare(node: ast.Compare, rel_path: str) -> list[SingleOwnerViolation]:
+    """Flag comparisons of retry counters against caps/limits outside AgentFailureLedger."""
+    for operand in [node.left, *node.comparators]:
+        attrs = [n.attr for n in ast.walk(operand) if isinstance(n, ast.Attribute)]
+        names = [n.id for n in ast.walk(operand) if isinstance(n, ast.Name)]
+        if ("retries" in attrs or "retries" in names) and any(
+            isinstance(op, (ast.GtE, ast.Gt)) for op in node.ops
+        ):
+            for other in [node.left, *node.comparators]:
+                if other is operand:
+                    continue
+                other_attrs = [n.attr for n in ast.walk(other) if isinstance(n, ast.Attribute)]
+                other_names = [n.id for n in ast.walk(other) if isinstance(n, ast.Name)]
+                if any(
+                    k in other_attrs or k in other_names
+                    for k in ("max_retries", "cap", "limit", "retries")
+                ):
+                    return [
+                        SingleOwnerViolation(
+                            path=rel_path,
+                            line=node.lineno,
+                            rule="production_streak_counter_state",
+                            detail=(
+                                f"Comparison '{ast.unparse(node)}' implements an independent "
+                                "retry cap or health cutoff outside AgentFailureLedger."
+                            ),
+                        )
+                    ]
+    return []
+
+
 def _check_production_subscript(node: ast.Subscript, rel_path: str) -> list[SingleOwnerViolation]:
     if (
         isinstance(node.slice, ast.Constant)
@@ -385,6 +416,8 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
             violations.extend(_check_production_attribute(node, rel_path))
         elif isinstance(node, ast.Subscript):
             violations.extend(_check_production_subscript(node, rel_path))
+        elif isinstance(node, ast.Compare):
+            violations.extend(_check_production_compare(node, rel_path))
         elif isinstance(node, ast.Call):
             violations.extend(_check_production_call(node, rel_path))
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -608,6 +641,8 @@ def audit_test_source(rel_path: str, source: str) -> list[SingleOwnerViolation]:
             violations.extend(_check_test_import(node, rel_path))
         elif isinstance(node, ast.Attribute):
             violations.extend(_check_test_attribute(node, rel_path))
+        elif isinstance(node, ast.Compare):
+            violations.extend(_check_production_compare(node, rel_path))
         elif isinstance(node, ast.Call):
             violations.extend(_check_test_call(node, rel_path))
         elif isinstance(node, ast.Subscript):
