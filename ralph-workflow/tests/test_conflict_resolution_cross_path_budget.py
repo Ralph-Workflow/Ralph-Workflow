@@ -30,6 +30,7 @@ def test_unchanged_paths_and_oids_are_the_same_conflict() -> None:
         last_conflict_target_sha="main",
         last_conflict_paths=("a.py",),
         last_conflict_stage_oids=("oid-a",),
+        resolution_exhausted=True,
     )
     assert identity.matches(state) is True
     assert resolver_allowed(state, "main", identity) is False
@@ -316,6 +317,7 @@ def test_exhausted_feature_budget_does_not_block_a_distinct_remote_identity() ->
         last_conflict_paths=("a.py",),
         last_conflict_stage_oids=("oid",),
         last_conflict_scope="feature",
+        resolution_exhausted=True,
     )
     assert resolver_allowed(state, "main", feature) is False
     assert resolver_allowed(state, "main", remote) is True

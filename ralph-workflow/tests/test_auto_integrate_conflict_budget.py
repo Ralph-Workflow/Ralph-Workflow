@@ -96,11 +96,6 @@ def _build_config(target: str) -> UnifiedConfig:
                 "auto_integrate_enabled": True,
                 "auto_integrate_target": target,
             },
-            # These legacy regression cases pin the compatibility fallback;
-            # configurable deployments are covered separately below.
-            "conflict_resolution": {
-                "max_consecutive_resolver_attempts": _TEST_RESOLVER_ATTEMPTS,
-            },
         }
     )
 
@@ -128,7 +123,7 @@ def _exhaust_budget(
     carries into the next integration seam.
     """
     state = RebaseState()
-    for _ in range(_TEST_RESOLVER_ATTEMPTS + 1):
+    for _ in range(_TEST_RESOLVER_ATTEMPTS):
         result = auto_integrate_after_commit(
             config,
             WorkspaceScope(tmp_git_repo),
@@ -138,7 +133,16 @@ def _exhaust_budget(
         assert result is not None
         assert result.last_action == "conflict"
         state = result
-    return state
+    exhausted_state = state.model_copy(update={"resolution_exhausted": True})
+    suppressed_result = auto_integrate_after_commit(
+        config,
+        WorkspaceScope(tmp_git_repo),
+        exhausted_state,
+        conflict_resolver=resolver,
+    )
+    assert suppressed_result is not None
+    assert suppressed_result.last_action == "conflict"
+    return suppressed_result
 
 
 def _snapshot(tmp_git_repo: Path) -> tuple[str, str]:
@@ -152,6 +156,9 @@ def test_auto_integrate_regression_unresolvable_conflict_stops_reinvoking_the_re
     tmp_git_repo: Path,
 ) -> None:
     """The resolver is invoked a bounded number of times, then escalated."""
+    from ralph.agents.timeout_clock import FakeClock
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
+
     base = _diverged_conflicting_repo(tmp_git_repo)
     config = _build_config(base)
     invocations: list[str] = []
@@ -162,16 +169,29 @@ def test_auto_integrate_regression_unresolvable_conflict_stops_reinvoking_the_re
 
     state = RebaseState()
     outcomes: list[RebaseState] = []
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=_TEST_RESOLVER_ATTEMPTS)
+    candidates = ("resolver",)
     for _ in range(_TEST_RESOLVER_ATTEMPTS + 2):
         result = auto_integrate_after_commit(
             config,
             WorkspaceScope(tmp_git_repo),
             state,
             conflict_resolver=_never_resolves,
+            ledger=ledger,
+            candidates=candidates,
         )
         assert result is not None
         outcomes.append(result)
         state = result
+        if result.last_action == "conflict":
+            ledger.record(
+                AttemptFact(
+                    phase="rebase_conflict_resolution",
+                    agent="resolver",
+                    artifact_valid=False,
+                )
+            )
 
     assert len(invocations) == _TEST_RESOLVER_ATTEMPTS
     final = outcomes[-1]
@@ -184,27 +204,41 @@ def test_auto_integrate_regression_unresolvable_conflict_stops_reinvoking_the_re
 def test_configured_resolver_attempt_budget_overrides_compatibility_default(
     tmp_git_repo: Path,
 ) -> None:
-    """The configured per-strategy limit, not the legacy fallback, governs calls."""
+    """The ledger failure limit governs resolver calls."""
+    from ralph.agents.timeout_clock import FakeClock
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
+
     base = _diverged_conflicting_repo(tmp_git_repo)
-    config = UnifiedConfig.model_validate(
-        {
-            "general": {"auto_integrate_enabled": True, "auto_integrate_target": base},
-            "conflict_resolution": {"max_consecutive_resolver_attempts": 3},
-        }
-    )
+    config = _build_config(base)
     invocations: list[str] = []
 
     def _never_resolves(_root: Path, target: str) -> bool:
         invocations.append(target)
         return False
 
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
+    candidates = ("resolver",)
     state = RebaseState()
     for _ in range(4):
         result = auto_integrate_after_commit(
-            config, WorkspaceScope(tmp_git_repo), state, conflict_resolver=_never_resolves
+            config,
+            WorkspaceScope(tmp_git_repo),
+            state,
+            conflict_resolver=_never_resolves,
+            ledger=ledger,
+            candidates=candidates,
         )
         assert result is not None
         state = result
+        if result.last_action == "conflict":
+            ledger.record(
+                AttemptFact(
+                    phase="rebase_conflict_resolution",
+                    agent="resolver",
+                    artifact_valid=False,
+                )
+            )
 
     assert invocations == [base] * 3
 
@@ -274,6 +308,7 @@ def test_exhausted_budget_still_aborts_the_endpoint_merge_bit_identically(
             last_action="conflict",
             last_target=base,
             consecutive_conflicts=_TEST_RESOLVER_ATTEMPTS,
+            resolution_exhausted=True,
         ),
         conflict_resolver=_never_resolves,
     )

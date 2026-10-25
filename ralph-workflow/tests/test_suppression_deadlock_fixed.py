@@ -28,7 +28,9 @@ def test_next_strategy_gets_a_fresh_budget_and_is_named(monkeypatch: MonkeyPatch
     )
     identity = ConflictIdentity(feature_sha="feature", target_sha="main")
     assert prior_conflict_count(state, "main", identity) == 0
-    suppressed_state = state.model_copy(update={"last_conflict_strategy_index": 2})
+    suppressed_state = state.model_copy(
+        update={"last_conflict_strategy_index": 2, "resolution_exhausted": True}
+    )
 
     monkeypatch.setattr(
         auto_integrate,
@@ -54,7 +56,6 @@ def test_next_strategy_gets_a_fresh_budget_and_is_named(monkeypatch: MonkeyPatch
     config = UnifiedConfig.model_validate(
         {
             "general": {"auto_integrate_enabled": True, "auto_integrate_target": "main"},
-            "conflict_resolution": {"max_consecutive_resolver_attempts": 4},
         }
     )
     warnings: list[str] = []

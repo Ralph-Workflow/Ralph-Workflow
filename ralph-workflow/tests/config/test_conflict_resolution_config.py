@@ -12,7 +12,6 @@ from pydantic import ValidationError
 from ralph.config.conflict_resolution_config import ConflictResolutionConfig
 from ralph.config.loader import load_config
 from ralph.config.models import UnifiedConfig
-from ralph.pipeline.auto_integrate_conflict_budget import MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
 
 
 def test_default_conflict_resolution_configuration_has_fixed_documented_values() -> None:
@@ -27,16 +26,19 @@ def test_default_conflict_resolution_configuration_has_fixed_documented_values()
     assert resolution.total_resolution_cap_seconds is None
 
 
-def test_resolver_attempt_budget_defaults_above_incident_baseline_and_is_configurable() -> None:
-    """The per-strategy budget is higher than the incident shared limit."""
-    default = UnifiedConfig.model_validate({}).conflict_resolution.max_consecutive_resolver_attempts
-    override = UnifiedConfig.model_validate(
-        {"conflict_resolution": {"max_consecutive_resolver_attempts": 3}}
-    ).conflict_resolution.max_consecutive_resolver_attempts
+def test_conflict_resolution_configuration_rejects_removed_resolver_attempts() -> None:
+    """Removed retry setting fails with migration guidance."""
+    expected_message = (
+        r"Configuration setting\(s\) \['max_consecutive_resolver_attempts'\] have been removed\. "
+        r"Use 'agent_max_consecutive_unproductive' and 'agent_max_total_unproductive' in \[general\] instead\."
+    )
+    with pytest.raises(ValueError, match=expected_message):
+        ConflictResolutionConfig.model_validate({"max_consecutive_resolver_attempts": 3})
 
-    assert default == MAX_CONSECUTIVE_RESOLVER_ATTEMPTS == 64
-    assert default > 8
-    assert override == 3
+    with pytest.raises(ValueError, match=expected_message):
+        UnifiedConfig.model_validate(
+            {"conflict_resolution": {"max_consecutive_resolver_attempts": 3}}
+        )
 
 
 @pytest.mark.parametrize(

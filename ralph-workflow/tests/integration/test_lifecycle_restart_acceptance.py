@@ -104,8 +104,10 @@ def _loop_context(
         workspace_scope=WorkspaceScope(tmp_path),
         config=UnifiedConfig.model_validate(
             {
-                "general": {"auto_integrate_enabled": False},
-                "conflict_resolution": {"max_consecutive_resolver_attempts": 1},
+                "general": {
+                    "auto_integrate_enabled": False,
+                    "agent_max_consecutive_unproductive": 1,
+                },
             }
         ),
         active_display=MagicMock(),

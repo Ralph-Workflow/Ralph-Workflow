@@ -98,7 +98,7 @@ def test_wait_for_retry_pending_path_configurable_cap_escalates_without_sleep(
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     ctx.config = UnifiedConfig.model_validate(
-        {"conflict_resolution": {"max_consecutive_resolver_attempts": cap}}
+        {"general": {"agent_max_consecutive_unproductive": cap}}
     )
     saved_checkpoints: list[PipelineState] = []
 
@@ -146,7 +146,7 @@ def test_wait_for_retry_intervention_path_configurable_cap_escalates_without_sle
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     ctx.config = UnifiedConfig.model_validate(
-        {"conflict_resolution": {"max_consecutive_resolver_attempts": cap}}
+        {"general": {"agent_max_consecutive_unproductive": cap}}
     )
     saved_checkpoints: list[PipelineState] = []
 
@@ -199,7 +199,7 @@ def test_wait_for_retry_over_cap_persisted_pending_governed_by_effective_cap(
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     ctx.config = UnifiedConfig.model_validate(
-        {"conflict_resolution": {"max_consecutive_resolver_attempts": cap}}
+        {"general": {"agent_max_consecutive_unproductive": cap}}
     )
     saved_checkpoints: list[PipelineState] = []
 
@@ -254,7 +254,7 @@ def test_wait_for_retry_over_cap_persisted_intervention_governed_by_effective_ca
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     ctx.config = UnifiedConfig.model_validate(
-        {"conflict_resolution": {"max_consecutive_resolver_attempts": cap}}
+        {"general": {"agent_max_consecutive_unproductive": cap}}
     )
     saved_checkpoints: list[PipelineState] = []
 

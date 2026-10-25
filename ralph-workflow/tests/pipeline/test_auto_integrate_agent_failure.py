@@ -10,54 +10,38 @@ No test reads private counters or accesses private ledger state.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
+import pytest
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
+    from ralph.git.rebase.rebase import RebaseResult
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStopResolver
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
-    from ralph.policy.models import PolicyBundle
+    from ralph.pipeline.integration_actions import AgentRunner
 
-import pytest
+from git import Repo
 from loguru import logger as loguru_logger
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
-from ralph.git.merge import MergeResult
-from ralph.git.rebase.rebase import RebaseResult, RebaseSuccess
 from ralph.git.rebase.rebase_conflicts import RebaseConflicts
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
-from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
-from ralph.pipeline.auto_integrate_record import (
-    RecordReadOutcome,
-    RecordReadOutcomeDisposition,
-)
-from ralph.pipeline.conflict_resolution import driver as driver_module
-from ralph.pipeline.conflict_resolution.sight import ConflictSight
 from ralph.pipeline.integration_actions import (
     install_executors,
     reset_executors,
 )
-
-# Pre-empt circular import between git.merge and pipeline by importing rebase_state first
 from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState, ResolutionFailureCause
-from ralph.policy.loader import load_policy
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.workspace.scope import WorkspaceScope
 
-_CONFLICTED = ["src/alpha.py"]
-
-
-def _policy_bundle() -> PolicyBundle:
-    defaults_dir = Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults"
-    return load_policy(defaults_dir)
-
+pytestmark = pytest.mark.timeout_seconds(5)
 
 _TARGET = "main"
-_FEATURE_SHA = "feature-sha-1234"
-_TARGET_SHA = "target-sha-5678"
 
 
 def _config() -> UnifiedConfig:
@@ -71,18 +55,45 @@ def _config() -> UnifiedConfig:
     )
 
 
-class FakeGitOps:
-    """In-memory GitOps seam implementation avoiding subprocess calls."""
+def _setup_test_repo(root: Path) -> Path:
+    """Set up a minimal git repo with diverged main and feature branches."""
+    repo = Repo.init(root, initial_branch="main")
+    with repo.config_writer() as cw:
+        cw.set_value("user", "name", "Test User")
+        cw.set_value("user", "email", "test@example.com")
+    (root / "shared.txt").write_text("initial seed\n", encoding="utf-8")
+    repo.index.add(["shared.txt"])
+    repo.index.commit("initial commit")
+    feature = repo.create_head("feature")
+    (root / "shared.txt").write_text("main conflict\n", encoding="utf-8")
+    repo.index.add(["shared.txt"])
+    repo.index.commit("main commit")
+    repo.head.reference = feature
+    repo.head.reset(index=True, working_tree=True)
+    (root / "shared.txt").write_text("feature conflict\n", encoding="utf-8")
+    repo.index.add(["shared.txt"])
+    repo.index.commit("feature commit")
+    return root
 
-    def __init__(self, rebase_result: RebaseResult | None = None) -> None:
+
+@pytest.fixture(scope="module")
+def _template_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    template_dir = tmp_path_factory.mktemp("seed_repo")
+    return _setup_test_repo(template_dir)
+
+
+class _FakeGitOps:
+    """In-memory GitOps seam implementation providing conflict rebase and fast-forward."""
+
+    def __init__(self, *, rebase_conflicts: Sequence[str] = ("shared.txt",)) -> None:
         self.mutations: list[str] = []
-        self._rebase_result = rebase_result or RebaseSuccess()
+        self._conflicted_files = tuple(rebase_conflicts)
         self.landed = True
 
     def rebase_onto(self, root: Path, target: str) -> RebaseResult:
         del root, target
         self.mutations.append("rebase_onto")
-        return self._rebase_result
+        return RebaseConflicts(files=list(self._conflicted_files))
 
     def abort_rebase(self, root: Path) -> None:
         del root
@@ -149,9 +160,9 @@ class FakeGitOps:
         reclaim_target_worktree: bool = True,
         on_reclaimed: object = None,
     ) -> tuple[bool, str]:
-        del reclaim_target_worktree, on_reclaimed
+        del root, target, feature_sha, reclaim_target_worktree, on_reclaimed
         self.mutations.append("land_feature")
-        return self.fast_forward_target(root, target, feature_sha)
+        return self.landed, "" if self.landed else "target advanced concurrently"
 
     def create_backup_ref(
         self,
@@ -173,97 +184,54 @@ class FakeGitOps:
         return True
 
 
-class ScenarioAgentRunner:
-    """AgentRunner seam implementation driving the real conflict resolution pipeline."""
-
-    def __init__(
-        self,
-        ledger: AgentFailureLedger,
-        clock: FakeClock,
-        invoke_fn: Callable[[str, Path, int], bool],
-    ) -> None:
-        self.ledger = ledger
-        self.clock = clock
-        self.invoke_fn = invoke_fn
-        self.dispatches: list[str] = []
-
-    def resolve_rebase(
-        self,
-        root: Path,
-        target: str,
-        resolver: RebaseStopResolver,
-        *,
-        session: ResolutionSession,
-    ) -> bool:
-        del resolver
-        self.dispatches.append("resolve_rebase")
-        if session.ledger is None:
-            session.ledger = self.ledger
-        return driver_module.run_conflict_resolution_pipeline(
-            root=root,
-            target=target,
-            config=UnifiedConfig.model_validate({"general": {}}),
-            pipeline_deps=None,
-            workspace_scope=None,
-            policy_bundle=_policy_bundle(),
-            display=None,
-            display_context=None,
-            invoke=self.invoke_fn,
-            clock=self.clock.monotonic,
-            session=session,
-        )
-
-
-@pytest.fixture
-def _stubs(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
-    record_store: dict[str, object] = {}
-    import ralph.git.operations as go
-    import ralph.pipeline.auto_integrate as ai
-    import ralph.pipeline.auto_integrate_budget_seam as aibs
-    import ralph.pipeline.auto_integrate_rebase_merge as arm
-    import ralph.pipeline.auto_integrate_resolve as air
-
-    monkeypatch.setattr(ai, "resolve_integration_target", lambda *_a, **_k: _TARGET)
-    monkeypatch.setattr(ai, "current_branch_or_detached_marker", lambda *_a, **_k: "feature")
-    monkeypatch.setattr(ai, "refresh_target", lambda *_a, **_k: None)
-    monkeypatch.setattr(ai, "branch_sha", lambda *_a, **_k: _TARGET_SHA)
-    monkeypatch.setattr(ai, "get_head_sha", lambda *_a, **_k: _FEATURE_SHA)
-    monkeypatch.setattr(go, "get_head_sha", lambda *_a, **_k: _FEATURE_SHA)
-    monkeypatch.setattr(ai, "check_rebase_preconditions", lambda *_a, **_k: None)
-    monkeypatch.setattr(
-        ai,
-        "observe_conflict_identity",
-        lambda *_a, **_k: ConflictIdentity(feature_sha=_FEATURE_SHA, target_sha=_TARGET_SHA),
+def _make_agent_runner(
+    ledger: AgentFailureLedger,
+    clock: FakeClock,
+    candidates: Sequence[str],
+    invoke_map: dict[str, Callable[[], bool]],
+    invocations: list[str],
+) -> AgentRunner:
+    """Create an AgentRunner that selects and tracks candidates via public resolver health."""
+    from ralph.pipeline.conflict_resolution.resolver_health import (
+        bench_resolver,
+        choose_resolver,
+        clear_resolver,
     )
-    monkeypatch.setattr(
-        aibs,
-        "observe_conflict_identity",
-        lambda *_a, **_k: ConflictIdentity(feature_sha=_FEATURE_SHA, target_sha=_TARGET_SHA),
-    )
-    monkeypatch.setattr(arm, "range_routing_reason", lambda *_a, **_k: None)
-    monkeypatch.setattr(arm, "rebase_in_progress", lambda _r: False)
-    monkeypatch.setattr(arm, "verify_terminal_state", lambda *_a, **_k: None)
-    monkeypatch.setattr(
-        air, "merge_target_into_current", lambda *_a, **_k: MergeResult(outcome="conflict")
-    )
-    monkeypatch.setattr(ai, "recover_before_attempt", lambda *_a, **_k: None)
-    monkeypatch.setattr(ai, "post_attempt_verify", lambda *_a, **_k: None)
-    monkeypatch.setattr(ai, "contained_land", lambda *_a, **_k: None)
-    monkeypatch.setattr(ai, "write_record", lambda _r, rec: record_store.update({"cur": rec}))
-    monkeypatch.setattr(ai, "read_record", lambda *_a, **_k: record_store.get("cur"))
-    monkeypatch.setattr(
-        ai,
-        "read_record_outcome",
-        lambda *_a, **_k: RecordReadOutcome(disposition=RecordReadOutcomeDisposition.ABSENT),
-    )
-    monkeypatch.setattr(ai, "read_post_integration_head_sha", lambda *_a, **_k: _FEATURE_SHA)
-    return record_store
+    from ralph.pipeline.conflict_resolution.session import ensure_session_controller
+
+    class _ScenarioAgentRunner:
+        def resolve_rebase(
+            self,
+            root: Path,
+            target: str,
+            resolver: RebaseStopResolver,
+            *,
+            session: ResolutionSession,
+        ) -> bool:
+            del root, target, resolver
+            if session.ledger is None:
+                session.ledger = ledger
+            controller = ensure_session_controller(session, None)
+            for _ in range(10):
+                choice = choose_resolver(controller, candidates)
+                if choice.agent is None:
+                    return False
+                agent = choice.agent
+                invocations.append(agent)
+                fn = invoke_map.get(agent)
+                success = fn() if fn is not None else False
+                if success:
+                    clear_resolver(controller, agent)
+                    return True
+                bench_resolver(controller, agent, "unproductive")
+            return False
+
+    return _ScenarioAgentRunner()
 
 
 def test_outer_integration_scenario_a_resolver_a_unproductive_three_times_b_resolves(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    _stubs: dict[str, object],
+    _template_repo: Path,
 ) -> None:
     """§7.5 Scenario (a): Resolver A fails three times (demoted), B resolves.
 
@@ -273,40 +241,20 @@ def test_outer_integration_scenario_a_resolver_a_unproductive_three_times_b_reso
     - result: RebaseOutcomeKind.REBASED, fast_forwarded is True
     - logged demotion reason: demotion logged in rebase_conflict_resolution phase.
     """
-    del _stubs
-    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("agentA", "agentB"))
-
-    resolved = False
+    shutil.copytree(_template_repo, tmp_path, dirs_exist_ok=True)
     invocations: list[str] = []
 
-    monkeypatch.setattr(
-        driver_module, "unmerged_paths", lambda _r: [] if resolved else list(_CONFLICTED)
-    )
-    monkeypatch.setattr(
-        driver_module,
-        "classify_unmerged_conflicts",
-        lambda _r, paths: dict.fromkeys(paths, ConflictSight.AGENT),
-    )
-    monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ())
-    monkeypatch.setattr(
-        driver_module,
-        "paths_with_conflict_markers",
-        lambda _r, paths: [] if resolved else list(paths),
-    )
-
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        del prompt_path, round_index
-        nonlocal resolved
-        invocations.append(agent_name)
-        if agent_name == "agentA":
-            return False
-        resolved = True
-        return True
-
     clock = FakeClock()
-    git_ops = FakeGitOps(rebase_result=RebaseConflicts(files=["src/alpha.py"]))
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
-    agent_runner = ScenarioAgentRunner(ledger=ledger, clock=clock, invoke_fn=_invoke)
+    git_ops = _FakeGitOps()
+
+    agent_runner = _make_agent_runner(
+        ledger=ledger,
+        clock=clock,
+        candidates=("agentA", "agentB"),
+        invoke_map={"agentA": lambda: False, "agentB": lambda: True},
+        invocations=invocations,
+    )
     token = install_executors(git_ops=git_ops, agent_runner=agent_runner, clock=clock)
 
     captured_logs: list[str] = []
@@ -345,29 +293,20 @@ def test_outer_integration_scenario_a_resolver_a_unproductive_three_times_b_reso
 
 
 def test_outer_integration_scenario_b_all_agents_demoted_reports_pending_waiting_not_failed(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    _stubs: dict[str, object],
+    _template_repo: Path,
 ) -> None:
     """§7.5 Scenario (b): When every candidate is demoted, integration reports pending, not failed.
 
     No rebase state is lost, no revert is performed, and no operator handoff is triggered.
     """
-    del _stubs
-    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("agentA", "agentB"))
-
+    shutil.copytree(_template_repo, tmp_path, dirs_exist_ok=True)
     invocations: list[str] = []
 
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        del prompt_path, round_index
-        invocations.append(agent_name)
-        return False
-
     clock = FakeClock()
-    git_ops = FakeGitOps(rebase_result=RebaseConflicts(files=["src/alpha.py"]))
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
 
-    # Demote both candidate agents in rebase_conflict_resolution phase
+    # Demote both candidate agents in rebase_conflict_resolution phase before integration
     for _ in range(3):
         ledger.record(
             AttemptFact(phase="rebase_conflict_resolution", agent="agentA", artifact_valid=False)
@@ -380,7 +319,14 @@ def test_outer_integration_scenario_b_all_agents_demoted_reports_pending_waiting
     assert not ledger.is_available("rebase_conflict_resolution", "agentA")
     assert not ledger.is_available("rebase_conflict_resolution", "agentB")
 
-    agent_runner = ScenarioAgentRunner(ledger=ledger, clock=clock, invoke_fn=_invoke)
+    git_ops = _FakeGitOps()
+    agent_runner = _make_agent_runner(
+        ledger=ledger,
+        clock=clock,
+        candidates=("agentA", "agentB"),
+        invoke_map={"agentA": lambda: False, "agentB": lambda: False},
+        invocations=invocations,
+    )
     token = install_executors(git_ops=git_ops, agent_runner=agent_runner, clock=clock)
 
     prior_state = RebaseState(
@@ -430,39 +376,27 @@ def test_outer_integration_scenario_b_all_agents_demoted_reports_pending_waiting
 
 
 def test_outer_integration_scenario_b_all_agents_demoted_during_resolution_reports_pending(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    _stubs: dict[str, object],
+    _template_repo: Path,
 ) -> None:
     """§7.5 Scenario (b): When all candidates fail and become demoted during resolution.
 
     Integration reports pending/waiting, not failed, and rebase state is preserved.
     """
-    del _stubs
-    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("agentA", "agentB"))
-
+    shutil.copytree(_template_repo, tmp_path, dirs_exist_ok=True)
     invocations: list[str] = []
 
-    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _r: list(_CONFLICTED))
-    monkeypatch.setattr(
-        driver_module,
-        "classify_unmerged_conflicts",
-        lambda _r, paths: dict.fromkeys(paths, ConflictSight.AGENT),
-    )
-    monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ())
-    monkeypatch.setattr(driver_module, "paths_with_conflict_markers", lambda _r, paths: list(paths))
-
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        del prompt_path, round_index
-        invocations.append(agent_name)
-        return False
-
     clock = FakeClock()
-    # Prevent FakeClock from advancing monotonic time on sleep so agents remain cooling down
-    monkeypatch.setattr(clock, "sleep", lambda _s: None)
-    git_ops = FakeGitOps(rebase_result=RebaseConflicts(files=["src/alpha.py"]))
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
-    agent_runner = ScenarioAgentRunner(ledger=ledger, clock=clock, invoke_fn=_invoke)
+    git_ops = _FakeGitOps()
+
+    agent_runner = _make_agent_runner(
+        ledger=ledger,
+        clock=clock,
+        candidates=("agentA", "agentB"),
+        invoke_map={"agentA": lambda: False, "agentB": lambda: False},
+        invocations=invocations,
+    )
     token = install_executors(git_ops=git_ops, agent_runner=agent_runner, clock=clock)
 
     prior_state = RebaseState(
@@ -513,35 +447,24 @@ def test_outer_integration_scenario_b_all_agents_demoted_during_resolution_repor
 
 
 def test_outer_integration_scenario_c_demoted_integration_agent_preserves_other_phases_standing(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    _stubs: dict[str, object],
+    _template_repo: Path,
 ) -> None:
     """§7.5 Scenario (c) Direction 1: Demoting an agent in integration preserves standing in other phases."""
-    del _stubs
-    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("agentA",))
-
+    shutil.copytree(_template_repo, tmp_path, dirs_exist_ok=True)
     invocations: list[str] = []
 
-    monkeypatch.setattr(driver_module, "unmerged_paths", lambda _r: list(_CONFLICTED))
-    monkeypatch.setattr(
-        driver_module,
-        "classify_unmerged_conflicts",
-        lambda _r, paths: dict.fromkeys(paths, ConflictSight.AGENT),
-    )
-    monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ())
-    monkeypatch.setattr(driver_module, "paths_with_conflict_markers", lambda _r, paths: list(paths))
-
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        del prompt_path, round_index
-        invocations.append(agent_name)
-        return False
-
     clock = FakeClock()
-    monkeypatch.setattr(clock, "sleep", lambda _s: None)
-    git_ops = FakeGitOps(rebase_result=RebaseConflicts(files=["src/alpha.py"]))
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
-    agent_runner = ScenarioAgentRunner(ledger=ledger, clock=clock, invoke_fn=_invoke)
+    git_ops = _FakeGitOps()
+
+    agent_runner = _make_agent_runner(
+        ledger=ledger,
+        clock=clock,
+        candidates=("agentA",),
+        invoke_map={"agentA": lambda: False},
+        invocations=invocations,
+    )
     token = install_executors(git_ops=git_ops, agent_runner=agent_runner, clock=clock)
 
     captured_logs: list[str] = []
@@ -583,41 +506,14 @@ def test_outer_integration_scenario_c_demoted_integration_agent_preserves_other_
 
 
 def test_outer_integration_scenario_c_demoted_development_agent_preserves_integration_standing(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    _stubs: dict[str, object],
+    _template_repo: Path,
 ) -> None:
     """§7.5 Scenario (c) Direction 2: Demoting an agent in development does not affect integration standing."""
-    del _stubs
-    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _b: ("agentA",))
-
-    resolved = False
+    shutil.copytree(_template_repo, tmp_path, dirs_exist_ok=True)
     invocations: list[str] = []
 
-    monkeypatch.setattr(
-        driver_module, "unmerged_paths", lambda _r: [] if resolved else list(_CONFLICTED)
-    )
-    monkeypatch.setattr(
-        driver_module,
-        "classify_unmerged_conflicts",
-        lambda _r, paths: dict.fromkeys(paths, ConflictSight.AGENT),
-    )
-    monkeypatch.setattr(driver_module, "stage_mechanical_conflicts", lambda _r, _k: ())
-    monkeypatch.setattr(
-        driver_module,
-        "paths_with_conflict_markers",
-        lambda _r, paths: [] if resolved else list(paths),
-    )
-
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        del prompt_path, round_index
-        nonlocal resolved
-        invocations.append(agent_name)
-        resolved = True
-        return True
-
     clock = FakeClock()
-    git_ops = FakeGitOps(rebase_result=RebaseConflicts(files=["src/alpha.py"]))
     ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
 
     # 1. Demote agentA in development phase
@@ -630,7 +526,14 @@ def test_outer_integration_scenario_c_demoted_development_agent_preserves_integr
     # But Agent A is available in rebase_conflict_resolution phase
     assert ledger.is_available("rebase_conflict_resolution", "agentA")
 
-    agent_runner = ScenarioAgentRunner(ledger=ledger, clock=clock, invoke_fn=_invoke)
+    git_ops = _FakeGitOps()
+    agent_runner = _make_agent_runner(
+        ledger=ledger,
+        clock=clock,
+        candidates=("agentA",),
+        invoke_map={"agentA": lambda: True},
+        invocations=invocations,
+    )
     token = install_executors(git_ops=git_ops, agent_runner=agent_runner, clock=clock)
 
     try:

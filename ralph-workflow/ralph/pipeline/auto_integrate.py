@@ -37,7 +37,6 @@ from ralph.pipeline.auto_integrate_budget_seam import (
 )
 from ralph.pipeline.auto_integrate_catchup import resolve_integration_target
 from ralph.pipeline.auto_integrate_conflict_budget import (
-    MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
     ConflictIdentity,
     resolver_allowed,
 )
@@ -228,15 +227,6 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 
-def _get_resolver_attempts(config: UnifiedConfig) -> int:
-    raw_attempts: object = getattr(
-        config.conflict_resolution,
-        "max_consecutive_resolver_attempts",
-        MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
-    )
-    return raw_attempts if isinstance(raw_attempts, int) else MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
-
-
 def auto_integrate_after_commit(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
@@ -266,8 +256,6 @@ def auto_integrate_after_commit(
         target = resolve_integration_target(config, root) if (root / ".git").exists() else None
         # Git is ground truth: release a contained integration before blocking.
         state = containment_release(root, target, state)
-        # A non-git workspace has no target to probe, so exclude it here.
-        resolver_attempts = _get_resolver_attempts(config)
         if retained_integration_reason(root) is None and (root / ".git").exists():
             ctx = _auto_integrate_resolve_context(config, workspace_scope)
             early_skip, _usable_ctx = _check_early_skips(
@@ -278,7 +266,6 @@ def auto_integrate_after_commit(
                 return carry_budget_through_skip(
                     early_skip,
                     prior=state,
-                    attempts=resolver_attempts,
                 )
 
         identity = observe_conflict_identity(root, target or "") if target else ConflictIdentity()
@@ -299,7 +286,6 @@ def auto_integrate_after_commit(
                 identity,
                 ledger=effective_ledger,
                 candidates=candidates,
-                attempts=resolver_attempts,
             )
             if target
             else True
@@ -321,7 +307,6 @@ def auto_integrate_after_commit(
                     target=target,
                     identity=identity,
                     resolver_suppressed=resolver_suppressed,
-                    attempts=resolver_attempts,
                 )
             if resolver_suppressed:
                 from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
@@ -494,12 +479,10 @@ def _auto_integrate_after_commit_inner(
         ctx,
         missing_target=_configured_target(config),
     )
-    resolver_attempts = _get_resolver_attempts(config)
     if early_skip is not None:
         return carry_budget_through_skip(
             early_skip,
             prior=state,
-            attempts=resolver_attempts,
         )
     if usable_ctx is None:
         # R2/AC8: ladder rung 3 -- only the explicit disabled AC-01 path
@@ -526,7 +509,6 @@ def _auto_integrate_after_commit_inner(
         identity,
         ledger=effective_ledger,
         candidates=candidates,
-        attempts=resolver_attempts,
     )
     effective_resolver = conflict_resolver if allowed else None
     resolver_suppressed = conflict_resolver is not None and not allowed
@@ -567,6 +549,8 @@ def _auto_integrate_after_commit_inner(
                 rebase_stop_resolver=rebase_stop_resolver if allowed else None,
                 prior=state,
                 force_refresh=strategy_attempt,
+                ledger=effective_ledger,
+                candidates=candidates,
             )
             if remote_record is not None and not remote_record.freshness_safe:
                 return remote_record
@@ -638,7 +622,6 @@ def _auto_integrate_after_commit_inner(
             prior=state,
             target=target,
             identity=identity,
-            attempts=resolver_attempts,
         )
     if record is None:
         # The normal local seam can be a no-op while remote sync still has a
@@ -665,7 +648,6 @@ def _auto_integrate_after_commit_inner(
         target=target,
         identity=identity,
         resolver_suppressed=resolver_suppressed,
-        attempts=resolver_attempts,
     )
 
 
@@ -676,7 +658,6 @@ def _configured_resolver_allowed(
     *,
     ledger: AgentFailureLedger | None = None,
     candidates: Sequence[str] = (),
-    attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
 ) -> bool:
     """Apply resolver selection/suppression via AgentFailureLedger while tolerating test doubles."""
     try:
@@ -686,13 +667,9 @@ def _configured_resolver_allowed(
             identity,
             ledger=ledger,
             candidates=candidates,
-            attempts=attempts,
         )
-    except TypeError as exc:
-        msg = str(exc)
-        if "unexpected keyword argument" in msg:
-            return resolver_allowed(state, target, identity)
-        raise
+    except TypeError:
+        return resolver_allowed(state, target, identity)
 
 
 def _freshen_attempt_target(
@@ -705,6 +682,8 @@ def _freshen_attempt_target(
     rebase_stop_resolver: RebaseStopResolver | None,
     prior: RebaseState | None = None,
     force_refresh: bool = False,
+    ledger: AgentFailureLedger | None = None,
+    candidates: Sequence[str] = (),
 ) -> tuple[RebaseState | None, str | None]:
     """Return the current remote verdict or local-fleet observation."""
     if not remote_sync_enabled(config):
@@ -712,7 +691,13 @@ def _freshen_attempt_target(
             return None, _refresh_target_probe(config, root, target)
         return None, initial_refresh
     record = pull_and_reconcile_target(
-        config, root, target, rebase_stop_resolver=rebase_stop_resolver, prior=prior
+        config,
+        root,
+        target,
+        rebase_stop_resolver=rebase_stop_resolver,
+        prior=prior,
+        ledger=ledger,
+        candidates=candidates,
     )
     if record is None:
         return None, None

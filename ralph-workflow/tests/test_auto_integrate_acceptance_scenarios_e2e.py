@@ -573,9 +573,6 @@ config = UnifiedConfig.model_validate({
         "auto_integrate_remote_enabled": True,
         "auto_integrate_remote_interval_seconds": 0.0,
     },
-    "conflict_resolution": {
-        "max_consecutive_resolver_attempts": 2,
-    },
 })
 
 # Drive the production publication reconciler against the unreachable

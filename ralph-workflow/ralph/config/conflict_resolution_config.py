@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from ralph.pydantic_compat import RalphBaseModel
 
@@ -24,14 +24,6 @@ class ConflictResolutionConfig(RalphBaseModel):
     status_interval_seconds: float = Field(default=30.0, gt=0.0)
     max_rounds_per_stop: int = Field(default=3, ge=1)
     max_rebase_conflict_stops: int = Field(default=10, ge=1)
-    max_consecutive_resolver_attempts: int = Field(
-        default=64,
-        ge=1,
-        description=(
-            "Compatibility field retained for older configs. It does not cap "
-            "resolver attempts; AgentFailureLedger alone decides candidate availability."
-        ),
-    )
     max_fallback_agents: int = Field(
         default=2,
         ge=1,
@@ -49,6 +41,22 @@ class ConflictResolutionConfig(RalphBaseModel):
             " as OPERATOR_CAP_REACHED rather than as an idle timeout."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_removed_resolver_settings(cls, data: object) -> object:
+        if isinstance(data, dict):
+            removed_keys = {
+                "max_consecutive_resolver_attempts",
+            }
+            present = removed_keys.intersection(data.keys())
+            if present:
+                sorted_keys = sorted(present)
+                raise ValueError(
+                    f"Configuration setting(s) {sorted_keys} have been removed. "
+                    "Use 'agent_max_consecutive_unproductive' and 'agent_max_total_unproductive' in [general] instead."
+                )
+        return data
 
     @field_validator(
         "inactivity_timeout_seconds", "status_interval_seconds", "total_resolution_cap_seconds"

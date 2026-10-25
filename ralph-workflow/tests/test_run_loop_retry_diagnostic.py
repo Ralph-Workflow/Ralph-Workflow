@@ -355,7 +355,7 @@ def test_wait_for_retry_consecutive_conflicts_cap_performs_single_automated_reso
         rebase=RebaseState(
             last_action="conflict",
             last_reason="conflict detail for resolver",
-            consecutive_conflicts=ctx.config.conflict_resolution.max_consecutive_resolver_attempts,
+            consecutive_conflicts=ctx.config.general.agent_max_consecutive_unproductive,
         ),
     )
 
@@ -365,7 +365,7 @@ def test_wait_for_retry_consecutive_conflicts_cap_performs_single_automated_reso
     assert first_result.rebase.is_intervention_required is True
     assert (
         first_result.rebase.consecutive_conflicts
-        >= ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+        >= ctx.config.general.agent_max_consecutive_unproductive
     )
 
     # Subsequent call with is_intervention_required=True must avoid repeat handoffs
@@ -688,7 +688,7 @@ def test_wait_for_retry_loop_unresolved_progresses_attempt_or_escalates(
     )
     write_record(tmp_path, record)
 
-    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    cap = ctx.config.general.agent_max_consecutive_unproductive
     state = PipelineState(
         phase="development",
         rebase=RebaseState(
@@ -726,7 +726,7 @@ def test_wait_for_retry_cold_loaded_capped_intervention_dispatches_handoff(
 
     ctx.hooks.handoff_retained_failure = lambda _c, d: handoff_calls.append(d)
 
-    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    cap = ctx.config.general.agent_max_consecutive_unproductive
     cold_loaded_rebase = RebaseState(
         last_action="conflict",
         last_reason="cold-loaded detail",
@@ -767,7 +767,7 @@ def test_wait_for_retry_repeated_identical_blocked_outcomes_progress_attempts(
 
     ctx.hooks.recovery_preamble = _fake_preamble
 
-    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    cap = ctx.config.general.agent_max_consecutive_unproductive
     state = PipelineState(
         phase="development",
         rebase=RebaseState(
@@ -793,7 +793,7 @@ def test_wait_for_retry_unsuccessful_handoff_records_intervention_without_sleep(
     handoff_calls: list[str] = []
     ctx.hooks.handoff_retained_failure = lambda _c, d: handoff_calls.append(d)
 
-    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    cap = ctx.config.general.agent_max_consecutive_unproductive
     state = PipelineState(
         phase="development",
         rebase=RebaseState(
@@ -831,7 +831,7 @@ def test_wait_for_retry_pending_repeated_identical_blocked_outcomes_progress_and
 
     ctx.hooks.recovery_preamble = _fake_preamble
 
-    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    cap = ctx.config.general.agent_max_consecutive_unproductive
     state = PipelineState(
         phase="development",
         rebase=RebaseState(
@@ -856,7 +856,7 @@ def test_wait_for_retry_successful_handoff_not_overwritten_with_intervention(
     sleeps, ctx = _setup_retry_env(tmp_path)
     ctx.hooks.handoff_retained_failure = _mock_successful_handoff
 
-    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    cap = ctx.config.general.agent_max_consecutive_unproductive
     initial_state = _make_state(conflicts=cap, last_reason="conflict detail for resolver")
     ctx.latest_state[:] = [initial_state]
 
@@ -873,7 +873,7 @@ def test_wait_for_retry_pending_successful_handoff_not_overwritten_with_interven
     sleeps, ctx = _setup_retry_env(tmp_path)
     ctx.hooks.handoff_retained_failure = _mock_successful_handoff
 
-    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    cap = ctx.config.general.agent_max_consecutive_unproductive
     initial_state = PipelineState(
         phase="development",
         rebase=RebaseState(
@@ -916,7 +916,7 @@ def test_wait_for_retry_absent_record_at_cap_invokes_automated_resolver_or_reder
     ctx.hooks.conflict_resolution = _mock_resolver
     ctx.hooks.recovery_preamble = _mock_rederived_preamble
 
-    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    cap = ctx.config.general.agent_max_consecutive_unproductive
     initial_state = _make_state(conflicts=cap)
     ctx.latest_state[:] = [initial_state]
 
@@ -944,7 +944,7 @@ def test_wait_for_retry_unreadable_record_at_cap_invokes_automated_resolver_or_r
     target_file.parent.mkdir(parents=True, exist_ok=True)
     target_file.write_text("CORRUPT_JSON_{invalid")
 
-    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    cap = ctx.config.general.agent_max_consecutive_unproductive
     initial_state = _make_state(conflicts=cap)
     ctx.latest_state[:] = [initial_state]
 
@@ -967,7 +967,7 @@ def test_wait_for_retry_unreadable_record_at_cap_unsuccessful_escalates_to_inter
     target_file.parent.mkdir(parents=True, exist_ok=True)
     target_file.write_text("CORRUPT_JSON_{invalid")
 
-    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    cap = ctx.config.general.agent_max_consecutive_unproductive
     initial_state = _make_state(conflicts=cap)
     ctx.latest_state[:] = [initial_state]
 
@@ -1003,7 +1003,7 @@ def test_wait_for_retry_cold_durable_resolution_exhausted_with_live_conflict_dis
 
     ctx.hooks.handoff_retained_failure = _fake_handoff
 
-    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    cap = ctx.config.general.agent_max_consecutive_unproductive
     cold_exhausted_rebase = RebaseState(
         last_action="conflict",
         last_reason="cold exhausted detail with live conflict",
@@ -1079,7 +1079,7 @@ def test_wait_for_retry_cold_exhausted_state_with_no_live_conflict_still_dispatc
     assert initial_state.rebase.resolution_exhausted is True
     assert (
         initial_state.rebase.consecutive_conflicts
-        < ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+        < ctx.config.general.agent_max_consecutive_unproductive
     )
 
     first_result = wait_for_integration_retry(initial_state, ctx)
@@ -1185,7 +1185,7 @@ def test_wait_for_retry_successful_cold_exhaustion_handoff_clears_state(
 
     ctx.hooks.handoff_retained_failure = _clearing_handoff
 
-    cap = ctx.config.conflict_resolution.max_consecutive_resolver_attempts
+    cap = ctx.config.general.agent_max_consecutive_unproductive
     cold_exhausted_rebase = RebaseState(
         last_action="conflict",
         last_reason="cold exhausted detail cleared by resolver",

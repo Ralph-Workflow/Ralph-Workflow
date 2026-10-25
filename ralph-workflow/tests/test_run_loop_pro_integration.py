@@ -799,8 +799,8 @@ def _wu_b_ctx(tmp_path: Path, state: PipelineState) -> object:
         latest_state=[state],
         active_display=MagicMock(),
         config=MagicMock(
-            conflict_resolution=MagicMock(
-                max_consecutive_resolver_attempts=3,
+            general=MagicMock(
+                agent_max_consecutive_unproductive=3,
             )
         ),
         policy_bundle=MagicMock(),

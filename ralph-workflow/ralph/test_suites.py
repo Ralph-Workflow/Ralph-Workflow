@@ -469,7 +469,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_install_wheel.py": 120,
     "tests/test_integration_diagnostic_proof.py": 300,
     "tests/test_cli_commands_run_skill_sync.py": 130,
-    "tests/test_auto_integrate_remote_refresh.py": 170,
+    "tests/test_auto_integrate_remote_refresh.py": 220,
     "tests/test_auto_integrate_real_agent_resolution_e2e.py": 100,
     "tests/test_explore_bench_rss_isolation.py": 350,
     # Calibrated from --profile-durations per-file wall-clock on shard 15
@@ -486,7 +486,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_integration_diagnostic_intervention_cap.py": 160,
     "tests/pipeline/test_reducer_lock_retry.py": 120,
     "tests/test_recovery_release_uses_record_store.py": 80,
-    "tests/test_commit_detached_head_recovery.py": 420,
+    "tests/test_commit_detached_head_recovery.py": 150,
     "tests/test_subprocess_reader_resume_safe.py": 100,
     "tests/test_phases_retry_on_stale_session.py": 53,
     "tests/display/test_operator_display_labels.py": 52,
@@ -495,7 +495,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_mcp_endpoint_functional_sweep.py": 90,
     "tests/test_integration_decision_table.py": 140,
     "tests/mcp/test_mcp_slow_startup_served_from_backlog.py": 180,
-    "tests/test_mcp_supervision_resilience.py": 260,
+    "tests/test_mcp_supervision_resilience.py": 20,
     "tests/test_mcp_lifecycle.py": 30,
     "tests/test_property_c_liveness_contract.py": 60,
     "tests/project_policy/test_policy_handback_channel_ledger.py": 130,
@@ -512,10 +512,10 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_commit_executor.py": 320,
     "tests/test_integration_state_coverage.py": 50,
     "tests/test_liveness_termination.py": 30,
-    "tests/test_mcp_capability_mapping.py": 240,
+    "tests/test_mcp_capability_mapping.py": 25,
     "tests/test_policy_validation.py": 180,
     "tests/test_integration_diagnostic_resolver_health.py": 240,
-    "tests/project_policy/test_policy_handback_working_tree.py": 280,
+    "tests/project_policy/test_policy_handback_working_tree.py": 100,
     "tests/test_public_workflow_exhaustion_restart.py": 120,
     "tests/test_integration_state_space.py": 160,
     "tests/test_integration_termination_model.py": 60,
@@ -530,6 +530,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_pty_line_reader_pending_bound.py": 50,
     "tests/agents/test_terminal_state_restored_on_exit.py": 270,
     "tests/test_auto_integrate_local_fleet_target_e2e.py": 55,
+    "tests/pipeline/test_auto_integrate_agent_failure.py": 65,
 }
 
 

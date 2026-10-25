@@ -35,7 +35,6 @@ from ralph.pipeline.auto_integrate_remote_constants import (
     remote_sync_enabled,
     remote_target_name,
     remote_unreachable_reason,
-    resolver_attempt_limit,
 )
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_DIVERGED,
@@ -51,12 +50,13 @@ from ralph.pipeline.auto_integrate_sync import (
 from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
     from ralph.pipeline.auto_integrate_ff import RemoteClient
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
 
 __all__ = [
@@ -127,6 +127,52 @@ class _DefaultRemoteClient:
 _DEFAULT_REMOTE_CLIENT = _DefaultRemoteClient()
 
 
+def _resolve_effective_ledger(
+    ledger: AgentFailureLedger | None,
+) -> AgentFailureLedger | None:
+    if ledger is not None:
+        return ledger
+    try:
+        from ralph.pipeline.conflict_resolution.rebase_loop import (
+            active_rebase_resolution_session,
+        )
+
+        active_session = active_rebase_resolution_session()
+        if active_session is not None and hasattr(active_session, "ledger"):
+            return active_session.ledger
+    except Exception:
+        pass
+    return None
+
+
+def _prepare_effective_resolver(
+    rebase_stop_resolver: RebaseStopResolver | None,
+    prior_state: RebaseState,
+    target: str,
+    identity: ConflictIdentity,
+    ledger: AgentFailureLedger | None,
+    candidates: Sequence[str],
+) -> tuple[RebaseStopResolver | None, bool]:
+    if rebase_stop_resolver is None:
+        return None, False
+    from ralph.pipeline.auto_integrate_remote_sync import (
+        resolver_allowed as _resolver_allowed,
+    )
+    from ralph.pipeline.auto_integrate_remote_sync import (
+        start_conflict_attempt as _start_conflict_attempt,
+    )
+
+    if not _resolver_allowed(
+        prior_state,
+        target,
+        identity,
+        ledger=ledger,
+        candidates=candidates,
+    ) or not _start_conflict_attempt(identity):
+        return None, False
+    return rebase_stop_resolver, True
+
+
 def pull_and_reconcile_target(
     config: UnifiedConfig | None,
     repo_root: Path,
@@ -137,6 +183,8 @@ def pull_and_reconcile_target(
     rebase_stop_resolver: RebaseStopResolver | None = None,
     prior: RebaseState | None = None,
     remote_client: RemoteClient | None = None,
+    ledger: AgentFailureLedger | None = None,
+    candidates: Sequence[str] = (),
 ) -> RebaseState | None:
     """Run the throttled pull side; reconcile the local target from the remote.
 
@@ -158,23 +206,15 @@ def pull_and_reconcile_target(
     except Exception:
         identity = ConflictIdentity(scope="remote")
     prior_state = prior or RebaseState()
-    resolver_attempts = resolver_attempt_limit(config)
-    booked = False
-    effective_resolver = rebase_stop_resolver
-    if effective_resolver is not None:
-        from ralph.pipeline.auto_integrate_remote_sync import (
-            resolver_allowed as _resolver_allowed,
-        )
-        from ralph.pipeline.auto_integrate_remote_sync import (
-            start_conflict_attempt as _start_conflict_attempt,
-        )
-
-        if not _resolver_allowed(
-            prior_state, target, identity, attempts=resolver_attempts
-        ) or not _start_conflict_attempt(identity):
-            effective_resolver = None
-        else:
-            booked = True
+    effective_ledger = _resolve_effective_ledger(ledger)
+    effective_resolver, booked = _prepare_effective_resolver(
+        rebase_stop_resolver,
+        prior_state,
+        target,
+        identity,
+        effective_ledger,
+        candidates,
+    )
     try:
         import ralph.pipeline.auto_integrate_remote_sync as _remote_sync
 
@@ -217,7 +257,6 @@ def pull_and_reconcile_target(
             target=target,
             resolver_suppressed=rebase_stop_resolver is not None and effective_resolver is None,
             identity=identity,
-            attempts=resolver_attempts,
         )
     finally:
         if booked:

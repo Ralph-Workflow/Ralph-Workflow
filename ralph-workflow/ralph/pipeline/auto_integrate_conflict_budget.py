@@ -141,7 +141,7 @@ def prior_conflict_count(
     target: str,
     identity: ConflictIdentity = _UNKNOWN_IDENTITY,
     *,
-    attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+    attempts: int | None = None,
 ) -> int:
     """Consecutive unresolved conflicts carried in from the previous seam.
 
@@ -163,7 +163,10 @@ def prior_conflict_count(
         return 0
     if state.last_conflict_strategy_index != state.conflict_strategy_index:
         return 0
-    return min(attempts, max(0, state.consecutive_conflicts))
+    count = max(0, state.consecutive_conflicts)
+    if attempts is not None:
+        return min(attempts, count)
+    return count
 
 
 def _ledger_candidates_available(
@@ -197,7 +200,7 @@ def resolver_allowed(
     ledger: AgentFailureLedger | None = None,
     candidates: Sequence[str] = (),
     phase: str = "rebase_conflict_resolution",
-    attempts: int = MAX_CONSECUTIVE_RESOLVER_ATTEMPTS,
+    attempts: int | None = None,
 ) -> bool:
     """Whether this attempt may invoke the dev-agent conflict resolver.
 
@@ -206,17 +209,32 @@ def resolver_allowed(
     in the failure ledger for ``phase``. Repository conflict identity logic
     is preserved: a changed conflict identity starts fresh.
     """
-    if ledger is not None and hasattr(ledger, "is_available"):
-        is_same_conflict = (
-            state.last_target == target
-            and identity.matches(state)
-            and state.last_conflict_strategy_index == state.conflict_strategy_index
-        )
-        if is_same_conflict and state.resolution_exhausted:
-            return False
-        return _ledger_candidates_available(ledger, phase, candidates)
+    effective_ledger = ledger
+    if effective_ledger is None:
+        try:
+            from ralph.pipeline.conflict_resolution.rebase_loop import (
+                active_rebase_resolution_session,
+            )
 
-    return prior_conflict_count(state, target, identity, attempts=attempts) < attempts
+            session = active_rebase_resolution_session()
+            if session is not None and hasattr(session, "ledger"):
+                effective_ledger = session.ledger
+        except Exception:
+            pass
+
+    is_same_conflict = (
+        state.last_target == target
+        and identity.matches(state)
+        and state.last_conflict_strategy_index == state.conflict_strategy_index
+    )
+    if is_same_conflict and state.resolution_exhausted:
+        return False
+
+    if effective_ledger is not None and hasattr(effective_ledger, "is_available"):
+        return _ledger_candidates_available(effective_ledger, phase, candidates)
+
+    effective_attempts = attempts if attempts is not None else MAX_CONSECUTIVE_RESOLVER_ATTEMPTS
+    return prior_conflict_count(state, target, identity, attempts=effective_attempts) < effective_attempts
 
 
 @runtime_checkable
@@ -312,8 +330,10 @@ def apply_conflict_budget(
                 record.retry_deadline if record.retry_deadline is not None else prior.retry_deadline
             )
         )
-        updated = record.record_consecutive_conflicts(carried, cap=attempts).set_retry_deadline(
-            deadline_value
+        updated = (
+            record.record_consecutive_conflicts(carried, cap=attempts)
+            .set_retry_deadline(deadline_value)
+            .project_conflict_strategy_from(prior)
         )
         return updated.model_copy(
             update={
@@ -331,9 +351,11 @@ def apply_conflict_budget(
         if effective_deadline is not None
         else (record.retry_deadline if record.retry_deadline is not None else prior.retry_deadline)
     )
-    updated = record.record_consecutive_conflicts(
-        min(attempts, carried + 1), cap=attempts
-    ).set_retry_deadline(deadline_value)
+    updated = (
+        record.record_consecutive_conflicts(min(attempts, carried + 1), cap=attempts)
+        .set_retry_deadline(deadline_value)
+        .project_conflict_strategy_from(prior)
+    )
     update: dict[str, object] = {
         "last_conflict_feature_sha": identity.feature_sha,
         "last_conflict_target_sha": identity.target_sha,
