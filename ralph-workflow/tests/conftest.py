@@ -45,7 +45,13 @@ from ralph.workspace.memory import MemoryWorkspace
 from tests.integration._mock_agent_invoker import MockAgentInvoker
 
 pytest_plugins = ("ralph.testing.pytest_timeout_plugin",)
-_REQUIRED_AUTO_INTEGRATE_E2E_PATHS = frozenset(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
+_REQUIRED_AUTO_INTEGRATE_E2E_PATHS = frozenset(REQUIRED_AUTO_INTEGRATE_E2E_FILES) | {
+    # wt-18 WU-3: the ladder adapter's real-git regression (config-first
+    # argv ordering, compare-and-swap land) must stay on the default
+    # ``make test`` profile so the fail-closed probe cannot rot behind
+    # the opt-in subprocess gate.
+    "tests/test_integration_ladder_real_git.py",
+}
 _AGY_DEFAULT_TEST_PATHS = frozenset(
     {
         "tests/test_agy_pty_invocation.py",

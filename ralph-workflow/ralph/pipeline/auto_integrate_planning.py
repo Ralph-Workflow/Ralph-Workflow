@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
-    from ralph.pipeline.integration_cleanup import PlanningBaseline
+    from ralph.pipeline.integration_cleanup import PlanningBaseline, ResidueCleanupOutcome
     from ralph.pipeline.rebase_state import RebaseState
     from ralph.workspace.scope import WorkspaceScope
 
@@ -68,7 +68,7 @@ def resolve_planning_residue(
     baseline: PlanningBaseline,
     *,
     target: str | None = None,
-) -> None:
+) -> ResidueCleanupOutcome | None:
     """Detect and clear planning residue left by one planning dispatch.
 
     Save-to-backup-ref, restore-to-baseline, one WARNING naming the paths
@@ -76,6 +76,15 @@ def resolve_planning_residue(
     with ladder escalation on repeat failure. Residue is never committed as
     feature work and never discarded without the backup ref. Never raises:
     cleanup is the dispatch's own janitor, not a new way to crash a run.
+
+    Returns the typed outcome so the caller consumes it instead of
+    assuming cleanup ran: an in-progress git operation
+    (``operation_blocked`` / ``operation_unknown``) means cleanup took NO
+    restore action — the operation owns the index — and the state routes
+    to the operation ladder through the ONE owner seam (the decision
+    table's typed continue/abort/rebuild actions), never to residue
+    restore and never to the conflict resolver. ``None`` only when the
+    defensive wrapper caught an unexpected executor failure.
     """
     from ralph.pipeline.integration_cleanup import (
         OwnerResidueLedgerPort,
@@ -84,7 +93,7 @@ def resolve_planning_residue(
     )
 
     try:
-        run_residue_cleanup(
+        outcome = run_residue_cleanup(
             root,
             baseline=baseline,
             git=RunGitCleanupPort(),
@@ -93,6 +102,53 @@ def resolve_planning_residue(
         )
     except Exception as exc:  # pragma: no cover -- defensive: see module docstring contract
         logger.warning("planning residue cleanup failed: {}", exc)
+        return None
+    if outcome.operation_blocked or outcome.operation_unknown:
+        _route_blocked_operation(root, outcome, target=target)
+    return outcome
+
+
+def _route_blocked_operation(
+    root: Path,
+    outcome: ResidueCleanupOutcome,
+    *,
+    target: str | None,
+) -> None:
+    """Route an in-progress operation to the operation ladder via the owner.
+
+    The operation owns the index and any staged resolution: residue
+    cleanup took no restore action (the executor's operation gate
+    guarantees it), and the operation state is never handed to the
+    conflict resolver — the owner observes the live tree and answers
+    with the decision table's typed operation action (continue /
+    repair / rebuild), charged to the durable ledger so a repeat climbs
+    the ladder instead of looping. The route is logged for the operator;
+    the terminal REQUIRE_INTERVENTION overlay is never consumed here as
+    an operation action.
+    """
+    from ralph.pipeline._integration_action import IntegrationAction
+    from ralph.pipeline._integration_owner_seam import decide_seam_action
+    from ralph.pipeline.auto_integrate_record import read_record
+
+    label = "unknown-operation" if outcome.operation_kind is None else outcome.operation_kind.name
+    try:
+        action = decide_seam_action(root, record=read_record(root), target=target)
+    except Exception as exc:  # pragma: no cover -- defensive
+        logger.warning("planning residue: operation-ladder routing unreadable: {}", exc)
+        return
+    if action is IntegrationAction.REQUIRE_INTERVENTION:
+        logger.warning(
+            "planning residue cleanup deferred: git {} in progress; the owner seam "
+            "holds the terminal block (intervention required)",
+            label,
+        )
+        return
+    logger.warning(
+        "planning residue cleanup deferred: git {} in progress; the operation ladder "
+        "routes through the owner seam: {}",
+        label,
+        action.name,
+    )
 
 
 def integrate_before_planning(

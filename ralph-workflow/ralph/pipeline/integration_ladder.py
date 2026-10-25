@@ -22,8 +22,10 @@ The rungs (see each function for the full contract):
    quarantine directory, then force the baseline with
    ``read-tree``/``checkout-index``; impossible rename skips to rung 4.
 4. :func:`rebuild_in_fresh_worktree` — rebuild on the current target
-   at a new path, apply the preserved work, land from there, repoint
-   the original checkout when possible.
+   at a new path, apply the preserved work, land from there with
+   compare-and-swap (a concurrent target advance names the race and
+   overwrites nothing), repoint the original checkout only when it is
+   still where the ladder observed it.
 5. :func:`adapt_environment_and_retry` — classify the environment
    failure, set the matching safe config for the owned path, then
    capped exponential backoff on the injectable clock, re-observing
@@ -56,10 +58,19 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
+from ralph.pipeline._integration_ladder_seams import (
+    EnvironmentFailure as EnvironmentFailure,
+    EnvironmentProbe as EnvironmentProbe,
+    FileQuarantine as FileQuarantine,
+    GitPlumbing as GitPlumbing,
+    LadderOutcome as LadderOutcome,
+    LandResult as LandResult,
+    RepointResult as RepointResult,
+)
 from ralph.pipeline.integration_actions import Clock, current_clock
 from ralph.pipeline.integration_decision import (
     CLEANUP_LADDER_ORDER,
@@ -83,6 +94,8 @@ __all__ = [
     "FileQuarantine",
     "GitPlumbing",
     "LadderStepResult",
+    "LandResult",
+    "RepointResult",
     "adapt_environment_and_retry",
     "evaluate_last_resort_preconditions",
     "ladder_charge_count",
@@ -95,32 +108,6 @@ __all__ = [
     "run_ladder_rung",
 ]
 
-
-# ---------------------------------------------------------------------------
-# Typed vocabularies (literal aliases, not classes: this module publishes
-# exactly one public top-level class, per the repo-structure policy).
-# ---------------------------------------------------------------------------
-
-type LadderOutcome = Literal["succeeded", "failed", "impossible", "waiting"]
-"""Closed outcome vocabulary of one ladder-rung step.
-
-``succeeded`` — the rung did its work (or there was nothing to do).
-``failed`` — the rung ran and could not complete; the caller
-re-observes and the decision table escalates.
-``impossible`` — observation shows the rung cannot succeed (e.g. a
-path cannot be renamed); the caller SKIPS it, never repeats it.
-``waiting`` — the environment-degrade rung backed off one tick; the
-run keeps going, never exits.
-"""
-
-type EnvironmentFailure = Literal[
-    "read_only_fs",
-    "disk_full",
-    "safe_directory",
-    "missing_gitdir",
-    "remote_down",
-]
-"""Closed vocabulary of environment failure classes the degrade rung adapts to."""
 
 #: Bounded attempt budget for the WHOLE cleanup ladder: the last-resort
 #: reset is unreachable until at least this many cleanup-ladder charges
@@ -196,148 +183,6 @@ class LadderStepResult:
     quarantined_paths: tuple[str, ...] = ()
     next_rung: CleanupLadderRung | None = None
     evidence: dict[str, str] = field(default_factory=dict)
-
-
-# Seams: git plumbing, filesystem quarantine, environment probe.
-
-
-@runtime_checkable
-class _GitPlumbing(Protocol):
-    """The git mutations the fallback ladder performs.
-
-    Every member is a single bounded, queue-routed git operation (the
-    production adapter calls :func:`ralph.git.subprocess_runner.run_git`).
-    Observation deliberately stays outside: these are the mutating
-    verbs a fault-injecting double needs to see.
-    """
-
-    def changed_paths(self, root: Path) -> tuple[str, ...]:
-        """Return every changed (tracked or untracked) path, ``-z`` porcelain."""
-        ...
-
-    def head_sha(self, root: Path) -> str | None:
-        """Return the current ``HEAD`` commit sha, or ``None`` when unreadable."""
-        ...
-
-    def commit_dirt(self, root: Path, head_sha: str, owning_worktree: str | None) -> str | None:
-        """Commit the dirt with plumbing; return the preservation ref, or ``None``."""
-        ...
-
-    def ref_is_readable(self, root: Path, ref: str) -> bool:
-        """True when ``ref`` resolves to an object readable from the repository."""
-        ...
-
-    def prune_landed_backup_refs(
-        self, root: Path, is_landed: Callable[[str], bool]
-    ) -> tuple[str, ...]:
-        """Delete backup refs verified landed; return the pruned names."""
-        ...
-
-    def write_patch(self, root: Path, paths: tuple[str, ...], dest: Path) -> bool:
-        """Write a binary patch of ``paths`` against HEAD to ``dest`` (streamed)."""
-        ...
-
-    def archive_paths(self, root: Path, paths: tuple[str, ...], dest: Path) -> bool:
-        """Write a tar archive of ``paths`` to ``dest`` (streamed)."""
-        ...
-
-    def restore_tree_to_head(self, root: Path) -> bool:
-        """Force index and worktree back to ``HEAD`` with read-tree/checkout-index."""
-        ...
-
-    def abort_operation(self, root: Path, kind: InProgressKind) -> bool:
-        """Abort the in-progress operation of ``kind``; report whether it ran."""
-        ...
-
-    def remove_operation_state(self, root: Path, kind: InProgressKind) -> bool:
-        """Delete the operation's state files when abort failed; report cleaned."""
-        ...
-
-    def reset_hard(self, root: Path, revision: str) -> bool:
-        """``git reset --hard <revision>`` with hooks disabled; report success."""
-        ...
-
-    def clean_untracked(self, root: Path, paths: tuple[str, ...]) -> bool:
-        """``git clean -fd`` for the blocking untracked ``paths``; report success."""
-        ...
-
-    def remove_stale_locks(self, root: Path) -> tuple[str, ...]:
-        """Remove lock files whose owner is proven dead; return removed names."""
-        ...
-
-    def recreate_worktree(self, root: Path, branch: str) -> bool:
-        """Recreate the worktree at ``root`` checked out on ``branch`` from scratch."""
-        ...
-
-    def set_safe_directory(self, root: Path) -> bool:
-        """Add the owned path to the global ``safe.directory`` config."""
-        ...
-
-    def repair_gitdir(self, root: Path) -> bool:
-        """Best-effort repair of a missing/broken gitdir link; report usable."""
-        ...
-
-    def create_worktree(self, root: Path, path: Path, target: str) -> bool:
-        """Create a fresh worktree at ``path`` from ``target`` (detached HEAD)."""
-        ...
-
-    def apply_preserved(self, root: Path, path: Path, preserved_ref: str) -> bool:
-        """Apply the preserved work (cherry-pick) inside the fresh worktree."""
-        ...
-
-    def land_in_worktree(self, root: Path, path: Path, target: str) -> bool:
-        """Fast-forward the target ref to the fresh worktree tip; report success."""
-        ...
-
-    def repoint_original(self, root: Path, path: Path) -> bool:
-        """Point the original checkout at the fresh worktree result when possible."""
-        ...
-
-    def remote_reachable(self, root: Path, remote: str) -> bool:
-        """True when ``remote`` answers a bounded ls-remote probe."""
-        ...
-
-
-GitPlumbing = _GitPlumbing
-"""Public alias of the git-plumbing seam; see the module docstring."""
-
-
-@runtime_checkable
-class _FileQuarantine(Protocol):
-    """Filesystem seam of the fallback ladder (rename, prune, verify)."""
-
-    def rename_into_quarantine(self, root: Path, quarantine_dir: Path, path: str) -> str | None:
-        """Rename ``root/path`` into ``quarantine_dir``; return the new location."""
-        ...
-
-    def prune_regenerable_artifacts(self, state_dir: Path) -> tuple[str, ...]:
-        """Delete Ralph's own regenerable artifacts under ``state_dir``."""
-        ...
-
-    def path_is_readable(self, path: Path) -> bool:
-        """True when ``path`` exists and one byte can be read from it."""
-        ...
-
-    def alternative_state_dir(self, root: Path) -> Path | None:
-        """Return a different writable temp/work location, or ``None``."""
-        ...
-
-
-FileQuarantine = _FileQuarantine
-"""Public alias of the filesystem-quarantine seam."""
-
-
-@runtime_checkable
-class _EnvironmentProbe(Protocol):
-    """Probe that classifies the environment failure, if any, at ``root``."""
-
-    def failure_class(self, root: Path, *, remote: str) -> EnvironmentFailure | None:
-        """Return the environment failure class at ``root``, or ``None`` when healthy."""
-        ...
-
-
-EnvironmentProbe = _EnvironmentProbe
-"""Public alias of the environment-probe seam."""
 
 
 # Ledger evidence helpers (intent before, outcome after; restart resume).
@@ -501,6 +346,14 @@ def preserve_via_temp_index(
     key = _rung_key(rung)
     _record_evidence(ledger, key, "intent")
     paths = git.changed_paths(root)
+    if paths is None:
+        # The probe failed: unknown is NEVER clean. Reporting
+        # "nothing-to-preserve" here would let a destructive later rung
+        # proceed as if the tree were known-clean — fail closed instead
+        # and let the caller re-observe and escalate.
+        value = "failed:changed-paths-unreadable"
+        _record_evidence(ledger, key, value)
+        return LadderStepResult(rung, "failed", value, evidence={key: value})
     if not paths:
         value = "succeeded:nothing-to-preserve"
         _record_evidence(ledger, key, value)
@@ -629,19 +482,39 @@ def rebuild_in_fresh_worktree(
     state_dir: Path,
     clock: Clock,
     preserved_ref: str | None = None,
+    expected_target_sha: str | None = None,
 ) -> LadderStepResult:
     """Rung 4: rebuild on the current target in a fresh isolated worktree.
 
     Creates a new worktree from the current target, applies the
     preserved work there (cherry-pick; a real conflict is the resolver
-    agent's job, decided upstream), lands the target from the fresh
-    worktree and repoints the original checkout at the result when
-    possible. A successful rebuild also records the
-    ``salvage:fresh_worktree_rebuild`` evidence precondition (b) waits for.
+    agent's job, decided upstream), then lands the target from the fresh
+    worktree with compare-and-swap semantics: the expected sha is the
+    one observed at rung start (passed in, or probed fresh — an
+    unreadable probe fails closed), and a concurrent advance of the
+    target ref is a typed ``failed:land:target-moved-concurrently``
+    outcome that names the race and issues no overwrite, so the caller
+    re-observes. The original checkout is repointed only when it is
+    still where the ladder observed it (or detached and clean per a
+    fresh probe); a not-now repoint defers without failing the rung —
+    the durable outcome is the landed target. A successful rebuild also
+    records the ``salvage:fresh_worktree_rebuild`` evidence
+    precondition (b) waits for.
     """
     rung = CleanupLadderRung.FRESH_WORKTREE
     key = _rung_key(rung)
     _record_evidence(ledger, key, "intent")
+    # Observe BOTH shas BEFORE any mutation: the expected target sha the
+    # CAS will be checked against, and the original worktree's HEAD the
+    # safe-repoint precondition will be checked against.
+    expected = (
+        expected_target_sha if expected_target_sha is not None else git.target_sha(root, target)
+    )
+    original_head = git.head_sha(root)
+    if expected is None:
+        value = "failed:land:target-sha-unreadable"
+        _record_evidence(ledger, key, value)
+        return LadderStepResult(rung, "failed", value, evidence={key: value})
     digest = hashlib.sha256(f"{root}-{clock.now():.0f}".encode()).hexdigest()
     fresh_path = state_dir.parent / f"fresh-worktree-{digest[:8]}"
     steps: tuple[tuple[str, Callable[[], bool]], ...] = (
@@ -654,8 +527,6 @@ def rebuild_in_fresh_worktree(
                 else git.apply_preserved(root, fresh_path, preserved_ref)
             ),
         ),
-        ("land", lambda: git.land_in_worktree(root, fresh_path, target)),
-        ("repoint-original", lambda: git.repoint_original(root, fresh_path)),
     )
     for step_name, step in steps:
         if step():
@@ -663,7 +534,22 @@ def rebuild_in_fresh_worktree(
         value = f"failed:{step_name}"
         _record_evidence(ledger, key, value)
         return LadderStepResult(rung, "failed", value, evidence={key: value})
-    value = f"succeeded:fresh-worktree={fresh_path}"
+    land = git.land_in_worktree(root, fresh_path, target, expected_sha=expected)
+    if land == "target-moved":
+        value = "failed:land:target-moved-concurrently"
+        _record_evidence(ledger, key, value)
+        return LadderStepResult(rung, "failed", value, evidence={key: value})
+    if land not in ("landed", "landed-already"):
+        value = f"failed:land:{land}"
+        _record_evidence(ledger, key, value)
+        return LadderStepResult(rung, "failed", value, evidence={key: value})
+    repoint = git.repoint_original(root, fresh_path, observed_sha=original_head)
+    if repoint == "reset-failed":
+        value = "failed:repoint-original"
+        _record_evidence(ledger, key, value)
+        return LadderStepResult(rung, "failed", value, evidence={key: value})
+    not_now = "" if repoint == "repointed" else f":repoint-not-now:{repoint}"
+    value = f"succeeded:fresh-worktree={fresh_path}{not_now}"
     _record_evidence(ledger, key, value)
     _record_evidence(ledger, "salvage:fresh_worktree_rebuild", "succeeded")
     _record_evidence(ledger, "preserved:fresh_worktree", str(fresh_path))
@@ -896,6 +782,7 @@ def run_ladder_rung(
     owning_worktree: str | None = None,
     remote: str = "origin",
     budget: int = LADDER_ATTEMPT_BUDGET,
+    expected_target_sha: str | None = None,
 ) -> LadderStepResult:
     """Execute one cleanup-ladder rung through the owner-routed projection.
 
@@ -942,6 +829,7 @@ def run_ladder_rung(
             state_dir=ralph_state,
             clock=ladder_clock,
             preserved_ref=feature_tip,
+            expected_target_sha=expected_target_sha,
         )
     if rung is CleanupLadderRung.ENVIRONMENT_DEGRADE:
         return adapt_environment_and_retry(

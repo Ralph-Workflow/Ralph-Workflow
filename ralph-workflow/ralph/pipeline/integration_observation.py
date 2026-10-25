@@ -225,12 +225,25 @@ class HeadState(Enum):
 
 
 class InProgressKind(Enum):
-    """The kind of git operation currently in flight, if any."""
+    """The kind of git operation currently in flight, if any.
+
+    Every member except ``NONE`` names the authoritative marker (or
+    marker directory) Git leaves in the per-worktree git directory:
+    ``rebase-merge/`` for a sequencer-backed rebase, ``rebase-apply/``
+    for the apply backend or an am-style patch application,
+    ``MERGE_HEAD`` for a merge, ``CHERRY_PICK_HEAD`` / ``REVERT_HEAD``
+    for the single-commit sequencer operations, and ``sequencer/`` for
+    a multi-step cherry-pick or revert chain. The probe never invents a
+    kind: an unreadable marker stays :meth:`Reading.unknown`.
+    """
 
     NONE = "none"
     REBASE = "rebase"
     MERGE = "merge"
     CHERRY_PICK = "cherry_pick"
+    REVERT = "revert"
+    AM = "am"
+    SEQUENCER = "sequencer"
 
 
 class InProgressOwnership(Enum):
@@ -730,15 +743,65 @@ def _marker_present(path: Path) -> bool:
     return True
 
 
+def _am_patch_counters_present(rebase_apply: Path) -> bool:
+    """True when ``rebase_apply`` carries the ``next``/``last`` patch counters.
+
+    ``git am`` and the rebase apply-backend share the ``rebase-apply``
+    state directory, and there is no cheap marker that separates one
+    from the other with certainty. Per git conventions the ``next`` and
+    ``last`` counter files evidence an am-style patch application in
+    progress, so a ``rebase-apply`` directory carrying both counters
+    classifies as :attr:`InProgressKind.AM` while a counter-free
+    directory keeps the legacy :attr:`InProgressKind.REBASE` answer.
+    The distinction is decision-invariant: every non-``NONE`` kind maps
+    to the same owned-resume and foreign-conflict decision rows, so the
+    residual misclassification of an apply-backend rebase as ``AM``
+    changes the label, never the action.
+    """
+    return _marker_present(rebase_apply / "next") and _marker_present(rebase_apply / "last")
+
+
+#: Single-marker operation probes, most specific first: each entry pairs
+#: one git-dir marker with the kind its presence proves. The rebase
+#: markers are NOT in this table: ``rebase-merge/`` is checked outright
+#: and ``rebase-apply/`` needs the am-vs-rebase counter distinction in
+#: :func:`_am_patch_counters_present`.
+_SINGLE_OPERATION_MARKERS: tuple[tuple[str, InProgressKind], ...] = (
+    ("MERGE_HEAD", InProgressKind.MERGE),
+    ("CHERRY_PICK_HEAD", InProgressKind.CHERRY_PICK),
+    ("REVERT_HEAD", InProgressKind.REVERT),
+    ("sequencer", InProgressKind.SEQUENCER),
+)
+
+
 def _read_operation_markers(git_dir: Path) -> Reading[InProgressKind]:
-    """Classify the operation markers inside one worktree's git directory."""
+    """Classify the operation markers inside one worktree's git directory.
+
+    The probe is evidence-based and most-specific-marker-first:
+    ``rebase-merge/`` wins outright; a ``rebase-apply/`` directory with
+    the ``next``/``last`` patch counters is an am-style application
+    (see :func:`_am_patch_counters_present`) while a counter-free
+    ``rebase-apply/`` keeps the legacy rebase answer; ``MERGE_HEAD``,
+    ``CHERRY_PICK_HEAD`` and ``REVERT_HEAD`` name the single-operation
+    markers; a bare ``sequencer/`` directory names a multi-step
+    cherry-pick or revert chain. Only positive evidence produces a
+    kind — an unreadable marker is :meth:`Reading.unknown`, never a
+    positive classification.
+    """
     try:
-        if _marker_present(git_dir / "rebase-merge") or _marker_present(git_dir / "rebase-apply"):
+        if _marker_present(git_dir / "rebase-merge"):
             return Reading.known(InProgressKind.REBASE)
-        if _marker_present(git_dir / "MERGE_HEAD"):
-            return Reading.known(InProgressKind.MERGE)
-        if _marker_present(git_dir / "CHERRY_PICK_HEAD"):
-            return Reading.known(InProgressKind.CHERRY_PICK)
+        rebase_apply = git_dir / "rebase-apply"
+        if _marker_present(rebase_apply):
+            kind = (
+                InProgressKind.AM
+                if _am_patch_counters_present(rebase_apply)
+                else InProgressKind.REBASE
+            )
+            return Reading.known(kind)
+        for marker_name, kind in _SINGLE_OPERATION_MARKERS:
+            if _marker_present(git_dir / marker_name):
+                return Reading.known(kind)
     except OSError as exc:
         return Reading[InProgressKind].unknown(
             f"in-progress marker unreadable: {exc or type(exc).__name__}"
@@ -751,9 +814,14 @@ def read_in_progress_kind(root: Path) -> Reading[InProgressKind]:
 
     Git records an unfinished operation in the per-worktree git directory:
     ``rebase-merge/`` / ``rebase-apply/`` for a rebase, ``MERGE_HEAD``
-    for a merge, and ``CHERRY_PICK_HEAD`` for a cherry-pick. The probe
-    reads the per-worktree git directory so a sibling worktree's markers
-    are never mistaken for this worktree's state.
+    for a merge, ``CHERRY_PICK_HEAD`` / ``REVERT_HEAD`` for the
+    single-commit sequencer operations, a ``rebase-apply/`` directory
+    carrying the ``next``/``last`` patch counters for an am-style patch
+    application, and ``sequencer/`` for a multi-step cherry-pick or
+    revert chain. ``git rev-parse --absolute-git-dir`` already resolves
+    to the per-worktree git directory (for a linked worktree that is
+    ``.git/worktrees/<name>``), so probing the returned path never
+    mistakes a sibling worktree's markers for this worktree's state.
 
     A failed git query or an unreadable marker is
     :meth:`Reading.unknown`; it is never positive evidence that an

@@ -61,6 +61,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.pipeline._integration_record_facts import apply_record_facts
+from ralph.pipeline.integration_ladder import LadderStepResult, run_ladder_rung
 from ralph.pipeline.integration_observation import (
     DirtShape,
     TargetVsFeature,
@@ -75,12 +76,21 @@ if TYPE_CHECKING:
 
     from ralph.pipeline._integration_action import IntegrationAction
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
+    from ralph.pipeline.integration_actions import Clock
+    from ralph.pipeline.integration_attempt_ledger import AttemptLedger
+    from ralph.pipeline.integration_decision import CleanupLadderRung
+    from ralph.pipeline.integration_ladder import (
+        EnvironmentProbe,
+        FileQuarantine,
+        GitPlumbing,
+    )
     from ralph.pipeline.integration_observation import Observation
 
 __all__ = [
     "PlanningSyncVerdict",
     "decide_planning_sync",
     "decide_seam_action",
+    "execute_planning_ladder_rung",
 ]
 
 
@@ -106,6 +116,12 @@ class PlanningSyncVerdict:
       classifier allows dispatch. An unknown worktree probe, blocking
       dirt or an out-of-sync branch all hold planning, each with the
       ``reason`` naming the current observation.
+    * ``ladder_rung`` — the rung-level projection of a cleanup-ladder
+      decision (``None`` for every other decision): when it is not
+      ``None`` the caller dispatches the rung through
+      :func:`execute_planning_ladder_rung` (which runs
+      :func:`ralph.pipeline.integration_ladder.run_ladder_rung`)
+      instead of acting on the coarse ``action`` alone.
     """
 
     action: IntegrationAction
@@ -115,6 +131,7 @@ class PlanningSyncVerdict:
     in_sync: bool
     may_plan: bool
     reason: str
+    ladder_rung: CleanupLadderRung | None = None
 
 
 def decide_seam_action(
@@ -240,4 +257,58 @@ def decide_planning_sync(
         in_sync=in_sync,
         may_plan=may_plan,
         reason=reason,
+        ladder_rung=verdict.ladder_rung,
+    )
+
+
+def execute_planning_ladder_rung(
+    root: Path,
+    verdict: PlanningSyncVerdict,
+    *,
+    ledger: AttemptLedger,
+    target: str | None = None,
+    expected_target_sha: str | None = None,
+    git: GitPlumbing | None = None,
+    fs: FileQuarantine | None = None,
+    env: EnvironmentProbe | None = None,
+    clock: Clock | None = None,
+    state_dir: Path | None = None,
+) -> LadderStepResult | None:
+    """Dispatch the cleanup-ladder rung the owner's verdict selected, once.
+
+    This is the caller contract documented on
+    :data:`ralph.pipeline.integration_owner.NEXT_ACTION_TO_LADDER_RUNG`:
+    a verdict whose ``ladder_rung`` is not ``None`` executes that rung
+    through :func:`ralph.pipeline.integration_ladder.run_ladder_rung`
+    instead of acting on the coarse ``action`` alone. ``None`` rung
+    means the decision is not a cleanup-ladder rung and no ladder
+    executor runs — the function returns ``None`` and touches nothing.
+
+    The rung executes with the repo-wide attempt ``ledger`` (every rung
+    records its own outcome evidence into it before and after acting),
+    the state dir and the injected clock/plumbing seams, so a boundary
+    holding the verdict runs any rung with one call. The verdict's typed
+    in-progress state reaches the dispatcher, and ``expected_target_sha``
+    — the target sha observed at decision time — is forwarded so the
+    fresh-worktree rung fails closed on a concurrent target move.
+
+    The caller consumes the returned
+    :class:`~ralph.pipeline.integration_ladder.LadderStepResult` and
+    re-observes before deciding again: acting twice on one observation
+    is what the durable ledger's escalation budget exists to prevent.
+    """
+    if verdict.ladder_rung is None:
+        return None
+    return run_ladder_rung(
+        verdict.ladder_rung,
+        root=root,
+        ledger=ledger,
+        git=git,
+        fs=fs,
+        env=env,
+        clock=clock,
+        state_dir=state_dir,
+        target="main" if target is None else target,
+        in_progress_kind=verdict.observation.in_progress_kind,
+        expected_target_sha=expected_target_sha,
     )

@@ -28,9 +28,18 @@ that contract mechanically:
   human work — saved, never silently reverted, and reported. Untracked-only
   residue does not block. Untracked files the incoming target commits would
   overwrite are blocking: they are moved aside into a quarantine directory
-  under ``.agent/`` and restored by the landing seam via
+  under ``.agent/`` and restored by the   landing seam via
   :func:`restore_quarantined_untracked`. Unmerged (conflict) state created
   during planning is NEVER touched by cleanup.
+
+  An in-progress git operation blocks cleanup entirely: the
+  operation-marker probe (``MERGE_HEAD``, ``rebase-merge/``,
+  ``rebase-apply/``, ``CHERRY_PICK_HEAD`` via
+  :func:`~ralph.pipeline.integration_observation.read_in_progress_kind`)
+  runs before any restore, and ANY marker defers the run with a typed
+  outcome — the operation owns the index and its staged resolution until
+  the operation ladder (continue/abort/rebuild) resolves it. An unreadable
+  probe is UNKNOWN, never "clean/none".
 
 Every mutation is bounded and ledgered: the executor charges the
 repository-wide attempt ledger (intent before action) through
@@ -88,9 +97,11 @@ from ralph.pipeline.integration_observation import (
     InProgressOwnership,
     IntegrationRecordState,
     Observation,
+    Reading,
     TargetVsFeature,
     TargetVsRemote,
     WorktreeState,
+    read_in_progress_kind,
 )
 
 if TYPE_CHECKING:
@@ -128,6 +139,21 @@ _CLEANUP_LADDER_ACTIONS: frozenset[NextAction] = frozenset(
 
 #: Unmerged porcelain codes: a conflict state the cleanup ladder must not touch.
 _UNMERGED_XY: frozenset[str] = frozenset({"UU", "AA", "DD", "AU", "UA", "DU", "UD"})
+
+#: Human-readable labels for every operation state that blocks cleanup.
+#: Explicit total map over the non-``NONE`` :class:`InProgressKind`
+#: vocabulary (not ``kind.value``): ``InProgressKind`` is a plain Enum, so
+#: its ``.value`` is dynamically typed and the repo's mypy config disallows
+#: Any expressions. The label must stay total: a ``KeyError`` here would be
+#: caught by the executor's defensive wrapper and mask the typed outcome.
+_OPERATION_LABELS: Final[dict[InProgressKind, str]] = {
+    InProgressKind.MERGE: "merge",
+    InProgressKind.REBASE: "rebase",
+    InProgressKind.CHERRY_PICK: "cherry-pick",
+    InProgressKind.REVERT: "revert",
+    InProgressKind.AM: "am",
+    InProgressKind.SEQUENCER: "sequencer",
+}
 
 #: A degraded rung is executed at quarantine strength; the outcome names the
 #: rung the ladder actually selected so the report is honest about it.
@@ -198,18 +224,30 @@ class ResidueCleanupOutcome:
     """What one :func:`run_residue_cleanup` invocation did.
 
     Exactly one of the terminal ``clean`` / ``unreadable`` / ``head_moved``
-    / ``unmerged`` / ``untracked_only`` / ``refused`` flags is normally set
-    when no cleanup ran; a blocking cleanup sets none of them and reports
-    its effect through ``action`` / ``restored_paths`` /
-    ``remaining_paths``. ``degraded`` names a rung the executor could only
-    execute at quarantine strength (fresh-worktree / environment rungs need
-    machinery owned elsewhere); the tree is still preserved and restored.
+    / ``unmerged`` / ``operation_blocked`` / ``operation_unknown`` /
+    ``untracked_only`` / ``refused`` flags is normally set when no cleanup
+    ran; a blocking cleanup sets none of them and reports its effect
+    through ``action`` / ``restored_paths`` / ``remaining_paths``.
+    ``degraded`` names a rung the executor could only execute at quarantine
+    strength (fresh-worktree / environment rungs need machinery owned
+    elsewhere); the tree is still preserved and restored.
+
+    ``operation_blocked`` names the seam where a git operation marker
+    (``MERGE_HEAD`` / ``rebase-merge`` / ``rebase-apply`` /
+    ``CHERRY_PICK_HEAD``) proved an operation in progress: the operation
+    owns the index and any staged resolution, so cleanup takes no
+    restore/reset action and ``operation_kind`` names what was observed.
+    ``operation_unknown`` is the fail-closed variant: the marker probe was
+    unreadable, which is never evidence of "no operation".
     """
 
     clean: bool = False
     unreadable: bool = False
     head_moved: bool = False
     unmerged: bool = False
+    operation_blocked: bool = False
+    operation_unknown: bool = False
+    operation_kind: InProgressKind | None = None
     untracked_only: bool = False
     refused: bool = False
     resumed: bool = False
@@ -404,6 +442,14 @@ class CleanupGitPort(Protocol):
 
     def head_sha(self, root: Path) -> str | None:
         """Current HEAD sha; None when unborn/unreadable."""
+        ...
+
+    def in_progress_kind(self, root: Path) -> Reading[InProgressKind]:
+        """Operation-marker probe (``MERGE_HEAD`` / rebase dirs / ``CHERRY_PICK_HEAD``).
+
+        :meth:`Reading.unknown` when the probe is unreadable — never
+        positive evidence that no operation exists.
+        """
         ...
 
     def snapshot_worktree(self, root: Path, *, head_sha: str) -> str:
@@ -630,8 +676,42 @@ def _run_residue_cleanup(
     if after_blob is None or after_diff is None or head is None:
         emit("planning residue check unreadable; tree left untouched")
         return ResidueCleanupOutcome(unreadable=True)
-    # Compare-and-act: a moved HEAD means the baseline no longer describes
-    # the tree; restoring against it could rewrite somebody else's commit.
+    # Operation gate before anything else (see _operation_gate).
+    gated = _operation_gate(root, git, emit)
+    if gated is not None:
+        return gated
+    return _classify_and_clear_residue(
+        root,
+        baseline=baseline,
+        git=git,
+        ledger=ledger,
+        target=target,
+        after_blob=after_blob,
+        after_diff=after_diff,
+        head=head,
+        emit=emit,
+    )
+
+
+def _classify_and_clear_residue(
+    root: Path,
+    *,
+    baseline: PlanningBaseline,
+    git: CleanupGitPort,
+    ledger: ResidueLedgerPort,
+    target: str | None,
+    after_blob: str,
+    after_diff: str,
+    head: str,
+    emit: Callable[[str], None],
+) -> ResidueCleanupOutcome:
+    """Diff the fresh observation against the baseline and act on the result.
+
+    Runs only after the unreadable-observation guard and the operation
+    gate have both passed. Compare-and-act: a moved HEAD means the
+    baseline no longer describes the tree; restoring against it could
+    rewrite somebody else's commit.
+    """
     if head != baseline.head_sha:
         emit(
             "planning left residue but HEAD moved "
@@ -660,6 +740,44 @@ def _run_residue_cleanup(
         # files in place. No ledger charge — nothing mutated.
         return ResidueCleanupOutcome(untracked_only=True)
     return _cleanup_blocking_residue(root, baseline, git, ledger, residue, emit)
+
+
+def _operation_gate(
+    root: Path,
+    git: CleanupGitPort,
+    emit: Callable[[str], None],
+) -> ResidueCleanupOutcome | None:
+    """Defer cleanup while ANY git operation marker is present.
+
+    A git operation marker (``MERGE_HEAD``, ``rebase-merge/``,
+    ``rebase-apply/``, ``CHERRY_PICK_HEAD``) proves an operation owns the
+    index — its staged resolution is NEVER planning residue. An
+    all-resolved merge (conflicts resolved and staged, ``MERGE_HEAD`` still
+    present) would otherwise reach ``restore_paths`` against the baseline
+    and destroy the operation's staged resolution. No owned/foreign split
+    at this seam: ANY marker defers cleanup, and the operation ladder
+    (continue/abort/rebuild) owns this state, not the residue cleanup.
+
+    An unreadable probe is UNKNOWN, never "clean/none": fail closed with a
+    typed outcome and no restore. Returns ``None`` when no marker gates
+    cleanup and the caller proceeds.
+    """
+    in_progress = git.in_progress_kind(root)
+    if not in_progress.is_known_good:
+        emit(
+            "operation-state probe unreadable; cleanup refusing to act "
+            "on an unknown operation state (tree left untouched)"
+        )
+        return ResidueCleanupOutcome(operation_unknown=True)
+    kind = cast("InProgressKind", in_progress.value)
+    if kind is InProgressKind.NONE:
+        return None
+    emit(
+        f"git {_OPERATION_LABELS[kind]} in progress; the operation owns "
+        "staged changes until continue/abort/rebuild — planning-residue "
+        "cleanup takes no restore/reset action"
+    )
+    return ResidueCleanupOutcome(operation_blocked=True, operation_kind=kind)
 
 
 def _cleanup_blocking_residue(
@@ -1013,6 +1131,9 @@ class RunGitCleanupPort:
         if result.returncode != 0 or not sha:
             return None
         return sha
+
+    def in_progress_kind(self, root: Path) -> Reading[InProgressKind]:
+        return read_in_progress_kind(root)
 
     def snapshot_worktree(self, root: Path, *, head_sha: str) -> str:
         backup_ref, _feature_sha = create_stale_resolution_snapshot(

@@ -12,7 +12,7 @@ Satisfies Acceptance Criteria 2, 7, 8, and 9:
 from __future__ import annotations
 
 import random
-from collections import deque
+from collections import OrderedDict, deque
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -39,6 +39,25 @@ from ralph.pipeline.integration_actions import (
     default_clock,
     install_executors,
     reset_executors,
+)
+from ralph.pipeline.integration_decision import (
+    LADDER_ORDER,
+    AttemptState,
+    DecisionContext,
+    NextAction,
+    decide,
+)
+from ralph.pipeline.integration_observation import (
+    HeadState,
+    InProgressKind,
+    InProgressOwnership,
+    IntegrationRecordState,
+    Observation,
+    Reading,
+    TargetVsFeature,
+    TargetVsRemote,
+    WorktreeState,
+    read_in_progress_kind,
 )
 from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
 from ralph.workspace.scope import WorkspaceScope
@@ -490,3 +509,214 @@ def test_the_lease_age_is_read_from_the_injected_clock() -> None:
     production = default_lease_clock()
     fresh_age = lease_age_seconds(production.monotonic(), clock=production)
     assert 0.0 <= fresh_age < 1.0
+
+
+# ---------------------------------------------------------------------------
+# AC-10: the operation-marker fault catalogue.
+#
+# Every non-NONE :class:`InProgressKind` member names the marker layout in
+# the per-worktree git directory that produces it. The completeness guard
+# iterates EVERY kind member, so a new kind without a catalogue row fails
+# the guard -- a missing fault-kind case can never pass silently. The probe
+# tests below drive the production observation probe against marker layouts
+# built in ``tmp_path`` (no real repository, no subprocess, no clock).
+# ---------------------------------------------------------------------------
+
+#: Marker path components that name state DIRECTORIES rather than files.
+_MARKER_DIRS: frozenset[str] = frozenset({"rebase-merge", "rebase-apply", "sequencer"})
+
+#: The operation-marker fault catalogue: each row is a marker layout (paths
+#: relative to the git directory) and the kind the probe must classify it
+#: as. The ``rebase-apply`` rows pin the am-vs-rebase distinction: the
+#: counter-free directory stays a REBASE while the directory carrying the
+#: ``next``/``last`` patch counters classifies as AM.
+_OPERATION_MARKER_CATALOGUE: tuple[tuple[tuple[str, ...], InProgressKind], ...] = (
+    (("rebase-merge",), InProgressKind.REBASE),
+    (("rebase-apply",), InProgressKind.REBASE),
+    (("rebase-apply/next", "rebase-apply/last"), InProgressKind.AM),
+    (("MERGE_HEAD",), InProgressKind.MERGE),
+    (("CHERRY_PICK_HEAD",), InProgressKind.CHERRY_PICK),
+    (("REVERT_HEAD",), InProgressKind.REVERT),
+    (("sequencer",), InProgressKind.SEQUENCER),
+)
+
+
+def test_operation_marker_catalogue_covers_every_in_progress_kind() -> None:
+    """AC-10 completeness guard: every operation kind has a marker fault row.
+
+    A kind without a catalogue row has no marker the probe is proven
+    against, so the guard fails on it -- extending the enum without
+    extending the fault catalogue can never pass silently.
+    """
+    catalogued = frozenset(kind for _layout, kind in _OPERATION_MARKER_CATALOGUE)
+    expected = frozenset(kind for kind in InProgressKind if kind is not InProgressKind.NONE)
+    missing = sorted(kind.name for kind in expected - catalogued)
+    assert missing == [], f"in-progress kinds without a marker fault row: {missing}"
+
+
+@pytest.mark.parametrize(
+    ("layout", "expected"),
+    _OPERATION_MARKER_CATALOGUE,
+    ids=["+".join(layout) for layout, _kind in _OPERATION_MARKER_CATALOGUE],
+)
+def test_read_in_progress_kind_classifies_the_marker_fault_catalogue(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    layout: tuple[str, ...],
+    expected: InProgressKind,
+) -> None:
+    """Each marker layout in the fault catalogue classifies to its kind.
+
+    The probe runs against a marker layout built in ``tmp_path`` and a
+    patched ``run_git`` that reports the fake git directory, so the test
+    stays pure-table plus fakes: no real repository, no subprocess.
+    """
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    for relative in layout:
+        marker = git_dir / relative
+        if marker.name in _MARKER_DIRS and marker.parent == git_dir:
+            marker.mkdir()
+        else:
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text("state\n", encoding="utf-8")
+
+    def _fake_run_git(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(returncode=0, stdout=str(git_dir), stderr="")
+
+    monkeypatch.setattr("ralph.pipeline.integration_observation.run_git", _fake_run_git)
+
+    assert read_in_progress_kind(tmp_path) == Reading.known(expected)
+
+
+def test_unreadable_operation_probe_stays_unknown_and_never_positive(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """AC-10: an unreadable probe is UNKNOWN, never a positive kind.
+
+    A git directory query that fails is environmental: the decision table
+    must back off and re-observe, not treat the failure as evidence of an
+    operation. Both failure seams (the ``git rev-parse`` query and the
+    marker stat) map to :meth:`Reading.unknown`.
+    """
+
+    def _failing_run_git(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(returncode=128, stdout="", stderr="not a repository")
+
+    monkeypatch.setattr("ralph.pipeline.integration_observation.run_git", _failing_run_git)
+
+    reading = read_in_progress_kind(tmp_path)
+    assert reading.is_unknown
+    assert not reading.is_known_good
+
+    # The unknown probe feeds the observation model as "kind NONE with
+    # UNKNOWN ownership", which the decision table answers with back-off
+    # (WAIT_FOR_ENVIRONMENT), never a resolver or resume dispatch.
+    observation = Observation(
+        target_vs_feature=TargetVsFeature.BEHIND,
+        target_vs_remote=TargetVsRemote.EQUAL,
+        worktree=WorktreeState.CLEAN,
+        head=HeadState.ATTACHED,
+        in_progress_kind=InProgressKind.NONE,
+        in_progress_ownership=InProgressOwnership.UNKNOWN,
+        record=IntegrationRecordState.CONSISTENT,
+        agent_active=False,
+    )
+    action = decide(DecisionContext(observation=observation, attempts=AttemptState()))
+    assert action is NextAction.WAIT_FOR_ENVIRONMENT
+
+
+#: The new AC-10 operation kinds, paired with a legacy kind so the test can
+#: prove the decision rows match the existing operation kinds exactly.
+_NEW_OPERATION_KINDS: tuple[InProgressKind, ...] = (
+    InProgressKind.REVERT,
+    InProgressKind.AM,
+    InProgressKind.SEQUENCER,
+)
+
+
+def _operation_observation(
+    kind: InProgressKind,
+    ownership: InProgressOwnership,
+) -> Observation:
+    """Build the canonical clean-tree observation carrying ``kind``."""
+    return Observation(
+        target_vs_feature=TargetVsFeature.BEHIND,
+        target_vs_remote=TargetVsRemote.EQUAL,
+        worktree=WorktreeState.CLEAN,
+        head=HeadState.ATTACHED,
+        in_progress_kind=kind,
+        in_progress_ownership=ownership,
+        record=IntegrationRecordState.CONSISTENT,
+        agent_active=False,
+    )
+
+
+def test_new_operation_kinds_match_the_existing_operation_decision_rows() -> None:
+    """AC-10: revert/am/sequencer rows equal the rebase/merge/cherry-pick rows.
+
+    Owned (resolve/continue) maps to RESUME_OWNED_OPERATION at every rung;
+    foreign (preserve) is a real conflict and maps to DISPATCH_RESOLVER at
+    every rung; an unknown ownership reading backs off, never blocks; and
+    under repeat pressure the owned row escalates to abort-and-rebuild
+    (REBUILD_ON_TARGET) exactly like the legacy kinds.
+    """
+    legacy_kinds = (
+        InProgressKind.REBASE,
+        InProgressKind.MERGE,
+        InProgressKind.CHERRY_PICK,
+    )
+    assert len(_NEW_OPERATION_KINDS) == len(legacy_kinds)
+    for new_kind, legacy_kind in zip(_NEW_OPERATION_KINDS, legacy_kinds, strict=True):
+        for ownership, expected_direct in (
+            (InProgressOwnership.OWNED, NextAction.RESUME_OWNED_OPERATION),
+            (InProgressOwnership.FOREIGN, NextAction.DISPATCH_RESOLVER),
+        ):
+            for rung in LADDER_ORDER:
+                new_ctx = DecisionContext(
+                    observation=_operation_observation(new_kind, ownership),
+                    attempts=AttemptState(rung=rung),
+                )
+                legacy_ctx = DecisionContext(
+                    observation=_operation_observation(legacy_kind, ownership),
+                    attempts=AttemptState(rung=rung),
+                )
+                assert decide(new_ctx) is expected_direct, (
+                    f"{new_kind.value} {ownership.value} @ {rung.value} did not "
+                    f"yield {expected_direct.name}"
+                )
+                assert decide(new_ctx) is decide(legacy_ctx), (
+                    f"{new_kind.value} row diverged from the {legacy_kind.value} row "
+                    f"at {ownership.value} @ {rung.value}"
+                )
+
+        # Repeat pressure escalates the owned row to abort-and-rebuild,
+        # identical to the legacy owned rows.
+        owned_observation = _operation_observation(new_kind, InProgressOwnership.OWNED)
+        repeat_counts: OrderedDict[tuple[str, str], int] = OrderedDict()
+        repeat_counts[
+            (AttemptState().signature(owned_observation), NextAction.RESUME_OWNED_OPERATION.value)
+        ] = 5
+        pressured = AttemptState(rung=LADDER_ORDER[0], repeat_counts=repeat_counts)
+        escalated = decide(
+            DecisionContext(
+                observation=_operation_observation(new_kind, InProgressOwnership.OWNED),
+                attempts=pressured,
+            )
+        )
+        assert escalated is NextAction.REBUILD_ON_TARGET, (
+            f"owned {new_kind.value} under repeat pressure escalated to {escalated.name}"
+        )
+
+        # Unknown ownership is environmental: back off, never block.
+        unknown_observation = _operation_observation(new_kind, InProgressOwnership.UNKNOWN)
+        assert unknown_observation.has_unknown()
+        back_off = decide(DecisionContext(observation=unknown_observation, attempts=AttemptState()))
+        assert back_off is NextAction.WAIT_FOR_ENVIRONMENT
+
+
+def test_the_decision_vocabulary_cannot_require_intervention() -> None:
+    """AC-10: REQUIRE_INTERVENTION is never a consumed outcome of any row."""
+    intervening = sorted(member.name for member in NextAction if "INTERVENTION" in member.name)
+    assert intervening == [], f"the decision vocabulary can require intervention: {intervening}"

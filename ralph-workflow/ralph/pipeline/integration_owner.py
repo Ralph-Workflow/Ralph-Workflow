@@ -13,10 +13,14 @@ per decision, in this order:
    then never probes the workspace twice.
 2. **Load the ledger** - read the durable, restart-proof attempt ledger
    published in :mod:`ralph.pipeline.integration_attempt_ledger`.
-3. **Decide** - call the pure, total decision function
+3. **Decide** - refine the observation's worktree state into a typed
+   dirt shape through the one classifier, then call the pure, total
+   decision function
    :func:`ralph.pipeline.integration_decision.decide` with the
-   observation plus the ledger state. The table is the only place that
-   decides *what* to do.
+   observation, the ledger state and the shape/attribution refinement.
+   The table is the only place that decides *what* to do; the
+   refinement is what lets its dirty-tree rows answer the cleanup
+   ladder instead of the legacy ``COMMIT``.
 4. **Charge** - apply the durable charge for that decision (see the
    charge rule below). The charge is durable BEFORE the caller runs the
    action, so a crash between the charge and the effect still counts the
@@ -121,10 +125,15 @@ from ralph.pipeline.integration_decision import (
     AttemptState,
     CleanupLadderRung,
     DecisionContext,
+    DirtAttribution,
     NextAction,
     decide,
 )
-from ralph.pipeline.integration_observation import IntegrationRecordState
+from ralph.pipeline.integration_observation import (
+    DirtShape,
+    IntegrationRecordState,
+    classify_worktree,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -274,6 +283,9 @@ class IntegrationOwnerDecision:
     ``None`` the caller dispatches the rung through
     :func:`ralph.pipeline.integration_ladder.run_ladder_rung` instead
     of acting on the coarse ``action`` alone.
+    ``dirt_shape`` / ``dirt_attribution`` are the typed dirt refinement
+    the decision was made from (``NONE`` / ``UNKNOWN`` when the tree
+    carried no blocking dirt).
     """
 
     action: IntegrationAction
@@ -282,6 +294,8 @@ class IntegrationOwnerDecision:
     attempts: AttemptLedgerState
     escalation_charged: bool
     ladder_rung: CleanupLadderRung | None = None
+    dirt_shape: DirtShape = DirtShape.NONE
+    dirt_attribution: DirtAttribution = DirtAttribution.UNKNOWN
 
 
 def project_integration_action(next_action: NextAction) -> IntegrationAction:
@@ -387,6 +401,8 @@ def decide_integration_verdict(
     repeat_threshold: int = 2,
     target: str | None = None,
     remote: str | None = None,
+    dirt_shape: DirtShape | None = None,
+    dirt_attribution: DirtAttribution = DirtAttribution.UNOWNED,
 ) -> IntegrationOwnerDecision:
     """Decide, charge and project; return the owner's full verdict.
 
@@ -397,6 +413,20 @@ def decide_integration_verdict(
     The CONFIGURED ``target`` and ``remote`` reach the observation
     layer: they are handed to the director, which reads the
     target/feature/remote refs against those names.
+
+    The dirt-shape refinement is what makes the cleanup ladder
+    reachable through the owner: ``dirt_shape`` refines the
+    dirty-tree rows of the decision table (rule 9), so a dirty tree
+    with a blocking shape answers the deterministic cleanup action
+    instead of the legacy ``COMMIT`` and the verdict carries the
+    matching :class:`~ralph.pipeline.integration_decision.CleanupLadderRung`.
+    ``None`` refines internally from the observation itself, through
+    the ONE classifier's state arm
+    (:func:`~ralph.pipeline.integration_observation.classify_worktree`)
+    — a pure projection, no second probe. ``dirt_attribution``
+    defaults to ``UNOWNED``: the boundary holds no phase ledger, so
+    dirt it observes is residue, never a phase's own work (which the
+    commit phase's seam packages, never this one).
     """
     current = (
         observation
@@ -409,13 +439,21 @@ def decide_integration_verdict(
         )
     )
     current = _reconcile_record(current, record)
+    shape = dirt_shape if dirt_shape is not None else _refine_dirt_shape(current)
     attempts = load_integration_attempts(
         root,
         ledger_path=ledger_path,
         unknown_budget=unknown_budget,
         repeat_threshold=repeat_threshold,
     )
-    next_action = decide(DecisionContext(observation=current, attempts=attempts))
+    next_action = decide(
+        DecisionContext(
+            observation=current,
+            attempts=attempts,
+            dirt_shape=shape,
+            dirt_attribution=dirt_attribution,
+        )
+    )
     action = project_integration_action(next_action)
     charged = charge_integration_attempt(
         root,
@@ -432,6 +470,8 @@ def decide_integration_verdict(
         attempts=charged,
         escalation_charged=is_chargeable(next_action),
         ladder_rung=ladder_rung_for_action(next_action),
+        dirt_shape=shape,
+        dirt_attribution=dirt_attribution,
     )
 
 
@@ -563,6 +603,26 @@ def _reconcile_record(observation: Observation, record: IntegrationRecord | None
     if record is None or observation.record is not IntegrationRecordState.NONE:
         return observation
     return replace(observation, record=IntegrationRecordState.STALE)
+
+
+def _refine_dirt_shape(observation: Observation) -> DirtShape:
+    """Refine the observation's worktree state into a typed dirt shape.
+
+    The projection runs through the ONE classifier
+    (:func:`~ralph.pipeline.integration_observation.classify_worktree`)
+    state arm, so the owner, the planning gate and the residue cleanup
+    can never disagree about the tree. The state arm is deliberately
+    conservative: it refines only what the observation already proves
+    (a ``TRACKED_CHANGES`` tree is an ``UNSTAGED_MODIFICATION`` shape),
+    and it never invents evidence the observation does not carry —
+    ``LINE_ENDING_ONLY`` / ``UNTRACKED_BLOCKING`` refinements require
+    content probes a caller that holds them passes explicitly via
+    ``dirt_shape``. An unknown worktree reading yields
+    :attr:`DirtShape.UNKNOWN`, which the decision table never treats
+    as blocking evidence, so an unreadable probe still backs off
+    instead of selecting a cleanup rung.
+    """
+    return classify_worktree(observation.worktree).dirt_shape
 
 
 def _to_attempt_state(state: AttemptLedgerState) -> AttemptState:

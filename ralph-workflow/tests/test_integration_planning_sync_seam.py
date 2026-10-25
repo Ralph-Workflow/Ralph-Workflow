@@ -22,9 +22,14 @@ import pytest
 
 from ralph.pipeline import integration_director, integration_owner_seam
 from ralph.pipeline._integration_action import IntegrationAction
-from ralph.pipeline._integration_owner_seam import decide_planning_sync
+from ralph.pipeline._integration_owner_seam import (
+    PlanningSyncVerdict,
+    decide_planning_sync,
+    execute_planning_ladder_rung,
+)
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
-from ralph.pipeline.integration_decision import AttemptState
+from ralph.pipeline.integration_decision import AttemptState, CleanupLadderRung
+from ralph.pipeline.integration_ladder import LadderStepResult
 from ralph.pipeline.integration_observation import (
     DirtShape,
     HeadState,
@@ -35,7 +40,9 @@ from ralph.pipeline.integration_observation import (
     Reading,
     TargetVsFeature,
     TargetVsRemote,
+    WorktreeDispatch,
     WorktreeState,
+    WorktreeVerdict,
 )
 
 pytestmark = pytest.mark.timeout_seconds(10)
@@ -308,3 +315,124 @@ def test_configured_target_reaches_the_observation(
 
     assert created[0].target == "release"
     assert created[0].remote == "tacos"
+
+
+# ---------------------------------------------------------------------------
+# Cleanup-ladder rung dispatch (the owner contract in integration_owner.py).
+# ---------------------------------------------------------------------------
+
+
+def _verdict_with_rung(rung: CleanupLadderRung | None) -> PlanningSyncVerdict:
+    """Build the typed planning verdict a boundary consumes."""
+    return PlanningSyncVerdict(
+        action=IntegrationAction.CONTINUE_GIT_OPERATION,
+        observation=_observation(),
+        worktree=WorktreeVerdict(
+            state=WorktreeState.TRACKED_CHANGES,
+            is_clean=False,
+            dispatch=WorktreeDispatch.BLOCKED,
+            reason="tracked changes",
+            dirt_shape=DirtShape.UNSTAGED_MODIFICATION,
+        ),
+        dirt_shape=DirtShape.UNSTAGED_MODIFICATION,
+        in_sync=True,
+        may_plan=False,
+        reason="held: residue cleanup ladder",
+        ladder_rung=rung,
+    )
+
+
+def test_the_verdict_carries_the_selected_cleanup_ladder_rung() -> None:
+    """A rung-selected verdict exposes it; a non-ladder verdict carries None."""
+    assert _verdict_with_rung(CleanupLadderRung.QUARANTINE).ladder_rung is (
+        CleanupLadderRung.QUARANTINE
+    )
+    assert _verdict_with_rung(None).ladder_rung is None
+
+
+def test_execute_planning_ladder_rung_dispatches_the_selected_rung_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The rung executes through run_ladder_rung exactly once, sha forwarded."""
+    calls: list[tuple[CleanupLadderRung, dict[str, object]]] = []
+    result = LadderStepResult(CleanupLadderRung.QUARANTINE, "succeeded", "succeeded:test")
+
+    def _fake_run_ladder_rung(rung: CleanupLadderRung, **kwargs: object) -> LadderStepResult:
+        calls.append((rung, kwargs))
+        return result
+
+    monkeypatch.setattr(integration_owner_seam, "run_ladder_rung", _fake_run_ladder_rung)
+    ledger = AttemptLedger(tmp_path, ledger_path=_ledger_path(tmp_path))
+    verdict = _verdict_with_rung(CleanupLadderRung.QUARANTINE)
+
+    outcome = execute_planning_ladder_rung(
+        tmp_path,
+        verdict,
+        ledger=ledger,
+        target="release",
+        expected_target_sha="a" * 40,
+    )
+
+    assert outcome is result
+    assert len(calls) == 1
+    rung, kwargs = calls[0]
+    assert rung is CleanupLadderRung.QUARANTINE
+    assert kwargs["ledger"] is ledger
+    assert kwargs["target"] == "release"
+    assert kwargs["expected_target_sha"] == "a" * 40
+    assert kwargs["in_progress_kind"] is InProgressKind.NONE
+
+
+def test_execute_planning_ladder_rung_without_a_rung_is_a_no_op(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A non-ladder verdict dispatches nothing and returns None."""
+
+    def _boom(rung: CleanupLadderRung, **kwargs: object) -> LadderStepResult:
+        raise AssertionError(f"run_ladder_rung must not run for {rung!r} / {kwargs!r}")
+
+    monkeypatch.setattr(integration_owner_seam, "run_ladder_rung", _boom)
+    ledger = AttemptLedger(tmp_path, ledger_path=_ledger_path(tmp_path))
+
+    assert execute_planning_ladder_rung(tmp_path, _verdict_with_rung(None), ledger=ledger) is None
+
+
+def test_execute_planning_ladder_rung_forwards_the_observation_operation_kind(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The verdict's typed in-progress state reaches the rung dispatcher."""
+    seen: list[object] = []
+
+    def _fake_run_ladder_rung(rung: CleanupLadderRung, **kwargs: object) -> LadderStepResult:
+        del rung
+        seen.append(kwargs["in_progress_kind"])
+        return LadderStepResult(CleanupLadderRung.LAST_RESORT, "failed", "failed:test")
+
+    monkeypatch.setattr(integration_owner_seam, "run_ladder_rung", _fake_run_ladder_rung)
+    ledger = AttemptLedger(tmp_path, ledger_path=_ledger_path(tmp_path))
+    verdict = _verdict_with_rung(CleanupLadderRung.LAST_RESORT)
+    verdict = PlanningSyncVerdict(
+        action=verdict.action,
+        observation=Observation(
+            target_vs_feature=TargetVsFeature.EQUAL,
+            target_vs_remote=TargetVsRemote.EQUAL,
+            worktree=WorktreeState.TRACKED_CHANGES,
+            head=HeadState.ATTACHED,
+            in_progress_kind=InProgressKind.MERGE,
+            in_progress_ownership=InProgressOwnership.OWNED,
+            record=IntegrationRecordState.NONE,
+            agent_active=False,
+        ),
+        worktree=verdict.worktree,
+        dirt_shape=verdict.dirt_shape,
+        in_sync=verdict.in_sync,
+        may_plan=verdict.may_plan,
+        reason=verdict.reason,
+        ladder_rung=verdict.ladder_rung,
+    )
+
+    outcome = execute_planning_ladder_rung(tmp_path, verdict, ledger=ledger)
+
+    assert seen == [InProgressKind.MERGE]
+    assert outcome is not None
+    assert outcome.outcome == "failed"

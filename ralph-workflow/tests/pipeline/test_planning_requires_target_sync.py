@@ -12,6 +12,22 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.pipeline import run_loop
+from ralph.pipeline._integration_action import IntegrationAction
+from ralph.pipeline._integration_owner_seam import PlanningSyncVerdict
+from ralph.pipeline.integration_decision import CleanupLadderRung
+from ralph.pipeline.integration_observation import (
+    DirtShape,
+    HeadState,
+    InProgressKind,
+    InProgressOwnership,
+    IntegrationRecordState,
+    Observation,
+    TargetVsFeature,
+    TargetVsRemote,
+    WorktreeDispatch,
+    WorktreeState,
+    WorktreeVerdict,
+)
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 
@@ -225,3 +241,148 @@ def test_non_planning_phase_and_disabled_integration_are_not_gated(
     assert blocked_dev is None
     assert blocked_disabled is None
     assert repo.integrations == 0
+
+
+# ---------------------------------------------------------------------------
+# Owner-selected cleanup-ladder rung dispatch (WU-1 wiring).
+# ---------------------------------------------------------------------------
+
+
+def _ladder_verdict(
+    rung: CleanupLadderRung | None,
+    *,
+    action: IntegrationAction = IntegrationAction.CONTINUE_GIT_OPERATION,
+) -> PlanningSyncVerdict:
+    """Build the typed owner verdict the gate consumes."""
+    return PlanningSyncVerdict(
+        action=action,
+        observation=Observation(
+            target_vs_feature=TargetVsFeature.BEHIND,
+            target_vs_remote=TargetVsRemote.EQUAL,
+            worktree=WorktreeState.TRACKED_CHANGES,
+            head=HeadState.ATTACHED,
+            in_progress_kind=InProgressKind.NONE,
+            in_progress_ownership=InProgressOwnership.OWNED,
+            record=IntegrationRecordState.NONE,
+            agent_active=False,
+        ),
+        worktree=WorktreeVerdict(
+            state=WorktreeState.TRACKED_CHANGES,
+            is_clean=False,
+            dispatch=WorktreeDispatch.BLOCKED,
+            reason="tracked changes",
+            dirt_shape=DirtShape.UNSTAGED_MODIFICATION,
+        ),
+        dirt_shape=DirtShape.UNSTAGED_MODIFICATION,
+        in_sync=False,
+        may_plan=False,
+        reason="held: cleanup ladder",
+        ladder_rung=rung,
+    )
+
+
+def test_selected_ladder_rung_executes_once_and_the_gate_reobserves(
+    repo: _Repo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Each selected rung dispatches exactly once; a repeat selects the next."""
+    repo.contained = False
+    _integrate_with(monkeypatch, repo, lands=False, reason="residue blocks landing")
+    verdicts = iter(
+        [
+            _ladder_verdict(CleanupLadderRung.QUARANTINE),
+            _ladder_verdict(
+                CleanupLadderRung.FRESH_WORKTREE,
+                action=IntegrationAction.REINTEGRATE_AGAINST_TARGET,
+            ),
+            # The observation did not change: the same rung must never be
+            # re-dispatched; the gate gives up instead.
+            _ladder_verdict(
+                CleanupLadderRung.FRESH_WORKTREE,
+                action=IntegrationAction.REINTEGRATE_AGAINST_TARGET,
+            ),
+            _ladder_verdict(
+                CleanupLadderRung.FRESH_WORKTREE,
+                action=IntegrationAction.REINTEGRATE_AGAINST_TARGET,
+            ),
+        ]
+    )
+    monkeypatch.setattr(run_loop, "decide_planning_sync", lambda *a, **k: next(verdicts))
+    dispatched: list[CleanupLadderRung | None] = []
+    monkeypatch.setattr(
+        run_loop,
+        "_execute_owner_ladder_rung",
+        lambda _ctx, _root, verdict, _target: dispatched.append(verdict.ladder_rung),
+    )
+
+    _after, blocked = run_loop._ensure_planning_in_sync(
+        PipelineState(phase="planning"), _ctx(tmp_path), "planning"
+    )
+
+    assert dispatched == [CleanupLadderRung.QUARANTINE, CleanupLadderRung.FRESH_WORKTREE]
+    assert blocked is not None
+    # One startup-integration re-observation followed each dispatched rung.
+    assert repo.integrations == 3
+
+
+def test_ladder_rung_is_never_dispatched_twice_without_a_state_change(
+    repo: _Repo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A repeated identical rung under an unchanged observation is not re-run."""
+    repo.contained = False
+    _integrate_with(monkeypatch, repo, lands=False, reason="residue blocks landing")
+    verdicts = iter(
+        [
+            _ladder_verdict(CleanupLadderRung.QUARANTINE),
+            _ladder_verdict(CleanupLadderRung.QUARANTINE),
+            _ladder_verdict(CleanupLadderRung.QUARANTINE),
+        ]
+    )
+    monkeypatch.setattr(run_loop, "decide_planning_sync", lambda *a, **k: next(verdicts))
+    dispatched: list[CleanupLadderRung | None] = []
+    monkeypatch.setattr(
+        run_loop,
+        "_execute_owner_ladder_rung",
+        lambda _ctx, _root, verdict, _target: dispatched.append(verdict.ladder_rung),
+    )
+
+    _after, blocked = run_loop._ensure_planning_in_sync(
+        PipelineState(phase="planning"), _ctx(tmp_path), "planning"
+    )
+
+    assert dispatched == [CleanupLadderRung.QUARANTINE]
+    assert blocked is not None
+    assert repo.integrations == 2
+
+
+def test_intervention_overlaid_ladder_rung_is_not_dispatched(
+    repo: _Repo, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """REQUIRE_INTERVENTION on the verdict never reaches the rung dispatcher."""
+    repo.contained = False
+    _integrate_with(monkeypatch, repo, lands=False, reason="residue blocks landing")
+    verdicts = iter(
+        [
+            _ladder_verdict(
+                CleanupLadderRung.QUARANTINE,
+                action=IntegrationAction.REQUIRE_INTERVENTION,
+            ),
+            _ladder_verdict(
+                CleanupLadderRung.QUARANTINE,
+                action=IntegrationAction.REQUIRE_INTERVENTION,
+            ),
+        ]
+    )
+    monkeypatch.setattr(run_loop, "decide_planning_sync", lambda *a, **k: next(verdicts))
+    dispatched: list[CleanupLadderRung | None] = []
+    monkeypatch.setattr(
+        run_loop,
+        "_execute_owner_ladder_rung",
+        lambda _ctx, _root, verdict, _target: dispatched.append(verdict.ladder_rung),
+    )
+
+    _after, blocked = run_loop._ensure_planning_in_sync(
+        PipelineState(phase="planning"), _ctx(tmp_path), "planning"
+    )
+
+    assert dispatched == []
+    assert blocked is not None

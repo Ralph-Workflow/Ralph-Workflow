@@ -38,7 +38,11 @@ from ralph.pipeline.integration_decision import (
     NextAction,
     decide,
 )
-from ralph.pipeline.integration_observation import DirtShape
+from ralph.pipeline.integration_observation import (
+    DirtShape,
+    InProgressKind,
+    Reading,
+)
 
 pytestmark = pytest.mark.timeout_seconds(30)
 
@@ -76,6 +80,10 @@ class _FakeCleanupGit:
         self.fail_restore = False
         self.fail_reobserve = False
         self.forced_blob: str | None = None
+        # Operation-marker probe state: the kind the probe reports, or an
+        # unreadable probe when ``operation_probe_unreadable``.
+        self.operation_kind: InProgressKind = InProgressKind.NONE
+        self.operation_probe_unreadable = False
 
     # -- observation ------------------------------------------------------
 
@@ -112,6 +120,11 @@ class _FakeCleanupGit:
 
     def head_sha(self, root: Path) -> str | None:
         return self.head
+
+    def in_progress_kind(self, root: Path) -> Reading[InProgressKind]:
+        if self.operation_probe_unreadable:
+            return Reading[InProgressKind].unknown("git directory unreadable")
+        return Reading.known(self.operation_kind)
 
     # -- mutations ---------------------------------------------------------
 
@@ -493,6 +506,74 @@ def test_unmerged_residue_is_never_touched() -> None:
     assert ledger.charged == []
     assert git.restore_calls == []
     assert git.worktree["src/app.py"] == "planning wrote here"
+
+
+def test_all_resolved_merge_with_staged_resolution_blocks_cleanup() -> None:
+    # The defect this gate exists for: MERGE_HEAD is present and every
+    # conflict is already resolved and staged — porcelain shows only a
+    # staged row, no unmerged entry. Cleanup must NOT restore the baseline
+    # over the operation's staged resolution.
+    git = _FakeCleanupGit()
+    baseline = _baseline(git)
+    git.worktree["src/app.py"] = "resolved merge"
+    git.staged["src/app.py"] = "resolved merge"
+    git.operation_kind = InProgressKind.MERGE
+    ledger = _FakeLedger()
+    warns: list[str] = []
+    outcome = _run(git, baseline, ledger, warns)
+    assert outcome.operation_blocked
+    assert outcome.operation_kind is InProgressKind.MERGE
+    assert not outcome.clean
+    assert ledger.charged == []
+    assert git.snapshot_count == 0
+    assert git.restore_calls == []
+    # The operation's staged resolution is untouched.
+    assert git.staged["src/app.py"] == "resolved merge"
+    assert git.worktree["src/app.py"] == "resolved merge"
+    assert any("merge" in line for line in warns)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [kind for kind in InProgressKind if kind is not InProgressKind.NONE],
+    ids=[kind.value for kind in InProgressKind if kind is not InProgressKind.NONE],
+)
+def test_operation_marker_blocks_cleanup(kind: InProgressKind) -> None:
+    # Every non-NONE kind blocks cleanup: the gate branches on "some
+    # operation vs NONE", never on a specific kind, so the parametrization
+    # over the whole vocabulary proves the label map and the gate stay
+    # total when the enum grows.
+    git = _FakeCleanupGit()
+    baseline = _baseline(git)
+    git.worktree["src/app.py"] = "operation staged this"
+    git.staged["src/app.py"] = "operation staged this"
+    git.operation_kind = kind
+    ledger = _FakeLedger()
+    outcome = _run(git, baseline, ledger)
+    assert outcome.operation_blocked
+    assert outcome.operation_kind is kind
+    assert ledger.charged == []
+    assert git.snapshot_count == 0
+    assert git.restore_calls == []
+    assert git.staged["src/app.py"] == "operation staged this"
+
+
+def test_unreadable_operation_probe_fails_closed_without_restore() -> None:
+    git = _FakeCleanupGit()
+    baseline = _baseline(git)
+    git.worktree["src/app.py"] = "planning wrote here"
+    git.operation_probe_unreadable = True
+    ledger = _FakeLedger()
+    warns: list[str] = []
+    outcome = _run(git, baseline, ledger, warns)
+    assert outcome.operation_unknown
+    assert outcome.operation_kind is None
+    assert not outcome.clean
+    assert ledger.charged == []
+    assert git.snapshot_count == 0
+    assert git.restore_calls == []
+    assert git.worktree["src/app.py"] == "planning wrote here"
+    assert warns
 
 
 def test_head_moved_refuses_restore_without_charge() -> None:

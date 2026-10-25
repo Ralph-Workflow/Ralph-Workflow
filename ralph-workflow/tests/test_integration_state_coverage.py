@@ -16,7 +16,7 @@ table-driven or property-based test that enumerates *every* combination of
 and proves that each combination has **exactly one defined, safe,
 work-preserving next action**.
 
-The enumeration is 62,208 combinations (4 x 6 x 6 x 3 x 4 x 3 x 6 x 2). The
+The enumeration is 108,864 combinations (4 x 6 x 6 x 3 x 7 x 3 x 6 x 2). The
 decision function is pure, so the whole table is walked in-process: no Git, no
 filesystem, no clock, no network, no sleep.
 
@@ -135,6 +135,9 @@ _IN_PROGRESS_KIND: tuple[InProgressKind, ...] = (
     InProgressKind.REBASE,
     InProgressKind.MERGE,
     InProgressKind.CHERRY_PICK,
+    InProgressKind.REVERT,
+    InProgressKind.AM,
+    InProgressKind.SEQUENCER,
 )
 _IN_PROGRESS_OWNERSHIP: tuple[InProgressOwnership, ...] = (
     InProgressOwnership.OWNED,
@@ -159,20 +162,20 @@ _EXPECTED_DIMENSION_SIZES: tuple[tuple[str, int], ...] = (
     ("target_vs_remote", 6),
     ("worktree", 6),
     ("head", 3),
-    ("in_progress_kind", 4),
+    ("in_progress_kind", 7),
     ("in_progress_ownership", 3),
     ("record", 6),
     ("agent_active", 2),
 )
 
-#: Total number of combinations in the enumerated space (4*6*6*3*4*3*6*2).
-_EXPECTED_COMBINATION_COUNT = 62_208
+#: Total number of combinations in the enumerated space (4*6*6*3*7*3*6*2).
+_EXPECTED_COMBINATION_COUNT = 108_864
 
 #: Observation enum members that the a.c.1 combination space deliberately does
 #: not enumerate. ``TargetVsFeature.UNKNOWN`` is excluded by the acceptance
 #: criterion's own dimension list ("equal, behind, ahead, diverged"); the
 #: sibling exhaustive test in ``tests/test_integration_decision_table.py``
-#: covers the wider 77,760-combination space that includes it. Any *other*
+#: covers the wider 136,080-combination space that includes it. Any *other*
 #: unenumerated member means an observation enum grew and the enumeration
 #: has to be regenerated.
 _EXCLUDED_ENUM_MEMBERS: tuple[tuple[str, frozenset[Enum]], ...] = (
@@ -207,7 +210,7 @@ def _observations() -> tuple[Observation, ...]:
     """Return every combination of the eight observation dimensions.
 
     The tuple is cached for the session: it is a fixed-size, immutable
-    enumeration (62,208 elements), not an accumulator.
+    enumeration (108,864 elements), not an accumulator.
     """
     return tuple(
         Observation(

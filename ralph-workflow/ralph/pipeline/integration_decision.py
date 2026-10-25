@@ -37,7 +37,13 @@ names):
 5. Owned in-progress operations yield
    :attr:`NextAction.RESUME_OWNED_OPERATION`; foreign in-progress
    operations are treated as ``REAL_CONFLICT`` and admitted to the
-   resolver rung only.
+   resolver rung only. The rows are kind-generic: every
+   :class:`InProgressKind` member other than ``NONE`` (REBASE, MERGE,
+   CHERRY_PICK, REVERT, AM, SEQUENCER) maps through the same ordered
+   outcomes — owned resolve/continue escalates to abort-and-rebuild,
+   foreign preserve escalates through the same ladder — so a new
+   operation kind extends the table by extending the enum, never by
+   adding a special-case row.
 6. **Escalation ladder** (finite, total, every rung reachable from any
    unblocked state). The rungs in order are
    :attr:`EscalationRung.REPAIR` → :attr:`EscalationRung.DISPATCH_RESOLVER`

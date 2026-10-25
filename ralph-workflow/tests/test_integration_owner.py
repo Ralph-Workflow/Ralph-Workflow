@@ -33,9 +33,16 @@ from ralph.pipeline import integration_owner
 from ralph.pipeline._integration_action import IntegrationAction
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger, AttemptLedgerState
-from ralph.pipeline.integration_decision import AttemptState, EscalationRung, NextAction
+from ralph.pipeline.integration_decision import (
+    AttemptState,
+    CleanupLadderRung,
+    DirtAttribution,
+    EscalationRung,
+    NextAction,
+)
 from ralph.pipeline.integration_director import IntegrationDirector
 from ralph.pipeline.integration_observation import (
+    DirtShape,
     HeadState,
     InProgressKind,
     InProgressOwnership,
@@ -418,4 +425,118 @@ def test_verdict_exposes_the_charged_ledger_state(tmp_path: Path) -> None:
     assert verdict.observation.worktree is WorktreeState.UNMERGED
     assert verdict.attempts.repeat_counts == {
         (_signature(verdict.observation), "dispatch_resolver"): 1
+    }
+
+
+# ---------------------------------------------------------------------------
+# Dirt-shape refinement: the cleanup ladder is reachable through the owner.
+# ---------------------------------------------------------------------------
+
+
+def test_dirty_tree_verdict_carries_the_cleanup_ladder_rung(tmp_path: Path) -> None:
+    """A dirty tree with a blocking shape answers the cleanup ladder, not legacy COMMIT.
+
+    The owner refines the observation's worktree state into a typed dirt
+    shape before it asks the decision table, so the dirty-tree branch
+    selects the deterministic cleanup action (save-and-restore for
+    unowned dirt) and the verdict projects it onto
+    :class:`~ralph.pipeline.integration_decision.CleanupLadderRung`.
+    """
+    verdict = decide_integration_verdict(
+        tmp_path,
+        observation=_observation(worktree=WorktreeState.TRACKED_CHANGES),
+        ledger_path=_ledger_path(tmp_path),
+    )
+
+    assert verdict.ladder_rung is CleanupLadderRung.NORMAL_CLEANUP
+    assert verdict.action is IntegrationAction.CONTINUE_GIT_OPERATION
+    assert verdict.dirt_shape is DirtShape.UNSTAGED_MODIFICATION
+    assert verdict.dirt_attribution is DirtAttribution.UNOWNED
+    assert verdict.escalation_charged is True
+
+    state = _ledger_state(tmp_path)
+    assert state.repeat_counts == {
+        (_signature(verdict.observation), "save_and_restore"): 1
+    }
+
+
+def test_repeated_unchanged_dirty_observation_escalates_the_rung(
+    tmp_path: Path,
+) -> None:
+    """Each charged repeat of the same dirty observation climbs one rung.
+
+    The first contact answers the direct cleanup action (rung 1, normal
+    cleanup); once the durable ledger proves the signature has been
+    attempted past the repeat threshold, the table falls forward to the
+    next cleanup-ladder rung — never a re-run of the action that failed
+    to change the state.
+    """
+    ledger_path = _ledger_path(tmp_path)
+    observation = _observation(worktree=WorktreeState.TRACKED_CHANGES)
+
+    first = decide_integration_verdict(
+        tmp_path, observation=observation, ledger_path=ledger_path
+    )
+    second = decide_integration_verdict(
+        tmp_path, observation=observation, ledger_path=ledger_path
+    )
+    third = decide_integration_verdict(
+        tmp_path, observation=observation, ledger_path=ledger_path
+    )
+
+    assert first.ladder_rung is CleanupLadderRung.NORMAL_CLEANUP
+    assert second.ladder_rung is CleanupLadderRung.NORMAL_CLEANUP
+    assert third.ladder_rung is CleanupLadderRung.ALTERNATE_PRESERVATION
+    assert third.escalation_charged is True
+
+
+def test_clean_tree_verdict_carries_no_ladder_rung(tmp_path: Path) -> None:
+    """A clean tree never projects onto the cleanup ladder."""
+    verdict = decide_integration_verdict(
+        tmp_path,
+        observation=_observation(),
+        ledger_path=_ledger_path(tmp_path),
+    )
+
+    assert verdict.ladder_rung is None
+    assert verdict.dirt_shape is DirtShape.NONE
+    assert verdict.dirt_attribution is DirtAttribution.UNOWNED
+
+
+def test_unknown_reading_verdict_carries_no_ladder_rung(tmp_path: Path) -> None:
+    """An unreadable worktree probe backs off — never a cleanup rung."""
+    verdict = decide_integration_verdict(
+        tmp_path,
+        observation=_observation(worktree=WorktreeState.UNKNOWN),
+        ledger_path=_ledger_path(tmp_path),
+    )
+
+    assert verdict.ladder_rung is None
+    assert verdict.action is IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+    assert verdict.escalation_charged is False
+
+
+def test_explicit_dirt_refinement_overrides_internal_classification(
+    tmp_path: Path,
+) -> None:
+    """A caller holding richer evidence passes the shape/attribution explicitly.
+
+    Phase-owned dirt routes to the commit-phase commit (integration never
+    packages a phase's own work), which is not a cleanup-ladder rung;
+    the explicit attribution is carried on the verdict verbatim.
+    """
+    verdict = decide_integration_verdict(
+        tmp_path,
+        observation=_observation(worktree=WorktreeState.TRACKED_CHANGES),
+        ledger_path=_ledger_path(tmp_path),
+        dirt_shape=DirtShape.STAGED_ONLY,
+        dirt_attribution=DirtAttribution.PHASE_OWNED,
+    )
+
+    assert verdict.ladder_rung is None
+    assert verdict.dirt_shape is DirtShape.STAGED_ONLY
+    assert verdict.dirt_attribution is DirtAttribution.PHASE_OWNED
+    state = _ledger_state(tmp_path)
+    assert state.repeat_counts == {
+        (_signature(verdict.observation), "commit_via_commit_phase"): 1
     }

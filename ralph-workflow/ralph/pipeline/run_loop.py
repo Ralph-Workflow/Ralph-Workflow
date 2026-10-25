@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from contextlib import nullcontext, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, Literal, cast
 
 from loguru import logger
 
@@ -69,6 +69,7 @@ from ralph.pipeline.cycle_timing import (
     initialize_legacy_cycle_on_resume,
     initialize_legacy_development_timebox_on_resume,
 )
+from ralph.pipeline.integration_decision import CLEANUP_LADDER_ORDER
 from ralph.pipeline.integration_resolution import (
     EXHAUSTED,
     inspect_integration_resolution,
@@ -116,6 +117,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.integration_cleanup import PlanningBaseline
+    from ralph.pipeline.integration_decision import CleanupLadderRung
     from ralph.pipeline.integration_resolution_types import (
         IntegrationResolutionVerdict,
     )
@@ -2205,12 +2207,30 @@ def _resolve_planning_residue_after_dispatch(
     Save-to-backup-ref, restore-to-baseline, one WARNING; charged against
     the repository-wide attempt ledger with ladder escalation on repeats.
     Never raises: cleanup is the dispatch's own janitor, not a new crash path.
+
+    The typed outcome is consumed, not discarded: when an in-progress
+    git operation blocked cleanup (the operation owns the index and any
+    staged resolution), the operation state is routed to the operation
+    ladder through the ONE owner seam — the residue seam never restores
+    against an operation's state and never treats the dispatch as clean.
     """
     from ralph.pipeline.auto_integrate_planning import resolve_planning_residue
 
     configured = _configured_sync_target(ctx)
     target = configured[1] if configured is not None else None
-    resolve_planning_residue(Path(ctx.workspace_scope.root), baseline, target=target)
+    outcome = resolve_planning_residue(Path(ctx.workspace_scope.root), baseline, target=target)
+    if outcome is not None and (outcome.operation_blocked or outcome.operation_unknown):
+        label = (
+            "unknown-operation"
+            if outcome.operation_kind is None
+            else outcome.operation_kind.name.lower()
+        )
+        with suppress(Exception):
+            emit_integration_warn_line(
+                ctx.active_display,
+                f"planning residue cleanup deferred: git {label} in progress; "
+                "the operation ladder (continue/abort/rebuild) owns this state",
+            )
 
 
 def _planning_sync_gap(ctx: LoopContext) -> str | None:
@@ -2344,6 +2364,125 @@ def _resume_planning_after_commit(
     return state
 
 
+def _execute_owner_ladder_rung(
+    ctx: LoopContext,
+    root: Path,
+    sync_verdict: PlanningSyncVerdict,
+    target: str | None,
+) -> None:
+    """Dispatch the owner's selected cleanup-ladder rung exactly once.
+
+    The rung executes through the one owner seam
+    (:func:`~ralph.pipeline._integration_owner_seam.execute_planning_ladder_rung`)
+    with the repo-wide attempt ledger, the workspace state dir and the
+    observed target sha captured at decision time (``expected_target_sha``
+    is what the fresh-worktree rung fails closed against when the target
+    moved concurrently). The rung records its own outcome evidence into
+    the ledger; this seam consumes the typed result for the log and the
+    caller re-observes before deciding again. Never raises: a rung
+    dispatch failure degrades to "no escalation signal" exactly as an
+    owner-seam outage does.
+    """
+    from ralph.git.merge import observe_branch_sha
+    from ralph.pipeline._integration_owner_seam import execute_planning_ladder_rung
+    from ralph.pipeline.integration_attempt_ledger import AttemptLedger
+
+    expected_sha: str | None = None
+    if target is not None:
+        with suppress(Exception):
+            sha, query_ok = observe_branch_sha(root, target)
+            expected_sha = sha if query_ok else None
+    try:
+        result = execute_planning_ladder_rung(
+            root,
+            sync_verdict,
+            ledger=AttemptLedger(root),
+            target=target,
+            expected_target_sha=expected_sha,
+        )
+    except Exception as rung_exc:  # pragma: no cover -- defensive
+        logger.warning("cleanup-ladder rung dispatch failed: {}", rung_exc)
+        return
+    if result is None:
+        return
+    message = f"cleanup-ladder rung {result.rung.name.lower()} {result.outcome}: {result.reason}"
+    if result.outcome == "failed":
+        logger.warning("{}", message)
+    else:
+        logger.info("{}", message)
+    with suppress(Exception):
+        emit_integration_warn_line(ctx.active_display, message)
+
+
+def _dispatch_owner_ladder_rung(
+    ctx: LoopContext,
+    root: Path,
+    target: str | None,
+    sync_verdict: PlanningSyncVerdict | None,
+    executed_rung: CleanupLadderRung | None,
+    previous_action: IntegrationAction | None,
+) -> tuple[
+    CleanupLadderRung | None, IntegrationAction | None, Literal["continue", "break", "fall"]
+]:
+    """Consume one owner verdict's cleanup-ladder selection.
+
+    This is the ONE rung-consumption step both mutation-adjacent seams
+    (the planning-sync gate and the boundary execution seam) use: the
+    owner has already charged the durable ledger for this decision, so
+    a repeat under the unchanged observation is answered with the NEXT
+    rung. The selected rung therefore dispatches through
+    :func:`_execute_owner_ladder_rung` exactly once here and the caller
+    re-observes — that is the ledger-charged escalation, never a re-run
+    of the same action. The same rung re-selected with no state change
+    answers ``"break"`` (never dispatch a rung twice); every non-ladder
+    verdict and every verdict the record-fact overlay escalated to
+    ``REQUIRE_INTERVENTION`` answers ``"fall"`` — the terminal block is
+    consumed by the caller's alarm, not by the ladder.
+    """
+    if sync_verdict is None or sync_verdict.ladder_rung is None:
+        return executed_rung, previous_action, "fall"
+    if sync_verdict.action is IntegrationAction.REQUIRE_INTERVENTION:
+        return executed_rung, previous_action, "fall"
+    if sync_verdict.ladder_rung is executed_rung:
+        return executed_rung, previous_action, "break"
+    _execute_owner_ladder_rung(ctx, root, sync_verdict, target)
+    return sync_verdict.ladder_rung, sync_verdict.action, "continue"
+
+
+def _configured_sync_remote(ctx: LoopContext) -> str | None:
+    """The CONFIGURED remote name for the owner seam's observation, if any."""
+    config_obj: object = getattr(ctx, "config", None)
+    general_obj: object = getattr(config_obj, "general", None)
+    remote_obj: object = getattr(general_obj, "auto_integrate_remote", None)
+    return remote_obj if isinstance(remote_obj, str) and remote_obj.strip() else None
+
+
+def _ask_owner_planning_sync(
+    root: Path,
+    *,
+    record: IntegrationRecord | None,
+    target: str | None,
+    remote: str | None,
+) -> PlanningSyncVerdict | None:
+    """Ask the owner for the typed planning verdict; degrade to None on outage.
+
+    The call charges the durable ledger exactly once through the single
+    owner charge path. An unreadable seam degrades to "no escalation
+    signal" — both mutation-adjacent seams must survive an owner-seam
+    outage exactly as they survive an unreadable integration probe.
+    """
+    try:
+        return decide_planning_sync(
+            root,
+            record=record,
+            target=target,
+            remote=remote,
+        )
+    except Exception as seam_exc:  # pragma: no cover -- defensive
+        logger.debug("owner seam unreadable: {}", seam_exc)
+        return None
+
+
 def _ensure_planning_in_sync(
     state: PipelineState,
     ctx: LoopContext,
@@ -2360,10 +2499,16 @@ def _ensure_planning_in_sync(
     verdict, which charges the durable attempt ledger through the single
     owner charge path. A hold that repeats the same observation therefore
     climbs the owner's escalation ladder instead of re-running the
-    identical action forever: the verdict the owner returns moves off the
-    action it served for the unchanged observation, the gate stops
-    re-running integration and returns the blocked verdict so the caller
-    alarms and cools down before the next bounded retry.
+    identical action forever: when the verdict selects a cleanup-ladder
+    rung the gate dispatches that rung exactly once through the shared
+    :func:`_dispatch_owner_ladder_rung` seam, records/consumes its
+    outcome and re-observes at the top of the loop; a rung is never dispatched twice
+    for one unchanged observation — the next decision under it is
+    answered with the next rung, and a repeated rung selection breaks the
+    loop. When the verdict leaves the ladder (a wait or a non-ladder
+    action change), the gate stops re-running integration and returns the
+    blocked verdict so the caller alarms and cools down before the next
+    bounded retry.
     """
     from ralph.pipeline.auto_integrate_remote_sync import resolver_attempt_limit
 
@@ -2381,17 +2526,16 @@ def _ensure_planning_in_sync(
     root = Path(ctx.workspace_scope.root)
     configured = _configured_sync_target(ctx)
     target = configured[1] if configured is not None else None
-    config_obj: object = getattr(ctx, "config", None)
-    general_obj: object = getattr(config_obj, "general", None)
-    remote_obj: object = getattr(general_obj, "auto_integrate_remote", None)
-    remote = remote_obj if isinstance(remote_obj, str) and remote_obj.strip() else None
+    remote = _configured_sync_remote(ctx)
     # The durable record the owner reconciles against the live
     # observation; the seam's own record-fact overlay is applied inside
     # the verdict exactly as every other boundary's seam call does.
     record = read_record(root)
+    config_obj: object = getattr(ctx, "config", None)
     attempts = max(1, resolver_attempt_limit(config_obj))
     previous_failure: tuple[str, str | None, str | None] | None = None
     previous_action: IntegrationAction | None = None
+    executed_rung: CleanupLadderRung | None = None
     for attempt in range(1, attempts + 1):
         # Log-hygiene rule (observability catalogue F): a repeated
         # identical outcome logs once with a count, not once per retry.
@@ -2425,17 +2569,20 @@ def _ensure_planning_in_sync(
         # degrades to "no escalation signal" -- the gate must survive
         # an owner-seam outage exactly as it survives an unreadable
         # integration probe.
-        sync_verdict: PlanningSyncVerdict | None
-        try:
-            sync_verdict = decide_planning_sync(
-                root,
-                record=record,
-                target=target,
-                remote=remote,
-            )
-        except Exception as seam_exc:  # pragma: no cover -- defensive
-            logger.debug("planning sync: owner seam unreadable: {}", seam_exc)
-            sync_verdict = None
+        sync_verdict = _ask_owner_planning_sync(root, record=record, target=target, remote=remote)
+        # A rung-level verdict is consumed BEFORE the identical-failure
+        # check below: the owner has already charged the durable ledger
+        # for this decision, so a repeat under the unchanged observation
+        # is answered with the NEXT rung — executing the selected rung
+        # once and re-observing at the top of the loop is the
+        # ledger-charged escalation, never a re-run of the same action.
+        executed_rung, previous_action, rung_step = _dispatch_owner_ladder_rung(
+            ctx, root, target, sync_verdict, executed_rung, previous_action
+        )
+        if rung_step == "break":
+            break
+        if rung_step == "continue":
+            continue
         failure = (gap, state.rebase.last_outcome, state.rebase.last_reason)
         if failure == previous_failure:
             break
@@ -2886,6 +3033,61 @@ def _blocking_record(ctx: LoopContext) -> tuple[IntegrationRecord | None, bool]:
     return outcome.record, False
 
 
+def _boundary_ladder_recovery(
+    ctx: LoopContext,
+    state: PipelineState,
+) -> tuple[PipelineState, IntegrationResolutionVerdict | None]:
+    """Consume the owner's cleanup-ladder selection at the boundary seam.
+
+    Runs BEFORE any boundary mutation, with the SAME shared
+    rung-consumption step the planning-sync gate uses
+    (:func:`_dispatch_owner_ladder_rung`): each owner decision charges
+    the durable ledger, so a repeat under an unchanged observation is
+    answered with the NEXT rung — a failed preservation or restore
+    climbs the real ledgered rungs, never re-runs the identical action
+    and never asks for a human. After every dispatch the seam re-observes
+    (startup integration re-runs, then the resolution gate re-inspects
+    the live tree); once dispatch is allowed the ladder has healed the
+    tree and the conflict resolver must not run.
+
+    Returns ``(state, verdict)`` — the re-inspection that allowed
+    dispatch — when the ladder healed the tree, and ``(state, None)``
+    when the owner selected no rung, the climb saturated under an
+    unchanged observation, or integration is not configured: the caller
+    then runs the recovery pass the boundary has always run.
+    """
+    configured = _configured_sync_target(ctx)
+    if configured is None:
+        return state, None
+    root, target = configured
+    remote = _configured_sync_remote(ctx)
+    try:
+        record = read_record(root)
+    except Exception:  # pragma: no cover -- defensive: the seam must not crash the boundary
+        record = None
+    executed_rung: CleanupLadderRung | None = None
+    previous_action: IntegrationAction | None = None
+    # The cleanup ladder is finite: the repeat guard inside the shared
+    # consumption step breaks the climb once the observation stops
+    # changing the table's answer, and the iteration bound is the
+    # rung count itself — one dispatch per rung at most.
+    for _rung_slot in CLEANUP_LADDER_ORDER:
+        sync_verdict = _ask_owner_planning_sync(root, record=record, target=target, remote=remote)
+        executed_rung, previous_action, rung_step = _dispatch_owner_ladder_rung(
+            ctx, root, target, sync_verdict, executed_rung, previous_action
+        )
+        if rung_step != "continue":
+            break
+        recovered = _run_startup_integration(ctx, state.rebase)
+        if recovered is not None:
+            state = state.copy_with(rebase=recovered)
+            _save_recovered_rebase_checkpoint(state, ctx)
+        post_dispatch = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
+        if post_dispatch.dispatch_allowed:
+            return state, post_dispatch
+    return state, None
+
+
 def _post_recovery_verdict(
     ctx: LoopContext,
     state: PipelineState,
@@ -2894,6 +3096,15 @@ def _post_recovery_verdict(
 ) -> IntegrationResolutionVerdict | tuple[PipelineState, str, int] | None:
     """Run one recovery pass, then re-inspect.
 
+    Before any mutation the owner's cleanup-ladder selection is consumed
+    through :func:`_boundary_ladder_recovery`: a rung-level verdict
+    dispatches exactly once per decision (ledger-charged escalation,
+    never the same rung twice under an unchanged observation,
+    ``REQUIRE_INTERVENTION``-overlaid verdicts never dispatch) and the
+    seam re-observes after each dispatch. Only when the ladder did not
+    heal the tree does the boundary fall through to the
+    conflict-resolver recovery pass it has always run.
+
     Returns ``None`` when dispatch is allowed after recovery (with the
     reconciled state threaded through ``ctx.latest_state`` and the
     checkpoint), or the still-blocking verdict when recovery did not
@@ -2901,12 +3112,17 @@ def _post_recovery_verdict(
     successful recovery as another block.
     """
     _announce_conflict_resolution_entry(ctx, verdict)
-    _run_integration_conflict_resolution(ctx, state.rebase)
-    recovered = _run_startup_integration(ctx, state.rebase)
-    if recovered is not None:
-        state = state.copy_with(rebase=recovered)
-        _save_recovered_rebase_checkpoint(state, ctx)
-    post_recovery = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
+    state, ladder_verdict = _boundary_ladder_recovery(ctx, state)
+    post_recovery: IntegrationResolutionVerdict
+    if ladder_verdict is None:
+        _run_integration_conflict_resolution(ctx, state.rebase)
+        recovered = _run_startup_integration(ctx, state.rebase)
+        if recovered is not None:
+            state = state.copy_with(rebase=recovered)
+            _save_recovered_rebase_checkpoint(state, ctx)
+        post_recovery = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
+    else:
+        post_recovery = ladder_verdict
     if post_recovery.dispatch_allowed:
         reconciled = reconcile_stale_unresolved_state(state.rebase)
         if reconciled != state.rebase:

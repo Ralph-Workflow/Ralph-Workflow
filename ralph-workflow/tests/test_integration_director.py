@@ -723,30 +723,41 @@ def test_director_unreadable_merge_base_probe_is_unknown_and_never_blocks(
     assert decision.action not in (NextAction.DISPATCH_RESOLVER, NextAction.REPAIR)
 
 
+#: Marker path components that name state DIRECTORIES rather than files.
+_MARKER_DIRS: frozenset[str] = frozenset({"rebase-merge", "rebase-apply", "sequencer"})
+
+_OPERATION_MARKER_LAYOUTS: tuple[tuple[tuple[str, ...], InProgressKind], ...] = (
+    ((), InProgressKind.NONE),
+    (("rebase-merge",), InProgressKind.REBASE),
+    (("rebase-apply",), InProgressKind.REBASE),
+    (("rebase-apply/next", "rebase-apply/last"), InProgressKind.AM),
+    (("MERGE_HEAD",), InProgressKind.MERGE),
+    (("CHERRY_PICK_HEAD",), InProgressKind.CHERRY_PICK),
+    (("REVERT_HEAD",), InProgressKind.REVERT),
+    (("sequencer",), InProgressKind.SEQUENCER),
+)
+
+
 @pytest.mark.parametrize(
-    ("marker_name", "expected"),
-    [
-        (None, InProgressKind.NONE),
-        ("MERGE_HEAD", InProgressKind.MERGE),
-        ("CHERRY_PICK_HEAD", InProgressKind.CHERRY_PICK),
-        ("rebase-merge", InProgressKind.REBASE),
-        ("rebase-apply", InProgressKind.REBASE),
-    ],
+    ("layout", "expected"),
+    _OPERATION_MARKER_LAYOUTS,
+    ids=["none", *("+".join(layout) for layout, _kind in _OPERATION_MARKER_LAYOUTS[1:])],
 )
 def test_read_in_progress_kind_detects_authoritative_git_markers(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    marker_name: str | None,
+    layout: tuple[str, ...],
     expected: InProgressKind,
 ) -> None:
     """Git's operation markers select the complete in-progress kind vocabulary."""
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
-    if marker_name is not None:
-        marker = git_dir / marker_name
-        if marker_name.startswith("rebase-"):
+    for relative in layout:
+        marker = git_dir / relative
+        if marker.name in _MARKER_DIRS and marker.parent == git_dir:
             marker.mkdir()
         else:
+            marker.parent.mkdir(parents=True, exist_ok=True)
             marker.write_text("state\n", encoding="utf-8")
 
     def _fake_run_git(*_args: object, **_kwargs: object) -> SimpleNamespace:

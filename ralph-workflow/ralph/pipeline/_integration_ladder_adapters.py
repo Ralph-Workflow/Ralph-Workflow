@@ -26,7 +26,11 @@ from ralph.pipeline.integration_observation import InProgressKind
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.pipeline.integration_ladder import EnvironmentFailure
+    from ralph.pipeline._integration_ladder_seams import (
+        EnvironmentFailure,
+        LandResult,
+        RepointResult,
+    )
 
 _HOOKS_DISABLED: Final[tuple[str, ...]] = ("-c", "core.hooksPath=/dev/null")
 
@@ -34,24 +38,27 @@ _HOOKS_DISABLED: Final[tuple[str, ...]] = ("-c", "core.hooksPath=/dev/null")
 class _ProductionGitPlumbing:
     """Production :data:`GitPlumbing` over the queue-routed git runner."""
 
-    def changed_paths(self, root: Path) -> tuple[str, ...]:
+    def changed_paths(self, root: Path) -> tuple[str, ...] | None:
         from ralph.git.hardening import parse_porcelain_z
         from ralph.git.subprocess_runner import run_git
 
+        # Config flags MUST precede the subcommand: ``git status ... -c
+        # key=val`` makes git exit 129 (unknown switch), and a failed
+        # probe must read as UNKNOWN (``None``), never as "clean".
         result = run_git(
             (
+                "-c",
+                "status.renames=false",
                 "status",
                 "--porcelain",
                 "-z",
                 "--untracked-files=all",
-                "-c",
-                "status.renames=false",
             ),
             cwd=root,
             label="integration-ladder:changed-paths",
         )
         if result.returncode != 0:
-            return ()
+            return None
         paths: list[str] = []
         for entry in parse_porcelain_z(result.stdout):
             if entry.path.startswith(".agent/"):
@@ -68,6 +75,17 @@ class _ProductionGitPlumbing:
             ("rev-parse", "--verify", "HEAD"),
             cwd=root,
             label="integration-ladder:head-sha",
+        )
+        sha = result.stdout.strip()
+        return sha if result.returncode == 0 and sha else None
+
+    def target_sha(self, root: Path, target: str) -> str | None:
+        from ralph.git.subprocess_runner import run_git
+
+        result = run_git(
+            ("rev-parse", "--verify", f"refs/heads/{target}"),
+            cwd=root,
+            label="integration-ladder:target-sha",
         )
         sha = result.stdout.strip()
         return sha if result.returncode == 0 and sha else None
@@ -146,6 +164,11 @@ class _ProductionGitPlumbing:
             InProgressKind.REBASE: ("rebase", "--abort"),
             InProgressKind.MERGE: ("merge", "--abort"),
             InProgressKind.CHERRY_PICK: ("cherry-pick", "--abort"),
+            InProgressKind.REVERT: ("revert", "--abort"),
+            InProgressKind.AM: ("am", "--abort"),
+            # A multi-step sequencer owns the state files, not a single
+            # operation: ``--quit`` forgets the sequence without committing.
+            InProgressKind.SEQUENCER: ("cherry-pick", "--quit"),
         }.get(kind)
         if command is None:
             return False
@@ -279,7 +302,17 @@ class _ProductionGitPlumbing:
         )
         return result.returncode == 0
 
-    def land_in_worktree(self, root: Path, path: Path, target: str) -> bool:
+    def land_in_worktree(
+        self, root: Path, path: Path, target: str, expected_sha: str
+    ) -> LandResult:
+        """Compare-and-swap the target ref onto the fresh tip; never overwrite a race.
+
+        Reads the current target sha fresh and moves the ref only while it
+        still equals ``expected_sha`` (the sha observed at rung start), via
+        an old-value ``update-ref`` (atomic at the ref level, ``--no-deref``
+        so a symbolic ref can never redirect the write), then re-verifies.
+        A concurrent advance returns ``target-moved`` with NO update issued.
+        """
         from ralph.git.subprocess_runner import run_git
 
         tip = run_git(
@@ -289,15 +322,36 @@ class _ProductionGitPlumbing:
         )
         sha = tip.stdout.strip()
         if tip.returncode != 0 or not sha:
-            return False
+            return "tip-unreadable"
+        if sha == expected_sha:
+            return "landed-already"
+        current = self.target_sha(root, target)
+        if current is None:
+            return "target-unreadable"
+        if current != expected_sha:
+            return "target-moved"  # a concurrent writer advanced the target: no overwrite
         landed = run_git(
-            ("update-ref", f"refs/heads/{target}", sha),
+            ("update-ref", "--no-deref", f"refs/heads/{target}", sha, current),
             cwd=path,
             label="integration-ladder:land-from-fresh",
         )
-        return landed.returncode == 0
+        # Re-verify after the CAS: a non-zero exit or a ref that does not
+        # read back as the tip is the same typed failure.
+        if landed.returncode != 0 or self.target_sha(root, target) != sha:
+            return "update-failed"
+        return "landed"
 
-    def repoint_original(self, root: Path, path: Path) -> bool:
+    def repoint_original(self, root: Path, path: Path, observed_sha: str | None) -> RepointResult:
+        """Reset the original checkout onto the fresh result, ONLY when safe.
+
+        The reset runs only when the original worktree still exists and
+        its HEAD is where the ladder observed it — or, when the HEAD
+        moved, a fresh probe shows the worktree detached and clean (no
+        checked-out branch work another owner would lose). Any probe
+        failure fails closed; any other state means another
+        worktree/agent owns the checkout, reported as a typed not-now
+        outcome with the tree untouched.
+        """
         from ralph.git.subprocess_runner import run_git
 
         tip = run_git(
@@ -307,8 +361,41 @@ class _ProductionGitPlumbing:
         )
         sha = tip.stdout.strip()
         if tip.returncode != 0 or not sha:
-            return False
-        return self.reset_hard(root, sha)
+            return "tip-unreadable"
+        # Fail closed: without the observed sha, "is it where we left it"
+        # cannot be answered, and an unanswered question is never a yes.
+        if observed_sha is None:
+            return "head-unreadable"
+        unsafe = self._repoint_precheck(root, observed_sha)
+        if unsafe is not None:
+            return unsafe
+        if not self.reset_hard(root, sha):
+            return "reset-failed"
+        return "repointed"
+
+    def _repoint_precheck(self, root: Path, observed_sha: str) -> RepointResult | None:
+        """Return the not-now outcome when resetting ``root`` is unsafe, else ``None``."""
+        from ralph.git.subprocess_runner import run_git
+
+        if not (Path(root) / ".git").exists():
+            return "worktree-missing"
+        current = self.head_sha(root)
+        if current is None:
+            return "head-unreadable"
+        if current == observed_sha:
+            return None
+        # Fresh probe: only a detached, clean worktree is safe to reset.
+        detached = run_git(
+            ("rev-parse", "--abbrev-ref", "HEAD"),
+            cwd=root,
+            label="integration-ladder:repoint-detached-probe",
+        )
+        paths = self.changed_paths(root)
+        if detached.returncode != 0 or paths is None:
+            return "head-unreadable"  # probe failure fails closed
+        if detached.stdout.strip() != "HEAD" or paths:
+            return "head-moved"  # another checkout/agent owns the worktree
+        return None
 
     def remote_reachable(self, root: Path, remote: str) -> bool:
         from ralph.git.subprocess_runner import run_git

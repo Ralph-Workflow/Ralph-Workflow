@@ -24,11 +24,11 @@ counters and the unknown-attempt budget). For every pair it proves that
    same attempt state always produce the same action, and the decision never
    mutates its inputs.
 
-The enumeration is 77,760 observations (5 x 6 x 6 x 3 x 4 x 3 x 6 x 2) crossed
+The enumeration is 136,080 observations (5 x 6 x 6 x 3 x 7 x 3 x 6 x 2) crossed
 with the attempt states that carry meaning for them -- five for every
 observation (one per escalation rung plus the repeat-pressure profile) and a
-sixth for the 58,560 observations that carry an UNKNOWN reading (the spent
-unknown budget) -- i.e. 447,360 (observation, attempt state) pairs. The
+sixth for the 102,480 observations that carry an UNKNOWN reading (the spent
+unknown budget) -- i.e. 782,880 (observation, attempt state) pairs. The
 decision function is pure, so the whole table is walked in-process: no Git, no
 filesystem, no clock, no network, no sleep.
 
@@ -36,7 +36,7 @@ Relation to the sibling files
 -----------------------------
 
 ``tests/test_integration_state_coverage.py`` walks the acceptance-criterion
-combination space (62,208 combinations -- it deliberately leaves
+combination space (108,864 combinations -- it deliberately leaves
 ``TargetVsFeature.UNKNOWN`` out) at the default attempt state, and
 ``tests/test_integration_decision_table.py`` pins the decision rules one by
 one. This file adds what neither of them covers: the **complete** enum space
@@ -107,14 +107,14 @@ _EXPECTED_DIMENSION_SIZES: tuple[tuple[str, int], ...] = (
     ("target_vs_remote", 6),
     ("worktree", 6),
     ("head", 3),
-    ("in_progress_kind", 4),
+    ("in_progress_kind", 7),
     ("in_progress_ownership", 3),
     ("record", 6),
     ("agent_active", 2),
 )
 
-#: Number of observations in the walked space (5*6*6*3*4*3*6*2).
-_EXPECTED_OBSERVATION_COUNT: int = 77_760
+#: Number of observations in the walked space (5*6*6*3*7*3*6*2).
+_EXPECTED_OBSERVATION_COUNT: int = 136_080
 
 #: Number of attempt states every observation is crossed with.
 _EXPECTED_ATTEMPT_STATE_COUNT: int = 5
@@ -126,9 +126,9 @@ _EXPECTED_UNKNOWN_ATTEMPT_STATE_COUNT: int = 6
 #: Number of observations that carry at least one UNKNOWN reading. Only
 #: ``target_vs_feature``, ``target_vs_remote``, ``worktree``, ``head`` and
 #: ``in_progress_ownership`` have an UNKNOWN member, so the fully-known part
-#: of the space is 4*5*5*2*4*2*6*2 = 19,200 observations and the rest
-#: (77,760 - 19,200) carry an UNKNOWN reading.
-_EXPECTED_UNKNOWN_OBSERVATION_COUNT: int = 58_560
+#: of the space is 4*5*5*2*7*2*6*2 = 33,600 observations and the rest
+#: (136,080 - 33,600) carry an UNKNOWN reading.
+_EXPECTED_UNKNOWN_OBSERVATION_COUNT: int = 102_480
 
 #: Number of (observation, attempt state) pairs the table proves. Every
 #: observation is decided against the four static rung states plus the
@@ -272,7 +272,7 @@ def _observations() -> tuple[Observation, ...]:
     """Return every combination of the eight observation dimensions.
 
     The tuple is cached for the session: it is a fixed-size, immutable
-    enumeration (77,760 elements), not an accumulator.
+    enumeration (136,080 elements), not an accumulator.
     """
     return tuple(
         Observation(
@@ -494,8 +494,8 @@ def test_state_space_covers_every_attempt_state_of_every_observation() -> None:
 def test_every_combination_has_exactly_one_defined_work_preserving_action() -> None:
     """Every state has exactly one defined action that never discards work.
 
-    The table walks all 77,760 observations against the attempt states that
-    carry meaning for them (447,360 pairs in total: five states for every
+    The table walks all 136,080 observations against the attempt states that
+    carry meaning for them (782,880 pairs in total: five states for every
     observation plus the spent unknown budget for the observations that
     carry an UNKNOWN reading). For each pair the action must be a member of
     the closed vocabulary and must be one of the actions the contract permits

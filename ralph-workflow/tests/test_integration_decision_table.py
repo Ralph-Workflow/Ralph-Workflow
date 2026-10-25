@@ -5,7 +5,7 @@ and safe: every combination of the seven :class:`Observation` dimensions
 maps to exactly one :class:`NextAction`, and no combination yields a
 discard-class action or a resolver dispatch on an unknown reading.
 
-These tests enumerate the complete finite state space (77,760
+These tests enumerate the complete finite state space (136,080
 observations crossed with each escalation rung) and assert the
 contract directly. They are pure in-memory: no subprocess, no
 filesystem, no clock, no ``time.sleep``. This is a project audit
@@ -51,6 +51,14 @@ _ALL_HEAD: tuple[HeadState, ...] = tuple(HeadState)
 _ALL_KIND: tuple[InProgressKind, ...] = tuple(InProgressKind)
 _ALL_OWNERSHIP: tuple[InProgressOwnership, ...] = tuple(InProgressOwnership)
 _ALL_RECORD: tuple[IntegrationRecordState, ...] = tuple(IntegrationRecordState)
+
+#: Every in-progress operation kind. The rule-4/rule-5 rows must hold for
+#: ALL of these: the decision table branches on "some operation vs NONE",
+#: never on a specific kind, so a kind missing here means a row went
+#: unproven. ``NONE`` is excluded: it names "no operation in flight".
+_ALL_OPERATION_KINDS: tuple[InProgressKind, ...] = tuple(
+    kind for kind in InProgressKind if kind is not InProgressKind.NONE
+)
 
 
 @cache
@@ -158,7 +166,7 @@ def test_decide_total_mapping_covers_every_state_and_reaches_every_member() -> N
     dirt-shape suite walks.
     """
     observations = _build_observations()
-    assert len(observations) == 77760
+    assert len(observations) == 136_080
     reached: set[NextAction] = set()
     for observation in observations:
         for attempts in _LADDER_ATTEMPTS:
@@ -319,11 +327,7 @@ def test_decide_real_conflict_uses_dispatch_resolver() -> None:
         ctx = DecisionContext(observation=unmerged, attempts=AttemptState(rung=rung))
         assert decide(ctx) is NextAction.DISPATCH_RESOLVER, f"unmerged tree should resolve @ {rung}"
 
-    for kind in (
-        InProgressKind.REBASE,
-        InProgressKind.MERGE,
-        InProgressKind.CHERRY_PICK,
-    ):
+    for kind in _ALL_OPERATION_KINDS:
         foreign = Observation(
             target_vs_feature=TargetVsFeature.BEHIND,
             target_vs_remote=TargetVsRemote.EQUAL,
@@ -348,11 +352,7 @@ def test_decide_real_conflict_uses_dispatch_resolver() -> None:
 
 def test_decide_owned_in_progress_resumes_owned_operation() -> None:
     """Rule 5: owned in-progress ops yield RESUME_OWNED_OPERATION at every rung."""
-    for kind in (
-        InProgressKind.REBASE,
-        InProgressKind.MERGE,
-        InProgressKind.CHERRY_PICK,
-    ):
+    for kind in _ALL_OPERATION_KINDS:
         obs = Observation(
             target_vs_feature=TargetVsFeature.BEHIND,
             target_vs_remote=TargetVsRemote.EQUAL,
