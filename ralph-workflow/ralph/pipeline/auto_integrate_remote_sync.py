@@ -82,7 +82,6 @@ from ralph.pipeline.auto_integrate_remote_constants import (
     remote_sync_enabled,
     remote_target_name,
     remote_unreachable_reason,
-    resolver_attempt_limit,
 )
 from ralph.pipeline.auto_integrate_remote_push import (
     _post_push_publication_decision,
@@ -163,7 +162,6 @@ __all__ = [
     "remote_target_name",
     "remote_unreachable_reason",
     "resolver_allowed",
-    "resolver_attempt_limit",
     "start_conflict_attempt",
 ]
 

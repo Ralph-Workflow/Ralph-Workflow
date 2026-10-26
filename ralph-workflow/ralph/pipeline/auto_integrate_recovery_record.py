@@ -374,7 +374,10 @@ def _maybe_release_diagnostic(
         # re-enters the autonomous fallback ladder instead of deadlock-
         # ing on a person.
         raw_payload = _read_record_raw(record_path(root), backend=backend)
-        if isinstance(raw_payload, dict) and raw_payload.get("diagnostic_intervention_required") is True:
+        if (
+            isinstance(raw_payload, dict)
+            and raw_payload.get("diagnostic_intervention_required") is True
+        ):
             return _apply_release_or_typed_skip(root, record, backend)
         return record
     from ralph.pipeline._diagnostic_evidence_gate import diagnostic_evidence_gate_reason

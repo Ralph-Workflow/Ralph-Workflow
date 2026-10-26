@@ -323,41 +323,71 @@ def test_wait_for_retry_unreadable_record_uses_bounded_retry_without_handoff(
     assert record_path(tmp_path).read_text(encoding="utf-8") == "CORRUPT_JSON_{not valid"
 
 
-def test_wait_for_retry_consecutive_conflicts_cap_performs_single_automated_resolver_handoff(
+def test_wait_for_retry_carried_count_boundary_with_cooling_agents_stays_pending_and_resumes(
     tmp_path: Path,
 ) -> None:
-    """WU-2: consecutive conflicts cap triggers single automated resolver handoff."""
-    _sleeps, ctx = _setup_retry_env(tmp_path)
+    """WU-1: at the carried-count boundary with cooling agents, state remains pending without loss and resumes."""
+    from ralph.pipeline.conflict_resolution.resolver_health import bench_resolver
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+    from ralph.recovery.controller import RecoveryControllerOptions
+    from tests.pipeline._auto_integrate_agent_failure_fixtures import (
+        FrozenClock,
+        resolution_policy_bundle,
+    )
+
+    clock = FrozenClock()
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
+    controller = RecoveryController(options=RecoveryControllerOptions(clock=clock), ledger=ledger)
+
+    sleeps: list[float] = []
+    ctx = _create_retry_ctx(tmp_path, sleeps)
+    ctx.controller = controller
+    ctx.registry = {"resolver-a": object(), "resolver-b": object()}
+    ctx.policy_bundle = resolution_policy_bundle(("resolver-a", "resolver-b"))
 
     handoff_calls: list[str] = []
+    ctx.hooks.handoff_retained_failure = lambda _c, d: handoff_calls.append(d)
 
-    def _fake_handoff(loop_ctx: object, detail: str) -> None:
-        handoff_calls.append(detail)
+    bench_resolver(controller, "resolver-a", "unproductive attempt")
+    bench_resolver(controller, "resolver-b", "unproductive attempt")
 
-    ctx.hooks.handoff_retained_failure = _fake_handoff
-
+    cap = ctx.config.general.agent_max_consecutive_unproductive
+    initial_rebase = RebaseState(
+        last_action="conflict",
+        last_reason="conflict detail for resolver",
+        consecutive_conflicts=cap,
+        integration_unresolved=True,
+    )
     initial_state = PipelineState(
         phase="development",
-        rebase=RebaseState(
-            last_action="conflict",
-            last_reason="conflict detail for resolver",
-            consecutive_conflicts=ctx.config.general.agent_max_consecutive_unproductive,
-        ),
+        rebase=initial_rebase,
     )
+    ctx.latest_state[:] = [initial_state]
 
-    first_result = wait_for_integration_retry(initial_state, ctx)
-    assert len(handoff_calls) == 1
-    assert "conflict detail for resolver" in handoff_calls[0]
-    assert first_result.rebase.is_intervention_required is True
-    assert (
-        first_result.rebase.consecutive_conflicts
-        >= ctx.config.general.agent_max_consecutive_unproductive
+    result1 = wait_for_integration_retry(initial_state, ctx)
+    assert len(handoff_calls) == 0, "Cooling agents must not trigger handoff"
+    assert result1.rebase.is_intervention_required is False, (
+        "Cooling agents must not set intervention"
     )
+    assert result1.rebase.consecutive_conflicts == cap, "No state loss on carried count"
+    assert result1.rebase.integration_unresolved is True
+    assert len(sleeps) == 1
+    assert sleeps[0] > 0
 
-    # Subsequent call with is_intervention_required=True must avoid repeat handoffs
-    second_result = wait_for_integration_retry(first_result, ctx)
-    assert len(handoff_calls) == 1, "Must avoid repeat automated resolver handoff"
-    assert second_result.rebase.is_intervention_required is True
+    clock._now += 120.0
+
+    resolved_rebase = initial_rebase.model_copy(
+        update={
+            "last_outcome": RebaseOutcomeKind.COMPLETED,
+            "consecutive_conflicts": 0,
+            "integration_unresolved": False,
+        }
+    )
+    ctx.hooks.recovery_preamble = lambda _s, _c, backend=None: resolved_rebase
+
+    result2 = wait_for_integration_retry(result1, ctx)
+    assert result2.rebase.is_intervention_required is False
+    assert result2.rebase.last_outcome == RebaseOutcomeKind.COMPLETED
 
 
 def test_wait_for_retry_empty_evidence_durable_record_uses_bounded_retry_without_handoff(
@@ -679,12 +709,11 @@ def test_wait_for_retry_loop_unresolved_progresses_attempt_or_escalates(
         ),
     )
 
-    # Iteration 1: charges the final attempt up to cap and immediately escalates
+    # Iteration 1: charges the final attempt up to cap and remains pending
     state = wait_for_integration_retry(state, ctx)
     assert state.rebase.consecutive_conflicts == cap
-    assert state.rebase.is_intervention_required is True
-    assert len(handoffs) == 1
-    assert "conflict detail" in handoffs[0]
+    assert state.rebase.is_intervention_required is False
+    assert len(handoffs) == 0
     assert len(saved_checkpoints) >= 1
 
 
@@ -825,8 +854,8 @@ def test_wait_for_retry_pending_repeated_identical_blocked_outcomes_progress_and
     for _ in range(cap):
         state = wait_for_integration_retry(state, ctx)
 
-    assert len(handoffs) == 1
-    assert state.rebase.is_intervention_required is True
+    assert len(handoffs) == 0
+    assert state.rebase.is_intervention_required is False
     assert state.rebase.consecutive_conflicts >= cap
 
 
@@ -838,7 +867,11 @@ def test_wait_for_retry_successful_handoff_not_overwritten_with_intervention(
     ctx.hooks.handoff_retained_failure = _mock_successful_handoff
 
     cap = ctx.config.general.agent_max_consecutive_unproductive
-    initial_state = _make_state(conflicts=cap, last_reason="conflict detail for resolver")
+    initial_state = _make_state(
+        conflicts=cap,
+        last_reason="conflict detail for resolver",
+        resolution_exhausted=True,
+    )
     ctx.latest_state[:] = [initial_state]
 
     result = wait_for_integration_retry(initial_state, ctx)
@@ -860,6 +893,7 @@ def test_wait_for_retry_pending_successful_handoff_not_overwritten_with_interven
         rebase=RebaseState(
             last_reason="pending retry detail",
             consecutive_conflicts=cap - 1,
+            resolution_exhausted=True,
         ),
     )
     ctx.latest_state[:] = [initial_state]
@@ -898,7 +932,7 @@ def test_wait_for_retry_absent_record_at_cap_invokes_automated_resolver_or_reder
     ctx.hooks.recovery_preamble = _mock_rederived_preamble
 
     cap = ctx.config.general.agent_max_consecutive_unproductive
-    initial_state = _make_state(conflicts=cap)
+    initial_state = _make_state(conflicts=cap, resolution_exhausted=True)
     ctx.latest_state[:] = [initial_state]
 
     result = wait_for_integration_retry(initial_state, ctx)
@@ -926,7 +960,7 @@ def test_wait_for_retry_unreadable_record_at_cap_invokes_automated_resolver_or_r
     target_file.write_text("CORRUPT_JSON_{invalid")
 
     cap = ctx.config.general.agent_max_consecutive_unproductive
-    initial_state = _make_state(conflicts=cap)
+    initial_state = _make_state(conflicts=cap, resolution_exhausted=True)
     ctx.latest_state[:] = [initial_state]
 
     result = wait_for_integration_retry(initial_state, ctx)
@@ -949,7 +983,7 @@ def test_wait_for_retry_unreadable_record_at_cap_unsuccessful_escalates_to_inter
     target_file.write_text("CORRUPT_JSON_{invalid")
 
     cap = ctx.config.general.agent_max_consecutive_unproductive
-    initial_state = _make_state(conflicts=cap)
+    initial_state = _make_state(conflicts=cap, resolution_exhausted=True)
     ctx.latest_state[:] = [initial_state]
 
     result = wait_for_integration_retry(initial_state, ctx)
@@ -1078,7 +1112,6 @@ def test_wait_for_retry_prolonged_unreachable_remote_does_not_increment_conflict
     """WU-1 O1/O2/AC8: prolonged unreachable remote does not trip conflict cap or intervention."""
     sleeps, ctx = _setup_retry_env(tmp_path)
     cap = 2
-    ctx.hooks.effective_conflict_cap = lambda _c: cap
 
     outage_recovered = RebaseState(
         last_reason="remote tacos unreachable; recovery will retry",
@@ -1237,14 +1270,6 @@ def _make_cold_capped_ctx(
     """Set up a minimal context with a low conflict cap so cold-cap is reachable."""
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
-    # The probe uses cap=5; override the effective cap so
-    # ``resolver_attempt_limit`` returns the value the analysis
-    # feedback probed with (and so consecutive_conflicts=5 is
-    # at the cap).
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_remote_sync.resolver_attempt_limit",
-        lambda _c: cap,
-    )
     # The integration target resolution requires a real local branch
     # (it consults ``observe_branch_sha``), which is unavailable in a
     # ``tmp_path`` workspace. Stub it so the seam gets a valid target.

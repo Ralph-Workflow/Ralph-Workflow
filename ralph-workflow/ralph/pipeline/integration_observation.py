@@ -33,7 +33,7 @@ shape to exactly one deterministic cleanup action.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -58,7 +58,7 @@ class ReadingVariant(Enum):
     UNKNOWN = "unknown"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Reading[T]:
     """Three-valued result of a single integration-state probe.
 
@@ -188,7 +188,7 @@ class DirtShape(Enum):
     UNKNOWN = "unknown"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class DirtEvidence:
     """Optional probe evidence that refines the dirt shape beyond porcelain.
 
@@ -265,7 +265,7 @@ class IntegrationRecordState(Enum):
     FOREIGN = "foreign"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Observation:
     """Frozen seven-dimension snapshot of integration state at a seam.
 
@@ -282,16 +282,24 @@ class Observation:
     in_progress_ownership: InProgressOwnership
     record: IntegrationRecordState
     agent_active: bool
+    _has_unknown: bool = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "_has_unknown",
+            (
+                self.target_vs_feature is TargetVsFeature.UNKNOWN
+                or self.target_vs_remote is TargetVsRemote.UNKNOWN
+                or self.worktree is WorktreeState.UNKNOWN
+                or self.head is HeadState.UNKNOWN
+                or self.in_progress_ownership is InProgressOwnership.UNKNOWN
+            ),
+        )
 
     def has_unknown(self) -> bool:
         """True when any dimension caps an environmental reading as unknown."""
-        return (
-            self.target_vs_feature is TargetVsFeature.UNKNOWN
-            or self.target_vs_remote is TargetVsRemote.UNKNOWN
-            or self.worktree is WorktreeState.UNKNOWN
-            or self.head is HeadState.UNKNOWN
-            or self.in_progress_ownership is InProgressOwnership.UNKNOWN
-        )
+        return self._has_unknown
 
 
 # ---------------------------------------------------------------------------
@@ -315,7 +323,7 @@ class WorktreeDispatch(Enum):
     UNKNOWN = "unknown"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class WorktreeVerdict:
     """The one answer every gate gives about a worktree.
 

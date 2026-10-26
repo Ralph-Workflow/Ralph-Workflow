@@ -705,10 +705,7 @@ def test_handoff_unreadable_record_persists_intervention_projection(
     assert "unreadable" in (rebase.last_reason or "")
     # idempotent across restarts: calling again is stable
     run_loop_module._handoff_retained_failure(ctx, "retained on unreadable record")
-    assert (
-        ctx.latest_state[0].rebase.last_outcome
-        is RebaseOutcomeKind.LADDER_ESCALATION
-    )
+    assert ctx.latest_state[0].rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
 
 
 def test_handoff_readable_record_still_runs_diagnostic(

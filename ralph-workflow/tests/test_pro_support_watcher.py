@@ -18,6 +18,8 @@ if TYPE_CHECKING:
 from ralph.pro_support.marker import read_heartbeat_token, read_marker_file
 from ralph.pro_support.watcher import ProMarkerWatcher
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 _BARE_JSON_LINE = re.compile(r"^\s*[\{\[].*[\}\]]\s*$")
 
 

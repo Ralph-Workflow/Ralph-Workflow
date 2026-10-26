@@ -482,7 +482,9 @@ def _execute_round_loop(
             if _operator_cap_expired(session, clock):
                 _emit_expired_operator_cap(display, session, conflicted, clock)
                 return False
-            _push_round_status(display, root, target, round_index, max(round_index, round_cap), stop)
+            _push_round_status(
+                display, root, target, round_index, max(round_index, round_cap), stop
+            )
             prompt_path = _render_round_prompt(
                 root,
                 target,

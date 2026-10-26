@@ -117,8 +117,7 @@ _ALLOW_DIAGNOSTIC_EMITTERS: Final = {
     ),
     ("pipeline/auto_integrate_record.py", 49): (
         "RAISE_DIAGNOSTIC_INTERVENTION,",
-        "import of the retired transition name for re-export via __all__ "
-        "(legacy parsing surface)",
+        "import of the retired transition name for re-export via __all__ (legacy parsing surface)",
     ),
     ("pipeline/auto_integrate_record.py", 947): (
         '"RAISE_DIAGNOSTIC_INTERVENTION",',
@@ -146,18 +145,15 @@ _ALLOW_DISPLAY_MAPPINGS: Final = {
     ),
     ("display/auto_integrate_message.py", 163): (
         '"intervention_required": OperationDisplayState.INTERVENTION_REQUIRED.value',
-        "_LEGACY_ACTION_DISPLAY_MAP: retired action strings kept for "
-        "legacy-payload parsing only",
+        "_LEGACY_ACTION_DISPLAY_MAP: retired action strings kept for legacy-payload parsing only",
     ),
     ("display/auto_integrate_message.py", 164): (
         '"intervention": OperationDisplayState.INTERVENTION_REQUIRED.value',
-        "_LEGACY_ACTION_DISPLAY_MAP: retired action strings kept for "
-        "legacy-payload parsing only",
+        "_LEGACY_ACTION_DISPLAY_MAP: retired action strings kept for legacy-payload parsing only",
     ),
     ("display/auto_integrate_message.py", 167): (
         '"diagnostic_intervention_required": OperationDisplayState.INTERVENTION_REQUIRED.value',
-        "_LEGACY_ACTION_DISPLAY_MAP: retired action strings kept for "
-        "legacy-payload parsing only",
+        "_LEGACY_ACTION_DISPLAY_MAP: retired action strings kept for legacy-payload parsing only",
     ),
     ("display/auto_integrate_message.py", 182): (
         '"unknown": OperationDisplayState.INTERVENTION_REQUIRED.value',
@@ -285,7 +281,9 @@ def _scan_line(
             f"diagnostic_intervention_required=True: {text.strip()}"
         )
     if _PHASE_DECISION_PRODUCER.search(text):
-        _check_allow_list(rel, lineno, text, _ALLOW_PHASE_DECISION_PRODUCERS, decision_hits, violations)
+        _check_allow_list(
+            rel, lineno, text, _ALLOW_PHASE_DECISION_PRODUCERS, decision_hits, violations
+        )
     if not rel.startswith("display/"):
         return
     mapping = _DISPLAY_MAPPING.search(text)
@@ -310,9 +308,7 @@ def _scan_tree(sources: dict[str, str]) -> list[str]:
 
     for rel, source in sorted(sources.items()):
         for lineno, text in _code_lines(source).items():
-            _scan_line(
-                rel, lineno, text, emitter_hits, decision_hits, display_hits, violations
-            )
+            _scan_line(rel, lineno, text, emitter_hits, decision_hits, display_hits, violations)
 
     violations.extend(_stale_entries(_ALLOW_DIAGNOSTIC_EMITTERS, emitter_hits))
     violations.extend(_stale_entries(_ALLOW_PHASE_DECISION_PRODUCERS, decision_hits))

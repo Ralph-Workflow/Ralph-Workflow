@@ -603,9 +603,7 @@ def test_cooldown_entry_point_escalates_to_the_ladder_on_backend_read_failure(
     )
     cooled = ctx.latest_state[0]
     assert cooled.rebase.last_decision == ESCALATION.value
-    _assert_escalation(
-        workspace_root, cooled.rebase, b'{"phase": "integrating", "target": "main"}'
-    )
+    _assert_escalation(workspace_root, cooled.rebase, b'{"phase": "integrating", "target": "main"}')
     reloaded = checkpoint_module.load(workspace_root / "checkpoint.json")
     assert reloaded is not None
     assert reloaded.rebase.last_decision == ESCALATION.value

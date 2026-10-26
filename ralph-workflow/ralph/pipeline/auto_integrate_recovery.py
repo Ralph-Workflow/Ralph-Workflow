@@ -292,9 +292,7 @@ def recover_incomplete_integration(
                 "durable integration record unreadable; escalating through the "
                 "autonomous fallback ladder; record retained, bytes preserved"
             ) + (
-                f" ({record_outcome.unreadable_reason})"
-                if record_outcome.unreadable_reason
-                else ""
+                f" ({record_outcome.unreadable_reason})" if record_outcome.unreadable_reason else ""
             )
             return RebaseState(
                 last_outcome=RebaseOutcomeKind.LADDER_ESCALATION,

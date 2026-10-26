@@ -1713,7 +1713,6 @@ def _cold_capped_escalation_due(
     rebase: RebaseState,
     target: str,
     identity: ConflictIdentity,
-    resolver_attempts: int,
     *,
     ledger: AgentFailureLedger | None = None,
     candidates: tuple[str, ...] = (),
@@ -1723,9 +1722,8 @@ def _cold_capped_escalation_due(
     Cold-capped escalation (O1 retry-progress rule, distinct from the
     ordinary resolver suppression). The previous behaviour returned False
     at this point WITHOUT consulting a resolver, leaving a cold-capped
-    ``RebaseState`` (one that loaded with ``resolution_exhausted=True``
-    and / or ``consecutive_conflicts`` already at the cap) as an
-    unresolvable dead end. The O1 contract requires that a cold-capped
+    ``RebaseState`` (one that loaded with ``resolution_exhausted=True``)
+    as an unresolvable dead end. The O1 contract requires that a cold-capped
     state still receive ONE session-scoped automated escalation that
     re-derives from live Git (the cached state may be stale -- a
     concurrent push or a previous worktree's resolution may already have
@@ -1744,7 +1742,7 @@ def _cold_capped_escalation_due(
     """
     from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
 
-    if not (rebase.resolution_exhausted or rebase.consecutive_conflicts >= resolver_attempts):
+    if not rebase.resolution_exhausted:
         return False
     if resolver_allowed(
         rebase,
@@ -1850,13 +1848,11 @@ def _run_owned_integration_conflict_resolution(
     Suppression is announced, never silent. Never raises.
     """
     from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
-    from ralph.pipeline.auto_integrate_remote_sync import resolver_attempt_limit
 
     target = _integration_target_or_none(ctx)
     if not target:
         return False
     identity = _conflict_identity_or_default(ctx, target)
-    resolver_attempts = resolver_attempt_limit(ctx.config)
     from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
 
     installed = tuple(
@@ -1875,7 +1871,6 @@ def _run_owned_integration_conflict_resolution(
         rebase,
         target,
         identity,
-        resolver_attempts,
         ledger=ledger,
         candidates=installed,
     ):
@@ -2692,8 +2687,6 @@ def _ensure_planning_in_sync(
     blocked verdict so the caller alarms and cools down before the next
     bounded retry.
     """
-    from ralph.pipeline.auto_integrate_remote_sync import resolver_attempt_limit
-
     if not _is_planning_entry(state, ctx):
         return state, None
     # _planning_sync_gap is the SOLE gate authority: whether the gate
@@ -2713,8 +2706,7 @@ def _ensure_planning_in_sync(
     # observation; the seam's own record-fact overlay is applied inside
     # the verdict exactly as every other boundary's seam call does.
     record = read_record(root)
-    config_obj: object = getattr(ctx, "config", None)
-    attempts = max(1, resolver_attempt_limit(config_obj))
+    attempts = 3
     previous_failure: tuple[str, str | None, str | None] | None = None
     previous_action: IntegrationAction | None = None
     executed_rung: CleanupLadderRung | None = None
@@ -3472,16 +3464,6 @@ def _publish_state_snapshot(ctx: LoopContext, state: PipelineState) -> None:
     ctx.snapshot_registry.publish(build_pipeline_state_snapshot(state, ctx.workspace_scope.root))
 
 
-def _effective_conflict_cap(ctx: LoopContext) -> int:
-    """Resolve the effective consecutive-conflict counter-cap."""
-    hooks = _retry_hooks(ctx)
-    if hooks.effective_conflict_cap is not None:
-        return hooks.effective_conflict_cap(ctx)
-    from ralph.pipeline.auto_integrate_remote_sync import resolver_attempt_limit
-
-    return max(1, resolver_attempt_limit(ctx.config))
-
-
 def _render_current_observation_detail(rebase: RebaseState) -> str:
     """Render an alarm detail phrase from the CURRENT typed observation.
 
@@ -3556,7 +3538,6 @@ def _wait_for_integration_retry(
     # save when the handoff does not clear them, and refuse to call
     # the recovery preamble after the single handoff has been
     # dispatched.
-    cap = _effective_conflict_cap(ctx)
     from ralph.pipeline._publication_state_machine import (
         PublicationDecision as _PubDec,
     )
@@ -3571,9 +3552,7 @@ def _wait_for_integration_retry(
         )
         and not rebase.integration_unresolved
     )
-    if not is_publication_deferred and (
-        rebase.resolution_exhausted or rebase.consecutive_conflicts >= cap
-    ):
+    if not is_publication_deferred and rebase.resolution_exhausted:
         session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
         if not session_attempted:
             rebase_before = (
@@ -3594,7 +3573,6 @@ def _wait_for_integration_retry(
                 and not handoff_rebase.is_intervention_required
                 and not handoff_rebase.integration_unresolved
                 and not handoff_rebase.resolution_exhausted
-                and handoff_rebase.consecutive_conflicts < cap
             ):
                 state = state.copy_with(rebase=handoff_rebase).clear_waiting()
                 _save_recovered_rebase_checkpoint(state, ctx)
@@ -3602,9 +3580,7 @@ def _wait_for_integration_retry(
                 return state
             if handoff_rebase is not None and handoff_rebase != rebase_before:
                 rebase = handoff_rebase
-        # Clamping to the effective configured cap ensures historical
-        # over-cap values are governed by the active configuration.
-        rebase = rebase.record_consecutive_conflicts(rebase.consecutive_conflicts, cap=cap)
+        rebase = rebase.record_consecutive_conflicts(rebase.consecutive_conflicts)
         # The reason must be the ORIGINAL failure detail, not a
         # concatenation of the previous ``last_reason`` (which would
         # grow without bound across repeated calls). Use ``detail``
@@ -3674,40 +3650,35 @@ def _handle_intervention_required_retry(
         _save_recovered_rebase_checkpoint(state, ctx)
         ctx.latest_state[:] = [state]
         return state.clear_waiting()
-    cap = _effective_conflict_cap(ctx)
     bumped_conflicts = rebase.consecutive_conflicts + 1
-    rebase = rebase.record_consecutive_conflicts(bumped_conflicts, cap=cap)
-    if rebase.consecutive_conflicts >= cap:
-        session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
-        if not session_attempted:
-            rebase_before = (
-                ctx.latest_state[0].rebase
-                if (ctx.latest_state and ctx.latest_state[0].rebase is not None)
-                else None
-            )
-            _dispatch_retained_handoff(ctx, detail, backend=backend)
-            ctx._session_handoff_dispatched = True
-            handoff_rebase = (
-                ctx.latest_state[0].rebase
-                if (ctx.latest_state and ctx.latest_state[0].rebase is not None)
-                else None
-            )
-            if (
-                handoff_rebase is not None
-                and handoff_rebase != rebase_before
-                and not handoff_rebase.is_intervention_required
-                and not handoff_rebase.integration_unresolved
-                and not handoff_rebase.resolution_exhausted
-                and handoff_rebase.consecutive_conflicts < cap
-            ):
-                state = state.copy_with(rebase=handoff_rebase, last_error=alarm).clear_waiting()
-                _save_recovered_rebase_checkpoint(state, ctx)
-                ctx.latest_state[:] = [state]
-                return state
-            if handoff_rebase is not None and handoff_rebase != rebase_before:
-                rebase = handoff_rebase
-        rebase = rebase.record_consecutive_conflicts(bumped_conflicts, cap=cap)
-        rebase = rebase.set_intervention_required(detail)
+    session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
+    if not session_attempted:
+        rebase_before = (
+            ctx.latest_state[0].rebase
+            if (ctx.latest_state and ctx.latest_state[0].rebase is not None)
+            else None
+        )
+        _dispatch_retained_handoff(ctx, detail, backend=backend)
+        ctx._session_handoff_dispatched = True
+        handoff_rebase = (
+            ctx.latest_state[0].rebase
+            if (ctx.latest_state and ctx.latest_state[0].rebase is not None)
+            else None
+        )
+        if (
+            handoff_rebase is not None
+            and handoff_rebase != rebase_before
+            and not handoff_rebase.is_intervention_required
+            and not handoff_rebase.integration_unresolved
+            and not handoff_rebase.resolution_exhausted
+        ):
+            state = state.copy_with(rebase=handoff_rebase, last_error=alarm).clear_waiting()
+            _save_recovered_rebase_checkpoint(state, ctx)
+            ctx.latest_state[:] = [state]
+            return state
+        if handoff_rebase is not None and handoff_rebase != rebase_before:
+            rebase = handoff_rebase
+    rebase = rebase.record_consecutive_conflicts(bumped_conflicts)
     state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
         WaitReason.EXHAUSTED_RETRY, None
     )
@@ -3809,54 +3780,14 @@ def _handle_pending_retry(
             ctx.sleep(5.0)
             return state.clear_waiting()
 
-    cap = _effective_conflict_cap(ctx)
     bumped_conflicts = (
         max(rebase.consecutive_conflicts, (recovered.consecutive_conflicts if recovered else 0)) + 1
     )
-    rebase = (recovered or rebase).record_consecutive_conflicts(bumped_conflicts, cap=cap)
-    if rebase.consecutive_conflicts >= cap:
-        session_attempted: bool = getattr(ctx, "_session_handoff_dispatched", False)
-        if not session_attempted:
-            rebase_before = (
-                ctx.latest_state[0].rebase
-                if (ctx.latest_state and ctx.latest_state[0].rebase is not None)
-                else None
-            )
-            _dispatch_retained_handoff(ctx, detail, backend=backend)
-            ctx._session_handoff_dispatched = True
-            handoff_rebase = (
-                ctx.latest_state[0].rebase
-                if (ctx.latest_state and ctx.latest_state[0].rebase is not None)
-                else None
-            )
-            if (
-                handoff_rebase is not None
-                and handoff_rebase != rebase_before
-                and not handoff_rebase.is_intervention_required
-                and not handoff_rebase.integration_unresolved
-                and not handoff_rebase.resolution_exhausted
-                and handoff_rebase.consecutive_conflicts < cap
-            ):
-                state = state.copy_with(rebase=handoff_rebase).clear_waiting()
-                _save_recovered_rebase_checkpoint(state, ctx)
-                ctx.latest_state[:] = [state]
-                return state
-            if handoff_rebase is not None and handoff_rebase != rebase_before:
-                rebase = handoff_rebase
-        rebase = rebase.record_consecutive_conflicts(bumped_conflicts, cap=cap)
-        rebase = rebase.set_intervention_required(detail)
-        state = state.copy_with(rebase=rebase)
-        _save_recovered_rebase_checkpoint(state, ctx)
-        ctx.latest_state[:] = [state]
-        # Cap reached: escalate WITHOUT sleeping (D3).
-        return state.clear_waiting()
-
+    rebase = (recovered or rebase).record_consecutive_conflicts(bumped_conflicts)
     rebase = rebase.set_operation_display_state(OperationDisplayState.WAITING)
     state = state.copy_with(rebase=rebase).set_waiting(WaitReason.EXHAUSTED_RETRY, None)
     _save_recovered_rebase_checkpoint(state, ctx)
     ctx.latest_state[:] = [state]
-    # Below cap: bounded sleep paired with an in-process
-    # satisfier (next iteration's recovery preamble).
     ctx.sleep(5.0)
     return state.clear_waiting()
 
@@ -4045,6 +3976,17 @@ def _run_inner_loop_after_startup(
                 state.rebase,
             )
         ):
+            from ralph.pipeline._fan_out_authority import (
+                FanOutDecision,
+                fan_out_decision,
+            )
+
+            _canonical_fan_out = fan_out_decision(state)
+            if (
+                _canonical_fan_out is not None
+                and _canonical_fan_out != FanOutDecision.JOIN_COMPLETE
+            ):
+                return state, prev_phase, 1
             state = _wait_for_integration_retry(state, ctx, backend=backend)
             if state.rebase.is_intervention_required or state.rebase.resolution_exhausted:
                 return state, prev_phase, 1

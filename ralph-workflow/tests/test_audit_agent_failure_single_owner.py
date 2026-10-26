@@ -268,8 +268,7 @@ def check_fault_limit(session):
     violations = audit_production_source("ralph/pipeline/conflict_handler.py", source)
     assert len(violations) >= 1
     assert any(
-        v.rule == "production_streak_counter_state" and "retry cap" in v.detail
-        for v in violations
+        v.rule == "production_streak_counter_state" and "retry cap" in v.detail for v in violations
     )
 
 
@@ -304,4 +303,3 @@ def observe_fault(session, event, agent_name):
     assert len(violations) >= 3
     assert any("ralph_fault_hits" in v.detail for v in violations)
     assert any("stop_dead_surfaces" in v.detail for v in violations)
-

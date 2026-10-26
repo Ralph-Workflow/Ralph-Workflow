@@ -263,9 +263,7 @@ def _check_production_function(
 def _check_production_assignment(
     node: ast.Assign | ast.AnnAssign | ast.AugAssign, rel_path: str
 ) -> list[SingleOwnerViolation]:
-    targets: list[ast.expr] = (
-        list(node.targets) if isinstance(node, ast.Assign) else [node.target]
-    )
+    targets: list[ast.expr] = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
     violations: list[SingleOwnerViolation] = []
     for target in targets:
         target_name: str | None = None
@@ -370,10 +368,7 @@ def _check_production_call(node: ast.Call, rel_path: str) -> list[SingleOwnerVio
                 ),
             )
         )
-    if (
-        isinstance(node.func, ast.Attribute)
-        and node.func.attr in ("append", "add", "extend")
-    ):
+    if isinstance(node.func, ast.Attribute) and node.func.attr in ("append", "add", "extend"):
         recv = node.func.value
         recv_name: str | None = None
         if isinstance(recv, ast.Name):
@@ -450,8 +445,7 @@ def _check_production_compare(node: ast.Compare, rel_path: str) -> list[SingleOw
         names = [n.id for n in ast.walk(operand) if isinstance(n, ast.Name)]
         all_idents = attrs + names
         is_counter = any(
-            ident in ("retries", "_retries")
-            or _is_forbidden_target_name(ident)
+            ident in ("retries", "_retries") or _is_forbidden_target_name(ident)
             for ident in all_idents
         )
         if not is_counter:
@@ -468,10 +462,7 @@ def _check_production_compare(node: ast.Compare, rel_path: str) -> list[SingleOw
             other_names = [n.id for n in ast.walk(other) if isinstance(n, ast.Name)]
             other_idents = [k.lower() for k in (other_attrs + other_names)]
             is_cap = (
-                any(
-                    k in other_idents
-                    for k in ("max_retries", "cap", "limit", "retries", "hits")
-                )
+                any(k in other_idents for k in ("max_retries", "cap", "limit", "retries", "hits"))
                 or any(
                     "escalation" in k or "cap" in k or "limit" in k or "hits" in k
                     for k in other_idents

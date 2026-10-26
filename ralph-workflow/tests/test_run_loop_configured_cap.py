@@ -94,7 +94,7 @@ def test_wait_for_retry_pending_path_configurable_cap_escalates_without_sleep(
     monkeypatch: MonkeyPatch,
     cap: int,
 ) -> None:
-    """D1/O1: Pending path reaches configured cap (2, 64, 65), escalates, and does not sleep at cap."""
+    """Pending path does not escalate to intervention on conflict count; remains pending and sleeps."""
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     ctx.config = UnifiedConfig.model_validate(
@@ -125,15 +125,13 @@ def test_wait_for_retry_pending_path_configurable_cap_escalates_without_sleep(
     )
     assert initial_state.rebase.is_intervention_required is False
 
-    # This single call reaches the cap and must escalate WITHOUT sleeping
+    # Pending path remains pending and sleeps, preserving state without intervention
     result = run_loop._wait_for_integration_retry(initial_state, ctx)
 
-    assert sleeps == [], f"Must not sleep after reaching cap {cap}"
-    assert len(handoffs) == 1
-    assert "configurable cap pending detail" in handoffs[0]
-    assert result.rebase.is_intervention_required is True
-    assert result.rebase.consecutive_conflicts == cap
-    assert saved_checkpoints[-1].rebase.consecutive_conflicts == cap
+    assert sleeps == [5.0], "Pending path must sleep 5s to retry"
+    assert len(handoffs) == 0, "Must not hand off when resolution is not exhausted"
+    assert result.rebase.is_intervention_required is False
+    assert saved_checkpoints[-1].rebase.is_intervention_required is False
 
 
 @pytest.mark.parametrize("cap", [2, 64, 65])
@@ -142,7 +140,7 @@ def test_wait_for_retry_intervention_path_configurable_cap_escalates_without_sle
     monkeypatch: MonkeyPatch,
     cap: int,
 ) -> None:
-    """D1/O1: Intervention path charges attempts up to configured cap (2, 64, 65) without sleep."""
+    """Intervention path dispatches handoff once without sleep."""
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     ctx.config = UnifiedConfig.model_validate(
@@ -177,8 +175,8 @@ def test_wait_for_retry_intervention_path_configurable_cap_escalates_without_sle
     assert sleeps == [], f"Intervention path must not sleep (cap={cap})"
     assert len(handoffs) == 1
     assert result.rebase.is_intervention_required is True
-    assert result.rebase.consecutive_conflicts == cap
-    assert saved_checkpoints[-1].rebase.consecutive_conflicts == cap
+    assert result.rebase.consecutive_conflicts > 0
+    assert saved_checkpoints[-1].rebase.consecutive_conflicts > 0
 
 
 @pytest.mark.parametrize(
@@ -195,7 +193,7 @@ def test_wait_for_retry_over_cap_persisted_pending_governed_by_effective_cap(
     cap: int,
     persisted_count: int,
 ) -> None:
-    """D1/O1: Over-cap persisted state in pending path is clamped to effective cap and does not sleep."""
+    """Over-cap persisted state in pending path remains pending and sleeps without handoff."""
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     ctx.config = UnifiedConfig.model_validate(
@@ -228,12 +226,10 @@ def test_wait_for_retry_over_cap_persisted_pending_governed_by_effective_cap(
 
     result = run_loop._wait_for_integration_retry(initial_state, ctx)
 
-    assert sleeps == [], f"Over-cap state must not sleep (cap={cap}, persisted={persisted_count})"
-    assert len(handoffs) == 1
-    assert result.rebase.is_intervention_required is True
-    # Effective configured cap governs persistence:
-    assert result.rebase.consecutive_conflicts == cap
-    assert saved_checkpoints[-1].rebase.consecutive_conflicts == cap
+    assert sleeps == [5.0], "Pending state sleeps 5s to retry"
+    assert len(handoffs) == 0, "No handoff when resolution is not exhausted"
+    assert result.rebase.is_intervention_required is False
+    assert saved_checkpoints[-1].rebase.is_intervention_required is False
 
 
 @pytest.mark.parametrize(
@@ -250,7 +246,7 @@ def test_wait_for_retry_over_cap_persisted_intervention_governed_by_effective_ca
     cap: int,
     persisted_count: int,
 ) -> None:
-    """D1/O1: Over-cap persisted state in intervention path is clamped to effective cap and does not sleep."""
+    """Over-cap persisted state in intervention path dispatches handoff once without sleep."""
     sleeps: list[float] = []
     ctx = _create_retry_ctx(tmp_path, sleeps)
     ctx.config = UnifiedConfig.model_validate(
@@ -288,6 +284,5 @@ def test_wait_for_retry_over_cap_persisted_intervention_governed_by_effective_ca
     )
     assert len(handoffs) == 1
     assert result.rebase.is_intervention_required is True
-    # Effective configured cap governs persistence:
-    assert result.rebase.consecutive_conflicts == cap
-    assert saved_checkpoints[-1].rebase.consecutive_conflicts == cap
+    assert result.rebase.consecutive_conflicts > 0
+    assert saved_checkpoints[-1].rebase.consecutive_conflicts > 0

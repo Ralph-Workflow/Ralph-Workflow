@@ -267,7 +267,7 @@ _REPEAT_COUNTER_MARKER = (
 )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class AttemptState:
     """Immutable record of the integration boundary's escalation ladder position.
 
@@ -462,7 +462,7 @@ def cleanup_action_for(rung: CleanupLadderRung) -> NextAction:
     }[rung]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class DecisionContext:
     """Immutable input to :func:`decide`.
 
@@ -499,36 +499,49 @@ def _ladder_action(rung: EscalationRung) -> NextAction:
     }[rung]
 
 
+_REPAIRABLE_RECORD_STATES: frozenset[IntegrationRecordState] = frozenset(
+    {
+        IntegrationRecordState.STALE,
+        IntegrationRecordState.UNREADABLE,
+        IntegrationRecordState.OLDER_VERSION,
+        IntegrationRecordState.FOREIGN,
+    }
+)
+_TARGET_MOVED_STATES: frozenset[TargetVsFeature] = frozenset(
+    {TargetVsFeature.BEHIND, TargetVsFeature.DIVERGED}
+)
+_LANDED_TARGET_STATES: frozenset[TargetVsFeature] = frozenset(
+    {TargetVsFeature.EQUAL, TargetVsFeature.AHEAD}
+)
+_DIRTY_WORKTREE_STATES: frozenset[WorktreeState] = frozenset(
+    {
+        WorktreeState.TRACKED_CHANGES,
+        WorktreeState.STAGED,
+        WorktreeState.UNTRACKED,
+    }
+)
+
+
 def _is_target_moved(observation: Observation) -> bool:
     """True when target has moved past feature and the tree is clean enough to mirror."""
-    return observation.target_vs_feature in (TargetVsFeature.BEHIND, TargetVsFeature.DIVERGED)
+    return observation.target_vs_feature in _TARGET_MOVED_STATES
 
 
 def _is_landed(observation: Observation) -> bool:
     """True when the feature's work is contained in the target already."""
-    return observation.worktree is WorktreeState.CLEAN and observation.target_vs_feature in (
-        TargetVsFeature.EQUAL,
-        TargetVsFeature.AHEAD,
+    return observation.worktree is WorktreeState.CLEAN and (
+        observation.target_vs_feature in _LANDED_TARGET_STATES
     )
 
 
 def _is_dirty_without_conflict(observation: Observation) -> bool:
     """True when the worktree has staged / dirty / untracked files but no conflict."""
-    return observation.worktree in (
-        WorktreeState.TRACKED_CHANGES,
-        WorktreeState.STAGED,
-        WorktreeState.UNTRACKED,
-    )
+    return observation.worktree in _DIRTY_WORKTREE_STATES
 
 
 def _is_repairable_record(observation: Observation) -> bool:
     """True when the durable integration record needs repair before any reset."""
-    return observation.record in (
-        IntegrationRecordState.STALE,
-        IntegrationRecordState.UNREADABLE,
-        IntegrationRecordState.OLDER_VERSION,
-        IntegrationRecordState.FOREIGN,
-    )
+    return observation.record in _REPAIRABLE_RECORD_STATES
 
 
 def _is_owned_in_progress(observation: Observation) -> bool:

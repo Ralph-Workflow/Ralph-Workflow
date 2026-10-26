@@ -204,10 +204,9 @@ def test_scenario_b_demoted_resolvers_report_pending_and_keep_the_rebase_state(
     """
     repo_root = _clone_repo(_template_repo, tmp_path / "repo")
     clock = FrozenClock()
-    ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
     for agent in ("agentA", "agentB"):
-        for _ in range(3):
-            ledger.record(AttemptFact(phase=_RESOLUTION_PHASE, agent=agent, artifact_valid=False))
+        ledger.record(AttemptFact(phase=_RESOLUTION_PHASE, agent=agent, artifact_valid=False))
 
     outcome, invocations, logs = _run_integration(
         repo_root,
@@ -290,7 +289,7 @@ def test_scenario_c_integration_demotion_leaves_other_phases_untouched(
     """
     repo_root = _clone_repo(_template_repo, tmp_path / "repo")
     clock = FrozenClock()
-    ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=1)
     controller = RecoveryController(options=RecoveryControllerOptions(clock=clock), ledger=ledger)
 
     outcome, invocations, logs = _run_integration(
@@ -301,8 +300,8 @@ def test_scenario_c_integration_demotion_leaves_other_phases_untouched(
         resolving_agents=("agentB",),
     )
 
-    # In integration, agentA failed three times and was demoted; agentB resolved.
-    assert invocations == ["agentA", "agentA", "agentA", "agentB"]
+    # In integration, agentA failed and was demoted; agentB resolved.
+    assert invocations == ["agentA", "agentB"]
     assert outcome is not None
     assert outcome.last_outcome == RebaseOutcomeKind.REBASED
     assert outcome.fast_forwarded is True
@@ -318,7 +317,9 @@ def test_scenario_c_integration_demotion_leaves_other_phases_untouched(
             selection = controller.preferred_agent_index(phase, ("agentA", "agentB"))
             assert selection.index == 0
             assert selection.agent == "agentA"
-            assert not any(skipped_agent == "agentA" for skipped_agent, _ in selection.skipped_reasons)
+            assert not any(
+                skipped_agent == "agentA" for skipped_agent, _ in selection.skipped_reasons
+            )
             assert any(f"Phase {phase}: Selected agent agentA" in line for line in other_logs)
 
 
@@ -371,5 +372,7 @@ def test_scenario_c_demotion_elsewhere_leaves_integration_standing_intact(
     assert not outcome.is_intervention_required
 
     # agentA was neither demoted nor skipped in the integration phase.
-    assert not any(f"Agent 'agentA' demoted in phase '{_RESOLUTION_PHASE}'" in line for line in logs)
+    assert not any(
+        f"Agent 'agentA' demoted in phase '{_RESOLUTION_PHASE}'" in line for line in logs
+    )
     assert not any("skipped agentA" in line for line in logs)

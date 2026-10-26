@@ -89,8 +89,6 @@ class RetryDiagnosticHooks:
     ) = None
     # Runs the budget-guarded conflict resolver.
     conflict_resolution: Callable[[LoopContext, RebaseState | None], bool] | None = None
-    # Resolves the effective consecutive-conflict counter cap.
-    effective_conflict_cap: Callable[[LoopContext], int] | None = None
     # Reports whether a paused rebase is on disk at the workspace root.
     paused_rebase_at: Callable[[Path], bool] | None = None
     # Finishes an in-progress merge with the given conflict resolver.

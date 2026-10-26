@@ -112,13 +112,3 @@ def reclaim_target_worktree_enabled(config: object | None) -> bool:
     general: object = getattr(config, "general", config)
     configured: object = getattr(general, "auto_integrate_reclaim_target_worktree", True)
     return configured is not False
-
-
-def resolver_attempt_limit(config: object = None) -> int:
-    """Return the consecutive unproductive agent attempt limit."""
-    if config is not None:
-        general: object = getattr(config, "general", config)
-        attempts: object = getattr(general, "agent_max_consecutive_unproductive", None)
-        if isinstance(attempts, int) and attempts > 0:
-            return attempts
-    return 3

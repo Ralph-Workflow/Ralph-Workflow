@@ -160,7 +160,9 @@ def budget_spent_record(
     """
     return record.with_transition(
         BUMP_DIAGNOSTIC_ATTEMPT,
-        merge_commit_repair_attempts=min(record.merge_commit_repair_attempts + 1, repair_attempt_cap),
+        merge_commit_repair_attempts=min(
+            record.merge_commit_repair_attempts + 1, repair_attempt_cap
+        ),
         repair_last_error=reason,
         repair_cap_reason=reason,
     )
