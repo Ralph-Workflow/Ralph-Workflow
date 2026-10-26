@@ -15,6 +15,7 @@ import pytest
 
 from ralph.test_suites import (
     REQUIRED_AUTO_INTEGRATE_E2E_FILES,
+    SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES,
     validate_required_auto_integrate_selection,
 )
 
@@ -81,6 +82,21 @@ def test_required_auto_integrate_all_files_exist_on_disk() -> None:
 
     assert not missing_files, (
         f"Files listed in REQUIRED_AUTO_INTEGRATE_E2E_FILES do not exist: {missing_files}"
+    )
+
+
+def test_sanctioned_default_lane_real_git_files_exist_on_disk() -> None:
+    """Every file in SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES must exist on disk."""
+    repo_root = Path(__file__).resolve().parent.parent
+    missing_files: list[str] = []
+
+    for rel_path in SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES:
+        full_path = repo_root / rel_path
+        if not full_path.is_file():
+            missing_files.append(rel_path)
+
+    assert not missing_files, (
+        f"Files listed in SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES do not exist: {missing_files}"
     )
 
 

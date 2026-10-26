@@ -29,7 +29,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.test_suites import REQUIRED_AUTO_INTEGRATE_E2E_FILES
+from ralph.test_suites import (
+    REQUIRED_AUTO_INTEGRATE_E2E_FILES,
+    SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES,
+)
 from ralph.testing import test_whitebox_baseline
 from ralph.testing.policy_allowlists import (
     IO_ALLOWLIST,
@@ -107,17 +110,24 @@ def _is_registered_real_git_file(file_path: str) -> bool:
     """Return True when ``file_path`` is a sanctioned default-lane real-git file.
 
     The canonical testing policy (docs/ralph-workflow-policy/testing-policy.md)
-    names the ``REQUIRED_AUTO_INTEGRATE_E2E_FILES`` registry as the single
-    sanctioned exception that keeps real-git tests on the default
-    ``make test`` profile; the audit honours the same registry so the two
-    mechanisms cannot drift. Paths outside the project tree (e.g. the
-    temporary files the audit's own unit tests write) are never registered.
+    names two registries as the sanctioned exceptions that keep real-git
+    tests on the default ``make test`` profile: the
+    ``REQUIRED_AUTO_INTEGRATE_E2E_FILES`` selection registry and the
+    ``SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES`` audit-exception registry
+    (the latter holds default-lane files pytest cannot select, starting
+    with ``tests/conftest.py``). The audit honours both so the sanction
+    and the selection requirement cannot drift. Paths outside the project
+    tree (e.g. the temporary files the audit's own unit tests write) are
+    never registered.
     """
     try:
         relative = Path(file_path).resolve().relative_to(_PROJECT_ROOT).as_posix()
     except ValueError:
         return False
-    return relative in REQUIRED_AUTO_INTEGRATE_E2E_FILES
+    return (
+        relative in REQUIRED_AUTO_INTEGRATE_E2E_FILES
+        or relative in SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES
+    )
 
 
 _SKIP_DIRS: frozenset[str] = frozenset(

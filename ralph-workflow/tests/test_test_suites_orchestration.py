@@ -27,6 +27,34 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 
+#: Mirror of ``SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES`` in
+#: ``ralph/test_suites.py`` -- pinned verbatim so this module fails when the
+#: audit-exception registry drifts, exactly like the required registry
+#: above. These files run real Git crossings in the default ``make test``
+#: profile and are audit-sanctioned; they are NOT pytest-selection
+#: requirements (``tests/conftest.py`` cannot be discovered at all).
+EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
+    "tests/conftest.py",
+    "tests/pipeline/test_reducer_lock_retry.py",
+    "tests/test_auto_integrate_gates.py",
+    "tests/test_bootstrap_auto_seed_git_exclude.py",
+    "tests/test_bootstrap_auto_seed_gitignore.py",
+    "tests/test_commit_cleanup_diff.py",
+    "tests/test_commit_detached_head_recovery.py",
+    "tests/test_commit_executor.py",
+    "tests/test_cycle_baseline_diff_cycle_baseline_diff.py",
+    "tests/test_cycle_baseline_diff_runner_cycle_start_uses_force_true.py",
+    "tests/test_cycle_baseline_diff_write_cycle_baseline_force_param.py",
+    "tests/test_git_command_queue.py",
+    "tests/test_git_wrapper.py",
+    "tests/test_integration_diagnostic_livelock.py",
+    "tests/test_pipeline_runner_execute_commit_effect.py",
+    "tests/test_prompt_materialize_2.py",
+    "tests/test_prompt_materialize_3.py",
+    "tests/test_worktree_lease.py",
+)
+
+
 def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -> None:
     """Shard teardown owns lifecycle cleanup without per-shard background work."""
     policy = test_suites_module._PYTEST_SHARD_PROCESS_MANAGER.policy
@@ -395,6 +423,25 @@ def test_required_auto_integrate_e2e_registry_matches_verification_contract() ->
     )
     assert len(set(test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES)) == len(
         EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES
+    )
+
+
+def test_sanctioned_default_lane_real_git_registry_is_pinned() -> None:
+    """The audit-exception registry is pinned and never overlaps selection.
+
+    Mirrors the discovery-side contract test so both test modules
+    independently fail when the audit-exception registry drifts.
+    """
+    assert (
+        test_suites_module.SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES
+        == EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES
+    )
+    assert len(set(test_suites_module.SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES)) == len(
+        EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES
+    )
+    assert not (
+        set(test_suites_module.SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES)
+        & set(test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES)
     )
 
 

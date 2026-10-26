@@ -354,14 +354,21 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # files carry subprocess_e2e + required_auto_integrate_e2e markers.
     "tests/test_exec_smoke_subprocess_e2e.py",
     "tests/test_exec_job_shutdown_subprocess_e2e.py",
-    # wt-18 U5 reconciliation: the GitPython real-Git boundary audit
-    # (ralph.testing.audit_test_policy, added in 223d8ab65) honours this
-    # registry as the single sanctioned exception for default-lane tests
-    # whose fixtures build real repositories. These files predate the
-    # audit and run real ``Repo.init`` / ``git.Repo`` crossings in the
-    # default ``make test`` profile; registering them keeps the profile
-    # unchanged and lets the two mechanisms never drift. Each remains a
-    # default-lane file (no subprocess_e2e marker is added or removed).
+)
+
+#: Default-lane files sanctioned by the GitPython real-Git boundary audit
+#: (``ralph.testing.audit_test_policy``, added in ``223d8ab65``). This is
+#: the AUDIT-exception registry and must stay disjoint in ROLE from
+#: ``REQUIRED_AUTO_INTEGRATE_E2E_FILES`` above: that registry is also the
+#: pytest SELECTION requirement, so it may only name files discovery can
+#: select (``test_*.py`` / ``*_test.py``) -- ``tests/conftest.py`` can
+#: never be discovered and would fail the gate unconditionally. Both
+#: registries are consulted by the audit's ``_is_registered_real_git_file``
+#: so the sanction and the selection requirement cannot drift. The files
+#: below predate the audit and run real ``Repo.init`` / ``git.Repo``
+#: crossings in the default ``make test`` profile; each remains a
+#: default-lane file (no ``subprocess_e2e`` marker is added or removed).
+SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/conftest.py",
     "tests/pipeline/test_reducer_lock_retry.py",
     "tests/test_auto_integrate_gates.py",
@@ -591,6 +598,10 @@ if not REQUIRED_AUTO_INTEGRATE_E2E_FILES:
     raise RuntimeError("REQUIRED_AUTO_INTEGRATE_E2E_FILES must not be empty")
 if len(REQUIRED_AUTO_INTEGRATE_E2E_FILES) != len(set(REQUIRED_AUTO_INTEGRATE_E2E_FILES)):
     raise RuntimeError("REQUIRED_AUTO_INTEGRATE_E2E_FILES must not contain duplicates")
+if not SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES:
+    raise RuntimeError("SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES must not be empty")
+if len(SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES) != len(set(SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES)):
+    raise RuntimeError("SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES must not contain duplicates")
 if _MAX_PYTEST_WORKERS <= 0:
     raise RuntimeError("_MAX_PYTEST_WORKERS must be positive")
 if _MAX_XDIST_WORKERS_PER_SHARD < 0:

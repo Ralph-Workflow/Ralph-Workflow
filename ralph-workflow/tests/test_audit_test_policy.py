@@ -210,6 +210,36 @@ def test_registered_real_git_file_is_exempt(tmp_path: Path) -> None:
     assert [violation.category for violation in violations] == ["io"]
 
 
+def test_sanctioned_default_lane_real_git_file_is_exempt(tmp_path: Path) -> None:
+    """The audit-exception registry alone also keeps a default-lane proof exempt.
+
+    ``SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES`` carries files pytest cannot
+    select (starting with ``tests/conftest.py``); the audit must consult it
+    on its own, not only via ``REQUIRED_AUTO_INTEGRATE_E2E_FILES``.
+    """
+    import ralph.testing.audit_test_policy as audit_module
+
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    test_file = tests_dir / "test_sanctioned_real_git.py"
+    test_file.write_text(
+        "from git import Repo\n\ndef test_seed(tmp_path):\n    Repo.init(tmp_path)\n"
+    )
+    with (
+        mock.patch.object(audit_module, "_PROJECT_ROOT", tmp_path),
+        mock.patch.object(
+            audit_module,
+            "SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES",
+            frozenset({"tests/test_sanctioned_real_git.py"}),
+        ),
+    ):
+        assert audit_module.audit_test_file(test_file) == []
+    # Outside both registries, the same file is a real-Git violation again.
+    with mock.patch.object(audit_module, "_PROJECT_ROOT", tmp_path):
+        violations = audit_module.audit_test_file(test_file)
+    assert [violation.category for violation in violations] == ["io"]
+
+
 def test_socket_creation_is_violation(tmp_path: Path) -> None:
     """socket.socket() should be detected as an I/O violation."""
     test_file = tmp_path / "test_example.py"
