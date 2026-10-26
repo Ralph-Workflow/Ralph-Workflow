@@ -30,6 +30,10 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 _CONFLICTED = ["a.py", "b.py", "c.py"]
+#: The number of watchdog ticks a repeated fault must survive. The contract the
+#: test pins is that a plumbing fault never bars the agent's surface, whatever
+#: the tick count, so the count is a property of the test and not of production.
+_REPEATED_WATCHDOG_TICKS = 6
 _POLICY_BUNDLE = load_policy(Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults")
 _CONFIG = UnifiedConfig.model_validate({"general": {}})
 
@@ -267,10 +271,7 @@ def test_a_watchdog_authored_fault_still_bars_the_surface(
     """
     from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
     from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
-    from ralph.pipeline.conflict_resolution.session import (
-        RALPH_FAULT_ESCALATION_HITS,
-        wrap_activity_listener,
-    )
+    from ralph.pipeline.conflict_resolution.session import wrap_activity_listener
 
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock)
@@ -294,7 +295,7 @@ def test_a_watchdog_authored_fault_still_bars_the_surface(
     )
     assert session.last_attempt_saw_activity is True, "a fault tick is still activity"
 
-    for _ in range(RALPH_FAULT_ESCALATION_HITS):
+    for _ in range(_REPEATED_WATCHDOG_TICKS):
         listener(faulting)
     assert "claude" not in skipped_candidates(session, ("claude",)), (
         "a plumbing fault is never run-scoped"

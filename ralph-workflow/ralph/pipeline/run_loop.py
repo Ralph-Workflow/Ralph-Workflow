@@ -93,7 +93,6 @@ from ralph.pipeline.retry_diagnostic import RetryDiagnosticHooks
 from ralph.pipeline.run_time_report import emit_run_time_report_safely
 from ralph.process.manager import get_process_manager
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger
-from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEvent as _FailureEvent
@@ -4218,7 +4217,6 @@ def _build_recovery_controller(
         options=RecoveryControllerOptions(
             cycle_cap=_cycle_cap,
             policy_bundle=policy_bundle,
-            budget_registry=_seed_budget_registry(policy_bundle),
             agent_max_consecutive_unproductive=consecutive_limit,
             agent_max_total_unproductive=total_limit,
             clock=effective_clock,
@@ -4251,23 +4249,14 @@ def _subscribe_recovery_logger(controller: RecoveryController) -> Callable[[], N
 
     def _log_recovery_event(evt: object) -> None:
         if isinstance(evt, _FailureEvent):
-            remaining: int | None = None
-            if evt.agent:
-                snap = controller.snapshot()
-                budgets = snap.get("budgets")
-                if isinstance(budgets, dict):
-                    key = f"{evt.phase}:{evt.agent}"
-                    budget_info = budgets.get(key)
-                    if isinstance(budget_info, dict):
-                        remaining = budget_info.get("remaining")
             log = logger.bind(recovery=True)
             message = (
                 "VALIDATION FAILURE phase={} agent={} category={} counted={}"
-                " chain_cap={} cycle={} delay_ms={} remaining={}"
+                " chain_cap={} cycle={} delay_ms={}"
                 " unavailability_reason={}"
                 if evt.category == "artifact_validation"
                 else "FAILURE phase={} agent={} category={} counted={}"
-                " chain_cap={} cycle={} delay_ms={} remaining={}"
+                " chain_cap={} cycle={} delay_ms={}"
                 " unavailability_reason={}"
             )
             if evt.category == "artifact_validation":
@@ -4280,7 +4269,6 @@ def _subscribe_recovery_logger(controller: RecoveryController) -> Callable[[], N
                     evt.chain_capacity_remaining,
                     evt.recovery_cycle,
                     evt.retry_delay_ms,
-                    remaining,
                     evt.unavailability_reason,
                 )
             else:
@@ -4293,7 +4281,6 @@ def _subscribe_recovery_logger(controller: RecoveryController) -> Callable[[], N
                     evt.chain_capacity_remaining,
                     evt.recovery_cycle,
                     evt.retry_delay_ms,
-                    remaining,
                     evt.unavailability_reason,
                 )
         elif isinstance(evt, _FalloverEvent):

@@ -157,7 +157,6 @@ def test_controller_fallover_event_timestamp_uses_injected_clock() -> None:
     options = RecoveryControllerOptions(
         clock=clock,
         policy_bundle=bundle,
-        budgets={"development": {"agent_a": 0, "agent_b": 5}},
     )
     controller = RecoveryController(options=options)
     controller.event_bus.subscribe(captured_events.append)

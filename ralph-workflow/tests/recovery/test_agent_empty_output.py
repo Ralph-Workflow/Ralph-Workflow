@@ -1,4 +1,4 @@
-"""Black-box test: agent empty output is attributed to the agent and debits budget."""
+"""Black-box test: agent empty output is attributed to the agent and charged to it."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from pathlib import Path
 from ralph.agents.invoke._errors import AgentInvocationError
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
-from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
 from ralph.recovery.controller import (
     FailureContext,
@@ -30,22 +29,22 @@ def _make_state(agents: list[str]) -> PipelineState:
     )
 
 
-def _make_registry_with_budget(phase: str, agent: str, max_retries: int = 1) -> AgentBudgetRegistry:
-    return AgentBudgetRegistry().set_budget(phase, agent, max_retries)
+#: The failure ledger demotes an agent after this many consecutive
+#: unproductive attempts; that demotion is what drives the fallover.
+_CONSECUTIVE_UNPRODUCTIVE_LIMIT = 3
 
 
-def test_agent_fault_debits_budget() -> None:
-    """An agent-attributable fault decrements the budget."""
-    registry = _make_registry_with_budget("development", "claude", max_retries=2)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
+class _AgentTimeoutError(Exception):
+    """Exception whose class name makes the classifier read it as an agent fault."""
+
+
+_AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
+
+
+def test_agent_fault_is_charged_to_the_agent() -> None:
+    """An agent-attributable fault is charged against the agent by the ledger."""
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"])
-
-    class _AgentTimeoutError(Exception):
-        pass
-
-    _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
     _, _, evt = controller.handle(
         state,
@@ -55,14 +54,13 @@ def test_agent_fault_debits_budget() -> None:
 
     assert evt.category == "agent"
     assert evt.counted_against_budget is True
-    state_after = controller.budget_registry.get("development", "claude")
-    assert state_after is not None
-    assert state_after.consumed == 1
+    # The charge is recorded against the agent: one attempt is not enough to
+    # demote it, so it stays selectable.
+    assert controller.ledger.is_available("development", "claude") is True
 
 
-def test_agent_fault_causes_fallover_when_budget_exhausted() -> None:
-    """When agent budget is exhausted, controller falls over to next agent."""
-    registry = _make_registry_with_budget("development", "claude", max_retries=1)
+def test_agent_fault_causes_fallover_when_the_agent_is_demoted() -> None:
+    """When the ledger demotes the agent, the controller falls over to the next agent."""
     collected_fallovers: list[FalloverEvent] = []
 
     bus = FailureEventBus()
@@ -71,20 +69,17 @@ def test_agent_fault_causes_fallover_when_budget_exhausted() -> None:
     )
 
     controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry, event_bus=bus)
+        options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus)
     )
     state = _make_state(["claude", "opencode"])
 
-    class _AgentTimeoutError(Exception):
-        pass
-
-    _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
-
-    new_state, _, _ = controller.handle(
-        state,
-        _AgentTimeoutError("agent idle timeout"),
-        FailureContext(phase="development", agent="claude"),
-    )
+    new_state = state
+    for _attempt in range(_CONSECUTIVE_UNPRODUCTIVE_LIMIT):
+        new_state, _, _ = controller.handle(
+            state,
+            _AgentTimeoutError("agent idle timeout"),
+            FailureContext(phase="development", agent="claude"),
+        )
 
     assert len(collected_fallovers) == 1
     assert collected_fallovers[0].from_agent == "claude"
@@ -94,25 +89,21 @@ def test_agent_fault_causes_fallover_when_budget_exhausted() -> None:
 
 
 def test_agent_fault_chain_exhaustion_enters_phase_failed() -> None:
-    """When entire chain is exhausted, state enters "failed"."""
-    registry = _make_registry_with_budget("development", "claude", max_retries=1)
+    """A sole agent that the ledger demotes fails the phase."""
     controller = RecoveryController(
         options=RecoveryControllerOptions(
-            cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+            cycle_cap=10, policy_bundle=_minimal_policy_bundle()
         )
     )
     state = _make_state(["claude"])
 
-    class _AgentTimeoutError(Exception):
-        pass
-
-    _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
-
-    new_state, _, _ = controller.handle(
-        state,
-        _AgentTimeoutError("agent idle timeout"),
-        FailureContext(phase="development", agent="claude"),
-    )
+    new_state = state
+    for _attempt in range(_CONSECUTIVE_UNPRODUCTIVE_LIMIT):
+        new_state, _, _ = controller.handle(
+            state,
+            _AgentTimeoutError("agent idle timeout"),
+            FailureContext(phase="development", agent="claude"),
+        )
 
     assert new_state.phase == "failed_terminal"
     assert new_state.recovery_cycle_count == 1

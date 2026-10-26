@@ -17,7 +17,6 @@ from ralph.timeout_defaults import (
 if TYPE_CHECKING:
     from ralph.agents.clock import Clock
     from ralph.policy.models import PolicyBundle
-    from ralph.recovery.agent_budget_registry import AgentBudgetRegistry
     from ralph.recovery.agent_unavailability_tracker import (
         UnavailabilityEntry,
         UnavailabilityStore,
@@ -35,7 +34,6 @@ class RecoveryControllerOptions:
     cycle_cap: int = 200
     classifier: FailureClassifier | None = None
     event_bus: FailureEventBus | None = None
-    budget_registry: AgentBudgetRegistry | None = None
     policy_bundle: PolicyBundle | None = None
     backoff_attempts: dict[str, int] | None = None
     # Single-owner failure and recovery ledger.
@@ -66,7 +64,6 @@ class RecoveryControllerOptions:
     # initial state).
     unavailability_store: UnavailabilityStore | None = None
     # Snapshot restoration fields for restarting across runs
-    budgets: dict[str, dict[str, int]] | None = None
     spent_agents: dict[str, set[str]] | None = None
 
     @classmethod
@@ -94,13 +91,6 @@ class RecoveryControllerOptions:
                 snapshot.get("unavailable_timeouts", {}), field="unavailable_timeouts"
             ).items()
         }
-        budgets_data = {
-            k: {
-                kk: as_int(vv, field=f"budgets[{k}][{kk}]")
-                for kk, vv in as_mapping(v, field=f"budgets[{k}]").items()
-            }
-            for k, v in as_mapping(snapshot.get("budgets", {}), field="budgets").items()
-        }
         spent_agents = {
             k: set(as_str_list(v, field=f"spent_agents[{k}]"))
             for k, v in as_mapping(snapshot.get("spent_agents", {}), field="spent_agents").items()
@@ -116,7 +106,6 @@ class RecoveryControllerOptions:
             cycle_cap=cycle_cap,
             backoff_attempts=backoff_attempts,
             unavailable_timeouts=unavailable_timeouts,
-            budgets=budgets_data,
             spent_agents=spent_agents,
             policy_bundle=policy_bundle,
             clock=clock,

@@ -3432,13 +3432,6 @@ ralph.recovery
 .. automodule:: ralph.recovery
    :no-members:
 
-ralph.recovery.budget
-~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.recovery.budget
-   :members:
-   :show-inheritance:
-
 ralph.recovery.classifier
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -3481,13 +3474,6 @@ ralph.recovery.testing
    :members:
    :show-inheritance:
 
-ralph.recovery.agent_budget_registry
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.recovery.agent_budget_registry
-   :members:
-   :show-inheritance:
-
 ralph.recovery.agent_selection
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -3495,24 +3481,10 @@ ralph.recovery.agent_selection
    :members:
    :show-inheritance:
 
-ralph.recovery.budget_state
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.recovery.budget_state
-   :members:
-   :show-inheritance:
-
 ralph.recovery.classified_failure
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.recovery.classified_failure
-   :members:
-   :show-inheritance:
-
-ralph.recovery.failure_budget
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.recovery.failure_budget
    :members:
    :show-inheritance:
 
@@ -3534,13 +3506,6 @@ ralph.recovery.retry_prompt
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.recovery.retry_prompt
-   :members:
-   :show-inheritance:
-
-ralph.recovery.seed_budget_registry
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.recovery.seed_budget_registry
    :members:
    :show-inheritance:
 

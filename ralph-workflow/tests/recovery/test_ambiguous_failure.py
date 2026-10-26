@@ -14,7 +14,6 @@ from ralph.mcp.artifacts.development_result_validation_error import (
     DevelopmentResultValidationError,
 )
 from ralph.pipeline.state import AgentChainState, PipelineState
-from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
 from ralph.recovery.controller import (
     FailureContext,
@@ -60,12 +59,9 @@ def test_generic_exception_message_ambiguous() -> None:
     assert failure.counts_against_budget is False
 
 
-def test_ambiguous_failure_does_not_debit_budget() -> None:
+def test_ambiguous_failure_is_not_counted_against_the_budget() -> None:
     """Ambiguous failures must not count against the agent budget."""
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state()
 
     _, _, evt = controller.handle(
@@ -77,10 +73,9 @@ def test_ambiguous_failure_does_not_debit_budget() -> None:
     assert evt.counted_against_budget is False
     assert evt.category == "ambiguous"
 
-    # Budget should not be debited
-    budget_state = controller.budget_registry.get("development", "claude")
-    assert budget_state is not None
-    assert budget_state.consumed == 0
+    # An uncounted failure never grows the retry delay, so the agent keeps
+    # being retried at the base delay.
+    assert evt.retry_delay_ms == 0
 
 
 def test_ambiguous_failure_returns_state_without_phase_change() -> None:
@@ -221,12 +216,9 @@ def test_enospc_oserror_is_environmental_not_ambiguous() -> None:
     assert failure.counts_against_budget is False
 
 
-def test_enospc_oserror_via_controller_does_not_debit_budget() -> None:
-    """ENOSPC reaching RecoveryController must not debit agent budget."""
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
+def test_enospc_oserror_via_controller_is_not_counted_against_the_budget() -> None:
+    """ENOSPC reaching RecoveryController must not count against the agent budget."""
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state()
 
     _, _, evt = controller.handle(
@@ -237,10 +229,7 @@ def test_enospc_oserror_via_controller_does_not_debit_budget() -> None:
 
     assert evt.category == "environmental"
     assert evt.counted_against_budget is False
-
-    budget_state = controller.budget_registry.get("development", "claude")
-    assert budget_state is not None
-    assert budget_state.consumed == 0
+    assert evt.retry_delay_ms == 0
 
 
 # ---------------------------------------------------------------------------

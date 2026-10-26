@@ -1,4 +1,4 @@
-"""AgentBudgetRegistry and RecoveryController durability tests.
+"""RecoveryController snapshot, restoration, and durability tests.
 
 Split from :mod:`tests.test_retry_budget_durability` so neither module
 carries more than one top-level test class (repo-structure policy).
@@ -23,7 +23,7 @@ from ralph.pipeline.reducer import reduce
 from ralph.pipeline.run_loop import build_recovery_controller
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
-from ralph.recovery.classifier import ClassifiedFailure, FailureCategory
+from ralph.recovery.classifier import ClassifiedFailure, FailureCategory, FailureContext
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from ralph.workspace.memory import MemoryWorkspace
@@ -87,24 +87,35 @@ class TestRecoveryControllerDurability:
         assert restored_snap["cycle_cap"] == 50
         assert restored_backoff["claude"] == 2
 
-    def test_exhausted_agent_remains_spent_in_preferred_agent_selection(self) -> None:
+    def test_spent_agent_is_skipped_in_preferred_agent_selection(self) -> None:
+        """A ledger-spent agent is skipped; the next agent is selected."""
         clock = FakeClock(start=100.0)
-        budgets = {
-            "development:claude": {
-                "max_retries": 2,
-                "consumed": 2,
-                "remaining": 0,
-                "exhausted": 1,
-            }
-        }
         options = RecoveryControllerOptions(
-            budgets=budgets,
             clock=clock,
+            agent_max_consecutive_unproductive=1,
+            agent_max_total_unproductive=1,
         )
         controller = RecoveryController(options=options)
+        state = PipelineState(
+            phase="development",
+            phase_chains={
+                "development": AgentChainState(agents=["claude", "gemini"], current_index=0)
+            },
+        )
+
+        class _AgentTimeoutError(Exception):
+            pass
+
+        _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
+
+        controller.handle(
+            state,
+            _AgentTimeoutError("claude idle"),
+            FailureContext(phase="development", agent="claude"),
+        )
 
         selection = controller.preferred_agent_index("development", ["claude", "gemini"])
-        # claude's budget is exhausted, so claude is spent; gemini should be selected
+        # claude is spent, so gemini should be selected
         assert selection.agent == "gemini"
 
     def test_prepopulated_workspace_no_change_demotes_at_consecutive_limit(self) -> None:

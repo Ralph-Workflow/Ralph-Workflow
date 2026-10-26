@@ -31,7 +31,6 @@ from ralph.pipeline.effect_executor import _stale_session_recovery_block, build_
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import AgentChainState, PipelineState
-from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.workspace.scope import WorkspaceScope
@@ -729,10 +728,7 @@ def test_stale_session_path_full_sequence(tmp_path: Path, monkeypatch: pytest.Mo
         f"No conversation found with session ID: {session_id}",
     )
 
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(last_session_id=session_id)
 
     new_state, _, evt = controller.handle(
@@ -752,9 +748,8 @@ def test_stale_session_path_full_sequence(tmp_path: Path, monkeypatch: pytest.Mo
     hint_content = hint_file.read_text(encoding="utf-8")
     assert "session" in hint_content.lower()
 
-    budget = controller.budget_registry.get("development", "claude")
-    assert budget is not None
-    assert budget.consumed == 1
+    # The stale-session failure is charged against the agent by the ledger.
+    assert controller.ledger.is_available("development", "claude") is True
 
 
 def test_stale_session_attempt2_uses_fresh_session(
@@ -771,10 +766,7 @@ def test_stale_session_attempt2_uses_fresh_session(
         f"No conversation found with session ID: {session_id}",
     )
 
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(last_session_id=session_id)
 
     new_state, _, _ = controller.handle(
@@ -823,10 +815,7 @@ def test_stale_session_phase_remains_active(
         1,
         "No conversation found with session ID: xyz",
     )
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(last_session_id="xyz")
 
     new_state, effects, _ = controller.handle(

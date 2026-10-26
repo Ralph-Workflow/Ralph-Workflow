@@ -7,10 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from ralph.pipeline.effects import ExitFailureEffect
+from ralph.pipeline.effects import Effect, ExitFailureEffect
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
-from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.recovery.cycle_cap import CycleCap
 
@@ -23,6 +22,10 @@ def _minimal_policy_bundle() -> object:
 _CYCLE_CAP = 3
 _EXPECTED_CYCLE_COUNT = 2
 _MIN_REASON_LEN = 20
+#: The failure ledger demotes the sole agent after this many consecutive
+#: unproductive attempts; the demotion fails the phase and advances the
+#: recovery cycle counter.
+_CONSECUTIVE_UNPRODUCTIVE_LIMIT = 3
 
 
 def _make_state(agents: list[str], cycle_count: int = 0) -> PipelineState:
@@ -57,40 +60,42 @@ def test_env_failure_does_not_increment_cycle_count() -> None:
 
 
 def test_agent_failure_chain_exhaustion_increments_cycle_count() -> None:
-    """Agent chain exhaustion increments recovery_cycle_count."""
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
+    """A demoted sole agent fails the phase and increments recovery_cycle_count."""
     controller = RecoveryController(
         options=RecoveryControllerOptions(
-            cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+            cycle_cap=10, policy_bundle=_minimal_policy_bundle()
         )
     )
     state = _make_state(["claude"])
 
-    new_state, _, _ = controller.handle(
-        state,
-        _AgentInactivityTimeoutError("idle"),
-        FailureContext(phase="development", agent="claude"),
-    )
+    new_state = state
+    for _attempt in range(_CONSECUTIVE_UNPRODUCTIVE_LIMIT):
+        new_state, _, _ = controller.handle(
+            state,
+            _AgentInactivityTimeoutError("idle"),
+            FailureContext(phase="development", agent="claude"),
+        )
 
     assert new_state.recovery_cycle_count == 1
 
 
 def test_cycle_cap_exceeded_emits_exit_failure_effect() -> None:
     """When recovery_cycle_count >= cap, an ExitFailureEffect is produced."""
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
-            cycle_cap=_CYCLE_CAP, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+            cycle_cap=_CYCLE_CAP, policy_bundle=_minimal_policy_bundle()
         )
     )
 
     state = _make_state(["claude"], cycle_count=_EXPECTED_CYCLE_COUNT)
 
-    _new_state, effects, _ = controller.handle(
-        state,
-        _AgentInactivityTimeoutError("idle timeout again"),
-        FailureContext(phase="development", agent="claude"),
-    )
+    effects: list[Effect] = []
+    for _attempt in range(_CONSECUTIVE_UNPRODUCTIVE_LIMIT):
+        _new_state, effects, _ = controller.handle(
+            state,
+            _AgentInactivityTimeoutError("idle timeout again"),
+            FailureContext(phase="development", agent="claude"),
+        )
 
     exit_effects = [e for e in effects if isinstance(e, ExitFailureEffect)]
     assert len(exit_effects) == 1

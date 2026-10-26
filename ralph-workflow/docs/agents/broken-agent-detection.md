@@ -34,7 +34,20 @@ The default `BROKEN_AGENT` backoff starts at a 5-second base, doubles on each re
 
 That per-failure unavailability backoff is a different mechanism from the ledger's unproductive-limit cooldown. One broken exit marks the agent temporarily unavailable; the ledger demotes an agent only after a run of unproductive attempts.
 
-Repeated unproductive attempts (including broken-agent exits and missing-artifact outcomes) are bounded by the single failure authority, `AgentFailureLedger`. The agent is demoted to cooldown after `agent_max_consecutive_unproductive` (default `3`) consecutive unproductive attempts in the phase, or demoted to permanently Spent after `agent_max_total_unproductive` (default `9`) total unproductive attempts in the phase. The TOTAL counter counts every unproductive attempt, with or without a workspace change; only the CONSECUTIVE counter is reset by a workspace change. The ledger's cooldown starts at 60 seconds, doubles on each consecutive demotion, and is capped at 3600 seconds; those durations are fixed and are not configurable in `ralph-workflow.toml`. A broken-agent exit skips same-agent retries, so that first failure advances to the next available agent when the chain has one; other unproductive attempts (a missing artifact, for example) retry the same agent until the consecutive limit demotes it. A sole-agent chain waits for its cooldown until reaching the consecutive limit, at which point the phase fails with a clear diagnostic message instead of retrying indefinitely.
+## Agent Failure Limits
+
+Exactly one component decides that an agent has failed too many times: the agent failure ledger (`AgentFailureLedger`). The recovery controller, the pipeline reducer, and conflict-resolution selection are clients of that ledger — they record attempt facts into it, or apply the verdict it returns. No second tracker, counter, or cap may decide that an agent retries, is benched, or runs next; a seam that cannot reach the ledger fails its phase closed instead of granting another attempt.
+
+An attempt is **unproductive** when it ends without a valid artifact. Two `[general]` settings bound unproductivity per phase and agent:
+
+- `agent_max_consecutive_unproductive` (default `3`) — after that many consecutive unproductive attempts, the agent enters cooldown and the chain falls over to the next eligible agent.
+- `agent_max_total_unproductive` (default `9`) — after that many unproductive attempts in total, the agent is spent for the phase.
+
+A workspace change resets only the CONSECUTIVE count. The TOTAL count keeps every unproductive attempt, with or without a workspace change, so an agent that keeps editing files without ever producing the artifact still reaches the TOTAL limit and is spent. Producing a valid artifact clears the agent's history: both counts, the cooldown, and the spent marking are reset.
+
+The cooldown starts at 60 seconds, doubles on each consecutive demotion, and is capped at 3600 seconds. Those durations are fixed and are not configurable in `ralph-workflow.toml`. When the cooldown expires the agent becomes eligible again and its consecutive count starts from zero. The ledger state is written into the run's persisted state, so the counts and the cooldown survive a restart.
+
+A broken-agent exit skips same-agent retries, so that first failure advances to the next available agent when the chain has one; other unproductive attempts (a missing artifact, for example) retry the same agent until the consecutive limit demotes it. A sole-agent chain has nowhere to fall over to, so reaching the limit fails the phase with a clear diagnostic message instead of retrying indefinitely.
 
 ## Operator Log Lines
 
@@ -62,4 +75,4 @@ A prompt echo is not a generic similarity check. The entire trimmed prompt must 
 
 Normal output mixed with an echoed prompt remains meaningful. In that case Ralph follows the regular completion and watchdog contracts rather than declaring the agent broken.
 
-See [Recovery](../sphinx/recovery.md) for chain order and cooldown behavior, and [Configuration](../sphinx/configuration.md) for the `[general]` keys that bound agent retries.
+See [Recovery](../sphinx/recovery.md) for chain order and cooldown behavior, and [Configuration](../sphinx/configuration.md) for the `[general]` keys that bound agent retries and the removed-settings migration.

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from ralph.pipeline.state import AgentChainState, PipelineState
-from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 
@@ -37,25 +36,27 @@ def test_inactivity_timeout_classified_as_agent_fault() -> None:
     assert failure.attributed_phase == "development"
 
 
-def test_inactivity_timeout_counts_against_budget_in_controller() -> None:
-    """Idle timeout via controller decrements the agent budget."""
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
+def test_inactivity_timeout_is_charged_against_the_agent() -> None:
+    """An idle timeout is charged against the agent by the failure ledger.
+
+    Three charged attempts demote the agent, which is the observable effect
+    of the charge: the agent stops being available for the phase.
+    """
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"])
 
-    _, _, evt = controller.handle(
-        state,
-        _AgentInactivityTimeoutError("agent idle"),
-        FailureContext(phase="development", agent="claude"),
-    )
+    for _attempt in range(3):
+        _, _, evt = controller.handle(
+            state,
+            _AgentInactivityTimeoutError("agent idle"),
+            FailureContext(phase="development", agent="claude"),
+        )
+        assert evt.counted_against_budget is True
+        assert evt.category == "agent"
 
-    assert evt.counted_against_budget is True
-    assert evt.category == "agent"
-    budget = controller.budget_registry.get("development", "claude")
-    assert budget is not None
-    assert budget.consumed == 1
+    # The ledger charged every attempt, so the agent is no longer available.
+    assert controller.ledger.is_available("development", "claude") is False
+    assert controller.agents_now_available("development", ["claude"]) == []
 
 
 def test_network_timeout_is_environmental_not_agent_fault() -> None:

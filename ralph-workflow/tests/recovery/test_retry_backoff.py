@@ -1,20 +1,18 @@
 """Black-box test: retry backoff is computed and applied correctly.
 
-Every assertion reads the controller's PUBLIC seam only: the
-``FailureEvent.retry_delay_ms`` the runner consumes and the
-``RecoveryController.snapshot()`` observability snapshot. The file proves
-that the backoff counter grows per phase/agent, that the computed delay
-doubles and saturates at the cap, and that ``reset_backoff`` clears the
-counter so the next failure starts from the base delay again -- without
-coupling to any private recovery state.
+Every assertion reads the controller's PUBLIC answers only: the
+``FailureEvent.retry_delay_ms`` the runner consumes, the agent the chain
+selects next, and the demotion the ledger records. The file proves that
+the delay grows per phase/agent, that the computed delay doubles and
+saturates at the cap, and that ``reset_backoff`` clears the growth so the
+next failure starts from the base delay again -- without coupling to any
+private recovery state.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
 
-from ralph.checked_accessors import as_int, as_mapping
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.models import (
     AgentChainConfig,
@@ -26,7 +24,6 @@ from ralph.policy.models import (
     PipelinePolicy,
     PolicyBundle,
 )
-from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classified_failure import ClassifiedFailure
 from ralph.recovery.classifier import FailureContext
 from ralph.recovery.controller import (
@@ -45,6 +42,13 @@ _ATTEMPT_2_EXPECTED = 4000
 _ATTEMPT_3_EXPECTED = 8000
 
 
+class _AgentTimeoutError(Exception):
+    """Exception whose class name makes the classifier read it as an agent fault."""
+
+
+_AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
+
+
 def _make_state(agents: list[str]) -> PipelineState:
     return PipelineState(
         phase="development",
@@ -56,7 +60,6 @@ def _make_bundle_with_retry_delay(
     chain_name: str = "development",
     agents: list[str] | None = None,
     retry_delay_ms: int = 1000,
-    max_retries: int = 3,
 ) -> PolicyBundle:
     if agents is None:
         agents = ["claude"]
@@ -65,7 +68,6 @@ def _make_bundle_with_retry_delay(
             agent_chains={
                 chain_name: AgentChainConfig(
                     agents=agents,
-                    max_retries=max_retries,
                     retry_delay_ms=retry_delay_ms,
                 )
             },
@@ -87,18 +89,6 @@ def _make_bundle_with_retry_delay(
     )
 
 
-def _backoff_attempts(controller: RecoveryController) -> Mapping[str, int]:
-    """Return the controller's PUBLIC backoff-attempt snapshot.
-
-    ``RecoveryController.snapshot()`` publishes the ``backoff_attempts``
-    mapping that merges the controller's own per-``phase:agent`` counter
-    with the unavailability store's per-agent counter, so the values are
-    the ones the controller itself reads when it computes a retry delay.
-    """
-    raw = as_mapping(controller.snapshot()["backoff_attempts"], field="backoff_attempts")
-    return {key: as_int(value, field=f"backoff_attempts.{key}") for key, value in raw.items()}
-
-
 def test_compute_backoff_ms_doubles_each_attempt() -> None:
     """Backoff doubles with each retry attempt."""
     assert compute_backoff_ms(base_ms=_BASE_MS, attempt=0, max_ms=_MAX_MS) == _ATTEMPT_0_EXPECTED
@@ -117,11 +107,6 @@ def test_retry_delay_ms_zero_without_policy_bundle() -> None:
     """FailureEvent has retry_delay_ms=0 when no policy bundle is configured."""
     controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"])
-
-    class _AgentTimeoutError(Exception):
-        pass
-
-    _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
     _, _, evt = controller.handle(
         state,
@@ -149,103 +134,9 @@ def test_environmental_failure_has_zero_delay() -> None:
     assert evt.retry_delay_ms == 0
 
 
-def test_reset_backoff_clears_counter() -> None:
-    """reset_backoff clears the backoff counter for subsequent success."""
-    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
-    state = _make_state(["claude"])
-
-    class _AgentTimeoutError(Exception):
-        pass
-
-    _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
-
-    # Two failures to build up backoff (but no policy_bundle so delay stays 0)
-    controller.handle(
-        state, _AgentTimeoutError("idle 1"), FailureContext(phase="development", agent="claude")
-    )
-    controller.handle(
-        state, _AgentTimeoutError("idle 2"), FailureContext(phase="development", agent="claude")
-    )
-
-    # Reset backoff (would be called on successful agent invocation)
-    controller.reset_backoff("development", "claude")
-
-    # Backoff attempts dict should be empty after reset
-    assert len(_backoff_attempts(controller)) == 0
-
-
-def test_backoff_attempts_tracked_per_agent() -> None:
-    """Backoff attempts are tracked separately per agent."""
-    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
-    state = _make_state(["claude", "opencode"])
-
-    class _AgentTimeoutError(Exception):
-        pass
-
-    _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
-
-    # Fail with claude twice
-    controller.handle(
-        state,
-        _AgentTimeoutError("claude idle 1"),
-        FailureContext(phase="development", agent="claude"),
-    )
-    controller.handle(
-        state,
-        _AgentTimeoutError("claude idle 2"),
-        FailureContext(phase="development", agent="claude"),
-    )
-
-    # Fail with opencode once
-    controller.handle(
-        state,
-        _AgentTimeoutError("opencode idle"),
-        FailureContext(phase="development", agent="opencode"),
-    )
-
-    # Verify backoff attempts
-    attempts = _backoff_attempts(controller)
-    assert attempts.get(f"{'development'}:claude") == 2
-    assert attempts.get(f"{'development'}:opencode") == 1
-
-
-def test_backoff_resets_on_fallover() -> None:
-    """Backoff counter resets when agent chain falls over to next agent."""
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
-    state = _make_state(["claude", "opencode"])
-
-    class _AgentTimeoutError(Exception):
-        pass
-
-    _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
-
-    # First failure - budget exhausted for claude, fallover to opencode
-    new_state, _, _ = controller.handle(
-        state,
-        _AgentTimeoutError("claude idle"),
-        FailureContext(phase="development", agent="claude"),
-    )
-
-    # Should have fallen over to opencode
-    chain = new_state.chain_for_phase("development")
-    assert chain is not None
-    assert chain.current_index == 1
-
-    # Backoff for claude should still be 1, but when we fail opencode,
-    # the backoff attempts should reflect the new agent
-    assert _backoff_attempts(controller).get(f"{'development'}:claude") == 1
-
-
-def test_retry_delay_ms_from_policy_bundle() -> None:
-    """FailureEvent carries computed retry_delay_ms from policy chain config.
-
-    With a chain configured for retry_delay_ms=500 and attempt=0,
-    the event should have retry_delay_ms=500.
-    """
-    bundle = _make_bundle_with_retry_delay(retry_delay_ms=500, max_retries=3)
+def test_reset_backoff_restores_the_base_delay() -> None:
+    """reset_backoff clears the delay growth so the next failure starts from the base delay."""
+    bundle = _make_bundle_with_retry_delay(retry_delay_ms=500)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -256,10 +147,114 @@ def test_retry_delay_ms_from_policy_bundle() -> None:
     )
     state = _make_state(["claude"])
 
-    class _AgentTimeoutError(Exception):
-        pass
+    # Two failures to build up the delay
+    controller.handle(
+        state, _AgentTimeoutError("idle 1"), FailureContext(phase="development", agent="claude")
+    )
+    _, _, grown = controller.handle(
+        state, _AgentTimeoutError("idle 2"), FailureContext(phase="development", agent="claude")
+    )
+    assert grown.retry_delay_ms == 1000
 
-    _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
+    # Reset backoff (would be called on successful agent invocation)
+    controller.reset_backoff("development", "claude")
+
+    # The next failure starts from the base delay again
+    _, _, after_reset = controller.handle(
+        state, _AgentTimeoutError("idle 3"), FailureContext(phase="development", agent="claude")
+    )
+    assert after_reset.retry_delay_ms == 500
+
+
+def test_backoff_grows_per_agent() -> None:
+    """The delay growth is tracked separately per agent."""
+    bundle = _make_bundle_with_retry_delay(retry_delay_ms=500, agents=["claude", "opencode"])
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            policy_bundle=bundle,
+            agent_max_consecutive_unproductive=20,
+            agent_max_total_unproductive=20,
+        )
+    )
+    state = _make_state(["claude", "opencode"])
+
+    # Fail with claude twice
+    _, _, claude_first = controller.handle(
+        state,
+        _AgentTimeoutError("claude idle 1"),
+        FailureContext(phase="development", agent="claude"),
+    )
+    _, _, claude_second = controller.handle(
+        state,
+        _AgentTimeoutError("claude idle 2"),
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    # Fail with opencode once
+    _, _, opencode_first = controller.handle(
+        state,
+        _AgentTimeoutError("opencode idle"),
+        FailureContext(phase="development", agent="opencode"),
+    )
+
+    # claude's own second failure doubles its delay; opencode starts from the
+    # base delay because the growth is per agent.
+    assert claude_first.retry_delay_ms == 500
+    assert claude_second.retry_delay_ms == 1000
+    assert opencode_first.retry_delay_ms == 500
+
+
+def test_ledger_demotion_falls_over_to_the_next_agent() -> None:
+    """The chain advances to the next agent once the ledger demotes the current one.
+
+    The failure ledger is the single owner of agent health: it demotes the
+    agent after the consecutive unproductive limit, and the chain then runs
+    the next agent in the phase.
+    """
+    bundle = _make_bundle_with_retry_delay(retry_delay_ms=500, agents=["claude", "opencode"])
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            policy_bundle=bundle,
+            agent_max_consecutive_unproductive=3,
+            agent_max_total_unproductive=9,
+        )
+    )
+    state = _make_state(["claude", "opencode"])
+
+    new_state = state
+    for attempt in range(3):
+        new_state, _, _ = controller.handle(
+            state,
+            _AgentTimeoutError(f"claude idle {attempt}"),
+            FailureContext(phase="development", agent="claude"),
+        )
+
+    # The third consecutive unproductive attempt demotes claude, so the chain
+    # advances to opencode.
+    chain = new_state.chain_for_phase("development")
+    assert chain is not None
+    assert chain.current_index == 1
+    assert chain.retries == 0
+
+
+def test_retry_delay_ms_from_policy_bundle() -> None:
+    """FailureEvent carries computed retry_delay_ms from policy chain config.
+
+    With a chain configured for retry_delay_ms=500 and attempt=0,
+    the event should have retry_delay_ms=500.
+    """
+    bundle = _make_bundle_with_retry_delay(retry_delay_ms=500)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            policy_bundle=bundle,
+            agent_max_consecutive_unproductive=20,
+            agent_max_total_unproductive=20,
+        )
+    )
+    state = _make_state(["claude"])
 
     _, _, evt = controller.handle(
         state,
@@ -273,7 +268,7 @@ def test_retry_delay_ms_from_policy_bundle() -> None:
 
 def test_retry_delay_ms_doubles_on_subsequent_failure() -> None:
     """retry_delay_ms doubles on each retry attempt for the same agent."""
-    bundle = _make_bundle_with_retry_delay(retry_delay_ms=500, max_retries=3)
+    bundle = _make_bundle_with_retry_delay(retry_delay_ms=500)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -283,11 +278,6 @@ def test_retry_delay_ms_doubles_on_subsequent_failure() -> None:
         )
     )
     state = _make_state(["claude"])
-
-    class _AgentTimeoutError(Exception):
-        pass
-
-    _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
     # First failure (attempt 0 -> base_ms * 2^0 = 500)
     _, _, evt1 = controller.handle(
@@ -316,7 +306,7 @@ def test_retry_delay_ms_doubles_on_subsequent_failure() -> None:
 
 def test_retry_delay_ms_caps_at_max_backoff() -> None:
     """retry_delay_ms is capped at 30_000 ms even on many retries."""
-    bundle = _make_bundle_with_retry_delay(retry_delay_ms=1000, max_retries=10)
+    bundle = _make_bundle_with_retry_delay(retry_delay_ms=1000)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -327,29 +317,25 @@ def test_retry_delay_ms_caps_at_max_backoff() -> None:
     )
     state = _make_state(["claude"])
 
-    class _AgentTimeoutError(Exception):
-        pass
-
-    _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
-
-    # Many failures to push backoff beyond cap
+    # Many failures to push the delay beyond the cap
+    delay_ms = 0
     for i in range(10):
-        controller.handle(
+        _, _, evt = controller.handle(
             state,
             _AgentTimeoutError(f"idle {i}"),
             FailureContext(phase="development", agent="claude"),
         )
+        delay_ms = evt.retry_delay_ms
 
-    # The backoff_attempts key for this agent should have count=10
-    # compute_backoff_ms(1000, 10, 30000) = min(1000 * 2^10, 30000) = 30000
-    key = f"{'development'}:claude"
-    assert _backoff_attempts(controller).get(key) == 10
+    # The tenth failure is already saturated at the cap:
+    # compute_backoff_ms(1000, 9, 30000) = min(1000 * 2^9, 30000) = 30000
+    assert delay_ms == 30_000
     assert compute_backoff_ms(1000, 10, 30_000) == 30_000
 
 
 def test_retry_delay_ms_reset_after_successful_invocation() -> None:
     """reset_backoff clears the backoff counter so next failure starts fresh."""
-    bundle = _make_bundle_with_retry_delay(retry_delay_ms=500, max_retries=3)
+    bundle = _make_bundle_with_retry_delay(retry_delay_ms=500)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -360,28 +346,18 @@ def test_retry_delay_ms_reset_after_successful_invocation() -> None:
     )
     state = _make_state(["claude"])
 
-    class _AgentTimeoutError(Exception):
-        pass
-
-    _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
-
     # Two failures to build up backoff
-    controller.handle(
+    _, _, grown = controller.handle(
         state, _AgentTimeoutError("idle 1"), FailureContext(phase="development", agent="claude")
     )
-    controller.handle(
+    assert grown.retry_delay_ms == 500
+    _, _, grown = controller.handle(
         state, _AgentTimeoutError("idle 2"), FailureContext(phase="development", agent="claude")
     )
-
-    # Verify backoff is at attempt 2
-    key = f"{'development'}:claude"
-    assert _backoff_attempts(controller).get(key) == 2
+    assert grown.retry_delay_ms == 1000
 
     # Reset backoff (simulate successful invocation)
     controller.reset_backoff("development", "claude")
-
-    # Backoff attempts should be cleared
-    assert _backoff_attempts(controller).get(key) is None
 
     # Next failure should have base delay again (not doubled)
     _, _, evt = controller.handle(
@@ -399,7 +375,7 @@ def test_retry_delay_ms_applied_via_injected_sleep() -> None:
     the controller surfaces the computed retry_delay_ms in FailureEvent,
     and the runner applies it via the sleep function.
     """
-    bundle = _make_bundle_with_retry_delay(retry_delay_ms=500, max_retries=3)
+    bundle = _make_bundle_with_retry_delay(retry_delay_ms=500)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -409,11 +385,6 @@ def test_retry_delay_ms_applied_via_injected_sleep() -> None:
         )
     )
     state = _make_state(["claude"])
-
-    class _AgentTimeoutError(Exception):
-        pass
-
-    _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
     # First failure
     controller.handle(
@@ -453,11 +424,6 @@ def test_zero_retry_delay_skips_sleep() -> None:
     )  # No policy bundle -> delay=0
     state = _make_state(["claude"])
 
-    class _AgentTimeoutError(Exception):
-        pass
-
-    _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
-
     _, _, evt = controller.handle(
         state,
         _AgentTimeoutError("idle"),
@@ -482,7 +448,7 @@ def test_zero_retry_delay_skips_sleep() -> None:
 
 
 def test_artifact_validation_retry_uses_consecutive_unproductive_limit() -> None:
-    bundle = _make_bundle_with_retry_delay(agents=["claude", "opencode"], max_retries=99)
+    bundle = _make_bundle_with_retry_delay(agents=["claude", "opencode"])
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,

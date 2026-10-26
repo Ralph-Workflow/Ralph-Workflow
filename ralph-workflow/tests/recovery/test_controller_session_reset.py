@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.pipeline.state import AgentChainState, PipelineState
-from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import ClassifiedFailure, FailureCategory
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 
@@ -92,10 +91,7 @@ def test_stale_session_clears_last_agent_session_id(
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"], last_session_id="deadbeef-1234")
 
     exc = _AgentInvocationError(
@@ -115,10 +111,7 @@ def test_stale_session_clears_agent_retry_intent(
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"], last_session_id="deadbeef-1234")
 
     exc = _AgentInvocationError(
@@ -138,10 +131,7 @@ def test_stale_session_writes_retry_hint_file(
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"], last_session_id="abc-session")
 
     exc = _AgentInvocationError(
@@ -187,15 +177,14 @@ def test_session_reset_hint_regression_writes_changed_failure_detail() -> None:
     assert "second" in backend.files[hint_path]
 
 
-def test_stale_session_debits_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Stale-session failure still decrements the agent retry budget."""
+def test_stale_session_is_charged_to_the_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stale-session failure is charged against the agent by the failure ledger."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"], last_session_id="stale-id")
 
     exc = _AgentInvocationError(
@@ -204,9 +193,8 @@ def test_stale_session_debits_budget(tmp_path: Path, monkeypatch: pytest.MonkeyP
     _, _, evt = controller.handle(state, exc, FailureContext(phase="development", agent="claude"))
 
     assert evt.counted_against_budget is True
-    budget = controller.budget_registry.get("development", "claude")
-    assert budget is not None
-    assert budget.consumed == 1
+    # One charged attempt does not demote the agent, so it stays selectable.
+    assert controller.ledger.is_available("development", "claude") is True
 
 
 def test_stale_session_allows_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -214,10 +202,7 @@ def test_stale_session_allows_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"], last_session_id="stale-id")
 
     exc = _AgentInvocationError(

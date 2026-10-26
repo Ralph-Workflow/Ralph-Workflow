@@ -26,7 +26,9 @@ scans the tree, applies these rules, and adds the test-side rules that keep
 tests on the owner's public seam. Those test-side rules include the
 name-based rejection of private failure-owner state (the recovery
 controller's backoff counter, unavailability store handle, and
-agent-unavailable marker).
+agent-unavailable marker) and the rejection of the same private state read
+through the controller's SERIALISED snapshot (``snapshot()["backoff_attempts"]``
+and friends).
 """
 
 from __future__ import annotations
@@ -57,11 +59,11 @@ TEMPORARY_TEST_ALLOWLIST: frozenset[str] = frozenset()
 # work refactors them into AgentFailureLedger; only surviving production references remain.
 TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
     # session.py: dead_tool_surfaces tracks candidate tool-surface fault state across
-    # rebase stops; RALPH_FAULT_ESCALATION_HITS is a diagnostic constant.
+    # rebase stops. RALPH_FAULT_ESCALATION_HITS is no longer transitional: the
+    # diagnostic constant was deleted, so the forbidden-name ban applies again.
     "ralph/pipeline/conflict_resolution/session.py": frozenset(
         {
             "dead_tool_surfaces",
-            "RALPH_FAULT_ESCALATION_HITS",
         }
     ),
     # chain_candidates.py: dead_tool_surfaces filters candidate chains for tool-faulted agents.
@@ -195,6 +197,30 @@ _PRIVATE_FAILURE_OWNER_NAMES: frozenset[str] = frozenset(
         "_backoff_attempts",
         "_unavailability_tracker",
         "_mark_agent_unavailable",
+    }
+)
+
+#: Snapshot keys that publish the recovery controller's private failure-owner
+#: state under a public key name: ``backoff_attempts`` serialises
+#: ``_backoff_attempts`` and ``unavailable_timeouts`` serialises the
+#: unavailability store's timeout history (``_unavailability_tracker``).
+#: Indexing one of these keys out of a serialised snapshot is the same coupling
+#: as reading the private attribute directly, so the audit rejects it too.
+_PRIVATE_FAILURE_OWNER_SERIALISED_KEYS: frozenset[str] = frozenset(
+    {
+        "backoff_attempts",
+        "unavailable_timeouts",
+    }
+)
+
+#: Method names that publish a serialised snapshot of owner state. Reading a
+#: private failure-owner key out of one of these calls is the serialised form
+#: of the direct-access rule.
+_SERIALISED_SNAPSHOT_METHODS: frozenset[str] = frozenset(
+    {
+        "snapshot",
+        "to_snapshot",
+        "export_snapshot",
     }
 )
 
@@ -793,6 +819,24 @@ def _is_ledger_serialised_root(node: ast.AST) -> bool:
     return False
 
 
+def _is_serialised_snapshot_call(node: ast.AST) -> bool:
+    """Return True when an expression is a call that publishes a serialised snapshot.
+
+    A serialised snapshot is the owner's own published view of its state
+    (``controller.snapshot()`` and friends, including the bare ``snapshot()``
+    spelling). The private failure-owner keys are the discriminator for the
+    serialised-access rule, so the receiver shape is not part of the decision:
+    no other published snapshot in the tree carries the backoff-counter or
+    unavailability-timeout keys.
+    """
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Attribute):
+        return func.attr in _SERIALISED_SNAPSHOT_METHODS
+    return isinstance(func, ast.Name) and func.id in _SERIALISED_SNAPSHOT_METHODS
+
+
 def _serialised_counter_violation(
     node: ast.expr, counter: str, rel_path: str
 ) -> list[SingleOwnerViolation]:
@@ -830,6 +874,30 @@ def private_failure_owner_violation(
             detail=(
                 f"Test accesses private failure-owner attribute '{name}' {access}; "
                 "tests must use the public seam only."
+            ),
+        )
+    ]
+
+
+def serialised_failure_owner_violation(
+    node: ast.expr, key: str, rel_path: str
+) -> list[SingleOwnerViolation]:
+    """Build the violation for a test reading serialised failure-owner state.
+
+    The recovery controller publishes its private failure-owner state inside its
+    snapshot under public key names. Indexing one of those keys out of the
+    snapshot couples the test to the same private state that the direct-access
+    rule already rejects, so the serialised form is rejected too.
+    """
+    return [
+        SingleOwnerViolation(
+            path=rel_path,
+            line=node.lineno,
+            rule="test_serialised_failure_owner_access",
+            detail=(
+                f"Test reads the serialised failure-owner state '{key}' from a "
+                "controller snapshot; tests must observe the controller's public "
+                "answers instead of indexing into its snapshot."
             ),
         )
     ]

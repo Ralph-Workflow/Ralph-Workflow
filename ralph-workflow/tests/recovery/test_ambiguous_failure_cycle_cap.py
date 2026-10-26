@@ -24,7 +24,6 @@ from pathlib import Path
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
-from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.controller import (
     FailureContext,
     RecoveryController,
@@ -32,10 +31,16 @@ from ralph.recovery.controller import (
 )
 
 _CAP = 3
-_TECHNICAL_RETRY_CAP = 10
+#: The ledger demotes the sole agent after this many consecutive
+#: unproductive attempts; the demotion fails the phase.
+_CONSECUTIVE_UNPRODUCTIVE_LIMIT = 3
+#: The ledger's total unproductive limit; never reached before the
+#: consecutive limit demotes the agent.
+_TOTAL_UNPRODUCTIVE_LIMIT = 9
 #: Generous ceiling on ``handle`` calls: an unbounded loop hits it, a bounded
-#: one exits after roughly ``_CAP * (_TECHNICAL_RETRY_CAP + 1)`` calls.
-_HANDLE_CALL_CEILING = _CAP * (_TECHNICAL_RETRY_CAP + 2) * 3
+#: one exits after roughly ``_CAP * (_CONSECUTIVE_UNPRODUCTIVE_LIMIT + 1)``
+#: calls.
+_HANDLE_CALL_CEILING = _CAP * (_CONSECUTIVE_UNPRODUCTIVE_LIMIT + 2) * 3
 
 
 def _policy_bundle() -> object:
@@ -43,14 +48,16 @@ def _policy_bundle() -> object:
 
 
 def _controller() -> RecoveryController:
-    registry = AgentBudgetRegistry().set_budget("development_commit", "claude", max_retries=1)
+    # The failure ledger is the single owner of agent health: the sole agent
+    # in the chain is demoted after the consecutive unproductive limit, and a
+    # demoted sole agent fails the phase. That failure is what advances the
+    # recovery cycle counter the cap watches.
     return RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=_CAP,
-            budget_registry=registry,
             policy_bundle=_policy_bundle(),
-            agent_max_consecutive_unproductive=100,
-            agent_max_total_unproductive=100,
+            agent_max_consecutive_unproductive=_CONSECUTIVE_UNPRODUCTIVE_LIMIT,
+            agent_max_total_unproductive=_TOTAL_UNPRODUCTIVE_LIMIT,
         )
     )
 

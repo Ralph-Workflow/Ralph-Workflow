@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.timeout_clock import FakeClock
-from ralph.checked_accessors import as_int, as_mapping
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.classifier import FailureContext
@@ -59,10 +58,11 @@ def test_out_of_credits_message_classifies_as_unavailable_with_per_reason_backof
     assert chain.current_index == 1
     # opencode is available
     assert controller.unavailability_store.is_available("development", "opencode") is True
-    # claude has the OUT_OF_CREDITS base timeout (60_000ms)
-    snapshot = controller.snapshot()
-    timeouts = as_mapping(snapshot["unavailable_timeouts"], field="unavailable_timeouts")
-    assert as_int(timeouts["claude"], field="unavailable_timeouts.claude") == 60_000
+    # claude has the OUT_OF_CREDITS base cooldown (60_000ms)
+    assert (
+        controller.unavailability_store.earliest_unavailable_wait_ms("development", ["claude"])
+        == 60_000
+    )
 
 
 def test_recovery_classifier_regression_codex_at_capacity_falls_over_with_credits_backoff() -> None:
@@ -102,11 +102,10 @@ def test_recovery_classifier_regression_codex_at_capacity_falls_over_with_credit
     chain = state.chain_for_phase("development")
     assert chain is not None
     assert chain.current_index == 1
-    codex_timeouts = as_mapping(
-        controller.snapshot()["unavailable_timeouts"],
-        field="unavailable_timeouts",
+    assert (
+        controller.unavailability_store.earliest_unavailable_wait_ms("development", ["codex"])
+        == 60_000
     )
-    assert as_int(codex_timeouts["codex"], field="unavailable_timeouts.codex") == 60_000
 
 
 def test_out_of_credits_backoff_doubles_each_retry_up_to_five_hour_cap() -> None:
@@ -140,10 +139,9 @@ def test_out_of_credits_backoff_doubles_each_retry_up_to_five_hour_cap() -> None
             exc,
             FailureContext(phase="development", agent="claude"),
         )
-        snapshot = controller.snapshot()
-        timeouts = as_mapping(snapshot["unavailable_timeouts"], field="unavailable_timeouts")
-        current_time_ms = int(clock.monotonic() * 1000)
-        cooldown = as_int(timeouts["claude"], field="unavailable_timeouts.claude") - current_time_ms
+        cooldown = controller.unavailability_store.earliest_unavailable_wait_ms(
+            "development", ["claude"]
+        )
         assert cooldown == expected_cooldowns[i]
 
         # Advance the clock past the cooldown so it can be marked again
@@ -201,11 +199,9 @@ def test_unavailability_store_mark_unavailable_caps_recorded_backoff_at_five_hou
             f"must be capped at {out_of_credits_max}ms"
         )
         # The recorded backoff must agree with the store-recorded cooldown.
-        snap = controller.unavailability_store.snapshot()
-        timeouts = as_mapping(snap["unavailable_timeouts"], field="unavailable_timeouts")
-        stored_timeout = as_int(timeouts["claude"], field="unavailable_timeouts.claude")
-        current_time_ms = int(clock.monotonic() * 1000)
-        stored_remaining = stored_timeout - current_time_ms
+        stored_remaining = controller.unavailability_store.earliest_unavailable_wait_ms(
+            "development", ["claude"]
+        )
         assert recorded_backoff_ms == stored_remaining, (
             f"recorded backoff {recorded_backoff_ms}ms disagrees with "
             f"store remaining {stored_remaining}ms"

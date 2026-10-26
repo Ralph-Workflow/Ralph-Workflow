@@ -50,7 +50,6 @@ from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
-from ralph.recovery.agent_budget_registry import AgentBudgetRegistry
 from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
 from ralph.recovery.classifier import FailureContext
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
@@ -82,22 +81,18 @@ def _three_agent_state(current_index: int = 0, retries: int = 0) -> PipelineStat
     ).copy_with(last_connectivity_state="online")
 
 
-def _controller_with_budget(
+def _controller(
     *,
     clock: FakeClock | None = None,
     initial_entries: dict[str, UnavailabilityEntry] | None = None,
 ) -> RecoveryController:
-    """Build a controller with a budget registry pre-seeded for the three agents."""
-    registry = AgentBudgetRegistry().set_budget("development", "claude", 3)
-    registry = registry.set_budget("development", "opencode", 3)
-    registry = registry.set_budget("development", "agy", 3)
+    """Build a controller whose failure ledger owns the agent-health decisions."""
     return RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
             clock=clock or FakeClock(start=0.0),
             policy_bundle=_minimal_policy_bundle(),
             event_bus=FailureEventBus(),
-            budget_registry=registry,
             unavailability_entries=initial_entries or {},
         ),
     )
@@ -147,7 +142,7 @@ def test_walk_through_every_agent_on_cooldown_returns_wait() -> None:
             max_backoff_ms=5000,
         ),
     }
-    controller = _controller_with_budget(initial_entries=initial_entries)
+    controller = _controller(initial_entries=initial_entries)
     state = _three_agent_state(current_index=0, retries=0)
 
     exc = AgentInactivityTimeoutError("claude", 30.0, opts=_no_output_opts())
@@ -214,7 +209,7 @@ def test_wrap_true_rearms_to_earliest_cooldown() -> None:
             max_backoff_ms=30000,
         ),
     }
-    controller = _controller_with_budget(initial_entries=initial_entries)
+    controller = _controller(initial_entries=initial_entries)
     state = _three_agent_state(current_index=0, retries=0)
 
     exc = AgentInactivityTimeoutError("claude", 30.0, opts=_no_output_opts())

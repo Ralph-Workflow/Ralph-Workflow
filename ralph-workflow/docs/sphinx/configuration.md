@@ -179,8 +179,30 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before a stalled agent is terminated |
 | `agent_idle_activity_evidence_ttl_seconds` | `30.0` | Per-channel activity TTL: while any non-stdout channel is fresher than this, the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns `CONTINUE`. Set to `0.0` to opt out and restore the legacy stdout-only behaviour. |
 | `agent_workspace_change_weights` | `{ source = 1.0 }` | Per-kind workspace file-change weights used by the activity-aware watchdog. Operators who previously relied on log-file activity can opt in with `agent_workspace_change_weights = { source = 1.0, log = 1.0 }`. See [Watchdogs and Timeouts](concepts.md#watchdogs). |
-| `agent_max_consecutive_unproductive` | `3` | Maximum consecutive unproductive attempts (ending without an accepted artifact) by the same agent in a phase before cooldown and fallover to the next candidate; minimum 1; workspace modifications reset the consecutive counter. |
-| `agent_max_total_unproductive` | `9` | Maximum total unproductive attempts by an agent in a phase, counted with or without a workspace change, before permanently demoting the agent to Spent for the phase; minimum 1. |
+| `agent_max_consecutive_unproductive` | `3` | Maximum consecutive unproductive attempts (attempts that end without an accepted artifact) by the same agent in a phase before the agent enters cooldown and the chain falls over to the next candidate; minimum 1. A workspace change resets this counter. |
+| `agent_max_total_unproductive` | `9` | Maximum total unproductive attempts by an agent in a phase, counted with or without a workspace change, before the agent is spent for the phase; minimum 1. The limit still applies to an agent that keeps changing files without ever producing the artifact. |
+
+These two keys are the complete agent-failure surface. The agent failure ledger is their single owner: it decides whether an agent is eligible, cooling down, or spent, and no other counter or cap decides that an agent retries or is benched. An attempt that ends with a valid artifact clears the agent's history. The cooldown that follows a demotion is fixed and is not configurable in `ralph-workflow.toml`; see [Recovery](recovery.md#unproductive-agent-bounds-agentfailureledger) for the bounds and the cooldown behaviour.
+
+### Removed agent-failure settings
+
+Three earlier settings were removed and are now rejected instead of being ignored:
+
+- `agent_max_same_shape_resumes`
+- `agent_max_broken_agent_same_shape_resumes`
+- `in_session_retry_escalation_limit`
+
+A `[general]` table that still carries one of them fails validation with the setting name and the migration hint:
+
+```
+general: Value error, Configuration setting(s) ['agent_max_same_shape_resumes'] have been removed. Use 'agent_max_consecutive_unproductive' and 'agent_max_total_unproductive' instead.
+```
+
+There is no alias for the removed keys. Migration is to delete the removed key and express the intent with `agent_max_consecutive_unproductive` and `agent_max_total_unproductive` in `[general]`, then validate the file:
+
+```bash
+ralph --check-config
+```
 
 ### `[conflict_resolution]`
 

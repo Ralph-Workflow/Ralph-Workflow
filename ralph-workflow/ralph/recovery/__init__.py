@@ -1,19 +1,18 @@
-"""Pipeline recovery: failure classification, budgets, connectivity, and retry control.
+"""Pipeline recovery: failure classification, connectivity, and retry control.
 
 This package coordinates the recovery cycle that runs after a phase fails. It decides
-whether to retry the phase, escalate, or abort based on failure classification and
-remaining budget.
+whether to retry the phase, escalate, or abort based on failure classification and the
+agent-health answers of the single owner, ``AgentFailureLedger``.
 
 Main entry points:
 
 - ``RecoveryController`` — top-level controller; evaluates a failure and returns a
-  recovery action (retry, fallover, abort). Injected with a ``FailureClassifier`` and
-  an ``AgentBudgetRegistry``.
+  recovery action (retry, fallover, abort). Injected with a ``FailureClassifier``.
+- ``AgentFailureLedger`` — the single owner of agent health: it records attempt facts
+  and answers whether an agent is eligible, cooling down, or spent.
 - ``FailureClassifier``, ``ClassifiedFailure``, ``FailureCategory`` — classify a raw
   failure string into a category (agent_error, environment, connectivity, ambiguous, …).
-  ``is_retryable_without_budget()`` identifies failures that bypass the budget counter.
-- ``AgentBudgetRegistry``, ``FailureBudget``, ``BudgetState``, ``seed_budget_registry``
-  — per-agent retry budgets; prevent infinite retry loops.
+  ``is_retryable_without_budget()`` identifies failures the ledger does not charge.
 - ``ConnectivityMonitor``, ``ConnectivityState`` — background connectivity probe that
   signals the runner to pause when the host loses network access.
 - ``CycleCap`` — enforces the pipeline-level ``cycle_cap`` limit from recovery policy.
@@ -37,12 +36,6 @@ from ralph.recovery.agent_unavailability_tracker import (
     AgentUnavailabilityTracker,
     UnavailabilityEntry,
 )
-from ralph.recovery.budget import (
-    AgentBudgetRegistry,
-    BudgetState,
-    FailureBudget,
-    seed_budget_registry,
-)
 from ralph.recovery.classifier import (
     ClassifiedFailure,
     FailureCategory,
@@ -61,20 +54,17 @@ from ralph.recovery.unavailability_reason import (
 
 __all__ = [
     "DEFAULT_UNAVAILABILITY_BACKOFF_POLICY",
-    "AgentBudgetRegistry",
     "AgentFailureLedger",
     "AgentStatus",
     "AgentUnavailabilityTracker",
     "AttemptFact",
     "AttemptOutcome",
-    "BudgetState",
     "ClassifiedFailure",
     "ConnectivityMonitor",
     "ConnectivityState",
     "Cooldown",
     "CycleCap",
     "Eligible",
-    "FailureBudget",
     "FailureCategory",
     "FailureClassifier",
     "FailureEvent",
@@ -87,5 +77,4 @@ __all__ = [
     "UnavailabilityReason",
     "compute_backoff_ms",
     "is_retryable_without_budget",
-    "seed_budget_registry",
 ]

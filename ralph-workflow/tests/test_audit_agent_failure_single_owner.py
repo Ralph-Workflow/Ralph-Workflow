@@ -657,12 +657,106 @@ def test_getattr(controller):
     assert "_backoff_attempts" in violations[0].detail
 
 
+def test_test_controller_snapshot_private_backoff_read_is_flagged() -> None:
+    """Reading the controller's private backoff counter through the snapshot is rejected.
+
+    The serialised snapshot publishes the controller's private failure-owner
+    state under a public key name, so indexing that key couples the test to
+    the same private state the direct-access rule already rejects.
+    """
+    source = """
+def test_controller_public_seam(controller):
+    assert controller.snapshot()["backoff_attempts"] == {}
+"""
+    violations = audit_test_source("tests/recovery/test_sample.py", source)
+    assert any(v.rule == "test_serialised_failure_owner_access" for v in violations), (
+        f"Expected test_serialised_failure_owner_access, got: {violations}"
+    )
+    flagged = next(v for v in violations if v.rule == "test_serialised_failure_owner_access")
+    assert flagged.path == "tests/recovery/test_sample.py"
+    assert "backoff_attempts" in flagged.detail
+
+
+def test_test_controller_snapshot_private_backoff_get_is_flagged() -> None:
+    """Reading the serialised private backoff counter through .get() is rejected."""
+    source = """
+def test_snapshot(controller):
+    attempts = controller.snapshot().get("backoff_attempts")
+"""
+    violations = audit_test_source("tests/recovery/test_sample.py", source)
+    assert any(v.rule == "test_serialised_failure_owner_access" for v in violations), (
+        f"Expected test_serialised_failure_owner_access, got: {violations}"
+    )
+    assert (
+        "backoff_attempts"
+        in next(v for v in violations if v.rule == "test_serialised_failure_owner_access").detail
+    )
+
+
+def test_test_controller_snapshot_unavailable_timeouts_read_is_flagged() -> None:
+    """The serialised unavailability timeout history is rejected too."""
+    source = """
+def test_snapshot(controller):
+    timeouts = controller.snapshot()["unavailable_timeouts"]
+"""
+    violations = audit_test_source("tests/recovery/test_sample.py", source)
+    assert any(v.rule == "test_serialised_failure_owner_access" for v in violations), (
+        f"Expected test_serialised_failure_owner_access, got: {violations}"
+    )
+    assert (
+        "unavailable_timeouts"
+        in next(v for v in violations if v.rule == "test_serialised_failure_owner_access").detail
+    )
+
+
+def test_test_bare_snapshot_private_backoff_read_is_flagged() -> None:
+    """The bare snapshot() spelling reaches the same private state and is rejected."""
+    source = """
+def test_snapshot():
+    attempts = snapshot()["backoff_attempts"]
+"""
+    violations = audit_test_source("tests/recovery/test_sample.py", source)
+    assert any(v.rule == "test_serialised_failure_owner_access" for v in violations), (
+        f"Expected test_serialised_failure_owner_access, got: {violations}"
+    )
+
+
+def test_test_direct_and_serialised_private_failure_owner_reads_are_flagged() -> None:
+    """Both coupling forms are rejected: the private attribute and its snapshot key."""
+    source = """
+def test_backoff(controller):
+    assert controller._backoff_attempts.get("development:claude") == 2
+    assert controller.snapshot()["backoff_attempts"] == {}
+"""
+    violations = audit_test_source("tests/recovery/test_sample.py", source)
+    rules = {v.rule for v in violations}
+    assert "test_private_failure_owner_access" in rules, (
+        f"Expected the direct form, got: {violations}"
+    )
+    assert "test_serialised_failure_owner_access" in rules, (
+        f"Expected the serialised form, got: {violations}"
+    )
+
+
 def test_test_public_controller_seam_is_accepted() -> None:
     """The controller's public seam stays observable from a test."""
     source = """
 def test_controller_public_seam(controller):
-    assert controller.snapshot()["backoff_attempts"] == {}
+    controller.handle(event)
+    controller.reset_backoff("development", "opencode")
+    assert controller.preferred_agent_index("development", ["opencode"]) == 0
     assert controller.unavailability_store.is_available("development", "opencode")
+    assert controller.ledger.status("development", "opencode").is_spent is False
+"""
+    violations = audit_test_source("tests/recovery/test_sample.py", source)
+    assert not violations
+
+
+def test_test_controller_snapshot_non_failure_owner_key_is_accepted() -> None:
+    """A snapshot key that is not private failure-owner state stays legal."""
+    source = """
+def test_controller_snapshot(controller):
+    assert controller.snapshot()["cycle_cap"] == 5
 """
     violations = audit_test_source("tests/recovery/test_sample.py", source)
     assert not violations

@@ -42,9 +42,8 @@ from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
-from ralph.recovery.agent_budget_registry import AgentBudgetRegistry
+from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
-from ralph.recovery.budget_state import BudgetState
 from ralph.recovery.classifier import FailureContext
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
@@ -55,9 +54,18 @@ from ralph.recovery.unavailability_reason import UnavailabilityReason
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _minimal_policy_bundle() -> object:
+def _minimal_policy_bundle(agents: list[str] | None = None) -> object:
     with tempfile.TemporaryDirectory() as d:
-        return load_policy(Path(d) / ".agent")
+        bundle = load_policy(Path(d) / ".agent")
+        if agents is None:
+            return bundle
+        agents_policy = bundle.agents.model_copy(
+            update={
+                "agent_chains": {"default_chain": AgentChainConfig(agents=list(agents))},
+                "agent_drains": {"development": AgentDrainConfig(chain="default_chain")},
+            }
+        )
+        return bundle.model_copy(update={"agents": agents_policy})
 
 
 def _no_output_opts(
@@ -88,27 +96,25 @@ def _three_agent_state(current_index: int = 0, retries: int = 0) -> PipelineStat
     ).copy_with(last_connectivity_state="online")
 
 
-def _controller_with_budget(
+def _controller(
     *,
-    claude_max_retries: int = 3,
-    opencode_max_retries: int = 3,
-    agy_max_retries: int = 3,
     clock: FakeClock | None = None,
     initial_entries: dict[str, UnavailabilityEntry] | None = None,
+    agents: list[str] | None = None,
+    unproductive_streak_limit: int = 3,
+    unproductive_total_limit: int = 9,
 ) -> RecoveryController:
-    """Build a controller with a budget registry pre-seeded for the three agents."""
+    """Build a controller whose failure ledger owns the agent-health decisions."""
 
-    registry = AgentBudgetRegistry().set_budget("development", "claude", claude_max_retries)
-    registry = registry.set_budget("development", "opencode", opencode_max_retries)
-    registry = registry.set_budget("development", "agy", agy_max_retries)
     return RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
             clock=clock or FakeClock(start=0.0),
-            policy_bundle=_minimal_policy_bundle(),
+            policy_bundle=_minimal_policy_bundle(agents),
             event_bus=FailureEventBus(),
-            budget_registry=registry,
             unavailability_entries=initial_entries or {},
+            agent_max_consecutive_unproductive=unproductive_streak_limit,
+            agent_max_total_unproductive=unproductive_total_limit,
         ),
     )
 
@@ -127,7 +133,7 @@ def test_recovery_rule_one_same_agent_retry_for_non_unavailable_failure() -> Non
       - state.is_waiting_state is False (NOT a wait branch).
       - chain.retries was incremented by exactly 1 (same-agent retry).
     """
-    controller = _controller_with_budget()
+    controller = _controller()
     state = _three_agent_state(current_index=0, retries=0)
 
     exc = AgentInactivityTimeoutError("claude", 30.0, opts=_stalled_opts())
@@ -171,7 +177,7 @@ def test_recovery_rule_two_exponential_backoff_to_next_agent_for_unavailable_fai
       - The unavailability tracker shows claude on cooldown.
       - effects list is empty.
     """
-    controller = _controller_with_budget()
+    controller = _controller()
     state = _three_agent_state(current_index=0, retries=0)
 
     exc = AgentInactivityTimeoutError("claude", 30.0, opts=_no_output_opts())
@@ -238,7 +244,7 @@ def test_recovery_never_exits_on_unavailability_when_all_agents_on_cooldown() ->
             max_backoff_ms=7000,
         ),
     }
-    controller = _controller_with_budget(initial_entries=initial_entries)
+    controller = _controller(initial_entries=initial_entries)
     state = _three_agent_state(current_index=0, retries=0)
 
     exc = AgentInactivityTimeoutError("claude", 30.0, opts=_no_output_opts())
@@ -303,7 +309,7 @@ def test_recovery_reconsiders_earlier_agent_after_cooldown_expires_with_wrap_tru
             max_backoff_ms=30000,
         ),
     }
-    controller = _controller_with_budget(
+    controller = _controller(
         clock=clock,
         initial_entries=initial_entries,
     )
@@ -353,82 +359,53 @@ def test_recovery_reconsiders_earlier_agent_after_cooldown_expires_with_wrap_tru
     assert state_after_second.is_waiting_state is False
 
 
-def test_recovery_chain_exhaustion_only_when_no_budget_remaining() -> None:
-    """Chain exhaustion: when every agent's budget is exhausted, the
+def test_recovery_chain_exhaustion_only_when_every_agent_is_spent() -> None:
+    """Chain exhaustion: when every agent in the chain is spent, the
     pipeline MAY advance to ``failed_terminal``.
 
     This is the ONLY path that may exit the pipeline, and it is the
-    BUDGET-EXHAUSTED path, NOT the unavailability path.  The
+    EVERY-AGENT-SPENT path, NOT the unavailability path.  The
     never-exit invariant only forbids exit on unavailability; the
-    budget-exhausted path is the legitimate end of the chain.
+    every-agent-spent path is the legitimate end of the chain.
 
     Setup:
-      - claude (current): budget exhausted (consumed=max_retries=2).
-      - opencode and agy: budget exhausted AND on cooldown.
+      - three agents, and a failure ledger whose limits spend an agent
+        after a single unproductive attempt.
+      - each agent fails once, in chain order.
 
-    The current agent's budget is exhausted (so the retry-current
-    branch is skipped).  The other agents are unavailable (so the
-    advance-chain branch returns None).  ``all(unavailable)`` is
-    False because claude is not on cooldown.  The controller must
-    fall through to ``_enter_phase_failed`` and advance
-    ``state.phase`` to ``failed_terminal``.
+    The ledger spends claude first, so the chain advances to opencode;
+    opencode is spent next, so the chain advances to agy; agy is spent
+    last, and with every agent spent there is nothing left to select.
+    ``all(unavailable)`` is True but no agent has a cooldown to wait for,
+    so the controller must fall through to ``_enter_phase_failed`` and
+    advance ``state.phase`` to ``failed_terminal``.
 
     Assertions:
       - state.phase advances to ``failed_terminal``.
       - state.recovery_cycle_count is incremented by 1.
       - The state is NOT in the wait state (is_waiting_state is False).
     """
-    exhausted = BudgetState(max_retries=2, consumed=2)
-    registry = AgentBudgetRegistry(
-        budgets={
-            ("development", "claude"): exhausted,
-            ("development", "opencode"): exhausted,
-            ("development", "agy"): exhausted,
-        }
+    controller = _controller(
+        agents=["claude", "opencode", "agy"],
+        unproductive_streak_limit=1,
+        unproductive_total_limit=1,
     )
+    state = _three_agent_state(current_index=0, retries=0)
 
-    initial_entries: dict[str, UnavailabilityEntry] = {
-        "opencode": UnavailabilityEntry(
-            unavailable_until_ms=10000,
-            reason=UnavailabilityReason.NO_OUTPUT_AT_START,
-            attempt=0,
-            base_backoff_ms=10000,
-            max_backoff_ms=10000,
-        ),
-        "agy": UnavailabilityEntry(
-            unavailable_until_ms=10000,
-            reason=UnavailabilityReason.NO_OUTPUT_AT_START,
-            attempt=0,
-            base_backoff_ms=10000,
-            max_backoff_ms=10000,
-        ),
-    }
+    for agent in ("claude", "opencode", "agy"):
+        exc = AgentInactivityTimeoutError(agent, 30.0, opts=_stalled_opts())
+        state, _effects, _evt = controller.handle(
+            state,
+            exc,
+            FailureContext(phase="development", agent=agent),
+        )
 
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            cycle_cap=10,
-            clock=FakeClock(start=0.0),
-            policy_bundle=_minimal_policy_bundle(),
-            event_bus=FailureEventBus(),
-            budget_registry=registry,
-            unavailability_entries=initial_entries,
-        ),
+    assert state.phase == "failed_terminal", (
+        f"phase must advance to failed_terminal on chain exhaustion, got {state.phase}"
     )
-    state = _three_agent_state(current_index=0, retries=2)
-
-    exc = AgentInactivityTimeoutError("claude", 30.0, opts=_stalled_opts())
-    new_state, _effects, _evt = controller.handle(
-        state,
-        exc,
-        FailureContext(phase="development", agent="claude"),
-    )
-
-    assert new_state.phase == "failed_terminal", (
-        f"phase must advance to failed_terminal on chain exhaustion, got {new_state.phase}"
-    )
-    assert new_state.is_waiting_state is False
-    assert new_state.recovery_cycle_count == 1, (
-        f"recovery_cycle_count must increment to 1, got {new_state.recovery_cycle_count}"
+    assert state.is_waiting_state is False
+    assert state.recovery_cycle_count == 1, (
+        f"recovery_cycle_count must increment to 1, got {state.recovery_cycle_count}"
     )
 
 
@@ -578,10 +555,6 @@ def test_no_progress_quiet_with_dead_child_routes_to_exponential_backoff() -> No
             clock=FakeClock(start=0.0),
             policy_bundle=_minimal_policy_bundle(),
             event_bus=bus,
-            budget_registry=AgentBudgetRegistry()
-            .set_budget("development", "claude", 3)
-            .set_budget("development", "opencode", 3)
-            .set_budget("development", "agy", 3),
         ),
     )
     state = _three_agent_state(current_index=0, retries=0)

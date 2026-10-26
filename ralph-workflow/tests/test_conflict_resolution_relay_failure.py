@@ -24,7 +24,6 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 )
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import (
-    RALPH_FAULT_ESCALATION_HITS,
     ResolutionSession,
     invoke_resolution_agent,
     wrap_activity_listener,
@@ -129,6 +128,12 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
     assert session.charge_conflict_budget is False
 
 
+#: The number of watchdog ticks a quoted fault must survive. The contract the
+#: test pins is that a fault the agent merely QUOTED never escalates, whatever
+#: the tick count, so the count is a property of the test and not of production.
+_REPEATED_WATCHDOG_TICKS = 6
+
+
 def test_one_quoted_fault_does_not_escalate_on_repeated_watchdog_ticks() -> None:
     clock = FakeClock()
     ledger = AgentFailureLedger(clock=clock)
@@ -149,7 +154,7 @@ def test_one_quoted_fault_does_not_escalate_on_repeated_watchdog_ticks() -> None
     watchdog.record_subagent_work(
         description="read source: SUPERVISION_INFRASTRUCTURE_FAILURE: activity relay sender"
     )
-    for _ in range(RALPH_FAULT_ESCALATION_HITS + 1):
+    for _ in range(_REPEATED_WATCHDOG_TICKS):
         clock.advance(1.0)
         watchdog.evaluate(lambda: AgentExecutionState.WAITING_ON_CHILD)
     assert faults == []

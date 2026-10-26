@@ -14,7 +14,6 @@ from ralph.pipeline.run_loop import _apply_connectivity_check
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig
-from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
 from ralph.recovery.connectivity import ConnectivityState
 from ralph.recovery.controller import (
@@ -54,13 +53,19 @@ def _make_state(agents: list[str]) -> PipelineState:
     )
 
 
-def _make_registry_with_budget(phase: str, agent: str, max_retries: int = 1) -> AgentBudgetRegistry:
-    return AgentBudgetRegistry().set_budget(phase, agent, max_retries)
-
-
 def _simulate_successful_run(controller: RecoveryController, phase: str, agent: str) -> None:
     """Mirror the production success path: runner resets backoff after a successful invocation."""
     controller.reset_backoff(phase, agent)
+
+
+def _cooldown_remaining_ms(controller: RecoveryController, phase: str, agent: str) -> int:
+    """Return the milliseconds left on ``agent``'s unavailability cooldown.
+
+    The unavailability store is the controller's public seam for "is this
+    agent cooling down, and for how long"; the remaining cooldown is the
+    observable effect of an unavailable failure.
+    """
+    return controller.unavailability_store.earliest_unavailable_wait_ms(phase, [agent])
 
 
 def test_unavailable_failure_sets_timeout() -> None:
@@ -83,8 +88,7 @@ def test_unavailable_failure_sets_timeout() -> None:
         FailureContext(phase="development", agent="claude"),
     )
 
-    snap = controller.snapshot()
-    assert snap["unavailable_timeouts"]["claude"] == 5_000
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 5_000
 
 
 def test_unavailable_timeout_is_agent_scoped_across_phases() -> None:
@@ -117,14 +121,12 @@ def test_unavailable_timeout_is_agent_scoped_across_phases() -> None:
         FailureContext(phase="review", agent="claude"),
     )
 
-    snap = controller.snapshot()
-    assert snap["unavailable_timeouts"]["claude"] == 10_000
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 10_000
 
 
 def test_unavailable_agent_skipped_in_recovery_cycle() -> None:
     """An unavailable agent is skipped; it is retried after its timeout expires."""
     clock = FakeClock(start=0.0)
-    registry = _make_registry_with_budget("development", "claude", max_retries=2)
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
     bus.subscribe(lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None)
@@ -132,7 +134,6 @@ def test_unavailable_agent_skipped_in_recovery_cycle() -> None:
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
-            budget_registry=registry,
             clock=clock,
             event_bus=bus,
             unavailable_timeouts={"claude": starting_timeout_ms},
@@ -152,11 +153,9 @@ def test_unavailable_agent_skipped_in_recovery_cycle() -> None:
     assert fallovers[0].from_agent == "claude"
     assert fallovers[0].to_agent == "opencode"
 
-    snap = controller.snapshot()
-    assert snap["backoff_attempts"]["claude"] == 1
-    claude_timeout = snap["unavailable_timeouts"]["claude"]
-    assert claude_timeout > starting_timeout_ms
-    assert claude_timeout == 5_000
+    claude_cooldown_ms = _cooldown_remaining_ms(controller, "development", "claude")
+    assert claude_cooldown_ms > starting_timeout_ms
+    assert claude_cooldown_ms == 5_000
 
     # Cooldown for claude expires; a later failure on opencode routes back to
     # claude when opencode is also marked unavailable.
@@ -201,8 +200,7 @@ def test_all_agents_unavailable_waits_for_cooldown() -> None:
     assert "all agents unavailable" in new_state.last_error.lower()
     assert "waiting for cooldown expiry" in new_state.last_error.lower()
 
-    snap = controller.snapshot()
-    assert snap["backoff_attempts"]["claude"] == 1
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 5_000
 
     # Once at least one cooldown expires, the same phase can make progress.
     # Because claude fails again immediately, it is marked unavailable again
@@ -217,9 +215,8 @@ def test_all_agents_unavailable_waits_for_cooldown() -> None:
     assert len(retried_effects) == 0
     assert retried_state.chain_for_phase("development").current_index == 1
 
-    snap2 = controller.snapshot()
-    assert snap2["backoff_attempts"]["claude"] == 2
-    assert snap2["unavailable_timeouts"]["claude"] > 60_000
+    # The cooldown doubled after the second unavailable failure.
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 10_000
 
 
 def test_all_agents_unavailable_waits_and_resumes_after_earliest_cooldown() -> None:
@@ -249,8 +246,7 @@ def test_all_agents_unavailable_waits_and_resumes_after_earliest_cooldown() -> N
     assert waiting_state.last_error is not None
     assert "all agents unavailable" in waiting_state.last_error.lower()
     assert "waiting for cooldown expiry" in waiting_state.last_error.lower()
-    snap = controller.snapshot()
-    assert snap["backoff_attempts"]["claude"] == 1
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 5_000
 
     # Advance to the earliest cooldown expiry; claude can be reconsidered.
     clock.advance(5)
@@ -284,15 +280,12 @@ def test_all_agents_unavailable_waits_and_resumes_after_earliest_cooldown() -> N
 def test_unavailable_agent_fallover_a_to_b_to_a_with_exponential_backoff() -> None:
     """Agent A fails, fall over to B, then retry A after cooldown and grow its backoff."""
     clock = FakeClock(start=0.0)
-    registry = _make_registry_with_budget("development", "claude", max_retries=2)
-    registry = _make_registry_with_budget("development", "opencode", max_retries=2)
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
     bus.subscribe(lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
-            budget_registry=registry,
             clock=clock,
             event_bus=bus,
             policy_bundle=_minimal_policy_bundle(),
@@ -309,9 +302,7 @@ def test_unavailable_agent_fallover_a_to_b_to_a_with_exponential_backoff() -> No
     assert state_b.chain_for_phase("development").current_index == 1
     assert fallovers[-1].from_agent == "claude"
     assert fallovers[-1].to_agent == "opencode"
-    snap1 = controller.snapshot()
-    assert snap1["unavailable_timeouts"]["claude"] == 5_000
-    assert snap1["backoff_attempts"]["claude"] == 1
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 5_000
 
     # Advance past A's cooldown so A can be reconsidered.
     clock.advance(5)
@@ -338,19 +329,13 @@ def test_unavailable_agent_fallover_a_to_b_to_a_with_exponential_backoff() -> No
     assert state_b2.chain_for_phase("development").current_index == 1
     assert fallovers[-1].from_agent == "claude"
     assert fallovers[-1].to_agent == "opencode"
-    snap2 = controller.snapshot()
-    # Backoff duration grew from 5s to 10s (unavailable_timeouts stores absolute
-    # expiration timestamps, so compute the remaining cooldown).
-    current_time_ms = int(clock.monotonic() * 1000)
-    assert snap2["unavailable_timeouts"]["claude"] - current_time_ms == 10_000
-    assert snap2["backoff_attempts"]["claude"] == 2
+    # The backoff duration grew from 5s to 10s.
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 10_000
 
 
 def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() -> None:
     """Agent A fails due to NO_PROGRESS_QUIET, fall over to B with growing backoff."""
     clock = FakeClock(start=0.0)
-    registry = _make_registry_with_budget("development", "claude", max_retries=2)
-    registry = _make_registry_with_budget("development", "opencode", max_retries=2)
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
     bus.subscribe(lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None)
@@ -362,7 +347,6 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
-            budget_registry=registry,
             clock=clock,
             event_bus=bus,
             unavailability_backoff_policy=policy,
@@ -388,9 +372,7 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
     assert fallovers[-1].from_agent == "claude"
     assert fallovers[-1].to_agent == "opencode"
     assert fallovers[-1].watchdog_reason == "no_progress_quiet"
-    snap1 = controller.snapshot()
-    assert snap1["unavailable_timeouts"]["claude"] == 5_000
-    assert snap1["backoff_attempts"]["claude"] == 1
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 5_000
 
     # Advance past A's cooldown so A can be reconsidered.
     clock.advance(5)
@@ -420,10 +402,7 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
     assert fallovers[-1].to_agent == "opencode"
     assert fallovers[-1].watchdog_reason == "no_progress_quiet"
 
-    snap2 = controller.snapshot()
-    current_time_ms = int(clock.monotonic() * 1000)
-    assert snap2["unavailable_timeouts"]["claude"] - current_time_ms == 10_000
-    assert snap2["backoff_attempts"]["claude"] == 2
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 10_000
 
     # Advance past A's cooldown so A can be reconsidered when B fails again.
     clock.advance(10)
@@ -453,34 +432,30 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
     assert fallovers[-1].to_agent == "opencode"
     assert fallovers[-1].watchdog_reason == "no_progress_quiet"
 
-    snap3 = controller.snapshot()
-    current_time_ms3 = int(clock.monotonic() * 1000)
-    assert snap3["unavailable_timeouts"]["claude"] - current_time_ms3 == 20_000
-    assert snap3["backoff_attempts"]["claude"] == 3
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 20_000
 
 
-def test_unavailable_skip_does_not_consume_budget() -> None:
-    """Falling over from an unavailable agent must not debit its budget."""
-    registry = _make_registry_with_budget("development", "claude", max_retries=2)
+def test_unavailable_agent_is_skipped_for_its_cooldown() -> None:
+    """Falling over from an unavailable agent puts it on cooldown for the phase."""
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
-            budget_registry=registry,
             clock=FakeClock(start=0.0),
             unavailable_timeouts={"claude": 60_000},
         )
     )
     state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
 
-    controller.handle(
+    new_state, _, _ = controller.handle(
         state,
         AgentInvocationError("claude", 1, "agent produced no output for 60s"),
         FailureContext(phase="development", agent="claude"),
     )
 
-    budget = controller.budget_registry.get("development", "claude")
-    assert budget is not None
-    assert budget.consumed == 0
+    # The unavailable agent is skipped: the chain advances and the agent stops
+    # being available for the phase.
+    assert new_state.chain_for_phase("development").current_index == 1
+    assert controller.agents_now_available("development", ["claude", "opencode"]) == ["opencode"]
 
 
 def test_exponential_backoff_increases_across_cycles() -> None:
@@ -505,9 +480,7 @@ def test_exponential_backoff_increases_across_cycles() -> None:
         AgentInvocationError("claude", 1, msg),
         FailureContext(phase="development", agent="claude"),
     )
-    snap1 = controller.snapshot()
-    assert snap1["unavailable_timeouts"]["claude"] == 5_000
-    assert snap1["backoff_attempts"]["claude"] == 1
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 5_000
 
     clock.advance(4.9)
     controller.handle(
@@ -515,9 +488,7 @@ def test_exponential_backoff_increases_across_cycles() -> None:
         AgentInvocationError("claude", 1, msg),
         FailureContext(phase="development", agent="claude"),
     )
-    snap2 = controller.snapshot()
-    assert snap2["unavailable_timeouts"]["claude"] == 14_900
-    assert snap2["backoff_attempts"]["claude"] == 2
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 10_000
 
     clock.advance(9.9)
     controller.handle(
@@ -525,25 +496,21 @@ def test_exponential_backoff_increases_across_cycles() -> None:
         AgentInvocationError("claude", 1, msg),
         FailureContext(phase="development", agent="claude"),
     )
-    snap3 = controller.snapshot()
-    assert snap3["unavailable_timeouts"]["claude"] == 34_800
-    assert snap3["backoff_attempts"]["claude"] == 3
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 20_000
 
     clock.advance(20.1)
     # Simulate the production success path: the runner resets backoff after
     # a successful agent invocation, clearing the attempt counter.
     _simulate_successful_run(controller, "development", "claude")
-    snap_after_reset = controller.snapshot()
-    assert "claude" not in snap_after_reset["backoff_attempts"]
+    # A successful invocation cleared the cooldown history.
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 0
 
     controller.handle(
         _fresh_state(),
         AgentInvocationError("claude", 1, msg),
         FailureContext(phase="development", agent="claude"),
     )
-    snap4 = controller.snapshot()
-    assert snap4["unavailable_timeouts"]["claude"] == 39_900
-    assert snap4["backoff_attempts"]["claude"] == 1
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 5_000
 
     assert compute_backoff_ms(5_000, 0, 300_000) == 5_000
     assert compute_backoff_ms(5_000, 1, 300_000) == 10_000
@@ -727,21 +694,18 @@ def test_credit_exhaustion_failure_sets_timeout() -> None:
         FailureContext(phase="development", agent="claude"),
     )
 
-    snap = controller.snapshot()
-    assert snap["unavailable_timeouts"]["claude"] == 60_000
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 60_000
 
 
 def test_credit_exhaustion_agent_skipped_in_recovery_cycle() -> None:
     """A credit-exhaustion failure causes fallover to the next agent in the chain."""
     clock = FakeClock(start=0.0)
-    registry = _make_registry_with_budget("development", "claude", max_retries=2)
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
     bus.subscribe(lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
-            budget_registry=registry,
             clock=clock,
             event_bus=bus,
             policy_bundle=_minimal_policy_bundle(),
@@ -764,11 +728,9 @@ def test_credit_exhaustion_agent_skipped_in_recovery_cycle() -> None:
 
 def test_model_preflight_failure_skips_unavailable_agent_without_connectivity() -> None:
     clock = FakeClock(start=0.0)
-    registry = _make_registry_with_budget("development", "opencode/model-a", max_retries=2)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
-            budget_registry=registry,
             clock=clock,
             policy_bundle=_minimal_policy_bundle(),
         )
@@ -788,7 +750,7 @@ def test_model_preflight_failure_skips_unavailable_agent_without_connectivity() 
 
     assert evt.category == "agent"
     assert new_state.chain_for_phase("development").current_index == 1
-    assert controller.snapshot()["unavailable_timeouts"]["opencode/model-a"] == 60_000
+    assert _cooldown_remaining_ms(controller, "development", "opencode/model-a") == 60_000
 
 
 def test_model_preflight_failure_remains_agent_unavailable_with_billing_detail() -> None:
@@ -981,11 +943,7 @@ def test_out_of_credits_uses_30min_cap() -> None:
         if i < 9:
             clock.advance(3000)
 
-    snap = controller.snapshot()
-    current_time_ms = int(clock.monotonic() * 1000)
-    timeout = snap["unavailable_timeouts"]["claude"]
-    remaining = timeout - current_time_ms
-    assert remaining == 1_800_000
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 1_800_000
 
 
 def test_no_output_at_start_uses_30s_cap() -> None:
@@ -1025,11 +983,7 @@ def test_no_output_at_start_uses_30s_cap() -> None:
         if i < 9:
             clock.advance(3000)
 
-    snap = controller.snapshot()
-    current_time_ms = int(clock.monotonic() * 1000)
-    timeout = snap["unavailable_timeouts"]["claude"]
-    remaining = timeout - current_time_ms
-    assert remaining == 30_000
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 30_000
 
 
 def test_stale_child_quiet_uses_5min_cap() -> None:
@@ -1069,11 +1023,7 @@ def test_stale_child_quiet_uses_5min_cap() -> None:
         if i < 9:
             clock.advance(3000)
 
-    snap = controller.snapshot()
-    current_time_ms = int(clock.monotonic() * 1000)
-    timeout = snap["unavailable_timeouts"]["claude"]
-    remaining = timeout - current_time_ms
-    assert remaining == 300_000
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 300_000
 
 
 def test_failure_event_carries_unavailability_reason() -> None:
@@ -1110,7 +1060,6 @@ def test_fallover_event_carries_unavailability_reason() -> None:
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
-            budget_registry=_make_registry_with_budget("development", "claude", max_retries=2),
             clock=FakeClock(start=0.0),
             event_bus=bus,
             policy_bundle=_minimal_policy_bundle(),
@@ -1192,8 +1141,7 @@ def test_default_policy_saturates_at_five_hours() -> None:
             FailureContext(phase="development", agent="claude"),
         )
         expected = min(60_000 * 2**attempt, 18_000_000)
-        timeout = controller.snapshot()["unavailable_timeouts"]["claude"]
-        assert timeout - int(clock.monotonic() * 1000) == expected
+        assert _cooldown_remaining_ms(controller, "development", "claude") == expected
         clock.advance(expected / 1000)
 
 
@@ -1218,27 +1166,26 @@ def test_default_success_resets_history() -> None:
             diagnostic={"cumulative": 0.0},
         ),
     )
+    cooldowns: list[int] = []
     for _ in range(5):
         controller.handle(
             state,
             exc,
             FailureContext(phase="development", agent="claude"),
         )
+        cooldowns.append(_cooldown_remaining_ms(controller, "development", "claude"))
         clock.advance(60_000)
-    snap_pre = controller.snapshot()
-    assert snap_pre["backoff_attempts"]["claude"] == 5
+    # The cooldown doubles on every consecutive unavailable failure.
+    assert cooldowns == [5_000, 10_000, 20_000, 40_000, 80_000]
+
     controller.reset_backoff("development", "claude")
-    snap_post = controller.snapshot()
-    assert "claude" not in snap_post["unavailable_timeouts"]
-    assert "claude" not in snap_post["backoff_attempts"]
+    # A successful invocation clears the unavailable state and its history.
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 0
     clock.advance(60_000)
     controller.handle(
         state,
         exc,
         FailureContext(phase="development", agent="claude"),
     )
-    snap_after = controller.snapshot()
-    current_time_ms = int(clock.monotonic() * 1000)
-    timeout = snap_after["unavailable_timeouts"]["claude"]
-    assert timeout - current_time_ms == 5_000
-    assert snap_after["backoff_attempts"]["claude"] == 1
+    # The next failure starts the cooldown from the base duration again.
+    assert _cooldown_remaining_ms(controller, "development", "claude") == 5_000

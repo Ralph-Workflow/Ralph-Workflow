@@ -1,4 +1,4 @@
-"""RecoveryController: single owner of failure classification, budget, and fallover.
+"""RecoveryController: single owner of failure classification, retry, and fallover.
 
 Never-Exit Invariant
 --------------------
@@ -76,7 +76,6 @@ from ralph.recovery.agent_unavailability_tracker import (
     AgentUnavailabilityTracker,
     UnavailabilityStore,
 )
-from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import (
     ClassifiedFailure,
     FailureCategory,
@@ -86,7 +85,6 @@ from ralph.recovery.classifier import (
 from ralph.recovery.cycle_cap import CycleCap
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
-from ralph.recovery.seed_budget_registry import seed_budget_registry
 from ralph.timeout_defaults import (
     AGENT_MAX_CONSECUTIVE_UNPRODUCTIVE_DEFAULT,
     AGENT_MAX_TOTAL_UNPRODUCTIVE_DEFAULT,
@@ -520,7 +518,10 @@ def compute_backoff_ms(base_ms: int, attempt: int, max_ms: int = 30_000) -> int:
 class RecoveryController:
     """Single conceptual owner of recovery logic.
 
-    Handles classification, budget debiting, chain fallover, and cycle cap.
+    Handles classification, chain fallover, and cycle cap. The
+    :class:`~ralph.recovery.agent_failure_ledger.AgentFailureLedger` is the
+    single owner of agent health; this controller records attempt facts
+    into it and acts on its answers.
     Delegates nothing to the reducer's internal retry counter when active.
     """
 
@@ -541,14 +542,6 @@ class RecoveryController:
         self._cap = CycleCap(cap=opts.cycle_cap)
         self._classifier = opts.classifier or FailureClassifier()
         self._bus = opts.event_bus or FailureEventBus()
-        if opts.budget_registry is not None:
-            self._registry = opts.budget_registry
-        elif opts.budgets is not None:
-            self._registry = AgentBudgetRegistry.from_dict(opts.budgets)
-        elif opts.policy_bundle is not None:
-            self._registry = seed_budget_registry(opts.policy_bundle)
-        else:
-            self._registry = AgentBudgetRegistry()
         self._policy_bundle = opts.policy_bundle
         self._clock: Clock = opts.clock or SystemClock()
         self._backoff_attempts: dict[str, int] = dict(
@@ -630,26 +623,9 @@ class RecoveryController:
         return self._unavailability_tracker
 
     @property
-    def budget_registry(self) -> AgentBudgetRegistry:
-        return self._registry
-
-    @property
     def cycle_cap(self) -> int:
         """Maximum number of recovery cycles before the controller exits."""
         return self._cap.cap
-
-    def replenish_phase_budgets(self, phase: str) -> None:
-        """Replenish every retry budget for ``phase`` at a recovery-cycle hop.
-
-        The chain state resets on re-entry (``reset_phase_chain_for_recovery``);
-        the budget registry must follow or the next cycle starts with every
-        agent already exhausted. Cross-restart durability is unaffected: the
-        controller snapshot persists ``consumed`` at the cycle boundary.
-        """
-        self._registry = self._registry.replenish_phase(phase)
-        # ``note_retry_exhaustion`` also marks agents spent for the current
-        # round; a replenished budget must clear those marks too.
-        self._spent_agents.pop(phase, None)
 
     def handle(
         self,
@@ -865,7 +841,7 @@ class RecoveryController:
         ):
             self._log_technical_failure(phase, failure)
             new_state = new_state.copy_with(last_error=failure.reason)
-            new_state, effects, failure_evt = self._handle_technical_retry_exhaustion(
+            new_state, effects, failure_evt = self._handle_retry_progression(
                 new_state,
                 failure,
                 phase,
@@ -904,7 +880,7 @@ class RecoveryController:
                 failure_evt,
             )
 
-        # AGENT category: debit budget and handle chain progression
+        # AGENT category: charge the ledger and handle chain progression
         if failure.is_unavailable and agent is not None:
             cooldown_ms = self._mark_agent_unavailable(
                 phase, agent, reason=failure.unavailability_reason
@@ -949,16 +925,14 @@ class RecoveryController:
                 last_agent_session_id=failure.resumable_session_id,
             )
 
-        if agent is not None and not is_agent_unavailable:
-            self._registry = self._registry.debit(phase, agent, failure)
-            # Track backoff attempt for retry-delay growth on non-unavailable
-            # agent failures. Unavailable attempts are tracked inside
-            # _mark_agent_unavailable because they use a separate cooldown.
-            if failure.counts_against_budget:
-                key = f"{phase}:{agent}"
-                self._backoff_attempts[key] = self._backoff_attempts.get(key, 0) + 1
+        # Track backoff attempt for retry-delay growth on non-unavailable
+        # agent failures. Unavailable attempts are tracked inside
+        # _mark_agent_unavailable because they use a separate cooldown.
+        if agent is not None and not is_agent_unavailable and failure.counts_against_budget:
+            key = f"{phase}:{agent}"
+            self._backoff_attempts[key] = self._backoff_attempts.get(key, 0) + 1
 
-        new_state, effects, failure_evt = self._handle_agent_budget_exhaustion(
+        new_state, effects, failure_evt = self._handle_retry_progression(
             new_state,
             failure,
             phase,
@@ -984,7 +958,7 @@ class RecoveryController:
         return new_state, effects, failure_evt
 
     def _log_technical_failure(self, phase: str, failure: ClassifiedFailure) -> None:
-        """Log a no-budget-debit failure before routing it to technical retry."""
+        """Log a failure the ledger does not charge before routing it to technical retry."""
         if failure.category == FailureCategory.ENVIRONMENTAL:
             logger.info(
                 "Environmental failure in phase={} (not counted against budget): {}",
@@ -1036,31 +1010,11 @@ class RecoveryController:
         return self._unavailability_tracker.is_available(phase, agent)
 
     def _increment_chain_retries(self, state: PipelineState, phase: str) -> PipelineState:
-        """Increment chain.retries for the given phase without debiting the budget."""
+        """Increment chain.retries for the given phase without debiting a budget."""
         chain = state.chain_for_phase(phase)
         if chain is None:
             return state
         return state.with_phase_chain(phase, chain.with_retry_increment())
-
-    def _handle_technical_retry_exhaustion(
-        self,
-        state: PipelineState,
-        failure: ClassifiedFailure,
-        phase: str,
-        agent: str | None,
-        *,
-        retry_in_session: bool = False,
-        failure_evt: FailureEvent,
-    ) -> tuple[PipelineState, list[Effect], FailureEvent]:
-        return self._handle_retry_progression(
-            state,
-            failure,
-            phase,
-            agent,
-            retry_in_session=retry_in_session,
-            use_budget=False,
-            failure_evt=failure_evt,
-        )
 
     def _apply_chain_retry(
         self,
@@ -1199,6 +1153,12 @@ class RecoveryController:
 
         Builds AgentAvailability rows for all agents in phase, evaluates priority selection,
         and logs the selection decision to the transcript.
+
+        The ledger is the single owner of agent health: an agent is skipped
+        only when the unavailability tracker puts it on cooldown or the
+        ledger reports it as spent. ``current_allowance_spent`` is the
+        caller's statement that the agent currently running has used its
+        allowance for this round; it carries no independent authority.
         """
         snap = self._unavailability_tracker.snapshot()
         self._phase_chains[phase] = tuple(agents)
@@ -1226,7 +1186,6 @@ class RecoveryController:
             is_spent = (
                 agent in spent_set
                 or (idx == current_index and current_allowance_spent)
-                or self._registry.is_exhausted(phase, agent)
                 or is_ledger_spent
             )
 
@@ -1281,27 +1240,6 @@ class RecoveryController:
         except OSError:
             logger.warning("Failed to write session reset hint to {}", hint_file)
 
-    def _handle_agent_budget_exhaustion(
-        self,
-        state: PipelineState,
-        failure: ClassifiedFailure,
-        phase: str,
-        agent: str | None,
-        *,
-        retry_in_session: bool = False,
-        failure_evt: FailureEvent,
-    ) -> tuple[PipelineState, list[Effect], FailureEvent]:
-        """Handle agent failure with budget debit and chain progression."""
-        return self._handle_retry_progression(
-            state,
-            failure,
-            phase,
-            agent,
-            retry_in_session=retry_in_session,
-            use_budget=True,
-            failure_evt=failure_evt,
-        )
-
     def _handle_retry_progression(
         self,
         state: PipelineState,
@@ -1310,7 +1248,6 @@ class RecoveryController:
         agent: str | None,
         *,
         retry_in_session: bool,
-        use_budget: bool,
         failure_evt: FailureEvent,
     ) -> tuple[PipelineState, list[Effect], FailureEvent]:
         chain = state.chain_for_phase(phase)
@@ -1322,20 +1259,12 @@ class RecoveryController:
             if chain.agents and chain.current_index < len(chain.agents)
             else None
         )
-        budget_state = (
-            self._registry.get(phase, current_agent)
-            if use_budget and current_agent is not None
-            else None
-        )
-        current_allowance_spent = budget_state is not None and budget_state.exhausted
-        if current_allowance_spent and current_agent is not None:
-            self.note_retry_exhaustion(phase, current_agent)
-
+        # The ledger is the single owner of agent health: the next agent is
+        # chosen from the ledger's cooldown/spent answers alone.
         selection = self.preferred_agent_index(
             phase,
             chain.agents,
             current_index=chain.current_index,
-            current_allowance_spent=current_allowance_spent,
         )
 
         if selection.index == chain.current_index:
@@ -1403,7 +1332,7 @@ class RecoveryController:
         # session and wait until the earliest cooldown expires instead of
         # terminating the run. The run loop will sleep on last_retry_delay_ms
         # and then retry the same phase. Otherwise the chain is truly exhausted
-        # (available agents have no budget/retries left), so fail the phase.
+        # (the ledger reports every available agent as demoted), so fail the phase.
         if all(not self._is_agent_available(phase, agent) for agent in chain.agents):
             wait_ms = self._earliest_unavailable_wait_ms(phase, chain)
             if wait_ms > 0:
@@ -1518,15 +1447,6 @@ class RecoveryController:
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         return {
             "cycle_cap": self._cap.cap,
-            "budgets": {
-                f"{phase}:{agent}": {
-                    "max_retries": budget.max_retries,
-                    "consumed": budget.consumed,
-                    "remaining": budget.remaining,
-                    "exhausted": budget.exhausted,
-                }
-                for (phase, agent), budget in self._registry.items()
-            },
             "backoff_attempts": merged_attempts,
             "agent_max_consecutive_unproductive": self._consecutive_unproductive_limit,
             "agent_max_total_unproductive": self._total_unproductive_limit,

@@ -16,7 +16,10 @@ retries or advances an agent. Genuine repository-safety bounds (a merge-repair a
 for example) bound repository state rather than agent health and stay accepted. 2. Test code:
 No test under ``tests/`` accesses private attributes, serialised ledger counters, or internal
 counters of ``AgentFailureLedger`` (enforcing black-box testability via the public seam) or
-imports deprecated retry tracker classes.
+imports deprecated retry tracker classes. A test also may not read the recovery controller's
+private failure-owner state through its SERIALISED snapshot (for example
+``controller.snapshot()["backoff_attempts"]``): the serialised key and the private attribute
+are the same private state, so both coupling forms are rejected.
 
 The production rules and the shared policy data live in the private rule engine
 :mod:`ralph.testing._single_owner_rules`; this module owns the scan, the test-side rules,
@@ -34,6 +37,7 @@ from ralph.testing._single_owner_rules import (
     _FORBIDDEN_TRACKER_MODULES,
     _FORBIDDEN_TRACKER_SYMBOLS,
     _GETATTR_MIN_ARGS,
+    _PRIVATE_FAILURE_OWNER_SERIALISED_KEYS,
     _PRIVATE_LEDGER_COUNTERS,
     TEMPORARY_PRODUCTION_ALLOWLIST,
     TEMPORARY_TEST_ALLOWLIST,
@@ -52,9 +56,11 @@ from ralph.testing._single_owner_rules import (
     _is_ledger_receiver,
     _is_ledger_serialised_root,
     _is_private_failure_owner_name,
+    _is_serialised_snapshot_call,
     _serialised_counter_violation,
     is_transitional_allowed,
     private_failure_owner_violation,
+    serialised_failure_owner_violation,
 )
 
 __all__ = [
@@ -279,6 +285,12 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
             and not is_transitional_allowed(rel_path, counter)
         ):
             violations.extend(_serialised_counter_violation(node, counter, rel_path))
+        elif (
+            counter in _PRIVATE_FAILURE_OWNER_SERIALISED_KEYS
+            and _is_serialised_snapshot_call(node.func.value)
+            and not is_transitional_allowed(rel_path, counter)
+        ):
+            violations.extend(serialised_failure_owner_violation(node, counter, rel_path))
 
     if not (
         isinstance(node.func, ast.Name)
@@ -364,6 +376,14 @@ def _check_test_subscript(node: ast.Subscript, rel_path: str) -> list[SingleOwne
         and not is_transitional_allowed(rel_path, node.slice.value)
     ):
         return _serialised_counter_violation(node, node.slice.value, rel_path)
+    if (
+        isinstance(node.slice, ast.Constant)
+        and isinstance(node.slice.value, str)
+        and node.slice.value in _PRIVATE_FAILURE_OWNER_SERIALISED_KEYS
+        and _is_serialised_snapshot_call(node.value)
+        and not is_transitional_allowed(rel_path, node.slice.value)
+    ):
+        return serialised_failure_owner_violation(node, node.slice.value, rel_path)
     return []
 
 
@@ -623,14 +643,84 @@ def test_getattr(controller):
         f"Expected test_private_failure_owner_access for getattr(_backoff_attempts), got: {v17}"
     )
 
-    # Positive test 3: the controller's public seam stays observable from a test.
+    # The controller's failure-owner coupling rules and its public seam are
+    # verified by the dedicated helper below.
+    _verify_controller_failure_owner_seam()
+
+
+def _verify_controller_failure_owner_seam() -> None:
+    """Verify the controller's failure-owner coupling rules and its public seam.
+
+    The recovery controller publishes its private failure-owner state inside its
+    serialised snapshot under a public key name. A test that indexes one of
+    those keys couples to the same private state that the direct-access rule
+    already rejects, so the serialised form must be rejected too, while the
+    controller's public seam and its non-failure-owner snapshot keys stay
+    observable.
+    """
     src_controller_public_seam = """
 def test_controller_public_seam(controller):
-    assert controller.snapshot()["backoff_attempts"] == {}
+    controller.handle(event)
+    controller.reset_backoff("development", "opencode")
+    assert controller.preferred_agent_index("development", ["opencode"]) == 0
     assert controller.unavailability_store.is_available("development", "opencode")
+    assert controller.ledger.status("development", "opencode").is_spent is False
 """
     v18 = audit_test_source("tests/recovery/test_sample.py", src_controller_public_seam)
     assert not v18, f"Expected no violation for the public controller seam, got: {v18}"
+
+    # Positive test 4: a snapshot key that is NOT private failure-owner state
+    # stays legal.
+    src_public_snapshot_key = """
+def test_controller_snapshot(controller):
+    assert controller.snapshot()["cycle_cap"] == 5
+"""
+    v19 = audit_test_source("tests/recovery/test_sample.py", src_public_snapshot_key)
+    assert not v19, f"Expected no violation for a public snapshot key, got: {v19}"
+
+    # Negative test 16: a test reading the controller's private backoff counter
+    # through its SERIALISED snapshot.
+    src_serialised_backoff = """
+def test_snapshot(controller):
+    assert controller.snapshot()["backoff_attempts"] == {}
+"""
+    v20 = audit_test_source("tests/recovery/test_sample.py", src_serialised_backoff)
+    assert any(v.rule == "test_serialised_failure_owner_access" for v in v20), (
+        f"Expected test_serialised_failure_owner_access for snapshot['backoff_attempts'], got: {v20}"
+    )
+
+    # Negative test 17: the same serialised state reached through .get().
+    src_serialised_backoff_get = """
+def test_snapshot(controller):
+    attempts = controller.snapshot().get("backoff_attempts")
+"""
+    v21 = audit_test_source("tests/recovery/test_sample.py", src_serialised_backoff_get)
+    assert any(v.rule == "test_serialised_failure_owner_access" for v in v21), (
+        f"Expected test_serialised_failure_owner_access for snapshot().get('backoff_attempts'), "
+        f"got: {v21}"
+    )
+
+    # Negative test 18: the serialised unavailability timeout history.
+    src_serialised_timeouts = """
+def test_snapshot(controller):
+    timeouts = controller.snapshot()["unavailable_timeouts"]
+"""
+    v22 = audit_test_source("tests/recovery/test_sample.py", src_serialised_timeouts)
+    assert any(v.rule == "test_serialised_failure_owner_access" for v in v22), (
+        f"Expected test_serialised_failure_owner_access for snapshot['unavailable_timeouts'], "
+        f"got: {v22}"
+    )
+
+    # Negative test 19: the bare snapshot() spelling reaches the same state.
+    src_serialised_bare_snapshot = """
+def test_snapshot():
+    attempts = snapshot()["backoff_attempts"]
+"""
+    v23 = audit_test_source("tests/recovery/test_sample.py", src_serialised_bare_snapshot)
+    assert any(v.rule == "test_serialised_failure_owner_access" for v in v23), (
+        f"Expected test_serialised_failure_owner_access for snapshot()['backoff_attempts'], "
+        f"got: {v23}"
+    )
 
 
 def audit_single_owner(repo_root: Path) -> list[SingleOwnerViolation]:

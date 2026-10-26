@@ -98,7 +98,7 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.exhausted_analysis_bypass_result import ExhaustedAnalysisBypassResult
-    from ralph.policy.models import PipelinePolicy
+    from ralph.policy.models import PhaseDefinition, PipelinePolicy
     from ralph.recovery.agent_selection import AgentSelection
     from ralph.recovery.controller import RecoveryController
 
@@ -662,6 +662,35 @@ def _enter_failed_recovery(
     return progress.apply_execution_cycle_outcome(state, new_state, policy=policy), []
 
 
+def _workflow_fallback_target(
+    phase_name: str,
+    phase_def: PhaseDefinition,
+    policy: PipelinePolicy,
+) -> str | None:
+    """Return the phase's workflow-fallback target when it names a REAL phase.
+
+    A declared fallback is honoured only when its target is a phase the
+    policy actually declares. A target that names nothing (or that is not
+    a phase name at all) would move the run into a phase no route can
+    leave, so the failure takes the ordinary failure route instead. The
+    policy loader rejects such a policy at load time, but the reducer is
+    the last gate before the run adopts the value, so it checks the
+    target itself instead of trusting the loader.
+    """
+    fallback = phase_def.workflow_fallback
+    if fallback is None:
+        return None
+    target = fallback.target
+    if isinstance(target, str) and target in policy.phases:
+        return target
+    logger.bind(component="policy.routing").warning(
+        "Ignoring workflow_fallback for phase={phase}: target {target!r} is not a declared phase",
+        phase=phase_name,
+        target=target,
+    )
+    return None
+
+
 def _handle_phase_failure(
     state: PipelineState,
     event: PhaseFailureEvent,
@@ -718,8 +747,12 @@ def _handle_phase_failure(
     # Policy-declared workflow_fallback takes precedence over recovery.failed_route.
     if policy is not None:
         phase_def = policy.phases.get(event.phase)
-        if phase_def is not None and phase_def.workflow_fallback is not None:
-            fallback_target = phase_def.workflow_fallback.target
+        fallback_target = (
+            _workflow_fallback_target(event.phase, phase_def, policy)
+            if phase_def is not None
+            else None
+        )
+        if fallback_target is not None:
             logger.bind(component="policy.routing").info(
                 explain_routing_decision(
                     event.phase,
@@ -1053,8 +1086,12 @@ def _handle_chain_exhausted(
     # Chain exhausted: check for per-phase workflow_fallback before global failure route.
     if policy is not None:
         phase_def = policy.phases.get(state.phase)
-        if phase_def is not None and phase_def.workflow_fallback is not None:
-            fallback_target = phase_def.workflow_fallback.target
+        fallback_target = (
+            _workflow_fallback_target(state.phase, phase_def, policy)
+            if phase_def is not None
+            else None
+        )
+        if fallback_target is not None:
             logger.bind(component="policy.routing").info(
                 explain_routing_decision(
                     state.phase,

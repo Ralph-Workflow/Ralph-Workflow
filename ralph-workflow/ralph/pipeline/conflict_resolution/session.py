@@ -195,14 +195,12 @@ def ensure_session_controller(
 ) -> RecoveryController:
     """Return the session's recovery controller, building it on the shared ledger.
 
-    The controller's retry budgets are per session, and its failure ledger is
-    partitioned by phase (``PHASE_RESOLUTION``) to maintain strict phase
-    isolation.
+    The controller's failure ledger is partitioned by phase
+    (``PHASE_RESOLUTION``) to maintain strict phase isolation.
     """
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.controller import RecoveryController
     from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
-    from ralph.recovery.seed_budget_registry import seed_budget_registry
 
     if session is not None and isinstance(session.recovery_controller, RecoveryController):
         return session.recovery_controller
@@ -229,9 +227,6 @@ def ensure_session_controller(
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             policy_bundle=policy_bundle,
-            budget_registry=(
-                seed_budget_registry(policy_bundle) if policy_bundle is not None else None
-            ),
             unavailability_store=session.unavailability_store if session is not None else None,
             ledger=ledger_instance,
         )
@@ -660,14 +655,6 @@ _RALPH_AUTHORED_DIAGNOSTIC_KEYS = (
     "last_fire_reason",
     "last_deferred_kind",
 )
-
-
-#: How many times one of Ralph's fault markers must appear in an agent's
-#: activity before it is treated as Ralph's fault rather than the agent
-#: quoting it. A tripped MCP breaker answers EVERY tool call with its
-#: 503 frame, so a real transport loop clears this immediately; a
-#: resolver that read the token in this repository's source does not.
-RALPH_FAULT_ESCALATION_HITS = 5
 
 
 def _ralph_authored_fault_text(event: object) -> str:

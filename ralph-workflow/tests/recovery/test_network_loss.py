@@ -5,7 +5,6 @@ from __future__ import annotations
 from ralph.pipeline.events import PhaseFailureEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
-from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.connectivity import ConnectivityState
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEvent, FailureEventBus
@@ -157,10 +156,7 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
         lambda evt: collected_events.append(evt) if isinstance(evt, FailureEvent) else None
     )
 
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus, budget_registry=registry)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus))
     state = _make_state(["claude"])
 
     # Start offline
@@ -188,11 +184,8 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
     assert evt.counted_against_budget is False
     assert evt.category == "environmental"
 
-    # Budget is unchanged
-    budget = controller.budget_registry.get("development", "claude")
-    assert budget is not None
-    assert budget.consumed == 0
-    assert budget.remaining == 3
+    # The agent is not charged, so it stays available for the phase.
+    assert controller.ledger.is_available("development", "claude") is True
 
 
 def test_offline_period_does_not_debit_budget_on_recovery_resume() -> None:
@@ -208,10 +201,7 @@ def test_offline_period_does_not_debit_budget_on_recovery_resume() -> None:
     bus = FailureEventBus()
     bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
 
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus, budget_registry=registry)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus))
     state = _make_state(["claude"])
 
     # Simulate: go offline, wait, come back online, then invoke
@@ -224,14 +214,12 @@ def test_offline_period_does_not_debit_budget_on_recovery_resume() -> None:
     # No failure events during offline
     assert len(collected) == 0
 
-    # Budget still intact
-    budget = controller.budget_registry.get("development", "claude")
-    assert budget is not None
-    assert budget.remaining == 3
+    # The agent was never charged during the offline period
+    assert controller.ledger.is_available("development", "claude") is True
 
     # Now simulate a successful agent invocation after resume
     # (no failure - just a state update showing no budget consumed)
     new_state = state.copy_with(last_retry_delay_ms=0)
     assert new_state.phase == "development"
     # No budget was consumed during offline period
-    assert budget.remaining == 3
+    assert controller.ledger.is_available("development", "claude") is True

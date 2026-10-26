@@ -67,6 +67,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
     from ralph.pipeline.work_units import WorkUnit
     from ralph.policy.models import PipelinePolicy, PolicyBundle
+    from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
 
@@ -116,6 +117,25 @@ class _FanOutCtx:
 def _notify_subscriber(subscriber: _PipelineSubscriberLike | None, state: PipelineState) -> None:
     if subscriber is not None:
         subscriber.notify(state)
+
+
+def _recovery_owner(ctx: _FanOutCtx) -> RecoveryController | None:
+    """Return the recovery owner this fan-out can reach, if any.
+
+    A fan-out crash is a phase failure, so the OWNER of the "may this
+    agent try again" decision is the run's recovery controller. Handing
+    the reducer ``None`` while an owner exists would make the reducer
+    fail the phase closed instead of applying the owner's verdict, so
+    the crash would never earn the one bounded retry the owner may
+    grant. ``PipelineDeps.recovery_controller`` is the controller the
+    run loop installed for this run -- the same owner every other phase
+    path consults -- so reaching it here does not create a second
+    decision owner. When no owner is reachable the reducer's documented
+    fail-closed route applies instead.
+    """
+    if ctx.pipeline_deps is None:
+        return None
+    return ctx.pipeline_deps.recovery_controller
 
 
 def _save_checkpoint_or_log(state: PipelineState, *, message: str) -> None:
@@ -742,7 +762,12 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
             reason=f"Fan-out execution crashed: {type(exc).__name__}: {exc}",
             recoverable=True,
         )
-        recovered, _ = _reduce(current, failure_event, ctx.policy_bundle.pipeline, recovery=None)
+        recovered, _ = _reduce(
+            current,
+            failure_event,
+            ctx.policy_bundle.pipeline,
+            recovery=_recovery_owner(ctx),
+        )
         _notify_subscriber(ctx.pipeline_subscriber, recovered)
         _save_checkpoint_or_log(
             recovered,

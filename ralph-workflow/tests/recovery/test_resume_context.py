@@ -8,8 +8,12 @@ from pathlib import Path
 
 from ralph.pipeline.state import AgentChainState, FalloverRecord, PipelineState
 from ralph.policy.loader import load_policy
-from ralph.recovery.budget import AgentBudgetRegistry
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
+
+#: The failure ledger demotes an agent after this many consecutive
+#: unproductive attempts; the demotion is what advances the chain.
+_CONSECUTIVE_UNPRODUCTIVE_LIMIT = 3
 
 
 def _minimal_policy_bundle() -> object:
@@ -118,26 +122,27 @@ def test_checkpoint_round_trip_preserves_recovery_context() -> None:
     assert restored_state.last_failure_category == original_state.last_failure_category
 
 
-def test_controller_budget_registry_seed_from_checkpoint() -> None:
-    """Budget registry can be seeded to match checkpoint state."""
-    # Simulate a checkpoint where claude has 1 failure consumed
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    registry = registry.debit(
-        "development",
-        "claude",
-        type("FakeFailure", (), {"counts_against_budget": True})(),
-    )
+def test_controller_ledger_can_be_restored_from_a_checkpoint_snapshot() -> None:
+    """The failure ledger is restored from the checkpointed ledger snapshot."""
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
+    state = _make_state_with_recovery_context(recovery_cycle_count=1)
 
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    _, _, _ = controller.handle(
+        state,
+        RuntimeError("claude idle"),
+        FailureContext(phase="development", agent="claude"),
     )
-    _make_state_with_recovery_context(recovery_cycle_count=1)
+    snapshot = controller.ledger.snapshot()
 
-    # Verify budget state reflects checkpoint
-    budget = controller.budget_registry.get("development", "claude")
-    assert budget is not None
-    assert budget.consumed == 1
-    assert budget.remaining == 2
+    restored = AgentFailureLedger.from_snapshot(snapshot, clock=controller.clock)
+
+    # The restored ledger answers exactly like the original one.
+    assert restored.status("development", "claude").is_eligible == controller.ledger.status(
+        "development", "claude"
+    ).is_eligible
+    assert restored.is_available("development", "claude") == controller.ledger.is_available(
+        "development", "claude"
+    )
 
 
 def test_resume_after_single_agent_chain_exhaustion_increments_count() -> None:
@@ -148,11 +153,8 @@ def test_resume_after_single_agent_chain_exhaustion_increments_count() -> None:
     recovery_cycle_count increments. fallover_history does NOT grow because
     there is no next agent to fall over to.
     """
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
     controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
-        )
+        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )
     state = _make_state(["claude"])  # Single agent chain
 
@@ -161,12 +163,15 @@ def test_resume_after_single_agent_chain_exhaustion_increments_count() -> None:
 
     _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
-    # First failure - budget exhausted for the single agent
-    new_state, _, _ = controller.handle(
-        state,
-        _AgentTimeoutError("claude idle"),
-        FailureContext(phase="development", agent="claude"),
-    )
+    # The ledger demotes the single agent after the consecutive unproductive
+    # limit; a demoted sole agent has nowhere to fall over to.
+    new_state = state
+    for _attempt in range(_CONSECUTIVE_UNPRODUCTIVE_LIMIT):
+        new_state, _, _ = controller.handle(
+            state,
+            _AgentTimeoutError("claude idle"),
+            FailureContext(phase="development", agent="claude"),
+        )
 
     # Chain exhausted with no next agent -> enters "failed"
     assert new_state.phase == "failed_terminal"
@@ -183,10 +188,7 @@ def test_resume_after_two_agent_chain_first_exhausted() -> None:
     the chain falls over and fallover_history records the transition.
     recovery_cycle_count does NOT increment yet (chain not fully exhausted).
     """
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude", "opencode"])  # Two-agent chain
 
     class _AgentTimeoutError(Exception):
@@ -194,16 +196,21 @@ def test_resume_after_two_agent_chain_first_exhausted() -> None:
 
     _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
-    # First failure - budget exhausted for claude, fallover to opencode
-    new_state, _, _ = controller.handle(
-        state,
-        _AgentTimeoutError("claude idle"),
-        FailureContext(phase="development", agent="claude"),
-    )
+    # The ledger demotes claude after the consecutive unproductive limit, so
+    # the chain falls over to opencode.
+    new_state = state
+    for _attempt in range(_CONSECUTIVE_UNPRODUCTIVE_LIMIT):
+        new_state, _, _ = controller.handle(
+            state,
+            _AgentTimeoutError("claude idle"),
+            FailureContext(phase="development", agent="claude"),
+        )
 
     # Phase still DEVELOPMENT (not failed) - fallover happened
     assert new_state.phase == "development"
-    assert new_state.chain_for_phase("development").current_index == 1  # fell over to opencode
+    chain = new_state.chain_for_phase("development")
+    assert chain is not None
+    assert chain.current_index == 1  # fell over to opencode
     # recovery_cycle_count does NOT increment until full chain exhaustion
     assert new_state.recovery_cycle_count == 0
 
@@ -215,10 +222,7 @@ def test_resume_after_two_agent_chain_first_exhausted() -> None:
 
 def test_checkpoint_round_trip_after_partial_recovery() -> None:
     """Mid-recovery checkpoint round-trip preserves fallover_history and cycle count."""
-    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude", "opencode"])
 
     class _AgentTimeoutError(Exception):
@@ -226,12 +230,15 @@ def test_checkpoint_round_trip_after_partial_recovery() -> None:
 
     _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
-    # First failure - fallover from claude to opencode
-    new_state, _, _ = controller.handle(
-        state,
-        _AgentTimeoutError("claude idle"),
-        FailureContext(phase="development", agent="claude"),
-    )
+    # The ledger demotes claude after the consecutive unproductive limit, so
+    # the chain falls over from claude to opencode.
+    new_state = state
+    for _attempt in range(_CONSECUTIVE_UNPRODUCTIVE_LIMIT):
+        new_state, _, _ = controller.handle(
+            state,
+            _AgentTimeoutError("claude idle"),
+            FailureContext(phase="development", agent="claude"),
+        )
 
     # Simulate saving checkpoint mid-recovery
     json_data = new_state.model_dump_json()

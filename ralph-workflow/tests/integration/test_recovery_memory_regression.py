@@ -21,7 +21,7 @@ import pytest
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
-from ralph.recovery.budget import AgentBudgetRegistry
+from ralph.policy.models import AgentChainConfig
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 
 if TYPE_CHECKING:
@@ -44,7 +44,14 @@ _AgentInactivityTimeoutError.__name__ = "AgentInactivityTimeoutError"
 @lru_cache(maxsize=1)
 def _load_default_policy_bundle() -> PolicyBundle:
     defaults_dir = Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults"
-    return load_policy(defaults_dir)
+    bundle = load_policy(defaults_dir)
+    # The development chain must carry both agents: the failure ledger demotes
+    # an agent after the configured unproductive limits, and a one-agent chain
+    # fails the phase on the first demotion instead of falling over.
+    chains = dict(bundle.agents.agent_chains)
+    chains["development"] = AgentChainConfig(agents=["claude", "opencode"])
+    agents_policy = bundle.agents.model_copy(update={"agent_chains": chains})
+    return bundle.model_copy(update={"agents": agents_policy})
 
 
 def _make_state(
@@ -68,16 +75,15 @@ def _make_state(
 
 
 def _make_controller() -> RecoveryController:
-    registry = (
-        AgentBudgetRegistry()
-        .set_budget("development", "claude", max_retries=1)
-        .set_budget("development", "opencode", max_retries=1)
-    )
+    # One unproductive attempt spends the agent: the ledger's TOTAL limit is
+    # checked before the CONSECUTIVE limit, so a single failure demotes the
+    # agent for the phase and the chain falls over to the next agent.
     return RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=_RECOVERY_CYCLE_CAP,
-            budget_registry=registry,
             policy_bundle=_load_default_policy_bundle(),
+            agent_max_consecutive_unproductive=1,
+            agent_max_total_unproductive=1,
         )
     )
 
