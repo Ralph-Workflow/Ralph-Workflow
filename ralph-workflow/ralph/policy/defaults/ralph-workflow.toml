@@ -149,6 +149,8 @@ commit = "commit"
 # backoff_multiplier = 2.0              # Leave this alone unless you deliberately tune provider retry pacing.
 # max_backoff_ms = 60000                # Change only when your provider needs a different maximum retry wait.
 # max_cycles = 3                        # Raise only for work that legitimately needs more agent fallback cycles.
+# agent_max_consecutive_unproductive = 3 # consecutive unproductive attempts (no accepted artifact and no workspace change) before the agent enters cooldown; a workspace change resets this counter (minimum 1).
+# agent_max_total_unproductive = 9     # total unproductive attempts before the agent is permanently spent for the phase; counts every attempt, with or without a workspace change (minimum 1).
 # execution_history_limit = 1000        # Leave this alone unless a long run needs more retained history.
 # retention_max_age_days = 7.0          # Stricter/looser Ralph-managed retention: aged run bookkeeping, receipts, scratch, Codex homes, session files, state.db rows, and operational logs older than this are reclaimed at run start and by cleanup planning (active runs are always protected). Lower for stricter retention; must be > 0 and <= 3650, invalid values are rejected at config load.
 # agent_idle_timeout_seconds = 300.0    # max idle seconds before killing a stalled agent process (>0)

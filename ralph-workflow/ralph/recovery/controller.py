@@ -1298,7 +1298,6 @@ class RecoveryController:
             phase,
             agent,
             retry_in_session=retry_in_session,
-            max_retries=self._get_max_retries_for_chain(phase),
             use_budget=True,
             failure_evt=failure_evt,
         )
@@ -1311,7 +1310,6 @@ class RecoveryController:
         agent: str | None,
         *,
         retry_in_session: bool,
-        max_retries: int | None = None,
         use_budget: bool,
         failure_evt: FailureEvent,
     ) -> tuple[PipelineState, list[Effect], FailureEvent]:
@@ -1510,13 +1508,6 @@ class RecoveryController:
     ) -> int:
         """Return milliseconds until the first unavailable chain agent becomes available."""
         return self.earliest_available_wait_ms(phase, chain.agents)
-
-    def _get_max_retries_for_chain(self, phase: str) -> int:
-        """Get max_retries from policy for the chain used by this phase."""
-        chain_config = self._chain_config_for_phase(phase)
-        if chain_config is None:
-            return 3
-        return chain_config.max_retries
 
     def snapshot(self) -> dict[str, object]:
         """Return a runtime observability snapshot of recovery state."""

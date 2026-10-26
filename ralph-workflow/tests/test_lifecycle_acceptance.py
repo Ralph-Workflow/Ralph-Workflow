@@ -71,6 +71,7 @@ from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.test_checkpoint_and_record_persistence_boundary import _InMemoryBackend
@@ -649,10 +650,16 @@ def test_acceptance_scenario_9_exhausted_retry_does_not_replenish(tmp_path: Path
     reloaded_state = checkpoint.load()
     assert reloaded_state is not None
     assert reloaded_state.ledger_snapshot is not None
-    entries = reloaded_state.ledger_snapshot.get("entries", {})
-    entry = entries.get("development:claude")
-    assert entry is not None
-    assert entry["is_spent"] is True
+
+    # The owner restores its own durable state from the persisted snapshot and
+    # answers through its public seam: the exhausted agent is spent, so it is
+    # no longer available for another attempt.
+    restored = AgentFailureLedger.from_snapshot(
+        reloaded_state.ledger_snapshot,
+        clock=FakeClock(),
+    )
+    assert restored.status("development", "claude").is_spent is True
+    assert restored.is_available("development", "claude") is False
 
     # Pass reloaded_state through execute_agent_effect and verify Ralph launches zero
     # further identical attempts and fails closed / requires intervention.

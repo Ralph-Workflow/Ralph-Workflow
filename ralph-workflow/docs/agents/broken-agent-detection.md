@@ -30,9 +30,21 @@ Readers mark matching lines as harness echoes, so `IdleWatchdog.has_meaningful_o
 
 `BrokenAgentExitError` has `skip_same_agent_retries=True` and includes a credential/provider hint for operators. `FailureClassifier` maps it to `UnavailabilityReason.BROKEN_AGENT`, marks it unavailable, and resets its session.
 
-The default `BROKEN_AGENT` backoff starts at 5 seconds and caps at 60 seconds. Recovery publishes the normal fallover event and advances the agent chain.
+The default `BROKEN_AGENT` backoff starts at a 5-second base, doubles on each repeat of the same failure, and saturates at the universal five-hour ceiling (18 000 000 ms) that every default unavailability reason shares. Recovery publishes the normal fallover event and advances the agent chain.
 
-Repeated unproductive attempts (including broken-agent exits and missing-artifact outcomes) are bounded by the single failure authority, `AgentFailureLedger`. The agent is demoted to cooldown after `agent_max_consecutive_unproductive` (default `3`) consecutive unproductive attempts in the phase, or demoted to permanently Spent after `agent_max_total_unproductive` (default `9`) total attempts across workspace modifications. A broken-agent exit skips same-agent retries, so that first failure advances to the next available agent when the chain has one; other unproductive attempts (a missing artifact, for example) retry the same agent until the consecutive limit demotes it. A sole-agent chain waits for its cooldown until reaching the consecutive limit, at which point the phase fails with a clear diagnostic message instead of retrying indefinitely.
+That per-failure unavailability backoff is a different mechanism from the ledger's unproductive-limit cooldown. One broken exit marks the agent temporarily unavailable; the ledger demotes an agent only after a run of unproductive attempts.
+
+Repeated unproductive attempts (including broken-agent exits and missing-artifact outcomes) are bounded by the single failure authority, `AgentFailureLedger`. The agent is demoted to cooldown after `agent_max_consecutive_unproductive` (default `3`) consecutive unproductive attempts in the phase, or demoted to permanently Spent after `agent_max_total_unproductive` (default `9`) total unproductive attempts in the phase. The TOTAL counter counts every unproductive attempt, with or without a workspace change; only the CONSECUTIVE counter is reset by a workspace change. The ledger's cooldown starts at 60 seconds, doubles on each consecutive demotion, and is capped at 3600 seconds; those durations are fixed and are not configurable in `ralph-workflow.toml`. A broken-agent exit skips same-agent retries, so that first failure advances to the next available agent when the chain has one; other unproductive attempts (a missing artifact, for example) retry the same agent until the consecutive limit demotes it. A sole-agent chain waits for its cooldown until reaching the consecutive limit, at which point the phase fails with a clear diagnostic message instead of retrying indefinitely.
+
+## Operator Log Lines
+
+A demotion is logged once, when it happens:
+
+```
+Agent '<agent>' demoted in phase '<phase>' (consecutive=<n>, total=<n>, reason=<reason>)
+```
+
+Agent selection reports every candidate it skipped and why. The skip reasons are `cooldown` (the agent is still cooling down, reported with the milliseconds remaining and, when known, the cooldown reason), `unavailable` (the agent is marked unavailable by a failed invocation), `spent` (the agent is permanently demoted for the phase), and `lower_priority` (the agent was eligible, but a higher-priority candidate was selected).
 
 ## Operator Response
 
@@ -50,4 +62,4 @@ A prompt echo is not a generic similarity check. The entire trimmed prompt must 
 
 Normal output mixed with an echoed prompt remains meaningful. In that case Ralph follows the regular completion and watchdog contracts rather than declaring the agent broken.
 
-See the recovery configuration documentation for chain order and cooldown behavior.
+See [Recovery](../sphinx/recovery.md) for chain order and cooldown behavior, and [Configuration](../sphinx/configuration.md) for the `[general]` keys that bound agent retries.

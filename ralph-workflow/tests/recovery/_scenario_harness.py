@@ -41,6 +41,9 @@ from ralph.config.enums import Verbosity
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
+from ralph.mcp.artifacts.development_result_validation_error import (
+    DevelopmentResultValidationError,
+)
 from ralph.phases.execution import record_workspace_snapshot
 from ralph.pipeline import run_loop
 from ralph.pipeline import runner as runner_module
@@ -225,6 +228,11 @@ def _apply_attempt_side_effects(
             raise RuntimeError(f"Simulated ambiguous failure for {agent}")
         if result.failure_category == FailureCategory.AGENT:
             raise AgentInactivityTimeoutError(agent, 60.0)
+        if result.failure_category == FailureCategory.ARTIFACT_VALIDATION:
+            raise DevelopmentResultValidationError(
+                f"Simulated artifact validation failure for {agent}: the required "
+                "development_result artifact was rejected"
+            )
 
     if result.exit_code != 0:
         raise AgentInvocationError(

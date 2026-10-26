@@ -547,13 +547,6 @@ class PipelineState(_FrozenPipelineStateModel):
             return None
         return chain.agents[chain.current_index]
 
-    def remaining_retries(self) -> int:
-        """Calculate remaining retries for current agent."""
-        chain = self.chain_for_phase(self.phase)
-        if chain is None:
-            return 0
-        return max(0, 3 - chain.retries)
-
     def chain_for_phase(self, phase: PipelinePhase | str) -> AgentChainState | None:
         """Get the tracked agent chain state for a phase, if any."""
         return self.phase_chains.get(str(phase))
