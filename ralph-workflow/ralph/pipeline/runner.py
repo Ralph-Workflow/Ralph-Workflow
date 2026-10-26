@@ -137,7 +137,13 @@ from ralph.pipeline.effects import (
     PreparePromptEffect,
     SaveCheckpointEffect,
 )
-from ralph.pipeline.events import CommitResidualEvent, Event, PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import (
+    AgentFailureEvent,
+    CommitResidualEvent,
+    Event,
+    PhaseFailureEvent,
+    PipelineEvent,
+)
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.fan_out import execute_fan_out_sync as _fan_out_execute_fan_out_sync
 from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
@@ -1286,8 +1292,13 @@ _PHASE_TRANSITION_INTEGRATION_EVENTS = frozenset(
 
 
 def _is_phase_transition_integration_event(event: object) -> bool:
-    """Return whether a typed or enum event reaches integration."""
-    return isinstance(event, CommitResidualEvent) or (
+    """Return whether a typed or enum event reaches integration.
+
+    ``AgentFailureEvent`` is the typed carrier of an ordinary agent
+    failure; it reaches the SAME seam as the bare
+    ``PipelineEvent.AGENT_FAILURE`` member it replaces.
+    """
+    return isinstance(event, (CommitResidualEvent, AgentFailureEvent)) or (
         isinstance(event, PipelineEvent) and event in _PHASE_TRANSITION_INTEGRATION_EVENTS
     )
 

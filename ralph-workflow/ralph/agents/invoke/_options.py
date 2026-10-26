@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
     from ralph.config.models import GeneralConfig
     from ralph.phases.required_artifacts import RequiredArtifact
+    from ralph.pipeline.events.agent_failure_event import AgentFailureEvent
     from ralph.workspace.probe import WorkspaceChangeProbe
     from ralph.workspace.protocol import Workspace
 
@@ -64,6 +65,8 @@ class InvokeRuntimeOptions:
     workspace_probe: WorkspaceChangeProbe | None = None
     workspace: Workspace | None = None
     phase: str | None = None
+    agent_name: str | None = None
+    failure_observation_sink: Callable[[AgentFailureEvent], None] | None = None
 
 
 def build_invoke_options_from_config(
@@ -79,6 +82,8 @@ def build_invoke_options_from_config(
         workspace_probe=rt.workspace_probe,
         workspace=rt.workspace,
         phase=rt.phase,
+        agent_name=rt.agent_name,
+        failure_observation_sink=rt.failure_observation_sink,
         extra_env=rt.extra_env,
         unsafe_mode=general_config.workflow.unsafe_mode,
         session_id=rt.session_id,

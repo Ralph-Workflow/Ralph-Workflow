@@ -633,12 +633,11 @@ def test_a_pi_context_exhaustion_is_not_reported_as_a_declined_candidate(
 def test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An agent that ran and failed is a failed ATTEMPT, never a refusal.
-
-    Nothing gives the resolver a way to refuse the conflict, so the only
-    honest reading of a non-success from an agent that actually worked
-    is that the attempt failed -- and the chain answers that by trying
-    again, not by accepting it.
+    """
+    An agent that ran and failed is a failed ATTEMPT, never a refusal. Nothing gives the
+    resolver a way to refuse the conflict, so the only honest reading of a non-success from an
+    agent that actually worked is that the attempt failed -- and the chain answers that by
+    trying again, not by accepting it.
     """
     from ralph.pipeline.events import PipelineEvent
 
@@ -681,11 +680,10 @@ def test_a_resolver_that_ran_and_came_back_unsuccessful_is_a_failed_attempt(
 def test_a_candidate_that_never_ran_is_not_recorded_as_declining(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """An instant non-success with no activity is an exit, not a verdict.
-
-    The executor answers with the same event for failures that happen
-    before any agent runs, which is how "invoking X" was followed
-    immediately by X apparently reading the conflict and refusing it.
+    """
+    An instant non-success with no activity is an exit, not a verdict. The executor answers
+    with the same event for failures that happen before any agent runs, which is how "invoking
+    X" was followed immediately by X apparently reading the conflict and refusing it.
     """
     from ralph.pipeline.events import PipelineEvent
 
@@ -718,12 +716,11 @@ def test_a_candidate_that_never_ran_is_not_recorded_as_declining(
 def test_an_uninstalled_candidate_is_unavailable_not_declining(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A chain may name an agent this workspace does not have.
-
-    The executor answers a missing binary with the same non-success
-    event a real failure produces, so it read as the agent giving up on
-    the conflict -- instantly, because nothing ran. It now names the
-    cause on the retry-intent channel and the chain hands over.
+    """
+    A chain may name an agent this workspace does not have. The executor answers a missing
+    binary with the same non-success event a real failure produces, so it read as the agent
+    giving up on the conflict -- instantly, because nothing ran. It now names the cause on the
+    retry-intent channel and the chain hands over.
     """
     from ralph.pipeline import effect_executor as effect_executor_module
     from ralph.pipeline.agent_retry_intent import AgentRetryIntent
@@ -960,56 +957,3 @@ def test_conflict_invocations_skip_cooldown_and_restore_priority(
     )
     assert called[0] == "two"
     assert called[1:] and all(agent == "one" for agent in called[1:])
-
-
-def test_conflict_waits_for_earliest_cooldown(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    from ralph.agents.timeout_clock import FakeClock
-    from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
-    from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
-    from ralph.recovery.unavailability_reason import UnavailabilityReason
-
-    clock = FakeClock(start=0.0)
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            clock=clock,
-            unavailability_entries={
-                name: UnavailabilityEntry(
-                    unavailable_until_ms=delay,
-                    reason=UnavailabilityReason.NO_OUTPUT_AT_START,
-                    attempt=0,
-                    base_backoff_ms=5000,
-                    max_backoff_ms=18000000,
-                )
-                for name, delay in (("one", 9000), ("two", 5000))
-            },
-        )
-    )
-    monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
-    monkeypatch.setattr(driver_module, "_sleep_seconds", clock.advance)
-    _install_seams(monkeypatch, surviving_per_round=[[]])
-    called: list[str] = []
-
-    def invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        called.append(agent_name)
-        return True
-
-    assert run_conflict_resolution_pipeline(
-        root=tmp_path,
-        target="main",
-        config=_config(),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=invoke,
-        session=ResolutionSession(recovery_controller=controller),
-    )
-    assert called == ["two"]
-    assert clock.monotonic() == 5.0
-    assert (
-        controller.preferred_agent_index("rebase_conflict_resolution", ["one", "two"]).agent
-        == "two"
-    )

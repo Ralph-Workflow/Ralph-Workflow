@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from .agent_failure_event import (
+    AgentFailureEvent,
+    observation_from_event,
+)
 from .analysis_decision_event import AnalysisDecisionEvent
 from .commit_residual_event import CommitResidualEvent
 from .execution_result_event import ExecutionResultEvent
@@ -22,9 +26,11 @@ Event = (
     | WorkerFailedEvent
     | PostFanoutVerificationEvent
     | AnalysisDecisionEvent
+    | AgentFailureEvent
 )
 
 __all__ = [
+    "AgentFailureEvent",
     "AnalysisDecisionEvent",
     "CommitResidualEvent",
     "Event",
@@ -35,4 +41,5 @@ __all__ = [
     "WorkerCompletedEvent",
     "WorkerFailedEvent",
     "WorkerStartedEvent",
+    "observation_from_event",
 ]

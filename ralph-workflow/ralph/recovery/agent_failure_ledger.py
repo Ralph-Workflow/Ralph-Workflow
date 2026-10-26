@@ -11,12 +11,30 @@ system reads (clock, filesystem, process table) are performed.
 from __future__ import annotations
 
 import threading
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from ralph.agents.clock import Clock
+
+LEGACY_DEFAULT_AGENT: Final[str] = "claude"
+"""Agent name assumed when a legacy checkpoint carries no recoverable agent identity."""
+
+_LEGACY_MALFORMED_REASON: Final[str] = "legacy_guard_malformed"
+"""Demotion reason recorded when legacy failure history cannot be read."""
+
+LEGACY_IDENTITY_UNATTRIBUTABLE_REASON: Final[str] = "legacy_identity_unattributable"
+"""Demotion reason recorded when legacy history belongs to no recoverable agent."""
+
+LEDGER_SNAPSHOT_MALFORMED_REASON: Final[str] = "ledger_snapshot_malformed"
+"""Demotion reason recorded when the stored ledger snapshot itself is unreadable."""
+
+_DEFAULT_CONSECUTIVE_LIMIT: Final[int] = 3
+_DEFAULT_TOTAL_LIMIT: Final[int] = 9
+_DEFAULT_BASE_COOLDOWN_SECONDS: Final[float] = 60.0
+_DEFAULT_MAX_COOLDOWN_SECONDS: Final[float] = 3600.0
+_DEFAULT_BACKOFF_FACTOR: Final[float] = 2.0
 
 
 @dataclass(frozen=True)
@@ -113,6 +131,34 @@ class _LedgerEntry:
 
 _COOLDOWN_REASON_CONSECUTIVE = "consecutive_unproductive_limit_reached"
 _SPENT_REASON_TOTAL = "total_unproductive_limit_reached"
+
+
+@dataclass(frozen=True)
+class _LegacyGuardSource:
+    """A legacy failure-history payload together with its recovered identity.
+
+    Legacy checkpoints stored one ``progress_guard`` payload per phase chain
+    plus a top-level copy describing the active phase. Every payload described
+    the failure history of exactly ONE agent, so each source is migrated
+    independently into its own ledger entry.
+
+    Attributes:
+        payload: Raw legacy payload (a mapping for well-formed checkpoints).
+        phase: Canonical phase name the payload belongs to.
+        agent: Recovered agent name, or ``None`` when the identity could not
+            be recovered from the legacy chain.
+        candidate_agents: Agents declared by the legacy chain. Used when the
+            current agent of that chain cannot be recovered, so the recorded
+            history is preserved for the agent that actually failed.
+        fail_closed_reason: When set, the affected identity is failed closed
+            with this reason instead of being translated.
+    """
+
+    payload: object
+    phase: str
+    agent: str | None = None
+    candidate_agents: tuple[str, ...] = ()
+    fail_closed_reason: str | None = None
 
 
 class AgentFailureLedger:
@@ -401,13 +447,10 @@ class AgentFailureLedger:
             total_limit=total_limit,
         )
         raw_consecutive = entry_dict["consecutive_unproductive"]
-        consecutive = (
-            int(cast("int", raw_consecutive))
-            if isinstance(raw_consecutive, (int, float, str))
-            else 0
-        )
+        consecutive = int(raw_consecutive) if isinstance(raw_consecutive, (int, float, str)) else 0
         raw_total = entry_dict["total_unproductive"]
-        total = int(cast("int", raw_total)) if isinstance(raw_total, (int, float, str)) else 0
+        total = int(raw_total) if isinstance(raw_total, (int, float, str)) else 0
+        raw_spent_reason = entry_dict["spent_reason"]
         entry = _LedgerEntry(
             consecutive_unproductive=consecutive,
             total_unproductive=total,
@@ -415,7 +458,7 @@ class AgentFailureLedger:
             cooldown_reason=None,
             cooldown_count=0,
             is_spent=bool(entry_dict["is_spent"]),
-            spent_reason=cast("str | None", entry_dict["spent_reason"]),
+            spent_reason=raw_spent_reason if isinstance(raw_spent_reason, str) else None,
         )
         ledger._entries[(phase, agent)] = entry
         return ledger
@@ -510,7 +553,265 @@ class AgentFailureLedger:
         return ledger
 
 
+def _counter_value(raw: object) -> int:
+    """Return a non-negative counter value, or 0 when the value is unusable."""
+    if isinstance(raw, bool):
+        return 0
+    if isinstance(raw, int):
+        return max(0, raw)
+    if isinstance(raw, float):
+        return max(0, int(raw))
+    if isinstance(raw, str):
+        try:
+            return max(0, int(raw.strip()))
+        except ValueError:
+            return 0
+    return 0
+
+
+def _float_value(raw: object, default: float) -> float:
+    """Return a float value, or the default when the value is unusable."""
+    if isinstance(raw, bool):
+        return default
+    if isinstance(raw, int | float):
+        return float(raw)
+    if isinstance(raw, str):
+        try:
+            return float(raw.strip())
+        except ValueError:
+            return default
+    return default
+
+
+def _readable_streak(raw: object) -> int | None:
+    """Return the streak count when the value is a readable non-negative count."""
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int | float):
+        return int(raw) if raw >= 0 else None
+    if isinstance(raw, str):
+        try:
+            parsed = int(raw.strip())
+        except ValueError:
+            return None
+        return parsed if parsed >= 0 else None
+    return None
+
+
+def _readable_legacy_field(field: str, raw: object) -> bool:
+    """Return True when a recognised legacy field holds a usable value."""
+    if field == "streak":
+        return _readable_streak(raw) is not None
+    if field == "max_identical":
+        if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+            return False
+        return _counter_value(raw) > 0
+    return raw is None or isinstance(raw, bool)
+
+
+def _readable_legacy_payload(payload: object) -> Mapping[str, object] | None:
+    """Return the payload as a mapping when it carries readable failure history.
+
+    Returns ``None`` when the payload cannot be read: it is not a mapping, it
+    carries none of the recognised failure-history fields, or a recognised
+    field holds a value that cannot be interpreted (a non-numeric streak, a
+    non-positive cap, a non-boolean exhaustion flag).
+    """
+    if not isinstance(payload, Mapping):
+        return None
+    fields = ("streak", "max_identical", "is_exhausted", "failed_closed")
+    if not any(field in payload for field in fields):
+        return None
+    for field in fields:
+        if field in payload and not _readable_legacy_field(field, payload[field]):
+            return None
+    return payload
+
+
+def _legacy_identities(source: _LegacyGuardSource) -> tuple[tuple[str, str], ...]:
+    """Return the (phase, agent) identities a legacy source applies to.
+
+    A recoverable agent identity wins. When the current agent of a legacy chain
+    cannot be recovered, the recorded history is applied to every agent the
+    chain declares, so the history is preserved for the agent that actually
+    failed. When the chain declares no agent at all, the legacy default agent
+    name is used so the history is never discarded.
+    """
+    if source.agent:
+        return ((source.phase, source.agent),)
+    if source.candidate_agents:
+        return tuple((source.phase, agent) for agent in source.candidate_agents)
+    return ((source.phase, LEGACY_DEFAULT_AGENT),)
+
+
+def _failed_closed_entry(
+    phase: str,
+    agent: str,
+    *,
+    reason: str,
+    consecutive_limit: int,
+    total_limit: int,
+) -> dict[str, object]:
+    """Return a ledger entry that denies further attempts for an agent."""
+    return {
+        "phase": phase,
+        "agent": agent,
+        "consecutive_unproductive": consecutive_limit,
+        "total_unproductive": total_limit,
+        "cooldown_until_ms": None,
+        "cooldown_reason": None,
+        "cooldown_count": 0,
+        "is_spent": True,
+        "spent_reason": reason,
+    }
+
+
+def _entry_strictness(
+    entry: Mapping[str, object],
+    *,
+    consecutive_limit: int,
+    total_limit: int,
+) -> tuple[int, int, int, int]:
+    """Return a sort key for a ledger entry where a smaller tuple is stricter.
+
+    Strictness is measured by how many further unproductive attempts the
+    agent can still absorb before it is demoted: a spent entry is strictest,
+    then the entry with the fewest remaining attempts, then the entry that
+    recorded the most failures.
+    """
+    spent = 0 if bool(entry.get("is_spent")) else 1
+    consecutive = _counter_value(entry.get("consecutive_unproductive"))
+    total = _counter_value(entry.get("total_unproductive"))
+    remaining = max(0, min(consecutive_limit - consecutive, total_limit - total))
+    return (spent, remaining, -total, -consecutive)
+
+
+def _snapshot_limits(
+    snapshot: Mapping[str, object] | None,
+) -> tuple[int, int, float, float, float]:
+    """Return the ledger limits of a snapshot, falling back to the defaults."""
+    if snapshot is None:
+        return (
+            _DEFAULT_CONSECUTIVE_LIMIT,
+            _DEFAULT_TOTAL_LIMIT,
+            _DEFAULT_BASE_COOLDOWN_SECONDS,
+            _DEFAULT_MAX_COOLDOWN_SECONDS,
+            _DEFAULT_BACKOFF_FACTOR,
+        )
+    consecutive = _counter_value(snapshot.get("consecutive_limit")) or _DEFAULT_CONSECUTIVE_LIMIT
+    total = _counter_value(snapshot.get("total_limit")) or _DEFAULT_TOTAL_LIMIT
+    base = _float_value(snapshot.get("base_cooldown_seconds"), _DEFAULT_BASE_COOLDOWN_SECONDS)
+    maximum = _float_value(snapshot.get("max_cooldown_seconds"), _DEFAULT_MAX_COOLDOWN_SECONDS)
+    backoff = _float_value(snapshot.get("backoff_factor"), _DEFAULT_BACKOFF_FACTOR)
+    return (consecutive, total, base, maximum, backoff)
+
+
+def _translate_legacy_source(
+    source: _LegacyGuardSource,
+    phase: str,
+    agent: str,
+    *,
+    consecutive_limit: int,
+    total_limit: int,
+) -> dict[str, object]:
+    """Translate one legacy payload into a ledger entry for a single identity."""
+    if source.fail_closed_reason is not None:
+        return _failed_closed_entry(
+            phase,
+            agent,
+            reason=source.fail_closed_reason,
+            consecutive_limit=consecutive_limit,
+            total_limit=total_limit,
+        )
+    payload = _readable_legacy_payload(source.payload)
+    if payload is None:
+        return _failed_closed_entry(
+            phase,
+            agent,
+            reason=_LEGACY_MALFORMED_REASON,
+            consecutive_limit=consecutive_limit,
+            total_limit=total_limit,
+        )
+    legacy_cap = _counter_value(payload.get("max_identical"))
+    effective_limit = consecutive_limit
+    if legacy_cap > 0:
+        effective_limit = min(consecutive_limit, legacy_cap)
+    return AgentFailureLedger.translate_legacy_entry(
+        payload,
+        phase,
+        agent,
+        consecutive_limit=effective_limit,
+        total_limit=total_limit,
+    )
+
+
+def migrate_legacy_guard_history(
+    sources: Sequence[_LegacyGuardSource],
+    *,
+    existing_snapshot: Mapping[str, object] | None = None,
+) -> dict[str, object] | None:
+    """Migrate legacy per-chain failure history into a durable ledger snapshot.
+
+    Each source is migrated independently into its own entry keyed
+    ``"{phase}:{agent}"``. When a stored ledger snapshot is present, the
+    stricter of the stored entry and the migrated entry is kept for every
+    identity, so translation can never lower demotion protection.
+
+    Unreadable legacy data fails closed: the affected agent is recorded as
+    spent with an explicit reason instead of being granted a fresh attempt
+    budget.
+
+    Returns:
+        The merged snapshot, or ``None`` when there is nothing to migrate.
+    """
+    if not sources:
+        return None
+    consecutive_limit, total_limit, base, maximum, backoff = _snapshot_limits(existing_snapshot)
+    entries: dict[str, dict[str, object]] = {}
+    if existing_snapshot is not None:
+        raw_entries = existing_snapshot.get("entries")
+        if isinstance(raw_entries, Mapping):
+            for key, item in raw_entries.items():
+                if isinstance(item, Mapping):
+                    entries[str(key)] = dict(item)
+    for source in sources:
+        for phase, agent in _legacy_identities(source):
+            migrated = _translate_legacy_source(
+                source,
+                phase,
+                agent,
+                consecutive_limit=consecutive_limit,
+                total_limit=total_limit,
+            )
+            key = f"{phase}:{agent}"
+            stored = entries.get(key)
+            if stored is None:
+                entries[key] = migrated
+                continue
+            if _entry_strictness(
+                migrated,
+                consecutive_limit=consecutive_limit,
+                total_limit=total_limit,
+            ) < _entry_strictness(
+                stored,
+                consecutive_limit=consecutive_limit,
+                total_limit=total_limit,
+            ):
+                entries[key] = migrated
+    return {
+        "consecutive_limit": consecutive_limit,
+        "total_limit": total_limit,
+        "base_cooldown_seconds": base,
+        "max_cooldown_seconds": maximum,
+        "backoff_factor": backoff,
+        "entries": entries,
+    }
+
+
 __all__ = [
+    "LEDGER_SNAPSHOT_MALFORMED_REASON",
+    "LEGACY_DEFAULT_AGENT",
+    "LEGACY_IDENTITY_UNATTRIBUTABLE_REASON",
     "AgentFailureLedger",
     "AgentStatus",
     "AttemptFact",
@@ -518,4 +819,6 @@ __all__ = [
     "Cooldown",
     "Eligible",
     "Spent",
+    "_LegacyGuardSource",
+    "migrate_legacy_guard_history",
 ]

@@ -4,8 +4,25 @@ PRODUCT_CRITERIA.md §3 and §6 public seam:
 - Scripted fake agent through public interfaces.
 - MemoryWorkspace / tmp_path.
 - FakeClock.
-- Pipeline dependencies via make_test_pipeline_deps and make_resolver_controller.
+- Pipeline dependencies via make_test_pipeline_deps and a RecoveryController
+  that owns the production workspace-change probe.
 - Assert ONLY observable behavior: invocation sequence, run end state, and logs.
+
+The workspace-change fact is NEVER written by the harness. The scripted agent
+only performs the file writes a real agent would perform; Ralph observes the
+change itself through the production observation seam:
+
+- :class:`ralph.workspace.probe.DefaultWorkspaceChangeProbe` is injected into
+  the recovery controller, so the production phase handler asks the probe
+  (``ralph/phases/execution.py:_apply_workspace_changes``) whether the
+  workspace changed during the attempt, and
+- the scripted attempt calls ``probe.observe_before(...)`` -- the same
+  production protocol call the real ``ralph.agents.invoke`` boundary makes --
+  so the baseline covers exactly the attempt.
+
+The observation therefore comes from a real diff of the real temporary
+workspace; nothing in this module mutates an enum singleton or stamps an
+attribute onto an exception to carry the fact.
 """
 
 from __future__ import annotations
@@ -40,30 +57,40 @@ from ralph.policy.models import (
     PolicyBundle,
     RecoveryPolicy,
 )
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.failure_category import FailureCategory
 from ralph.recovery.testing import FakeConnectivityMonitor
 from ralph.workspace.fs import FsWorkspace
+from ralph.workspace.probe import DefaultWorkspaceChangeProbe
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
-from tests._resolver_controller import make_resolver_controller
 
 if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.pipeline.factory import PipelineDeps
-    from ralph.recovery.controller import RecoveryController
+
+#: The phase every scenario drives; the scripted agent runs in it.
+SCENARIO_PHASE = "development"
 
 
 @dataclass(frozen=True)
 class AgentAttemptResult:
-    """Configured outcome for a single agent invocation in a scenario."""
+    """Configured outcome for a single agent invocation in a scenario.
+
+    ``modify_workspace`` describes what the SCRIPTED AGENT does (it writes a
+    file), never what Ralph observed. Whether the attempt counts as a
+    workspace change is decided by the production probe over the real
+    workspace.
+    """
 
     produce_artifact: bool = False
-    workspace_changed: bool = False
+    modify_workspace: bool = False
     exit_code: int = 0
     failure_category: FailureCategory | None = None
     raise_error: Exception | None = None
     custom_action: Callable[[FsWorkspace], None] | None = None
     artifacts: dict[str, str] | None = None
+    output_lines: tuple[str, ...] = ()
 
 
 ScriptedAgentFn = Callable[[str, str, int, FsWorkspace], AgentAttemptResult]
@@ -81,6 +108,8 @@ class ScenarioOutcome:
     clock: FakeClock
     workspace_root: Path
     cooldown_durations: dict[str, list[float]] = field(default_factory=dict)
+    agent_outputs: list[str] = field(default_factory=list)
+    """Every line the scripted agent actually emitted, in emission order."""
 
 
 class _ScenarioRegistry:
@@ -151,15 +180,6 @@ def _build_policy_bundle(agents: list[str] | tuple[str, ...]) -> PolicyBundle:
     return PolicyBundle(agents=agents_policy, pipeline=pipeline_policy, artifacts=artifacts_policy)
 
 
-def _sync_failure_event_workspace_changed(changed: bool) -> None:
-    try:
-        from ralph.pipeline.events import PipelineEvent
-
-        object.__setattr__(PipelineEvent.AGENT_FAILURE, "workspace_changed", changed)
-    except Exception:
-        pass
-
-
 def _apply_attempt_side_effects(
     result: AgentAttemptResult,
     agent: str,
@@ -179,13 +199,11 @@ def _apply_attempt_side_effects(
             else:
                 workspace.write(f".agent/artifacts/{name}.md", content)
 
-    if result.workspace_changed:
+    if result.modify_workspace:
         workspace.write(
             f"workspace_changed_{agent}_{attempt_num}.txt",
             f"Modification by {agent} at attempt {attempt_num}\n",
         )
-    _sync_failure_event_workspace_changed(result.workspace_changed)
-
     if result.produce_artifact:
         workspace.write(
             ".agent/artifacts/development_result.md",
@@ -289,7 +307,14 @@ def run_scenario(
     advance_clock_on_wait: bool = True,
     on_cooldown_advance: Callable[[FakeClock, float], None] | None = None,
 ) -> ScenarioOutcome:
-    """Execute a scenario run through the public pipeline seam with fake clock and scripted agent."""
+    """Execute a scenario run through the public pipeline seam with fake clock and scripted agent.
+
+    ``controller`` may be supplied to resume a run with a restored ledger. A
+    supplied controller owns its own workspace-change probe (or none at all);
+    the baseline the harness records for the legacy snapshot path is always
+    refreshed before every attempt, so no attempt can inherit the previous
+    attempt's observation.
+    """
     effective_clock = clock if clock is not None else FakeClock(start=0.0)
     workspace = FsWorkspace(tmp_path)
     workspace_scope = WorkspaceScope(tmp_path)
@@ -307,8 +332,22 @@ def run_scenario(
     bundle = _build_policy_bundle(agents)
     runner_module.register_role_handlers(bundle.pipeline)
 
+    # The production workspace-change probe. The recovery controller hands it to
+    # the phase handler, which asks it whether the workspace changed during the
+    # attempt; the scripted attempt calls ``observe_before`` through the same
+    # protocol the real invoke boundary uses. The fact is therefore a real
+    # diff of the real temporary workspace, never a value the harness writes.
+    probe = DefaultWorkspaceChangeProbe()
+
     effective_controller = (
-        controller if controller is not None else make_resolver_controller(effective_clock)
+        controller
+        if controller is not None
+        else RecoveryController(
+            options=RecoveryControllerOptions(
+                clock=effective_clock,
+                workspace_probe=probe,
+            )
+        )
     )
 
     from ralph.phases.required_artifacts import resolve_phase_required_artifact
@@ -325,6 +364,7 @@ def run_scenario(
     agent_attempts: dict[str, int] = {}
     cooldown_durations: dict[str, list[float]] = {}
     captured_logs: list[str] = []
+    agent_outputs: list[str] = []
 
     def log_sink(msg: object) -> None:
         captured_logs.append(str(msg))
@@ -333,6 +373,26 @@ def run_scenario(
         if callable(script):
             return script(agent, phase, attempt_num, workspace)
         return script.get((agent, attempt_num), AgentAttemptResult())
+
+    def iter_attempt_output(
+        agent: str,
+        attempt_num: int,
+        result: AgentAttemptResult,
+    ) -> Iterator[str]:
+        """Emit the attempt's output, then apply its side effects.
+
+        The observation baseline is taken first, so the probe window covers
+        exactly this attempt. The output lines are yielded BEFORE the attempt
+        fails, so the prose a scripted agent "said" really reached the
+        pipeline.
+        """
+        probe.observe_before(SCENARIO_PHASE, workspace)
+        record_workspace_snapshot(workspace, SCENARIO_PHASE)
+        lines = result.output_lines or (f"Output from {agent} attempt {attempt_num}",)
+        for line in lines:
+            agent_outputs.append(line)
+            yield line
+        _apply_attempt_side_effects(result, agent, attempt_num, workspace)
 
     def fake_invoke_agent(
         agent_config: AgentConfig,
@@ -347,10 +407,8 @@ def run_scenario(
         attempt_num = agent_attempts.get(agent, 0) + 1
         agent_attempts[agent] = attempt_num
 
-        result = resolve_attempt_result(agent, "development", attempt_num)
-        record_workspace_snapshot(workspace, "development")
-        _apply_attempt_side_effects(result, agent, attempt_num, workspace)
-        return iter([f"Output from {agent} attempt {attempt_num}\n"])
+        result = resolve_attempt_result(agent, SCENARIO_PHASE, attempt_num)
+        return iter_attempt_output(agent, attempt_num, result)
 
     state = initial_state or PipelineState(
         phase="development",
@@ -418,6 +476,7 @@ def run_scenario(
             clock=effective_clock,
             workspace_root=tmp_path,
             cooldown_durations=cooldown_durations,
+            agent_outputs=agent_outputs,
         )
     finally:
         logger.remove(sink_id)

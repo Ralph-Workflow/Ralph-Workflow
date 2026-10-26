@@ -82,7 +82,6 @@ class ResolutionSession:
     #: unanswered supervision relay. That is Ralph's own plumbing and the
     #: recovery layer calls it retryable, so it is scoped to the stop it
     #: happened on rather than killing the agent for the whole rebase.
-    stop_dead_surfaces: tuple[str, ...] = ()
     #: Paths of this stop that no resolver can repair. The rest are still
     #: resolved; these are escalated afterwards, by name.
     out_of_reach_paths: tuple[str, ...] = ()
@@ -147,7 +146,6 @@ def begin_resolution_stop(
 
     if not is_strategy_rotation:
         session.chain_cursor = 0
-        session.stop_dead_surfaces = ()
         session.rounds_spent = 0
         session.last_failure_cause = ResolutionFailureCause.NONE
         state = session.recovery_state

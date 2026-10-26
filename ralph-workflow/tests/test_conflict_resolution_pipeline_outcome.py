@@ -170,19 +170,16 @@ def test_strategy_rotation_preserves_spent_budget_and_candidate_state() -> None:
     session = ResolutionSession()
     session.rounds_spent = 3
     session.chain_cursor = 1
-    session.stop_dead_surfaces = ("claude",)
     session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
 
     begin_resolution_stop(session, is_strategy_rotation=True)
     assert session.rounds_spent == 3
     assert session.chain_cursor == 1
-    assert "claude" in session.stop_dead_surfaces
     assert session.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
 
     begin_resolution_stop(session, is_strategy_rotation=False)
     assert session.rounds_spent == 0
     assert session.chain_cursor == 0
-    assert session.stop_dead_surfaces == ()
     assert session.last_failure_cause == ResolutionFailureCause.NONE
 
 

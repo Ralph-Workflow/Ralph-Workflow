@@ -1,22 +1,17 @@
-"""Single-owner guard audit for agent failure and retry tracking.
-
-This audit enforces the single-owner architectural invariant:
-Exactly one decision owner (:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`)
-owns the state and decision logic for whether an agent is failing, unproductive,
-or broken, and whether to retry or stop using it. Recording call sites (such as
-the controller, reducer, and resolver_health) are clients that feed attempt facts
-into the ledger rather than deciding agent failure independently.
-
-Specifically, this audit validates:
-
-1. Production code: No module under ``ralph/recovery/`` or ``ralph/pipeline/``
-   (except ``ralph/recovery/agent_failure_ledger.py``) declares streak/counter
-   state or logic used for agent stop/retry decisions (such as duplicate retry
-   trackers, retry progress guards, or in-session retry counters).
-
-2. Test code: No test under ``tests/`` accesses private attributes or internal
-   counters of ``AgentFailureLedger`` (enforcing black-box testability via the
-   public seam) or imports deprecated retry tracker classes.
+"""
+Single-owner guard audit for agent failure and retry tracking. This audit enforces the single-
+owner architectural invariant: Exactly one decision owner
+(:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`) owns the state and decision
+logic for whether an agent is failing, unproductive, or broken, and whether to retry or stop
+using it. Recording call sites (such as the controller, reducer, and resolver_health) are
+clients that feed attempt facts into the ledger rather than deciding agent failure
+independently. Specifically, this audit validates: 1. Production code: No module under
+``ralph/recovery/`` or ``ralph/pipeline/`` (except ``ralph/recovery/agent_failure_ledger.py``)
+declares streak/counter state or logic used for agent stop/retry decisions (such as duplicate
+retry trackers, retry progress guards, or in-session retry counters). 2. Test code: No test
+under ``tests/`` accesses private attributes or internal counters of ``AgentFailureLedger``
+(enforcing black-box testability via the public seam) or imports deprecated retry tracker
+classes.
 """
 
 from __future__ import annotations
@@ -41,24 +36,19 @@ class SingleOwnerViolation:
         return f"{self.path}:{self.line}: [{self.rule}] {self.detail}"
 
 
-# Temporary production allowlist during single-owner consolidation.
-# U4 removed the deleted trackers, controller, options, and run_loop.
-# The remaining error modules and __init__ re-export remain until U5 removes the tests.
+# Temporary production allowlist during single-owner consolidation (U4 removed the deleted trackers, controller, options and run_loop; the remaining error modules and __init__ re-export stay until U5 removes the tests).
 TEMPORARY_PRODUCTION_ALLOWLIST: frozenset[str] = frozenset()
 
 TEMPORARY_TEST_ALLOWLIST: frozenset[str] = frozenset()
 
-# Transitional allowlist for surviving competing shapes in conflict resolution
-# until future work deletes or refactors them into AgentFailureLedger.
-# Note: all test file entries and deleted production modules (_driver_rounds.py)
-# have been consolidated out; only surviving production references remain.
+# Transitional allowlist for surviving competing shapes in conflict resolution until future
+# work refactors them into AgentFailureLedger; only surviving production references remain.
 TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
-    # session.py: dead_tool_surfaces and stop_dead_surfaces track candidate tool-surface
-    # fault state across rebase stops; RALPH_FAULT_ESCALATION_HITS is a diagnostic constant.
+    # session.py: dead_tool_surfaces tracks candidate tool-surface fault state across
+    # rebase stops; RALPH_FAULT_ESCALATION_HITS is a diagnostic constant.
     "ralph/pipeline/conflict_resolution/session.py": frozenset(
         {
             "dead_tool_surfaces",
-            "stop_dead_surfaces",
             "RALPH_FAULT_ESCALATION_HITS",
         }
     ),
@@ -67,31 +57,6 @@ TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
         {
             "dead_tool_surfaces",
         }
-    ),
-    "tests/pipeline/test_conflict_resolution_ledger.py": frozenset(
-        {"stop_dead_surfaces", "dead_tool_surfaces"}
-    ),
-    "tests/test_conflict_resolution_attempt_attribution.py": frozenset(
-        {"stop_dead_surfaces", "dead_tool_surfaces"}
-    ),
-    "tests/test_conflict_resolution_futile_loop.py": frozenset(
-        {"stop_dead_surfaces", "dead_tool_surfaces"}
-    ),
-    "tests/test_conflict_resolution_phase_parity.py": frozenset(
-        {"stop_dead_surfaces", "dead_tool_surfaces"}
-    ),
-    "tests/test_conflict_resolution_pipeline.py": frozenset(
-        {"stop_dead_surfaces", "dead_tool_surfaces"}
-    ),
-    # wt-18 F3 split: the outcome/strategy-rotation tests (and their
-    # ``stop_dead_surfaces`` session-fake accesses) moved here verbatim
-    # from test_conflict_resolution_pipeline.py; the transitional
-    # allowance follows the moved code unchanged.
-    "tests/test_conflict_resolution_pipeline_outcome.py": frozenset(
-        {"stop_dead_surfaces", "dead_tool_surfaces"}
-    ),
-    "tests/test_conflict_resolution_relay_failure.py": frozenset(
-        {"stop_dead_surfaces", "dead_tool_surfaces"}
     ),
 }
 

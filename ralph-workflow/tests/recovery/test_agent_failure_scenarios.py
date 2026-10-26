@@ -52,15 +52,16 @@ def test_scenario_1_reproduces_bug_fallback_after_unproductive_streak(tmp_path: 
 def test_scenario_2_changes_files_never_finishes_demoted_at_total_limit(tmp_path: Path) -> None:
     """Scenario 2: Changes files, never finishes.
 
-    A modifies workspace files on each attempt (workspace_changed=True) but
-    never produces the required artifact. Consecutive count resets, but total
-    limit still demotes A after 9 attempts. B then runs and succeeds.
+    A modifies workspace files on each attempt (the scripted agent really
+    writes them, and Ralph observes the change itself) but never produces the
+    required artifact. Consecutive count resets, but total limit still demotes
+    A after 9 attempts. B then runs and succeeds.
     """
 
     def script(agent: str, _phase: str, _attempt: int, _workspace: object) -> AgentAttemptResult:
         if agent == "agent_b":
             return AgentAttemptResult(produce_artifact=True)
-        return AgentAttemptResult(produce_artifact=False, workspace_changed=True)
+        return AgentAttemptResult(produce_artifact=False, modify_workspace=True)
 
     outcome = run_scenario(
         tmp_path,

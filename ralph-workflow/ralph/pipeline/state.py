@@ -26,6 +26,7 @@ dicts at deserialise time via the _migrate_legacy_state_fields model_validator.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import timedelta
 from typing import TYPE_CHECKING, Final, cast
 
@@ -54,45 +55,125 @@ _UNSET_PHASE: Final[str] = "__unset__"
 _DEFAULT_RECOVERY_CYCLE_CAP: Final[int] = 200
 
 
+def _legacy_chain_agents(chain: dict[str, object]) -> tuple[str, ...]:
+    """Return the agent names declared by a legacy phase-chain entry."""
+    raw_agents = chain.get("agents")
+    if not isinstance(raw_agents, list | tuple):
+        return ()
+    return tuple(agent for agent in raw_agents if isinstance(agent, str) and agent)
+
+
+def _legacy_chain_current_agent(
+    chain: dict[str, object],
+    agents: tuple[str, ...],
+) -> str | None:
+    """Return the agent a legacy phase chain was running, when recoverable."""
+    raw_index = chain.get("current_index", 0)
+    if isinstance(raw_index, bool) or not isinstance(raw_index, int):
+        return None
+    if raw_index < 0 or raw_index >= len(agents):
+        return None
+    return agents[raw_index]
+
+
 def _migrate_legacy_guard_into_ledger(d: dict[str, object]) -> None:
-    """Migrate legacy progress_guard snapshots into ledger_snapshot."""
+    """Migrate legacy per-chain failure history into the durable ledger snapshot.
+
+    Legacy checkpoints stored one ``progress_guard`` payload per phase chain,
+    plus a top-level copy describing the active phase. Every payload held the
+    failure history of exactly ONE agent, so each chain is migrated
+    independently into its own ledger entry keyed ``"{phase}:{agent}"``. The
+    identity comes from the chain itself: the chain key is the phase and the
+    chain's current agent is the agent the history belongs to.
+
+    Precedence: when a stored ledger snapshot already exists, the stricter
+    (more demoted) of the stored entry and the migrated entry is kept for
+    every identity, so translation never lowers demotion protection.
+
+    Fail closed: legacy payloads that cannot be READ (not a mapping, an
+    unusable value) are recorded as spent for the affected identity instead of
+    being dropped or reset, so an unreadable checkpoint never hands back a
+    fresh attempt budget. When a chain declares no agent at all, the history
+    belongs to no recoverable identity and is likewise recorded as spent for
+    the phase's legacy default agent.
+    """
+    from ralph.recovery.agent_failure_ledger import (
+        LEDGER_SNAPSHOT_MALFORMED_REASON,
+        LEGACY_DEFAULT_AGENT,
+        LEGACY_IDENTITY_UNATTRIBUTABLE_REASON,
+        _LegacyGuardSource,
+        migrate_legacy_guard_history,
+    )
+
     raw_guard = d.pop("progress_guard", None)
     raw_chains = d.get("phase_chains")
-    if isinstance(raw_chains, dict):
-        for chain_val in raw_chains.values():
-            if isinstance(chain_val, dict):
-                chain_val.pop("progress_guard", None)
-    raw_intent = d.get("agent_retry_intent")
-    if isinstance(raw_intent, dict):
-        raw_intent.pop("progress_guard", None)
-    if isinstance(raw_guard, dict) and not d.get("ledger_snapshot"):
-        phase_val = str(d.get("phase") or "development")
-        agent_val = "claude"
-        if isinstance(raw_chains, dict):
-            chain_entry = raw_chains.get(phase_val)
-            if isinstance(chain_entry, dict):
-                agents_list = chain_entry.get("agents")
-                idx = chain_entry.get("current_index", 0)
-                if (
-                    isinstance(agents_list, (list, tuple))
-                    and isinstance(idx, int)
-                    and 0 <= idx < len(agents_list)
-                ):
-                    agent_val = str(agents_list[idx])
-        from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+    phase = str(d.get("phase") or "development")
 
-        d["ledger_snapshot"] = {
-            "consecutive_limit": 3,
-            "total_limit": 9,
-            "base_cooldown_seconds": 60.0,
-            "max_cooldown_seconds": 3600.0,
-            "backoff_factor": 2.0,
-            "entries": {
-                f"{phase_val}:{agent_val}": AgentFailureLedger.translate_legacy_entry(
-                    raw_guard, phase_val, agent_val
+    sources: list[_LegacyGuardSource] = []
+    chain_agents: dict[str, str | None] = {}
+    if isinstance(raw_chains, dict):
+        for phase_key, chain_val in raw_chains.items():
+            if not isinstance(chain_val, dict):
+                continue
+            chain_guard = chain_val.pop("progress_guard", None)
+            agents = _legacy_chain_agents(chain_val)
+            current_agent = _legacy_chain_current_agent(chain_val, agents)
+            chain_agents[str(phase_key)] = current_agent
+            if chain_guard is None:
+                continue
+            sources.append(
+                _LegacyGuardSource(
+                    payload=chain_guard,
+                    phase=str(phase_key),
+                    agent=current_agent,
+                    candidate_agents=agents,
+                    fail_closed_reason=(None if agents else LEGACY_IDENTITY_UNATTRIBUTABLE_REASON),
                 )
-            },
-        }
+            )
+
+    raw_intent = d.get("agent_retry_intent")
+    intent_guard: object = None
+    intent_agent: str | None = None
+    if isinstance(raw_intent, dict):
+        intent_guard = raw_intent.pop("progress_guard", None)
+        raw_failed_agent = raw_intent.get("failed_agent_name")
+        if isinstance(raw_failed_agent, str) and raw_failed_agent:
+            intent_agent = raw_failed_agent
+
+    active_agent = chain_agents.get(phase) or intent_agent or LEGACY_DEFAULT_AGENT
+    if raw_guard is not None:
+        sources.append(_LegacyGuardSource(payload=raw_guard, phase=phase, agent=active_agent))
+    if intent_guard is not None:
+        sources.append(
+            _LegacyGuardSource(
+                payload=intent_guard,
+                phase=phase,
+                agent=intent_agent or active_agent,
+            )
+        )
+
+    raw_snapshot = d.get("ledger_snapshot")
+    stored_snapshot: Mapping[str, object] | None = None
+    snapshot_unreadable = raw_snapshot is not None
+    if isinstance(raw_snapshot, Mapping):
+        if "entries" in raw_snapshot and not isinstance(raw_snapshot["entries"], Mapping):
+            snapshot_unreadable = True
+        else:
+            stored_snapshot = raw_snapshot
+            snapshot_unreadable = False
+    if snapshot_unreadable:
+        sources.append(
+            _LegacyGuardSource(
+                payload=raw_snapshot,
+                phase=phase,
+                agent=active_agent,
+                fail_closed_reason=LEDGER_SNAPSHOT_MALFORMED_REASON,
+            )
+        )
+
+    migrated = migrate_legacy_guard_history(sources, existing_snapshot=stored_snapshot)
+    if migrated is not None:
+        d["ledger_snapshot"] = migrated
 
 
 def _migrate_counter_field(

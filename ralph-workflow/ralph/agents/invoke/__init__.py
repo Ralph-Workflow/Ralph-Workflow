@@ -159,7 +159,7 @@ from ralph.mcp.transport.nanocoder import (
 )
 from ralph.mcp.transport.opencode import build_opencode_provider_config
 from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV
-from ralph.pipeline.events.pipeline_event import PipelineEvent
+from ralph.pipeline.events.agent_failure_event import AgentFailureEvent
 from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import DefaultLivenessProbe
 from ralph.process.manager import get_process_manager
@@ -410,56 +410,66 @@ def _observe_probe_before(
     return probe, probe_workspace, probe_phase
 
 
-def _record_probe_failure(
+def _capture_failure_observation(
     probe: WorkspaceChangeProbe | None,
     probe_workspace: Workspace | None,
     probe_phase: str,
+    opts: InvokeOptions,
     exc: BaseException,
-) -> None:
-    if probe is None or probe_workspace is None:
-        return
-    changed = probe.has_changed(probe_phase, probe_workspace)
-    if isinstance(exc, AgentInvocationError):
-        exc.workspace_changed = changed
-    else:
-        with contextlib.suppress(Exception):
-            object.__setattr__(exc, "workspace_changed", changed)
-    with contextlib.suppress(Exception):
-        object.__setattr__(PipelineEvent.AGENT_FAILURE, "workspace_changed", changed)
+) -> AgentFailureEvent:
+    """Capture the immutable observation of ONE failed attempt.
+
+    The observation is attempt-scoped by construction: it is built here, at
+    the invocation boundary where the workspace was actually measured, and
+    handed to the caller through the per-attempt sink. Nothing is written
+    to a module-level or enum-level attribute, so a later attempt can never
+    inherit this attempt's fact.
+
+    The workspace change is measured ONLY when the attempt has a phase
+    identity AND a probe: an attempt whose phase is unknown cannot be
+    attributed, so it is recorded without a measurement and the consumer
+    fails closed.
+    """
+    workspace_changed: bool | None = None
+    if probe is not None and probe_workspace is not None and probe_phase:
+        workspace_changed = bool(probe.has_changed(probe_phase, probe_workspace))
+    observation = AgentFailureEvent(
+        phase=probe_phase,
+        agent=opts.agent_name or "",
+        artifact_valid=False,
+        workspace_changed=workspace_changed,
+        reason=type(exc).__name__,
+    )
+    sink = opts.failure_observation_sink
+    if sink is not None:
+        sink(observation)
+    return observation
 
 
-def _dispatch_execution_and_observe(
+def _run_pty_execution(
     cmd: list[str],
     ctx: AgentRunCtx,
     opts: InvokeOptions,
     transport: AgentTransport,
     prompt_file: str,
-    requires_pty: bool,
 ) -> Iterator[str]:
-    probe, probe_workspace, probe_phase = _observe_probe_before(opts)
-    try:
-        if requires_pty:
-            if transport in {
-                AgentTransport.CLAUDE_INTERACTIVE,
-                AgentTransport.NANOCODER,
-            }:
-                yield from _run_shared_interactive_pty(cmd, ctx, opts, transport, prompt_file)
-            elif transport == AgentTransport.AGY:
-                run_id = (opts.extra_env or {}).get(str(MCP_RUN_ID_ENV)) or str(uuid4())
-                if opts.workspace_path is not None:
-                    _clear_session_completion_sentinel(opts.workspace_path, run_id)
-                yield from run_pty_and_read_lines(
-                    cmd,
-                    ctx,
-                    PtyExtras(expected_session_id=run_id),
-                )
-            else:
-                yield from run_pty_and_read_lines(cmd, ctx, PtyExtras())
-        else:
-            yield from run_subprocess_and_read_lines(cmd, ctx)
-    except BaseException as exc:
-        _record_probe_failure(probe, probe_workspace, probe_phase, exc)
-        raise
+    """Run the PTY-backed transports of one attempt."""
+    if transport in {
+        AgentTransport.CLAUDE_INTERACTIVE,
+        AgentTransport.NANOCODER,
+    }:
+        yield from _run_shared_interactive_pty(cmd, ctx, opts, transport, prompt_file)
+    elif transport == AgentTransport.AGY:
+        run_id = (opts.extra_env or {}).get(str(MCP_RUN_ID_ENV)) or str(uuid4())
+        if opts.workspace_path is not None:
+            _clear_session_completion_sentinel(opts.workspace_path, run_id)
+        yield from run_pty_and_read_lines(
+            cmd,
+            ctx,
+            PtyExtras(expected_session_id=run_id),
+        )
+    else:
+        yield from run_pty_and_read_lines(cmd, ctx, PtyExtras())
 
 
 def invoke_agent(
@@ -644,9 +654,15 @@ def invoke_agent(
         if support is not None and isinstance(support.spec, AgentSpec):
             requires_pty = requires_pty or support.spec.requires_pty
 
-        yield from _dispatch_execution_and_observe(
-            cmd, ctx, opts, transport, prompt_file, requires_pty
-        )
+        probe, probe_workspace, probe_phase = _observe_probe_before(opts)
+        try:
+            if requires_pty:
+                yield from _run_pty_execution(cmd, ctx, opts, transport, prompt_file)
+            else:
+                yield from run_subprocess_and_read_lines(cmd, ctx)
+        except BaseException as exc:
+            _capture_failure_observation(probe, probe_workspace, probe_phase, opts, exc)
+            raise
 
         _log_workspace_completion(monitor)
     finally:

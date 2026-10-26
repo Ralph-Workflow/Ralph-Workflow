@@ -65,6 +65,7 @@ from ralph.pipeline.cycle_timing import (
 )
 from ralph.pipeline.effects import Effect, SaveCheckpointEffect
 from ralph.pipeline.events import (
+    AgentFailureEvent,
     AnalysisDecisionEvent,
     CommitResidualEvent,
     Event,
@@ -75,6 +76,7 @@ from ralph.pipeline.events import (
     WorkerCompletedEvent,
     WorkerFailedEvent,
     WorkerStartedEvent,
+    observation_from_event,
 )
 from ralph.pipeline.handoffs import (
     commit_closes_a_cycle,
@@ -484,7 +486,7 @@ def _reduce_pure(
         )
     if reduced_event is not None:
         return reduced_event
-    if event == PipelineEvent.AGENT_FAILURE:
+    if event == PipelineEvent.AGENT_FAILURE or isinstance(event, AgentFailureEvent):
         recovered_agent_failure = _reduce_captured_agent_failure(
             state, pipeline_policy, recovery, routing_timing
         )
@@ -931,12 +933,15 @@ def _handle_agent_failure(
             else None
         )
         if current_agent is not None:
-            raw_event_ws: object = cast("object", getattr(event, "workspace_changed", False))
-            raw_failure_ws: object = cast(
-                "object", getattr(PipelineEvent.AGENT_FAILURE, "workspace_changed", False)
+            # The workspace-change fact is read ONLY from the attempt-scoped
+            # observation carried by this event. A bare
+            # ``PipelineEvent.AGENT_FAILURE`` carries none, so the attempt
+            # fails closed ("unchanged") instead of inheriting a stale fact
+            # from an earlier attempt.
+            observation = observation_from_event(event)
+            workspace_changed: bool = (
+                observation.resolved_workspace_changed() if observation is not None else False
             )
-            raw_changed: object = raw_event_ws if event is not None else raw_failure_ws
-            workspace_changed: bool = bool(raw_changed)
             demoted_reason = recovery.record_attempt_fact(
                 state.phase,
                 current_agent,

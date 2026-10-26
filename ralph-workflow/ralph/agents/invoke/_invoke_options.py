@@ -46,6 +46,7 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig
     from ralph.mcp.upstream.config import UpstreamMcpServer
     from ralph.phases.required_artifacts import RequiredArtifact
+    from ralph.pipeline.events.agent_failure_event import AgentFailureEvent
     from ralph.process.child_liveness import ChildLivenessRegistry
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
     from ralph.process.monitor import ProcessMonitor, SubagentPidSource
@@ -147,6 +148,15 @@ class InvokeOptions:
     workspace_probe: WorkspaceChangeProbe | None = None
     workspace: Workspace | None = None
     phase: str | None = None
+    # Name of the agent this invocation runs as. It is part of the
+    # attempt identity carried by the failure observation, so the ledger
+    # owner can attribute the attempt without inventing an identity.
+    agent_name: str | None = None
+    # Sink that receives the immutable, attempt-scoped observation of a
+    # failed attempt. The sink is installed by the caller for ONE attempt
+    # and is invoked at most once per failed attempt, so the observation
+    # can never leak into a later attempt.
+    failure_observation_sink: Callable[[AgentFailureEvent], None] | None = None
 
     model_flag: str | None = None
     session_id: str | None = None

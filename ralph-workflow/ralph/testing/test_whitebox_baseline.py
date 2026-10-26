@@ -786,7 +786,7 @@ tests/test_resolution_failure_cause_contract.py|0,2,0
 tests/test_resolve_retry_intent.py|0,7,0
 tests/test_restart_from_scratch_detector.py|0,3,1
 tests/test_resume_action_aware_prompt.py|0,1,0
-tests/test_retained_resolution_dispatch.py|8,0,2
+tests/test_retained_resolution_dispatch.py|7,0,2
 tests/test_retained_resolution_handoff.py|2,6,0
 tests/test_retry_budget_durability.py|0,1,0
 tests/test_retry_prompt_summary.py|0,1,0

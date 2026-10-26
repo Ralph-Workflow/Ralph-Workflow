@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import threading as _threading
 import time
 import uuid
@@ -68,7 +67,10 @@ from ralph.pipeline.agent_retry_intent import (
     cleared_agent_retry_intent,
 )
 from ralph.pipeline.commit_executor import clear_phase_output_artifacts
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import (
+    AgentFailureEvent,
+    PipelineEvent,
+)
 from ralph.pipeline.integration_resolution import (
     assert_non_resolution_dispatch_allowed,
     inspect_integration_resolution,
@@ -89,6 +91,7 @@ from ralph.recovery.retry_prompt import (
     build_validation_retry_footer,
 )
 from ralph.workspace import FsWorkspace
+from ralph.workspace.probe import DefaultWorkspaceChangeProbe, WorkspaceChangeProbe
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -107,6 +110,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PolicyBundle
     from ralph.recovery.controller import RecoveryController
+    from ralph.workspace.protocol import Workspace
     from ralph.workspace.scope import WorkspaceScope
 
     class _KwargsMaterializeMasterPromptFn(Protocol):
@@ -163,12 +167,12 @@ def _record_successful_attempt_session(
 
 @dataclass(frozen=True)
 class _AttemptResult:
-    event: PipelineEvent | None
+    event: PipelineEvent | AgentFailureEvent | None
     next_prompt_file: str
     next_session_id: str | None
 
 
-def _event_from_attempt_result(result: _AttemptResult) -> PipelineEvent:
+def _event_from_attempt_result(result: _AttemptResult) -> PipelineEvent | AgentFailureEvent:
     return result.event if result.event is not None else PipelineEvent.AGENT_FAILURE
 
 
@@ -194,7 +198,7 @@ def execute_agent_effect(
     raise_resumable_exit: bool = False,
     agent_invocation_error_sink: Callable[[Exception], object] | None = None,
     **opts: object,
-) -> PipelineEvent:
+) -> PipelineEvent | AgentFailureEvent:
     """Execute an agent-invocation effect end-to-end, including MCP server lifecycle.
 
     ``display_context`` is a required keyword so a call site cannot silently
@@ -335,6 +339,7 @@ def execute_agent_effect(
             ctx,
             pipeline_deps,
             bridge=bridge,
+            workspace_probe=_resolve_workspace_probe(opts),
             raw_output_sink=raw_output_sink,
             rendered_output_sink=rendered_output_sink,
             raw_line_sink=raw_line_sink,
@@ -369,6 +374,20 @@ def execute_agent_effect(
             duration_s=max(0.0, time.monotonic() - invocation_started),
             outcome=invocation_outcome,
         )
+
+
+def _resolve_workspace_probe(opts: dict[str, object]) -> WorkspaceChangeProbe:
+    """Return the probe that measures the workspace change of ONE attempt.
+
+    A caller-supplied probe wins. Otherwise a dedicated probe instance is
+    created for this invocation: it keeps its own per-phase baselines, so
+    measuring an attempt can never consume (or corrupt) the baseline the
+    phase-level handler took for the same phase.
+    """
+    supplied = opts.get("workspace_probe")
+    if isinstance(supplied, WorkspaceChangeProbe):
+        return supplied
+    return DefaultWorkspaceChangeProbe()
 
 
 def _report_agent_invocation_exception(exc: BaseException) -> None:
@@ -474,6 +493,75 @@ class _AttemptState:
     # invocation never issues a second automatic completion reprompt.
     completion_reprompt_used: bool = False
     attempts_started: int = 0
+    # Immutable observation of the MOST RECENT failed attempt. It is reset
+    # at the start of every attempt, so an attempt that produced no
+    # observation can never inherit the previous attempt's fact.
+    last_observation: AgentFailureEvent | None = None
+    # Whether a workspace baseline was taken for the CURRENT attempt. An
+    # attempt that never took one (a failure before the agent process was
+    # launched) has nothing to measure and therefore no observation.
+    attempt_observed: bool = False
+
+
+def _observation_sink(state: _AttemptState) -> Callable[[AgentFailureEvent], None]:
+    """Return the per-attempt sink that captures the failure observation."""
+
+    def _sink(observation: AgentFailureEvent) -> None:
+        state.last_observation = observation
+
+    return _sink
+
+
+def _observe_attempt_workspace(
+    ctx: _AgentInvocationCtx,
+    state: _AttemptState,
+    probe: WorkspaceChangeProbe | None,
+    workspace: Workspace | None,
+) -> None:
+    """Take the workspace baseline of the attempt that is about to run.
+
+    The baseline is taken per attempt, right before the agent process is
+    launched, so the measurement covers exactly that attempt. An attempt
+    that fails BEFORE the launch never takes one and therefore never
+    produces a workspace-change fact.
+    """
+    state.attempt_observed = False
+    if probe is None or workspace is None:
+        return
+    probe.observe_before(str(ctx.effect.phase), workspace)
+    state.attempt_observed = True
+
+
+def _attempt_failure_observation(
+    ctx: _AgentInvocationCtx,
+    state: _AttemptState,
+    probe: WorkspaceChangeProbe | None,
+    workspace: Workspace | None,
+) -> AgentFailureEvent | None:
+    """Return the attempt-scoped observation of the failed attempt.
+
+    The observation produced by the invocation boundary wins: it was
+    measured at the place where the workspace actually changed. When the
+    invocation boundary produced none (a caller that replaces the
+    invocation), the workspace is measured here, against the baseline this
+    attempt took. When neither is possible the attempt has NO observation
+    and the consumer fails closed -- it never inherits a previous
+    attempt's fact.
+    """
+    existing = state.last_observation
+    if existing is not None:
+        return existing
+    if not state.attempt_observed or probe is None or workspace is None:
+        return None
+    changed = bool(probe.has_changed(str(ctx.effect.phase), workspace))
+    observation = AgentFailureEvent(
+        phase=str(ctx.effect.phase),
+        agent=ctx.effect.agent_name,
+        artifact_valid=False,
+        workspace_changed=changed,
+    )
+    state.last_observation = observation
+    return observation
 
 
 def _safe_last_agent_session_id(state: PipelineState | None) -> str | None:
@@ -496,6 +584,7 @@ def _prepare_recovery_attempt(
     required_artifact: RequiredArtifact | None,
     *,
     extra_env: dict[str, str] | None,
+    workspace_probe: WorkspaceChangeProbe | None = None,
 ) -> InvokeOptions | None:
     elapsed = (
         max(0.0, time.monotonic() - ctx.invocation_started_monotonic)
@@ -524,6 +613,7 @@ def _prepare_recovery_attempt(
         required_artifact_resolved=True,
         extra_env=extra_env,
         elapsed_recovery_seconds=elapsed,
+        workspace_probe=workspace_probe,
     )
     if options.max_session_seconds == 0.0:
         _set_last_captured_retry_intent(cleared_agent_retry_intent())
@@ -540,6 +630,7 @@ def _handle_recovery_attempt_failure(
     effective_run_id: str,
     raw_output: deque[str],
     rendered_output: deque[str],
+    observation: AgentFailureEvent | None = None,
 ) -> _AttemptResult:
     recovery_plan = build_agent_recovery_plan(
         _build_recovery_input_for_attempt(
@@ -566,8 +657,7 @@ def _handle_recovery_attempt_failure(
             _set_last_captured_retry_intent(AgentRetryIntent())
         raise exc
 
-    raw_ws: object = cast("object", getattr(exc, "workspace_changed", False))
-    workspace_changed: bool = bool(raw_ws)
+    workspace_changed: bool = observation.resolved_workspace_changed() if observation else False
     recovery = ctx.recovery
     if recovery is not None:
         demote_msg = recovery.record_attempt_fact(
@@ -657,7 +747,6 @@ def _has_valid_terminal_artifact(
             load_phase_artifact,
             unwrap_phase_artifact_content,
         )
-        from ralph.workspace import FsWorkspace
 
         ws = FsWorkspace(ctx.workspace_scope.root)
         art = load_phase_artifact(
@@ -689,7 +778,8 @@ def _invoke_agent_with_recovery(
     on_retry_failure: Callable[[list[str]], object] | None = None,
     raise_resumable_exit: bool = False,
     agent_invocation_error_sink: Callable[[Exception], object] | None = None,
-) -> PipelineEvent:
+    workspace_probe: WorkspaceChangeProbe | None = None,
+) -> PipelineEvent | AgentFailureEvent:
     raw_fresh_bridge: object = getattr(_retry_intent_local, "fresh_bridge_requested", False)
     if raw_fresh_bridge is True:
         bridge = None
@@ -706,6 +796,17 @@ def _invoke_agent_with_recovery(
         effective_run_id = cast(
             "str", getattr(bridge, "run_id", effective_run_id)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    # The attempt state is created BEFORE the guarded block so the
+    # failure handlers below always have a bound ``state`` to read the
+    # attempt-scoped observation from.
+    state = _AttemptState(
+        prompt_file=ctx.effect.prompt_file,
+        resume_session_id=session_id or _initial_resume_session_id(ctx),
+        last_agent_session_id=_safe_last_agent_session_id(ctx.state),
+    )
+    # The workspace the attempt is measured against. It is created once per
+    # invocation; the probe baseline is taken per attempt.
+    attempt_workspace: Workspace | None = FsWorkspace(ctx.workspace_scope.root)
     try:
         master_prompt_file = _materialize_master_prompt(
             ctx,
@@ -726,11 +827,6 @@ def _invoke_agent_with_recovery(
             if rendered_output_sink is not None
             else deque(maxlen=_AGENT_RENDERED_OUTPUT_TAIL_LINES)
         )
-        state = _AttemptState(
-            prompt_file=ctx.effect.prompt_file,
-            resume_session_id=session_id or _initial_resume_session_id(ctx),
-            last_agent_session_id=_safe_last_agent_session_id(ctx.state),
-        )
 
         terminal_mcp_error = False
 
@@ -748,13 +844,24 @@ def _invoke_agent_with_recovery(
                 effective_run_id,
                 resolved_required_artifact,
                 extra_env=extra_env,
+                workspace_probe=workspace_probe,
             )
             if options is None:
                 return _AttemptResult(PipelineEvent.AGENT_FAILURE, state.prompt_file, session_id)
+            # Reset the attempt-scoped observation BEFORE the attempt runs so
+            # a later attempt can never inherit this attempt's fact, and
+            # install the per-attempt sink that captures it.
+            state.last_observation = None
+            options = replace(options, failure_observation_sink=_observation_sink(state))
             try:
                 _check_bridge_health(ctx, bridge_ctx, pipeline_deps)
                 if isinstance(bridge_ctx.bridge, RestartAwareMcpBridge):
                     bridge_ctx.bridge.reset_session_budget()
+                # The baseline of THIS attempt is taken after the health
+                # check and before the agent process starts, so a failure
+                # that happened before the launch produces no observation
+                # at all (and therefore no inherited fact).
+                _observe_attempt_workspace(ctx, state, workspace_probe, attempt_workspace)
                 _consume_attempt_output(
                     ctx,
                     bridge_ctx,
@@ -783,6 +890,9 @@ def _invoke_agent_with_recovery(
                     effective_run_id=effective_run_id,
                     raw_output=raw_output,
                     rendered_output=rendered_output,
+                    observation=_attempt_failure_observation(
+                        ctx, state, workspace_probe, attempt_workspace
+                    ),
                 )
 
         try:
@@ -807,6 +917,9 @@ def _invoke_agent_with_recovery(
             return _handle_terminal_agent_invocation_error(
                 exc,
                 agent_invocation_error_sink=agent_invocation_error_sink,
+                observation=_attempt_failure_observation(
+                    ctx, state, workspace_probe, attempt_workspace
+                ),
             )
     except (
         McpServerError,
@@ -840,6 +953,9 @@ def _invoke_agent_with_recovery(
             return _handle_terminal_agent_invocation_error(
                 exc,
                 agent_invocation_error_sink=agent_invocation_error_sink,
+                observation=_attempt_failure_observation(
+                    ctx, state, workspace_probe, attempt_workspace
+                ),
             )
         raise
     except Exception:
@@ -1074,6 +1190,7 @@ def _build_attempt_invoke_options(
     required_artifact_resolved: bool = False,
     extra_env: dict[str, str] | None = None,
     elapsed_recovery_seconds: float = 0.0,
+    workspace_probe: WorkspaceChangeProbe | None = None,
 ) -> InvokeOptions:
     required_artifact = required_artifact_override
     if (
@@ -1139,6 +1256,13 @@ def _build_attempt_invoke_options(
                 if ctx.invocation_options is not None
                 else None
             ),
+            # The invocation boundary is where the workspace change of ONE
+            # attempt is measured. Without a probe the attempt produces no
+            # observation at all, and the ledger owner is told "unchanged"
+            # (fail closed) instead of inheriting a stale fact.
+            workspace_probe=workspace_probe,
+            phase=str(ctx.effect.phase),
+            agent_name=ctx.effect.agent_name,
             # NOTE: Ralph does NOT pass opencode's ``--pure``. That flag runs
             # opencode without external plugins, and a plugin is often what
             # supplies the operator's model provider -- disabling it makes the
@@ -1596,7 +1720,10 @@ def _build_recovery_input_for_attempt(
         run_id=run_id,
         completion_reprompt_used=state.completion_reprompt_used,
         worker_namespace=ctx.worker_namespace,
-        clock=cast("Clock | None", getattr(ctx.deps.pipeline_deps, "clock", None)),
+        clock=cast(
+            "Clock | None",
+            getattr(ctx.deps.pipeline_deps, "clock", None),
+        ),  # cast-policy: seam: structural boundary (optional collaborator attribute)
     )
 
 
@@ -2030,7 +2157,16 @@ def _handle_terminal_agent_invocation_error(
     exc: Exception,
     *,
     agent_invocation_error_sink: Callable[[Exception], object] | None,
-) -> PipelineEvent:
+    observation: AgentFailureEvent | None = None,
+) -> PipelineEvent | AgentFailureEvent:
+    """Convert a terminal agent-invocation failure into a reducer event.
+
+    When the failed attempt produced an observation, the returned event
+    carries that immutable, attempt-scoped observation so the reducer can
+    hand the honest workspace-change fact to the ledger owner. Without an
+    observation the bare ``PipelineEvent.AGENT_FAILURE`` member is
+    returned and the reducer fails closed.
+    """
     _set_pi_context_exhaustion_intent(exc)
     if isinstance(exc, McpServerError):
         _set_last_captured_retry_intent(
@@ -2039,18 +2175,12 @@ def _handle_terminal_agent_invocation_error(
                 chain_cap_decision="reset",
             )
         )
-    raw_ws_changed: object = getattr(exc, "workspace_changed", None)
-    if raw_ws_changed is not None:
-        with contextlib.suppress(Exception):
-            object.__setattr__(
-                PipelineEvent.AGENT_FAILURE,
-                "workspace_changed",
-                bool(raw_ws_changed),
-            )
     origin = exc.failure_origin if isinstance(exc, AgentInvocationError) else "agent"
     issuer = exc.issuer if isinstance(exc, AgentInvocationError) else None
     logger.error("Agent invocation failed: origin={} issuer={} error={}", origin, issuer, exc)
     agent_invocation_error_sink and agent_invocation_error_sink(exc)
+    if observation is not None:
+        return replace(observation, reason=str(exc))
     return PipelineEvent.AGENT_FAILURE
 
 

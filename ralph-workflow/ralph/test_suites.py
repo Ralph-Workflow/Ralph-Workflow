@@ -382,6 +382,22 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_worktree_lease.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
+#: Registry entries that are pytest PLUGIN modules rather than selectable
+#: test modules.
+#:
+#: ``REQUIRED_AUTO_INTEGRATE_E2E_FILES`` serves two roles: it is the
+#: selection registry for the default lane AND the sanctioned exemption
+#: registry for the real-git audit
+#: (``ralph.testing.audit_test_policy._is_registered_real_git_file``).
+#: ``tests/conftest.py`` belongs to the second role only: it holds shared
+#: fixtures and performs a real ``Repo.init()`` at import time, but pytest's
+#: static discovery (``test_*.py`` / ``*_test.py``) can never select it.
+#: Requiring it in the selection made the default lane unsatisfiable (the
+#: fail-closed check could never pass), and handing it to pytest as an
+#: explicit argument would collect a plugin module as a test module. It is
+#: therefore excluded from every selection requirement and from every
+#: explicit pytest argument list, while it stays registered for the audit.
+NON_SELECTABLE_REQUIRED_REGISTRY_FILES: frozenset[str] = frozenset({"tests/conftest.py"})
 _SUBPROCESS_E2E_MARK_EXPRESSION = (
     "subprocess_e2e and not smoke and not live_agy and not verify_budget_real_time"
 )
@@ -598,7 +614,11 @@ def validate_exclusive_subprocess_e2e_selection(selected_files: Iterable[str]) -
 def validate_required_auto_integrate_selection(selected_files: Iterable[str]) -> None:
     """Fail when combined pytest selection omits a required E2E file."""
     selected = frozenset(selected_files)
-    missing = tuple(path for path in REQUIRED_AUTO_INTEGRATE_E2E_FILES if path not in selected)
+    missing = tuple(
+        path
+        for path in REQUIRED_AUTO_INTEGRATE_E2E_FILES
+        if path not in NON_SELECTABLE_REQUIRED_REGISTRY_FILES and path not in selected
+    )
     if missing:
         raise RuntimeError(
             "combined pytest selection omitted required auto-integrate E2E files: "
@@ -1462,7 +1482,16 @@ def _select_test_files(
             None,
         )
     if auto_integrate_e2e_only:
-        return (REQUIRED_AUTO_INTEGRATE_E2E_FILES, _VERIFICATION_MARK_EXPRESSION, (), None)
+        return (
+            tuple(
+                path
+                for path in REQUIRED_AUTO_INTEGRATE_E2E_FILES
+                if path not in NON_SELECTABLE_REQUIRED_REGISTRY_FILES
+            ),
+            _VERIFICATION_MARK_EXPRESSION,
+            (),
+            None,
+        )
     if subprocess_e2e_only:
         selected_files = discover_subprocess_e2e_files(cwd)
         validate_exclusive_subprocess_e2e_selection(selected_files)
