@@ -12,9 +12,9 @@ from loguru import logger
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
+from ralph.pipeline._integration_diagnostic import _bump_attempt
 from ralph.pipeline._integration_diagnostic_handoff import observe_workspace_change
 from ralph.pipeline.auto_integrate_record import (
-    BUMP_DIAGNOSTIC_ATTEMPT,
     RESUME_REPAIR,
     IntegrationRecord,
     write_record,
@@ -179,10 +179,7 @@ def _repair_owned_merge(
             # shared ledger's decision, not this counter's.
             write_record(
                 root,
-                retained.with_transition(
-                    BUMP_DIAGNOSTIC_ATTEMPT,
-                    repair_last_error=f"source repair refused: {exc}"[:8192],
-                ),
+                _bump_attempt(retained, f"source repair refused: {exc}"[:8192]),
                 backend=backend,
             )
         return False
@@ -289,7 +286,7 @@ def handoff_pending_merge_repair(
         # eligibility or the integration's fate.
         write_record(
             root,
-            record.with_transition(BUMP_DIAGNOSTIC_ATTEMPT, repair_last_error=diagnostic),
+            _bump_attempt(record, diagnostic),
             backend=backend,
         )
         logger.warning("Pending {} repair handed to '{}': {}", operation, agent, diagnostic)

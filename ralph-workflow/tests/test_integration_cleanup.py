@@ -80,6 +80,13 @@ class _FakeCleanupGit:
         self.fail_restore = False
         self.fail_reobserve = False
         self.forced_blob: str | None = None
+        # Mode-only and intent-to-add dirt modelling. A mode-only path (a
+        # chmod with clean content) renders as " M"; an intent-to-add path
+        # (``git add -N``: the index holds an empty-blob intent, the content
+        # lives only in the worktree) renders as " A". Both are
+        # tracked-shaped dirt, never "??" untracked.
+        self.mode_only: set[str] = set()
+        self.intent_to_add: dict[str, str] = {}
         # Operation-marker probe state: the kind the probe reports, or an
         # unreadable probe when ``operation_probe_unreadable``.
         self.operation_kind: InProgressKind = InProgressKind.NONE
@@ -100,8 +107,10 @@ class _FakeCleanupGit:
                 rows.append(f"M  {path}\0")
             elif staged != head:
                 rows.append(f"MM {path}\0")
-            elif worktree != head:
+            elif worktree != head or path in self.mode_only:
                 rows.append(f" M {path}\0")
+        for path in sorted(self.intent_to_add):
+            rows.append(f" A {path}\0")
         for path in sorted(self.untracked):
             rows.append(f"?? {path}\0")
         return "".join(rows)
@@ -116,7 +125,13 @@ class _FakeCleanupGit:
     def tracked_diff_hash(self, root: Path) -> str | None:
         if self.fail_reobserve:
             return None
-        return _diff_hash(self.worktree, self.committed)
+        base = _diff_hash(self.worktree, self.committed)
+        # ``git diff HEAD`` includes mode-only and intent-to-add rows, so
+        # the hash moves for shape-only dirt exactly the way git moves it.
+        shaped = sorted(self.mode_only | set(self.intent_to_add))
+        if not shaped:
+            return base
+        return hashlib.sha256(f"{base}|{shaped!r}".encode()).hexdigest()
 
     def head_sha(self, root: Path) -> str | None:
         return self.head
@@ -145,6 +160,11 @@ class _FakeCleanupGit:
             if path in self.committed:
                 self.worktree[path] = self.committed[path]
             self.staged.pop(path, None)
+            # ``git restore --worktree --staged --source=HEAD`` also resets
+            # the mode bit and drops an intent-to-add index entry (and the
+            # worktree file HEAD does not contain).
+            self.mode_only.discard(path)
+            self.intent_to_add.pop(path, None)
         return True
 
     def preserve_dirt_commit(
@@ -442,6 +462,102 @@ def test_tracked_residue_saved_restored_and_warned_once() -> None:
     assert "src/app.py" in warns[0]
     assert "refs/ralph-backup/fake-01" in warns[0]
     # Completed and nothing quarantined: progress state is retired.
+    assert git.state is None
+
+
+# ---------------------------------------------------------------------------
+# Per-shape blocking-residue rows. Portfolio admission: each row pins a
+# DISTINCT fault sensitivity of the same executor seam — staged dirt needs
+# an index reset (not just a worktree reset), a chmod-only or intent-to-add
+# shape must not be skipped by a content-only residue probe. Layer: this
+# fake-based executor suite (cheapest sufficient). Marginal cost: three
+# in-memory tests, each well under 1 s. Owner: integration cleanup.
+# Trigger: any change to detect_planning_residue / run_residue_cleanup /
+# the CleanupGitPort restore contract.
+# ---------------------------------------------------------------------------
+
+
+def test_staged_only_residue_is_saved_restored_and_index_reset() -> None:
+    """A staged-only residue needs the INDEX reset, not just the worktree.
+
+    The production restore is ``git restore --worktree --staged``: a defect
+    that only rewrote worktree content would leave the staged dirt in the
+    index and the tree would re-dirty on the next observation.
+    """
+    git = _FakeCleanupGit()
+    baseline = _baseline(git)
+    # Planning staged its edit: the index moved and the worktree matches
+    # it, so porcelain shows the staged row only.
+    git.staged["src/app.py"] = "planning staged this"
+    git.worktree["src/app.py"] = "planning staged this"
+    ledger = _FakeLedger()
+    warns: list[str] = []
+    outcome = _run(git, baseline, ledger, warns)
+    assert outcome.action is NextAction.SAVE_AND_RESTORE
+    assert outcome.backup_ref == "refs/ralph-backup/fake-01"
+    assert git.snapshot_count == 1
+    assert git.restore_calls == [("head-sha-1", ("src/app.py",))]
+    assert outcome.restored_paths == ("src/app.py",)
+    assert outcome.remaining_paths == ()
+    assert git.staged == {}, "the index entry is reset, not just the worktree"
+    assert git.worktree["src/app.py"] == "base"
+    assert len(warns) == 1
+    assert git.state is None
+
+
+def test_mode_only_residue_is_saved_and_restored() -> None:
+    """A chmod-only residue is blocking dirt: saved, restored, mode reset.
+
+    Porcelain shows `` M`` for a mode change with clean content, so a
+    residue probe that trusted content diffs alone would read the tree as
+    clean and skip the cleanup entirely.
+    """
+    git = _FakeCleanupGit()
+    git.committed["run.sh"] = "base"
+    git.worktree["run.sh"] = "base"
+    baseline = _baseline(git)
+    git.mode_only.add("run.sh")
+    ledger = _FakeLedger()
+    warns: list[str] = []
+    outcome = _run(git, baseline, ledger, warns)
+    assert outcome.action is NextAction.SAVE_AND_RESTORE
+    assert outcome.backup_ref == "refs/ralph-backup/fake-01"
+    assert git.restore_calls == [("head-sha-1", ("run.sh",))]
+    assert outcome.restored_paths == ("run.sh",)
+    assert outcome.remaining_paths == ()
+    assert git.mode_only == set()
+    assert git.state is None
+
+
+def test_intent_to_add_residue_routes_through_save_and_restore() -> None:
+    """An intent-to-add (``git add -N``) residue routes through the ladder.
+
+    Porcelain reports the path as `` A`` — a tracked-shape row, never
+    ``??`` untracked — so the residue seam treats it as blocking tracked
+    dirt: save first, then restore the baseline (index entry dropped and
+    the worktree file removed, exactly what
+    ``git restore --staged --worktree --source=HEAD`` does for a path HEAD
+    does not contain).
+
+    Scope note: this row pins the EXECUTOR-seam routing and outcome only.
+    Whether the production ``stash create``-based preservation ref actually
+    captures intent-to-add file content (the index holds an empty-blob
+    intent, so a stash-derived tree may not contain it) is a port-level
+    question this fake cannot answer — reported as an open mechanism
+    question for the orchestrator, not asserted here.
+    """
+    git = _FakeCleanupGit()
+    baseline = _baseline(git)
+    git.intent_to_add["src/new.py"] = "planning sketched a new module"
+    ledger = _FakeLedger()
+    warns: list[str] = []
+    outcome = _run(git, baseline, ledger, warns)
+    assert outcome.action is NextAction.SAVE_AND_RESTORE
+    assert outcome.backup_ref == "refs/ralph-backup/fake-01"
+    assert git.restore_calls == [("head-sha-1", ("src/new.py",))]
+    assert outcome.restored_paths == ("src/new.py",)
+    assert outcome.remaining_paths == ()
+    assert git.intent_to_add == {}
     assert git.state is None
 
 

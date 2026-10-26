@@ -117,8 +117,8 @@ from ralph.pipeline._integration_diagnostic_proof import (
 from ralph.pipeline._integration_diagnostic_state import (
     DIAGNOSTIC_BUDGET_SPENT_REASON,
 )
+from ralph.pipeline._integration_owner_seam import decide_seam_action
 from ralph.pipeline._integration_record_facts import (
-    apply_record_facts,
     busy_refusal_outcome,
 )
 from ralph.pipeline._integration_record_facts import (
@@ -136,7 +136,7 @@ from ralph.pipeline.auto_integrate_record import (
     write_record,
 )
 from ralph.pipeline.auto_integrate_record_store import apply_record_transition
-from ralph.pipeline.integration_owner import RecordFactOutcome, decide_integration
+from ralph.pipeline.integration_owner import RecordFactOutcome
 from ralph.pipeline.operation_evidence import (
     OperationEvidenceCollector,
     identity_fingerprint,
@@ -668,21 +668,6 @@ def _run_completion_pre_pass(
                 clock=clock,
             )
 
-    if next_action is IntegrationAction.REQUIRE_INTERVENTION:
-        reason = last_outcome_reason(record) or "durable record facts unresolved"
-        return _pre_pass_failure(
-            root,
-            record,
-            backend,
-            reason,
-            repair_attempt_cap=repair_attempt_cap,
-            ledger=ledger,
-            git=git,
-            fs=fs,
-            env=env,
-            clock=clock,
-        )
-
     if _completion_proof_applies(record):
         return _complete_or_intervene(
             root=root,
@@ -864,11 +849,11 @@ def handoff_integration_diagnostic(
     inspection_root = _operation_root_for(record, root)
     col = collector if collector is not None else operation_evidence_collector()
     snapshot = col.snapshot(inspection_root, record)
-    # The owner decides the MUTATION LADDER for this seam; the durable
-    # record facts decide whether the obligation is already finished
-    # (the completion proof in the pre-pass below).
-    owner_action, _owner_reason = decide_integration(root, record=record)
-    next_action = apply_record_facts(owner_action, record)
+    # The owner decides the MUTATION LADDER for this seam THROUGH THE ONE
+    # SEAM (:func:`decide_seam_action`); the seam overlays the durable
+    # record facts, which decide whether the obligation is already
+    # finished (the completion proof in the pre-pass below).
+    next_action = decide_seam_action(root, record=record)
 
     pre_pass_result = _run_completion_pre_pass(
         root=root,

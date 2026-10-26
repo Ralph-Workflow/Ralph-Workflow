@@ -31,7 +31,7 @@ from ralph.config.models import UnifiedConfig
 from ralph.pipeline import IntegrationAction
 from ralph.pipeline import auto_integrate_catchup as catchup
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, write_record
-from ralph.pipeline.integration_attempt_ledger import AttemptLedger
+from ralph.pipeline.integration_attempt_ledger import AttemptLedger, AttemptLedgerState
 from ralph.pipeline.integration_decision import EscalationRung
 from ralph.pipeline.integration_owner import RecordFactOutcome
 from tests._fake_git_env import LIVE_OWNER, STALE_OWNER, SimulatedGitEnvironment
@@ -423,6 +423,155 @@ def test_owner_seam_refusal_blocks_the_merge_without_a_ledger_charge(
     assert outcome.startswith(catchup.CATCHUP_REFUSED)
     assert RecordFactOutcome.STALE_INTENT.value in outcome
     assert ledger.read().repeat_counts == {}
+
+
+# ---------------------------------------------------------------------------
+# (e) A broken attempt ledger fails closed: the mutation is refused with a
+# typed reason, the failure is counted against a bounded budget, and the
+# refusal escalates through the ladder path once the bound trips. The tick
+# itself never stops running and never proceeds unledgered.
+# ---------------------------------------------------------------------------
+
+
+class _BrokenLedger(AttemptLedger):
+    """Ledger double whose read/charge calls raise, like a broken store."""
+
+    def __init__(self, fault: BaseException) -> None:
+        super().__init__(Path("/nonexistent-workspace"))
+        self._fault = fault
+
+    def read(self) -> AttemptLedgerState:
+        raise self._fault
+
+    def charge(self, signature: str, action: str, *, is_unknown: bool) -> AttemptLedgerState:
+        raise self._fault
+
+
+class _SwitchableLedger(AttemptLedger):
+    """Ledger double that delegates to a real ledger unless marked broken."""
+
+    def __init__(self, root: Path, fault: BaseException) -> None:
+        super().__init__(root, ledger_path=root / ".agent" / "switchable-ledger.json")
+        self._fault = fault
+        self.broken = False
+
+    def read(self) -> AttemptLedgerState:
+        if self.broken:
+            raise self._fault
+        return super().read()
+
+    def charge(self, signature: str, action: str, *, is_unknown: bool) -> AttemptLedgerState:
+        if self.broken:
+            raise self._fault
+        return super().charge(signature, action, is_unknown=is_unknown)
+
+
+def _tick_with_budget(
+    state: SimulatedGitEnvironment,
+    ledger: AttemptLedger,
+    root: Path,
+    budget: catchup.CatchupLedgerFailureBudget,
+) -> str:
+    """Run one catch-up tick with a shared ledger-failure budget."""
+    return catchup.attempt_catchup_fast_forward(
+        _config(),
+        root,
+        target=_TARGET,
+        ledger=ledger,
+        clock=state.clock,
+        ledger_failure_budget=budget,
+    )
+
+
+def test_ledger_read_failure_refuses_the_mutation_with_a_typed_reason(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """(e) One ledger failure refuses the mutation, named, without merging."""
+    state = SimulatedGitEnvironment()
+    merges = _install_seams(monkeypatch, state)
+    ledger = _BrokenLedger(OSError("ledger store gone"))
+    budget = catchup.CatchupLedgerFailureBudget()
+    before = state.clock.now()
+
+    outcome = _tick_with_budget(state, ledger, tmp_path, budget)
+
+    assert outcome.startswith(catchup.CATCHUP_LEDGER_UNAVAILABLE)
+    assert f"target={_TARGET}@{_TARGET_SHA}" in outcome
+    assert merges == [], "a ledger failure must never proceed unledgered"
+    assert state.clock.now() > before, "the failure must cost a bounded backoff"
+    assert budget.consecutive_failures == 1
+
+
+def test_ledger_failures_escalate_to_the_ladder_once_the_bound_trips(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """(e) Repeated ledger failures escalate instead of retrying forever."""
+    state = SimulatedGitEnvironment()
+    merges = _install_seams(monkeypatch, state)
+    ledger = _BrokenLedger(OSError("ledger store gone"))
+    budget = catchup.CatchupLedgerFailureBudget()
+
+    first = _tick_with_budget(state, ledger, tmp_path, budget)
+    second = _tick_with_budget(state, ledger, tmp_path, budget)
+
+    assert first.startswith(catchup.CATCHUP_LEDGER_UNAVAILABLE)
+    assert second.startswith(catchup.CATCHUP_LADDER_ESCALATED)
+    assert catchup.CATCHUP_LEDGER_UNAVAILABLE in second
+    assert f"target={_TARGET}@{_TARGET_SHA}" in second
+    assert merges == []
+    assert budget.consecutive_failures == 2
+
+
+def test_ledger_failures_reset_after_a_successful_charge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """(e) A healed ledger resets the failure budget instead of accumulating."""
+    state = SimulatedGitEnvironment()
+    merges = _install_seams(monkeypatch, state)
+    ledger = _SwitchableLedger(tmp_path, OSError("ledger store gone"))
+    budget = catchup.CatchupLedgerFailureBudget()
+
+    ledger.broken = True
+    first = _tick_with_budget(state, ledger, tmp_path, budget)
+    ledger.broken = False
+    healed = _tick_with_budget(state, ledger, tmp_path, budget)
+    ledger.broken = True
+    third = _tick_with_budget(state, ledger, tmp_path, budget)
+
+    assert first.startswith(catchup.CATCHUP_LEDGER_UNAVAILABLE)
+    assert healed == catchup.CATCHUP_FAST_FORWARDED
+    assert merges == [_TARGET_SHA]
+    assert third.startswith(catchup.CATCHUP_LEDGER_UNAVAILABLE)
+    assert "attempts=1" in third, "a healed ledger must reset the failure count"
+
+
+def test_a_ledger_outage_never_stops_the_catchup_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """(e) The worker keeps ticking through a ledger outage and names it."""
+    state = SimulatedGitEnvironment()
+    merges = _install_seams(monkeypatch, state)
+    warnings = _capture_warnings(monkeypatch)
+    ledger = _BrokenLedger(OSError("ledger store gone"))
+    waits: Iterator[bool] = iter((False, False, True))
+
+    worker = catchup.AutoIntegrateCatchupWorker(
+        _config(),
+        tmp_path,
+        ledger=ledger,
+        clock=state.clock,
+        wait=lambda _interval: next(waits),
+    )
+
+    worker.run()
+
+    named = [message for message in warnings if "tick failed" in message]
+    assert len(named) == 2, "both ticks ran: the outage must never stop the run"
+    assert any(catchup.CATCHUP_LEDGER_UNAVAILABLE in message for message in named)
+    assert any(
+        message.startswith("auto_integrate catch-up tick failed: ladder:") for message in named
+    )
+    assert merges == []
 
 
 def test_a_settled_tick_never_reports_a_stall(tmp_path: Path) -> None:

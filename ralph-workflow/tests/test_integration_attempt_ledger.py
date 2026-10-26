@@ -28,7 +28,9 @@ from ralph.pipeline.integration_attempt_ledger import (
     ATTEMPT_LEDGER_FILENAME,
     AttemptLedger,
     AttemptLedgerState,
+    LedgerRebuildFacts,
     attempt_ledger_path,
+    rebuild_state_from_git_facts,
 )
 from ralph.pipeline.integration_decision import EscalationRung
 
@@ -354,3 +356,70 @@ def test_attempt_ledger_rejects_invalid_constructor_arguments(tmp_path: Path) ->
         AttemptLedger(tmp_path, unknown_budget=0)
     with pytest.raises(ValueError, match="repeat_threshold"):
         AttemptLedger(tmp_path, repeat_threshold=0)
+
+
+# ---------------------------------------------------------------------------
+# Rebuild from Git facts — an unreadable ledger resumes at the strongest
+# rung the Git facts prove, with a fresh budget seeded from the proven
+# repeat counts. Never above what the evidence supports; the rejected
+# ledger is preserved aside, never discarded.
+# ---------------------------------------------------------------------------
+
+
+def test_attempt_ledger_rebuilds_from_git_facts_at_the_strongest_safe_rung(
+    tmp_path: Path,
+) -> None:
+    """Facts proving rung + counts resume there durably with a fresh budget."""
+    ledger_path = attempt_ledger_path(tmp_path)
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text("{corrupt ledger", encoding="utf-8")
+
+    facts = LedgerRebuildFacts(
+        proven_rung=EscalationRung.DISPATCH_RESOLVER,
+        proven_repeats=(("sig-a", "land", 2),),
+    )
+    rebuilt = AttemptLedger(tmp_path).rebuild_from_git_facts(facts)
+
+    assert rebuilt.rung is EscalationRung.DISPATCH_RESOLVER
+    assert rebuilt.repeat_counts[("sig-a", "land")] == 2
+    assert rebuilt.unknown_attempts == 0, "the budget is fresh, not carried"
+    # The rebuild is durable: the next owner reads the rebuilt state.
+    reread = AttemptLedger(tmp_path).read()
+    assert reread.rung is EscalationRung.DISPATCH_RESOLVER
+    assert reread.repeat_counts[("sig-a", "land")] == 2
+    # The rejected ledger is preserved aside, never discarded.
+    quarantine = ledger_path.with_name(ATTEMPT_LEDGER_FILENAME + ".quarantine")
+    assert quarantine.read_text(encoding="utf-8") == "{corrupt ledger"
+
+
+def test_attempt_ledger_rebuild_without_facts_resumes_at_the_least_permissive_rung(
+    tmp_path: Path,
+) -> None:
+    """No proven rung is the REPAIR default; a charge then advances normally."""
+    ledger_path = attempt_ledger_path(tmp_path)
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text("not json at all", encoding="utf-8")
+
+    rebuilt = AttemptLedger(tmp_path).rebuild_from_git_facts(LedgerRebuildFacts())
+
+    assert rebuilt.rung is EscalationRung.REPAIR
+    assert rebuilt.repeat_counts == OrderedDict()
+    assert rebuilt.unknown_attempts == 0
+
+    charged = AttemptLedger(tmp_path).with_attempt("sig-rebuilt", "land", is_unknown=False)
+    assert charged.rung is EscalationRung.REPAIR
+    assert charged.repeat_counts[("sig-rebuilt", "land")] == 1
+
+
+def test_attempt_ledger_rebuild_state_drops_unproven_and_negative_counts() -> None:
+    """Only evidence-backed counts seed the rebuilt budget."""
+    facts = LedgerRebuildFacts(
+        proven_rung=EscalationRung.CONTINUE_WITH_INTEGRATION_PENDING,
+        proven_repeats=(("sig-good", "land", 3), ("sig-bad", "land", -1)),
+    )
+
+    rebuilt = rebuild_state_from_git_facts(facts)
+
+    assert rebuilt.rung is EscalationRung.CONTINUE_WITH_INTEGRATION_PENDING
+    assert list(rebuilt.repeat_counts.items()) == [(("sig-good", "land"), 3)]
+    assert rebuilt.unknown_attempts == 0

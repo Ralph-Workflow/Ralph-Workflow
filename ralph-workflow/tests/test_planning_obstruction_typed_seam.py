@@ -22,6 +22,11 @@ import pytest
 from ralph.pipeline._planning_obstruction import (
     PlanningObstructionKind,
     identify_planning_obstruction,
+    planning_obstruction_from_readiness,
+)
+from ralph.pipeline.integration_resolution import (
+    IntegrationBlockKind,
+    TreeReadinessAssessment,
 )
 from ralph.pipeline.rebase_state import RebaseState
 
@@ -129,3 +134,85 @@ class TestPlanningObstructionTypedSeam:
         except ValueError:
             routed_kind = PlanningObstructionKind.NONE
         assert routed_kind is PlanningObstructionKind.NONE
+
+
+class TestPlanningObstructionFromReadiness:
+    """The typed producer maps a readiness assessment to the closed vocabulary.
+
+    :func:`planning_obstruction_from_readiness` is the producer-side seam the
+    boundary deferral uses to carry the typed obstruction cause into the
+    durable record. It reads only the typed readiness fields and the two
+    canonical uncommitted-work reasons -- it never substring-scans free-form
+    prose. When the readiness cause is not one of the canonical typed states,
+    it returns ``None`` so the record stays prose-only and the legacy
+    checkpoint shim decides routing for it, exactly as before.
+    """
+
+    def test_staged_canonical_reason_types_to_staged(self) -> None:
+        readiness = TreeReadinessAssessment(
+            development_dispatch_allowed=True,
+            integration_ready=False,
+            blocking_reasons=("staged uncommitted work blocks integration",),
+        )
+        assert (
+            planning_obstruction_from_readiness(readiness)
+            is PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION
+        )
+
+    def test_tracked_changes_canonical_reason_types_to_tracked(self) -> None:
+        readiness = TreeReadinessAssessment(
+            development_dispatch_allowed=True,
+            integration_ready=False,
+            blocking_reasons=(
+                "worktree not clean; uncommitted tracked changes deferred catch-up integration",
+            ),
+        )
+        assert (
+            planning_obstruction_from_readiness(readiness)
+            is PlanningObstructionKind.TRACKED_CHANGES_BLOCKS_INTEGRATION
+        )
+
+    @pytest.mark.parametrize(
+        "block_kind",
+        [
+            IntegrationBlockKind.UNMERGED_PATHS,
+            IntegrationBlockKind.REBASE_IN_PROGRESS,
+            IntegrationBlockKind.MERGE_IN_PROGRESS,
+        ],
+    )
+    def test_proven_conflict_block_kinds_type_to_none(
+        self, block_kind: IntegrationBlockKind
+    ) -> None:
+        """Proven-conflict states have no planning-obstruction vocabulary
+        member: they refuse dispatch upstream so the run loop never routes
+        on them. The typed answer agrees with the legacy shim, which also
+        maps every proven-conflict prose reason to NONE."""
+        readiness = TreeReadinessAssessment(
+            development_dispatch_allowed=False,
+            integration_ready=False,
+            blocking_reasons=("unrelated canonical detail",),
+            block_kinds=(block_kind,),
+        )
+        assert planning_obstruction_from_readiness(readiness) is PlanningObstructionKind.NONE
+
+    def test_non_canonical_prose_is_not_typed(self) -> None:
+        """A blocking reason outside the canonical readiness vocabulary
+        (e.g. prose replayed from an old durable record) cannot be typed
+        here: the producer returns ``None`` so the field stays absent and
+        the legacy shim routes the record identically to old checkpoints."""
+        readiness = TreeReadinessAssessment(
+            development_dispatch_allowed=True,
+            integration_ready=False,
+            blocking_reasons=("worktree not clean; exotic persisted prose",),
+        )
+        assert planning_obstruction_from_readiness(readiness) is None
+
+    def test_ready_tree_types_to_none_result(self) -> None:
+        """A ready tree carries no obstruction cause at all; the producer
+        declines to type it (``None``), not ``NONE`` -- there is no record
+        to annotate."""
+        readiness = TreeReadinessAssessment(
+            development_dispatch_allowed=True,
+            integration_ready=True,
+        )
+        assert planning_obstruction_from_readiness(readiness) is None

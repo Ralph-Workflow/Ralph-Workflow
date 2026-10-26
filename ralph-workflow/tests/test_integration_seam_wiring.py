@@ -570,3 +570,108 @@ def test_the_retired_decider_is_still_a_typed_projection() -> None:
     assert integration_action.next_integration_action(None) is (
         IntegrationAction.REQUIRE_INTERVENTION
     )
+
+
+# ---------------------------------------------------------------------------
+# Boundary 5: the retained-integration diagnostic handoff.
+# ---------------------------------------------------------------------------
+
+
+def test_the_diagnostic_boundary_routes_through_the_one_seam() -> None:
+    """The diagnostic handoff asks the owner through the seam, like every boundary."""
+    module = importlib.import_module("ralph.pipeline._integration_diagnostic")
+    source = inspect.getsource(module)
+    assert "decide_seam_action(" in source, (
+        "the diagnostic handoff must ask the owner through the one seam"
+    )
+    assert "decide_integration(" not in source, (
+        "the diagnostic handoff must not compose the owner and the record facts by hand"
+    )
+    assert "apply_record_facts(" not in source, (
+        "the record-fact overlay belongs to the seam, not to the diagnostic"
+    )
+
+
+def test_diagnostic_handoff_decides_through_the_seam(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """``decide_seam_action`` is the decision entry point of the handoff.
+
+    A spy stands in for the seam so no real Git observation runs: the
+    handoff's first and only decision call must be the seam, with the
+    workspace root and the durable record forwarded as the arguments the
+    old manual composition carried.
+    """
+    from ralph.recovery.controller import RecoveryController
+
+    diagnostic = importlib.import_module("ralph.pipeline._integration_diagnostic")
+    from ralph.pipeline.operation_evidence_memory import InMemoryOperationEvidenceCollector
+
+    record = _record()
+    root = tmp_path / "diagnostic"
+    root.mkdir()
+
+    calls: list[dict[str, Any]] = []
+
+    def _spy(root_arg: Path, /, **kwargs: Any) -> IntegrationAction:
+        calls.append({"root": root_arg, **kwargs})
+        return IntegrationAction.RESOLVE_ACTIVE_OPERATION
+
+    monkeypatch.setattr(diagnostic, "decide_seam_action", _spy)
+
+    offered = diagnostic.handoff_integration_diagnostic(
+        root=root,
+        record=record,
+        failure="boom",
+        agents=(),
+        invoke=lambda _name, _path: False,
+        collector=InMemoryOperationEvidenceCollector(),
+        controller=RecoveryController(),
+    )
+
+    assert calls == [{"root": root, "record": record}]
+    assert offered is False
+
+
+# ---------------------------------------------------------------------------
+# The retired REQUIRE_INTERVENTION value has no production consumer.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("group", sorted(_PRODUCTION_GROUPS))
+def test_no_production_module_consumes_require_intervention(group: str) -> None:
+    """No production code consumes ``IntegrationAction.REQUIRE_INTERVENTION``.
+
+    The value survives only in the closed vocabulary and the retired
+    projection (:mod:`ralph.pipeline._integration_action`) as a
+    fail-closed DATA value; every live seam fails closed to a typed
+    :class:`RecordFactOutcome` verdict routed to the cleanup ladder. The
+    AST scan proves no production module outside the vocabulary module
+    names the value at all (an import, a comparison or an attribute
+    access). The scan is partitioned by package so no single case
+    carries the whole tree's read cost.
+    """
+    vocabulary_path = importlib.import_module("ralph.pipeline._integration_action").__file__
+    assert vocabulary_path is not None
+    vocabulary = Path(vocabulary_path).name
+    offenders: list[str] = []
+    for path in _PRODUCTION_GROUPS[group]:
+        if path.name == vocabulary:
+            continue
+        # Read bytes, not text: the decode would dominate the case's
+        # budget on the larger packages.
+        raw = path.read_bytes()
+        if b"REQUIRE_INTERVENTION" not in raw:
+            continue
+        tree = ast.parse(raw.decode("utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name):
+                named = node.id
+            elif isinstance(node, ast.Attribute):
+                named = node.attr
+            else:
+                continue
+            if named == "REQUIRE_INTERVENTION":
+                offenders.append(f"{path.name}:{node.lineno}")
+    assert offenders == []

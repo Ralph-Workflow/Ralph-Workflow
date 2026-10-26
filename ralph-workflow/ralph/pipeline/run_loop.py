@@ -3726,6 +3726,17 @@ def _handle_intervention_required_retry(
         if handoff_rebase is not None and handoff_rebase != rebase_before:
             rebase = handoff_rebase
     rebase = rebase.record_consecutive_conflicts(bumped_conflicts)
+    # Persist the typed LADDER_ESCALATION transition through the
+    # single-writer setter (never the retired INTERVENTION_REQUIRED /
+    # DIAGNOSTIC_INTERVENTION_REQUIRED operator hand-off): a legacy
+    # checkpoint carrying one of those retired outcomes is re-escalated
+    # here so the typed authority maps the live state to
+    # BLOCK_FOR_RECOVERY — the autonomous fallback ladder owns the next
+    # action. The reason is the bare observation detail plus the fixed
+    # preserved-copy / next-rung suffix, never a concatenation of the
+    # previous ``last_reason`` (which would grow without bound across
+    # repeated calls).
+    rebase = rebase.set_ladder_escalation(_ladder_escalation_reason(detail))
     # Repeat-escalation pacing (O1/O3): the first escalation never
     # sleeps (the automated handoff was just dispatched); a repeat
     # escalation (the session handoff already ran) paces the loop with

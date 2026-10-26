@@ -130,6 +130,30 @@ _CATCHUP_LEDGER_ACTION = "catchup_fast_forward"
 type _LeaseVerdict = Literal["acquired", "held", "unknown"]
 
 
+@dataclass
+class CatchupLedgerFailureBudget:
+    """Bounded count of consecutive ledger read/charge failures.
+
+    The catch-up tick refuses the mutation on every ledger failure, so
+    a ledger that stays broken must not be retried as an unbounded,
+    uncounted loop: each failure is counted here, the caller backs off,
+    and once the consecutive count reaches the quarantine threshold the
+    refusal escalates to the ladder outcome. A successful charge resets
+    the count, so only an unbroken run of failures escalates.
+    """
+
+    consecutive_failures: int = 0
+
+    def record_failure(self) -> int:
+        """Count one failure and return the new consecutive count."""
+        self.consecutive_failures += 1
+        return self.consecutive_failures
+
+    def record_success(self) -> None:
+        """Reset the count once a charge proves the ledger healthy again."""
+        self.consecutive_failures = 0
+
+
 @dataclass(frozen=True)
 class _CatchupObservation:
     """The ref facts that define one catch-up attempt's durable state."""
@@ -278,10 +302,13 @@ def attempt_catchup_fast_forward(
     ledger: AttemptLedger | None = None,
     clock: Clock | None = None,
     jitter: Callable[[], float] | None = None,
+    ledger_failure_budget: CatchupLedgerFailureBudget | None = None,
 ) -> str:
     """One catch-up probe: fast-forward the checkout onto the target if free.
 
-    ``ledger`` and ``clock`` are injection seams for deterministic tests.
+    ``ledger``, ``clock`` and ``ledger_failure_budget`` are injection
+    seams for deterministic tests; the worker passes its own budget so
+    consecutive ledger failures escalate across ticks.
     """
     if not _catchup_enabled(config):
         return CATCHUP_DISABLED
@@ -304,6 +331,7 @@ def attempt_catchup_fast_forward(
             ledger=ledger,
             clock=effective_clock,
             jitter=jitter,
+            ledger_failure_budget=ledger_failure_budget,
         )
         if remote_outcome is not None and remote_outcome != CATCHUP_FAST_FORWARDED:
             return remote_outcome
@@ -325,6 +353,7 @@ def attempt_catchup_fast_forward(
         ledger=ledger,
         clock=effective_clock,
         jitter=jitter,
+        ledger_failure_budget=ledger_failure_budget,
     )
 
 
@@ -426,13 +455,49 @@ def _backoff_after_failure(
         )
 
 
+def _ledger_failure_outcome(
+    signature: str,
+    observation: str,
+    failure_budget: CatchupLedgerFailureBudget | None,
+    clock: Clock | None,
+    jitter: Callable[[], float] | None,
+) -> tuple[int, str]:
+    """Refuse one ledger failure, escalating once the bounded count trips.
+
+    The mutation is always refused with a typed reason — never retried
+    unledgered — and the failure costs a bounded backoff. Once the
+    consecutive count reaches the quarantine threshold the refusal
+    escalates through the same ladder path the repeat-count budget
+    uses; the tick keeps running either way.
+    """
+    count = failure_budget.record_failure() if failure_budget is not None else 1
+    if clock is not None:
+        _backoff_after_failure(clock, count, jitter=jitter)
+    if quarantine_reason("mutation", signature, same_state_attempts=count) is not None:
+        return count, (
+            f"{CATCHUP_LADDER_ESCALATED}; cause={CATCHUP_LEDGER_UNAVAILABLE}; "
+            f"attempts={count}; {observation}"
+        )
+    return count, f"{CATCHUP_LEDGER_UNAVAILABLE}; attempts={count}; {observation}"
+
+
 def _charge_attempt(
     root: Path,
     ledger: AttemptLedger | None,
     signature: str,
     observation: str,
+    *,
+    failure_budget: CatchupLedgerFailureBudget | None = None,
+    clock: Clock | None = None,
+    jitter: Callable[[], float] | None = None,
 ) -> tuple[int, str]:
-    """Charge one attempt, or return why the same-state action is quarantined."""
+    """Charge one attempt, or return why the same-state action is quarantined.
+
+    A ledger read/charge failure never authorizes a mutation: the
+    refusal is typed, counted against ``failure_budget`` (a fresh,
+    single-attempt view when none is supplied) and escalates per the
+    existing quarantine/ladder path once the bound trips.
+    """
     try:
         effective_ledger = ledger if ledger is not None else _repository_ledger(root)
         state = effective_ledger.read()
@@ -448,7 +513,9 @@ def _charge_attempt(
             is_unknown=False,
         )
     except Exception:
-        return 0, f"{CATCHUP_LEDGER_UNAVAILABLE}; {observation}"
+        return _ledger_failure_outcome(signature, observation, failure_budget, clock, jitter)
+    if failure_budget is not None:
+        failure_budget.record_success()
     return charged.repeat_counts.get((signature, _CATCHUP_LEDGER_ACTION), 0), ""
 
 
@@ -462,6 +529,7 @@ def _synchronize_remote_target(
     ledger: AttemptLedger | None = None,
     clock: Clock | None = None,
     jitter: Callable[[], float] | None = None,
+    ledger_failure_budget: CatchupLedgerFailureBudget | None = None,
 ) -> str | None:
     """Fetch and advance the target without mutating while an agent is active."""
 
@@ -484,6 +552,7 @@ def _synchronize_remote_target(
                 ledger=ledger,
                 clock=effective_clock,
                 jitter=jitter,
+                ledger_failure_budget=ledger_failure_budget,
             )
 
 
@@ -497,6 +566,7 @@ def _refresh_remote_target(
     ledger: AttemptLedger | None,
     clock: Clock,
     jitter: Callable[[], float] | None,
+    ledger_failure_budget: CatchupLedgerFailureBudget | None = None,
 ) -> str | None:
     """Refresh the remote target and advance it when the fetch proves it ahead."""
 
@@ -530,6 +600,7 @@ def _refresh_remote_target(
         ledger=ledger,
         clock=clock,
         jitter=jitter,
+        ledger_failure_budget=ledger_failure_budget,
     )
 
 
@@ -566,6 +637,7 @@ def _advance_target_to_remote(
     ledger: AttemptLedger | None = None,
     clock: Clock | None = None,
     jitter: Callable[[], float] | None = None,
+    ledger_failure_budget: CatchupLedgerFailureBudget | None = None,
 ) -> str | None:
     """Advance the target to the observed remote tip under the durable budget."""
 
@@ -584,6 +656,9 @@ def _advance_target_to_remote(
         ledger,
         signature,
         observation,
+        failure_budget=ledger_failure_budget,
+        clock=clock if clock is not None else default_clock(),
+        jitter=jitter,
     )
     if charge_reason:
         return charge_reason
@@ -655,6 +730,7 @@ def _fast_forward_if_strictly_behind(
     ledger: AttemptLedger | None = None,
     clock: Clock | None = None,
     jitter: Callable[[], float] | None = None,
+    ledger_failure_budget: CatchupLedgerFailureBudget | None = None,
 ) -> str:
     """SHA-level half of the tick: land only a genuine fast-forward."""
 
@@ -682,6 +758,9 @@ def _fast_forward_if_strictly_behind(
             ledger,
             observation.signature,
             observation.summary,
+            failure_budget=ledger_failure_budget,
+            clock=effective_clock,
+            jitter=jitter,
         )
         if charge_reason:
             return charge_reason
@@ -789,6 +868,7 @@ class AutoIntegrateCatchupWorker:
         self._remote_client = remote_client
         self._rebase_stop_resolver = rebase_stop_resolver
         self._ledger = ledger
+        self._ledger_failure_budget = CatchupLedgerFailureBudget()
         self._clock = clock
         self._effective_clock = clock if clock is not None else default_clock()
         self._jitter = jitter
@@ -808,6 +888,7 @@ class AutoIntegrateCatchupWorker:
             ledger=self._ledger,
             clock=self._clock,
             jitter=self._jitter,
+            ledger_failure_budget=self._ledger_failure_budget,
         )
 
     def start(self) -> None:
@@ -992,6 +1073,7 @@ __all__ = [
     "DEFAULT_CATCHUP_INTERVAL_SECONDS",
     "DEFAULT_CATCHUP_STALL_WINDOW_SECONDS",
     "AutoIntegrateCatchupWorker",
+    "CatchupLedgerFailureBudget",
     "attempt_catchup_fast_forward",
     "resolve_integration_target",
     "start_catchup_worker_if_enabled",

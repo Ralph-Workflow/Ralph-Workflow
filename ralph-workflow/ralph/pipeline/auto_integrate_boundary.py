@@ -22,6 +22,9 @@ from ralph.pipeline._auto_integrate_config import (
 from ralph.pipeline._auto_integrate_config import (
     missing_target_reason as _missing_target_reason,
 )
+from ralph.pipeline._planning_obstruction import (
+    planning_obstruction_from_readiness,
+)
 from ralph.pipeline.auto_integrate_boundary_refresh import BOUNDARY_REFRESH_THROTTLE
 from ralph.pipeline.auto_integrate_context import record_refresh, record_when_stale
 from ralph.pipeline.auto_integrate_outcome import record_skip as _record_skip
@@ -191,14 +194,20 @@ def defer_dirty_boundary(
 
     The deferral DECISION is typed and made before this function: the
     caller's :attr:`TreeReadinessAssessment.integration_ready` check plus
-    the ``diverged`` probe below. The reason string composed here is
-    display/record prose only -- it is never a decision input. Every
-    downstream consumer decides from typed values: the run loop routes
+    the ``diverged`` probe below. The recorded skip carries the typed
+    obstruction cause alongside the prose: the kind is derived from the
+    readiness assessment through the producer-side seam
+    :func:`~ralph.pipeline._planning_obstruction.planning_obstruction_from_readiness`
+    and persisted on ``last_planning_obstruction``, so the run loop routes
     on the closed :class:`~ralph.pipeline._planning_obstruction.PlanningObstructionKind`
-    vocabulary (translated, for legacy checkpoints only, by the single
-    sanctioned parser :func:`~ralph.pipeline._planning_obstruction.identify_planning_obstruction`),
-    and BOTH candidate strings below translate to non-``NONE`` kinds that
-    route identically, so the canonicalization cannot change behavior.
+    vocabulary without ever parsing the reason string. When the readiness
+    cause is not one of the canonical typed states the kind stays unset and
+    the record routes through the legacy-checkpoint shim
+    :func:`~ralph.pipeline._planning_obstruction.identify_planning_obstruction`,
+    exactly like an old checkpoint. The reason-string canonicalization
+    below is display/record prose only -- it is never a decision input,
+    and BOTH candidate strings translate to non-``NONE`` kinds that route
+    identically, so the canonicalization cannot change behavior.
     """
     if readiness is None:
         readiness = assess_tree_readiness(root)
@@ -237,6 +246,15 @@ def defer_dirty_boundary(
             reason=reason,
             target=target,
         )
+        # Carry the typed obstruction cause into the durable record. The
+        # kind is decided typed upstream from the readiness assessment; the
+        # prose above is canonicalized display text and is NEVER re-parsed
+        # to recover it. An untypeable (non-canonical) readiness cause
+        # leaves the field unset so the legacy-checkpoint shim routes the
+        # record, exactly like an old checkpoint.
+        kind = planning_obstruction_from_readiness(readiness)
+        if kind is not None:
+            skip = skip.model_copy(update={"last_planning_obstruction": kind.value})
         return record_refresh(skip, refresh)
     # R2/AC8: ladder rung 3 -- this routine clean-target deferral has no
     # pending integration to report; a later clean seam re-evaluates live refs.

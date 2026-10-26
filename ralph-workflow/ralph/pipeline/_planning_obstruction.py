@@ -8,10 +8,13 @@ rewording of the reason could silently turn the routing on or off --
 and it forced the run loop to parse free-form text.
 
 The typed seam lives here. The closed :class:`PlanningObstructionKind`
-enum is the producer-side vocabulary, the :func:`identify_planning_obstruction`
-helper is the only place that translates a free-form reason into a kind,
-and the run loop reads the kind from
-:attr:`RebaseState.last_planning_obstruction`. The helper is the ONLY
+enum is the routing vocabulary, recorded on
+:attr:`RebaseState.last_planning_obstruction` by the producer-side
+:func:`planning_obstruction_from_readiness` (which reads only typed
+readiness fields and exact-matches the canonical readiness reasons --
+never a prose scan). The run loop reads the kind from the record and
+falls back to :func:`identify_planning_obstruction` ONLY for legacy
+checkpoints that predate the typed field. The helper is the ONLY
 allowed prose-substring scan in the pipeline: every other consumer
 reads the typed kind.
 
@@ -37,8 +40,16 @@ Members
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
-__all__ = ["PlanningObstructionKind", "identify_planning_obstruction"]
+if TYPE_CHECKING:
+    from ralph.pipeline.integration_resolution import TreeReadinessAssessment
+
+__all__ = [
+    "PlanningObstructionKind",
+    "identify_planning_obstruction",
+    "planning_obstruction_from_readiness",
+]
 
 
 class PlanningObstructionKind(StrEnum):
@@ -49,6 +60,61 @@ class PlanningObstructionKind(StrEnum):
     UNTRACKED_OVERWRITE = "untracked_overwrite"
     STAGED_BLOCKS_INTEGRATION = "staged_blocks_integration"
     TRACKED_CHANGES_BLOCKS_INTEGRATION = "tracked_changes_blocks_integration"
+
+
+#: Canonical uncommitted-work blocking reasons produced by
+#: :func:`ralph.pipeline.integration_resolution.assess_tree_readiness`, mapped
+#: EXACTLY (full-string equality, not substring scanning) onto the closed
+#: vocabulary. The readiness producer owns these strings; an exact-match
+#: table means a drift fails closed to "not typeable" instead of silently
+#: mis-routing a reworded reason.
+_READINESS_REASON_KINDS: dict[str, PlanningObstructionKind] = {
+    "staged uncommitted work blocks integration": (
+        PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION
+    ),
+    "worktree not clean; uncommitted tracked changes deferred catch-up integration": (
+        PlanningObstructionKind.TRACKED_CHANGES_BLOCKS_INTEGRATION
+    ),
+}
+
+
+def planning_obstruction_from_readiness(
+    readiness: TreeReadinessAssessment,
+) -> PlanningObstructionKind | None:
+    """Translate a typed readiness assessment into the closed vocabulary.
+
+    This is the PRODUCER-side seam: boundary and planning deferrals call it
+    at record time to carry the typed obstruction cause into the durable
+    record alongside the prose. It reads only typed readiness fields plus
+    the canonical uncommitted-work reasons (exact match) -- it never
+    substring-scans free-form prose. That parsing job belongs solely to
+    :func:`identify_planning_obstruction`, the legacy-checkpoint shim the
+    run loop consults only when the typed field is absent.
+
+    Returns:
+
+    * a :class:`PlanningObstructionKind` member for every typed readiness
+      state: the canonical uncommitted-work reasons map to their kinds, and
+      proven-conflict block kinds (:class:`IntegrationBlockKind`) map to
+      :attr:`PlanningObstructionKind.NONE` -- the planning-obstruction
+      vocabulary has no member for proven conflicts, they refuse dispatch
+      upstream so the run loop never routes on them, and the legacy shim
+      maps their canonical prose to ``NONE`` as well, so the typed answer
+      agrees with the shim for every proven-conflict reason;
+    * ``None`` when the readiness cause is not one of the canonical typed
+      states (e.g. prose replayed from an old durable record): the caller
+      then leaves ``last_planning_obstruction`` unset so the record routes
+      through the legacy shim exactly like an old checkpoint.
+    """
+    if readiness.block_kinds:
+        # Proven conflicts (unmerged paths, rebase/merge in progress): the
+        # closed vocabulary deliberately has no member for these -- they
+        # refuse dispatch upstream, so the run loop never routes on them.
+        return PlanningObstructionKind.NONE
+    reasons = readiness.blocking_reasons
+    if not reasons:
+        return None
+    return _READINESS_REASON_KINDS.get(reasons[0])
 
 
 # Substring table is module-private. Every substring here must map to
@@ -70,13 +136,16 @@ _TRACKED_CHANGES_BLOCKS_SUBSTRINGS: tuple[str, ...] = (
 
 
 def identify_planning_obstruction(reason: str) -> PlanningObstructionKind:
-    """Translate a free-form planning reason into a typed kind.
+    """LEGACY-CHECKPOINT SHIM: translate a free-form planning reason into a
+    typed kind.
 
-    This helper is the ONLY place in the pipeline that parses a reason
-    string for the planning-obstruction vocabulary. Downstream code
-    reads only the typed kind from
-    :attr:`RebaseState.last_planning_obstruction`; the run loop never
-    sees this prose.
+    New records do NOT pass through here: producers carry the typed kind
+    into the durable record via :func:`planning_obstruction_from_readiness`
+    at record time. This shim exists ONLY so checkpoints written before the
+    typed field existed (``last_planning_obstruction`` absent) keep routing
+    identically -- the run loop consults it only when the typed field is
+    missing. It is the ONLY place in the pipeline that parses a reason
+    string for the planning-obstruction vocabulary.
 
     The function is total: a ``None``, empty, or unrecognised reason
     collapses to :attr:`PlanningObstructionKind.NONE` so the run loop

@@ -14,7 +14,7 @@ import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 from git import Actor, Repo
@@ -29,6 +29,7 @@ from ralph.pipeline.auto_integrate_worktree_state import worktree_is_clean
 from ralph.pipeline.integration_resolution import (
     RECOVERABLE,
     RESOLVED,
+    IntegrationBlockKind,
     TreeReadinessAssessment,
     assess_tree_readiness,
     inspect_integration_resolution,
@@ -167,6 +168,7 @@ def _assert_boundary_agrees(
     tmp_path: Path,
     readiness: TreeReadinessAssessment,
     expected_ready: bool,
+    expected_kind: PlanningObstructionKind | None,
 ) -> None:
     """Criterion 12: boundary gate agrees with the resolution verdict."""
     monkeypatch = pytest.MonkeyPatch()
@@ -193,6 +195,11 @@ def _assert_boundary_agrees(
             assert boundary_outcome is not None
             assert boundary_outcome.last_action == "skipped"
             assert "worktree not clean" in str(boundary_outcome.last_reason)
+            # The deferral carries the TYPED obstruction cause into the
+            # durable record, agreeing with the planning seam's kind for
+            # the same tree state.
+            assert expected_kind is not None
+            assert boundary_outcome.last_planning_obstruction == expected_kind.value
     finally:
         monkeypatch.undo()
 
@@ -519,6 +526,206 @@ def test_boundary_and_planning_agree_on_cleanliness_deferral(
     assert planning_outcome.last_reason == outcome.last_reason
 
 
+# ---------------------------------------------------------------------------
+# G3: the boundary deferral carries the TYPED obstruction cause into the
+# durable record; the run loop routes on the typed field, with the prose
+# substring shim kept only for legacy checkpoints that lack the field.
+# ---------------------------------------------------------------------------
+
+
+def _boundary_deferral_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    readiness: TreeReadinessAssessment,
+) -> RebaseState:
+    """Run the boundary seam hermetically and return the recorded deferral."""
+    monkeypatch.setattr(boundary, "branch_sha", lambda _r, _t: "b" * 40)
+    monkeypatch.setattr(boundary, "get_head_sha", lambda _r: "a" * 40)
+    monkeypatch.setattr(boundary, "is_ancestor", lambda _r, _a, _b: False)
+    monkeypatch.setattr(boundary, "assess_tree_readiness", lambda _root: readiness)
+
+    ended, outcome = boundary.phase_boundary_outcome(
+        _config(), tmp_path, "main", RebaseState(), rebase_stop_resolver=None
+    )
+    assert ended is True
+    assert outcome is not None
+    assert outcome.last_action == "skipped"
+    return outcome
+
+
+def _planning_sync_gate_routes_hermetic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record: RebaseState,
+    *,
+    dispatch_allowed: bool = True,
+) -> list[str]:
+    """Run the run loop's PUBLIC planning-sync gate (``ensure_planning_in_sync``)
+    and return the cleanup phases it routed to (empty when it fell through
+    without routing). Every seam below is public: the gate's sync observation,
+    startup integration, owner verdict, checkpoint save, and the router's
+    collaborators are all patched through their public names."""
+    from ralph.pipeline import run_loop
+    from ralph.pipeline.state import PipelineState
+
+    (tmp_path / ".git").mkdir(exist_ok=True)
+    cleanup = SimpleNamespace(
+        role="commit_cleanup", transitions=SimpleNamespace(on_success="commit")
+    )
+    commit = SimpleNamespace(role="commit")
+    ctx = SimpleNamespace(
+        workspace_scope=SimpleNamespace(root=tmp_path),
+        config=_config(),
+        policy_bundle=SimpleNamespace(
+            pipeline=SimpleNamespace(
+                phases={"cleanup": cleanup, "commit": commit}, entry_phase="planning"
+            )
+        ),
+        active_display=None,
+    )
+    routed_to: list[str] = []
+
+    def _advance(state: PipelineState, target_phase: str, *, policy: object) -> PipelineState:
+        routed_to.append(target_phase)
+        return state
+
+    monkeypatch.setattr(
+        run_loop,
+        "inspect_integration_resolution",
+        lambda _root, _rebase: SimpleNamespace(dispatch_allowed=dispatch_allowed),
+    )
+    monkeypatch.setattr("ralph.git.operations.has_uncommitted_changes", lambda _root: True)
+    monkeypatch.setattr("ralph.pipeline.progress.advance_phase", _advance)
+    monkeypatch.setattr(run_loop, "reconcile_stale_unresolved_state", lambda rebase: rebase)
+    # The public checkpoint-save seam: the run loop's private saver dispatches
+    # through this name, so patching it here suppresses the durable write
+    # exactly as the previous private-name patch did.
+    monkeypatch.setattr(run_loop, "save_recovered_rebase_checkpoint", lambda _s, _c: None)
+    monkeypatch.setattr(run_loop, "run_startup_integration", lambda _ctx, _rebase=None: None)
+    monkeypatch.setattr(run_loop, "read_record", lambda _root: None)
+    # An owner-seam outage degrades to "no escalation signal", letting the
+    # fall-through path repeat its observation once and hold planning.
+    monkeypatch.setattr(run_loop, "decide_planning_sync", lambda *_a, **_kw: None)
+    # The configured target is absent upstream, so the gate observes a sync
+    # gap and proceeds to the planning-commit router.
+    monkeypatch.setattr("ralph.git.merge.observe_branch_sha", lambda _root, _target: (None, True))
+
+    state, _blocked = run_loop.ensure_planning_in_sync(
+        PipelineState(phase="planning", rebase=record), ctx, "development"
+    )
+    assert state is not None
+    return routed_to
+
+
+def test_boundary_deferral_records_typed_kind_and_routes_on_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """New-record path: a staged tree defers the boundary, and the recorded
+    skip carries the typed STAGED kind even though the recorded prose was
+    canonicalized to the tracked-changes phrase -- proving the kind is typed
+    upstream and not re-derived from the prose. The run loop routes on the
+    typed field."""
+    readiness = TreeReadinessAssessment(
+        development_dispatch_allowed=True,
+        integration_ready=False,
+        blocking_reasons=("staged uncommitted work blocks integration",),
+    )
+    outcome = _boundary_deferral_record(tmp_path, monkeypatch, readiness)
+
+    canonical_reason = (
+        "worktree not clean; uncommitted tracked changes deferred catch-up integration"
+    )
+    assert outcome.last_reason == canonical_reason
+    assert (
+        outcome.last_planning_obstruction == PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION.value
+    )
+
+    routed_to = _planning_sync_gate_routes_hermetic(tmp_path, monkeypatch, outcome)
+    assert routed_to == ["cleanup"]
+
+
+def test_boundary_legacy_record_without_typed_kind_routes_identically_via_shim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Old-checkpoint compatibility: a record WITHOUT the typed field (the
+    exact prose shape old checkpoints carry) still routes through the legacy
+    substring shim to the identical cleanup routing."""
+    canonical_reason = (
+        "worktree not clean; uncommitted tracked changes deferred catch-up integration"
+    )
+    legacy = RebaseState(last_outcome="skipped", last_reason=canonical_reason)
+    assert legacy.last_planning_obstruction is None
+
+    routed_to = _planning_sync_gate_routes_hermetic(tmp_path, monkeypatch, legacy)
+    assert routed_to == ["cleanup"]
+
+
+def test_boundary_deferral_untypeable_reason_omits_kind_for_legacy_shim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A readiness cause outside the canonical typed vocabulary is recorded
+    WITHOUT the typed field; the legacy shim derives the kind from the prose
+    and routes identically to old checkpoints."""
+    # Prose that is neither of the two canonical readiness reasons (so the
+    # typed producer declines it) but still names the tracked-changes
+    # obstruction (so the boundary keeps it verbatim and the legacy shim
+    # recovers the kind from it).
+    exotic_reason = "worktree not clean; uncommitted tracked changes per an old persisted verdict"
+    readiness = TreeReadinessAssessment(
+        development_dispatch_allowed=True,
+        integration_ready=False,
+        blocking_reasons=(exotic_reason,),
+    )
+    outcome = _boundary_deferral_record(tmp_path, monkeypatch, readiness)
+
+    assert outcome.last_reason == exotic_reason
+    assert outcome.last_planning_obstruction is None
+
+    # The legacy prose shim is the single translator that recovers a typed
+    # kind for this record. Observe its mapping through the PUBLIC planning
+    # seam -- which types its own deferral through the same shim -- instead
+    # of re-deriving it through the private helper: the planning deferral
+    # for the identical readiness carries TRACKED_CHANGES, while the
+    # boundary deferral above deliberately left the field unset.
+    (tmp_path / ".git").mkdir()
+    monkeypatch.setattr(planning, "resolve_integration_target", lambda _c, _r: "main")
+    monkeypatch.setattr(planning, "branch_relation", lambda _r, _t: BranchRelation.TARGET_AHEAD)
+    monkeypatch.setattr(planning, "assess_tree_readiness", lambda _root: readiness)
+    planned = planning.integrate_before_planning(_config(), WorkspaceScope(tmp_path), RebaseState())
+    assert planned is not None
+    assert planned.last_reason == exotic_reason
+    assert (
+        planned.last_planning_obstruction
+        == PlanningObstructionKind.TRACKED_CHANGES_BLOCKS_INTEGRATION.value
+    )
+
+    routed_to = _planning_sync_gate_routes_hermetic(tmp_path, monkeypatch, outcome)
+    assert routed_to == ["cleanup"]
+
+
+def test_boundary_deferral_proven_conflict_records_typed_none_not_prose(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A proven-conflict readiness (unmerged paths) types to NONE. The recorded
+    prose is canonicalized to the tracked-changes phrase, which the legacy
+    shim WOULD map to TRACKED_CHANGES -- so routing here proves the run loop
+    consumed the typed NONE field instead of parsing the prose."""
+    readiness = TreeReadinessAssessment(
+        development_dispatch_allowed=False,
+        integration_ready=False,
+        blocking_reasons=("unmerged paths remain from an unfinished rebase or merge: src/foo.py",),
+        block_kinds=(IntegrationBlockKind.UNMERGED_PATHS,),
+    )
+    outcome = _boundary_deferral_record(tmp_path, monkeypatch, readiness)
+
+    assert outcome.last_planning_obstruction == PlanningObstructionKind.NONE.value
+
+    routed_to = _planning_sync_gate_routes_hermetic(
+        tmp_path, monkeypatch, outcome, dispatch_allowed=True
+    )
+    assert routed_to == []
+
+
 @pytest.mark.parametrize(
     (
         "state_name",
@@ -527,6 +734,7 @@ def test_boundary_and_planning_agree_on_cleanliness_deferral(
         "merge_status",
         "expected_ready",
         "expected_first_reason",
+        "expected_boundary_kind",
     ),
     [
         (
@@ -536,6 +744,7 @@ def test_boundary_and_planning_agree_on_cleanliness_deferral(
             MERGE_STATE_NONE,
             True,
             None,
+            None,
         ),
         (
             "modified-tracked",
@@ -544,6 +753,7 @@ def test_boundary_and_planning_agree_on_cleanliness_deferral(
             MERGE_STATE_NONE,
             False,
             "worktree not clean; uncommitted tracked changes deferred catch-up integration",
+            PlanningObstructionKind.TRACKED_CHANGES_BLOCKS_INTEGRATION,
         ),
         (
             "staged",
@@ -552,6 +762,7 @@ def test_boundary_and_planning_agree_on_cleanliness_deferral(
             MERGE_STATE_NONE,
             False,
             "staged uncommitted work blocks integration",
+            PlanningObstructionKind.STAGED_BLOCKS_INTEGRATION,
         ),
         (
             "unmerged",
@@ -560,6 +771,7 @@ def test_boundary_and_planning_agree_on_cleanliness_deferral(
             MERGE_STATE_NONE,
             False,
             "unmerged paths remain from an unfinished rebase or merge: src/foo.py",
+            PlanningObstructionKind.NONE,
         ),
         (
             "rebase-active",
@@ -568,6 +780,7 @@ def test_boundary_and_planning_agree_on_cleanliness_deferral(
             MERGE_STATE_NONE,
             False,
             "rebase is in progress",
+            PlanningObstructionKind.NONE,
         ),
         (
             "merge-active",
@@ -576,6 +789,7 @@ def test_boundary_and_planning_agree_on_cleanliness_deferral(
             "in_progress",
             False,
             "merge is in progress or merge state is unreadable",
+            PlanningObstructionKind.NONE,
         ),
     ],
 )
@@ -588,6 +802,7 @@ def test_all_gates_agree_on_clean_and_blocked_truth(
     merge_status: str,
     expected_ready: bool,
     expected_first_reason: str | None,
+    expected_boundary_kind: PlanningObstructionKind | None,
 ) -> None:
     """Criterion 12: resolution, boundary, and planning agree across all tree states.
 
@@ -633,7 +848,9 @@ def test_all_gates_agree_on_clean_and_blocked_truth(
     )
 
     # 3. Boundary entry point (phase_boundary_outcome)
-    _assert_boundary_agrees(boundary, cfg, tmp_path, readiness, expected_ready)
+    _assert_boundary_agrees(
+        boundary, cfg, tmp_path, readiness, expected_ready, expected_boundary_kind
+    )
 
 
 @functools.lru_cache(maxsize=1)

@@ -37,6 +37,15 @@ This module publishes a single, restart-proof ledger contract:
   process advances straight to the exhausted/pending rung and stays
   there for its lifetime: never skip a charge, never block, never
   restore allowance on restart.
+* An unreadable ledger can be *rebuilt from Git facts*: the recovery
+  seam extracts what refs and the reflog prove (the strongest rung
+  reached, the per-``(signature, action)`` charges spent) and
+  :meth:`AttemptLedger.rebuild_from_git_facts` replaces the rejected
+  ledger with one born at that proven rung and a fresh budget seeded
+  from the proven counts — resume without repeating finished rungs,
+  never above what the evidence supports. The module stays Git-free;
+  the facts arrive already extracted, and the rejected file is
+  quarantined aside, never discarded.
 * Storage stays bounded: per-``(signature, action)`` keys live in an
   :class:`collections.OrderedDict` capped at :data:`REPEAT_CAP`.
   Evicted entries are folded into :attr:`AttemptLedgerState.saturated_repeats`
@@ -80,7 +89,9 @@ __all__ = [
     "AttemptLedger",
     "AttemptLedgerState",
     "LedgerLoadStatus",
+    "LedgerRebuildFacts",
     "attempt_ledger_path",
+    "rebuild_state_from_git_facts",
     "repository_ledger_path",
     "shared_budget_dir",
     "tombstone_path",
@@ -149,6 +160,25 @@ _LOCK_TIMEOUT_SECONDS: Final[float] = 5.0
 _LOCK_POLL_SECONDS: Final[float] = 0.005
 
 _RUNG_VALUES: Final[frozenset[str]] = frozenset(rung.value for rung in LADDER_ORDER)
+
+
+@dataclass(frozen=True)
+class LedgerRebuildFacts:
+    """Git-derived facts (refs, reflog) proving prior ladder progress.
+
+    Produced by the recovery seam that reads Git after the ledger proves
+    unreadable; this module is deliberately Git-free, so the facts
+    arrive already extracted. Only what Git proves may appear here: an
+    unproven rung is ``None`` and a charge Git cannot prove is simply
+    absent, so the rebuilt ledger can never sit higher than the
+    evidence supports.
+    """
+
+    proven_rung: EscalationRung | None = None
+    """The strongest rung the Git evidence proves was reached, if any."""
+
+    proven_repeats: tuple[tuple[str, str, int], ...] = ()
+    """``(signature, action, charged_count)`` triples Git proves were spent."""
 
 
 class LedgerLoadStatus(Enum):
@@ -238,6 +268,40 @@ class AttemptLedgerState:
 def attempt_ledger_path(workspace_root: Path) -> Path:
     """Return the per-workspace attempt-ledger path anchored to ``workspace_root``."""
     return Path(workspace_root) / ".agent" / ATTEMPT_LEDGER_FILENAME
+
+
+def rebuild_state_from_git_facts(
+    facts: LedgerRebuildFacts,
+    *,
+    unknown_budget: int = 3,
+    repeat_threshold: int = 2,
+) -> AttemptLedgerState:
+    """Rebuild a fresh ledger state at the strongest rung the Git facts prove safe.
+
+    "Strongest safe" is exactly what the evidence supports: the proven
+    rung (or :attr:`EscalationRung.REPAIR` when no rung is proven — the
+    least permissive default), a fresh unknown/repeat budget, and the
+    proven repeat counts, so a resumed ladder never repeats a finished
+    rung and never restarts below what Git proved. Fact entries Git did
+    not prove — negative counts — drop out like any malformed parsed
+    entry; the remaining counts are clamped to :data:`REPEAT_CAP` like
+    any other in-memory map.
+    """
+    repeats: OrderedDict[tuple[str, str], int] = OrderedDict()
+    for signature, action, count in facts.proven_repeats:
+        if count < 1:
+            continue
+        repeats[(signature, action)] = count
+    repeats, saturated = AttemptLedger._clamp_repeats(repeats, saturated=0)
+    rung = facts.proven_rung if facts.proven_rung is not None else EscalationRung.REPAIR
+    return AttemptLedgerState(
+        rung=rung,
+        repeat_counts=repeats,
+        unknown_attempts=0,
+        unknown_budget=unknown_budget,
+        repeat_threshold=repeat_threshold,
+        saturated_repeats=saturated,
+    )
 
 
 def shared_budget_dir(common_dir: Path) -> Path:
@@ -666,6 +730,27 @@ class AttemptLedger:
             self._merge_monotone(charged, disk),
             global_actions_charged=charged_total,
         )
+
+    def rebuild_from_git_facts(self, facts: LedgerRebuildFacts) -> AttemptLedgerState:
+        """Replace an unreadable ledger with one rebuilt from Git facts.
+
+        The rejected ledger is quarantined aside (preserved, never
+        discarded) and the replacement — born at the strongest rung the
+        facts prove, with a fresh budget seeded from the proven counts
+        (:func:`rebuild_state_from_git_facts`) — is persisted before
+        this method returns, so the very next :meth:`charge` reads the
+        rebuilt state. The rebuild owns the monotone-write path: it
+        never hands allowance back over whatever the corrupt file
+        happened to claim.
+        """
+        self._quarantine_ledger()
+        rebuilt = rebuild_state_from_git_facts(
+            facts,
+            unknown_budget=self._default_unknown_budget,
+            repeat_threshold=self._default_repeat_threshold,
+        )
+        self._write_state(rebuilt, self._default_state())
+        return rebuilt
 
     def persist(self, state: AttemptLedgerState) -> None:
         """Write ``state`` atomically to the ledger path.

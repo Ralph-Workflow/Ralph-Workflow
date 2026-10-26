@@ -28,9 +28,10 @@ the rung from the durable record.
 The **record facts the pure observation table cannot express** stay
 with the seam:
 
-* ``REQUIRE_INTERVENTION`` -- derived from the persisted retry
-  deadline and the exhausted-diagnostics escalation, both of which are
-  durable record facts rather than observations.
+* a typed fail-closed :class:`RecordFactOutcome` verdict (a spent
+  diagnostic budget, a stale retained intent) -- derived from the
+  persisted retry deadline and the exhausted-diagnostics escalation,
+  both of which are durable record facts rather than observations.
 * the completion / publication verdicts (``COMPLETE_WITH_PROOF``,
   ``PUBLISH_AFTER_LANDING``) -- derived from the record's landing
   proof.
@@ -190,11 +191,10 @@ def _startup_recovery_route(
 
     For everything else the seam verdict is the whole decision: a typed
     fail-closed :class:`RecordFactOutcome` verdict (a spent diagnostic
-    budget, a stale retained intent) and ``REQUIRE_INTERVENTION`` defer
-    without mutating — the typed outcome is routed to the autonomous
-    fallback ladder by the boundary that owns the durable ledger — and
-    every mutation-ladder action routes to the recovery path that owns
-    the obligation.
+    budget, a stale retained intent) defers without mutating — the
+    typed outcome is routed to the autonomous fallback ladder by the
+    boundary that owns the durable ledger — and every mutation-ladder
+    action routes to the recovery path that owns the obligation.
     """
     if (
         classify_git_operation(record) is not GitOperationKind.NONE
@@ -205,8 +205,6 @@ def _startup_recovery_route(
     if record.phase == "integrated":
         return _StartupRecoveryRoute.LANDING_CONTINUATION
     if isinstance(action, RecordFactOutcome):
-        return _StartupRecoveryRoute.DEFER_INTERVENTION
-    if action is IntegrationAction.REQUIRE_INTERVENTION:
         return _StartupRecoveryRoute.DEFER_INTERVENTION
     if action is IntegrationAction.WAIT_FOR_BOUNDED_RETRY:
         return _StartupRecoveryRoute.DEFER_RETRY
