@@ -939,19 +939,20 @@ def _handle_agent_failure(
             # fails closed ("unchanged") instead of inheriting a stale fact
             # from an earlier attempt.
             observation = observation_from_event(event)
-            workspace_changed: bool = (
-                observation.resolved_workspace_changed() if observation is not None else False
-            )
-            demoted_reason = recovery.record_attempt_fact(
-                state.phase,
-                current_agent,
-                artifact_valid=False,
-                workspace_changed=workspace_changed,
-                free_retry_category=True,
-            )
-            if demoted_reason is not None and len(chain.agents) == 1:
-                logger.warning(demoted_reason)
-                return _enter_failed_recovery(state, demoted_reason, policy)
+            if observation is None or not observation.already_charged:
+                workspace_changed: bool = (
+                    observation.resolved_workspace_changed() if observation is not None else False
+                )
+                demoted_reason = recovery.record_attempt_fact(
+                    state.phase,
+                    current_agent,
+                    artifact_valid=False,
+                    workspace_changed=workspace_changed,
+                    free_retry_category=True,
+                )
+                if demoted_reason is not None and len(chain.agents) == 1:
+                    logger.warning(demoted_reason)
+                    return _enter_failed_recovery(state, demoted_reason, policy)
         selection = recovery.preferred_agent_index(
             state.phase,
             chain.agents,

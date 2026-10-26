@@ -30,6 +30,12 @@ seams have no backend seam to thread, so for that cause they reach the
 SAME startup recovery producer and are covered by the startup case.
 
 The ABSENT case is the proceeding control.
+
+Every entry point that drives the phase-boundary loop runs against an
+INJECTED FAKE CLOCK: the loop's blocked-integration branch never returns
+on a person, so its only bound is the bounded retry sleep that paces a
+REPEAT escalation. The fake clock raises a sentinel at that first paced
+sleep, which ends each loop deterministically without a real wait.
 """
 
 from __future__ import annotations
@@ -89,9 +95,29 @@ ESCALATION_OUTCOME = "ladder_escalation"
 #: terminal intervention label must never appear.
 FORBIDDEN_LABELS = ("intervention",)
 
-# The inner loop's cooldown executor sleeps once per blocked turn; this
-# sentinel ends the loop deterministically on the first injected sleep.
-_INNER_LOOP_STOP = StopIteration("inner loop stopped at the first cooldown sleep")
+
+class _LoopBudgetExhausted(BaseException):
+    """Ends the autonomous phase-boundary loop at its first paced sleep.
+
+    The run loop's blocked-integration branch never returns on a person:
+    it re-observes the durable evidence and paces the next attempt with
+    the bounded retry sleep. That pacing sleep is the loop's ONLY bound,
+    so a test that injects a no-op sleep runs the loop forever. The
+    tests inject this sentinel as the fake clock instead: the loop ends
+    deterministically at the first paced sleep, with no real wait.
+
+    The sentinel derives from ``BaseException`` (not ``Exception``) on
+    purpose. Production code that runs inside the loop -- notably
+    ``runner._save_checkpoint_or_log`` -- swallows ``Exception`` and logs
+    it, so an ``Exception`` sentinel raised in that window would be eaten
+    and the unbounded loop would continue. A ``BaseException`` sentinel
+    cannot be swallowed by any ``except Exception`` handler.
+    """
+
+
+def _bounded_clock() -> MagicMock:
+    """A fake clock that ends the autonomous loop at the first paced sleep."""
+    return MagicMock(side_effect=_LoopBudgetExhausted)
 
 
 class _FailingReadBackend(PathFileBackend):
@@ -349,7 +375,7 @@ def test_phase_boundary_entry_point_escalates_to_the_ladder(workspace_root: Path
         assert recovered is not None
         state = PipelineState(phase="development", rebase=recovered)
         latest_state: list[PipelineState] = []
-        sleep = MagicMock(side_effect=_INNER_LOOP_STOP)
+        sleep = _bounded_clock()
         ctx = _loop_context(workspace_root, latest_state, sleep)
         # O1 retry-progress rule (D3) + WU-1: the phase-boundary loop
         # escalates an unreadable durable record to the typed ladder
@@ -358,7 +384,7 @@ def test_phase_boundary_entry_point_escalates_to_the_ladder(workspace_root: Path
         # never returns early on a person: repeat escalations pace the
         # loop with the bounded retry (the sentinel ends the loop
         # deterministically at the first paced sleep).
-        with contextlib.suppress(StopIteration):
+        with contextlib.suppress(_LoopBudgetExhausted):
             run_loop._run_inner_loop(state, ctx, "development")
         assert sleep.called, (
             "repeat escalations must pace the loop with the bounded retry "
@@ -539,7 +565,7 @@ def test_phase_boundary_entry_point_escalates_to_the_ladder_on_backend_read_fail
     # strictly REPORT_INTERVENTION_REQUIRED.
     state = PipelineState(phase="development", rebase=RebaseState())
     latest_state: list[PipelineState] = []
-    sleep = MagicMock(side_effect=_INNER_LOOP_STOP)
+    sleep = _bounded_clock()
     ctx = _loop_context(workspace_root, latest_state, sleep)
     # O1 retry-progress rule (D3) + WU-1: same as the corrupt-in-parsed
     # case -- the failing backend has no in-process satisfier, so the
@@ -547,7 +573,7 @@ def test_phase_boundary_entry_point_escalates_to_the_ladder_on_backend_read_fail
     # sleep), and the loop never returns early on a person: repeat
     # escalations pace the loop with the bounded retry (the sentinel
     # ends the loop deterministically at the first paced sleep).
-    with contextlib.suppress(StopIteration):
+    with contextlib.suppress(_LoopBudgetExhausted):
         run_loop._run_inner_loop(
             state,
             ctx,
@@ -679,17 +705,30 @@ def test_restart_does_not_repeat_diagnosis_and_keeps_projection(workspace_root: 
     for cause in UNREADABLE_CAUSES:
         payload = _seed_unreadable_record(workspace_root, cause)
         # First visit through the real startup seam, then one blocked inner-loop
-        # turn that checkpoints the intervention projection. O1 retry-progress
-        # rule (D3): the loop returns from ``_continue_after_startup_integration``
-        # via the early-return branch without sleeping.
+        # turn that checkpoints the escalation projection. O1 retry-progress
+        # rule (D3): the loop never returns early on a person -- the FIRST
+        # escalation is immediate and a REPEAT escalation paces the loop with
+        # the bounded retry, so the injected fake clock ends the loop
+        # deterministically at that first paced sleep.
         recovered = run_loop._run_auto_integrate_recovery_preamble(
             WorkspaceScope(workspace_root), UnifiedConfig()
         )
         assert recovered is not None
         state = PipelineState(phase="development", rebase=recovered)
         latest_state: list[PipelineState] = []
-        ctx = _loop_context(workspace_root, latest_state, MagicMock())
-        first, _previous, _exit = run_loop._run_inner_loop(state, ctx, "development")
+        sleep = _bounded_clock()
+        ctx = _loop_context(workspace_root, latest_state, sleep)
+        with contextlib.suppress(_LoopBudgetExhausted):
+            run_loop._run_inner_loop(state, ctx, "development")
+        # The loop ran to its paced repeat escalation instead of spinning:
+        # the fake clock is the ONLY bound, and it was reached.
+        assert sleep.call_count == 1, (
+            "the blocked loop must pace its repeat escalation with the "
+            "bounded retry (the fake clock ends it at the first paced sleep)"
+        )
+        assert all(call.args[0] > 0 for call in sleep.call_args_list)
+        # The live projection is the state the blocked turn persisted.
+        first = latest_state[0]
         assert first.rebase.last_decision == ESCALATION.value
         checkpoint_path = workspace_root / "checkpoint.json"
         reloaded = checkpoint_module.load(checkpoint_path)
@@ -702,16 +741,23 @@ def test_restart_does_not_repeat_diagnosis_and_keeps_projection(workspace_root: 
         # identical, the persisted projection survives, and the record bytes are
         # exactly as the crash left them.
         fresh_latest: list[PipelineState] = []
-        fresh_ctx = _loop_context(workspace_root, fresh_latest, MagicMock())
+        fresh_sleep = _bounded_clock()
+        fresh_ctx = _loop_context(workspace_root, fresh_latest, fresh_sleep)
         recovered_restart = run_loop._run_auto_integrate_recovery_preamble(
             WorkspaceScope(workspace_root), UnifiedConfig()
         )
         assert recovered_restart is not None
-        restarted, _previous, _exit = run_loop._run_inner_loop(
-            PipelineState(phase="development", rebase=recovered_restart),
-            fresh_ctx,
-            "development",
+        with contextlib.suppress(_LoopBudgetExhausted):
+            run_loop._run_inner_loop(
+                PipelineState(phase="development", rebase=recovered_restart),
+                fresh_ctx,
+                "development",
+            )
+        assert fresh_sleep.call_count == 1, (
+            "the restarted loop must pace its repeat escalation with the "
+            "bounded retry (the fake clock ends it at the first paced sleep)"
         )
+        restarted = fresh_latest[0]
         assert restarted.rebase.last_decision == ESCALATION.value
         assert format_integration_label(restarted.rebase) not in FORBIDDEN_LABELS
         outcome_restart = read_record_outcome(workspace_root)

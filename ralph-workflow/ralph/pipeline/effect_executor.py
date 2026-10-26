@@ -31,6 +31,7 @@ from ralph.agents.invoke._agy_incomplete_exit_error import AgyIncompleteExitErro
 from ralph.agents.invoke._direct_mcp_recovery import run_with_direct_mcp_recovery
 from ralph.agents.invoke._open_code_resumable_exit_error import OpenCodeResumableExitError
 from ralph.agents.registry import AgentRegistry
+from ralph.agents.timeout_clock import SystemClock
 from ralph.config.enums import AgentTransport, Verbosity
 from ralph.config.mcp_loader import McpConfigError
 from ralph.display.parallel_display import (
@@ -96,7 +97,6 @@ from ralph.workspace.probe import DefaultWorkspaceChangeProbe, WorkspaceChangePr
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from ralph.agents.clock import Clock
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
@@ -243,7 +243,6 @@ def execute_agent_effect(
     )
     active_ledger = active_rec.ledger if active_rec is not None else pipeline_deps.ledger
     if active_ledger is None and state is not None and state.ledger_snapshot:
-        from ralph.agents.timeout_clock import SystemClock
         from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
         active_ledger = AgentFailureLedger.from_snapshot(state.ledger_snapshot, clock=SystemClock())
@@ -328,10 +327,6 @@ def execute_agent_effect(
         parallel_worker=cast(
             "bool", opts.get("parallel_worker", False)
         ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        recovery=cast(
-            "RecoveryController | None",
-            opts.get("recovery_controller") or opts.get("recovery"),
-        ),
     )
     invocation_outcome = "crashed"
     try:
@@ -658,34 +653,11 @@ def _handle_recovery_attempt_failure(
         raise exc
 
     workspace_changed: bool = observation.resolved_workspace_changed() if observation else False
-    recovery = ctx.recovery
-    if recovery is not None:
-        demote_msg = recovery.record_attempt_fact(
-            str(ctx.effect.phase),
-            ctx.effect.agent_name,
-            artifact_valid=False,
-            workspace_changed=workspace_changed,
-        )
-        is_available = recovery.ledger.is_available(str(ctx.effect.phase), ctx.effect.agent_name)
-        if demote_msg is not None or not is_available:
-            logger.error(
-                "Aborting agent '{}' retries: unproductive attempt limit reached ({}). "
-                "Refusing to spin; failing fast.",
-                ctx.effect.agent_name,
-                demote_msg or "agent unavailable in ledger",
-            )
-            _set_last_captured_retry_intent(
-                AgentRetryIntent(
-                    action=None,
-                    session_id=None,
-                    failure_reason=recovery_plan.reason,
-                )
-            )
-            return _AttemptResult(PipelineEvent.AGENT_FAILURE, state.prompt_file, session_id)
-    elif ctx.deps.pipeline_deps.ledger is not None:
+    ledger = ctx.deps.pipeline_deps.ledger
+    if ledger is not None:
         from ralph.recovery.agent_failure_ledger import AttemptFact
 
-        outcome = ctx.deps.pipeline_deps.ledger.record(
+        outcome = ledger.record(
             AttemptFact(
                 phase=str(ctx.effect.phase),
                 agent=ctx.effect.agent_name,
@@ -693,7 +665,28 @@ def _handle_recovery_attempt_failure(
                 workspace_changed=workspace_changed,
             )
         )
+        charged_observation = (
+            replace(observation, already_charged=True, reason=str(exc))
+            if observation is not None
+            else AgentFailureEvent(
+                phase=str(ctx.effect.phase),
+                agent=ctx.effect.agent_name,
+                artifact_valid=False,
+                workspace_changed=None,
+                reason=str(exc),
+                already_charged=True,
+            )
+        )
+        state.last_observation = charged_observation
         if outcome.demoted:
+            logger.warning(
+                "Agent '{}' demoted in phase '{}' (consecutive={}, total={}, reason={})",
+                ctx.effect.agent_name,
+                str(ctx.effect.phase),
+                outcome.consecutive_unproductive,
+                outcome.total_unproductive,
+                outcome.reason,
+            )
             logger.error(
                 "Aborting agent '{}' retries: unproductive attempt limit reached ({}). "
                 "Refusing to spin; failing fast.",
@@ -707,7 +700,7 @@ def _handle_recovery_attempt_failure(
                     failure_reason=recovery_plan.reason,
                 )
             )
-            return _AttemptResult(PipelineEvent.AGENT_FAILURE, state.prompt_file, session_id)
+            return _AttemptResult(charged_observation, state.prompt_file, session_id)
 
     state.prompt_file = recovery_plan.prompt_file
     state.resume_session_id = recovery_plan.session_id
@@ -1492,7 +1485,7 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
     """
     # Journal first: the kill that exhausts the budget (or a conflict resolver's,
     # which has none) is the one an operator needs named.
-    recorded_at = recovery_input.clock.epoch() if recovery_input.clock is not None else time.time()
+    recorded_at = recovery_input.clock.epoch()
     record_watchdog_fire(
         recovery_input.workspace_root,
         recovery_input.exc,
@@ -1720,10 +1713,7 @@ def _build_recovery_input_for_attempt(
         run_id=run_id,
         completion_reprompt_used=state.completion_reprompt_used,
         worker_namespace=ctx.worker_namespace,
-        clock=cast(
-            "Clock | None",
-            getattr(ctx.deps.pipeline_deps, "clock", None),
-        ),  # cast-policy: seam: structural boundary (optional collaborator attribute)
+        clock=SystemClock(),
     )
 
 

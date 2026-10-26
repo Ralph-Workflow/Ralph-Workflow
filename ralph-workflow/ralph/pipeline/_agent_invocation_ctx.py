@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     from ralph.pipeline.effects import InvokeAgentEffect
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PolicyBundle
-    from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
 
@@ -44,4 +43,3 @@ class _AgentInvocationCtx:
     worker_namespace: Path | None = None
     worker_artifact_dir: Path | None = None
     parallel_worker: bool = False
-    recovery: RecoveryController | None = None

@@ -34,15 +34,36 @@ from tests._support.typed_accessors import (
 pytestmark = pytest.mark.timeout_seconds(5)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_broker_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the broker-secret contract for every test in this module.
+
+    The invoke path verifies the run-scoped completion sentinel against
+    ``RALPH_BROKER_SECRET`` whenever that variable is in scope (RFC-013
+    P3 anti-forgery).  An operator-exported secret -- or a secret leaked
+    into the pytest process by another test, e.g. the CLI's
+    ``ralph/cli/commands/run.py::_ensure_broker_secret`` minting one in
+    ``os.environ`` and never restoring it -- therefore turns this module's
+    unsigned ``completion_seen_<run_id>.json`` sentinel into a REJECTED
+    one.  A rejected sentinel drops the OpenCode transport out of the
+    terminal-complete path and into the parent-exit grace window
+    (``parent_exit_grace_seconds``, 5 s by default), which is exactly the
+    per-test timeout this module is capped at: the two OpenCode tests then
+    failed with ``TestExecutionTimeoutError`` whenever they ran after such
+    a test in the same process.
+
+    Deleting the variable makes the module's completion-evidence contract
+    explicit and independent of the ambient environment, in both
+    directions.  It is the same hermetic-env discipline the rest of the
+    suite uses (see ``tests/test_smoke_canonical_path.py``).
+    """
+    monkeypatch.delenv("RALPH_BROKER_SECRET", raising=False)
+
+
 def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
     env_obj = kwargs.get("env")
     assert isinstance(env_obj, dict)
     return must_str_dict(env_obj)
-
-
-def _no_workspace_monitor(_workspace_path: Path, _classifier: object) -> None:
-    """Skip workspace monitoring so a test never starts a real observer."""
-    return None
 
 
 class _FakeProcess:
@@ -303,7 +324,7 @@ def test_opencode_upstream_env_var_includes_mcp_toml_server(
     sentinel.parent.mkdir(parents=True, exist_ok=True)
     sentinel.write_text("{}", encoding="utf-8")
 
-    list(
+    lines = list(
         invoke_agent(
             config,
             str(prompt_file),
@@ -311,10 +332,22 @@ def test_opencode_upstream_env_var_includes_mcp_toml_server(
                 show_progress=False,
                 workspace_path=tmp_path,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+                # The OpenCode transport completes on durable evidence: the
+                # sentinel above is accepted on the FIRST exit classification
+                # and the invocation returns without ever entering the
+                # parent-exit grace window.  A zero-length window keeps that
+                # contract honest: if the evidence were ever rejected the
+                # invocation raises ``OpenCodeResumableExitError`` immediately
+                # instead of burning the 5 s production grace window and
+                # tripping this module's per-test timeout.
+                parent_exit_grace_seconds=0.0,
             ),
         )
     )
 
+    # The invocation returned normally (a rejected completion gate raises)
+    # and the fake agent's completion line was delivered to the consumer.
+    assert any("Task declared complete:" in line for line in lines)
     upstreams = load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV])
     assert any(s.name == "toml-injected" for s in upstreams)
 
@@ -517,7 +550,7 @@ def test_opencode_non_colliding_native_server_preserved(
     sentinel.parent.mkdir(parents=True, exist_ok=True)
     sentinel.write_text("{}", encoding="utf-8")
 
-    list(
+    lines = list(
         invoke_agent(
             config,
             str(prompt_file),
@@ -525,10 +558,18 @@ def test_opencode_non_colliding_native_server_preserved(
                 show_progress=False,
                 workspace_path=tmp_path,
                 extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+                # See the sibling OpenCode test: a zero-length parent-exit
+                # grace window keeps a rejected completion sentinel a fast,
+                # explicit failure instead of a 5 s wait that collides with
+                # this module's per-test timeout.
+                parent_exit_grace_seconds=0.0,
             ),
         )
     )
 
+    # The invocation returned normally (a rejected completion gate raises)
+    # and the fake agent's completion line was delivered to the consumer.
+    assert any("Task declared complete:" in line for line in lines)
     upstreams = load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV])
     names = {s.name for s in upstreams}
     assert "native-angular" in names

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -43,4 +43,7 @@ class AgentRecoveryInput:
     # construction sites stay valid.
     completion_reprompt_used: bool = False
     worker_namespace: Path | None = None
-    clock: Clock | None = None
+    # Required keyword-only field so the recovery planner never reads ambient
+    # wall time. Keeping it keyword-only preserves the positional order of the
+    # existing defaulted fields while making omission fail at construction.
+    clock: Clock = field(kw_only=True)

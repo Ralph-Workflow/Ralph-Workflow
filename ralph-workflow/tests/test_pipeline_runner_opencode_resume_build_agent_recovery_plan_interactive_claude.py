@@ -13,6 +13,7 @@ import json
 from typing import TYPE_CHECKING
 
 from ralph.agents.invoke import AgentInactivityTimeoutError, OpenCodeResumableExitError
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.effect_executor import AgentRecoveryInput, build_agent_recovery_plan
 from ralph.pipeline.effects import InvokeAgentEffect
 
@@ -50,6 +51,7 @@ class TestBuildAgentRecoveryPlanInteractiveClaude:
                 rendered_output=[],
                 extracted_session_id=None,
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 
@@ -76,6 +78,7 @@ class TestBuildAgentRecoveryPlanInteractiveClaude:
                 rendered_output=[],
                 extracted_session_id="sess-from-output",
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 
@@ -99,6 +102,7 @@ class TestBuildAgentRecoveryPlanInteractiveClaude:
                 rendered_output=[],
                 extracted_session_id=None,
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 

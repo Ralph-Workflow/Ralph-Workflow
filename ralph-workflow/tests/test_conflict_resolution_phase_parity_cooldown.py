@@ -11,6 +11,7 @@ from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pi
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
 )
+from ralph.pipeline.integration_actions import install_executors, reset_executors
 from tests._conflict_resolution_phase_parity_seams import (
     _config,
     _install_seams,
@@ -21,6 +22,14 @@ if TYPE_CHECKING:
     import pytest
 
 
+class _CooldownClock(FakeClock):
+    """Fake clock compatible with the recovery and integration clock seams."""
+
+    def now(self) -> float:
+        """Return current monotonic time for the integration executor seam."""
+        return self.monotonic()
+
+
 def test_conflict_waits_for_earliest_cooldown(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -28,7 +37,7 @@ def test_conflict_waits_for_earliest_cooldown(
     from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
     from ralph.recovery.unavailability_reason import UnavailabilityReason
 
-    clock = FakeClock(start=0.0)
+    clock = _CooldownClock(start=0.0)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             clock=clock,
@@ -45,26 +54,29 @@ def test_conflict_waits_for_earliest_cooldown(
         )
     )
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
-    monkeypatch.setattr(driver_module, "_sleep_seconds", clock.advance)
-    _install_seams(monkeypatch, surviving_per_round=[[]])
     called: list[str] = []
 
     def invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         called.append(agent_name)
         return True
 
-    assert run_conflict_resolution_pipeline(
-        root=tmp_path,
-        target="main",
-        config=_config(),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=None,
-        display_context=None,
-        invoke=invoke,
-        session=ResolutionSession(recovery_controller=controller),
-    )
+    token = install_executors(clock=clock)
+    try:
+        _install_seams(monkeypatch, surviving_per_round=[[]])
+        assert run_conflict_resolution_pipeline(
+            root=tmp_path,
+            target="main",
+            config=_config(),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=_policy_bundle(),
+            display=None,
+            display_context=None,
+            invoke=invoke,
+            session=ResolutionSession(recovery_controller=controller),
+        )
+    finally:
+        reset_executors(token)
     assert called == ["two"]
     assert clock.monotonic() == 5.0
     assert (

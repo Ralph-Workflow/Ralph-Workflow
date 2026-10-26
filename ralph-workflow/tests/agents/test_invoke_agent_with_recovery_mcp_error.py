@@ -123,7 +123,6 @@ def test_run_reset_callback_mcp_error_preserves_identity() -> None:
             run_attempt,
             max_retries=5,
             reset_tool_registry=_reset_raises_mcp_server_error(reset_calls),
-            sleep=lambda _seconds: None,
         )
 
     error = exc_info.value
@@ -155,7 +154,6 @@ def test_iter_reset_callback_mcp_error_preserves_identity() -> None:
             _run_attempt,
             max_retries=5,
             reset_tool_registry=_reset_raises_mcp_server_error(reset_calls),
-            sleep=lambda _seconds: None,
         )
 
     with pytest.raises(McpServerError) as exc_info:
@@ -192,7 +190,6 @@ def test_run_reset_callback_generic_error_still_converts_to_invocation_error() -
             run_attempt,
             max_retries=5,
             reset_tool_registry=_reset_tool_registry,
-            sleep=lambda _seconds: None,
         )
 
     error = exc_info.value

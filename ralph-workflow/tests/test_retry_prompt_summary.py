@@ -5,6 +5,7 @@ from pathlib import Path
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.effect_executor import (
     AgentRecoveryInput,
     build_agent_recovery_plan,
@@ -58,6 +59,7 @@ def test_build_agent_recovery_plan_marks_omitted_logs_in_real_retry_flow(tmp_pat
             rendered_output=[f"claude result: {idx} " + ("x" * 400) for idx in range(20)],
             extracted_session_id=None,
             inactivity_error_type=AgentInactivityTimeoutError,
+            clock=FakeClock(),
         )
     )
 

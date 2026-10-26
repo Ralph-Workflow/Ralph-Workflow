@@ -24,6 +24,7 @@ from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
 )
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.effect_executor import (
     AgentRecoveryInput,
     _write_agent_retry_prompt,
@@ -492,6 +493,7 @@ def test_build_agent_recovery_plan_fresh_non_stale_with_prior_id_omits_stale_ses
             stale_session_id="nonstale-prior-session",
             transport="opencode",
             model="zai-coding-plan/glm-5.2",
+            clock=FakeClock(),
         )
     )
 
@@ -573,6 +575,7 @@ def test_build_agent_recovery_plan_fresh_true_stale_session_failure_still_emits_
             stale_session_id=rejected_session_id,
             transport="opencode",
             model="zai-coding-plan/glm-5.2",
+            clock=FakeClock(),
         )
     )
 

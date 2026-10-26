@@ -21,6 +21,7 @@ from ralph.agents.invoke import (
     InactivityTimeoutOpts,
     InvokeOptions,
 )
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
@@ -1156,6 +1157,7 @@ def test_stale_session_retry_with_rendered_output_includes_full_rendered_lines(
             rendered_output=rendered_lines,
             extracted_session_id=None,
             inactivity_error_type=AgentInactivityTimeoutError,
+            clock=FakeClock(),
         )
     )
     assert plan is not None

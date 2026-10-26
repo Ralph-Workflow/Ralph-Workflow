@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     import pytest
 
 from ralph.testing.audit_agent_failure_single_owner import (
+    PRODUCTION_SCAN_SUBTREES,
     TEMPORARY_TRANSITIONAL_RULES,
     audit_production_source,
     audit_test_source,
@@ -357,6 +358,25 @@ def retry_failure_signature(reason: str, lines: list[str]) -> str:
         v.rule == "production_streak_counter_state" and "retry_failure_signature" in v.detail
         for v in violations
     )
+
+
+def test_agents_invoke_retry_failure_signature_is_rejected() -> None:
+    source = """
+def _retry_failure_signature(exc: Exception) -> tuple[str, str]:
+    return type(exc).__name__, str(exc)
+"""
+    violations = audit_production_source(
+        "ralph/agents/invoke/_direct_mcp_recovery.py",
+        source,
+    )
+    assert any(
+        v.rule == "production_streak_counter_state" and "_retry_failure_signature" in v.detail
+        for v in violations
+    )
+
+
+def test_agents_invoke_is_in_production_scan_scope() -> None:
+    assert "ralph/agents/invoke" in PRODUCTION_SCAN_SUBTREES
 
 
 def test_competing_max_identical_retry_attempts_assignment_and_compare_flagged() -> None:

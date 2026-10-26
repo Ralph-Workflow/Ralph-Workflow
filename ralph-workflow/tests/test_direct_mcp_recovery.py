@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import suppress
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -10,6 +10,9 @@ from ralph.agents.invoke._direct_mcp_recovery import (
     run_with_direct_mcp_recovery,
 )
 from ralph.agents.invoke._session import extract_transport_session_id
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable, Iterator
 
 
 def test_direct_mcp_recovery_ignores_nested_tool_payload_session_ids() -> None:
@@ -28,7 +31,7 @@ def test_direct_mcp_recovery_ignores_nested_tool_payload_session_ids() -> None:
         calls.append(session_id)
         raise failure
 
-    with suppress(AgentInvocationError):
+    with pytest.raises(AgentInvocationError) as exc_info:
         run_with_direct_mcp_recovery(
             lambda session_id, _capture: _run_attempt(session_id),
             max_retries=1,
@@ -36,6 +39,7 @@ def test_direct_mcp_recovery_ignores_nested_tool_payload_session_ids() -> None:
         )
 
     assert calls == [None, None]
+    assert exc_info.value is failure
 
 
 def test_session_extractors_accept_completion_marker_session_id() -> None:
@@ -72,13 +76,13 @@ def test_iter_direct_mcp_recovery_preserves_early_session_id_across_long_output(
 
     def _run_attempt(
         session_id: str | None,
-    ) -> list[str]:
+    ) -> Iterable[str]:
         calls.append(session_id)
         if len(calls) == 1:
             lines = ['{"type":"session","session_id":"sess-early"}']
             lines.extend(f"line-{index}" for index in range(500))
 
-            def _iter() -> object:
+            def _iter() -> Iterator[str]:
                 yield from lines
                 raise AgentInvocationError(
                     "claude",
@@ -105,7 +109,7 @@ def test_iter_direct_mcp_recovery_preserves_early_session_id_across_long_output(
 def test_direct_mcp_recovery_retries_stale_session_with_fresh_attempt() -> None:
     calls: list[str | None] = []
 
-    def _run_attempt(session_id: str | None, capture: callable) -> str:
+    def _run_attempt(session_id: str | None, capture: Callable[[str], None]) -> str:
         calls.append(session_id)
         if len(calls) == 1:
             capture("sess-stale")

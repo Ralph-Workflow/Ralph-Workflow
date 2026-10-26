@@ -73,6 +73,7 @@ class TestBuildAgentRecoveryPlanResumableSession:
                 rendered_output=[],
                 extracted_session_id=None,
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 
@@ -99,6 +100,7 @@ class TestBuildAgentRecoveryPlanResumableSession:
                 rendered_output=[],
                 extracted_session_id="sess-from-output",
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 
@@ -122,6 +124,7 @@ class TestBuildAgentRecoveryPlanResumableSession:
                 rendered_output=[],
                 extracted_session_id=None,
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 
@@ -154,6 +157,7 @@ class TestBuildAgentRecoveryPlanResumableSession:
                 # Simulate what effect_executor.py does: extract_session_id(tuple(raw_output))
                 extracted_session_id="sess-from-opencode-text",
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 
@@ -197,6 +201,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
                 rendered_output=[],
                 extracted_session_id=None,
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 
@@ -236,6 +241,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
                 rendered_output=[],
                 extracted_session_id=None,
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 
@@ -259,6 +265,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
                 rendered_output=[],
                 extracted_session_id=None,
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 
@@ -287,6 +294,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
                 rendered_output=[],
                 extracted_session_id=None,
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 
@@ -310,6 +318,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
                 rendered_output=[],
                 extracted_session_id=None,
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 
@@ -340,6 +349,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
                 rendered_output=[],
                 extracted_session_id=None,
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
         assert plan is None
@@ -499,6 +509,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
                 rendered_output=[],
                 extracted_session_id=None,
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 

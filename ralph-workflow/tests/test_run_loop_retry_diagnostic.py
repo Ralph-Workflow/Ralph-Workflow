@@ -48,6 +48,14 @@ if TYPE_CHECKING:
     from ralph.pipeline.run_loop import LoopContext
 
 
+#: Ceiling for the bounded repeat-escalation pacing sleep asserted below.
+#: The production pace is a small tuning constant; this ceiling only
+#: rejects a busy spin (0s) or a stall of a minute or more. It never
+#: pins the exact pace -- the contract under test is "exactly one
+#: positive, bounded pacing sleep per repeat escalation".
+_MAX_PACING_SLEEP_SECONDS = 60.0
+
+
 def _noop_warn(_display: object, _msg: str) -> None:
     pass
 
@@ -768,7 +776,22 @@ def test_wait_for_retry_cold_loaded_capped_ladder_escalation_dispatches_handoff(
 def test_wait_for_retry_repeated_identical_blocked_outcomes_progress_attempts(
     tmp_path: Path,
 ) -> None:
-    """WU-2 retry progress: identical blocked outcomes charge attempts and escalate."""
+    """WU-2 retry progress: identical blocked outcomes charge attempts and escalate.
+
+    The FIRST escalation never sleeps -- the automated-resolution handoff
+    was just dispatched, so a sleep would only mask the escalation
+    transition. Every REPEAT escalation in the same session paces the
+    loop with exactly ONE bounded retry so the recovery preamble and the
+    fallback-ladder seam re-observe on each wake instead of busy
+    spinning. The attempt counter advances on EVERY iteration (the
+    blocked outcome never replenishes the budget) and the outcome stays
+    the typed ladder escalation.
+
+    The pacing is pinned as OBSERVED BEHAVIOUR -- one positive, bounded
+    sleep per repeat escalation, the same pace every time -- instead of
+    the private module constant that implements it, so the assertion
+    survives a retune of the production pace without going white-box.
+    """
     sleeps, ctx = _setup_retry_env(tmp_path)
     handoffs: list[str] = []
     ctx.hooks.handoff_retained_failure = lambda _c, d: handoffs.append(d)
@@ -794,9 +817,37 @@ def test_wait_for_retry_repeated_identical_blocked_outcomes_progress_attempts(
         ).set_ladder_escalation("identical blocked detail"),
     )
 
-    for _ in range(cap):
-        state = wait_for_integration_retry(state, ctx)
+    # Iteration 1: the FIRST escalation charges the attempt and dispatches
+    # the single session-scoped handoff WITHOUT sleeping.
+    state = wait_for_integration_retry(state, ctx)
     assert sleeps == [], "Identical blocked outcomes must not sleep before the first escalation"
+    assert len(handoffs) == 1
+    assert state.rebase.is_intervention_required is True
+    assert state.rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
+    assert state.rebase.consecutive_conflicts == 1
+
+    # Iterations 2..cap: every REPEAT escalation charges the attempt and
+    # paces the loop with exactly ONE bounded retry -- never a busy spin
+    # and never a second handoff in the same session. The contract under
+    # test is the OBSERVED pacing (one positive, bounded sleep per
+    # repeat escalation, the same pace every time), never the private
+    # module constant that happens to implement it.
+    for repeat in range(1, cap):
+        state = wait_for_integration_retry(state, ctx)
+        assert len(handoffs) == 1, "Same-session calls must not re-dispatch the handoff"
+        assert state.rebase.consecutive_conflicts == repeat + 1, (
+            "Every blocked outcome must charge exactly one attempt"
+        )
+        assert len(sleeps) == repeat, (
+            "Every repeat escalation paces the loop with exactly one bounded retry"
+        )
+        assert len(set(sleeps)) == 1, (
+            "Every repeat escalation must pace with the same bounded retry"
+        )
+        assert all(0.0 < delay <= _MAX_PACING_SLEEP_SECONDS for delay in sleeps), (
+            "Every repeat escalation must pace with one positive, bounded retry"
+        )
+
     assert len(handoffs) == 1
     assert state.rebase.is_intervention_required is True
     assert state.rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
@@ -832,8 +883,16 @@ def test_wait_for_retry_unsuccessful_handoff_records_ladder_escalation_without_s
 def test_wait_for_retry_pending_repeated_identical_blocked_outcomes_progress_and_escalate(
     tmp_path: Path,
 ) -> None:
-    """WU-2 pending retry: repeated non-None blocked results charge attempts and escalate."""
-    _sleeps, ctx = _setup_retry_env(tmp_path)
+    """WU-2 pending retry: repeated non-None blocked results charge attempts and back off.
+
+    Below the escalation the retry pairs ONE bounded sleep with the
+    recovery preamble on every iteration, so an in-progress recovery
+    (e.g. a busy worktree lock) has time to advance state before the
+    next observation. A blocked (unresolved) recovery result is charged
+    as a failed attempt -- never a silent no-progress loop -- and the
+    counter climbs toward the cap that the escalated seam owns.
+    """
+    sleeps, ctx = _setup_retry_env(tmp_path)
     handoffs: list[str] = []
     ctx.hooks.handoff_retained_failure = lambda _c, d: handoffs.append(d)
 
@@ -861,8 +920,13 @@ def test_wait_for_retry_pending_repeated_identical_blocked_outcomes_progress_and
     )
     assert state.rebase.is_intervention_required is False
 
-    for _ in range(cap):
+    for attempt in range(1, cap + 1):
         state = wait_for_integration_retry(state, ctx)
+        # Every blocked recovery result charges exactly one attempt and
+        # backs off with exactly one bounded sleep.
+        assert state.rebase.consecutive_conflicts == attempt
+        assert len(sleeps) == attempt
+        assert all(delay > 0 for delay in sleeps)
 
     assert len(handoffs) == 0
     assert state.rebase.is_intervention_required is False

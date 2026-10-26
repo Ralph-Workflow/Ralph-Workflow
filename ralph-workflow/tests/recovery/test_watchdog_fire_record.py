@@ -16,9 +16,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError, AgentInvocationError
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
+from ralph.agents.timeout_clock import FakeClock
 from ralph.checked_accessors import as_mapping, as_str
 from ralph.pipeline.agent_recovery_input import AgentRecoveryInput
 from ralph.pipeline.effect_executor import build_agent_recovery_plan
@@ -34,7 +37,13 @@ def _prompt(tmp_path: Path) -> Path:
     return prompt
 
 
-def _plan(tmp_path: Path, exc: Exception) -> str:
+def _plan(
+    tmp_path: Path,
+    exc: Exception,
+    *,
+    clock: FakeClock | None = None,
+) -> str:
+    effective_clock = clock if clock is not None else FakeClock()
     plan = build_agent_recovery_plan(
         AgentRecoveryInput(
             exc=exc,
@@ -50,6 +59,7 @@ def _plan(tmp_path: Path, exc: Exception) -> str:
             rendered_output=[],
             extracted_session_id=None,
             inactivity_error_type=AgentInactivityTimeoutError,
+            clock=effective_clock,
         )
     )
     assert plan is not None
@@ -133,6 +143,40 @@ def test_every_watchdog_kill_is_appended_to_the_events_file(tmp_path: Path) -> N
     assert events[0]["timeout_seconds"] == IDLE_SECONDS
     assert events[0]["snapshot"] == {"live_subagent_count": 0}
     assert isinstance(events[0]["recorded_at"], float)
+
+
+def test_watchdog_fire_record_regression_uses_injected_clock_timestamp(
+    tmp_path: Path,
+) -> None:
+    """U4b: the journal timestamp comes from the injected recovery clock."""
+    recorded_at = 1_725_000_000.25
+    clock = FakeClock(epoch_start=recorded_at)
+
+    _plan(tmp_path, _quiet_kill({"live_subagent_count": 0}), clock=clock)
+
+    assert _events(tmp_path)[0]["recorded_at"] == recorded_at
+
+
+def test_watchdog_fire_record_regression_missing_clock_fails_closed(
+    tmp_path: Path,
+) -> None:
+    """U4b: recovery input cannot omit its clock and silently use wall time."""
+    with pytest.raises(TypeError, match="clock"):
+        AgentRecoveryInput(
+            exc=_quiet_kill({"live_subagent_count": 0}),
+            attempt_index=0,
+            max_recovery_attempts=3,
+            effect=InvokeAgentEffect(
+                agent_name="opencode",
+                phase="development",
+                prompt_file=str(tmp_path / "PROMPT.md"),
+            ),
+            workspace_root=tmp_path,
+            raw_output=[],
+            rendered_output=[],
+            extracted_session_id=None,
+            inactivity_error_type=AgentInactivityTimeoutError,
+        )
 
 
 def test_a_kill_without_a_snapshot_still_names_its_rule(tmp_path: Path) -> None:

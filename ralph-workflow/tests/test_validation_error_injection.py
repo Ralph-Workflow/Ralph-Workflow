@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from ralph.agents.invoke import AgentInactivityTimeoutError
+from ralph.agents.timeout_clock import FakeClock
 from ralph.mcp.artifacts.markdown import Diagnostic
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 from ralph.mcp.tools.md_artifact import (
@@ -254,6 +255,7 @@ def test_recovery_prompt_reads_worker_validation_hint_without_coordinator_leak(
             extracted_session_id=None,
             inactivity_error_type=AgentInactivityTimeoutError,
             worker_namespace=worker_namespace,
+            clock=FakeClock(),
         )
     )
 

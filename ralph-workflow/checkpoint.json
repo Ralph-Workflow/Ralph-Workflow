@@ -116,13 +116,11 @@
     "failed_agent_name": null,
     "broken_agent_reason": null,
     "broken_agent_returncode": null,
-    "broken_agent_stderr": "",
-    "progress_guard": null
+    "broken_agent_stderr": ""
   },
   "last_unavailability_reason": null,
   "is_waiting_state": false,
   "wait_reason": null,
   "wait_until_monotonic_ms": null,
-  "progress_guard": null,
   "ledger_snapshot": null
 }

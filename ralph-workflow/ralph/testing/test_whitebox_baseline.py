@@ -122,7 +122,7 @@ tests/agents/test_idle_watchdog_workspace_smart_filter.py|0,3,0
 tests/agents/test_invocation_context.py|0,1,0
 tests/agents/test_invoke_agent_uses_spec_pty.py|0,2,0
 tests/agents/test_invoke_agent_with_recovery_mcp_error.py|0,2,0
-tests/agents/test_invoke_agent_with_recovery_typed_failure.py|0,3,0
+tests/agents/test_invoke_agent_with_recovery_typed_failure.py|0,1,0
 tests/agents/test_invoke_mcp_merge.py|10,0,0
 tests/agents/test_invoke_timeout_integration.py|0,1,2
 tests/agents/test_invoke_workspace_wiring.py|0,4,0
@@ -487,7 +487,7 @@ tests/test_conflict_resolution_futile_loop.py|9,1,4
 tests/test_conflict_resolution_lifecycle.py|0,2,0
 tests/test_conflict_resolution_liveness_matrix.py|0,2,0
 tests/test_conflict_resolution_outcome_judging.py|5,0,0
-tests/test_conflict_resolution_phase_parity.py|11,1,2
+tests/test_conflict_resolution_phase_parity.py|10,1,2
 tests/test_conflict_resolution_pipeline.py|8,1,1
 tests/test_conflict_resolution_pipeline_outcome.py|5,1,0
 tests/test_conflict_resolution_rebase_loop.py|16,0,9

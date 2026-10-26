@@ -43,6 +43,10 @@ class AgentFailureEvent:
             "nothing changed", and it must never inherit a previous
             attempt's fact.
         reason: Human-readable cause of the failure.
+        already_charged: Whether the single failure owner has already been
+            charged for this physical attempt. The executor sets this when
+            it charges the attempt, so the reducer can skip the duplicate
+            charge on the ordinary failure route.
     """
 
     phase: str
@@ -50,6 +54,7 @@ class AgentFailureEvent:
     artifact_valid: bool = False
     workspace_changed: bool | None = None
     reason: str = ""
+    already_charged: bool = False
 
     @property
     def value(self) -> str:
@@ -90,6 +95,7 @@ class AgentFailureEvent:
                 and self.artifact_valid == other.artifact_valid
                 and self.workspace_changed == other.workspace_changed
                 and self.reason == other.reason
+                and self.already_charged == other.already_charged
             )
         if isinstance(other, PipelineEvent):
             return other == PipelineEvent.AGENT_FAILURE
@@ -97,7 +103,14 @@ class AgentFailureEvent:
 
     def __hash__(self) -> int:
         return hash(
-            (self.phase, self.agent, self.artifact_valid, self.workspace_changed, self.reason)
+            (
+                self.phase,
+                self.agent,
+                self.artifact_valid,
+                self.workspace_changed,
+                self.reason,
+                self.already_charged,
+            )
         )
 
 

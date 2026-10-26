@@ -16,6 +16,7 @@ from ralph.agents.invoke import (
     AgentInvocationError,
     OpenCodeResumableExitError,
 )
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.effect_executor import AgentRecoveryInput, build_agent_recovery_plan
 from ralph.pipeline.effects import InvokeAgentEffect
 
@@ -65,6 +66,7 @@ class TestNonResumableExceptionYieldsNoRecovery:
                 rendered_output=[],
                 extracted_session_id=None,
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 
@@ -86,6 +88,7 @@ class TestNonResumableExceptionYieldsNoRecovery:
                 rendered_output=[],
                 extracted_session_id=None,
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 
@@ -113,6 +116,7 @@ class TestNonResumableExceptionYieldsNoRecovery:
                 rendered_output=[],
                 extracted_session_id="sess-post-tool",
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 
@@ -140,6 +144,7 @@ class TestNonResumableExceptionYieldsNoRecovery:
                 rendered_output=[],
                 extracted_session_id=None,
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 
@@ -168,6 +173,7 @@ class TestNonResumableExceptionYieldsNoRecovery:
                 rendered_output=[],
                 extracted_session_id=None,
                 inactivity_error_type=AgentInactivityTimeoutError,
+                clock=FakeClock(),
             )
         )
 

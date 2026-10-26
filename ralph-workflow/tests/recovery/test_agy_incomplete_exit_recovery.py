@@ -43,6 +43,7 @@ from ralph.agents.invoke import (
     check_process_result,
 )
 from ralph.agents.invoke._direct_mcp_recovery import run_with_direct_mcp_recovery
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.pipeline.effect_executor import AgentRecoveryInput, build_agent_recovery_plan
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -99,6 +100,7 @@ def _make_recovery_input(
         extracted_session_id=None,
         inactivity_error_type=AgentInactivityTimeoutError,
         completion_reprompt_used=completion_reprompt_used,
+        clock=FakeClock(),
     )
 
 

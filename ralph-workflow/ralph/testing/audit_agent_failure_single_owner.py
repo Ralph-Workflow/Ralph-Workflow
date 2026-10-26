@@ -6,12 +6,12 @@ logic for whether an agent is failing, unproductive, or broken, and whether to r
 using it. Recording call sites (such as the controller, reducer, and resolver_health) are
 clients that feed attempt facts into the ledger rather than deciding agent failure
 independently. Specifically, this audit validates: 1. Production code: No module under
-``ralph/recovery/`` or ``ralph/pipeline/`` (except ``ralph/recovery/agent_failure_ledger.py``)
-declares streak/counter state or logic used for agent stop/retry decisions (such as duplicate
-retry trackers, retry progress guards, or in-session retry counters). 2. Test code: No test
-under ``tests/`` accesses private attributes or internal counters of ``AgentFailureLedger``
-(enforcing black-box testability via the public seam) or imports deprecated retry tracker
-classes.
+``ralph/recovery/``, ``ralph/pipeline/``, or ``ralph/agents/invoke/`` (except
+``ralph/recovery/agent_failure_ledger.py``) declares streak/counter state or logic used for
+agent stop/retry decisions (such as duplicate retry trackers, retry progress guards, or
+in-session retry counters). 2. Test code: No test under ``tests/`` accesses private attributes
+or internal counters of ``AgentFailureLedger`` (enforcing black-box testability via the public
+seam) or imports deprecated retry tracker classes.
 """
 
 from __future__ import annotations
@@ -35,6 +35,12 @@ class SingleOwnerViolation:
     def __str__(self) -> str:
         return f"{self.path}:{self.line}: [{self.rule}] {self.detail}"
 
+
+PRODUCTION_SCAN_SUBTREES: tuple[str, ...] = (
+    "ralph/recovery",
+    "ralph/pipeline",
+    "ralph/agents/invoke",
+)
 
 # Temporary production allowlist during single-owner consolidation (U4 removed the deleted trackers, controller, options and run_loop; the remaining error modules and __init__ re-export stay until U5 removes the tests).
 TEMPORARY_PRODUCTION_ALLOWLIST: frozenset[str] = frozenset()
@@ -493,7 +499,7 @@ def _check_production_subscript(node: ast.Subscript, rel_path: str) -> list[Sing
 
 
 def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViolation]:
-    """Audit a single production module under ralph/recovery/ or ralph/pipeline/."""
+    """Audit a production module inside a configured single-owner scan subtree."""
     # The single failure ledger is the authoritative owner.
     if rel_path == "ralph/recovery/agent_failure_ledger.py":
         return []
@@ -913,14 +919,29 @@ class AgentSession:
         f"Expected violation for progress_guard, got: {v8}"
     )
 
+    # Negative test 9: the widened agents/invoke scope must reject output-derived
+    # failure signatures instead of letting them evade the ledger-owner guard.
+    assert "ralph/agents/invoke" in PRODUCTION_SCAN_SUBTREES
+    src_agents_invoke_signature = """
+def _retry_failure_signature(exc: Exception) -> tuple[str, str]:
+    return type(exc).__name__, str(exc)
+"""
+    v9 = audit_production_source(
+        "ralph/agents/invoke/_direct_mcp_recovery.py",
+        src_agents_invoke_signature,
+    )
+    assert any("_retry_failure_signature" in v.detail for v in v9), (
+        f"Expected violation for agents/invoke retry_failure_signature, got: {v9}"
+    )
+
 
 def audit_single_owner(repo_root: Path) -> list[SingleOwnerViolation]:
     """Scan production and test subtrees for single-owner failure ledger violations."""
     verify_counter_access_detection()
     violations: list[SingleOwnerViolation] = []
 
-    # 1. Scan production subtrees: ralph/recovery and ralph/pipeline
-    for sub in ("ralph/recovery", "ralph/pipeline"):
+    # 1. Scan production subtrees that can own or influence agent failure decisions.
+    for sub in PRODUCTION_SCAN_SUBTREES:
         base_dir = repo_root / sub
         # filesystem-read-ok: audit scanner checks directory existence before tree traversal
         if not base_dir.is_dir():
