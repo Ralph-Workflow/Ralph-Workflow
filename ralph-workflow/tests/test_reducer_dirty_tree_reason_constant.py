@@ -1,20 +1,67 @@
-"""The dirty-tree commit-recovery signal is pinned to one named encoding.
+"""Public reducer behavior pins the dirty-tree commit-recovery encoding.
 
-The reducer's commit-failure recovery (:func:`_is_repairable_git_failure`)
-has no typed verdict available at its seam: the commit executor records only
-display prose via ``set_last_commit_error``, and the ``COMMIT_FAILURE`` event
-carries no failure category. The dirty-tree branch therefore matches a single
-named constant, ``DIRTY_WORKTREE_FAILURE_ENCODING``. These tests pin the
-contract: the constant is the sole acceptable encoding of the dirty-worktree
-signal, and rewording the prose requires changing the constant and this test
-together.
+The commit executor exposes failure prose through ``set_last_commit_error``, and
+the public ``reduce`` seam turns that prose into observable routing. These
+tests pin the public ``DIRTY_WORKTREE_FAILURE_ENCODING`` constant and prove
+that the encoded dirty-tree reason receives automated recovery while an
+unrelated commit failure routes to terminal failure.
 """
 
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 
-from ralph.pipeline.reducer import DIRTY_WORKTREE_FAILURE_ENCODING, _is_repairable_git_failure
+from ralph.pipeline import PipelineEvent, PipelineState, reduce
+from ralph.pipeline.commit_executor import set_last_commit_error
+from ralph.pipeline.reducer import DIRTY_WORKTREE_FAILURE_ENCODING
+from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, RecoveryPolicy
+
+if TYPE_CHECKING:
+    from ralph.pipeline.effects import Effect
+
+
+def _commit_failure_policy() -> PipelinePolicy:
+    """Return a minimal policy with observable commit-recovery routing."""
+    return PipelinePolicy(
+        entry_phase="development_commit",
+        terminal_phase="failed_terminal",
+        phases={
+            "development_commit": PhaseDefinition(
+                drain="development_commit",
+                role="commit",
+                transitions=PhaseTransition(on_success="failed_terminal"),
+            ),
+            "development_commit_cleanup": PhaseDefinition(
+                drain="development_commit_cleanup",
+                role="commit_cleanup",
+                transitions=PhaseTransition(on_success="development_commit"),
+            ),
+            "failed_terminal": PhaseDefinition(
+                drain="failed_terminal",
+                role="terminal",
+                terminal_outcome="failure",
+                transitions=PhaseTransition(on_success="failed_terminal"),
+            ),
+        },
+        recovery=RecoveryPolicy(failed_route="failed_terminal"),
+    )
+
+
+def _reduce_commit_failure(
+    reason: str,
+    policy: PipelinePolicy,
+) -> tuple[PipelineState, list[Effect]]:
+    """Reduce a commit failure carrying ``reason`` through the public seam."""
+    set_last_commit_error(reason)
+    try:
+        return reduce(
+            PipelineState(phase="development_commit"),
+            PipelineEvent.COMMIT_FAILURE,
+            policy,
+        )
+    finally:
+        set_last_commit_error(None)
 
 
 class TestDirtyWorktreeFailureEncoding:
@@ -28,15 +75,28 @@ class TestDirtyWorktreeFailureEncoding:
         """The encoding is plain lowercase prose (a substring, not a regex)."""
         assert re.fullmatch(r"[a-z][a-z ]*[a-z]", DIRTY_WORKTREE_FAILURE_ENCODING)
 
-    def test_canonical_dirty_tree_reason_is_repairable(self) -> None:
-        """A reason built from the constant routes as repairable."""
-        reason = f"{DIRTY_WORKTREE_FAILURE_ENCODING}: uncommitted changes exist"
-        assert _is_repairable_git_failure(reason) is True
+    def test_dirty_tree_commit_failure_routes_to_automated_recovery(self) -> None:
+        """The encoded dirty-tree reason receives automated commit recovery."""
+        policy = _commit_failure_policy()
+        reason = DIRTY_WORKTREE_FAILURE_ENCODING
 
-    def test_reason_without_the_encoding_is_not_dirty_tree_repairable(self) -> None:
-        """A reason lacking the encoding does not carry the dirty-tree signal."""
+        next_state, effects = _reduce_commit_failure(reason, policy)
+
+        assert next_state.phase == "development_commit_cleanup"
+        assert next_state.last_error == reason
+        assert next_state.pending_cycle_outcome is None
+        assert effects == []
+
+    def test_non_dirty_tree_commit_failure_routes_to_terminal_failure(self) -> None:
+        """A commit failure without the dirty-tree encoding is not recovered."""
+        policy = _commit_failure_policy()
         reason = "merge failed; see operator log for details"
-        assert _is_repairable_git_failure(reason) is False
+
+        next_state, effects = _reduce_commit_failure(reason, policy)
+
+        assert next_state.phase == policy.recovery.failed_route
+        assert next_state.pending_cycle_outcome is None
+        assert effects == []
 
     def test_encoding_matches_as_substring_of_canonical_deferral_reason(self) -> None:
         """The canonical deferral prose embeds the pinned encoding verbatim."""

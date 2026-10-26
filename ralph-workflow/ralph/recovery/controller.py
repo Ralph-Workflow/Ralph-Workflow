@@ -601,6 +601,17 @@ class RecoveryController:
         return self._ledger
 
     @property
+    def clock(self) -> Clock:
+        """The injected time source every decision in this controller uses.
+
+        Clients that must reach the same owner (the agent-invocation
+        executor, for instance) borrow this clock instead of reading
+        ambient time, so a cooldown expires against the same timeline the
+        owner recorded it on.
+        """
+        return self._clock
+
+    @property
     def workspace_probe(self) -> WorkspaceChangeProbe | None:
         """Probe for detecting filesystem changes across invocations."""
         return self._workspace_probe

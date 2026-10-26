@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger
     from ralph.recovery.agent_unavailability_tracker import UnavailabilityStore
     from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityState
+    from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
 
@@ -256,6 +257,10 @@ class PipelineDeps:
     # failure holds in every other path of the same run.
     unavailability_store: UnavailabilityStore | None = None
     ledger: AgentFailureLedger | None = None
+    # The run's recovery controller. It owns the ledger above and is the
+    # public seam every recording client calls, so the pipeline can charge
+    # an attempt through the owner instead of reaching into the ledger.
+    recovery_controller: RecoveryController | None = None
     marker_watcher_factory: MarkerWatcherFactory | None = None
     snapshot_registry: SnapshotRegistry | None = None
     recovery_sleep: Callable[[float], None] | None = None
@@ -313,6 +318,7 @@ class PipelineDeps:
         recovery_controller_factory: RecoveryControllerFactory | None = None,
         unavailability_store: UnavailabilityStore | None = None,
         ledger: AgentFailureLedger | None = None,
+        recovery_controller: RecoveryController | None = None,
         marker_watcher_factory: MarkerWatcherFactory | None = None,
         snapshot_registry: SnapshotRegistry | None = None,
         recovery_sleep: Callable[[float], None] | None = None,
@@ -438,6 +444,7 @@ class PipelineDeps:
         object.__setattr__(self, "recovery_controller_factory", recovery_controller_factory)
         object.__setattr__(self, "unavailability_store", unavailability_store)
         object.__setattr__(self, "ledger", ledger)
+        object.__setattr__(self, "recovery_controller", recovery_controller)
         object.__setattr__(self, "marker_watcher_factory", marker_watcher_factory)
         object.__setattr__(self, "snapshot_registry", snapshot_registry)
         object.__setattr__(self, "recovery_sleep", recovery_sleep)

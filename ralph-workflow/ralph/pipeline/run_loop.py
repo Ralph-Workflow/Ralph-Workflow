@@ -3442,6 +3442,7 @@ def _with_run_ledger(
         pipeline_deps,
         unavailability_store=controller.unavailability_store,
         ledger=controller.ledger,
+        recovery_controller=controller,
     )
 
 

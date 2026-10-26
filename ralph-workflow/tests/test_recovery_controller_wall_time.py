@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -14,7 +15,6 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport
 from ralph.pipeline.agent_chain_state import AgentChainState
-from ralph.pipeline.events.pipeline_event import PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.recovery.classifier import ClassifiedFailure, FailureCategory, FailureContext
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
@@ -22,6 +22,9 @@ from ralph.recovery.events import FalloverEvent
 from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.probe import DefaultWorkspaceChangeProbe
 from tests.recovery._scenario_harness import _build_policy_bundle
+
+if TYPE_CHECKING:
+    from ralph.pipeline.events import AgentFailureEvent
 
 
 class _MemoryFileBackend:
@@ -265,6 +268,16 @@ def test_record_attempt_fact_public_seam() -> None:
 def test_invoke_agent_probe_stamping_on_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """A failed attempt's workspace-change fact travels on the public sink.
+
+    The fact is measured by the REAL probe against a REAL workspace
+    mutation and delivered as an immutable, attempt-scoped
+    ``AgentFailureEvent`` through ``InvokeOptions.failure_observation_sink``.
+
+    No exception attribute and no process-global enum attribute carries the
+    fact: the observation is the only transport, so one attempt can never
+    inherit another attempt's fact.
+    """
     probe = DefaultWorkspaceChangeProbe()
     workspace = MemoryWorkspace()
     workspace.write("seed.txt", "initial content")
@@ -284,19 +297,25 @@ def test_invoke_agent_probe_stamping_on_failure(
 
     monkeypatch.setattr(invoke_module, "run_subprocess_and_read_lines", fake_subprocess_mutating)
 
+    mutating_observations: list[AgentFailureEvent] = []
     opts_mutating = InvokeOptions(
         show_progress=False,
         workspace_probe=probe,
         workspace=workspace,
         phase="development",
+        agent_name="agent_a",
+        failure_observation_sink=mutating_observations.append,
     )
 
-    with pytest.raises(AgentInvocationError) as exc_info:
+    with pytest.raises(AgentInvocationError):
         list(invoke_agent(config, str(prompt_file), options=opts_mutating))
 
-    assert exc_info.value.workspace_changed is True
-    event_flag: object = getattr(PipelineEvent.AGENT_FAILURE, "workspace_changed", None)
-    assert event_flag is True
+    assert len(mutating_observations) == 1
+    mutated = mutating_observations[0]
+    assert mutated.workspace_changed is True
+    assert mutated.phase == "development"
+    assert mutated.agent == "agent_a"
+    assert mutated.artifact_valid is False
 
     # (b) Agent fails without mutating workspace
     def fake_subprocess_non_mutating(cmd: list[str], ctx: object) -> list[str]:
@@ -307,16 +326,22 @@ def test_invoke_agent_probe_stamping_on_failure(
         invoke_module, "run_subprocess_and_read_lines", fake_subprocess_non_mutating
     )
 
+    unchanged_observations: list[AgentFailureEvent] = []
     opts_non_mutating = InvokeOptions(
         show_progress=False,
         workspace_probe=probe,
         workspace=workspace,
         phase="development",
+        agent_name="agent_a",
+        failure_observation_sink=unchanged_observations.append,
     )
 
-    with pytest.raises(AgentInvocationError) as exc_info_non:
+    with pytest.raises(AgentInvocationError):
         list(invoke_agent(config, str(prompt_file), options=opts_non_mutating))
 
-    assert exc_info_non.value.workspace_changed is False
-    event_flag_non: object = getattr(PipelineEvent.AGENT_FAILURE, "workspace_changed", None)
-    assert event_flag_non is False
+    assert len(unchanged_observations) == 1
+    unchanged = unchanged_observations[0]
+    assert unchanged.workspace_changed is False
+    assert unchanged.phase == "development"
+    assert unchanged.agent == "agent_a"
+    assert unchanged.artifact_valid is False

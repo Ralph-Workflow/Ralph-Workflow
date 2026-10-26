@@ -31,7 +31,7 @@ from ralph.agents.invoke._agy_incomplete_exit_error import AgyIncompleteExitErro
 from ralph.agents.invoke._direct_mcp_recovery import run_with_direct_mcp_recovery
 from ralph.agents.invoke._open_code_resumable_exit_error import OpenCodeResumableExitError
 from ralph.agents.registry import AgentRegistry
-from ralph.agents.timeout_clock import SystemClock
+from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.config.enums import AgentTransport, Verbosity
 from ralph.config.mcp_loader import McpConfigError
 from ralph.display.parallel_display import (
@@ -241,11 +241,19 @@ def execute_agent_effect(
     active_rec = cast(
         "RecoveryController | None", opts.get("recovery_controller") or opts.get("recovery")
     )
+    if active_rec is None:
+        # The run's controller is the single owner of agent-failure health;
+        # borrowing it here keeps the executor on the owner's public seam
+        # instead of reaching into the ledger on its own.
+        active_rec = pipeline_deps.recovery_controller
     active_ledger = active_rec.ledger if active_rec is not None else pipeline_deps.ledger
+    # Every decision on this path reads time through the owner's clock, so
+    # a cooldown recorded by the owner expires on the same timeline.
+    active_clock: Clock = active_rec.clock if active_rec is not None else SystemClock()
     if active_ledger is None and state is not None and state.ledger_snapshot:
         from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 
-        active_ledger = AgentFailureLedger.from_snapshot(state.ledger_snapshot, clock=SystemClock())
+        active_ledger = AgentFailureLedger.from_snapshot(state.ledger_snapshot, clock=active_clock)
     if active_ledger is not None and not active_ledger.is_available(
         str(effect.phase), effect.agent_name
     ):
@@ -317,6 +325,7 @@ def execute_agent_effect(
         agent_config=agent_config,
         display=display,
         invocation_started_monotonic=invocation_started,
+        clock=active_clock,
         invocation_options=cast("InvokeOptions | None", opts.get("invocation_options")),
         worker_namespace=cast(
             "Path | None", opts.get("worker_namespace")
@@ -653,24 +662,61 @@ def _handle_recovery_attempt_failure(
         raise exc
 
     workspace_changed: bool = observation.resolved_workspace_changed() if observation else False
+    phase = str(ctx.effect.phase)
+    agent = ctx.effect.agent_name
+    controller = ctx.deps.pipeline_deps.recovery_controller
     ledger = ctx.deps.pipeline_deps.ledger
-    if ledger is not None:
+    if controller is not None:
+        from ralph.recovery.agent_failure_ledger import Cooldown, Spent
+
+        # The owner decides. This client only states the observed facts and
+        # reads the owner's verdict; it never keeps a counter of its own.
+        controller.record_attempt_fact(
+            phase,
+            agent,
+            artifact_valid=False,
+            workspace_changed=workspace_changed,
+        )
+        status = controller.ledger.status(phase, agent)
+        demoted = not status.is_eligible
+        demotion_reason = status.reason if isinstance(status, (Cooldown, Spent)) else None
+    elif ledger is not None:
+        # No controller is wired into this run, so the ledger is the only
+        # owner available; charging it directly is the client pattern the
+        # owner's public API exists for.
         from ralph.recovery.agent_failure_ledger import AttemptFact
 
         outcome = ledger.record(
             AttemptFact(
-                phase=str(ctx.effect.phase),
-                agent=ctx.effect.agent_name,
+                phase=phase,
+                agent=agent,
                 artifact_valid=False,
                 workspace_changed=workspace_changed,
             )
         )
+        demoted = outcome.demoted
+        demotion_reason = outcome.reason
+        if outcome.demoted:
+            # No owner seam on this run, so this client reports the
+            # demotion itself; the owner's seam logs it in every other case.
+            logger.warning(
+                "Agent '{}' demoted in phase '{}' (consecutive={}, total={}, reason={})",
+                agent,
+                phase,
+                outcome.consecutive_unproductive,
+                outcome.total_unproductive,
+                outcome.reason,
+            )
+    else:
+        demoted = False
+        demotion_reason = None
+    if ledger is not None or controller is not None:
         charged_observation = (
             replace(observation, already_charged=True, reason=str(exc))
             if observation is not None
             else AgentFailureEvent(
-                phase=str(ctx.effect.phase),
-                agent=ctx.effect.agent_name,
+                phase=phase,
+                agent=agent,
                 artifact_valid=False,
                 workspace_changed=None,
                 reason=str(exc),
@@ -678,20 +724,12 @@ def _handle_recovery_attempt_failure(
             )
         )
         state.last_observation = charged_observation
-        if outcome.demoted:
-            logger.warning(
-                "Agent '{}' demoted in phase '{}' (consecutive={}, total={}, reason={})",
-                ctx.effect.agent_name,
-                str(ctx.effect.phase),
-                outcome.consecutive_unproductive,
-                outcome.total_unproductive,
-                outcome.reason,
-            )
+        if demoted:
             logger.error(
                 "Aborting agent '{}' retries: unproductive attempt limit reached ({}). "
                 "Refusing to spin; failing fast.",
-                ctx.effect.agent_name,
-                outcome.reason,
+                agent,
+                demotion_reason,
             )
             _set_last_captured_retry_intent(
                 AgentRetryIntent(
@@ -1713,7 +1751,7 @@ def _build_recovery_input_for_attempt(
         run_id=run_id,
         completion_reprompt_used=state.completion_reprompt_used,
         worker_namespace=ctx.worker_namespace,
-        clock=SystemClock(),
+        clock=ctx.clock,
     )
 
 

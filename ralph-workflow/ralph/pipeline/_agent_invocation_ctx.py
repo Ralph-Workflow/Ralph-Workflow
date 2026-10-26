@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from ralph.agents.clock import Clock
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.enums import Verbosity
     from ralph.config.models import AgentConfig, UnifiedConfig
@@ -39,6 +40,10 @@ class _AgentInvocationCtx:
     agent_config: AgentConfig
     display: ParallelDisplay | None
     invocation_started_monotonic: float
+    # The injected time source for every decision this invocation makes.
+    # It is the same clock the recovery owner records against, so a
+    # cooldown expires on one timeline.
+    clock: Clock
     invocation_options: InvokeOptions | None = None
     worker_namespace: Path | None = None
     worker_artifact_dir: Path | None = None

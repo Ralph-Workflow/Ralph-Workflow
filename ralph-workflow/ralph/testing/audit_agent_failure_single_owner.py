@@ -1,5 +1,6 @@
-"""
-Single-owner guard audit for agent failure and retry tracking. This audit enforces the single-
+"""Single-owner guard audit for agent failure and retry tracking.
+
+This audit enforces the single-
 owner architectural invariant: Exactly one decision owner
 (:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`) owns the state and decision
 logic for whether an agent is failing, unproductive, or broken, and whether to retry or stop

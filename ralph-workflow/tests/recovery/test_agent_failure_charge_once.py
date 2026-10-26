@@ -197,6 +197,7 @@ def _deps_factory_with_run_ledger(
             deps,
             ledger=controller.ledger,
             unavailability_store=controller.unavailability_store,
+            recovery_controller=controller,
         )
 
     return factory

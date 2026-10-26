@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from ralph.config.models import UnifiedConfig
+from ralph.git.merge import MERGE_STATE_IN_PROGRESS, merge_state
 from ralph.pipeline.auto_integrate import (
     auto_integrate_after_commit as _auto_integrate_after_commit,
 )
@@ -155,7 +156,16 @@ def _snapshot(tmp_git_repo: Path) -> tuple[str, str]:
 def test_auto_integrate_regression_unresolvable_conflict_stops_reinvoking_the_resolver(
     tmp_git_repo: Path,
 ) -> None:
-    """The resolver is invoked a bounded number of times, then escalated."""
+    """The resolver is invoked a bounded number of times; the run stays PENDING.
+
+    A resolver that never resolves is an AGENT failure, not an
+    integration failure. The failure ledger benches it, the integration
+    keeps its conflicted merge, and the run waits for an eligible
+    resolver -- it is neither escalated nor handed to the operator
+    (PRODUCT_CRITERIA 7.2/7.3). The bound is the ledger's own
+    consecutive-failure limit (7.4), so a benched resolver is not
+    invoked again while it cools down.
+    """
     from ralph.agents.timeout_clock import FakeClock
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 
@@ -195,10 +205,28 @@ def test_auto_integrate_regression_unresolvable_conflict_stops_reinvoking_the_re
 
     assert len(invocations) == _TEST_RESOLVER_ATTEMPTS
     final = outcomes[-1]
+    # The integration is reported PENDING, not failed: the outcome stays
+    # a conflict, the progress is retained, and no escalation is asked of
+    # the operator (7.2: an agent failure is not an integration failure).
     assert final.last_action == "conflict"
+    assert not final.fast_forwarded
+    assert final.recovery_record_retained
+    assert not final.is_intervention_required
+    # Agent health never consumes the repository's own conflict budget:
+    # the durable strategy ladder is untouched, so the conflict is still
+    # resolvable once an agent comes off cooldown (7.2/7.3).
+    assert not final.resolution_exhausted
+    assert final.consecutive_conflicts == _TEST_RESOLVER_ATTEMPTS
+    # The reason names the pending state and the blocked target, and it
+    # does NOT report the agent cooldown as an exhausted budget -- that
+    # message belongs to a genuinely unresolvable repository conflict.
     assert final.last_reason is not None
-    assert "budget" in final.last_reason
+    assert "pending" in final.last_reason
     assert base in final.last_reason
+    assert "budget exhausted" not in final.last_reason
+    # The active merge is retained: the integration was not aborted and
+    # its progress was not discarded.
+    assert merge_state(tmp_git_repo) == MERGE_STATE_IN_PROGRESS
 
 
 def test_configured_resolver_attempt_budget_overrides_compatibility_default(

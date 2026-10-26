@@ -39,6 +39,12 @@ conflict count is therefore still eligible whenever the ledger says so,
 and a resolver the ledger has benched is never eligible however low the
 stored count is.
 
+Which ledger speaks for the ACTIVE conflict-resolution session is
+answered in exactly one place --
+:func:`~ralph.pipeline.conflict_resolution.chain_candidates.session_ledger`
+-- so this seam cannot gate the resolver against a different ledger
+than the resolver records its own failures in.
+
 The counter is CONSECUTIVE by design: any successful land resets it to
 zero, so a transient conflict can never permanently consume the
 bookkeeping. Run startup passes a fresh :class:`RebaseState`, which
@@ -213,7 +219,12 @@ def resolve_failure_ledger(
     The injected ledger wins. Otherwise the ledger of the ACTIVE
     conflict-resolution session is used: that is the ledger the resolver
     itself records its failures in, so the seam and the resolver agree
-    on which candidate is benched.
+    on which candidate is benched. The session's ledger is resolved
+    through
+    :func:`~ralph.pipeline.conflict_resolution.chain_candidates.session_ledger`
+    -- the ONE resolver of "which ledger speaks for agent health" --
+    so this seam can never gate the resolver against a different ledger
+    than the resolver records its failures in.
 
     ``None`` means no ledger could be reached. The caller then has no
     authority to suppress a resolver, and :func:`resolver_allowed` keeps
@@ -231,10 +242,9 @@ def resolve_failure_ledger(
         return None
     if session is None:
         return None
-    from ralph.recovery.agent_failure_ledger import AgentFailureLedger as _Ledger
+    from ralph.pipeline.conflict_resolution.chain_candidates import session_ledger
 
-    session_ledger = session.ledger
-    return session_ledger if isinstance(session_ledger, _Ledger) else None
+    return session_ledger(session)
 
 
 def _is_same_conflict(

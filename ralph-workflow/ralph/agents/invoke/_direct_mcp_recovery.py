@@ -1,8 +1,27 @@
 """Shared direct-invocation recovery with an invocation-local retry budget.
 
-Agent health, demotion, and agent selection belong exclusively to
-:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`. This module
-only bounds the automatic attempts made within one direct invocation.
+This module repeats ONE direct MCP request inside ONE agent invocation.
+The budget it enforces is TRANSPORT-level plumbing: it bounds how many
+PHYSICAL transport attempts one invocation may make, and it never judges
+an agent's health, never demotes an agent, never puts an agent in
+cooldown, never excludes an agent, and never selects the next agent.
+
+Agent health has exactly ONE owner:
+:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`. The
+CALLER owns the charge: the pipeline executor records the attempt fact
+through the ledger's public seam (``record`` with an ``AttemptFact``, or
+``RecoveryController.record_attempt_fact``) and this module charges
+nothing itself. The pipeline-level same-agent health bound is the
+ledger's consecutive and total limits, NOT the budget enforced here.
+
+The one real coupling is documented rather than removed: every transport
+repetition is a PHYSICAL attempt, so the budget multiplies how many
+charges one pipeline-level invocation can produce (up to
+``1 + max_retries``). The ledger decides what those charges mean.
+
+Exhausting the budget preserves the ORIGINAL failure type: the failure
+leaves this module as the same exception type it arrived as, carrying
+only a factual diagnostic -- and nothing about the agent that made it.
 """
 
 from __future__ import annotations
@@ -42,6 +61,10 @@ def default_direct_mcp_retry_limit(raw_limit: object) -> int:
     Callers normally supply ``general.max_same_agent_retries`` (default 10).
     The value bounds only the attempts inside one invocation; it never decides
     whether an agent is healthy, should be demoted, or should be replaced.
+
+    The value is a TRANSPORT budget, not a health bound: the CALLER charges
+    each physical repetition to the failure ledger, and the ledger's
+    consecutive and total limits remain the only same-agent health bound.
     """
 
     if isinstance(raw_limit, int) and raw_limit >= 0:
@@ -69,7 +92,14 @@ def _retry_budget_exhausted_error(
     attempts_used: int,
     retries_used: int,
 ) -> Exception:
-    """Attach a factual invocation-budget diagnostic without changing failure type."""
+    """Attach a factual invocation-budget diagnostic without changing failure type.
+
+    The ORIGINAL failure is returned unchanged in type: the diagnostic is
+    appended to the parsed output of an :class:`AgentInvocationError` -- whose
+    type the pipeline's failure classification keys on -- or attached as a
+    note on any other exception. Nothing here decides what the failure MEANS
+    for the agent; the caller charges the failure ledger.
+    """
 
     diagnostic = (
         "Direct-MCP invocation retry budget exhausted after "
@@ -95,6 +125,12 @@ def _invocation_retry_allowed_or_raise(
     ``max_retries`` is the invocation-local budget (normally
     ``general.max_same_agent_retries``). Exhausting it stops this invocation
     only; it is not an agent-health verdict or an agent-selection decision.
+
+    Every repetition is a PHYSICAL transport attempt the CALLER charges to
+    the failure ledger, so the budget multiplies how many charges one
+    pipeline-level invocation can produce (up to ``1 + max_retries``). The
+    ledger's consecutive and total limits remain the only same-agent health
+    bound.
     """
 
     if reset_tool_registry is None:
@@ -109,7 +145,12 @@ def _invocation_retry_allowed_or_raise(
 
 
 def _mcp_operation_error(exc: Exception, mcp_exc: Exception) -> AgentInvocationError:
-    """Attach the recovery boundary when its registry operation fails."""
+    """Attach the recovery boundary when its registry operation fails.
+
+    The failure stays an invocation failure; the recovery boundary is
+    recorded as the origin so the CALLER's ledger charge describes the real
+    cause.
+    """
     if isinstance(exc, AgentInvocationError):
         return AgentInvocationError(
             exc.agent_name,
@@ -134,6 +175,14 @@ def _retry_plan_for_exception(
     attempt_lines: list[str],
     current_session_id: str | None,
 ) -> _DirectMcpRetryPlan | None:
+    """Return the transport plan for one failed attempt, or None.
+
+    ``None`` means the failure is not a transport-level fault another
+    physical attempt could survive. The plan describes the NEXT TRANSPORT
+    attempt only -- the session to reuse and whether the tool registry must
+    be reset -- and carries no agent-health meaning: which agent runs next
+    is the pipeline's decision, made by the failure ledger and the selector.
+    """
     raw_resumable_session_id: object = getattr(exc, "resumable_session_id", None)
     resumable_session_id = (
         raw_resumable_session_id
@@ -171,6 +220,13 @@ def _run_with_direct_mcp_recovery[T](
     on_session_observed: Callable[[str], object] | None = None,
     retry_resumable_exit: bool = False,
 ) -> T:
+    """Repeat one direct attempt while the invocation-local budget allows.
+
+    The loop owns transport repetition only: it re-issues the same request,
+    optionally resets the tool registry, and stops when the budget is
+    exhausted. It holds no agent-health state and reaches no failure ledger;
+    the CALLER charges the failed attempt through the ledger's public seam.
+    """
     current_session_id: str | None = None
     retries_used = 0
     # One-reprompt bound (enforcement point 2 of 2) for
@@ -321,6 +377,15 @@ def run_with_direct_mcp_recovery[T](
     ``max_retries`` (normally ``general.max_same_agent_retries``) bounds the
     automatic retries inside this invocation only. It does not decide agent
     health, demote an agent, or select the next agent.
+
+    The budget is transport-level: it bounds the PHYSICAL repetitions of one
+    request, so the CALLER may end up charging the failure ledger up to
+    ``1 + max_retries`` times for one pipeline-level invocation. The ledger
+    (:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`) stays
+    the single owner of what those charges mean.
+
+    Exhausting the budget re-raises the ORIGINAL failure, unchanged in type,
+    with only a factual diagnostic added to it.
     """
     with runtime_event_scope(RuntimeEventRecorder()):
         return _run_with_direct_mcp_recovery(
@@ -346,6 +411,15 @@ def iter_with_direct_mcp_recovery(
     ``max_retries`` (normally ``general.max_same_agent_retries``) bounds the
     automatic retries inside this invocation only. It does not decide agent
     health, demote an agent, or select the next agent.
+
+    The budget is transport-level: it bounds the PHYSICAL repetitions of one
+    streamed request, so the CALLER may end up charging the failure ledger up
+    to ``1 + max_retries`` times for one pipeline-level invocation. The ledger
+    (:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`) stays
+    the single owner of what those charges mean.
+
+    Exhausting the budget re-raises the ORIGINAL failure TYPE, enriched with
+    the output captured while it streamed.
     """
     with runtime_event_scope(RuntimeEventRecorder()):
         yield from _iter_with_direct_mcp_recovery(

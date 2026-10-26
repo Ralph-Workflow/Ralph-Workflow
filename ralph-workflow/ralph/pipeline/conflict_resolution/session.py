@@ -16,6 +16,7 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     classify_ralph_origin_fault,
 )
+from ralph.pipeline.conflict_resolution.chain_candidates import session_ledger
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -468,11 +469,17 @@ def _candidate_cannot_be_launched(
 
     Ralph's own refusal, decided before any agent runs, so it must not
     reach the driver as a resolver's verdict.
+
+    The ledger is consulted FIRST, and through
+    :func:`~ralph.pipeline.conflict_resolution.chain_candidates.session_ledger`
+    -- the ONE resolver of "which ledger speaks for agent health" --
+    so this seam and the chain cannot judge the same agent against
+    two different ledgers. The registry-capability exclusion is checked
+    second and never overrides the ledger.
     """
     if session is not None:
-        if session.ledger is not None and not session.ledger.is_available(
-            PHASE_RESOLUTION, agent_name
-        ):
+        ledger = session_ledger(session)
+        if ledger is not None and not ledger.is_available(PHASE_RESOLUTION, agent_name):
             logger.warning(
                 "conflict_resolution: refusing to launch unavailable agent '{}'",
                 agent_name,
