@@ -597,3 +597,66 @@ def test_attempt_state_key_pair_combines_signature_and_action() -> None:
         sig,
         NextAction.REBUILD_ON_TARGET.value,
     )
+
+
+def test_decide_output_is_invariant_to_agent_active_flag() -> None:
+    """``decide`` never reads ``Observation.agent_active`` — by design, not omission.
+
+    ``agent_active`` is deliberately excluded from every decision path, and
+    this test pins that exclusion so it can never silently become load-bearing
+    or drift into a half-input. The deferral of mutation while an agent is
+    active is owned ENTIRELY by the catch-up ticker's mutation lease, not by
+    this table:
+
+    * ``ralph/pipeline/auto_integrate_catchup.py:351`` — ``_mutation_lease``
+      yields ``"held"`` whenever ``is_lease_held(root)`` or the lease cannot
+      be acquired, and never mutates in that case.
+    * ``ralph/pipeline/auto_integrate_catchup.py:379`` — ``_lease_failure``
+      maps the ``"held"`` verdict to ``CATCHUP_REFUSED_AGENT_ACTIVE``, the
+      operator-facing reason the tick was deferred.
+    * ``ralph/pipeline/auto_integrate_catchup.py:634-642`` — the tick body
+      documents that the lease holder owns the worktree and the catch-up
+      mutation defers to it.
+
+    Routing deferral through ``decide`` as well would double-own the policy:
+    a decision made from a stale ``agent_active`` snapshot could block the
+    catch-up after the agent has exited, or admit a mutation between probe
+    and act that the lease would have refused. The lease is checked at the
+    moment of mutation; the flag is a point-in-time observation. Only the
+    lease is safe, so only the lease decides.
+
+    The exclusion is safe because of the table's contract shape: every
+    action the table returns is either (a) a reading/classification answer
+    (WAIT, LAND, REINTEGRATE, RESUME, REPAIR, resolver dispatch, cleanup
+    rungs) that names WHAT the state needs — the executor's own lease
+    admission governs WHEN it may act — or (b) a pure ladder-position
+    answer driven by ``AttemptState``, whose ``signature`` (see
+    ``ralph/pipeline/integration_decision.py:297``) already excludes
+    ``agent_active`` so escalation state cannot differ between two
+    observations that differ only in the flag. There is no row for which
+    the flag changes the answer.
+    """
+    state = AttemptState()
+    for observation in _build_observations():
+        flipped = Observation(
+            target_vs_feature=observation.target_vs_feature,
+            target_vs_remote=observation.target_vs_remote,
+            worktree=observation.worktree,
+            head=observation.head,
+            in_progress_kind=observation.in_progress_kind,
+            in_progress_ownership=observation.in_progress_ownership,
+            record=observation.record,
+            agent_active=not observation.agent_active,
+        )
+        context_a = DecisionContext(observation=observation, attempts=state)
+        context_b = DecisionContext(observation=flipped, attempts=state)
+        assert decide(context_a) is decide(context_b), (
+            "agent_active changed the decision — the flag has become a "
+            "decision input; the mutation lease owns deferral instead"
+        )
+        assert state.signature(observation) == state.signature(flipped), (
+            "agent_active leaked into the escalation signature"
+        )
+        assert state.key_pair(observation, decide(context_a)) == state.key_pair(
+            flipped, decide(context_b)
+        ), "agent_active changed the (signature, action) repeat key"

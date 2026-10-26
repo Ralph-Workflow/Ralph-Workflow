@@ -18,6 +18,7 @@ import pytest
 from ralph import test_suites as test_suites_module
 from tests._test_test_suites_helpers import (
     EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES,
+    EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES,
     _FakeClock,
     _FakeShardProcess,
     _StubSpawner,
@@ -25,34 +26,6 @@ from tests._test_test_suites_helpers import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-
-
-#: Mirror of ``SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES`` in
-#: ``ralph/test_suites.py`` -- pinned verbatim so this module fails when the
-#: audit-exception registry drifts, exactly like the required registry
-#: above. These files run real Git crossings in the default ``make test``
-#: profile and are audit-sanctioned; they are NOT pytest-selection
-#: requirements (``tests/conftest.py`` cannot be discovered at all).
-EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
-    "tests/conftest.py",
-    "tests/pipeline/test_reducer_lock_retry.py",
-    "tests/test_auto_integrate_gates.py",
-    "tests/test_bootstrap_auto_seed_git_exclude.py",
-    "tests/test_bootstrap_auto_seed_gitignore.py",
-    "tests/test_commit_cleanup_diff.py",
-    "tests/test_commit_detached_head_recovery.py",
-    "tests/test_commit_executor.py",
-    "tests/test_cycle_baseline_diff_cycle_baseline_diff.py",
-    "tests/test_cycle_baseline_diff_runner_cycle_start_uses_force_true.py",
-    "tests/test_cycle_baseline_diff_write_cycle_baseline_force_param.py",
-    "tests/test_git_command_queue.py",
-    "tests/test_git_wrapper.py",
-    "tests/test_integration_diagnostic_livelock.py",
-    "tests/test_pipeline_runner_execute_commit_effect.py",
-    "tests/test_prompt_materialize_2.py",
-    "tests/test_prompt_materialize_3.py",
-    "tests/test_worktree_lease.py",
-)
 
 
 def test_pytest_shard_processes_disable_background_reaping_and_event_logging() -> None:

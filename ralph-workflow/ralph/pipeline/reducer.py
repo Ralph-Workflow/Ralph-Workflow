@@ -1495,6 +1495,14 @@ _MAX_COMMIT_RECOVERY_ATTEMPTS = 3
 #: spinning the loop hot while the holder (or an operator) finishes.
 LOCK_RETRY_DELAY_MS = 5_000
 
+#: The pinned encoding of the dirty-worktree signal inside a commit-failure
+#: reason. No typed verdict exists at this seam (the commit executor records
+#: only display prose via ``set_last_commit_error``), so the dirty-tree branch
+#: of :func:`_is_repairable_git_failure` matches this one named constant.
+#: Rewording the upstream prose requires changing the constant and
+#: ``tests/test_reducer_dirty_tree_reason_constant.py`` together.
+DIRTY_WORKTREE_FAILURE_ENCODING = "worktree not clean"
+
 
 def _is_repairable_git_failure(reason: str | None) -> bool:
     """Determine whether a commit failure is caused by a repairable Git state."""
@@ -1516,7 +1524,7 @@ def _is_repairable_git_failure(reason: str | None) -> bool:
         "conflict",
         "conflicts",
         "repeated commit failure",
-        "worktree not clean",
+        DIRTY_WORKTREE_FAILURE_ENCODING,
         "uncommitted",
         "staged",
         "gitoperationerror",

@@ -7,12 +7,14 @@ default discovery patterns are ``test_*.py`` / ``*_test.py``), so the
 helpers carry zero per-shard collection cost. Every test file that
 imports them pays the same import cost once via pytest's import cache.
 
-The module also owns ``EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES``, the
-single mirror of ``ralph.test_suites.REQUIRED_AUTO_INTEGRATE_E2E_FILES``.
+The module also owns ``EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES`` and
+``EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES``, the single mirrors of
+``ralph.test_suites.REQUIRED_AUTO_INTEGRATE_E2E_FILES`` and
+``ralph.test_suites.SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES``.
 Both :mod:`tests.test_test_suites` and
-:mod:`tests.test_test_suites_orchestration` assert equality against this
-one copy, so a registry drift fails in both suites and the two suites
-cannot disagree about the expected registry.
+:mod:`tests.test_test_suites_orchestration` assert equality against these
+one copies, so a registry drift fails in both suites and the two suites
+cannot disagree about the expected registries.
 """
 
 from __future__ import annotations
@@ -203,14 +205,16 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # files carry subprocess_e2e + required_auto_integrate_e2e markers.
     "tests/test_exec_smoke_subprocess_e2e.py",
     "tests/test_exec_job_shutdown_subprocess_e2e.py",
-    # wt-18 U5 reconciliation: the GitPython real-Git boundary audit
-    # (ralph.testing.audit_test_policy) honours REQUIRED_AUTO_INTEGRATE_E2E_FILES
-    # as the single sanctioned exception for default-lane files whose fixtures
-    # build real repositories. These files predate the audit and run real
-    # ``Repo.init`` / ``git.Repo`` crossings on the default ``make test``
-    # profile; registering them keeps the profile unchanged and lets the two
-    # mechanisms never drift. Each remains a default-lane file (no
-    # subprocess_e2e marker is added or removed).
+)
+
+#: Mirror of ``SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES`` in
+#: ``ralph/test_suites.py`` -- the audit-exception registry for
+#: default-lane files whose fixtures build real repositories
+#: (``tests/conftest.py`` cannot be discovered by pytest at all, so
+#: these entries live outside ``EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES``
+#: above). Both the discovery suite and the orchestration suite pin
+#: their own copy so a drift fails in BOTH modules.
+EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/conftest.py",
     "tests/pipeline/test_reducer_lock_retry.py",
     "tests/test_auto_integrate_gates.py",
