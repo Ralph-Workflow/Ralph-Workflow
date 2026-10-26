@@ -23,7 +23,10 @@ The rules implemented here are:
 
 The audit entry point (:mod:`ralph.testing.audit_agent_failure_single_owner`)
 scans the tree, applies these rules, and adds the test-side rules that keep
-tests on the owner's public seam.
+tests on the owner's public seam. Those test-side rules include the
+name-based rejection of private failure-owner state (the recovery
+controller's backoff counter, unavailability store handle, and
+agent-unavailable marker).
 """
 
 from __future__ import annotations
@@ -176,6 +179,22 @@ _PRIVATE_LEDGER_COUNTERS: frozenset[str] = frozenset(
         "cooldown_until_ms",
         "consecutive_unproductive",
         "total_unproductive",
+    }
+)
+
+#: Private attributes that own the recovery controller's failure-decision
+#: state (the per-agent backoff counter, the unavailability store handle, and
+#: the helper that marks an agent unavailable). These names are declared on no
+#: production class other than :class:`ralph.recovery.controller.RecoveryController`
+#: and :class:`ralph.recovery.agent_unavailability_tracker.AgentUnavailabilityTracker`,
+#: so a NAME-based rule catches a test that couples to the private failure-owner
+#: state without a receiver heuristic and without collateral on unrelated
+#: private attributes.
+_PRIVATE_FAILURE_OWNER_NAMES: frozenset[str] = frozenset(
+    {
+        "_backoff_attempts",
+        "_unavailability_tracker",
+        "_mark_agent_unavailable",
     }
 )
 
@@ -740,6 +759,16 @@ def _is_ledger_receiver(node: ast.AST) -> bool:
     return False
 
 
+def _is_private_failure_owner_name(name: str) -> bool:
+    """Return True when a name is private failure-owner state.
+
+    The recovery controller owns the agent-failure decision state. A test that
+    reads these private names couples to that state instead of observing the
+    controller's public answers, so the name-based rule rejects the read.
+    """
+    return name in _PRIVATE_FAILURE_OWNER_NAMES
+
+
 def _is_ledger_serialised_root(node: ast.AST) -> bool:
     """Check if an expression reads the ledger's serialised state.
 
@@ -778,6 +807,29 @@ def _serialised_counter_violation(
                 "tests must assert through the owner's public answers "
                 "(status, is_available, record) and hand a snapshot back to the "
                 "owner's public restore API instead of indexing into it."
+            ),
+        )
+    ]
+
+
+def private_failure_owner_violation(
+    node: ast.expr, name: str, rel_path: str, *, via_getattr: bool = False
+) -> list[SingleOwnerViolation]:
+    """Build the violation for a test reading private failure-owner state.
+
+    The recovery controller owns the agent-failure decision state; a test must
+    observe that state through the controller's public seam (``snapshot()``,
+    ``unavailability_store``) instead of reaching into its private attributes.
+    """
+    access = "via getattr" if via_getattr else "directly"
+    return [
+        SingleOwnerViolation(
+            path=rel_path,
+            line=node.lineno,
+            rule="test_private_failure_owner_access",
+            detail=(
+                f"Test accesses private failure-owner attribute '{name}' {access}; "
+                "tests must use the public seam only."
             ),
         )
     ]

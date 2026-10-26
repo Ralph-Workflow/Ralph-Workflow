@@ -2,18 +2,24 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.timeout_clock import FakeClock
+from ralph.checked_accessors import as_int, as_mapping
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
-from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
+from ralph.recovery.classifier import FailureContext
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus
 from ralph.recovery.failure_classifier import FailureClassifier
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
+if TYPE_CHECKING:
+    from ralph.policy.models import PolicyBundle
 
-def _minimal_policy_bundle() -> object:
+
+def _minimal_policy_bundle() -> PolicyBundle:
     with tempfile.TemporaryDirectory() as d:
         return load_policy(Path(d) / ".agent")
 
@@ -49,12 +55,14 @@ def test_out_of_credits_message_classifies_as_unavailable_with_per_reason_backof
     assert failure_evt.unavailability_reason == UnavailabilityReason.OUT_OF_CREDITS.value
     # Fast fallover to opencode (index 1)
     chain = state.chain_for_phase("development")
+    assert chain is not None
     assert chain.current_index == 1
     # opencode is available
-    assert controller._unavailability_tracker.is_available("development", "opencode") is True
+    assert controller.unavailability_store.is_available("development", "opencode") is True
     # claude has the OUT_OF_CREDITS base timeout (60_000ms)
     snapshot = controller.snapshot()
-    assert snapshot["unavailable_timeouts"]["claude"] == 60_000
+    timeouts = as_mapping(snapshot["unavailable_timeouts"], field="unavailable_timeouts")
+    assert as_int(timeouts["claude"], field="unavailable_timeouts.claude") == 60_000
 
 
 def test_recovery_classifier_regression_codex_at_capacity_falls_over_with_credits_backoff() -> None:
@@ -91,8 +99,14 @@ def test_recovery_classifier_regression_codex_at_capacity_falls_over_with_credit
     )
 
     assert failure_evt.unavailability_reason == UnavailabilityReason.OUT_OF_CREDITS.value
-    assert state.chain_for_phase("development").current_index == 1
-    assert controller.snapshot()["unavailable_timeouts"]["codex"] == 60_000
+    chain = state.chain_for_phase("development")
+    assert chain is not None
+    assert chain.current_index == 1
+    codex_timeouts = as_mapping(
+        controller.snapshot()["unavailable_timeouts"],
+        field="unavailable_timeouts",
+    )
+    assert as_int(codex_timeouts["codex"], field="unavailable_timeouts.codex") == 60_000
 
 
 def test_out_of_credits_backoff_doubles_each_retry_up_to_five_hour_cap() -> None:
@@ -116,7 +130,9 @@ def test_out_of_credits_backoff_doubles_each_retry_up_to_five_hour_cap() -> None
 
     exc = AgentInvocationError("claude", 1, "You've hit your weekly limit")
 
-    expected_cooldowns = [min(60_000 * 2**attempt, 18_000_000) for attempt in range(12)]
+    # ``1 << attempt`` is ``2 ** attempt`` for a non-negative exponent; the
+    # shift keeps the expression integer-typed for the strict type checker.
+    expected_cooldowns = [min(60_000 * (1 << attempt), 18_000_000) for attempt in range(12)]
 
     for i in range(len(expected_cooldowns)):
         state, _effects, _failure_evt = controller.handle(
@@ -125,30 +141,32 @@ def test_out_of_credits_backoff_doubles_each_retry_up_to_five_hour_cap() -> None
             FailureContext(phase="development", agent="claude"),
         )
         snapshot = controller.snapshot()
+        timeouts = as_mapping(snapshot["unavailable_timeouts"], field="unavailable_timeouts")
         current_time_ms = int(clock.monotonic() * 1000)
-        cooldown = snapshot["unavailable_timeouts"]["claude"] - current_time_ms
+        cooldown = as_int(timeouts["claude"], field="unavailable_timeouts.claude") - current_time_ms
         assert cooldown == expected_cooldowns[i]
 
         # Advance the clock past the cooldown so it can be marked again
         clock.advance(expected_cooldowns[i] / 1000.0)
 
 
-def test_controller_mark_agent_unavailable_caps_return_value_at_five_hours() -> None:
-    """The private ``_mark_agent_unavailable`` helper documents that it
-    returns the computed backoff in ms, capped at the reason's
-    ``max_backoff_ms``. The store state is correctly capped (the previous
-    test exercises that), but the helper's RETURN value was uncapped
-    because it returned ``base_backoff_ms * multiplier`` without
-    reapplying the cap. A future caller that consumes the return value
-    (e.g. for telemetry, for a wait-state that consumes the helper
-    directly, for a side-channel log) would see values above 18_000_000ms
-    even though the store recorded 18_000_000ms -- a contract violation
-    that would mislead operators.
+def test_unavailability_store_mark_unavailable_caps_recorded_backoff_at_five_hours() -> None:
+    """The public ``unavailability_store`` seam records a capped cooldown.
+
+    ``RecoveryController.unavailability_store.mark_unavailable`` returns the
+    frozen ``UnavailabilityEntry`` the controller charges for an
+    ``OUT_OF_CREDITS`` agent. The store state is correctly capped (the
+    previous test exercises that), but the recorded backoff must be capped
+    too: a future caller that consumes the recorded cooldown (e.g. for
+    telemetry, for a wait-state that consumes the store directly, for a
+    side-channel log) would see values above 18_000_000ms even though the
+    store recorded 18_000_000ms -- a contract violation that would mislead
+    operators.
 
     This test drives repeated ``OUT_OF_CREDITS`` marks through the cap
-    and asserts the helper never returns above 18_000_000ms. It also
-    asserts the helper's return value matches the cooldown recorded in
-    the store so the helper and the store never disagree.
+    and asserts the recorded backoff never exceeds 18_000_000ms. It also
+    asserts the recorded backoff matches the cooldown recorded in the
+    store so the two never disagree.
     """
     clock = FakeClock(start=0.0)
     bus = FailureEventBus()
@@ -166,23 +184,31 @@ def test_controller_mark_agent_unavailable_caps_return_value_at_five_hours() -> 
 
     # Twelve marks exercise growth and repeated saturation at five hours.
     for _ in range(12):
-        helper_return = controller._mark_agent_unavailable(
+        entry = controller.unavailability_store.mark_unavailable(
             "development",
             "claude",
             UnavailabilityReason.OUT_OF_CREDITS,
         )
-        # The helper return value must NEVER exceed the cap.
-        assert helper_return <= out_of_credits_max, (
-            f"_mark_agent_unavailable returned {helper_return}ms, "
+        # The recorded backoff is ``base_backoff_ms * 2 ** attempt`` capped at
+        # the reason's ``max_backoff_ms`` -- the value the controller charges.
+        recorded_backoff_ms = min(
+            entry.base_backoff_ms * (1 << entry.attempt),
+            entry.max_backoff_ms,
+        )
+        # The recorded backoff must NEVER exceed the cap.
+        assert recorded_backoff_ms <= out_of_credits_max, (
+            f"mark_unavailable recorded {recorded_backoff_ms}ms, "
             f"must be capped at {out_of_credits_max}ms"
         )
-        # The helper return value must agree with the store-recorded cooldown.
-        snap = controller._unavailability_tracker.snapshot()
-        stored_timeout = snap["unavailable_timeouts"]["claude"]
+        # The recorded backoff must agree with the store-recorded cooldown.
+        snap = controller.unavailability_store.snapshot()
+        timeouts = as_mapping(snap["unavailable_timeouts"], field="unavailable_timeouts")
+        stored_timeout = as_int(timeouts["claude"], field="unavailable_timeouts.claude")
         current_time_ms = int(clock.monotonic() * 1000)
         stored_remaining = stored_timeout - current_time_ms
-        assert helper_return == stored_remaining, (
-            f"helper return {helper_return}ms disagrees with store remaining {stored_remaining}ms"
+        assert recorded_backoff_ms == stored_remaining, (
+            f"recorded backoff {recorded_backoff_ms}ms disagrees with "
+            f"store remaining {stored_remaining}ms"
         )
         # Advance the clock past the cap so the next mark is from a fresh
         # exponential attempt (otherwise the tracker would refuse to mark

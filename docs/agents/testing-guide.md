@@ -460,7 +460,7 @@ The ratchet and the whole-tree reconciliation are what keep the table honest.
 | pipeline | 32 | 72 | 33 | 79 | 184 | pipeline |
 | integration | 22 | 21 | 40 | 98 | 159 | integration |
 | property | 11 | 0 | 59 | 35 | 94 | property |
-| recovery | 28 | 7 | 42 | 32 | 81 | recovery |
+| recovery | 26 | 7 | 42 | 24 | 73 | recovery |
 | tool-exec | 9 | 0 | 36 | 29 | 65 | tool-exec |
 | process | 8 | 5 | 10 | 12 | 27 | process |
 | dir:unit | 5 | 4 | 7 | 8 | 19 | follow-up: backlog white-box conversion unit |
@@ -786,12 +786,10 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/recovery/test_no_progress_quiet.py` | 0 | 5 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
 | `tests/recovery/test_opencode_resumable_exit_classification.py` | 0 | 2 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
 | `tests/recovery/test_opencode_resumable_exit_producer_path.py` | 0 | 1 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
-| `tests/recovery/test_out_of_credits_fast_fallover.py` | 0 | 0 | 1 | recovery | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: recovery public-seam unit |
 | `tests/recovery/test_preflight_validation.py` | 1 | 0 | 0 | recovery | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: recovery public-seam unit |
 | `tests/recovery/test_priority_agent_selection.py` | 0 | 2 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
 | `tests/recovery/test_prompt_scenario_unavailability.py` | 0 | 2 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
 | `tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py` | 0 | 6 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
-| `tests/recovery/test_retry_backoff.py` | 0 | 0 | 7 | recovery | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: recovery public-seam unit |
 | `tests/recovery/test_runner_offline_pause_resume.py` | 1 | 0 | 0 | recovery | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: recovery public-seam unit |
 | `tests/recovery/test_same_shape_retry_bounds.py` | 0 | 1 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
 | `tests/recovery/test_two_main_retry_rules.py` | 0 | 2 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |

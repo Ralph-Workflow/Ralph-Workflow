@@ -332,12 +332,10 @@ tests/recovery/test_harness_echo_does_not_advance_meaningful_output.py|0,0,2
 tests/recovery/test_no_progress_quiet.py|0,5,0
 tests/recovery/test_opencode_resumable_exit_classification.py|0,2,0
 tests/recovery/test_opencode_resumable_exit_producer_path.py|0,1,0
-tests/recovery/test_out_of_credits_fast_fallover.py|0,0,1
 tests/recovery/test_preflight_validation.py|1,0,0
 tests/recovery/test_priority_agent_selection.py|0,2,0
 tests/recovery/test_prompt_scenario_unavailability.py|0,2,0
 tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py|0,6,0
-tests/recovery/test_retry_backoff.py|0,0,7
 tests/recovery/test_runner_offline_pause_resume.py|1,0,0
 tests/recovery/test_two_main_retry_rules.py|0,2,0
 tests/recovery/test_two_state_invariant.py|0,2,0

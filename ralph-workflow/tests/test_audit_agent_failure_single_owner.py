@@ -606,3 +606,83 @@ def test_public_seam(ledger, fact):
 """
     violations = audit_test_source("tests/recovery/test_sample.py", source)
     assert not violations
+
+
+def test_test_private_backoff_counter_access_is_flagged() -> None:
+    """A test reading the controller's private backoff counter is rejected."""
+    source = """
+def test_backoff(controller):
+    assert controller._backoff_attempts.get("development:claude") == 2
+"""
+    violations = audit_test_source("tests/recovery/test_sample.py", source)
+    assert len(violations) == 1
+    assert violations[0].rule == "test_private_failure_owner_access"
+    assert "_backoff_attempts" in violations[0].detail
+
+
+def test_test_private_unavailability_tracker_access_is_flagged() -> None:
+    """A test reading the controller's private unavailability store is rejected."""
+    source = """
+def test_tracker(controller):
+    assert controller._unavailability_tracker.is_available("development", "claude")
+"""
+    violations = audit_test_source("tests/recovery/test_sample.py", source)
+    assert len(violations) == 1
+    assert violations[0].rule == "test_private_failure_owner_access"
+    assert "_unavailability_tracker" in violations[0].detail
+
+
+def test_test_private_unavailable_marker_call_is_flagged_in_assignment_context() -> None:
+    """The private unavailable marker is rejected outside an assert too."""
+    source = """
+def test_marker(controller, reason):
+    cooldown_ms = controller._mark_agent_unavailable("development", "claude", reason)
+    assert cooldown_ms > 0
+"""
+    violations = audit_test_source("tests/recovery/test_sample.py", source)
+    assert len(violations) == 1
+    assert violations[0].rule == "test_private_failure_owner_access"
+    assert "_mark_agent_unavailable" in violations[0].detail
+
+
+def test_test_private_backoff_counter_access_via_getattr_is_flagged() -> None:
+    """Reading the private backoff counter through getattr() is rejected."""
+    source = """
+def test_getattr(controller):
+    attempts = getattr(controller, "_backoff_attempts")
+"""
+    violations = audit_test_source("tests/recovery/test_sample.py", source)
+    assert len(violations) == 1
+    assert violations[0].rule == "test_private_failure_owner_access"
+    assert "_backoff_attempts" in violations[0].detail
+
+
+def test_test_public_controller_seam_is_accepted() -> None:
+    """The controller's public seam stays observable from a test."""
+    source = """
+def test_controller_public_seam(controller):
+    assert controller.snapshot()["backoff_attempts"] == {}
+    assert controller.unavailability_store.is_available("development", "opencode")
+"""
+    violations = audit_test_source("tests/recovery/test_sample.py", source)
+    assert not violations
+
+
+def test_test_unrelated_private_reads_are_not_flagged() -> None:
+    """Private reads that are not failure-owner state stay accepted."""
+    source = """
+class FakeRunner:
+    def __init__(self):
+        self._fake_counter = 0
+        self._state = {}
+
+def test_unrelated_private_reads(controller, runner, subprocess_runner, resolver_module):
+    controller._write_session_reset_hint("development", failure)
+    runner._integrate_on_phase_transition(state)
+    assert runner._PHASE_TRANSITION_INTEGRATION_EVENTS
+    controller._reset_controller_source_tree_cache()
+    assert subprocess_runner._UNREPORTED_RETURNCODE != 0
+    resolver_module._mirror_cursor_home(source, target)
+"""
+    violations = audit_test_source("tests/recovery/test_sample.py", source)
+    assert not violations

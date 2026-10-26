@@ -51,8 +51,10 @@ from ralph.testing._single_owner_rules import (
     _is_forbidden_target_name,
     _is_ledger_receiver,
     _is_ledger_serialised_root,
+    _is_private_failure_owner_name,
     _serialised_counter_violation,
     is_transitional_allowed,
+    private_failure_owner_violation,
 )
 
 __all__ = [
@@ -223,6 +225,8 @@ def _check_test_attribute(node: ast.Attribute, rel_path: str) -> list[SingleOwne
                 ),
             )
         ]
+    if _is_private_failure_owner_name(attr) and not is_transitional_allowed(rel_path, attr):
+        return private_failure_owner_violation(node, attr, rel_path)
     return []
 
 
@@ -320,6 +324,11 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
                     "tests must use the public seam only."
                 ),
             )
+        )
+
+    if _is_private_failure_owner_name(arg_val) and not is_transitional_allowed(rel_path, arg_val):
+        violations.extend(
+            private_failure_owner_violation(node, arg_val, rel_path, via_getattr=True)
         )
 
     return violations
@@ -572,6 +581,56 @@ def test_public_seam(ledger, fact):
 """
     v13 = audit_test_source("tests/recovery/test_sample.py", src_public_seam)
     assert not v13, f"Expected no violation for the public ledger seam, got: {v13}"
+
+    # Negative test 12: a test reading the controller's private backoff counter.
+    src_private_backoff = """
+def test_backoff(controller):
+    assert controller._backoff_attempts.get("development:claude") == 2
+"""
+    v14 = audit_test_source("tests/recovery/test_sample.py", src_private_backoff)
+    assert any(v.rule == "test_private_failure_owner_access" for v in v14), (
+        f"Expected test_private_failure_owner_access for _backoff_attempts, got: {v14}"
+    )
+
+    # Negative test 13: a test reading the controller's private unavailability store.
+    src_private_tracker = """
+def test_tracker(controller):
+    assert controller._unavailability_tracker.is_available("development", "claude")
+"""
+    v15 = audit_test_source("tests/recovery/test_sample.py", src_private_tracker)
+    assert any(v.rule == "test_private_failure_owner_access" for v in v15), (
+        f"Expected test_private_failure_owner_access for _unavailability_tracker, got: {v15}"
+    )
+
+    # Negative test 14: a test calling the private unavailable marker in an
+    # assignment context (the rule must not be limited to asserts).
+    src_private_marker = """
+def test_marker(controller):
+    cooldown_ms = controller._mark_agent_unavailable("development", "claude", reason)
+"""
+    v16 = audit_test_source("tests/recovery/test_sample.py", src_private_marker)
+    assert any(v.rule == "test_private_failure_owner_access" for v in v16), (
+        f"Expected test_private_failure_owner_access for _mark_agent_unavailable, got: {v16}"
+    )
+
+    # Negative test 15: the same private state reached through getattr().
+    src_private_getattr = """
+def test_getattr(controller):
+    attempts = getattr(controller, "_backoff_attempts")
+"""
+    v17 = audit_test_source("tests/recovery/test_sample.py", src_private_getattr)
+    assert any(v.rule == "test_private_failure_owner_access" for v in v17), (
+        f"Expected test_private_failure_owner_access for getattr(_backoff_attempts), got: {v17}"
+    )
+
+    # Positive test 3: the controller's public seam stays observable from a test.
+    src_controller_public_seam = """
+def test_controller_public_seam(controller):
+    assert controller.snapshot()["backoff_attempts"] == {}
+    assert controller.unavailability_store.is_available("development", "opencode")
+"""
+    v18 = audit_test_source("tests/recovery/test_sample.py", src_controller_public_seam)
+    assert not v18, f"Expected no violation for the public controller seam, got: {v18}"
 
 
 def audit_single_owner(repo_root: Path) -> list[SingleOwnerViolation]:

@@ -183,6 +183,26 @@ def _build_policy_bundle(agents: list[str] | tuple[str, ...]) -> PolicyBundle:
     return PolicyBundle(agents=agents_policy, pipeline=pipeline_policy, artifacts=artifacts_policy)
 
 
+def _raise_configured_failure(category: FailureCategory, agent: str) -> None:
+    """Raise the exception configured for the attempt's failure category.
+
+    Categories without a configured exception (for example ``INTEGRATION`` or
+    ``USER_CONFIG``) return without raising, so the caller keeps its original
+    control flow.
+    """
+    if category == FailureCategory.ENVIRONMENTAL:
+        raise ConnectionRefusedError(f"Simulated environmental connection refusal for {agent}")
+    if category == FailureCategory.AMBIGUOUS:
+        raise RuntimeError(f"Simulated ambiguous failure for {agent}")
+    if category == FailureCategory.AGENT:
+        raise AgentInactivityTimeoutError(agent, 60.0)
+    if category == FailureCategory.ARTIFACT_VALIDATION:
+        raise DevelopmentResultValidationError(
+            f"Simulated artifact validation failure for {agent}: the required "
+            "development_result artifact was rejected"
+        )
+
+
 def _apply_attempt_side_effects(
     result: AgentAttemptResult,
     agent: str,
@@ -221,18 +241,9 @@ def _apply_attempt_side_effects(
     if result.raise_error is not None:
         raise result.raise_error
 
-    if result.failure_category is not None:
-        if result.failure_category == FailureCategory.ENVIRONMENTAL:
-            raise ConnectionRefusedError(f"Simulated environmental connection refusal for {agent}")
-        if result.failure_category == FailureCategory.AMBIGUOUS:
-            raise RuntimeError(f"Simulated ambiguous failure for {agent}")
-        if result.failure_category == FailureCategory.AGENT:
-            raise AgentInactivityTimeoutError(agent, 60.0)
-        if result.failure_category == FailureCategory.ARTIFACT_VALIDATION:
-            raise DevelopmentResultValidationError(
-                f"Simulated artifact validation failure for {agent}: the required "
-                "development_result artifact was rejected"
-            )
+    category = result.failure_category
+    if category is not None:
+        _raise_configured_failure(category, agent)
 
     if result.exit_code != 0:
         raise AgentInvocationError(

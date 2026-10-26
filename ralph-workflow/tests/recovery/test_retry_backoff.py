@@ -1,9 +1,20 @@
-"""Black-box test: retry backoff is computed and applied correctly."""
+"""Black-box test: retry backoff is computed and applied correctly.
+
+Every assertion reads the controller's PUBLIC seam only: the
+``FailureEvent.retry_delay_ms`` the runner consumes and the
+``RecoveryController.snapshot()`` observability snapshot. The file proves
+that the backoff counter grows per phase/agent, that the computed delay
+doubles and saturates at the cap, and that ``reset_backoff`` clears the
+counter so the next failure starts from the base delay again -- without
+coupling to any private recovery state.
+"""
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 
+from ralph.checked_accessors import as_int, as_mapping
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.models import (
     AgentChainConfig,
@@ -17,8 +28,8 @@ from ralph.policy.models import (
 )
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classified_failure import ClassifiedFailure
+from ralph.recovery.classifier import FailureContext
 from ralph.recovery.controller import (
-    FailureContext,
     RecoveryController,
     RecoveryControllerOptions,
     compute_backoff_ms,
@@ -74,6 +85,18 @@ def _make_bundle_with_retry_delay(
         ),
         artifacts=ArtifactsPolicy(artifacts={}),
     )
+
+
+def _backoff_attempts(controller: RecoveryController) -> Mapping[str, int]:
+    """Return the controller's PUBLIC backoff-attempt snapshot.
+
+    ``RecoveryController.snapshot()`` publishes the ``backoff_attempts``
+    mapping that merges the controller's own per-``phase:agent`` counter
+    with the unavailability store's per-agent counter, so the values are
+    the ones the controller itself reads when it computes a retry delay.
+    """
+    raw = as_mapping(controller.snapshot()["backoff_attempts"], field="backoff_attempts")
+    return {key: as_int(value, field=f"backoff_attempts.{key}") for key, value in raw.items()}
 
 
 def test_compute_backoff_ms_doubles_each_attempt() -> None:
@@ -148,7 +171,7 @@ def test_reset_backoff_clears_counter() -> None:
     controller.reset_backoff("development", "claude")
 
     # Backoff attempts dict should be empty after reset
-    assert len(controller._backoff_attempts) == 0
+    assert len(_backoff_attempts(controller)) == 0
 
 
 def test_backoff_attempts_tracked_per_agent() -> None:
@@ -181,8 +204,9 @@ def test_backoff_attempts_tracked_per_agent() -> None:
     )
 
     # Verify backoff attempts
-    assert controller._backoff_attempts.get(f"{'development'}:claude") == 2
-    assert controller._backoff_attempts.get(f"{'development'}:opencode") == 1
+    attempts = _backoff_attempts(controller)
+    assert attempts.get(f"{'development'}:claude") == 2
+    assert attempts.get(f"{'development'}:opencode") == 1
 
 
 def test_backoff_resets_on_fallover() -> None:
@@ -206,11 +230,13 @@ def test_backoff_resets_on_fallover() -> None:
     )
 
     # Should have fallen over to opencode
-    assert new_state.chain_for_phase("development").current_index == 1
+    chain = new_state.chain_for_phase("development")
+    assert chain is not None
+    assert chain.current_index == 1
 
     # Backoff for claude should still be 1, but when we fail opencode,
     # the backoff attempts should reflect the new agent
-    assert controller._backoff_attempts.get(f"{'development'}:claude") == 1
+    assert _backoff_attempts(controller).get(f"{'development'}:claude") == 1
 
 
 def test_retry_delay_ms_from_policy_bundle() -> None:
@@ -317,7 +343,7 @@ def test_retry_delay_ms_caps_at_max_backoff() -> None:
     # The backoff_attempts key for this agent should have count=10
     # compute_backoff_ms(1000, 10, 30000) = min(1000 * 2^10, 30000) = 30000
     key = f"{'development'}:claude"
-    assert controller._backoff_attempts.get(key) == 10
+    assert _backoff_attempts(controller).get(key) == 10
     assert compute_backoff_ms(1000, 10, 30_000) == 30_000
 
 
@@ -349,13 +375,13 @@ def test_retry_delay_ms_reset_after_successful_invocation() -> None:
 
     # Verify backoff is at attempt 2
     key = f"{'development'}:claude"
-    assert controller._backoff_attempts.get(key) == 2
+    assert _backoff_attempts(controller).get(key) == 2
 
     # Reset backoff (simulate successful invocation)
     controller.reset_backoff("development", "claude")
 
     # Backoff attempts should be cleared
-    assert controller._backoff_attempts.get(key) is None
+    assert _backoff_attempts(controller).get(key) is None
 
     # Next failure should have base delay again (not doubled)
     _, _, evt = controller.handle(
@@ -489,7 +515,9 @@ def test_artifact_validation_retry_uses_consecutive_unproductive_limit() -> None
         "Missing required artifact",
         FailureContext(phase="development", agent="claude", classified_failure=failure),
     )
-    assert state1.chain_for_phase("development").current_index == 0
+    chain1 = state1.chain_for_phase("development")
+    assert chain1 is not None
+    assert chain1.current_index == 0
 
     state2, _, evt2 = controller.handle(
         state1,
@@ -498,5 +526,7 @@ def test_artifact_validation_retry_uses_consecutive_unproductive_limit() -> None
     )
 
     assert evt2.category == "artifact_validation"
-    assert state2.chain_for_phase("development").current_index == 1
-    assert state2.chain_for_phase("development").retries == 0
+    chain2 = state2.chain_for_phase("development")
+    assert chain2 is not None
+    assert chain2.current_index == 1
+    assert chain2.retries == 0
