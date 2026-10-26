@@ -717,10 +717,10 @@ def test_wait_for_retry_loop_unresolved_progresses_attempt_or_escalates(
     assert len(saved_checkpoints) >= 1
 
 
-def test_wait_for_retry_cold_loaded_capped_intervention_dispatches_handoff(
+def test_wait_for_retry_cold_loaded_capped_ladder_escalation_dispatches_handoff(
     tmp_path: Path,
 ) -> None:
-    """WU-2 cold-load: capped intervention loaded cold still dispatches handoff.
+    """WU-2 cold-load: capped escalation loaded cold still dispatches handoff.
 
     A durable record loaded from disk that already carries
     ``is_intervention_required=True`` and is at the consecutive-conflict
@@ -728,9 +728,11 @@ def test_wait_for_retry_cold_loaded_capped_intervention_dispatches_handoff(
     session, otherwise the previous session's exhausted attempt becomes
     a permanent dead end. A subsequent call within the same session
     must NOT re-attempt the handoff (the in-session flag prevents the
-    operator-visible rotation that motivated the original guard).
+    operator-visible rotation that motivated the original guard); it
+    paces the loop with the bounded repeat-escalation retry so the
+    ladder seam re-observes without a busy spin.
     """
-    _sleeps, ctx = _setup_retry_env(tmp_path)
+    sleeps, ctx = _setup_retry_env(tmp_path)
 
     handoff_calls: list[str] = []
 
@@ -741,20 +743,26 @@ def test_wait_for_retry_cold_loaded_capped_intervention_dispatches_handoff(
         last_action="conflict",
         last_reason="cold-loaded detail",
         consecutive_conflicts=cap,
-    ).set_intervention_required("cold-loaded detail")
+    ).set_ladder_escalation("cold-loaded detail")
     initial_state = PipelineState(phase="development", rebase=cold_loaded_rebase)
     assert initial_state.rebase.is_intervention_required is True
 
     first_result = wait_for_integration_retry(initial_state, ctx)
-    # Cold-loaded capped intervention must dispatch automated resolution
+    # Cold-loaded capped escalation must dispatch automated resolution
     assert len(handoff_calls) == 1
     assert "cold-loaded detail" in handoff_calls[0]
     assert first_result.rebase.is_intervention_required is True
+    assert first_result.rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
+    # The first escalation never sleeps (the handoff was just dispatched).
+    assert sleeps == []
 
-    # Subsequent call within the same session must avoid repeat handoffs.
+    # Subsequent call within the same session must avoid repeat handoffs
+    # and pace itself with the bounded repeat-escalation retry.
     second_result = wait_for_integration_retry(first_result, ctx)
     assert len(handoff_calls) == 1, "Same-session calls must not re-dispatch handoff"
     assert second_result.rebase.is_intervention_required is True
+    assert second_result.rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
+    assert len(sleeps) == 1, "Repeat escalation paces the loop with one bounded retry"
 
 
 def test_wait_for_retry_repeated_identical_blocked_outcomes_progress_attempts(
@@ -773,7 +781,7 @@ def test_wait_for_retry_repeated_identical_blocked_outcomes_progress_attempts(
     ) -> RebaseState | None:
         return RebaseState(
             last_reason="blocked state from preamble",
-        ).set_intervention_required("blocked state from preamble")
+        ).set_ladder_escalation("blocked state from preamble")
 
     ctx.hooks.recovery_preamble = _fake_preamble
 
@@ -783,18 +791,19 @@ def test_wait_for_retry_repeated_identical_blocked_outcomes_progress_attempts(
         rebase=RebaseState(
             last_reason="identical blocked detail",
             consecutive_conflicts=0,
-        ).set_intervention_required("identical blocked detail"),
+        ).set_ladder_escalation("identical blocked detail"),
     )
 
     for _ in range(cap):
         state = wait_for_integration_retry(state, ctx)
-    assert sleeps == [], "Identical blocked outcomes must not sleep"
+    assert sleeps == [], "Identical blocked outcomes must not sleep before the first escalation"
     assert len(handoffs) == 1
     assert state.rebase.is_intervention_required is True
+    assert state.rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
     assert state.rebase.consecutive_conflicts >= cap
 
 
-def test_wait_for_retry_unsuccessful_handoff_records_intervention_without_sleep(
+def test_wait_for_retry_unsuccessful_handoff_records_ladder_escalation_without_sleep(
     tmp_path: Path,
 ) -> None:
     """WU-2 unsuccessful handoff: handoff that does not progress still escalates."""
@@ -809,7 +818,7 @@ def test_wait_for_retry_unsuccessful_handoff_records_intervention_without_sleep(
         rebase=RebaseState(
             last_reason="unsuccessful handoff detail",
             consecutive_conflicts=cap,
-        ).set_intervention_required("unsuccessful handoff detail"),
+        ).set_ladder_escalation("unsuccessful handoff detail"),
     )
 
     result = wait_for_integration_retry(state, ctx)
@@ -817,6 +826,7 @@ def test_wait_for_retry_unsuccessful_handoff_records_intervention_without_sleep(
     assert len(handoff_calls) == 1
     assert "unsuccessful handoff detail" in handoff_calls[0]
     assert result.rebase.is_intervention_required is True
+    assert result.rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
 
 
 def test_wait_for_retry_pending_repeated_identical_blocked_outcomes_progress_and_escalate(
@@ -1048,17 +1058,22 @@ def test_wait_for_retry_cold_durable_resolution_exhausted_with_live_conflict_dis
         f"Counter must be clamped to the cap ({cap}), got "
         f"{first_result.rebase.consecutive_conflicts}"
     )
-    # 4. Intervention is recorded (handoff did not clear exhaustion in this mock).
+    # 4. The typed ladder escalation is recorded (handoff did not clear
+    # exhaustion in this mock) — never the retired operator hand-off.
     assert first_result.rebase.is_intervention_required is True
+    assert first_result.rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
 
-    # 5. A second call within the SAME session MUST NOT re-dispatch the handoff.
+    # 5. A second call within the SAME session MUST NOT re-dispatch the
+    # handoff; it paces the loop with the bounded repeat-escalation retry
+    # so the ladder seam re-observes without a busy spin.
     second_result = wait_for_integration_retry(first_result, ctx)
     assert len(handoff_calls) == 1, (
         "Same-session calls must not re-dispatch the automated resolver handoff "
         "(O1 cap-bound escalation, no operator-visible rotation)."
     )
     assert second_result.rebase.is_intervention_required is True
-    assert sleeps == [], "Repeated retry calls must not sleep"
+    assert second_result.rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
+    assert len(sleeps) == 1, "Repeat escalation paces the loop with one bounded retry"
 
 
 def test_wait_for_retry_cold_exhausted_state_with_no_live_conflict_still_dispatches_session_handoff(

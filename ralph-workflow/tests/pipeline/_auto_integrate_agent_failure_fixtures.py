@@ -29,6 +29,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
 from git import Repo
 
 from ralph.pipeline.conflict_resolution import run_rebase_conflict_resolution_pipeline
@@ -57,6 +58,13 @@ TARGET = "main"
 
 #: What a scripted agent leaves behind when it resolves the conflict.
 RESOLVED_CONTENT = "resolved by the resolver\n"
+
+#: This module crosses the real-Git boundary itself (:func:`make_conflicted_repo`
+#: drives ``Repo.init`` / ``repo.index.commit``), so it declares the
+#: ``subprocess_e2e`` profile the same way its consumer suite does. The
+#: test-policy audit reads the module-level ``pytestmark`` and exempts the
+#: file's GitPython crossings on that declaration.
+pytestmark = pytest.mark.subprocess_e2e
 
 
 class FrozenClock:

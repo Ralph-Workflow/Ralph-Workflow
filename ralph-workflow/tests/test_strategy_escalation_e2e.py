@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import run_loop
+from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.events import PhaseFailureEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
@@ -43,9 +44,9 @@ def test_strategy_escalation_preserves_history_and_resumes_after_recovery(
     monkeypatch: MonkeyPatch,
 ) -> None:
     """Every failed rung advances; exhaustion escalates to the typed
-    ``INTERVENTION_REQUIRED`` transition through the
-    :meth:`RebaseState.set_intervention_required` single-writer
-    setter.
+    ``LADDER_ESCALATION`` transition through the
+    :meth:`RebaseState.set_ladder_escalation` single-writer
+    setter — the autonomous fallback ladder, never a person.
 
     The previous behaviour of this test asserted that the run loop
     sleeps, retries, and eventually dispatches ordinary work. That
@@ -79,12 +80,12 @@ def test_strategy_escalation_preserves_history_and_resumes_after_recovery(
         "resolver_with_history",
     ]
 
-    # The exhausted state is escalated to INTERVENTION_REQUIRED through
-    # the typed single-writer setter, WITHOUT a recovery preamble call
-    # and WITHOUT a sleep. Exercise the helper directly because the
-    # full run loop would loop forever in a tight block (the
-    # integration is still unresolved and the exhausted state
-    # immediately escalates without waiting).
+    # The exhausted state is escalated to the typed LADDER_ESCALATION
+    # outcome through the typed single-writer setter, WITHOUT a recovery
+    # preamble call and WITHOUT a sleep. Exercise the helper directly
+    # because the enclosing run loop keeps blocking for the autonomous
+    # fallback ladder (the integration is still unresolved and the
+    # exhausted state immediately escalates without waiting).
     preamble_invocations: list[object] = []
     sleeps: list[float] = []
 
@@ -123,14 +124,14 @@ def test_strategy_escalation_preserves_history_and_resumes_after_recovery(
 
     updated = run_loop._wait_for_integration_retry(state, ctx)
 
-    # The exhausted state escalates to INTERVENTION_REQUIRED. The
-    # carried counters and the resolution_exhausted flag survive
-    # across the transition -- the run-loop consumer that gates
+    # The exhausted state escalates to the typed LADDER_ESCALATION
+    # outcome. The carried counters and the resolution_exhausted flag
+    # survive across the transition -- the run-loop consumer that gates
     # dispatch keeps refusing ordinary work.
-    assert updated.rebase.last_outcome is not None
+    assert updated.rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
     assert updated.rebase.is_intervention_required is True
     # The conflict-strategy block is preserved: the typed
-    # ``INTERVENTION_REQUIRED`` transition does NOT cycle or reset it.
+    # ``LADDER_ESCALATION`` transition does NOT cycle or reset it.
     assert updated.rebase.conflict_strategy_index == state.rebase.conflict_strategy_index
     assert updated.rebase.conflict_strategies_tried == state.rebase.conflict_strategies_tried
     assert updated.rebase.resolution_exhausted is True
@@ -142,12 +143,14 @@ def test_strategy_escalation_preserves_history_and_resumes_after_recovery(
         "Cold exhausted state must dispatch one session-scoped automated "
         "resolver handoff (O1/O3 cold durable exhausted contract)."
     )
-    # The exhausted path does NOT sleep.
+    # The exhausted path does NOT sleep on the first escalation.
     assert sleeps == []
-    # A second call within the SAME session must NOT re-dispatch the handoff.
+    # A second call within the SAME session must NOT re-dispatch the
+    # handoff; it paces the loop with the bounded repeat-escalation
+    # retry so the ladder seam re-observes without a busy spin.
     handoff_calls.clear()
     run_loop._wait_for_integration_retry(updated, ctx)
     assert handoff_calls == [], (
         "Same-session calls must not re-dispatch the automated resolver handoff."
     )
-    assert sleeps == []
+    assert sleeps == [run_loop._REPEAT_ESCALATION_RETRY_SECONDS]

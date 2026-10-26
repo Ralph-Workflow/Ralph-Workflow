@@ -78,13 +78,15 @@ def _waiting_state() -> RebaseState:
 
 
 def _intervention_state() -> RebaseState:
-    # Legacy checkpoint value: the retired diagnostic-intervention outcome
-    # survives only as a parse input for legacy persisted records (loaded
-    # and cleared into the fallback ladder at startup, see
-    # _auto_integrate_record_restamp); no live run produces it.
+    # Legacy checkpoint value: a persisted record written before the
+    # hand-off retirement may still carry the retired outcome AND the
+    # retired display state verbatim; the loader honours both persisted
+    # fields (the validator only populates them when unset) and no live
+    # run produces them (see
+    # test_unreadable_evidence_projects_to_ladder_escalation_label).
     state = RebaseState(
         last_outcome=RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
-        recovery_record_retained=True,
+        operation_display_state="intervention_required",
     )
     assert state.operation_display_state == "intervention_required"
     return state

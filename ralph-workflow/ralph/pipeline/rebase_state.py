@@ -392,9 +392,12 @@ class RebaseState(RalphBaseModel):
                 # fallback ladder owns the next action) -- it is not the
                 # retired terminal operator hand-off.
                 object.__setattr__(self, "last_decision", "block_for_recovery")
-            elif self.is_intervention_required:
-                object.__setattr__(self, "last_decision", "report_intervention_required")
             elif self.integration_unresolved or self.recovery_record_retained:
+                # Legacy checkpoints may still parse the retired
+                # INTERVENTION_REQUIRED / DIAGNOSTIC_INTERVENTION_REQUIRED
+                # outcomes; those keep the obligation blocking for the
+                # autonomous recovery ladder too -- never the terminal
+                # operator hand-off.
                 object.__setattr__(self, "last_decision", "block_for_recovery")
         if self.operation_display_state is None:
             state = _resolve_operation_display_state(self)
@@ -644,23 +647,20 @@ class RebaseState(RalphBaseModel):
             }
         )
 
-    def set_intervention_required(self, reason: str, *, diagnostic: bool = False) -> Self:
-        """Record a persistent INTERVENTION_REQUIRED transition.
+    def set_ladder_escalation(self, reason: str) -> Self:
+        """Record a persistent autonomous ladder-escalation transition.
 
-        Single writer of the persistent
-        :attr:`last_outcome` /
-        :attr:`last_reason` transition that signals operator
-        intervention. ``diagnostic=True`` records the
-        ``DIAGNOSTIC_INTERVENTION_REQUIRED`` variant for evidence
-        diagnosis flows; the default is plain
-        ``INTERVENTION_REQUIRED``.
+        Single writer of the persistent :attr:`last_outcome` /
+        :attr:`last_reason` transition that signals the typed
+        :attr:`RebaseOutcomeKind.LADDER_ESCALATION` outcome: a spent
+        conflict cap or an exhausted resolution ladder routes to the
+        autonomous fallback ladder (rung 6 hard reset as the last
+        resort — never a person). ``reason`` names the next
+        autonomous ladder rung and the preserved copy's location.
         """
-        outcome = (
-            RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
-            if diagnostic
-            else RebaseOutcomeKind.INTERVENTION_REQUIRED
+        return self.model_copy(
+            update={"last_outcome": RebaseOutcomeKind.LADDER_ESCALATION, "last_reason": reason}
         )
-        return self.model_copy(update={"last_outcome": outcome, "last_reason": reason})
 
     def is_terminal_action(self) -> bool:
         """Whether the last outcome kind is terminal."""

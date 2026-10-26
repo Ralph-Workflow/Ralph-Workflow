@@ -26,6 +26,11 @@ from ralph.git._worktree_lease import (
     lease_age_seconds,
     lease_payload,
 )
+from ralph.pipeline import (
+    IntegrationAction,
+    integration_director,
+    integration_owner_seam,
+)
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_backoff import RETRY_BASE_DELAY_SECONDS
 from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
@@ -41,8 +46,10 @@ from ralph.pipeline.integration_actions import (
     reset_executors,
 )
 from ralph.pipeline.integration_decision import (
+    CLEANUP_LADDER_ORDER,
     LADDER_ORDER,
     AttemptState,
+    CleanupLadderRung,
     DecisionContext,
     NextAction,
     decide,
@@ -720,3 +727,118 @@ def test_the_decision_vocabulary_cannot_require_intervention() -> None:
     """AC-10: REQUIRE_INTERVENTION is never a consumed outcome of any row."""
     intervening = sorted(member.name for member in NextAction if "INTERVENTION" in member.name)
     assert intervening == [], f"the decision vocabulary can require intervention: {intervening}"
+
+
+# ---------------------------------------------------------------------------
+# AC-10 dirt dimension: the planning-sync loop terminates when the tree is
+# dirtied at EVERY step. The director is replaced by a recording stand-in
+# and the porcelain probe by a seeded, per-step re-drawn dirt blob, so the
+# loop runs against the production owner seam and durable ledger with no
+# real git, no subprocess and no sleep.
+# ---------------------------------------------------------------------------
+
+#: The dirty observation every drawn dirt shape projects onto. All drawn
+#: blobs are tracked-dirt shapes, so the signature — and therefore the
+#: escalation climb — is the same no matter which shape the seed draws.
+_DIRTY_OBSERVATION: Observation = Observation(
+    target_vs_feature=TargetVsFeature.EQUAL,
+    target_vs_remote=TargetVsRemote.EQUAL,
+    worktree=WorktreeState.TRACKED_CHANGES,
+    head=HeadState.ATTACHED,
+    in_progress_kind=InProgressKind.NONE,
+    in_progress_ownership=InProgressOwnership.OWNED,
+    record=IntegrationRecordState.NONE,
+    agent_active=False,
+)
+
+#: Tracked-dirt porcelain blobs the seed re-draws after every step:
+#: unstaged, staged, type-change and deleted variants. Every one is a
+#: blocking shape, so the tree stays dirty at every step of the loop.
+_DIRTY_BLOBS: tuple[str, ...] = (
+    " M src/app.py\0",
+    "M  src/app.py\0",
+    " T src/app.py\0",
+    " D src/app.py\0",
+)
+
+
+class _DirtDirector:
+    """Director stand-in serving the canned dirty observation."""
+
+    def __init__(
+        self,
+        root: Path,
+        *,
+        target: str,
+        remote: str,
+        agent_active: bool = False,
+    ) -> None:
+        del root, target, remote, agent_active
+
+    def observe(self) -> Observation:
+        return _DIRTY_OBSERVATION
+
+
+@pytest.mark.parametrize("seed", _SEEDS)
+def test_dirt_at_every_planning_sync_step_escalates_and_terminates(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    seed: int,
+) -> None:
+    """The dirt dimension: a tree dirtied at every step climbs and saturates.
+
+    Each step re-draws the dirt blob from the seeded RNG, re-asks the
+    planning-sync owner seam (which charges the durable ledger through
+    the single charge path) and records the typed verdict. The loop is
+    bounded at direct action + one climb per cleanup-ladder rung; the
+    assertions prove the bound is the whole story:
+
+    * every step's dirt blocks planning (``may_plan`` is never derived
+      as true and the classifier verdict is BLOCKED);
+    * the verdict's ladder rung climbs ``CLEANUP_LADDER_ORDER``
+      monotonically and saturates at the terminal rung — the escalation
+      is finite, so the loop terminates;
+    * the coarse seam action stays inside the cleanup-ladder
+      projections — never ``RESOLVE_ACTIVE_OPERATION`` (a resolver is
+      never dispatched for dirt) and never ``LAND_TARGET``.
+    """
+    rng = random.Random(seed)
+    ledger_path = tmp_path / ".agent" / f"dirt-dimension-ledger-{seed}.json"
+    porcelain = [_DIRTY_BLOBS[0]]
+
+    monkeypatch.setattr(integration_director, "IntegrationDirector", _DirtDirector)
+    monkeypatch.setattr(
+        integration_owner_seam,
+        "read_worktree_porcelain",
+        lambda _root: Reading.known(porcelain[0]),
+    )
+
+    rungs: list[CleanupLadderRung | None] = []
+    actions: list[IntegrationAction] = []
+    # The direct action answers the first two contacts (a first contact
+    # is never a repeat); then one rung per charged repeat reaches the
+    # terminal rung: direct + ladder rungs + saturation margin.
+    for _ in range(2 + len(CLEANUP_LADDER_ORDER)):
+        verdict = integration_owner_seam.decide_planning_sync(tmp_path, ledger_path=ledger_path)
+        porcelain[0] = rng.choice(_DIRTY_BLOBS)
+        rungs.append(verdict.ladder_rung)
+        actions.append(verdict.action)
+        assert verdict.may_plan is False, f"dirt let planning through at seed {seed}"
+        assert verdict.worktree.dispatch_blocked, (
+            f"a drawn dirt shape did not block dispatch at seed {seed}: "
+            f"{verdict.dirt_shape.value}"
+        )
+
+    climbed = [CLEANUP_LADDER_ORDER.index(rung) for rung in rungs if rung is not None]
+    assert climbed == sorted(climbed), f"the climb is not monotone at seed {seed}"
+    assert set(rungs) == set(CLEANUP_LADDER_ORDER), (
+        f"the climb did not reach every rung at seed {seed}: {rungs}"
+    )
+    assert rungs[-1] is CLEANUP_LADDER_ORDER[-1], (
+        f"the climb did not saturate at the terminal rung at seed {seed}"
+    )
+    assert IntegrationAction.RESOLVE_ACTIVE_OPERATION not in actions, (
+        f"a resolver was dispatched for dirt at seed {seed}"
+    )
+    assert IntegrationAction.LAND_TARGET not in actions
+

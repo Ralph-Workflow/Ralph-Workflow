@@ -178,21 +178,16 @@ class TestConflictBudgetTypedSetters:
         assert projected.last_target == "main"
         assert projected.consecutive_conflicts == 5
 
-    # ----- set_intervention_required -----
+    # ----- set_ladder_escalation -----
 
-    def test_set_intervention_required_default_records_intervention_required(self) -> None:
-        new = RebaseState().set_intervention_required("operator must intervene")
-        assert new.last_outcome == RebaseOutcomeKind.INTERVENTION_REQUIRED
-        assert new.last_reason == "operator must intervene"
+    def test_set_ladder_escalation_records_typed_outcome(self) -> None:
+        new = RebaseState().set_ladder_escalation("conflict cap exhausted")
+        assert new.last_outcome == RebaseOutcomeKind.LADDER_ESCALATION
+        assert new.last_reason == "conflict cap exhausted"
 
-    def test_set_intervention_required_diagnostic_flag_records_variant(self) -> None:
-        new = RebaseState().set_intervention_required("evidence diagnosis blocked", diagnostic=True)
-        assert new.last_outcome == RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED
-        assert new.last_reason == "evidence diagnosis blocked"
-
-    def test_set_intervention_required_returns_new_instance(self) -> None:
+    def test_set_ladder_escalation_returns_new_instance(self) -> None:
         state = RebaseState(last_outcome=RebaseOutcomeKind.REBASED)
-        new = state.set_intervention_required("stop the line")
+        new = state.set_ladder_escalation("escalate autonomously")
         assert new is not state
         assert state.last_outcome == RebaseOutcomeKind.REBASED
 
@@ -203,12 +198,12 @@ class TestConflictBudgetTypedSetters:
         chained = (
             state.set_retry_deadline(1.0)
             .record_consecutive_conflicts(2)
-            .set_intervention_required("stop")
+            .set_ladder_escalation("escalate through the autonomous ladder")
         )
         assert chained is not state
         assert chained.retry_deadline == 1.0
         assert chained.consecutive_conflicts == 2
-        assert chained.last_outcome == RebaseOutcomeKind.INTERVENTION_REQUIRED
+        assert chained.last_outcome == RebaseOutcomeKind.LADDER_ESCALATION
         # Original remains untouched.
         assert state.retry_deadline is None
         assert state.consecutive_conflicts == 0

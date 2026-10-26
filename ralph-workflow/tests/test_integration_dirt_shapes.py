@@ -269,6 +269,28 @@ def test_mode_only_evidence_matches_a_raw_nul_terminated_non_ascii_path() -> Non
     assert verdict.dirt_shape is DirtShape.MODE_ONLY
 
 
+def test_quoted_path_with_invalid_utf8_bytes_classifies_without_raising() -> None:
+    """Octal escapes that are not valid UTF-8 decode via surrogateescape."""
+    verdict = classify_worktree(Reading.known(' M "bad\\377\\376.py"\n'))
+
+    assert verdict.state is WorktreeState.TRACKED_CHANGES
+    assert verdict.dirt_shape is DirtShape.UNSTAGED_MODIFICATION
+    assert verdict.dispatch is WorktreeDispatch.BLOCKED
+
+
+def test_quoted_path_with_invalid_utf8_bytes_matches_mode_only_evidence() -> None:
+    """The surrogateescape spelling of raw bytes is what evidence paths use."""
+    raw_path = "bad\udcff\udcfe.sh"  # surrogateescape spelling of b"bad\xff\xfe.sh"
+    verdict = classify_worktree(
+        Reading.known(' M "bad\\377\\376.sh"\n'),
+        evidence=DirtEvidence(mode_only_paths=frozenset({raw_path})),
+    )
+
+    assert verdict.state is WorktreeState.TRACKED_CHANGES
+    assert verdict.dirt_shape is DirtShape.MODE_ONLY
+    assert verdict.dispatch is WorktreeDispatch.BLOCKED
+
+
 def test_line_ending_evidence_matches_a_quoted_porcelain_path() -> None:
     """An empty content diff on a quoted path is LINE_ENDING_ONLY, not a block."""
     verdict = classify_worktree(
@@ -332,6 +354,82 @@ def test_submodule_new_commits_are_staged_dirt() -> None:
 
     assert verdict.state is WorktreeState.STAGED
     assert verdict.dirt_shape is DirtShape.STAGED_ONLY
+    assert verdict.dispatch is WorktreeDispatch.BLOCKED
+
+
+# ---------------------------------------------------------------------------
+# Porcelain v2 (``git status --porcelain=v2 -z``): mode columns prove
+# MODE_ONLY from raw porcelain alone, no DirtEvidence involved.
+#
+# v2 ordinary records are ``1 XY sub mH mI mW hH hI path``: a pure mode
+# change keeps the content hashes equal (hH == hI) while a mode column
+# differs (staged side mH vs mI, worktree side mI vs mW).
+# ---------------------------------------------------------------------------
+
+
+def test_v2_unstaged_executable_bit_change_is_mode_only_from_raw_porcelain() -> None:
+    """A raw ``-z`` v2 record with 100644 -> 100755 proves MODE_ONLY alone."""
+    verdict = classify_worktree(
+        Reading.known("1 .M N... 100644 100644 100755 e69de29 e69de29 run.sh\0")
+    )
+
+    assert verdict.state is WorktreeState.TRACKED_CHANGES
+    assert verdict.dirt_shape is DirtShape.MODE_ONLY
+    assert verdict.dispatch is WorktreeDispatch.BLOCKED
+
+
+def test_v2_staged_executable_bit_change_is_mode_only_from_raw_porcelain() -> None:
+    """A staged chmod (mH != mI, hashes equal) proves MODE_ONLY alone."""
+    verdict = classify_worktree(
+        Reading.known("1 M. N... 100644 100755 100755 e69de29 e69de29 run.sh\0")
+    )
+
+    assert verdict.state is WorktreeState.STAGED
+    assert verdict.dirt_shape is DirtShape.MODE_ONLY
+    assert verdict.dispatch is WorktreeDispatch.BLOCKED
+
+
+def test_v2_content_hash_change_is_not_mode_only() -> None:
+    """Different HEAD/index content hashes mean real content dirt."""
+    verdict = classify_worktree(
+        Reading.known("1 M. N... 100644 100755 100755 aaa1111 bbb2222 run.sh\0")
+    )
+
+    assert verdict.dirt_shape is DirtShape.STAGED_ONLY
+    assert verdict.dispatch is WorktreeDispatch.BLOCKED
+
+
+def test_v2_mode_only_beside_content_change_is_not_mode_only() -> None:
+    """A mode-only path beside a content-dirty path keeps the tree blocking."""
+    verdict = classify_worktree(
+        Reading.known(
+            "1 .M N... 100644 100644 100755 e69de29 e69de29 run.sh\0"
+            "1 .M N... 100644 100644 100644 ccc3333 ccc3333 src/app.py\0"
+        )
+    )
+
+    assert verdict.state is WorktreeState.TRACKED_CHANGES
+    assert verdict.dirt_shape is DirtShape.UNSTAGED_MODIFICATION
+    assert verdict.dispatch is WorktreeDispatch.BLOCKED
+
+
+def test_v2_untracked_record_maps_to_untracked_only() -> None:
+    """A v2 ``?`` record classifies exactly like a v1 ``??`` record."""
+    verdict = classify_worktree(Reading.known("? scratch.txt\0"))
+
+    assert verdict.state is WorktreeState.UNTRACKED
+    assert verdict.dirt_shape is DirtShape.UNTRACKED_ONLY
+    assert verdict.dispatch is WorktreeDispatch.ALLOWED
+
+
+def test_v2_unmerged_record_is_unmerged() -> None:
+    """A v2 ``u`` record outranks every other shape, as the v1 codes do."""
+    verdict = classify_worktree(
+        Reading.known("u UU N... 100644 100644 100644 aaa1111 bbb2222 ccc3333 src/app.py\0")
+    )
+
+    assert verdict.state is WorktreeState.UNMERGED
+    assert verdict.dirt_shape is DirtShape.UNMERGED
     assert verdict.dispatch is WorktreeDispatch.BLOCKED
 
 

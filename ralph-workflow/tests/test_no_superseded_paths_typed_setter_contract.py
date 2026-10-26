@@ -18,9 +18,9 @@ by a small set of typed single-writer setters on ``RebaseState``:
 * :meth:`clear_resolution_exhausted` -- reset of only the
   ``resolution_exhausted`` / ``resolution_exhaustion_reason`` pair
   (preserves the strategy index and tried list)
-* :meth:`set_intervention_required` -- single writer of the
-  ``INTERVENTION_REQUIRED`` / ``DIAGNOSTIC_INTERVENTION_REQUIRED``
-  transition
+* :meth:`set_ladder_escalation` -- single writer of the
+  ``LADDER_ESCALATION`` transition (the autonomous fallback ladder,
+  never a person)
 
 The AST walk below proves that **no other module writes any of these
 fields** through a literal-Dict ``model_copy``/``copy_with`` call or
@@ -85,7 +85,7 @@ ALLOWED_SETTER_METHODS: frozenset[str] = frozenset(
         "RebaseState.project_conflict_strategy_from",
         "RebaseState.clear_conflict_strategy",
         "RebaseState.clear_resolution_exhausted",
-        "RebaseState.set_intervention_required",
+        "RebaseState.set_ladder_escalation",
     }
 )
 
@@ -370,7 +370,7 @@ class TestNoSupersededPathsTypedSetterContract:
             "def project_conflict_strategy_from",
             "def clear_conflict_strategy",
             "def clear_resolution_exhausted",
-            "def set_intervention_required",
+            "def set_ladder_escalation",
         ):
             assert setter in text, f"Typed setter {setter!r} is missing from rebase_state.py"
 

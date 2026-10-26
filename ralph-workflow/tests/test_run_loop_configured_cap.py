@@ -15,6 +15,7 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import run_loop
+from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
@@ -161,18 +162,18 @@ def test_wait_for_retry_intervention_path_configurable_cap_escalates_without_sle
 
     monkeypatch.setattr(run_loop, "_handoff_retained_failure", _recording_handoff)
 
-    # Start at cap - 1 with intervention_required = True
+    # Start at cap - 1 with the durable ladder-escalation flag set
     initial_state = PipelineState(
         phase="development",
         rebase=RebaseState(
             last_reason="configurable cap intervention detail",
             consecutive_conflicts=cap - 1,
-        ).set_intervention_required("configurable cap intervention detail"),
+        ).set_ladder_escalation("configurable cap intervention detail"),
     )
 
     result = run_loop._wait_for_integration_retry(initial_state, ctx)
 
-    assert sleeps == [], f"Intervention path must not sleep (cap={cap})"
+    assert sleeps == [], f"Escalation path must not sleep (cap={cap})"
     assert len(handoffs) == 1
     assert result.rebase.is_intervention_required is True
     assert result.rebase.consecutive_conflicts > 0
@@ -267,20 +268,20 @@ def test_wait_for_retry_over_cap_persisted_intervention_governed_by_effective_ca
 
     monkeypatch.setattr(run_loop, "_handoff_retained_failure", _recording_handoff)
 
-    # Persisted state loaded with over-cap count, already marked intervention_required
+    # Persisted state loaded with over-cap count, already marked ladder-escalation
     initial_state = PipelineState(
         phase="development",
         rebase=RebaseState(
             last_reason="over-cap intervention detail",
             consecutive_conflicts=persisted_count,
-        ).set_intervention_required("over-cap intervention detail"),
+        ).set_ladder_escalation("over-cap intervention detail"),
     )
     assert initial_state.rebase.consecutive_conflicts > cap
 
     result = run_loop._wait_for_integration_retry(initial_state, ctx)
 
     assert sleeps == [], (
-        f"Over-cap intervention must not sleep (cap={cap}, persisted={persisted_count})"
+        f"Over-cap escalation must not sleep (cap={cap}, persisted={persisted_count})"
     )
     assert len(handoffs) == 1
     assert result.rebase.is_intervention_required is True

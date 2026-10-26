@@ -54,7 +54,15 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
 
-pytestmark = pytest.mark.timeout_seconds(30)
+# File-level markers. ``subprocess_e2e`` declares the real-process profile:
+# every scenario drives a REAL git rebase (Repo.init, index.commit, the
+# paused-rebase stops and the fast-forward landing are git's own), and the
+# test-policy audit
+# (``ralph/testing/audit_test_policy.py``) flags GitPython boundary
+# crossings in any test that is not so marked. ``timeout_seconds(30)`` sizes
+# the per-test budget for real git plumbing, matching the convention in
+# tests/test_integration_ladder_real_git.py.
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 #: The phase the integration/resolution chain owns. Its history is
 #: independent of the development and review phases.

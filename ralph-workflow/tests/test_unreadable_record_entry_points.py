@@ -34,6 +34,7 @@ The ABSENT case is the proceeding control.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable, Generator
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -348,20 +349,23 @@ def test_phase_boundary_entry_point_escalates_to_the_ladder(workspace_root: Path
         assert recovered is not None
         state = PipelineState(phase="development", rebase=recovered)
         latest_state: list[PipelineState] = []
-        sleep = MagicMock()
+        sleep = MagicMock(side_effect=_INNER_LOOP_STOP)
         ctx = _loop_context(workspace_root, latest_state, sleep)
-        # O1 retry-progress rule (D3): the phase-boundary loop escalates
-        # an unreadable durable record to INTERVENTION_REQUIRED WITHOUT
-        # calling the fixed-interval cooldown sleep. Recovery has no
-        # in-process satisfier for an unreadable record, so escalation
-        # must be immediate -- the loop returns from
-        # ``_continue_after_startup_integration`` via the early-return
-        # branch without sleeping.
-        result_state, _previous, _exit = run_loop._run_inner_loop(state, ctx, "development")
-        assert not sleep.called, (
-            "the phase-boundary loop must escalate an unreadable record "
-            "without calling the cooldown sleep (D3)"
+        # O1 retry-progress rule (D3) + WU-1: the phase-boundary loop
+        # escalates an unreadable durable record to the typed ladder
+        # outcome WITHOUT the fixed-interval cooldown sleep masking the
+        # escalation -- the FIRST escalation never sleeps. The loop also
+        # never returns early on a person: repeat escalations pace the
+        # loop with the bounded retry (the sentinel ends the loop
+        # deterministically at the first paced sleep).
+        with contextlib.suppress(StopIteration):
+            run_loop._run_inner_loop(state, ctx, "development")
+        assert sleep.called, (
+            "repeat escalations must pace the loop with the bounded retry "
+            "instead of returning early on a person"
         )
+        assert all(call.args[0] > 0 for call in sleep.call_args_list)
+        result_state = latest_state[0]
         assert result_state.rebase.last_decision == ESCALATION.value
         _assert_escalation(workspace_root, result_state.rebase, payload)
         # The blocked turn checkpoints through the real persistence boundary.
@@ -535,22 +539,26 @@ def test_phase_boundary_entry_point_escalates_to_the_ladder_on_backend_read_fail
     # strictly REPORT_INTERVENTION_REQUIRED.
     state = PipelineState(phase="development", rebase=RebaseState())
     latest_state: list[PipelineState] = []
-    sleep = MagicMock()
+    sleep = MagicMock(side_effect=_INNER_LOOP_STOP)
     ctx = _loop_context(workspace_root, latest_state, sleep)
-    # O1 retry-progress rule (D3): same as the corrupt-in-parsed case --
-    # the failing backend has no in-process satisfier, so the loop
-    # escalates to INTERVENTION_REQUIRED without calling the cooldown
-    # sleep.
-    blocked, _previous, _exit = run_loop._run_inner_loop(
-        state,
-        ctx,
-        "development",
-        backend=_FailingReadBackend(record_file),
+    # O1 retry-progress rule (D3) + WU-1: same as the corrupt-in-parsed
+    # case -- the failing backend has no in-process satisfier, so the
+    # FIRST escalation is immediate (never the fixed-interval cooldown
+    # sleep), and the loop never returns early on a person: repeat
+    # escalations pace the loop with the bounded retry (the sentinel
+    # ends the loop deterministically at the first paced sleep).
+    with contextlib.suppress(StopIteration):
+        run_loop._run_inner_loop(
+            state,
+            ctx,
+            "development",
+            backend=_FailingReadBackend(record_file),
+        )
+    assert sleep.called, (
+        "repeat escalations must pace the loop with the bounded retry "
+        "instead of returning early on a person"
     )
-    assert not sleep.called, (
-        "the phase-boundary loop must escalate a backend read failure "
-        "without calling the cooldown sleep (D3)"
-    )
+    blocked = latest_state[0]
     assert blocked.rebase.last_decision == ESCALATION.value
     _assert_escalation(
         workspace_root, blocked.rebase, b'{"phase": "integrating", "target": "main"}'

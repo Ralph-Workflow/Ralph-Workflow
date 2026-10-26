@@ -227,19 +227,19 @@ class LoopContext:
     # ``pipeline_deps.process_teardown`` when provided.
     process_teardown: Callable[[], None] | None = None
     # Session-scoped one-shot flag that prevents the
-    # INTERVENTION_REQUIRED escalation path from re-dispatching
+    # ladder-escalation path from re-dispatching
     # ``_handoff_retained_failure`` after the first automated
     # resolution attempt. The first time the cap is reached in this
     # session the flag flips to True; subsequent retries within the
     # same session skip the handoff (avoiding the operator-visible
     # rotation that the original guard was designed to prevent). A
-    # cold-loaded capped-intervention record resets the flag because
+    # cold-loaded capped record resets the flag because
     # ``LoopContext`` is constructed fresh per run.
     _session_handoff_dispatched: bool = False
     # Session-scoped one-shot flag that prevents the cold-capped
     # conflict-resolution escalation from running more than once
     # per session. Distinct from ``_session_handoff_dispatched``
-    # (which guards the INTERVENTION_REQUIRED handoff path); this
+    # (which guards the ladder-escalation handoff path); this
     # flag guards the cold-capped path that fires when the
     # consecutive-conflict budget is already spent BEFORE the
     # ordinary resolver ever runs. Without this flag, every cold
@@ -247,10 +247,10 @@ class LoopContext:
     # exhausted conflict -- unbounded spin. With it, the
     # escalation runs at most once per session and any subsequent
     # cold-capped call falls through to the existing
-    # budget-spent branch (which already escalates to
-    # INTERVENTION_REQUIRED). A cold-loaded capped-intervention
-    # record resets the flag because ``LoopContext`` is
-    # constructed fresh per run.
+    # budget-spent branch (which already escalates to the typed
+    # LADDER_ESCALATION outcome). A cold-loaded capped record
+    # resets the flag because ``LoopContext`` is constructed fresh
+    # per run.
     cold_capped_escalation_attempted: bool = False
     # Injectable collaborators for the integration-retry path.  The
     # defaults use the production implementations; a caller that owns the
@@ -717,14 +717,25 @@ def _build_status_bar_model(
 
 
 def _integration_alert_for_state(state: PipelineState) -> str | None:
-    """Alert text while the last auto-integrate outcome is a conflict or requires intervention."""
+    """Alert text while the last auto-integrate outcome blocks integration.
+
+    A typed ladder escalation (a spent conflict cap or an exhausted
+    resolution ladder) names the next autonomous ladder rung and the
+    preserved copy's location — never a person.
+    """
     rebase = state.rebase
     if (
         rebase.is_intervention_required
         or rebase.last_decision == PhaseDecision.REPORT_INTERVENTION_REQUIRED.value
         or rebase.operation_display_state == "intervention_required"
     ):
-        return "diagnostic intervention required — manual recovery needed"
+        # Legacy checkpoints may still carry the retired hand-off
+        # outcome; the live escalation is the typed LADDER_ESCALATION.
+        # Either way the fallback ladder owns the next action.
+        return (
+            "autonomous fallback ladder escalation — preserved copy: backup refs; "
+            "next autonomous rung: preserve the work, then climb the cleanup ladder"
+        )
     if rebase.is_diagnostic_action() or rebase.operation_display_state == "evidence_diagnosis":
         return "evidence diagnosis — gathering operation facts"
     if not rebase.is_conflict_resolution() and rebase.last_outcome != RebaseOutcomeKind.CONFLICT:
@@ -1731,8 +1742,8 @@ def _cold_capped_escalation_due(
 
     The ``cold_capped_escalation_attempted`` flag makes this a
     one-shot per session, so a subsequent cold-capped call falls through
-    to the ordinary suppressed branch (which already escalates to
-    INTERVENTION_REQUIRED without spinning). The cap is NEVER reset or
+    to the ordinary suppressed branch (which already escalates to the
+    typed LADDER_ESCALATION outcome without spinning). The cap is NEVER reset or
     raised -- the escalation is purely additive, distinct from the
     ordinary resolver suppression. The cold-capped condition is
     identity-aware (the same identity that already exhausted its
@@ -2004,8 +2015,9 @@ def _run_cold_capped_escalation(
        ONCE.
     3. If the resolver succeeds, returns True so the cold-capped state
        can be cleared by the caller. If the resolver fails, returns
-       False WITHOUT spinning (the caller already escalates to
-       ``INTERVENTION_REQUIRED`` on the next cold-capped call).
+       False WITHOUT spinning (the caller already escalates to the
+       typed ``LADDER_ESCALATION`` outcome on the next cold-capped
+       call).
     4. Never raises. The cap is NEVER reset or raised -- the
        escalation is purely additive.
     """
@@ -3076,12 +3088,12 @@ def _handle_retained_integration(
             ).model_copy(update={"last_reason": remaining})
         )
         _save_recovered_rebase_checkpoint(state, ctx)
+    # The retained block is never the terminal operator hand-off: the
+    # typed ladder escalation (and any legacy-parsed hand-off value)
+    # displays as evidence diagnosis — the autonomous fallback ladder
+    # owns the next action.
     state = state.copy_with(
-        rebase=state.rebase.set_operation_display_state(
-            OperationDisplayState.INTERVENTION_REQUIRED
-            if state.rebase.is_intervention_required
-            else OperationDisplayState.EVIDENCE_DIAGNOSIS
-        )
+        rebase=state.rebase.set_operation_display_state(OperationDisplayState.EVIDENCE_DIAGNOSIS)
     )
     _handoff_retained_failure(ctx, state.rebase.last_reason or remaining)
     return state, (state, prev_phase, 0)
@@ -3412,8 +3424,10 @@ def _continue_after_startup_integration(
     blocked_startup = _block_unresolved_integration(state, ctx, prev_phase)
     if blocked_startup is not None:
         state = _wait_for_integration_retry(blocked_startup[0], ctx, backend=backend)
-        if state.rebase.is_intervention_required or state.rebase.resolution_exhausted:
-            return state, prev_phase, blocked_startup[2]
+        # A typed ladder escalation (or an exhausted resolution ladder)
+        # never ends the run here on a person: fall through to the inner
+        # loop so the autonomous fallback ladder keeps dispatching
+        # recovery rungs with bounded retries.
     return _run_inner_loop_after_startup(state, ctx, prev_phase)
 
 
@@ -3499,6 +3513,29 @@ def _render_current_observation_detail(rebase: RebaseState) -> str:
     return "target synchronization remains unproven"
 
 
+#: Bounded retry pace for a REPEAT ladder escalation within one session.
+#: The first escalation never sleeps (the automated handoff was just
+#: dispatched, O1/O3); repeats pace the loop so the recovery preamble and
+#: the fallback-ladder seam re-observe on each wake instead of busy
+#: spinning. The run-level budgets (retry-progress guard, cycle cap) still
+#: bound the total recovery work.
+_REPEAT_ESCALATION_RETRY_SECONDS = 5.0
+
+
+def _ladder_escalation_reason(detail: str) -> str:
+    """Reason text for the typed ladder escalation.
+
+    Names the preserved copy's location and the next autonomous ladder
+    rung — never a person. ``detail`` is the bare observation detail
+    (see :func:`_render_current_observation_detail`); the suffix is
+    fixed so the persisted reason cannot grow across repeated calls.
+    """
+    return (
+        f"{detail}; preserved copy: backup refs; "
+        "next autonomous rung: preserve the work, then climb the cleanup ladder"
+    )
+
+
 def _wait_for_integration_retry(
     state: PipelineState,
     ctx: LoopContext,
@@ -3523,7 +3560,7 @@ def _wait_for_integration_retry(
     # is reached, dispatch ONE session-scoped automated resolver
     # handoff (guarded by ``ctx._session_handoff_dispatched`` so a
     # repeated call in the same process does not spin), then escalate
-    # to the persistent INTERVENTION_REQUIRED transition through the
+    # to the persistent typed LADDER_ESCALATION transition through the
     # typed single-writer setter. The previous behaviour rotated the
     # strategy ladder modulo ``len(CONFLICT_RESOLUTION_STRATEGIES)``,
     # reset the consecutive counter to 0, slept, and re-ran the
@@ -3584,15 +3621,22 @@ def _wait_for_integration_retry(
         # The reason must be the ORIGINAL failure detail, not a
         # concatenation of the previous ``last_reason`` (which would
         # grow without bound across repeated calls). Use ``detail``
-        # which is the bare human-readable reason computed above.
-        rebase = rebase.set_intervention_required(detail)
+        # which is the bare human-readable reason computed above; the
+        # typed ladder-escalation reason adds the preserved copy's
+        # location and the next autonomous ladder rung.
+        rebase = rebase.set_ladder_escalation(_ladder_escalation_reason(detail))
         state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
             WaitReason.EXHAUSTED_RETRY, None
         )
         _save_recovered_rebase_checkpoint(state, ctx)
         ctx.latest_state[:] = [state]
-        # At cap: persist INTERVENTION_REQUIRED without sleeping
-        # (never an operator-only dead end).
+        # At cap: persist the typed ladder escalation. The first
+        # escalation never sleeps (the automated handoff was just
+        # dispatched, O1/O3); a repeat escalation paces the loop with
+        # the bounded retry so the ladder seam re-observes without a
+        # busy spin — never an operator-only dead end.
+        if session_attempted:
+            ctx.sleep(_REPEAT_ESCALATION_RETRY_SECONDS)
         return state.clear_waiting()
 
     # A durable record whose diagnostic repair budget is spent no
@@ -3624,13 +3668,16 @@ def _handle_intervention_required_retry(
 ) -> PipelineState:
     """Handle retry when ``rebase.is_intervention_required`` is set.
 
-    O1 retry-progress rule (D3): the durable intervention flag means
+    O1 retry-progress rule (D3): the durable escalation flag means
     Ralph is in a state without an in-process satisfier. The recovery
     preamble is invoked once; if it makes progress the iteration
     returns. Otherwise the consecutive-conflict counter is charged
-    and the typed single-writer setter escalates -- never sleep.
+    and the typed single-writer setter escalates to LADDER_ESCALATION.
+    The first escalation never sleeps (the automated handoff was just
+    dispatched); a repeat escalation paces the loop with the bounded
+    retry so the ladder seam re-observes without a busy spin.
 
-    Cold-loaded capped intervention (O1 retry rule): a durable record
+    Cold-loaded capped escalation (O1 retry rule): a durable record
     that already carries ``is_intervention_required=True`` and is at
     the consecutive-conflict cap when this session loaded it must
     still receive a fresh automated-resolution handoff this session,
@@ -3679,11 +3726,19 @@ def _handle_intervention_required_retry(
         if handoff_rebase is not None and handoff_rebase != rebase_before:
             rebase = handoff_rebase
     rebase = rebase.record_consecutive_conflicts(bumped_conflicts)
+    # Repeat-escalation pacing (O1/O3): the first escalation never
+    # sleeps (the automated handoff was just dispatched); a repeat
+    # escalation (the session handoff already ran) paces the loop with
+    # the bounded retry so the ladder seam re-observes without a busy
+    # spin — never an operator-only dead end.
+    repeat_escalation = session_attempted
     state = state.copy_with(rebase=rebase, last_error=alarm).set_waiting(
         WaitReason.EXHAUSTED_RETRY, None
     )
     _save_recovered_rebase_checkpoint(state, ctx)
     ctx.latest_state[:] = [state]
+    if repeat_escalation:
+        ctx.sleep(_REPEAT_ESCALATION_RETRY_SECONDS)
     return state.clear_waiting()
 
 
@@ -3958,15 +4013,20 @@ def _run_inner_loop_after_startup(
         blocked_integration = _block_unresolved_integration(state, ctx, prev_phase)
         if blocked_integration is not None:
             state = _wait_for_integration_retry(blocked_integration[0], ctx, backend=backend)
-            if state.rebase.is_intervention_required or state.rebase.resolution_exhausted:
-                return state, prev_phase, blocked_integration[2]
+            # The wait either deferred below the cap (bounded sleep) or
+            # escalated to the typed LADDER_ESCALATION outcome; neither
+            # ends the run on a person. Loop again so the autonomous
+            # fallback ladder keeps dispatching recovery rungs; repeat
+            # escalations pace themselves with the bounded retry inside
+            # ``_wait_for_integration_retry``.
             continue
         state = _reconcile_dispatch_state(state)
         state, blocked_sync = _ensure_planning_in_sync(state, ctx, prev_phase)
         if blocked_sync is not None:
             state = _wait_for_integration_retry(state, ctx, backend=backend)
-            if state.rebase.is_intervention_required or state.rebase.resolution_exhausted:
-                return state, prev_phase, blocked_sync[2]
+            # Same contract as the blocked-integration branch: the typed
+            # ladder escalation never returns an exit code here — the
+            # run stays alive for the autonomous fallback ladder.
             continue
         if (
             ctx.policy_bundle.pipeline.terminal_phase == state.phase
@@ -3988,8 +4048,10 @@ def _run_inner_loop_after_startup(
             ):
                 return state, prev_phase, 1
             state = _wait_for_integration_retry(state, ctx, backend=backend)
-            if state.rebase.is_intervention_required or state.rebase.resolution_exhausted:
-                return state, prev_phase, 1
+            # A blocking wait at the terminal-success gate is the typed
+            # ladder escalation, NEVER an exit code 1 dead end on a
+            # person: loop again; the wait paces repeat escalations with
+            # the bounded retry while the fallback ladder works.
             continue
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
         state_holder[:] = ctx.latest_state[:] = [state]

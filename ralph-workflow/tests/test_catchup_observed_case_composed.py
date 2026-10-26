@@ -21,8 +21,11 @@ observed run violated:
 * (c) the ``index.lock`` the force-killed merge child left behind is
   recovered by evidence and never blocks the next observation;
 * (d) an interrupt in that stalled state still emits a valid run-time
-  report, and a rejected full report degrades to a valid one instead of
-  being lost.
+  report: the interrupted run's state is COMPOSED from the same simulated
+  catch-up sequence -- the ledger rung, the quarantine reason, the charged
+  timeout attempts -- so a defect propagating that state into the report
+  fails here; and a rejected full report degrades to a valid one instead
+  of being lost.
 """
 
 from __future__ import annotations
@@ -44,6 +47,7 @@ from ralph.mcp.artifacts.markdown.registry import get_spec
 from ralph.pipeline import auto_integrate_catchup as catchup
 from ralph.pipeline import run_loop
 from ralph.pipeline import runner as runner_module
+from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_decision import EscalationRung
 from ralph.pipeline.rebase_state import RebaseState
@@ -287,12 +291,114 @@ class _LoopContextView(Protocol):
     latest_state: list[PipelineState]
 
 
-def _stall_state() -> PipelineState:
+class _StallSequence:
+    """The artifacts the observed catch-up sequence produced in the simulation.
+
+    Clause (d) composes the interrupted run's state from exactly these
+    observed values -- the timeout outcomes, the charged ledger, the ladder
+    rung, the stale-lock recovery -- so nothing in the interrupt state is
+    hand-built.
+    """
+
+    def __init__(
+        self,
+        *,
+        env: SimulatedGitEnvironment,
+        seams: _Seams,
+        ledger: AttemptLedger,
+        warnings: list[str],
+        deferred_outcome: str,
+        merge_count_after_defer: int,
+        timeout_outcomes: list[str],
+        ladder_outcome: str,
+    ) -> None:
+        self.env = env
+        self.seams = seams
+        self.ledger = ledger
+        self.warnings = warnings
+        self.deferred_outcome = deferred_outcome
+        self.merge_count_after_defer = merge_count_after_defer
+        self.timeout_outcomes = timeout_outcomes
+        self.ladder_outcome = ladder_outcome
+
+
+def _run_catchup_stall_sequence(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> _StallSequence:
+    """Replay the observed (a)-(c) ticker sequence in the simulated environment.
+
+    Runs the same phases as the chained (a)-(c) test up to the quarantine
+    tick -- the moment the observed run sat stalled -- and returns every
+    artifact clause (d) needs. The world is deliberately NOT advanced
+    afterwards: the interrupt lands in the stall, before recovery.
+    """
+    env, _git_ops, _agent_runner, _clock = make_fake_environment(
+        target=_TARGET, feature_branch=_HEAD
+    )
+    seams = _install_seams(monkeypatch, env)
+    warnings = _capture_warnings(monkeypatch)
+    ledger = _ledger(tmp_path)
+    # The observed run: the merge hung twice against one unchanged state.
+    env.set_faults([FaultKind.GIT_TIMEOUT, FaultKind.GIT_TIMEOUT])
+
+    # (a) the agent is active: defer, name the observation, no merge.
+    env.agent_active = True
+    deferred_outcome = _tick(env, ledger, tmp_path)
+    merge_count_after_defer = len(seams.merges)
+
+    # The agent finishes; the first merge hangs, the second tick recovers the
+    # stale lock the force-killed child left BEFORE charging the second hang.
+    env.agent_active = False
+    first_timeout = _tick(env, ledger, tmp_path)
+    env.leave_stale_lock("index.lock")
+    second_timeout = _tick(env, ledger, tmp_path)
+
+    # (b) the identical merge is quarantined: the ladder rung answers.
+    ladder_outcome = _tick(env, ledger, tmp_path)
+
+    return _StallSequence(
+        env=env,
+        seams=seams,
+        ledger=ledger,
+        warnings=warnings,
+        deferred_outcome=deferred_outcome,
+        merge_count_after_defer=merge_count_after_defer,
+        timeout_outcomes=[first_timeout, second_timeout],
+        ladder_outcome=ladder_outcome,
+    )
+
+
+def _assert_stall_sequence(sequence: _StallSequence) -> None:
+    """Guard that the sequence really reached the catch-up stall state.
+
+    Clause (d) builds the interrupted run's state from these artifacts; if
+    the sequence ever stops short of the stall, the report assertions below
+    would compose a state the ticker never produced.
+    """
+    durable = sequence.ledger.read()
+    assert sequence.deferred_outcome == catchup.CATCHUP_REFUSED_AGENT_ACTIVE
+    assert sequence.merge_count_after_defer == 0, "the deferral must issue no merge"
+    assert len(sequence.seams.merges) == 2
+    assert len(sequence.timeout_outcomes) == 2
+    assert all(outcome.startswith(catchup.CATCHUP_TIMEOUT) for outcome in sequence.timeout_outcomes)
+    assert "index.lock" not in sequence.env.locks, "the killed child's lock must be recovered"
+    assert sequence.ladder_outcome.startswith(catchup.CATCHUP_LADDER_ESCALATED)
+    assert f"rung={durable.rung.value}" in sequence.ladder_outcome
+    # Per-attempt, not an aggregate sum: the single (signature, action) key
+    # must hold exactly one charge for each merge the ticker issued, so a
+    # mispaired ledger (one key at 0, another at 2) cannot pass.
+    assert list(durable.repeat_counts.values()) == [len(sequence.seams.merges)], (
+        "each attempt charges the durable budget exactly once"
+    )
+
+
+def _stall_state(sequence: _StallSequence) -> PipelineState:
     """The pipeline state the observed run had reached when it was interrupted.
 
-    Hours elapsed with zero agent activity, the development timebox running,
-    and integration still unresolved -- the stall state the catch-up phases
-    above produced.
+    Every integration fact is projected from the catch-up sequence clauses
+    (a)-(c) ran in the simulated environment -- nothing is hand-built: the
+    typed LADDER_ESCALATION outcome and the quarantine reason string the
+    ticker returned (naming the ledger's rung inside it) become the run's
+    rebase state and the reason its development timebox redirected. Hours
+    elapsed with zero agent activity while that timebox ran.
     """
     return PipelineState(
         phase="development",
@@ -305,17 +411,22 @@ def _stall_state() -> PipelineState:
         push_count=0,
         dev_timebox_active=True,
         dev_timebox_consumed_seconds=_STALL_SECONDS,
-        rebase=RebaseState(unresolved_integration_carried=True),
+        dev_timebox_redirect_reason=sequence.ladder_outcome,
+        rebase=RebaseState(
+            last_outcome=RebaseOutcomeKind.LADDER_ESCALATION,
+            last_reason=sequence.ladder_outcome,
+        ),
     )
 
 
 def _interrupt_in_stall_state(
     monkeypatch: pytest.MonkeyPatch,
     *,
+    stall_state: PipelineState,
     submitted: list[str],
     invalid_render: bool,
 ) -> tuple[int, list[str]]:
-    """Drive ``run_loop.run`` to an interrupt in the stall state; return results."""
+    """Drive ``run_loop.run`` to an interrupt in ``stall_state``; return results."""
     monkeypatch.setattr(
         run_time_report_module,
         "submit_artifact_canonical",
@@ -366,7 +477,7 @@ def _interrupt_in_stall_state(
         ctx: _LoopContextView,
         _prev_phase: str,
     ) -> tuple[PipelineState, str, int | None]:
-        ctx.latest_state[:] = [_stall_state()]
+        ctx.latest_state[:] = [stall_state]
         raise KeyboardInterrupt
 
     monkeypatch.setattr(run_loop, "_run_inner_loop", _advance_then_interrupt)
@@ -388,53 +499,43 @@ def test_observed_sequence_agent_hang_budget_ladder_and_stale_lock(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """(a)-(c) The observed ticker sequence, chained in one simulated run."""
-    env, _git_ops, _agent_runner, _clock = make_fake_environment(
-        target=_TARGET, feature_branch=_HEAD
-    )
-    seams = _install_seams(monkeypatch, env)
-    warnings = _capture_warnings(monkeypatch)
-    ledger = _ledger(tmp_path)
-    # The observed run: the merge hung twice against one unchanged state.
-    env.set_faults([FaultKind.GIT_TIMEOUT, FaultKind.GIT_TIMEOUT])
+    sequence = _run_catchup_stall_sequence(monkeypatch, tmp_path)
+    env = sequence.env
+    seams = sequence.seams
+    ledger = sequence.ledger
 
     # Phase 1 — (a) the agent is active: defer, name the observation, no merge.
-    env.agent_active = True
-    outcome = _tick(env, ledger, tmp_path)
-    assert outcome == catchup.CATCHUP_REFUSED_AGENT_ACTIVE
-    assert seams.merges == []
-    assert ledger.read().repeat_counts == {}
-    deferred = [message for message in warnings if "deferred" in message]
-    assert deferred, warnings
+    assert sequence.deferred_outcome == catchup.CATCHUP_REFUSED_AGENT_ACTIVE
+    assert sequence.merge_count_after_defer == 0
+    deferred = [message for message in sequence.warnings if "deferred" in message]
+    assert deferred, sequence.warnings
     assert f"target={_TARGET}@{env.target_sha}" in deferred[0]
     assert f"head={_HEAD}@{env.feature_sha}" in deferred[0]
-    warnings.clear()
 
-    # Phase 2 — the agent finishes; the merge hangs and is force-killed,
+    # Phase 2 — the agent finished; the merge hung and was force-killed,
     # leaving the stale lock the observed run found. The second tick
-    # recovers the lock FIRST (evidence: the killed child owns it) and the
-    # second hang charges the budget a second time.
-    env.agent_active = False
-    first_outcome = _tick(env, ledger, tmp_path)
-    env.leave_stale_lock("index.lock")
-    second_outcome = _tick(env, ledger, tmp_path)
+    # recovered the lock FIRST (evidence: the killed child owns it) and the
+    # second hang charged the budget a second time.
+    first_outcome, second_outcome = sequence.timeout_outcomes
     assert first_outcome.startswith(catchup.CATCHUP_TIMEOUT)
     assert second_outcome.startswith(catchup.CATCHUP_TIMEOUT)
     assert "index.lock" not in env.locks, "the killed child's lock must be recovered"
     assert len(seams.merges) == 2
     durable = ledger.read()
-    assert sum(durable.repeat_counts.values()) == 2, (
+    # Per-attempt, not an aggregate sum: one charge per issued merge, so a
+    # mispaired ledger (two keys at 0 and 2) cannot pass as "once per attempt".
+    assert list(durable.repeat_counts.values()) == [len(seams.merges)], (
         "each attempt charges the durable budget exactly once"
     )
     assert durable.rung is EscalationRung.DISPATCH_RESOLVER
 
     # Phase 3 — (b) the identical merge is never issued a third time: the
     # quarantine rung answers, naming the ladder rung it moved to.
-    third_outcome = _tick(env, ledger, tmp_path)
-    assert third_outcome.startswith(catchup.CATCHUP_LADDER_ESCALATED)
-    assert "rung=" in third_outcome
-    assert f"target={_TARGET}@{env.target_sha}" in third_outcome
+    assert sequence.ladder_outcome.startswith(catchup.CATCHUP_LADDER_ESCALATED)
+    assert "rung=" in sequence.ladder_outcome
+    assert f"target={_TARGET}@{env.target_sha}" in sequence.ladder_outcome
     assert len(seams.merges) == 2, "the quarantined merge must not run again"
-    assert sum(ledger.read().repeat_counts.values()) == 2, "a quarantined action charges nothing"
+    assert list(ledger.read().repeat_counts.values()) == [2], "a quarantined action charges nothing"
 
     # Phase 4 — (c) the world moved on; the next observation is not blocked:
     # a fresh state signature, no locks, and the merge succeeds.
@@ -446,15 +547,28 @@ def test_observed_sequence_agent_hang_budget_ladder_and_stale_lock(
 
 
 def test_observed_sequence_interrupt_emits_a_valid_run_time_report(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """(d) Interrupting the stalled run still emits a valid, truthful report."""
+    """(d) Interrupting the stalled run still emits a valid, truthful report.
+
+    The interrupted state is COMPOSED from the same simulated catch-up
+    sequence as clauses (a)-(c): the ledger rung, the quarantine reason and
+    the per-attempt charges flow into the run's state, and the emitted
+    report must carry them -- a defect in propagating the stall state into
+    the report fails here.
+    """
+    sequence = _run_catchup_stall_sequence(monkeypatch, tmp_path)
+    _assert_stall_sequence(sequence)
     submitted: list[str] = []
 
     exit_code, errors = _interrupt_in_stall_state(
-        monkeypatch, submitted=submitted, invalid_render=False
+        monkeypatch,
+        stall_state=_stall_state(sequence),
+        submitted=submitted,
+        invalid_render=False,
     )
 
+    durable = sequence.ledger.read()
     assert exit_code == 130
     assert len(submitted) == 1
     report = submitted[0]
@@ -464,7 +578,15 @@ def test_observed_sequence_interrupt_emits_a_valid_run_time_report(
     assert f"elapsed_seconds: {_STALL_SECONDS:.3f}" in report
     assert "Agent calls: 0; retries: 0; continuations: 0; fallbacks: 0; pushes: 0." in report
     assert "## Development Timebox" in report
+    # The report names the ladder rung the ledger recorded: the quarantine
+    # outcome the ticker returned (carrying ``rung=<rung>``) flowed into the
+    # run's timebox redirect reason, so the operator sees WHY the run stalled.
+    assert "[DT-2] Redirected: " in report
+    assert f"rung={durable.rung.value}" in report
+    # The pending integration the stall never resolved is named, and the
+    # elapsed wall-clock the operator waited through is reported.
     assert "Integration status: unresolved at report time." in report
+    assert f"Total wall-clock time: {_STALL_SECONDS:.3f}s." in report
     # The full report validated, so the run never lost its report to the
     # observed ``run_time_report emission failed`` failure.
     assert "Degraded run-time report" not in report
@@ -472,13 +594,18 @@ def test_observed_sequence_interrupt_emits_a_valid_run_time_report(
 
 
 def test_observed_sequence_rejected_full_report_degrades_instead_of_dying(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """(d) The observed validation failure degrades to a valid report."""
+    sequence = _run_catchup_stall_sequence(monkeypatch, tmp_path)
+    _assert_stall_sequence(sequence)
     submitted: list[str] = []
 
     exit_code, _errors = _interrupt_in_stall_state(
-        monkeypatch, submitted=submitted, invalid_render=True
+        monkeypatch,
+        stall_state=_stall_state(sequence),
+        submitted=submitted,
+        invalid_render=True,
     )
 
     assert exit_code == 130
@@ -487,8 +614,9 @@ def test_observed_sequence_rejected_full_report_degrades_instead_of_dying(
     _assert_valid_report(report)
     assert "Degraded run-time report" in report
     assert "run_time_report validation failed" in report
+    assert f"elapsed_seconds: {_STALL_SECONDS:.3f}" in report
     assert "Agent calls: 0; retries: 0; continuations: 0; fallbacks: 0; pushes: 0." in report
     assert "Integration status: unresolved at report time." in report
-    # The rejection of the full report is logged (``_errors``); what the
+    # The rejection of the full report is logged (``errors``); what the
     # observed run lost was the report itself. The degraded replacement was
     # still submitted.

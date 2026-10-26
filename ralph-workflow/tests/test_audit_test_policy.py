@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 from collections.abc import Mapping
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -115,6 +116,109 @@ def test_subprocess_with_e2e_marker_is_allowed(tmp_path: Path) -> None:
     )
     violations = audit_test_file(test_file)
     assert len(violations) == 0
+
+
+def test_gitpython_repo_init_is_violation(tmp_path: Path) -> None:
+    """GitPython Repo.init in an unmarked file crosses the real-Git boundary."""
+    test_file = tmp_path / "test_example.py"
+    test_file.write_text(
+        "from pathlib import Path\n"
+        "from git import Repo\n"
+        "\n"
+        "def _seed_repo(tmp_path: Path) -> None:\n"
+        "    repo = Repo.init(tmp_path)\n"
+        "    repo.index.commit('seed')\n"
+    )
+    violations = audit_test_file(test_file)
+    assert len(violations) == 1
+    assert violations[0].category == "io"
+    assert "Repo.init" in violations[0].detail
+
+
+def test_gitpython_aliased_repo_import_is_violation(tmp_path: Path) -> None:
+    """An aliased ``Repo`` import (``GitRepo``) still crosses the boundary."""
+    test_file = tmp_path / "test_example.py"
+    test_file.write_text(
+        "from git import Repo as GitRepo\n"
+        "\n"
+        "def _seed_repo(tmp_path):\n"
+        "    GitRepo.init(tmp_path)\n"
+    )
+    violations = audit_test_file(test_file)
+    assert len(violations) == 1
+    assert violations[0].category == "io"
+    assert "GitRepo.init" in violations[0].detail
+
+
+def test_git_module_attribute_repo_is_violation(tmp_path: Path) -> None:
+    """``git.Repo(...)`` through the module import crosses the boundary."""
+    test_file = tmp_path / "test_example.py"
+    test_file.write_text(
+        "import git\n"
+        "\n"
+        "def _seed_repo(tmp_path):\n"
+        "    git.Repo.init(tmp_path)\n"
+    )
+    violations = audit_test_file(test_file)
+    assert len(violations) == 1
+    assert violations[0].category == "io"
+    assert "git.Repo.init" in violations[0].detail
+
+
+def test_git_exception_constructor_is_not_a_violation(tmp_path: Path) -> None:
+    """Constructing GitPython exception classes touches no real git process."""
+    test_file = tmp_path / "test_example.py"
+    test_file.write_text(
+        "from git import GitCommandError, InvalidGitRepositoryError\n"
+        "\n"
+        "def test_error_kinds():\n"
+        "    assert str(GitCommandError('git status'))\n"
+        "    assert str(InvalidGitRepositoryError())\n"
+    )
+    assert audit_test_file(test_file) == []
+
+
+def test_gitpython_with_e2e_marker_is_allowed(tmp_path: Path) -> None:
+    """A subprocess_e2e-marked file owns its real-Git crossings."""
+    test_file = tmp_path / "test_example.py"
+    test_file.write_text(
+        "import pytest\n"
+        "from git import Repo\n"
+        "\n"
+        "pytestmark = pytest.mark.subprocess_e2e\n"
+        "\n"
+        "def test_seed(tmp_path):\n"
+        "    Repo.init(tmp_path)\n"
+    )
+    assert audit_test_file(test_file) == []
+
+
+def test_registered_real_git_file_is_exempt(tmp_path: Path) -> None:
+    """The sanctioned real-git registry keeps default-lane proofs on make test."""
+    import ralph.testing.audit_test_policy as audit_module
+
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    test_file = tests_dir / "test_registered_real_git.py"
+    test_file.write_text(
+        "from git import Repo\n"
+        "\n"
+        "def test_seed(tmp_path):\n"
+        "    Repo.init(tmp_path)\n"
+    )
+    with (
+        mock.patch.object(audit_module, "_PROJECT_ROOT", tmp_path),
+        mock.patch.object(
+            audit_module,
+            "REQUIRED_AUTO_INTEGRATE_E2E_FILES",
+            frozenset({"tests/test_registered_real_git.py"}),
+        ),
+    ):
+        assert audit_module.audit_test_file(test_file) == []
+    # Outside the registry, the same file is a real-Git violation again.
+    with mock.patch.object(audit_module, "_PROJECT_ROOT", tmp_path):
+        violations = audit_module.audit_test_file(test_file)
+    assert [violation.category for violation in violations] == ["io"]
 
 
 def test_socket_creation_is_violation(tmp_path: Path) -> None:

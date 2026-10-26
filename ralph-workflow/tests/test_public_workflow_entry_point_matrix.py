@@ -500,15 +500,24 @@ def test_public_runner_run_loop_boundary_parity(
         with contextlib.suppress(_StopInnerLoopError):
             run_loop._run_inner_loop(state, ctx, "development")
         st_inner = latest_states[0] if latest_states else state
-        assert (
-            decide_phase_transition(
-                st_inner,
-                policy,
-                integration_record=read_record(tmp_path),
-                rebase_state=st_inner.rebase,
-            )
-            == expected_decision
+        live_decision = decide_phase_transition(
+            st_inner,
+            policy,
+            integration_record=read_record(tmp_path),
+            rebase_state=st_inner.rebase,
         )
+        if expected_decision is PhaseDecision.REPORT_INTERVENTION_REQUIRED:
+            # WU-1 contract: the live run loop never preserves the retired
+            # operator hand-off. A legacy INTERVENTION_REQUIRED checkpoint
+            # is re-escalated to the typed LADDER_ESCALATION outcome, which
+            # the authority maps to BLOCK_FOR_RECOVERY — the autonomous
+            # fallback ladder owns the next action, never a person. (The
+            # at-rest authority answer for the untouched legacy state in
+            # step 1 stays REPORT_INTERVENTION_REQUIRED.)
+            assert live_decision is PhaseDecision.BLOCK_FOR_RECOVERY
+            assert st_inner.rebase.last_outcome is RebaseOutcomeKind.LADDER_ESCALATION
+        else:
+            assert live_decision == expected_decision
 
     # 3. Public runner boundary
     if initial_phase == "complete" and expected_terminal_eligible:

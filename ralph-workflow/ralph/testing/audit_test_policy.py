@@ -3,6 +3,9 @@
 Uses AST analysis (not regex) to detect policy violations in test code:
 - sleep() calls with non-zero arguments
 - Real I/O operations (file I/O, network, subprocess)
+- GitPython real-Git boundary crossings (``Repo.init``, ``git.Repo``) in
+  tests outside the ``subprocess_e2e`` profile and the sanctioned
+  real-git registry
 - White-box coupling to private ``ralph`` production internals
 - White-box counts above the frozen baseline ceiling
 
@@ -26,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.test_suites import REQUIRED_AUTO_INTEGRATE_E2E_FILES
 from ralph.testing import test_whitebox_baseline
 from ralph.testing.policy_allowlists import (
     IO_ALLOWLIST,
@@ -72,6 +76,50 @@ def _split_names(value: str) -> set[str]:
     return set(value.split())
 
 
+def _git_bound_names(tree: ast.AST) -> frozenset[str]:
+    """Return the names bound by imports of the ``git`` (GitPython) module.
+
+    Covers ``import git[.sub]``, ``from git[.sub] import X`` and their
+    aliased forms; the returned names are the roots that calls are
+    matched against in :meth:`TestPolicyAuditor._check_git_call`.
+    """
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "git" or alias.name.startswith("git."):
+                    names.add((alias.asname or alias.name).split(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module == "git" or module.startswith("git."):
+                for alias in node.names:
+                    names.add(alias.asname or alias.name)
+    return frozenset(names)
+
+
+def _is_git_crossing_root(root: str) -> bool:
+    """Return True when an imported ``git`` name crosses the real-Git boundary."""
+    lowered = root.lower()
+    return lowered in _GIT_CROSSING_ROOTS or lowered.endswith("repo")
+
+
+def _is_registered_real_git_file(file_path: str) -> bool:
+    """Return True when ``file_path`` is a sanctioned default-lane real-git file.
+
+    The canonical testing policy (docs/ralph-workflow-policy/testing-policy.md)
+    names the ``REQUIRED_AUTO_INTEGRATE_E2E_FILES`` registry as the single
+    sanctioned exception that keeps real-git tests on the default
+    ``make test`` profile; the audit honours the same registry so the two
+    mechanisms cannot drift. Paths outside the project tree (e.g. the
+    temporary files the audit's own unit tests write) are never registered.
+    """
+    try:
+        relative = Path(file_path).resolve().relative_to(_PROJECT_ROOT).as_posix()
+    except ValueError:
+        return False
+    return relative in REQUIRED_AUTO_INTEGRATE_E2E_FILES
+
+
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
         "__pycache__",
@@ -110,6 +158,16 @@ _NETWORK_CALLS: frozenset[str] = frozenset(
         "httpx.post",
     }
 )
+
+#: Roots of dotted call names that cross the real-Git boundary when the
+#: root is bound by a ``git`` (GitPython) import. ``Repo``/``Git`` entry
+#: points shell out to the real git binary, so ``Repo.init(...)``,
+#: ``Repo(path)``, ``git.Repo(...)`` and every call rooted at such a name
+#: are real subprocess work. Aliases are recognised by the ``repo`` suffix
+#: (``from git import Repo as GitRepo``). Exception and data classes
+#: (``GitCommandError``, ``Actor``, ...) never touch a process and are not
+#: crossing roots.
+_GIT_CROSSING_ROOTS: frozenset[str] = frozenset({"repo", "git"})
 
 # Files marked subprocess_e2e skip only subprocess and network checks.
 _SUBPROCESS_E2E_FILES: set[str] = set()
@@ -249,6 +307,13 @@ class TestPolicyAuditor:
         self._skip_io = stem in _IO_ALLOWLIST or self._is_subprocess_e2e
         self._skip_wall_clock = stem in _WALL_CLOCK_ALLOWLIST or self._is_subprocess_e2e
         self._skip_subprocess_network = self._is_subprocess_e2e
+        # GitPython crossings join the subprocess/network category: a
+        # ``Repo.init``/``git.Repo`` call shells out to the real git
+        # binary. The ``subprocess_e2e`` marker owns the category, and so
+        # does the sanctioned real-git registry that keeps the registered
+        # default-lane integration proofs on the ``make test`` profile.
+        self._git_roots = _git_bound_names(parsed_tree)
+        self._skip_git = self._is_subprocess_e2e or _is_registered_real_git_file(file_path)
         self._uses_tmp_path = "tmp_path" in "\n".join(self.source_lines)
         self._check_calls()
 
@@ -268,6 +333,7 @@ class TestPolicyAuditor:
         for node, func_name, inside_wait_for in self.facts.call_sites:
             self._check_sleep_call(node, func_name)
             self._check_io_call(node, func_name)
+            self._check_git_call(node, func_name)
             self._check_wall_clock_call(node, func_name)
             self._check_blocking_wait_call(node, func_name, inside_wait_for)
 
@@ -340,6 +406,31 @@ class TestPolicyAuditor:
                 "io",
                 f"{func_name}() — network I/O in test; use mock/patch at the boundary",
             )
+
+    def _check_git_call(self, node: ast.Call, func_name: str | None) -> None:
+        """Detect GitPython calls that cross the real-Git boundary.
+
+        GitPython's ``Repo``/``Git`` entry points spawn the real git
+        binary, so in a test outside the ``subprocess_e2e`` profile they
+        are real subprocess work (the fixture-shaped violation: a helper
+        module that builds a repository with ``Repo.init`` /
+        ``repo.index.commit`` for a suite that never declares the
+        marker).
+        """
+        if self._skip_git or func_name is None:
+            return
+        root = func_name.split(".", 1)[0]
+        if root not in self._git_roots:
+            return
+        if not _is_git_crossing_root(root):
+            return
+        self._add_violation(
+            node,
+            "io",
+            f"{func_name}() — real Git boundary crossing in test; "
+            "mark the file subprocess_e2e or route repository setup "
+            "through the simulated Git seam",
+        )
 
     def _is_source_read_exempt(self, method_name: str) -> bool:
         """Return True when this file may read shipped repository files."""
