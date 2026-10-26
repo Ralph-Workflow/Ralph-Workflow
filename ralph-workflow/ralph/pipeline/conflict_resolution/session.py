@@ -484,8 +484,14 @@ def _candidate_cannot_be_launched(
                 "conflict_resolution: refusing to launch unavailable agent '{}'",
                 agent_name,
             )
-            session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
-            session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+            # The tool surface is alive: the OWNER refused the launch
+            # because the agent is cooling down or spent. That is not a
+            # dead surface and not an agent failure -- the agent never
+            # ran -- so it is recorded as an unavailable candidate and
+            # charges no conflict budget. The agent's standing is the
+            # ledger's decision, not this session's.
+            session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+            session.last_failure_cause = ResolutionFailureCause.NONE
             session.charge_conflict_budget = False
             return True
         if agent_name in session.dead_tool_surfaces:

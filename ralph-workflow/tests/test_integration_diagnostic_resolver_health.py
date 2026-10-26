@@ -1,8 +1,17 @@
-"""The retained-integration diagnostic must not keep calling a resolver that gets nowhere."""
+"""The retained-integration diagnostic must not keep calling a resolver that gets nowhere.
+
+Every attempt is reported to the shared owner with the facts Ralph
+OBSERVES -- the operation-completion proof (the artifact on disk) and
+whether the workspace changed while the attempt ran. The invoke boolean
+is not one of those facts: an invocation that reports failure after the
+operation completed is not a failure, and one that reports success
+after nothing was produced is not a success.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -13,9 +22,27 @@ from ralph.pipeline.operation_evidence import InMemoryOperationEvidenceCollector
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from tests.test_auto_integrate_record_idempotent import _RecordBackend
 
+if TYPE_CHECKING:
+    from ralph.workspace.probe import WorkspaceChangeProbe
+    from ralph.workspace.protocol import Workspace
+
 pytestmark = pytest.mark.timeout_seconds(5)
 
 CHAIN = ("codex/a", "cursor/auto", "opencode/b")
+
+
+class _ChangingWorkspaceProbe:
+    """A workspace probe that observes the workspace changing on every attempt."""
+
+    def __init__(self) -> None:
+        self.changed = True
+
+    def observe_before(self, phase: str, workspace: Workspace) -> None:
+        del phase, workspace
+
+    def has_changed(self, phase: str, workspace: Workspace) -> bool:
+        del phase, workspace
+        return self.changed
 
 
 def _record(
@@ -54,8 +81,10 @@ def _stub_decide_integration(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _controller(clock: FakeClock) -> RecoveryController:
-    return RecoveryController(options=RecoveryControllerOptions(clock=clock))
+def _controller(
+    clock: FakeClock, *, probe: WorkspaceChangeProbe | None = None
+) -> RecoveryController:
+    return RecoveryController(options=RecoveryControllerOptions(clock=clock, workspace_probe=probe))
 
 
 def _handoff(
@@ -241,3 +270,65 @@ def test_phase_histories_remain_independent(tmp_path: Path) -> None:
 
     # In development phase, codex/a remains eligible
     assert controller.ledger.status("development", "codex/a").is_eligible is True
+
+
+def test_truthy_invocation_without_a_verified_completion_is_unproductive(
+    tmp_path: Path,
+) -> None:
+    """§3.5: the invoke boolean is not a fact.
+
+    The invocation reports success, but Ralph's own completion proof
+    does not verify: the attempt produced no completion, so the agent
+    is charged and the owner's consecutive limit names the next agent.
+    """
+    backend = _RecordBackend()
+    _record(tmp_path, backend=backend)
+    controller = _controller(FakeClock())
+    invoked: list[str] = []
+
+    for _ in range(3):
+        _handoff(tmp_path, controller, invoked, succeeds=True, backend=backend)
+    _handoff(tmp_path, controller, invoked, succeeds=True, backend=backend)
+
+    assert invoked == ["codex/a", "codex/a", "codex/a", "cursor/auto"]
+
+
+def test_observed_workspace_change_defers_the_demotion_to_the_total_limit(
+    tmp_path: Path,
+) -> None:
+    """§4.3: an observed workspace change restarts the consecutive count.
+
+    The agent changed the workspace on every attempt, so it is not
+    benched after three consecutive attempts; the larger total limit is
+    what finally demotes it.
+    """
+    backend = _RecordBackend()
+    _record(tmp_path, backend=backend)
+    controller = _controller(FakeClock(), probe=_ChangingWorkspaceProbe())
+    invoked: list[str] = []
+
+    for _ in range(9):
+        _handoff(tmp_path, controller, invoked, backend=backend)
+    _handoff(tmp_path, controller, invoked, backend=backend)
+
+    assert invoked == ["codex/a"] * 9 + ["cursor/auto"]
+
+
+def test_agent_attempts_do_not_spend_the_diagnostic_budget(tmp_path: Path) -> None:
+    """§7.2/§7.4: an invocation count never decides the integration's fate.
+
+    Offering an agent does not advance the diagnostic-repair budget: the
+    budget counts repository failures, and an agent's health belongs to
+    the shared owner. The integration therefore stays pending instead of
+    being escalated into the fallback ladder.
+    """
+    backend = _RecordBackend()
+    _record(tmp_path, backend=backend)
+    controller = _controller(FakeClock())
+    invoked: list[str] = []
+
+    _handoff(tmp_path, controller, invoked, backend=backend)
+    saved = read_record(tmp_path, backend=backend)
+    assert saved is not None
+    assert saved.merge_commit_repair_attempts == 0
+    assert saved.repair_cap_reason is None

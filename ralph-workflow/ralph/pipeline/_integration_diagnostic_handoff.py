@@ -41,6 +41,28 @@ to the next rung.
 The diagnostic handoff itself lives in
 :mod:`ralph.pipeline._integration_diagnostic`; this module is the
 routing seam it calls once the budget is spent.
+
+Observed facts, not invocation reports
+--------------------------------------
+
+:func:`_invoke_and_judge` reports every attempt to the single owner
+(:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`
+through the recovery controller) with the facts Ralph OBSERVES itself:
+the operation-completion proof (the artifact on disk, checked against
+live Git) and whether the workspace changed while the attempt ran (see
+:func:`observe_workspace_change`). The invocation's own report is not a
+fact -- it can announce failure after the operation completed and
+success after nothing was produced -- so it never decides an agent's
+standing: a verified completion clears the agent's history, and every
+other way out is an unproductive attempt whose consequences (the
+cooldown, the demotion, the next candidate) are the owner's decision.
+
+The diagnostic-repair budget is a REPOSITORY-state bound, not an
+agent-health bound: it counts the failures Ralph observes in the
+repository and the durable record WITHOUT an agent attempt, and it is
+those failures that escalate into the autonomous ladder. An agent
+attempt never advances it, so no invocation count can decide the
+integration's fate.
 """
 
 from __future__ import annotations
@@ -87,7 +109,54 @@ __all__ = [
     "budget_spent_record",
     "escalate_diagnostic_budget_to_ladder",
     "escalate_record_fact_outcome",
+    "observe_workspace_change",
 ]
+
+#: The probe key the integration seam uses for its workspace baseline.
+#: The conflict-resolution driver keys the SAME probe by
+#: ``PHASE_RESOLUTION``; the integration seam needs a baseline of its
+#: own so the two never overwrite (or inherit) each other's measurement.
+_INTEGRATION_PROBE_KEY = "integration_resolution"
+
+
+def observe_workspace_change(
+    controller: RecoveryController,
+    root: Path,
+    attempt: Callable[[], None],
+) -> bool:
+    """Run ``attempt`` and report whether the workspace changed while it ran.
+
+    The change is OBSERVED through the owner's own workspace probe (the
+    same public seam the phase executor uses): a baseline is taken
+    immediately before the attempt and compared immediately after it.
+
+    An attempt that raises still propagates; the caller owns that
+    verdict. When no probe is configured, or when the probe cannot
+    measure, the attempt reports "nothing observed changed" -- the
+    ledger's conservative default -- instead of inheriting a previous
+    attempt's fact.
+    """
+    probe = controller.workspace_probe
+    if probe is None:
+        attempt()
+        return False
+    from ralph.workspace.fs import FsWorkspace
+
+    workspace = FsWorkspace(root)
+    try:
+        probe.observe_before(_INTEGRATION_PROBE_KEY, workspace)
+    except Exception as exc:  # pragma: no cover - defensive: the attempt still runs
+        logger.warning(
+            "Integration: workspace baseline could not be observed before the attempt: {}", exc
+        )
+    attempt()
+    try:
+        return bool(probe.has_changed(_INTEGRATION_PROBE_KEY, workspace))
+    except Exception as exc:
+        logger.warning(
+            "Integration: workspace change could not be observed after the attempt: {}", exc
+        )
+        return False
 
 
 def _next_resolver(controller: RecoveryController, agents: Sequence[str]) -> str | None:
@@ -112,27 +181,46 @@ def _invoke_and_judge(
     col: OperationEvidenceCollector,
     failure_detail: Callable[[], BaseException | str | None] | None,
 ) -> bool:
-    """Invoke ``agent``; clear it on verified proof, bench it on every other way out.
+    """Invoke ``agent`` and report what Ralph OBSERVED about the attempt.
 
-    An invocation that raises is benched before the error propagates, so a
-    crashing resolver cannot be re-offered on the next pass.
+    The invoke boolean is not a fact. An invocation can report failure
+    after the operation completed, and report success after nothing was
+    produced, so it never decides an agent's standing. The facts Ralph
+    observes itself are:
+
+    * the operation-completion proof -- the artifact on disk, checked
+      against live Git; and
+    * whether the workspace changed while the attempt ran.
+
+    A verified completion CLEARS the agent's history (the attempt
+    produced what was asked of it); every other way out is an
+    unproductive attempt the owner charges, and the owner's consecutive
+    and total limits decide when the agent is benched and which agent
+    runs next. An invocation that raises is benched before the error
+    propagates, so a crashing resolver cannot be re-offered on the next
+    pass.
     """
     from ralph.pipeline._integration_diagnostic_proof import _check_operation_completion_proof
 
+    def _attempt() -> None:
+        invoke(agent, prompt)
+
     try:
-        invoked_ok = invoke(agent, prompt)
-        verified = (
-            invoked_ok
-            and _check_operation_completion_proof(inspection_root, record, collector=col)[0]
-        )
+        workspace_changed = observe_workspace_change(controller, inspection_root, _attempt)
     except Exception as exc:
         bench_resolver(controller, agent, exc)
         raise
+    verified, _reason = _check_operation_completion_proof(inspection_root, record, collector=col)
     if verified:
         clear_resolver(controller, agent)
     else:
-        bench_resolver(controller, agent, _failure_text(agent, failure_detail))
-    return invoked_ok
+        bench_resolver(
+            controller,
+            agent,
+            _failure_text(agent, failure_detail),
+            workspace_changed=workspace_changed,
+        )
+    return verified
 
 
 def _failure_text(
@@ -155,9 +243,18 @@ def budget_spent_record(
     retired ``RAISE_DIAGNOSTIC_INTERVENTION`` emission: the attempt
     counter is clamped at the cap (it never increments past it) and
     ``repair_cap_reason`` carries the typed outcome naming the next
-    autonomous action — the fallback ladder. The retired
+    autonomous action -- the fallback ladder. The retired
     ``diagnostic_intervention_required`` hand-off flag stays ``False``.
+
+    The counter it clamps is a REPOSITORY-state bound: it is advanced
+    by the failures that happen WITHOUT an agent attempt (the
+    fail-closed pre-pass, an unreadable diagnostic, a workspace with no
+    repair agent installed), and it is those failures that escalate
+    into the ladder. An agent attempt never advances it, so an
+    invocation count can neither bench an agent nor decide the
+    integration's fate.
     """
+
     return record.with_transition(
         BUMP_DIAGNOSTIC_ATTEMPT,
         merge_commit_repair_attempts=min(

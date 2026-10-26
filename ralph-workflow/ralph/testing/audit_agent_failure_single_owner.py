@@ -10,9 +10,17 @@ independently. Specifically, this audit validates: 1. Production code: No module
 ``ralph/recovery/``, ``ralph/pipeline/``, or ``ralph/agents/invoke/`` (except
 ``ralph/recovery/agent_failure_ledger.py``) declares streak/counter state or logic used for
 agent stop/retry decisions (such as duplicate retry trackers, retry progress guards, or
-in-session retry counters). 2. Test code: No test under ``tests/`` accesses private attributes
-or internal counters of ``AgentFailureLedger`` (enforcing black-box testability via the public
-seam) or imports deprecated retry tracker classes.
+in-session retry counters), imports a deleted tracker, or decides an agent's fate with a
+LOCAL retry cap -- a retry counter compared against a locally declared retry cap that then
+retries or advances an agent. Genuine repository-safety bounds (a merge-repair attempt cap,
+for example) bound repository state rather than agent health and stay accepted. 2. Test code:
+No test under ``tests/`` accesses private attributes, serialised ledger counters, or internal
+counters of ``AgentFailureLedger`` (enforcing black-box testability via the public seam) or
+imports deprecated retry tracker classes.
+
+The production rules and the shared policy data live in the private rule engine
+:mod:`ralph.testing._single_owner_rules`; this module owns the scan, the test-side rules,
+the self-verification of every rule, and the command-line entry point.
 """
 
 from __future__ import annotations
@@ -20,483 +28,50 @@ from __future__ import annotations
 import ast
 import os
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
+from ralph.testing._single_owner_rules import (
+    _FORBIDDEN_TRACKER_MODULES,
+    _FORBIDDEN_TRACKER_SYMBOLS,
+    _GETATTR_MIN_ARGS,
+    _PRIVATE_LEDGER_COUNTERS,
+    TEMPORARY_PRODUCTION_ALLOWLIST,
+    TEMPORARY_TEST_ALLOWLIST,
+    TEMPORARY_TRANSITIONAL_RULES,
+    SingleOwnerViolation,
+    _check_production_assignment,
+    _check_production_attribute,
+    _check_production_call,
+    _check_production_class,
+    _check_production_compare,
+    _check_production_function,
+    _check_production_import,
+    _check_production_retry_cap_decision,
+    _check_production_subscript,
+    _is_forbidden_target_name,
+    _is_ledger_receiver,
+    _is_ledger_serialised_root,
+    _serialised_counter_violation,
+    is_transitional_allowed,
+)
 
-@dataclass(frozen=True)
-class SingleOwnerViolation:
-    """A violation of the single-owner failure ledger policy."""
-
-    path: str
-    line: int
-    rule: str
-    detail: str
-
-    def __str__(self) -> str:
-        return f"{self.path}:{self.line}: [{self.rule}] {self.detail}"
-
+__all__ = [
+    "PRODUCTION_SCAN_SUBTREES",
+    "TEMPORARY_PRODUCTION_ALLOWLIST",
+    "TEMPORARY_TEST_ALLOWLIST",
+    "TEMPORARY_TRANSITIONAL_RULES",
+    "SingleOwnerViolation",
+    "audit_production_source",
+    "audit_test_source",
+    "is_transitional_allowed",
+    "main",
+]
 
 PRODUCTION_SCAN_SUBTREES: tuple[str, ...] = (
     "ralph/recovery",
     "ralph/pipeline",
     "ralph/agents/invoke",
 )
-
-# Temporary production allowlist during single-owner consolidation (U4 removed the deleted trackers, controller, options and run_loop; the remaining error modules and __init__ re-export stay until U5 removes the tests).
-TEMPORARY_PRODUCTION_ALLOWLIST: frozenset[str] = frozenset()
-
-TEMPORARY_TEST_ALLOWLIST: frozenset[str] = frozenset()
-
-# Transitional allowlist for surviving competing shapes in conflict resolution until future
-# work refactors them into AgentFailureLedger; only surviving production references remain.
-TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
-    # session.py: dead_tool_surfaces tracks candidate tool-surface fault state across
-    # rebase stops; RALPH_FAULT_ESCALATION_HITS is a diagnostic constant.
-    "ralph/pipeline/conflict_resolution/session.py": frozenset(
-        {
-            "dead_tool_surfaces",
-            "RALPH_FAULT_ESCALATION_HITS",
-        }
-    ),
-    # chain_candidates.py: dead_tool_surfaces filters candidate chains for tool-faulted agents.
-    "ralph/pipeline/conflict_resolution/chain_candidates.py": frozenset(
-        {
-            "dead_tool_surfaces",
-        }
-    ),
-}
-
-
-def is_transitional_allowed(rel_path: str, name: str) -> bool:
-    """Return True if the symbol is temporarily allowed in rel_path."""
-    allowed = TEMPORARY_TRANSITIONAL_RULES.get(rel_path)
-    return bool(allowed and name in allowed)
-
-
-_FORBIDDEN_TRACKER_MODULES: frozenset[str] = frozenset(
-    {
-        "_same_shape_retry_tracker",
-        "_broken_agent_same_shape_tracker",
-        "_same_shape_retry_error",
-        "_broken_agent_same_shape_error",
-        "_retry_progress_guard",
-    }
-)
-
-_FORBIDDEN_TRACKER_SYMBOLS: frozenset[str] = frozenset(
-    {
-        "SameShapeRetryTracker",
-        "BrokenAgentSameShapeTracker",
-        "SameShapeRetryLoopError",
-        "BrokenAgentSameShapeLimitError",
-        "SameShapeRetryTrackerOptions",
-        # Permanent bans: Rival retry progress guard and signature tracking (eliminated across U3c/U4b)
-        "RetryProgressGuard",
-        "progress_guard",
-        "retry_failure_signature",
-        "MAX_IDENTICAL_RETRY_ATTEMPTS",
-    }
-)
-
-_FORBIDDEN_TRACKER_NAMES: frozenset[str] = frozenset(
-    {
-        "same_shape_retry_tracker",
-        "broken_agent_same_shape_tracker",
-        "same_shape_tracker",
-        "broken_agent_tracker",
-        "same_shape_state",
-        "broken_agent_same_shape_state",
-        "in_session_retry_counts",
-        "in_session_retry_escalation_limit",
-        "same_shape_retry_limit",
-        "broken_agent_same_shape_limit",
-        "_same_shape_retry_tracker",
-        "_broken_agent_same_shape_tracker",
-        "_same_shape_tracker",
-        "_broken_agent_tracker",
-        "_same_shape_state",
-        "_broken_agent_same_shape_state",
-        "_in_session_retry_counts",
-        "_in_session_retry_escalation_limit",
-        "_check_same_shape_bound",
-        "_check_broken_agent_same_shape_bound",
-        # D-7: Competing retry caps and resolver counters
-        "technical_retry_cap",
-        "_technical_retry_cap",
-        "resolver_retries",
-        "resolver_retry_count",
-        "resolver_retry_cap",
-        "resolver_health_counter",
-        "resolver_health_state",
-        "_resolver_retries",
-        "_resolver_retry_count",
-        "_resolver_retry_cap",
-        "_resolver_health_counter",
-        # RC-1: Competing fault-hit counters and ad-hoc agent exclusion lists
-        "ralph_fault_hits",
-        "_ralph_fault_hits",
-        "fault_hits",
-        "_fault_hits",
-        "fault_hit_count",
-        "_fault_hit_count",
-        "ralph_fault_escalation_hits",
-        "_ralph_fault_escalation_hits",
-        "RALPH_FAULT_ESCALATION_HITS",
-        "fault_escalation_hits",
-        "stop_dead_surfaces",
-        "_stop_dead_surfaces",
-        "dead_tool_surfaces",
-        "_dead_tool_surfaces",
-        "dead_surfaces",
-        "_dead_surfaces",
-        "barred_agents",
-        "_barred_agents",
-        "excluded_agents",
-        "_excluded_agents",
-        # Permanent bans: Rival retry progress guard and signature tracking (eliminated across U3c/U4b)
-        "RetryProgressGuard",
-        "_RetryProgressGuard",
-        "progress_guard",
-        "_progress_guard",
-        "retry_failure_signature",
-        "_retry_failure_signature",
-        "MAX_IDENTICAL_RETRY_ATTEMPTS",
-        "_MAX_IDENTICAL_RETRY_ATTEMPTS",
-    }
-)
-
-_GETATTR_MIN_ARGS = 2
-
-
-def _is_forbidden_target_name(name: str) -> bool:
-    """Check if variable/attribute name matches forbidden duplicate tracker or competing counter patterns."""
-    if name in _FORBIDDEN_TRACKER_NAMES:
-        return True
-    lower = name.lower()
-    return (
-        "same_shape" in lower
-        or "broken_agent_same_shape" in lower
-        or "in_session_retry" in lower
-        or "technical_retry_cap" in lower
-        or "resolver_retry" in lower
-        or "resolver_health" in lower
-        or "fault_hits" in lower
-        or "fault_hit" in lower
-        or "dead_surfaces" in lower
-        or "dead_tool_surfaces" in lower
-        or "stop_dead_surfaces" in lower
-        or "barred_agents" in lower
-        or "excluded_agents" in lower
-        or "fault_escalation" in lower
-        or "progress_guard" in lower
-        or "retry_failure_signature" in lower
-        or "max_identical_retry_attempts" in lower
-    )
-
-
-def _check_production_class(node: ast.ClassDef, rel_path: str) -> list[SingleOwnerViolation]:
-    if not is_transitional_allowed(rel_path, node.name) and (
-        node.name in _FORBIDDEN_TRACKER_SYMBOLS
-        or "SameShape" in node.name
-        or "BrokenAgentSameShape" in node.name
-        or (node.name.endswith("RetryTracker") and node.name != "AgentFailureLedger")
-    ):
-        return [
-            SingleOwnerViolation(
-                path=rel_path,
-                line=node.lineno,
-                rule="production_streak_counter_state",
-                detail=(
-                    f"Class '{node.name}' declares a duplicate failure/retry tracker. "
-                    "AgentFailureLedger is the single owner."
-                ),
-            )
-        ]
-    return []
-
-
-def _check_production_function(
-    node: ast.FunctionDef | ast.AsyncFunctionDef, rel_path: str
-) -> list[SingleOwnerViolation]:
-    violations: list[SingleOwnerViolation] = []
-    if _is_forbidden_target_name(node.name) and not is_transitional_allowed(rel_path, node.name):
-        violations.append(
-            SingleOwnerViolation(
-                path=rel_path,
-                line=node.lineno,
-                rule="production_streak_counter_state",
-                detail=(
-                    f"Function/method '{node.name}' implements duplicate agent "
-                    "retry/stop decision logic outside AgentFailureLedger."
-                ),
-            )
-        )
-    violations.extend(
-        SingleOwnerViolation(
-            path=rel_path,
-            line=arg.lineno,
-            rule="production_streak_counter_state",
-            detail=(
-                f"Parameter '{arg.arg}' in function '{node.name}' declares competing "
-                "retry cap or health counter outside AgentFailureLedger."
-            ),
-        )
-        for arg in node.args.posonlyargs + node.args.args + node.args.kwonlyargs
-        if _is_forbidden_target_name(arg.arg) and not is_transitional_allowed(rel_path, arg.arg)
-    )
-    return violations
-
-
-def _check_production_assignment(
-    node: ast.Assign | ast.AnnAssign | ast.AugAssign, rel_path: str
-) -> list[SingleOwnerViolation]:
-    targets: list[ast.expr] = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
-    violations: list[SingleOwnerViolation] = []
-    for target in targets:
-        target_name: str | None = None
-        if isinstance(target, ast.Name):
-            target_name = target.id
-        elif isinstance(target, ast.Attribute):
-            target_name = target.attr
-        if (
-            target_name is not None
-            and not is_transitional_allowed(rel_path, target_name)
-            and (
-                target_name
-                in (
-                    "consecutive_unproductive",
-                    "total_unproductive",
-                    "_consecutive_unproductive",
-                    "_total_unproductive",
-                )
-                or _is_forbidden_target_name(target_name)
-            )
-        ):
-            violations.append(
-                SingleOwnerViolation(
-                    path=rel_path,
-                    line=node.lineno,
-                    rule="production_streak_counter_state",
-                    detail=(
-                        f"Declaration/assignment to '{target_name}' manages duplicate "
-                        "retry/streak counter state outside AgentFailureLedger."
-                    ),
-                )
-            )
-    return violations
-
-
-def _check_production_attribute(node: ast.Attribute, rel_path: str) -> list[SingleOwnerViolation]:
-    if not is_transitional_allowed(rel_path, node.attr):
-        if node.attr in (
-            "consecutive_unproductive",
-            "total_unproductive",
-            "_consecutive_unproductive",
-            "_total_unproductive",
-        ) and _is_ledger_receiver(node.value):
-            return [
-                SingleOwnerViolation(
-                    path=rel_path,
-                    line=node.lineno,
-                    rule="production_streak_counter_state",
-                    detail=(
-                        f"Access to ledger counter attribute '{node.attr}' "
-                        "outside AgentFailureLedger."
-                    ),
-                )
-            ]
-        if _is_forbidden_target_name(node.attr):
-            return [
-                SingleOwnerViolation(
-                    path=rel_path,
-                    line=node.lineno,
-                    rule="production_streak_counter_state",
-                    detail=(
-                        f"Access to competing retry cap or health counter attribute '{node.attr}' "
-                        "outside AgentFailureLedger."
-                    ),
-                )
-            ]
-    return []
-
-
-def _check_production_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation]:
-    violations: list[SingleOwnerViolation] = [
-        SingleOwnerViolation(
-            path=rel_path,
-            line=node.lineno,
-            rule="production_streak_counter_state",
-            detail=(
-                f"Passing competing retry cap or health counter '{kw.arg}' "
-                "outside AgentFailureLedger."
-            ),
-        )
-        for kw in node.keywords
-        if kw.arg
-        and _is_forbidden_target_name(kw.arg)
-        and not is_transitional_allowed(rel_path, kw.arg)
-    ]
-    if (
-        isinstance(node.func, ast.Attribute)
-        and node.func.attr == "get"
-        and node.args
-        and isinstance(node.args[0], ast.Constant)
-        and isinstance(node.args[0].value, str)
-        and node.args[0].value in ("consecutive_unproductive", "total_unproductive")
-    ):
-        violations.append(
-            SingleOwnerViolation(
-                path=rel_path,
-                line=node.lineno,
-                rule="production_streak_counter_state",
-                detail=(
-                    f"Production code accesses ledger counter '{node.args[0].value}' via .get(); "
-                    "all failure and retry decisions must use AgentFailureLedger public status."
-                ),
-            )
-        )
-    if isinstance(node.func, ast.Attribute) and node.func.attr in ("append", "add", "extend"):
-        recv = node.func.value
-        recv_name: str | None = None
-        if isinstance(recv, ast.Name):
-            recv_name = recv.id
-        elif isinstance(recv, ast.Attribute):
-            recv_name = recv.attr
-        if (
-            recv_name is not None
-            and _is_forbidden_target_name(recv_name)
-            and not is_transitional_allowed(rel_path, recv_name)
-        ):
-            violations.append(
-                SingleOwnerViolation(
-                    path=rel_path,
-                    line=node.lineno,
-                    rule="production_streak_counter_state",
-                    detail=(
-                        f"Mutation '{ast.unparse(node)}' modifies competing agent "
-                        "exclusion collection outside AgentFailureLedger."
-                    ),
-                )
-            )
-    return violations
-
-
-def _check_production_import(
-    node: ast.Import | ast.ImportFrom, rel_path: str
-) -> list[SingleOwnerViolation]:
-    violations: list[SingleOwnerViolation] = []
-    if isinstance(node, ast.Import):
-        violations.extend(
-            SingleOwnerViolation(
-                path=rel_path,
-                line=node.lineno,
-                rule="production_legacy_tracker_import",
-                detail=f"Import of forbidden tracker '{alias.name}'.",
-            )
-            for alias in node.names
-            if not is_transitional_allowed(rel_path, alias.name)
-            and (
-                any(m in alias.name for m in _FORBIDDEN_TRACKER_MODULES)
-                or alias.name in _FORBIDDEN_TRACKER_SYMBOLS
-            )
-        )
-    elif isinstance(node, ast.ImportFrom):
-        if (
-            node.module
-            and any(m in node.module for m in _FORBIDDEN_TRACKER_MODULES)
-            and not is_transitional_allowed(rel_path, node.module)
-        ):
-            violations.append(
-                SingleOwnerViolation(
-                    path=rel_path,
-                    line=node.lineno,
-                    rule="production_legacy_tracker_import",
-                    detail=f"Import from forbidden tracker module '{node.module}'.",
-                )
-            )
-        violations.extend(
-            SingleOwnerViolation(
-                path=rel_path,
-                line=node.lineno,
-                rule="production_legacy_tracker_import",
-                detail=f"Import of forbidden tracker symbol '{alias.name}'.",
-            )
-            for alias in node.names
-            if not is_transitional_allowed(rel_path, alias.name)
-            and (
-                alias.name in _FORBIDDEN_TRACKER_SYMBOLS
-                or any(m in alias.name for m in _FORBIDDEN_TRACKER_MODULES)
-            )
-        )
-    return violations
-
-
-def _check_production_compare(node: ast.Compare, rel_path: str) -> list[SingleOwnerViolation]:
-    """Flag comparisons of retry counters against caps/limits outside AgentFailureLedger."""
-    for operand in [node.left, *node.comparators]:
-        attrs = [n.attr for n in ast.walk(operand) if isinstance(n, ast.Attribute)]
-        names = [n.id for n in ast.walk(operand) if isinstance(n, ast.Name)]
-        all_idents = attrs + names
-        is_counter = any(
-            ident in ("retries", "_retries") or _is_forbidden_target_name(ident)
-            for ident in all_idents
-        )
-        if not is_counter:
-            continue
-        if any(is_transitional_allowed(rel_path, ident) for ident in all_idents):
-            continue
-        has_forbidden = any(_is_forbidden_target_name(ident) for ident in all_idents)
-        if not has_forbidden and not any(isinstance(op, (ast.GtE, ast.Gt)) for op in node.ops):
-            continue
-        for other in [node.left, *node.comparators]:
-            if other is operand:
-                continue
-            other_attrs = [n.attr for n in ast.walk(other) if isinstance(n, ast.Attribute)]
-            other_names = [n.id for n in ast.walk(other) if isinstance(n, ast.Name)]
-            other_idents = [k.lower() for k in (other_attrs + other_names)]
-            is_cap = (
-                any(k in other_idents for k in ("max_retries", "cap", "limit", "retries", "hits"))
-                or any(
-                    "escalation" in k or "cap" in k or "limit" in k or "hits" in k
-                    for k in other_idents
-                )
-                or any(_is_forbidden_target_name(k) for k in (other_attrs + other_names))
-                or (isinstance(other, ast.Constant) and isinstance(other.value, (int, float)))
-            )
-            if is_cap:
-                return [
-                    SingleOwnerViolation(
-                        path=rel_path,
-                        line=node.lineno,
-                        rule="production_streak_counter_state",
-                        detail=(
-                            f"Comparison '{ast.unparse(node)}' implements an independent "
-                            "retry cap or health cutoff outside AgentFailureLedger."
-                        ),
-                    )
-                ]
-    return []
-
-
-def _check_production_subscript(node: ast.Subscript, rel_path: str) -> list[SingleOwnerViolation]:
-    if (
-        isinstance(node.slice, ast.Constant)
-        and isinstance(node.slice.value, str)
-        and node.slice.value in ("consecutive_unproductive", "total_unproductive")
-    ):
-        return [
-            SingleOwnerViolation(
-                path=rel_path,
-                line=node.lineno,
-                rule="production_streak_counter_state",
-                detail=(
-                    f"Production code accesses ledger counter '{node.slice.value}' via subscript; "
-                    "all failure and retry decisions must use AgentFailureLedger public status."
-                ),
-            )
-        ]
-    return []
 
 
 def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViolation]:
@@ -547,6 +122,8 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
             violations.extend(_check_production_subscript(node, rel_path))
         elif isinstance(node, ast.Compare):
             violations.extend(_check_production_compare(node, rel_path))
+        elif isinstance(node, (ast.If, ast.While, ast.IfExp)):
+            violations.extend(_check_production_retry_cap_decision(node, rel_path))
         elif isinstance(node, ast.Call):
             violations.extend(_check_production_call(node, rel_path))
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -601,17 +178,6 @@ def _check_test_import(
     return violations
 
 
-def _is_ledger_receiver(node: ast.AST) -> bool:
-    """Check if AST expression represents an AgentFailureLedger receiver."""
-    if isinstance(node, ast.Name):
-        lower = node.id.lower()
-        return "ledger" in lower or lower == "agentfailureledger"
-    if isinstance(node, ast.Attribute):
-        lower = node.attr.lower()
-        return "ledger" in lower
-    return False
-
-
 def _check_test_attribute(node: ast.Attribute, rel_path: str) -> list[SingleOwnerViolation]:
     attr = node.attr
     if attr in ("consecutive_unproductive", "total_unproductive"):
@@ -626,6 +192,12 @@ def _check_test_attribute(node: ast.Attribute, rel_path: str) -> list[SingleOwne
                 ),
             )
         ]
+    if (
+        attr in _PRIVATE_LEDGER_COUNTERS
+        and _is_ledger_serialised_root(node.value)
+        and not is_transitional_allowed(rel_path, attr)
+    ):
+        return _serialised_counter_violation(node, attr, rel_path)
     if _is_forbidden_target_name(attr) and not is_transitional_allowed(rel_path, attr):
         return [
             SingleOwnerViolation(
@@ -683,19 +255,26 @@ def _check_test_call(node: ast.Call, rel_path: str) -> list[SingleOwnerViolation
         and node.args
         and isinstance(node.args[0], ast.Constant)
         and isinstance(node.args[0].value, str)
-        and node.args[0].value in ("consecutive_unproductive", "total_unproductive")
     ):
-        violations.append(
-            SingleOwnerViolation(
-                path=rel_path,
-                line=node.lineno,
-                rule="test_private_ledger_access",
-                detail=(
-                    f"Test accesses private ledger counter '{node.args[0].value}' via .get(); "
-                    "tests must assert on observable behavior through the public seam only."
-                ),
+        counter = node.args[0].value
+        if counter in ("consecutive_unproductive", "total_unproductive"):
+            violations.append(
+                SingleOwnerViolation(
+                    path=rel_path,
+                    line=node.lineno,
+                    rule="test_private_ledger_access",
+                    detail=(
+                        f"Test accesses private ledger counter '{counter}' via .get(); "
+                        "tests must assert on observable behavior through the public seam only."
+                    ),
+                )
             )
-        )
+        elif (
+            counter in _PRIVATE_LEDGER_COUNTERS
+            and _is_ledger_serialised_root(node.func.value)
+            and not is_transitional_allowed(rel_path, counter)
+        ):
+            violations.extend(_serialised_counter_violation(node, counter, rel_path))
 
     if not (
         isinstance(node.func, ast.Name)
@@ -768,6 +347,14 @@ def _check_test_subscript(node: ast.Subscript, rel_path: str) -> list[SingleOwne
                 ),
             )
         ]
+    if (
+        isinstance(node.slice, ast.Constant)
+        and isinstance(node.slice.value, str)
+        and node.slice.value in _PRIVATE_LEDGER_COUNTERS
+        and _is_ledger_serialised_root(node.value)
+        and not is_transitional_allowed(rel_path, node.slice.value)
+    ):
+        return _serialised_counter_violation(node, node.slice.value, rel_path)
     return []
 
 
@@ -934,6 +521,57 @@ def _retry_failure_signature(exc: Exception) -> tuple[str, str]:
     assert any("_retry_failure_signature" in v.detail for v in v9), (
         f"Expected violation for agents/invoke retry_failure_signature, got: {v9}"
     )
+
+    # Negative test 10: a local retry cap that decides an agent's fate.
+    src_local_retry_cap = """
+def _retry_or_fall_over(state, chain):
+    max_retries = 3
+    if chain.retries < max_retries:
+        new_chain = chain.with_retry_increment()
+        return state.with_phase_chain(state.phase, new_chain), []
+    return None
+"""
+    v10 = audit_production_source("ralph/pipeline/reducer.py", src_local_retry_cap)
+    assert any(v.rule == "production_local_retry_cap_decision" for v in v10), (
+        f"Expected production_local_retry_cap_decision violation, got: {v10}"
+    )
+
+    # Negative test 11: a test that indexes into the serialised ledger snapshot.
+    src_test_serialised = """
+def test_snapshot(state):
+    assert state.ledger_snapshot["entries"]["development:claude"]["is_spent"] is True
+"""
+    v11 = audit_test_source("tests/recovery/test_sample.py", src_test_serialised)
+    assert any(v.rule == "test_serialised_ledger_access" for v in v11), (
+        f"Expected test_serialised_ledger_access violation, got: {v11}"
+    )
+
+    # Positive test 1: a repository-safety bound bounds repository state, not agent health.
+    src_repo_safety_bound = """
+MAX_MERGE_REPAIR_ATTEMPTS = 3
+
+def repair_pending_merge(record):
+    if record.merge_commit_repair_attempts < MAX_MERGE_REPAIR_ATTEMPTS:
+        return handoff_pending_merge_repair(record)
+    return record
+"""
+    v12 = audit_production_source("ralph/pipeline/_pending_merge_repair.py", src_repo_safety_bound)
+    assert not v12, f"Expected no violation for a repository-safety bound, got: {v12}"
+
+    # Positive test 2: the owner's public answers stay observable from a test.
+    src_public_seam = """
+def test_public_seam(ledger, fact):
+    status = ledger.status("development", "claude")
+    assert status.is_spent is False
+    assert ledger.is_available("development", "claude")
+    outcome = ledger.record(fact)
+    assert outcome.demoted is False
+    snap = ledger.snapshot()
+    restored = AgentFailureLedger.from_snapshot(snap)
+    assert restored.is_available("development", "claude")
+"""
+    v13 = audit_test_source("tests/recovery/test_sample.py", src_public_seam)
+    assert not v13, f"Expected no violation for the public ledger seam, got: {v13}"
 
 
 def audit_single_owner(repo_root: Path) -> list[SingleOwnerViolation]:

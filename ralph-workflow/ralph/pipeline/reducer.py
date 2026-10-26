@@ -535,8 +535,9 @@ def reduce(
             than silently falling back to hardcoded behavior.
         recovery: Optional RecoveryController. When supplied, PhaseFailureEvents
             and worker failure events are delegated to it for classification-aware
-            recovery (intelligent attribution, budget management). When None,
-            the legacy retry/fallback logic is used.
+            recovery (intelligent attribution, budget management). When None, no
+            owner can judge a failing agent, so the reducer fails the phase closed
+            instead of deciding on its own how often the agent may retry.
         routing_timing: Optional routing timing controls for cycle timeboxes.
         integration_record: Optional durable integration record.
 
@@ -813,31 +814,19 @@ def _retry_or_fall_over(
     state: PipelineState,
     chain: AgentChainState,
     *,
-    selection: AgentSelection | None = None,
+    selection: AgentSelection,
 ) -> tuple[PipelineState, list[Effect]] | None:
-    """Retry the current agent, or fall over to the next one in the chain.
+    """Apply the owner's verdict: retry the current agent, or fall over.
 
-    When selection is None, uses default forward-only fallback logic.
-    When selection is provided, routes to the selected index or returns None if None.
+    ``selection`` is the verdict of the single owner (the recovery
+    controller, which reads the agent-failure ledger). It is the ONLY thing
+    that decides whether the current agent may try again and which agent
+    runs next. This function applies that verdict; it never counts attempts
+    and never picks an agent on its own authority.
+
+    Returns ``None`` when the owner selected nobody, so the caller can fail
+    the phase closed instead of choosing an agent locally.
     """
-    if selection is None:
-        max_retries = 3
-        if chain.retries < max_retries:
-            new_chain = chain.with_retry_increment()
-            new_metrics = state.metrics.with_retry_increment()
-            return state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics), []
-
-        if chain.current_index + 1 < len(chain.agents):
-            new_chain = chain.with_advance()
-            new_metrics = state.metrics.with_fallback_increment()
-            return state.with_phase_chain(state.phase, new_chain).copy_with(
-                metrics=new_metrics,
-                last_agent_session_id=None,
-                agent_retry_intent=cleared_agent_retry_intent(),
-            ), []
-
-        return None
-
     if selection.index == chain.current_index:
         new_chain = chain.with_retry_increment()
         new_metrics = state.metrics.with_retry_increment()
@@ -864,13 +853,12 @@ def _retry_or_fall_over(
 def _all_agents_unavailable_wait_state(
     state: PipelineState,
     chain: AgentChainState,
-    selection: AgentSelection | None,
+    selection: AgentSelection,
     recovery: RecoveryController | None,
 ) -> tuple[PipelineState, list[Effect]] | None:
     """Build a cooldown wait state when priority selection finds no agent."""
     if (
-        selection is None
-        or selection.index is not None
+        selection.index is not None
         or recovery is None
         or recovery.agents_now_available(state.phase, chain.agents)
     ):
@@ -886,10 +874,16 @@ def _all_agents_unavailable_wait_state(
 def _selection_attempt(
     state: PipelineState,
     chain: AgentChainState,
-    selection: AgentSelection | None,
+    selection: AgentSelection,
     recovery: RecoveryController | None,
 ) -> tuple[PipelineState, list[Effect]] | None:
-    """Return a retry, fallover, or cooldown wait state selected for this failure."""
+    """Return a retry, fallover, or cooldown wait state selected for this failure.
+
+    ``selection`` is the OWNER's verdict. This function applies it and never
+    substitutes a local decision of its own: when the owner selected nobody
+    and no agent is cooling down, it returns ``None`` so the caller fails
+    the phase closed.
+    """
     same_phase_attempt = _retry_or_fall_over(state, chain, selection=selection)
     if same_phase_attempt is not None:
         return same_phase_attempt
@@ -922,42 +916,77 @@ def _handle_agent_failure(
     if expired is not None:
         return expired
 
+    if recovery is None:
+        # No owner is reachable, so nobody can decide whether the failing
+        # agent may try again. Fail closed instead of deciding locally.
+        return _fail_closed_without_owner(
+            state,
+            chain,
+            policy,
+            routing_timing,
+            failure_category,
+        )
+
+    return _handle_owned_agent_failure(
+        state,
+        chain,
+        policy,
+        routing_timing,
+        recovery,
+        failure_category,
+        event,
+    )
+
+
+def _handle_owned_agent_failure(
+    state: PipelineState,
+    chain: AgentChainState,
+    policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None,
+    recovery: RecoveryController,
+    failure_category: FailureCategory | None,
+    event: Event | None,
+) -> tuple[PipelineState, list[Effect]]:
+    """Route a failure through the owner and apply its verdict.
+
+    The owner (``RecoveryController`` and, through it, the agent-failure
+    ledger) charges the attempt and decides whether the agent may try again
+    and which agent runs next. This function only applies that verdict.
+    """
     if state.agent_retry_intent.skip_same_agent_retries:
         return _handle_skip_same_agent_retries(state, chain, policy, recovery)
 
-    selection: AgentSelection | None = None
-    if recovery is not None:
-        current_agent = (
-            chain.agents[chain.current_index]
-            if chain.agents and chain.current_index < len(chain.agents)
-            else None
-        )
-        if current_agent is not None:
-            # The workspace-change fact is read ONLY from the attempt-scoped
-            # observation carried by this event. A bare
-            # ``PipelineEvent.AGENT_FAILURE`` carries none, so the attempt
-            # fails closed ("unchanged") instead of inheriting a stale fact
-            # from an earlier attempt.
-            observation = observation_from_event(event)
-            if observation is None or not observation.already_charged:
-                workspace_changed: bool = (
-                    observation.resolved_workspace_changed() if observation is not None else False
-                )
-                demoted_reason = recovery.record_attempt_fact(
-                    state.phase,
-                    current_agent,
-                    artifact_valid=False,
-                    workspace_changed=workspace_changed,
-                    free_retry_category=True,
-                )
-                if demoted_reason is not None and len(chain.agents) == 1:
-                    logger.warning(demoted_reason)
-                    return _enter_failed_recovery(state, demoted_reason, policy)
-        selection = recovery.preferred_agent_index(
-            state.phase,
-            chain.agents,
-            current_index=chain.current_index,
-        )
+    current_agent = (
+        chain.agents[chain.current_index]
+        if chain.agents and chain.current_index < len(chain.agents)
+        else None
+    )
+    if current_agent is not None:
+        # The workspace-change fact is read ONLY from the attempt-scoped
+        # observation carried by this event. A bare
+        # ``PipelineEvent.AGENT_FAILURE`` carries none, so the attempt
+        # fails closed ("unchanged") instead of inheriting a stale fact
+        # from an earlier attempt.
+        observation = observation_from_event(event)
+        if observation is None or not observation.already_charged:
+            workspace_changed: bool = (
+                observation.resolved_workspace_changed() if observation is not None else False
+            )
+            demoted_reason = recovery.record_attempt_fact(
+                state.phase,
+                current_agent,
+                artifact_valid=False,
+                workspace_changed=workspace_changed,
+                free_retry_category=True,
+            )
+            if demoted_reason is not None and len(chain.agents) == 1:
+                logger.warning(demoted_reason)
+                return _enter_failed_recovery(state, demoted_reason, policy)
+    selection = recovery.preferred_agent_index(
+        state.phase,
+        chain.agents,
+        current_index=chain.current_index,
+    )
 
     selected_attempt = _selection_attempt(state, chain, selection, recovery)
     if selected_attempt is not None:
@@ -972,12 +1001,54 @@ def _handle_agent_failure(
     )
 
 
+def _fail_closed_without_owner(
+    state: PipelineState,
+    chain: AgentChainState,
+    policy: PipelinePolicy | None,
+    routing_timing: RoutingTiming | None,
+    failure_category: FailureCategory | None,
+) -> tuple[PipelineState, list[Effect]]:
+    """Fail the phase closed when no owner can judge the failing agent.
+
+    The owner of "is this agent still working" is the recovery controller
+    and, through it, the agent-failure ledger. With no controller reachable
+    the reducer holds no verdict to apply, so it must not grant another
+    attempt: it used to count three local retries on ``chain.retries`` and
+    then advance the chain itself, which made the reducer a SECOND decision
+    owner (PRODUCT_CRITERIA §3.4). Failing closed keeps exactly one
+    component able to decide an agent's fate; the phase reaches the
+    policy's failure route (or its declared workflow fallback) instead of
+    retrying an agent nobody has judged.
+    """
+    current_agent = (
+        chain.agents[chain.current_index]
+        if chain.agents and chain.current_index < len(chain.agents)
+        else None
+    )
+    detail = _failure_reason(state, f"agent failure in phase '{state.phase}'")
+    reason = (
+        f"{detail}: no recovery owner is reachable to judge agent '{current_agent}' "
+        f"in phase '{state.phase}', so the phase fails closed instead of "
+        "granting another attempt"
+    )
+    return _handle_chain_exhausted(
+        state,
+        chain,
+        policy,
+        routing_timing,
+        failure_category,
+        reason=reason,
+    )
+
+
 def _handle_chain_exhausted(
     state: PipelineState,
     chain: AgentChainState,
     policy: PipelinePolicy | None,
     routing_timing: RoutingTiming | None,
     failure_category: FailureCategory | None,
+    *,
+    reason: str | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     # Chain exhausted: check for per-phase workflow_fallback before global failure route.
     if policy is not None:
@@ -1001,12 +1072,16 @@ def _handle_chain_exhausted(
             new_state = progress.advance_phase(advanced_state, advanced_target, policy=policy)
             return progress.apply_execution_cycle_outcome(state, new_state, policy=policy), []
 
-    failure_reason = _failure_reason(
-        state,
-        (
-            f"Agent chain exhausted in phase='{state.phase}' after "
-            f"{chain.retries} retries across {len(chain.agents)} agents"
-        ),
+    failure_reason = (
+        reason
+        if reason is not None
+        else _failure_reason(
+            state,
+            (
+                f"Agent chain exhausted in phase='{state.phase}' after "
+                f"{chain.retries} retries across {len(chain.agents)} agents"
+            ),
+        )
     )
     return _enter_failed_recovery(state, failure_reason, policy, failure_category=failure_category)
 
@@ -1030,15 +1105,10 @@ def _handle_skip_same_agent_retries(
         if selected_attempt is not None:
             return selected_attempt
 
-    if chain.current_index + 1 < len(chain.agents):
-        new_chain = chain.with_advance()
-        new_metrics = state.metrics.with_fallback_increment()
-        new_state = state.with_phase_chain(state.phase, new_chain).copy_with(
-            metrics=new_metrics,
-            last_agent_session_id=None,
-            agent_retry_intent=cleared_agent_retry_intent(),
-        )
-        return new_state, []
+    # The owner selected nobody: fail closed. Advancing the chain here would
+    # pick an agent on the reducer's own authority, which is exactly the
+    # second decision owner PRODUCT_CRITERIA §3.4 forbids -- and the agent
+    # it picked would be one the owner already rejected.
     failure_reason = _failure_reason(
         state,
         (
@@ -1058,6 +1128,12 @@ def _handle_agent_retry(
 
     A continuation is another full-length invocation of the same phase, so it
     is bounded by the cycle deadline exactly like a failure retry.
+
+    This route is NOT agent-health routing: it grants the CONTINUATION the
+    caller asked for and never judges whether the agent is working. The
+    counter it increments is a diagnostic only -- it decides no attempt
+    budget, and the owner's verdict (the agent-failure ledger) governs every
+    subsequent failure of the same agent.
     """
     expired = redirect_expired_cycle_in_place(state, policy, routing_timing)
     if expired is not None:

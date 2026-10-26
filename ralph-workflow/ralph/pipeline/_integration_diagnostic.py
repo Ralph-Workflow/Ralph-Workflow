@@ -8,12 +8,16 @@ fixes the linked-worktree reproduction by:
   :class:`OperationEvidenceCollector` (no ``git for-each-ref``, no
   full ``git ls-files --stage``, no branch reflog, no
   ``logs/HEAD``);
-* bounding the diagnostic-repair attempt loop at
+* bounding the diagnostic-repair loop at
   :data:`DIAGNOSTIC_REPAIR_ATTEMPT_CAP` so an over-cap handoff
   stamps the typed "diagnostic budget spent" outcome and routes the
   state into the autonomous fallback ladder
   (:mod:`ralph.pipeline._integration_diagnostic_handoff`) -- never a
-  human hand-off;
+  human hand-off. The budget counts REPOSITORY failures only (the
+  fail-closed pre-pass, an unreadable diagnostic, a workspace with no
+  repair agent installed); an agent attempt never advances it, because
+  agent health belongs to the shared failure ledger and an invocation
+  count must not decide the integration's fate;
 * routing every ``write_record(... model_copy(...))`` call site
   through the closed :class:`Transition` table on
   :class:`IntegrationRecord.with_transition`;
@@ -200,6 +204,18 @@ __all__ = [
 # can raise the cap via ``conflict_resolution.diagnostic_repair_attempt_cap``
 # in policy configuration; the default is intentionally low so the
 # production loop is broken on the very first incident.
+#
+# RULING (single-owner review): this cap is a REPOSITORY-STATE bound,
+# not an agent-health bound. It counts the failures Ralph observes in
+# the repository and the durable record WITHOUT an agent attempt -- the
+# fail-closed pre-pass, an unreadable diagnostic, a workspace with no
+# repair agent installed -- and those failures escalate into the
+# autonomous ladder, which preserves the work before it resets. An
+# agent attempt does NOT advance it: whether an agent is failing, when
+# it is benched and which agent runs next is decided by the single
+# owner (:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`
+# through the recovery controller), and an invocation count must never
+# decide the integration's fate.
 DIAGNOSTIC_REPAIR_ATTEMPT_CAP: int = 5
 
 
@@ -934,9 +950,20 @@ def handoff_integration_diagnostic(
     )
     backend.mkdir(prompt.parent, parents=True, exist_ok=True)
     write_text_if_changed(backend, prompt, content)
+    # The diagnostic-repair budget counts REPOSITORY failures, not agent
+    # attempts. This write therefore records the diagnostic breadcrumb
+    # WITHOUT advancing the counter: an agent that keeps failing inside
+    # the integration is owned by the shared failure ledger (its
+    # consecutive and total limits bench it and name the next agent),
+    # and an invocation count must never decide the integration's fate
+    # by pushing the state into the autonomous fallback ladder. The
+    # budget still advances on the failures that happen WITHOUT an
+    # agent attempt -- the fail-closed pre-pass, an unreadable
+    # diagnostic, a workspace with no repair agent installed -- which is
+    # what bounds the repository state.
     write_record(
         root,
-        _bump_attempt(record, failure[:8192], repair_attempt_cap=repair_attempt_cap),
+        record.with_transition(BUMP_DIAGNOSTIC_ATTEMPT, repair_last_error=failure[:8192]),
         backend=backend,
     )
     return _invoke_and_judge(

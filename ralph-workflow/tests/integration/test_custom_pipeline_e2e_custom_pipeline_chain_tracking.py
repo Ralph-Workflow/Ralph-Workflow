@@ -36,6 +36,7 @@ from ralph.policy.models import (
     PostCommitRouteWhen,
     RecoveryPolicy,
 )
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
 _BUILD_LOOP_MAX = 3
 
@@ -209,7 +210,12 @@ class TestCustomPipelineChainTracking:
             reason="build crashed",
             recoverable=True,
         )
-        state, _ = reducer_reduce(state, crash_event, policy)
+        state, _ = reducer_reduce(
+            state,
+            crash_event,
+            policy,
+            recovery=RecoveryController(options=RecoveryControllerOptions(cycle_cap=10)),
+        )
         assert state.phase == "build"
         chain = state.chain_for_phase("build")
         assert chain is not None

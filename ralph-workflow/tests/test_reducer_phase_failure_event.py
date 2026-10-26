@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.agents.timeout_clock import FakeClock
+from ralph.pipeline.agent_retry_intent import AgentRetryIntent
 from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
 from ralph.pipeline.events import (
     PhaseFailureEvent,
@@ -26,7 +27,7 @@ from ralph.policy.models import (
     PostCommitRouteWhen,
     RecoveryPolicy,
 )
-from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.recovery.classifier import FailureCategory
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
@@ -340,8 +341,8 @@ def _policy_with_planning_analysis() -> PipelinePolicy:
 class TestPhaseFailureEvent:
     """Tests for PhaseFailureEvent routing through the reducer."""
 
-    def test_phase_failure_recoverable_increments_retries(self) -> None:
-        """PhaseFailureEvent(recoverable=True) increments retry count."""
+    def test_phase_failure_recoverable_retries_through_the_owner(self) -> None:
+        """PhaseFailureEvent(recoverable=True) retries on the owner's verdict."""
         state = PipelineState(
             phase="development",
             phase_chains={
@@ -349,15 +350,27 @@ class TestPhaseFailureEvent:
             },
         )
         event = PhaseFailureEvent(phase="development", reason="missing artifact", recoverable=True)
-        new_state, effects = _reduce(state, event)
-        assert new_state.chain_for_phase("development").retries == 1
+        controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
+
+        new_state, effects = reducer_reduce(state, event, recovery=controller)
+
+        chain = new_state.chain_for_phase("development")
+        assert chain is not None
+        assert chain.retries == 1
         assert new_state.phase == "development"
         assert effects == []
 
-    def test_phase_failure_recoverable_after_3_retries_falls_back_to_next_agent(
+    def test_phase_failure_recoverable_falls_back_when_the_owner_demotes_the_agent(
         self,
     ) -> None:
-        """After 3 retries, recoverable PhaseFailureEvent advances to next agent."""
+        """The owner's verdict decides the fallover, not a local retry counter."""
+        ledger = AgentFailureLedger(clock=FakeClock())
+        for _ in range(3):
+            ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
+        controller = RecoveryController(
+            options=RecoveryControllerOptions(cycle_cap=10),
+            ledger=ledger,
+        )
         state = PipelineState(
             phase="development",
             phase_chains={
@@ -367,15 +380,21 @@ class TestPhaseFailureEvent:
             },
         )
         event = PhaseFailureEvent(phase="development", reason="missing artifact", recoverable=True)
-        new_state, effects = _reduce(state, event)
-        assert new_state.chain_for_phase("development").current_index == 1
-        assert new_state.chain_for_phase("development").retries == 0
+
+        new_state, effects = reducer_reduce(
+            state, event, _basic_pipeline_policy(), recovery=controller
+        )
+
+        chain = new_state.chain_for_phase("development")
+        assert chain is not None
+        assert chain.current_index == 1
+        assert chain.retries == 0
         assert effects == []
 
-    def test_phase_failure_skip_same_agent_retries_falls_back_immediately(
+    def test_phase_failure_skip_same_agent_retries_advances_through_the_owner(
         self,
     ) -> None:
-        """Context-exhausted agents should advance to the next agent without retries."""
+        """Context-exhausted agents advance to the next agent on the owner's verdict."""
         state = PipelineState(
             phase="development",
             phase_chains={
@@ -383,15 +402,14 @@ class TestPhaseFailureEvent:
                     agents=["pi/zai/glm-5.2", "codex"], current_index=0, retries=0
                 )
             },
+            agent_retry_intent=AgentRetryIntent(skip_same_agent_retries=True),
         )
-        event = PhaseFailureEvent(
-            phase="development",
-            reason="Pi context length exhausted",
-            recoverable=True,
-            skip_same_agent_retries=True,
-        )
-        new_state, effects = _reduce(state, event)
+        controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
+
+        new_state, effects = reducer_reduce(state, PipelineEvent.AGENT_FAILURE, recovery=controller)
+
         chain = new_state.chain_for_phase("development")
+        assert chain is not None
         assert chain.current_index == 1
         assert chain.retries == 0
         assert new_state.metrics.total_fallbacks == 1

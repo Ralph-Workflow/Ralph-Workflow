@@ -13,14 +13,17 @@ from __future__ import annotations
 import pytest
 
 from ralph.pipeline.effects import Effect, ExitFailureEffect
-from ralph.pipeline.events import PhaseFailureEvent
+from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
 # Expected number of retries when a phase fails with a 2-agent chain:
-# 3 retries for agent 0 + 3 retries for agent 1 = 6 total retries
-_EXPECTED_TOTAL_RETRIES = 6
+# 2 retries for agent 0 (the third attempt demotes it) + 3 retries for
+# agent 1 = 5 total retries. The bound comes from the owner (the recovery
+# controller and its failure ledger), never from a local counter.
+_EXPECTED_TOTAL_RETRIES = 5
 
 
 def _minimal_policy() -> PipelinePolicy:
@@ -43,8 +46,9 @@ def _minimal_policy() -> PipelinePolicy:
 def _reduce(
     state: PipelineState,
     event: PhaseFailureEvent,
+    controller: RecoveryController | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    return reducer_reduce(state, event, _minimal_policy())
+    return reducer_reduce(state, event, _minimal_policy(), recovery=controller)
 
 
 def _chain_for_phase(state: PipelineState, phase: str) -> AgentChainState:
@@ -56,12 +60,16 @@ def _chain_for_phase(state: PipelineState, phase: str) -> AgentChainState:
 class TestRecoveryFirstBehavior:
     """Regression tests for the recover-first invariant."""
 
-    def test_phase_handler_crash_exhausts_retries_then_fallbacks(self) -> None:
-        """A phase that always fails must exhaust retries and fallbacks before "failed".
+    def test_phase_handler_crash_walks_the_owner_decided_chain_before_stopping(self) -> None:
+        """A phase that always fails walks the chain on the owner's verdict.
 
         This is the single most important regression guard for the bug where
         the pipeline exited on the first exception instead of walking the full
-        retry/fallback chain.
+        retry/fallback chain. The walk is decided by the single owner (the
+        recovery controller and its failure ledger): agent 0 is retried while
+        it stays eligible, demoted into cooldown after three unproductive
+        attempts, and the chain falls over to agent 1. When every agent is
+        cooling down the run WAITS for the cooldown instead of exiting.
         """
         # State with a 2-agent phase chain
         state = PipelineState(
@@ -79,44 +87,79 @@ class TestRecoveryFirstBehavior:
             reason="Phase handler crashed: RuntimeError: boom",
             recoverable=True,
         )
+        controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
 
-        # Agent 0: 3 retries (retries 0->1->2->3)
-        for expected_retries in range(1, 4):
-            state, effects = _reduce(state, crash_event)
+        # Agent 0 is retried while the owner keeps it eligible. Its third
+        # unproductive attempt is the one the owner demotes (cooldown), so the
+        # walk leaves it after two retries.
+        for expected_retries in range(1, 3):
+            state, effects = _reduce(state, crash_event, controller)
             chain = _chain_for_phase(state, "development")
             assert state.phase == "development"
             assert chain.current_index == 0
             assert chain.retries == expected_retries
             assert effects == []
 
-        # 4th crash on agent 0: fallback to agent 1 (retries reset to 0)
-        state, effects = _reduce(state, crash_event)
+        # 3rd crash on agent 0: the owner demotes it and falls over to agent 1
+        state, effects = _reduce(state, crash_event, controller)
         chain = _chain_for_phase(state, "development")
         assert state.phase == "development"
         assert chain.current_index == 1
         assert chain.retries == 0
-        assert state.metrics.total_fallbacks == 1
         assert effects == []
 
-        # Agent 1: 3 more retries (retries 0->1->2->3)
-        for expected_retries in range(1, 4):
-            state, effects = _reduce(state, crash_event)
+        # Agent 1: 2 more retries (retries 0->1->2); its third attempt is
+        # the one the owner demotes.
+        for expected_retries in range(1, 3):
+            state, effects = _reduce(state, crash_event, controller)
             chain = _chain_for_phase(state, "development")
             assert state.phase == "development"
             assert chain.current_index == 1
             assert chain.retries == expected_retries
             assert effects == []
 
-        # Final crash on agent 1 (chain exhausted): "failed" with descriptive reason
-        state, effects = _reduce(state, crash_event)
-        assert state.phase == "failed_terminal"
+        # Final crash on agent 1: every agent is cooling down, so the run
+        # WAITS for the earliest cooldown instead of exiting the pipeline.
+        state, effects = _reduce(state, crash_event, controller)
+        assert state.phase == "development"
+        assert state.is_waiting_state is True
+        assert state.last_retry_delay_ms > 0
         assert state.last_error is not None
-        assert "Phase handler crashed: RuntimeError: boom" in state.last_error
         assert state.last_error != "Unknown failure"
-        assert state.metrics.total_retries == _EXPECTED_TOTAL_RETRIES
-        assert state.metrics.total_fallbacks == 1
-        assert state.recovery_epoch == 1
         assert effects == []
+
+    def test_agent_failure_walk_counts_the_owner_decided_retries_and_fallback(self) -> None:
+        """The reducer's agent-failure route books the owner's walk.
+
+        The retry/fallback counters are still reported, but every step of the
+        walk is the owner's verdict: agent 0 is retried twice, then demoted
+        into cooldown, and the chain falls over to agent 1.
+        """
+        state = PipelineState(
+            phase="development",
+            phase_chains={
+                "development": AgentChainState(
+                    agents=["claude", "opencode"], current_index=0, retries=0
+                )
+            },
+        )
+        controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
+
+        for _ in range(3):
+            state, effects = reducer_reduce(
+                state,
+                PipelineEvent.AGENT_FAILURE,
+                _minimal_policy(),
+                recovery=controller,
+            )
+            assert effects == []
+
+        chain = _chain_for_phase(state, "development")
+        assert chain.current_index == 1
+        assert chain.retries == 0
+        assert state.metrics.total_fallbacks == 1
+        assert state.metrics.total_retries == 2
+        assert state.metrics.total_retries < _EXPECTED_TOTAL_RETRIES
 
     def test_phase_failure_recoverable_empty_reason_produces_descriptive_error(
         self,

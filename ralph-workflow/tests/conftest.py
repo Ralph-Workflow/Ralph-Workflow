@@ -133,6 +133,24 @@ def _isolate_host_contention_signals() -> Generator[None, None, None]:
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _warm_pygments_python_lexer() -> Generator[None, None, None]:
+    """Compile the Pygments Python lexer once, outside any timed test.
+
+    The first ``rich.syntax`` render in a process pays Pygments' one-time
+    lexer construction (hundreds of regex compiles). Under a loaded host
+    that cold start can exceed the 1 s per-test budget, so whichever test
+    happened to render first failed for a reason that had nothing to do
+    with what it asserts. Warming the lexer here charges the one-time
+    cost to the session, where it belongs, and leaves each test's budget
+    measuring the assertion itself.
+    """
+    from pygments.lexers import get_lexer_by_name
+
+    get_lexer_by_name("python")
+    yield
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _fake_agy_models_probe() -> Generator[None, None, None]:
     """Keep default tests independent of the locally installed AGY binary."""
     from ralph.agents import registry

@@ -22,6 +22,7 @@ from ralph.pipeline.events import Event, PhaseFailureEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
@@ -342,7 +343,7 @@ class TestPhaseHandlerExceptionGuard:
     def test_phase_failure_event_recoverable_routes_through_reducer_retry(
         self,
     ) -> None:
-        """PhaseFailureEvent(recoverable=True) should route through reducer retry."""
+        """PhaseFailureEvent(recoverable=True) should route through the owner's retry."""
         state = PipelineState(
             phase="development",
             phase_chains={
@@ -354,11 +355,14 @@ class TestPhaseHandlerExceptionGuard:
             reason="Phase handler crashed: RuntimeError: boom",
             recoverable=True,
         )
+        controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
 
-        new_state, effects = reducer_reduce(state, event)
+        new_state, effects = reducer_reduce(state, event, recovery=controller)
 
-        # Should increment retries, not fail
-        assert new_state.chain_for_phase("development").retries == 1
+        # The owner decides the retry, so the phase is retried, not failed
+        chain = new_state.chain_for_phase("development")
+        assert chain is not None
+        assert chain.retries == 1
         assert new_state.phase == "development"
         assert effects == []
 

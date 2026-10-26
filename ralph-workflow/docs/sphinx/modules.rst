@@ -934,6 +934,13 @@ ralph.pipeline.events
 .. automodule:: ralph.pipeline.events
    :no-members:
 
+ralph.pipeline.events.agent_failure_event
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.events.agent_failure_event
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.events.analysis_decision_event
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

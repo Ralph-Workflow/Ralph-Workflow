@@ -417,7 +417,15 @@ class TestRecoveryControllerSessionPreservingRetry:
 
 
 class TestReducerSessionPreservingRetry:
-    """Via the legacy reducer path (no RecoveryController)."""
+    """Via the reducer with the recovery owner.
+
+    The reducer no longer owns a local retry counter: the recovery
+    controller (the single owner of agent health) decides the retry, and the
+    reducer applies that verdict. The observable contract is unchanged.
+    """
+
+    def _make_controller(self) -> RecoveryController:
+        return RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
 
     def test_retry_in_session_with_session_id_sets_resume_intent(self) -> None:
         state = _state_with_session()
@@ -427,7 +435,7 @@ class TestReducerSessionPreservingRetry:
             recoverable=True,
             retry_in_session=True,
         )
-        new_state, _ = reducer_reduce(state, event)
+        new_state, _ = reducer_reduce(state, event, recovery=self._make_controller())
         assert new_state.agent_retry_intent.action == "resume"
         assert new_state.agent_retry_intent.session_id == "sess-abc123"
 
@@ -439,7 +447,7 @@ class TestReducerSessionPreservingRetry:
             recoverable=True,
             retry_in_session=True,
         )
-        new_state, _ = reducer_reduce(state, event)
+        new_state, _ = reducer_reduce(state, event, recovery=self._make_controller())
         assert new_state.agent_retry_intent.action is None
 
     def test_retry_in_session_false_never_sets_resume_intent(self) -> None:
@@ -450,7 +458,7 @@ class TestReducerSessionPreservingRetry:
             recoverable=True,
             retry_in_session=False,
         )
-        new_state, _ = reducer_reduce(state, event)
+        new_state, _ = reducer_reduce(state, event, recovery=self._make_controller())
         assert new_state.agent_retry_intent.action is None
 
     def test_chain_retries_increments_on_session_preserving_retry(self) -> None:
@@ -461,7 +469,7 @@ class TestReducerSessionPreservingRetry:
             recoverable=True,
             retry_in_session=True,
         )
-        new_state, _ = reducer_reduce(state, event)
+        new_state, _ = reducer_reduce(state, event, recovery=self._make_controller())
         chain = new_state.chain_for_phase("development_analysis")
         assert chain is not None
         assert chain.retries == 1
@@ -474,5 +482,5 @@ class TestReducerSessionPreservingRetry:
             recoverable=True,
             retry_in_session=True,
         )
-        new_state, _ = reducer_reduce(state, event)
+        new_state, _ = reducer_reduce(state, event, recovery=self._make_controller())
         assert new_state.last_agent_session_id == "sess-abc123"

@@ -289,7 +289,14 @@ def test_real_child_accepts_old_session_id_across_rotation(tmp_path: Path) -> No
     )
 
     try:
-        deadline = time.monotonic() + 5.0
+        # The candidate is a REAL child process: it imports the ralph
+        # package and binds its HTTP server before it can publish the
+        # port. A fixed 5 s deadline made this test fail on a loaded host
+        # for a reason that has nothing to do with the session-id
+        # rotation it proves. The wait stays bounded -- it still fails
+        # when the child never publishes -- it just no longer assumes an
+        # idle CPU.
+        deadline = time.monotonic() + 30.0
         while time.monotonic() < deadline and not port_file.exists():
             time.sleep(0.02)
         assert port_file.exists()

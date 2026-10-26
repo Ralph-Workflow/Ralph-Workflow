@@ -19,6 +19,7 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
 _DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 _LIMIT = 36000.0
@@ -41,10 +42,14 @@ def _developing(consumed: float) -> PipelineState:
 
 
 def _fail(state: PipelineState, elapsed: float) -> PipelineState:
+    # The recovery controller is the owner of the retry decision: it decides
+    # whether the failing agent may try again, so the retry below is the
+    # owner's verdict rather than a counter the reducer keeps itself.
     next_state, _effects = reducer_reduce(
         state,
         PipelineEvent.AGENT_FAILURE,
         _pipeline(),
+        recovery=RecoveryController(options=RecoveryControllerOptions(cycle_cap=10)),
         routing_timing=RoutingTiming(total_elapsed_seconds=elapsed),
     )
     return next_state

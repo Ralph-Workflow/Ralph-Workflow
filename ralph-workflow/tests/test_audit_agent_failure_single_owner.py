@@ -224,10 +224,12 @@ def test_get_counters(snap):
 def test_transitional_allowed_file_bypasses_check(monkeypatch: pytest.MonkeyPatch) -> None:
     from ralph.testing import audit_agent_failure_single_owner as audit_mod
 
-    monkeypatch.setattr(
-        audit_mod,
-        "TEMPORARY_TRANSITIONAL_RULES",
-        {"ralph/recovery/controller.py": frozenset({"_technical_retry_cap"})},
+    # The transitional rules live in the rule engine the audit imports, so the
+    # allowance is added to the shared mapping the engine reads.
+    monkeypatch.setitem(
+        audit_mod.TEMPORARY_TRANSITIONAL_RULES,
+        "ralph/recovery/controller.py",
+        frozenset({"_technical_retry_cap"}),
     )
     source = """
 class RecoveryController:
@@ -467,3 +469,140 @@ def test_u4b_bans_permanently_promoted() -> None:
     ):
         assert not is_transitional_allowed("ralph/pipeline/state.py", sym)
         assert not is_transitional_allowed("tests/test_retry_budget_durability.py", sym)
+
+
+def test_local_retry_cap_deciding_agent_fate_is_flagged() -> None:
+    """A local retry cap compared against a retry counter must be rejected."""
+    source = """
+def _retry_or_fall_over(state, chain):
+    max_retries = 3
+    if chain.retries < max_retries:
+        new_chain = chain.with_retry_increment()
+        new_metrics = state.metrics.with_retry_increment()
+        return state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics), []
+    return None
+"""
+    violations = audit_production_source("ralph/pipeline/reducer.py", source)
+    assert any(v.rule == "production_local_retry_cap_decision" for v in violations), (
+        f"Expected production_local_retry_cap_decision, got: {violations}"
+    )
+    flagged = next(v for v in violations if v.rule == "production_local_retry_cap_decision")
+    assert flagged.path == "ralph/pipeline/reducer.py"
+    assert flagged.line == 4
+    assert "chain.retries < max_retries" in flagged.detail
+
+
+def test_local_retry_cap_with_advance_branch_is_flagged() -> None:
+    """The advance branch of a local retry cap decision is rejected too."""
+    source = """
+def _retry_or_fall_over(state, chain):
+    max_retries = 3
+    if chain.retries < max_retries:
+        return state.with_phase_chain(state.phase, chain.with_retry_increment()), []
+    if chain.current_index + 1 < len(chain.agents):
+        return state.with_phase_chain(state.phase, chain.with_advance()), []
+    return None
+"""
+    violations = audit_production_source("ralph/pipeline/reducer.py", source)
+    assert any(v.rule == "production_local_retry_cap_decision" for v in violations), (
+        f"Expected production_local_retry_cap_decision, got: {violations}"
+    )
+
+
+def test_repository_safety_bound_is_not_flagged() -> None:
+    """A merge-repair attempt cap bounds repository state, not agent health."""
+    source = """
+MAX_MERGE_REPAIR_ATTEMPTS = 3
+
+def repair_pending_merge(record):
+    if record.merge_commit_repair_attempts < MAX_MERGE_REPAIR_ATTEMPTS:
+        return handoff_pending_merge_repair(record)
+    return record
+"""
+    violations = audit_production_source("ralph/pipeline/_pending_merge_repair.py", source)
+    assert not violations
+
+
+def test_retry_budget_without_agent_fate_action_is_not_flagged() -> None:
+    """The rule is a decision rule, not a blanket ban on retry identifiers."""
+    source = """
+MAX_RETRIES = 3
+
+def report_retry_budget(metrics):
+    if metrics.total_retries > MAX_RETRIES:
+        emit_diagnostic("retry budget exhausted")
+"""
+    violations = audit_production_source("ralph/pipeline/run_metrics.py", source)
+    assert not violations
+
+
+def test_transport_retry_budget_is_not_flagged() -> None:
+    """A transport repetition budget is not an agent-health decision."""
+    source = """
+def _invocation_retry_allowed_or_raise(retries_used, max_retries):
+    if retries_used < max_retries:
+        return True
+    raise RuntimeError("retry budget exhausted")
+"""
+    violations = audit_production_source(
+        "ralph/agents/invoke/_direct_mcp_recovery.py",
+        source,
+    )
+    assert not violations
+
+
+def test_test_reading_serialised_ledger_counter_is_flagged() -> None:
+    """A test that indexes into the serialised ledger snapshot must be rejected."""
+    source = """
+def test_snapshot(state):
+    assert state.ledger_snapshot["entries"]["development:claude"]["is_spent"] is True
+"""
+    violations = audit_test_source("tests/recovery/test_ledger_migration.py", source)
+    assert any(v.rule == "test_serialised_ledger_access" for v in violations), (
+        f"Expected test_serialised_ledger_access, got: {violations}"
+    )
+    flagged = next(v for v in violations if v.rule == "test_serialised_ledger_access")
+    assert flagged.path == "tests/recovery/test_ledger_migration.py"
+    assert "is_spent" in flagged.detail
+
+
+def test_test_reading_serialised_ledger_counter_via_get_is_flagged() -> None:
+    """Reading a serialised ledger counter through .get() must be rejected."""
+    source = """
+def test_snapshot(state):
+    reason = state.ledger_snapshot["entries"]["development:claude"].get("spent_reason")
+    assert reason is not None
+"""
+    violations = audit_test_source("tests/recovery/test_ledger_migration.py", source)
+    assert any(v.rule == "test_serialised_ledger_access" for v in violations), (
+        f"Expected test_serialised_ledger_access, got: {violations}"
+    )
+
+
+def test_test_reading_private_ledger_entry_counter_is_flagged() -> None:
+    """A test that reaches a ledger counter through a private attribute is rejected."""
+    source = """
+def test_private(ledger):
+    assert ledger._entries["development:claude"]["is_spent"] is True
+"""
+    violations = audit_test_source("tests/recovery/test_sample.py", source)
+    assert any(v.rule == "test_serialised_ledger_access" for v in violations), (
+        f"Expected test_serialised_ledger_access, got: {violations}"
+    )
+
+
+def test_test_public_ledger_answers_are_accepted() -> None:
+    """The owner's public answers stay the only facts a test may observe."""
+    source = """
+def test_public_seam(ledger, fact):
+    status = ledger.status("development", "claude")
+    assert status.is_spent is False
+    assert ledger.is_available("development", "claude")
+    outcome = ledger.record(fact)
+    assert outcome.demoted is False
+    snap = ledger.snapshot()
+    restored = AgentFailureLedger.from_snapshot(snap)
+    assert restored.is_available("development", "claude")
+"""
+    violations = audit_test_source("tests/recovery/test_sample.py", source)
+    assert not violations

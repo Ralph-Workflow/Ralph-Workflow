@@ -131,8 +131,9 @@ def test_reducer_priority_beats_same_agent_retry() -> None:
     assert chain.current_index == 0
 
 
-def test_reducer_recovery_none_preserves_forward_only_behaviour() -> None:
-    # Index 1 (opencode), retries at cap (3). With recovery=None, uses forward-only (advance to index 2).
+def test_reducer_recovery_none_fails_closed_instead_of_advancing_locally() -> None:
+    # Without an owner there is no verdict to apply, so the reducer must not
+    # advance the chain on its own authority: it fails the phase closed.
     state = _three_agent_state(current_index=1, retries=3)
     policy = _minimal_policy()
 
@@ -142,6 +143,10 @@ def test_reducer_recovery_none_preserves_forward_only_behaviour() -> None:
         policy,
         recovery=None,
     )
-    chain = reduced_state.chain_for_phase(reduced_state.phase)
+    chain = reduced_state.chain_for_phase("development")
     assert chain is not None
-    assert chain.current_index == 2
+    assert chain.current_index == 1
+    assert chain.retries == 3
+    assert reduced_state.phase == "failed_terminal"
+    assert reduced_state.last_error is not None
+    assert "no recovery owner is reachable" in reduced_state.last_error

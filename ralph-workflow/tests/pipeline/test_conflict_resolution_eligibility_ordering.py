@@ -188,8 +188,11 @@ def test_invoke_resolution_agent_ledger_takes_precedence_over_registry(
     )
     assert result is False
     assert executed == []
-    assert session.terminal_reason is ResolutionTerminationReason.TOOL_SURFACE_DEAD
-    assert session.last_failure_cause is ResolutionFailureCause.AGENT_FAILURE
+    # The ledger refused the launch: the candidate was UNAVAILABLE, not
+    # a dead tool surface, and no agent failure occurred (the agent
+    # never ran). The refusal charges no conflict budget.
+    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+    assert session.last_failure_cause is ResolutionFailureCause.NONE
     assert session.charge_conflict_budget is False
 
     # 2. Agent available in ledger, but barred by registry via CANDIDATE_UNAVAILABLE -> refused
@@ -444,8 +447,11 @@ def test_launch_refusal_consults_the_controller_ledger_when_the_session_has_none
 
     assert result is False
     assert executed == []
-    assert session.terminal_reason is ResolutionTerminationReason.TOOL_SURFACE_DEAD
-    assert session.last_failure_cause is ResolutionFailureCause.AGENT_FAILURE
+    # The refusal is the OWNER's verdict about the agent's health: the
+    # candidate is unavailable, the tool surface is alive, and no agent
+    # failure is recorded for an agent that never ran.
+    assert session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+    assert session.last_failure_cause is ResolutionFailureCause.NONE
     assert session.charge_conflict_budget is False
 
 

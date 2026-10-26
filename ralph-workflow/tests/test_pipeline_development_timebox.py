@@ -21,6 +21,7 @@ from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import DevelopmentTimeboxPolicy
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.recovery.classifier import FailureCategory
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.timeout_defaults import IDLE_TIMEOUT_SECONDS, MAX_SESSION_SECONDS
@@ -473,6 +474,7 @@ def test_validation_retry_preserves_elapsed_then_redirects_at_warning() -> None:
             failure_category=FailureCategory.ARTIFACT_VALIDATION,
         ),
         policy,
+        recovery=RecoveryController(options=RecoveryControllerOptions(cycle_cap=10)),
         routing_timing=warning_timing,
     )
     assert retried.phase == "development"
@@ -500,17 +502,30 @@ def test_agent_failure_fallback_preserves_development_elapsed_time() -> None:
         dev_timebox_consumed_seconds=4100.0,
         phase_chains={"development": AgentChainState(agents=["first", "fallback"], retries=3)},
     )
+    # The owner demotes the first agent (three unproductive attempts put it
+    # on cooldown), so its verdict is the fallover to the second agent.
+    ledger = AgentFailureLedger(clock=FakeClock(start=0.0))
+    for _ in range(3):
+        ledger.record(AttemptFact(phase="development", agent="first", artifact_valid=False))
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10),
+        ledger=ledger,
+    )
 
     fallback, _ = reducer_reduce(
         state,
         PipelineEvent.AGENT_FAILURE,
         policy,
+        recovery=controller,
         routing_timing=_timing(4100.0),
     )
 
     assert fallback.phase == "development"
     assert fallback.dev_timebox_active is True
     assert fallback.dev_timebox_consumed_seconds == 4100.0
+    chain = fallback.chain_for_phase("development")
+    assert chain is not None
+    assert chain.current_index == 1
 
 
 def test_recovery_controller_cannot_select_another_agent_after_warning() -> None:
