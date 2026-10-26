@@ -13,7 +13,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from ralph.agents.clock import Clock
@@ -343,6 +343,84 @@ class AgentFailureLedger:
             }
 
     @classmethod
+    def translate_legacy_entry(
+        cls,
+        guard_data: Mapping[str, object],
+        phase: str,
+        agent: str,
+        *,
+        consecutive_limit: int = 3,
+        total_limit: int = 9,
+    ) -> dict[str, object]:
+        """Translate a legacy progress snapshot dict into a single ledger entry snapshot."""
+        raw_streak = guard_data.get("streak", 0)
+        streak = (
+            int(raw_streak)
+            if isinstance(raw_streak, (int, float, str)) and not isinstance(raw_streak, bool)
+            else 0
+        )
+        streak = max(0, streak)
+        is_exhausted = bool(guard_data.get("is_exhausted", False))
+        failed_closed = bool(guard_data.get("failed_closed", False))
+        is_spent = is_exhausted or failed_closed or streak >= consecutive_limit
+        consecutive = max(streak, consecutive_limit) if is_spent else min(streak, consecutive_limit)
+        return {
+            "phase": phase,
+            "agent": agent,
+            "consecutive_unproductive": consecutive,
+            "total_unproductive": min(consecutive, total_limit),
+            "cooldown_until_ms": None,
+            "cooldown_reason": None,
+            "cooldown_count": 0,
+            "is_spent": is_spent,
+            "spent_reason": "legacy_exhausted" if is_spent else None,
+        }
+
+    @classmethod
+    def _from_legacy_snapshot(
+        cls,
+        guard_data: Mapping[str, object],
+        *,
+        clock: Clock,
+        phase: str = "development",
+        agent: str = "claude",
+        consecutive_limit: int = 3,
+        total_limit: int = 9,
+    ) -> AgentFailureLedger:
+        """Construct an AgentFailureLedger translated from a legacy snapshot."""
+        ledger = cls(
+            clock=clock,
+            consecutive_limit=consecutive_limit,
+            total_limit=total_limit,
+        )
+        entry_dict = cls.translate_legacy_entry(
+            guard_data,
+            phase,
+            agent,
+            consecutive_limit=consecutive_limit,
+            total_limit=total_limit,
+        )
+        raw_consecutive = entry_dict["consecutive_unproductive"]
+        consecutive = (
+            int(cast("int", raw_consecutive))
+            if isinstance(raw_consecutive, (int, float, str))
+            else 0
+        )
+        raw_total = entry_dict["total_unproductive"]
+        total = int(cast("int", raw_total)) if isinstance(raw_total, (int, float, str)) else 0
+        entry = _LedgerEntry(
+            consecutive_unproductive=consecutive,
+            total_unproductive=total,
+            cooldown_until_ms=None,
+            cooldown_reason=None,
+            cooldown_count=0,
+            is_spent=bool(entry_dict["is_spent"]),
+            spent_reason=cast("str | None", entry_dict["spent_reason"]),
+        )
+        ledger._entries[(phase, agent)] = entry
+        return ledger
+
+    @classmethod
     def from_snapshot(
         cls,
         snap: Mapping[str, object],
@@ -350,6 +428,10 @@ class AgentFailureLedger:
         clock: Clock,
     ) -> AgentFailureLedger:
         """Reconstruct an AgentFailureLedger from a snapshot dictionary."""
+        if "entries" not in snap and (
+            "streak" in snap or "max_identical" in snap or "failed_closed" in snap
+        ):
+            return cls._from_legacy_snapshot(snap, clock=clock)
         consecutive_limit = (
             int(snap["consecutive_limit"])
             if "consecutive_limit" in snap

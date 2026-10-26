@@ -47,16 +47,18 @@ def skipped_candidates(session: ResolutionSession, candidates: tuple[str, ...]) 
         from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
         from ralph.recovery.agent_failure_ledger import Spent
 
-        barred: set[str] = set(session.dead_tool_surfaces)
+        barred: set[str] = set()
         for name in candidates:
             status = ledger.status(PHASE_RESOLUTION, name)
             if isinstance(status, Spent) or (
                 session.recovery_controller is None and not status.is_eligible
             ):
                 barred.add(name)
+        for name in candidates:
+            if name in session.dead_tool_surfaces:
+                barred.add(name)
         return frozenset(name for name in candidates if name in barred)
-    barred_tuple = (*session.dead_tool_surfaces, *session.stop_dead_surfaces)
-    return frozenset(name for name in candidates if name in barred_tuple)
+    return frozenset(name for name in candidates if name in session.dead_tool_surfaces)
 
 
 def remember_dead_surface(session: ResolutionSession, agent_name: str) -> None:
@@ -66,13 +68,11 @@ def remember_dead_surface(session: ResolutionSession, agent_name: str) -> None:
     for agent health and exclusion; dead tool surfaces are only remembered
     when the registry permanently cannot produce the candidate.
     """
-    if session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE:
-        if agent_name not in session.dead_tool_surfaces:
-            session.dead_tool_surfaces = (*session.dead_tool_surfaces, agent_name)
-        return
-    ledger = _ledger_for_session(session)
-    if ledger is None and agent_name not in session.stop_dead_surfaces:
-        session.stop_dead_surfaces = (*session.stop_dead_surfaces, agent_name)
+    if (
+        session.terminal_reason is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+        and agent_name not in session.dead_tool_surfaces
+    ):
+        session.dead_tool_surfaces = (*session.dead_tool_surfaces, agent_name)
 
 
 def next_unvisited(offset: int, total: int, visited: set[int]) -> int:

@@ -22,6 +22,7 @@ from ralph.display.context import make_display_context
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
+from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import (
     RALPH_FAULT_ESCALATION_HITS,
     ResolutionSession,
@@ -30,6 +31,7 @@ from ralph.pipeline.conflict_resolution.session import (
 )
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from ralph.workspace.scope import WorkspaceScope
 from tests._conflict_resolution_phase_parity_seams import _policy_bundle
 from tests._pipeline_deps_factory import make_test_pipeline_deps
@@ -128,9 +130,10 @@ def test_confirmed_relay_error_interrupts_resolution_despite_fresh_subagent_outp
 
 
 def test_one_quoted_fault_does_not_escalate_on_repeated_watchdog_ticks() -> None:
-    session = ResolutionSession()
-    faults: list[ResolutionTerminationReason] = []
     clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock)
+    session = ResolutionSession(ledger=ledger)
+    faults: list[ResolutionTerminationReason] = []
     watchdog = IdleWatchdog(
         TimeoutPolicy(
             profile=TimeoutProfile.ACTIVITY_ONLY,
@@ -150,7 +153,10 @@ def test_one_quoted_fault_does_not_escalate_on_repeated_watchdog_ticks() -> None
         clock.advance(1.0)
         watchdog.evaluate(lambda: AgentExecutionState.WAITING_ON_CHILD)
     assert faults == []
-    assert session.stop_dead_surfaces == ()
+    assert session.terminal_reason is None
+    assert session.charge_conflict_budget is True
+    assert session.last_attempt_saw_activity is True
+    assert ledger.is_available(PHASE_RESOLUTION, "resolver") is True
 
 
 def test_silent_infrastructure_failure_does_not_charge_conflict_budget(

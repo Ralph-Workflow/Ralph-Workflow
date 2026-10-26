@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+from datetime import UTC, datetime
 
 import pytest
 
@@ -37,6 +38,12 @@ class _FakeRegistry:
 
 class _FakeClock:
     def monotonic(self) -> float:
+        return 0.0
+
+    def now_utc(self) -> datetime:
+        return datetime.fromtimestamp(0.0, tz=UTC)
+
+    def epoch(self) -> float:
         return 0.0
 
     def sleep(self, seconds: float) -> None:

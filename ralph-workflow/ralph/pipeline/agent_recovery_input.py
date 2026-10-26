@@ -7,9 +7,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pathlib import Path
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
+    from ralph.agents.clock import Clock
     from ralph.pipeline.effects import InvokeAgentEffect
 
 
@@ -44,3 +43,4 @@ class AgentRecoveryInput:
     # construction sites stay valid.
     completion_reprompt_used: bool = False
     worker_namespace: Path | None = None
+    clock: Clock | None = None

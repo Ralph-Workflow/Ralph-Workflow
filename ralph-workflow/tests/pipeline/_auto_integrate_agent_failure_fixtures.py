@@ -25,6 +25,7 @@ the resolution session sees no workspace change either way.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -81,6 +82,14 @@ class FrozenClock:
 
     def now(self) -> float:
         """Return the frozen wall-clock reading."""
+        return self._now
+
+    def now_utc(self) -> datetime:
+        """Return the frozen UTC wall-clock reading."""
+        return datetime.fromtimestamp(self._now, tz=UTC)
+
+    def epoch(self) -> float:
+        """Return the frozen epoch reading."""
         return self._now
 
     def monotonic(self) -> float:

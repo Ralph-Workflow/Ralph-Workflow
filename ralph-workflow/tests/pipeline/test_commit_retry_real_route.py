@@ -673,8 +673,7 @@ def test_repeated_lock_contention_preserves_and_advances_recovery_epoch(
     cleanup_4, _ = reduce(commit_3, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
     assert cleanup_4.phase == pipeline_policy.recovery.failed_route
     assert cleanup_4.recovery_epoch == 3
-    assert cleanup_4.progress_guard is not None
-    assert cleanup_4.progress_guard["is_exhausted"] is True
+    assert cleanup_4.last_execution_result_status == "failed"
 
     # On eventual commit success, recovery_epoch resets to 0
     commit_success_state, _ = reduce(commit_3, PipelineEvent.COMMIT_SUCCESS, pipeline_policy)

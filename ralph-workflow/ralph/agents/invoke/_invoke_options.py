@@ -50,6 +50,8 @@ if TYPE_CHECKING:
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
     from ralph.process.monitor import ProcessMonitor, SubagentPidSource
     from ralph.process.teardown import ProcessTeardown
+    from ralph.workspace.probe import WorkspaceChangeProbe
+    from ralph.workspace.protocol import Workspace
 
 
 class _CommandBuilder(Protocol):
@@ -142,6 +144,9 @@ class InvokeOptions:
     workspace_monitor_factory: (
         Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None
     ) = None
+    workspace_probe: WorkspaceChangeProbe | None = None
+    workspace: Workspace | None = None
+    phase: str | None = None
 
     model_flag: str | None = None
     session_id: str | None = None

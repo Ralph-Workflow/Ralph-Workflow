@@ -1,146 +1,130 @@
 # property-test: L — zero-progress cap and resume path
-"""Zero-progress retries are bounded, and retries do not re-emit the original task.
+"""Zero-progress retries are bounded by the ledger, and retries do not re-emit the original task.
 
-The recovery loop is bounded by THREE independent caps: a count cap
-(max_recovery_attempts), a wall-clock cap (session ceiling), and a
-zero-progress cap (RetryProgressGuard.record). The third cap is the
-property that closes the failure class: a retry that reproduces the
-prior attempt's signature makes no forward progress, and the loop must
-STOP once the same signature repeats ``MAX_IDENTICAL_RETRY_ATTEMPTS``
-times in a row.
+The recovery loop is bounded by the agent failure ledger (AgentFailureLedger).
+An unproductive retry that fails to produce a valid artifact or workspace changes
+makes no forward progress. The ledger enforces that consecutive unproductive
+attempts cannot exceed the consecutive limit (default 3), after which the agent is
+demoted into Cooldown. Changing output prose without workspace changes cannot evade
+this bound (PRODUCT_CRITERIA §3.5).
 
 The resume path audit confirms build_retry_error_block references the
 original prompt by path only — it never inlines the original task
 content, so a "resumed" agent does not restart from scratch.
-
-The structural fingerprint detects the restart-from-scratch pattern:
-when an agent opens its next attempt with a known opening-narrative
-pattern, the fingerprint collapses to the same structural key across
-attempts even when the concrete tokens differ. The structural side is
-the dominant signal when a restart pattern is detected; the literal
-side (RepetitionTracker.fingerprint + _NUMERIC_TOKEN.sub) is the
-fallback when no restart pattern is detected. This closes the failure
-class where the agent produces a fresh-looking narrative of the same
-restart behavior.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
-from ralph.pipeline._retry_progress_guard import (
-    MAX_IDENTICAL_RETRY_ATTEMPTS,
-    RetryProgressGuard,
-    retry_failure_signature,
-)
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.effect_executor import _write_agent_retry_prompt
+from ralph.recovery.agent_failure_ledger import (
+    AgentFailureLedger,
+    AttemptFact,
+    Cooldown,
+)
 from ralph.recovery.retry_prompt import build_retry_error_block
 
 _ORIGINAL_TASK_BODY_TOKEN = "ORIGINAL_TASK_BODY_TOKEN_xyz"
 
 
-def test_max_identical_constant_is_three() -> None:
-    """The cap is 3 — small enough to fail fast on a real spiral."""
-    assert MAX_IDENTICAL_RETRY_ATTEMPTS == 3
+def test_ledger_default_consecutive_limit_is_three() -> None:
+    """The default consecutive unproductive limit is 3."""
+    clock = FakeClock(start=100.0)
+    ledger = AgentFailureLedger(clock=clock)
+    assert ledger.consecutive_limit == 3
 
 
-def test_guard_aborts_after_three_identical_signatures() -> None:
-    """Three identical signatures trigger the cap on the third call."""
-    guard = RetryProgressGuard()
-    assert guard.record("sig-A") is False  # streak = 1, no cap
-    assert guard.record("sig-A") is False  # streak = 2, no cap
-    assert guard.record("sig-A") is True  # streak = 3, cap fires
+def test_ledger_demotes_after_three_consecutive_unproductive_attempts() -> None:
+    """Three consecutive unproductive attempts trigger demotion on the third call."""
+    clock = FakeClock(start=100.0)
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
+
+    out1 = ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
+    assert not out1.demoted
+    assert out1.status.is_eligible
+
+    out2 = ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
+    assert not out2.demoted
+    assert out2.status.is_eligible
+
+    out3 = ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
+    assert out3.demoted
+    assert isinstance(out3.status, Cooldown)
 
 
-def test_guard_does_not_cap_on_first_two_identical() -> None:
-    """The cap fires only on the third identical signature, not earlier."""
-    guard = RetryProgressGuard()
-    assert guard.record("sig-X") is False
-    assert guard.record("sig-X") is False
+def test_ledger_does_not_demote_on_first_two_unproductive() -> None:
+    """Demotion fires only on the third consecutive unproductive attempt, not earlier."""
+    clock = FakeClock(start=100.0)
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
+
+    out1 = ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
+    out2 = ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
+    assert not out1.demoted
+    assert not out2.demoted
 
 
-def test_guard_resets_streak_on_signature_change() -> None:
-    """A different signature between two identical signatures resets the streak."""
-    guard = RetryProgressGuard()
-    guard.record("sig-A")
-    guard.record("sig-A")
-    # Different signature resets the streak
-    assert guard.record("sig-B") is False  # new streak = 1
-    # sig-A again — only 1 in this new streak, not 3
-    assert guard.record("sig-A") is False  # streak = 2
-    assert guard.record("sig-A") is False  # streak = 3? — the new run reset
-    # Note: guard counts consecutive sigs, so after a change the streak
-    # starts fresh.
+def test_ledger_resets_streak_on_workspace_change() -> None:
+    """A workspace change resets the consecutive unproductive streak while total grows."""
+    clock = FakeClock(start=100.0)
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=3, total_limit=9)
+
+    ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
+    ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
+
+    # Genuine forward progress: workspace_changed=True
+    progress_out = ledger.record(
+        AttemptFact(
+            phase="development",
+            agent="claude",
+            artifact_valid=False,
+            workspace_changed=True,
+        )
+    )
+    assert not progress_out.demoted
+    assert progress_out.status.is_eligible
+
+    # Consecutive streak starts fresh: does not demote on next 2 attempts
+    next_out1 = ledger.record(
+        AttemptFact(phase="development", agent="claude", artifact_valid=False)
+    )
+    assert not next_out1.demoted
+    assert next_out1.status.is_eligible
+
+    next_out2 = ledger.record(
+        AttemptFact(phase="development", agent="claude", artifact_valid=False)
+    )
+    assert not next_out2.demoted
+    assert next_out2.status.is_eligible
+
+    # Third consecutive unproductive attempt demotes
+    next_out3 = ledger.record(
+        AttemptFact(phase="development", agent="claude", artifact_valid=False)
+    )
+    assert next_out3.demoted
 
 
-def test_volatile_uuid_token_stripped_from_signature() -> None:
-    """UUIDs in the failure text are stripped, so retries look identical."""
-    base_text = "ConnectionError: agent wedged"
-    sig_a = retry_failure_signature(base_text, ["run-12345 at 12:34"])
-    sig_b = retry_failure_signature(base_text, ["run-67890 at 23:45"])
-    # RepetitionTracker.fingerprint strips UUIDs (8+ hex chunks), and
-    # _NUMERIC_TOKEN strips the rest of the numerics.
-    assert sig_a == sig_b, f"volatile tokens must be stripped: {sig_a!r} vs {sig_b!r}"
+def test_varying_output_without_workspace_change_does_not_reset_streak() -> None:
+    """Varying prose output without valid artifact or workspace changes cannot evade demotion."""
+    clock = FakeClock(start=100.0)
+    ledger = AgentFailureLedger(clock=clock, consecutive_limit=3)
 
-
-def test_volatile_clock_stripped_from_signature() -> None:
-    """Different clocks produce identical signatures after normalization."""
-    base_text = "InactivityTimeout: no output for 300s"
-    sig_a = retry_failure_signature(base_text, ["00:01:23"])
-    sig_b = retry_failure_signature(base_text, ["00:09:87"])
-    assert sig_a == sig_b
-
-
-def test_volatile_pid_stripped_from_signature() -> None:
-    """Different PIDs produce identical signatures after normalization."""
-    base_text = "SubprocessFailed"
-    sig_a = retry_failure_signature(base_text, ["pid=12345"])
-    sig_b = retry_failure_signature(base_text, ["pid=67890"])
-    assert sig_a == sig_b
-
-
-def test_real_progress_changes_signature() -> None:
-    """A genuine textual change in the output (not just numerics) changes the sig."""
-    base_text = "SubprocessFailed"
-    sig_a = retry_failure_signature(base_text, ["hit error at 12:00:00"])
-    sig_b = retry_failure_signature(base_text, ["hit error at 12:00:00 (recovered)"])
-    assert sig_a != sig_b, "non-numeric word-level progress must change the sig"
-
-
-def test_guard_three_different_uuids_caps_correctly() -> None:
-    """End-to-end: 4 failures with different UUIDs — the 3rd identical sig caps."""
-    guard = RetryProgressGuard()
-    base = "InactivityTimeout"
-    sigs = [retry_failure_signature(base, [f"uuid-{i:04d}-aaaa at 12:00:00"]) for i in range(4)]
-    # All four should collapse to the same signature after normalization
-    assert len(set(sigs)) == 1, f"UUIDs should be normalized; got {sigs}"
-    results = [guard.record(s) for s in sigs]
-    # First three: streak reaches cap on the 3rd, so the third returns True
-    # (the cap fires when the streak reaches max_identical, halting the
-    # *next* attempt). The 4th would also return True because the streak
-    # is already at/past the cap. The contract: at most 3 attempts run
-    # before the cap blocks further retries.
-    assert results[0] is False
-    assert results[1] is False
-    assert results[2] is True
-
-
-def test_wiring_progress_guard_caps_after_three_identical_signatures() -> None:
-    """A fresh RetryProgressGuard caps after MAX_IDENTICAL_RETRY_ATTEMPTS identical sigs.
-
-    The wiring of RetryProgressGuard into effect_executor.py is documented
-    elsewhere (audit_test_policy excludes file-grep tests). The runtime
-    behavior — three identical signatures trip the cap — is the
-    property this test pins against the cap constant. A maintainer who
-    bumps the cap constant without adding capacity downstream fails here.
-    """
-    guard = RetryProgressGuard()
-    sig = retry_failure_signature("InactivityTimeout", ["uuid-1234-aaaa at 12:00:00"])
-    assert guard.record(sig) is False
-    assert guard.record(sig) is False
-    assert guard.record(sig) is True
+    # Three attempts with different rendered output but no workspace change
+    for attempt in range(1, 4):
+        outcome = ledger.record(
+            AttemptFact(
+                phase="development",
+                agent="claude",
+                artifact_valid=False,
+                workspace_changed=False,
+            )
+        )
+        if attempt < 3:
+            assert not outcome.demoted
+        else:
+            assert outcome.demoted
+            assert isinstance(outcome.status, Cooldown)
 
 
 def test_build_retry_error_block_leads_with_error_recovery_required() -> None:
@@ -170,26 +154,6 @@ def test_build_retry_error_block_contains_failure_summary() -> None:
     block = build_retry_error_block(failure_summary="REQUIRED_SUMMARY_TOKEN")
     assert "REQUIRED_SUMMARY_TOKEN" in block
     assert "PREVIOUS ATTEMPT FAILED" in block
-
-
-def test_max_identical_constant_is_positive_int() -> None:
-    """The cap is a positive int, enforced at import time."""
-    assert isinstance(MAX_IDENTICAL_RETRY_ATTEMPTS, int)
-    assert MAX_IDENTICAL_RETRY_ATTEMPTS >= 1
-
-
-@pytest.mark.parametrize(
-    "reason,output,expected_contains",
-    [
-        ("InactivityTimeout", ["00:00:01"], "inactivity"),
-        ("NetworkError", ["HTTP 503 at host"], "network"),
-        ("SubprocessFailed", ["command failed with code 1"], "subprocessfailed"),
-    ],
-)
-def test_signature_includes_reason(reason: str, output: list[str], expected_contains: str) -> None:
-    """The signature embeds the reason in lowercased, normalized form."""
-    sig = retry_failure_signature(reason, output)
-    assert expected_contains.lower() in sig.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -278,35 +242,3 @@ def test_property_l_new_session_with_id_prompt_does_not_inline(
     assert _ORIGINAL_TASK_BODY_TOKEN not in content
     assert "ORIGINAL TASK PROMPT:" not in content
     assert "continue from where you left off" in content.lower()
-
-
-def test_property_l_structural_signature_caps_on_restart_narrative() -> None:
-    """The structural fingerprint caps a restart-narrative spiral on the 3rd attempt.
-
-    Three attempts whose rendered output opens with restart-narrative text
-    but with different concrete tokens (file names, paths, dashes) MUST
-    collapse to the same structural fingerprint, and the guard MUST trip
-    on the third attempt. The equality assertion is the GATE: if the
-    structural-collapse contract fails (e.g. the implementation reverts
-    to a concatenation that includes the divergent literal path token),
-    then ``len(set(sigs)) > 1`` and this test fails with a clear message
-    naming the divergence, BEFORE the guard-trip assertion would have
-    passed silently.
-    """
-    guard = RetryProgressGuard()
-    reason = "an inactivity timeout"
-    outputs = [
-        ["I will start by reading the prompt at /tmp/PROMPT.md"],
-        ["I will start by reading the prompt at /tmp/PROMPT_v2.md"],
-        ["I will start by reading the prompt at /tmp/PROMPT_draft.md"],
-    ]
-    sigs = [retry_failure_signature(reason, out) for out in outputs]
-    assert len(set(sigs)) == 1, (
-        f"three restart-narrative outputs with different concrete tokens "
-        f"must collapse to one structural fingerprint; got {sigs}"
-    )
-    results = [guard.record(s) for s in sigs]
-    assert results == [False, False, True], (
-        f"the structural-dominant composition must trip the cap on the 3rd "
-        f"identical structural signature; got {results}"
-    )

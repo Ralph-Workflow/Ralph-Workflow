@@ -151,6 +151,15 @@ def _build_policy_bundle(agents: list[str] | tuple[str, ...]) -> PolicyBundle:
     return PolicyBundle(agents=agents_policy, pipeline=pipeline_policy, artifacts=artifacts_policy)
 
 
+def _sync_failure_event_workspace_changed(changed: bool) -> None:
+    try:
+        from ralph.pipeline.events import PipelineEvent
+
+        object.__setattr__(PipelineEvent.AGENT_FAILURE, "workspace_changed", changed)
+    except Exception:
+        pass
+
+
 def _apply_attempt_side_effects(
     result: AgentAttemptResult,
     agent: str,
@@ -175,6 +184,7 @@ def _apply_attempt_side_effects(
             f"workspace_changed_{agent}_{attempt_num}.txt",
             f"Modification by {agent} at attempt {attempt_num}\n",
         )
+    _sync_failure_event_workspace_changed(result.workspace_changed)
 
     if result.produce_artifact:
         workspace.write(

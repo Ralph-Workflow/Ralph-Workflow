@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.liveness import LivenessProbe
     from ralph.process.teardown import ProcessTeardown
+    from ralph.workspace.probe import WorkspaceChangeProbe
+    from ralph.workspace.protocol import Workspace
 
 if TYPE_CHECKING:
 
@@ -52,6 +54,9 @@ class AgentRunCtx:
     evaluate_completion_fn: _EvalCompletionFn | None = None
     expected_session_id: str | None = None
     context: InvocationContext | None = None
+    workspace_probe: WorkspaceChangeProbe | None = None
+    workspace: Workspace | None = None
+    phase: str | None = None
     # Live pipeline signals the watchdog consults on every evaluate()
     # call so the StuckClassifier gate can return DUPLICATE_KILL
     # (when the pipeline is already in a wait state) or

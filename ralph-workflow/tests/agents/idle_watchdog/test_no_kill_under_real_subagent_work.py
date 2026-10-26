@@ -50,6 +50,7 @@ from ralph.agents.idle_watchdog import (
     classify_stuck,
 )
 from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
+from ralph.agents.timeout_clock import FakeClock
 
 _FIXTURE_ROOT = Path(
     "tests/agents/invoke/fixtures/claude_interactive_real_capture/"
@@ -149,16 +150,17 @@ def test_r5_replay_does_not_fire_during_real_capture_window(
     """
     _project_dir, session_id, _project_key = _setup_shadow_home(monkeypatch, tmp_path)
 
-    class _FakeClock:
-        def monotonic(self) -> float:
-            return 100.0
-
     config = TimeoutPolicy(
         idle_timeout_seconds=300.0,
         silent_subagent_seconds=180.0,
         activity_evidence_ttl_seconds=30.0,
     )
-    watchdog = IdleWatchdog(config=config, clock=_FakeClock(), listener=lambda evt: None)
+    clock = FakeClock(start=100.0)
+    watchdog = IdleWatchdog(
+        config=config,
+        clock=clock,
+        listener=lambda evt: None,
+    )
 
     subagents_dir = _project_dir / session_id / "subagents"
     events_replayed = _replay_subagent_transcripts(subagents_dir, watchdog)
@@ -171,7 +173,7 @@ def test_r5_replay_does_not_fire_during_real_capture_window(
     # subagent channel; ``classify_stuck_now`` therefore returns
     # ``THINKING`` (not ``SILENT_SUBAGENT``) and the gate does
     # not fire.
-    summary = watchdog.last_evidence_summary(_FakeClock().monotonic())
+    summary = watchdog.last_evidence_summary(clock.monotonic())
     subagent_channel = summary.by_name(ChannelName.SUBAGENT_LIVENESS)
     assert subagent_channel is not None
     assert subagent_channel.counter is not None and subagent_channel.counter > 0
@@ -209,12 +211,8 @@ def test_r5_synthetic_envelope_does_not_reset_idle_baseline(
     _setup_shadow_home(monkeypatch, tmp_path)
     parent_path = _fixture_root() / "a4731909-31bc-4ad5-bac9-cd59ee7e0615.jsonl"
 
-    class _FakeClock:
-        def monotonic(self) -> float:
-            return 0.0
-
     config = TimeoutPolicy(idle_timeout_seconds=300.0, silent_subagent_seconds=180.0)
-    watchdog = IdleWatchdog(config=config, clock=_FakeClock(), listener=lambda evt: None)
+    watchdog = IdleWatchdog(config=config, clock=FakeClock(start=0.0), listener=lambda evt: None)
 
     parser = ClaudeInteractiveParser()
     with parent_path.open("r", encoding="utf-8") as handle:
@@ -289,16 +287,16 @@ def test_r5_subagent_tool_use_resets_idle_baseline(
         encoding="utf-8",
     )
 
-    class _FakeClock:
-        def monotonic(self) -> float:
-            return 100.0
-
     config = TimeoutPolicy(
         idle_timeout_seconds=300.0,
         silent_subagent_seconds=180.0,
         activity_evidence_ttl_seconds=30.0,
     )
-    watchdog = IdleWatchdog(config=config, clock=_FakeClock(), listener=lambda evt: None)
+    watchdog = IdleWatchdog(
+        config=config,
+        clock=FakeClock(start=100.0),
+        listener=lambda evt: None,
+    )
 
     subagents_dir = project_dir / session_id / "subagents"
     events_replayed = _replay_subagent_transcripts(subagents_dir, watchdog)
@@ -362,16 +360,16 @@ def test_r5_silent_parent_and_silent_children_still_fire(
         encoding="utf-8",
     )
 
-    class _FakeClock:
-        def monotonic(self) -> float:
-            return 0.0
-
     config = TimeoutPolicy(
         idle_timeout_seconds=300.0,
         silent_subagent_seconds=180.0,
         activity_evidence_ttl_seconds=30.0,
     )
-    watchdog = IdleWatchdog(config=config, clock=_FakeClock(), listener=lambda evt: None)
+    watchdog = IdleWatchdog(
+        config=config,
+        clock=FakeClock(start=0.0),
+        listener=lambda evt: None,
+    )
 
     subagents_dir = project_dir / session_id / "subagents"
     events_replayed = _replay_subagent_transcripts(subagents_dir, watchdog)

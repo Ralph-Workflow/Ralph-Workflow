@@ -11,6 +11,7 @@ Validates that:
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -486,6 +487,12 @@ def test_fake_clock_shows_no_invocation_before_eligibility(
         def now(self) -> float:
             return self._time
 
+        def now_utc(self) -> datetime:
+            return datetime.fromtimestamp(self._time, tz=UTC)
+
+        def epoch(self) -> float:
+            return self._time
+
         def monotonic(self) -> float:
             return self._time
 
@@ -730,7 +737,7 @@ def test_all_cooldown_outer_integration_preserves_rebase_state_not_failed(
         reset_executors(token)
 
 
-def test_fault_activity_text_does_not_add_agent_to_stop_dead_surfaces() -> None:
+def test_fault_activity_text_does_not_exclude_candidate() -> None:
     """WU-1: Observing fault text does NOT exclude the agent or add to excluded surfaces."""
     from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidates
     from ralph.pipeline.conflict_resolution.session import wrap_activity_listener

@@ -950,23 +950,37 @@ def test_invoker_returning_outcome_success_has_cause_none(
 
 
 def test_strategy_rotation_preserves_spent_budget_and_candidate_state() -> None:
-    session = ResolutionSession()
+    from ralph.agents.timeout_clock import FakeClock
+    from ralph.pipeline.state import PipelineState
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock)
+    chain = AgentChainState(agents=["claude", "pi"], current_index=1, retries=1)
+    state = PipelineState(phase=PHASE_RESOLUTION).with_phase_chain(PHASE_RESOLUTION, chain)
+
+    session = ResolutionSession(ledger=ledger, recovery_state=state)
     session.rounds_spent = 3
     session.chain_cursor = 1
-    session.stop_dead_surfaces = ("claude",)
     session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
 
     begin_resolution_stop(session, is_strategy_rotation=True)
     assert session.rounds_spent == 3
     assert session.chain_cursor == 1
-    assert "claude" in session.stop_dead_surfaces
     assert session.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
+    assert isinstance(session.recovery_state, PipelineState)
+    res_chain = session.recovery_state.chain_for_phase(PHASE_RESOLUTION)
+    assert res_chain is not None
+    assert res_chain.current_index == 1
 
     begin_resolution_stop(session, is_strategy_rotation=False)
     assert session.rounds_spent == 0
     assert session.chain_cursor == 0
-    assert session.stop_dead_surfaces == ()
     assert session.last_failure_cause == ResolutionFailureCause.NONE
+    assert isinstance(session.recovery_state, PipelineState)
+    res_chain_reset = session.recovery_state.chain_for_phase(PHASE_RESOLUTION)
+    assert res_chain_reset is not None
+    assert res_chain_reset.current_index == 0
 
 
 def test_strategy_rotation_does_not_replenish_driver_round_cap(

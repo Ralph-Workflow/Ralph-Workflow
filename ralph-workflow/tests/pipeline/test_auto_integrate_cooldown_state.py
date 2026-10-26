@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
@@ -27,6 +28,18 @@ _PHASE = "rebase_conflict_resolution"
 class _FrozenClock:
     def monotonic(self) -> float:
         return 1_000.0
+
+    def now_utc(self) -> datetime:
+        return datetime.fromtimestamp(1_000.0, tz=UTC)
+
+    def epoch(self) -> float:
+        return 1_000.0
+
+    def sleep(self, seconds: float) -> None:
+        pass
+
+    def wait_for_event(self, event: object, seconds: float) -> bool:
+        return False
 
 
 def _config() -> UnifiedConfig:

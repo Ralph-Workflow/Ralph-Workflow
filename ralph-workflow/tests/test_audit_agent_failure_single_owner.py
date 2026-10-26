@@ -8,8 +8,10 @@ if TYPE_CHECKING:
     import pytest
 
 from ralph.testing.audit_agent_failure_single_owner import (
+    TEMPORARY_TRANSITIONAL_RULES,
     audit_production_source,
     audit_test_source,
+    is_transitional_allowed,
 )
 
 
@@ -303,3 +305,145 @@ def observe_fault(session, event, agent_name):
     assert len(violations) >= 3
     assert any("ralph_fault_hits" in v.detail for v in violations)
     assert any("stop_dead_surfaces" in v.detail for v in violations)
+
+
+def test_competing_retry_progress_guard_class_flagged() -> None:
+    source = """
+class RetryProgressGuard:
+    pass
+"""
+    violations = audit_production_source("ralph/pipeline/custom_guard.py", source)
+    assert len(violations) >= 1
+    assert any(
+        v.rule == "production_streak_counter_state" and "RetryProgressGuard" in v.detail
+        for v in violations
+    )
+
+
+def test_competing_retry_progress_guard_import_flagged() -> None:
+    source = """
+from ralph.pipeline._retry_progress_guard import RetryProgressGuard
+"""
+    violations = audit_production_source("ralph/pipeline/custom_runner.py", source)
+    assert len(violations) >= 1
+    assert any(
+        v.rule == "production_legacy_tracker_import" and "RetryProgressGuard" in v.detail
+        for v in violations
+    )
+
+
+def test_competing_progress_guard_attribute_and_param_flagged() -> None:
+    source = """
+class WorkerSession:
+    def __init__(self, progress_guard=None):
+        self.progress_guard = progress_guard
+"""
+    violations = audit_production_source("ralph/pipeline/custom_session.py", source)
+    assert len(violations) >= 2
+    assert any(
+        v.rule == "production_streak_counter_state" and "progress_guard" in v.detail
+        for v in violations
+    )
+
+
+def test_competing_retry_failure_signature_function_flagged() -> None:
+    source = """
+def retry_failure_signature(reason: str, lines: list[str]) -> str:
+    return reason
+"""
+    violations = audit_production_source("ralph/pipeline/custom_sig.py", source)
+    assert len(violations) >= 1
+    assert any(
+        v.rule == "production_streak_counter_state" and "retry_failure_signature" in v.detail
+        for v in violations
+    )
+
+
+def test_competing_max_identical_retry_attempts_assignment_and_compare_flagged() -> None:
+    source = """
+MAX_IDENTICAL_RETRY_ATTEMPTS = 3
+
+def check_attempts(retries: int) -> bool:
+    return retries >= MAX_IDENTICAL_RETRY_ATTEMPTS
+"""
+    violations = audit_production_source("ralph/pipeline/custom_cap.py", source)
+    assert len(violations) >= 2
+    assert any("MAX_IDENTICAL_RETRY_ATTEMPTS" in v.detail for v in violations)
+    assert any("retry cap" in v.detail for v in violations)
+
+
+def test_test_deleted_progress_guard_tracker_access_and_import_flagged() -> None:
+    source = """
+from ralph.pipeline._retry_progress_guard import (
+    MAX_IDENTICAL_RETRY_ATTEMPTS,
+    RetryProgressGuard,
+    retry_failure_signature,
+)
+
+def test_guard(state):
+    guard = state.progress_guard
+    assert guard is None
+"""
+    violations = audit_test_source("tests/custom/test_sample.py", source)
+    assert len(violations) >= 4
+    assert any(
+        v.rule == "test_deleted_tracker_import" and "RetryProgressGuard" in v.detail
+        for v in violations
+    )
+    assert any(
+        v.rule == "test_deleted_tracker_import" and "MAX_IDENTICAL_RETRY_ATTEMPTS" in v.detail
+        for v in violations
+    )
+    assert any(
+        v.rule == "test_deleted_tracker_import" and "retry_failure_signature" in v.detail
+        for v in violations
+    )
+    assert any(
+        v.rule == "test_deleted_tracker_access" and "progress_guard" in v.detail for v in violations
+    )
+
+
+def test_retry_progress_guard_module_banned() -> None:
+    violations = audit_production_source("ralph/pipeline/_retry_progress_guard.py", "x = 1")
+    assert len(violations) == 1
+    assert violations[0].rule == "production_legacy_tracker_module"
+    assert "_retry_progress_guard" in violations[0].detail
+
+
+def test_retry_progress_guard_module_import_banned() -> None:
+    source = """
+import ralph.pipeline._retry_progress_guard
+"""
+    violations = audit_production_source("ralph/pipeline/runner.py", source)
+    assert len(violations) >= 1
+    assert any(
+        v.rule == "production_legacy_tracker_import" and "_retry_progress_guard" in v.detail
+        for v in violations
+    )
+
+
+def test_transitional_rules_consolidated() -> None:
+    # Only surviving conflict resolution files with legitimate needs remain
+    assert set(TEMPORARY_TRANSITIONAL_RULES.keys()) == {
+        "ralph/pipeline/conflict_resolution/session.py",
+        "ralph/pipeline/conflict_resolution/chain_candidates.py",
+    }
+    # No test files are in transitional rules
+    assert not any(k.startswith("tests/") for k in TEMPORARY_TRANSITIONAL_RULES)
+    # _driver_rounds.py was fully cleaned up
+    assert (
+        "ralph/pipeline/conflict_resolution/_driver_rounds.py" not in TEMPORARY_TRANSITIONAL_RULES
+    )
+    # No deleted U4b modules are in transitional rules
+    assert not any("retry_progress_guard" in k for k in TEMPORARY_TRANSITIONAL_RULES)
+
+
+def test_u4b_bans_permanently_promoted() -> None:
+    for sym in (
+        "RetryProgressGuard",
+        "progress_guard",
+        "retry_failure_signature",
+        "MAX_IDENTICAL_RETRY_ATTEMPTS",
+    ):
+        assert not is_transitional_allowed("ralph/pipeline/state.py", sym)
+        assert not is_transitional_allowed("tests/test_retry_budget_durability.py", sym)

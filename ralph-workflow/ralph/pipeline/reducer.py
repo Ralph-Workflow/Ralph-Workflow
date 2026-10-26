@@ -492,7 +492,7 @@ def _reduce_pure(
             return recovered_agent_failure
         if recovery is not None:
             new_st, effs = _handle_agent_failure(
-                state, pipeline_policy, routing_timing, recovery=recovery
+                state, pipeline_policy, routing_timing, recovery=recovery, event=event
             )
             return _restore_work_units(state, new_st), effs
     worker_result = _dispatch_worker_event(
@@ -709,6 +709,7 @@ def _handle_phase_failure(
             policy=policy,
             routing_timing=routing_timing,
             failure_category=event.failure_category,
+            event=event,
         )
     # Non-recoverable failures: check workflow_fallback before global failure route.
     # Policy-declared workflow_fallback takes precedence over recovery.failed_route.
@@ -900,6 +901,7 @@ def _handle_agent_failure(
     *,
     recovery: RecoveryController | None = None,
     failure_category: FailureCategory | None = None,
+    event: Event | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle agent failure with retry/fallback logic."""
     chain = state.chain_for_phase(state.phase)
@@ -929,22 +931,20 @@ def _handle_agent_failure(
             else None
         )
         if current_agent is not None:
-            from ralph.recovery.agent_failure_ledger import AttemptFact
-
-            outcome = recovery.ledger.record(
-                AttemptFact(
-                    phase=state.phase,
-                    agent=current_agent,
-                    artifact_valid=False,
-                    workspace_changed=False,
-                    free_retry_category=True,
-                )
+            raw_event_ws: object = cast("object", getattr(event, "workspace_changed", False))
+            raw_failure_ws: object = cast(
+                "object", getattr(PipelineEvent.AGENT_FAILURE, "workspace_changed", False)
             )
-            if outcome.demoted and len(chain.agents) == 1:
-                demoted_reason = (
-                    f"Sole agent '{current_agent}' demoted in phase '{state.phase}': "
-                    f"unproductive attempt limit reached ({outcome.reason})"
-                )
+            raw_changed: object = raw_event_ws if event is not None else raw_failure_ws
+            workspace_changed: bool = bool(raw_changed)
+            demoted_reason = recovery.record_attempt_fact(
+                state.phase,
+                current_agent,
+                artifact_valid=False,
+                workspace_changed=workspace_changed,
+                free_retry_category=True,
+            )
+            if demoted_reason is not None and len(chain.agents) == 1:
                 logger.warning(demoted_reason)
                 return _enter_failed_recovery(state, demoted_reason, policy)
         selection = recovery.preferred_agent_index(
@@ -1679,8 +1679,6 @@ def _handle_commit_failure(
         if lock_retry is not None:
             return lock_retry
         if cleared_state.recovery_epoch >= _MAX_COMMIT_RECOVERY_ATTEMPTS:
-            from ralph.pipeline._retry_progress_guard import RetryProgressGuard
-
             logger.bind(component="policy.routing").error(
                 "commit-recovery counter exhausted (epoch={}, cap={}); "
                 "stopping automated recovery after persistent failure: {}",
@@ -1696,7 +1694,6 @@ def _handle_commit_failure(
             return terminal_state.copy_with(
                 recovery_epoch=_MAX_COMMIT_RECOVERY_ATTEMPTS,
                 last_execution_result_status="failed",
-                progress_guard=RetryProgressGuard(failed_closed=True).snapshot(),
             ), effects
 
         recovery_phase = _resolve_commit_recovery_phase(cleared_state, policy)

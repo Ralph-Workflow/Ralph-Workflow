@@ -159,6 +159,7 @@ from ralph.mcp.transport.nanocoder import (
 )
 from ralph.mcp.transport.opencode import build_opencode_provider_config
 from ralph.mcp.transport.pi import PI_MCP_EXTENSION_ENV
+from ralph.pipeline.events.pipeline_event import PipelineEvent
 from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import DefaultLivenessProbe
 from ralph.process.manager import get_process_manager
@@ -168,6 +169,7 @@ from ralph.timeout_defaults import (
     CHILD_PROGRESS_TTL_SECONDS,
     CHILD_STALE_LABEL_TTL_SECONDS,
 )
+from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
@@ -175,6 +177,8 @@ if TYPE_CHECKING:
     from ralph.agents.timeout_clock import Clock
     from ralph.config.models import AgentConfig
     from ralph.mcp.upstream.config import UpstreamMcpServer
+    from ralph.workspace.probe import WorkspaceChangeProbe
+    from ralph.workspace.protocol import Workspace
 
 
 def _make_child_registry(opts: InvokeOptions) -> ChildLivenessRegistry:
@@ -391,6 +395,73 @@ def _has_cursor_file_credentials(config_home: Path | None, home: Path | None = N
     return False
 
 
+def _observe_probe_before(
+    opts: InvokeOptions,
+) -> tuple[WorkspaceChangeProbe | None, Workspace | None, str]:
+    probe = opts.workspace_probe
+    if probe is None:
+        return None, None, ""
+    probe_workspace = opts.workspace
+    if probe_workspace is None and opts.workspace_path is not None:
+        probe_workspace = FsWorkspace(opts.workspace_path)
+    probe_phase = opts.phase or ""
+    if probe_workspace is not None:
+        probe.observe_before(probe_phase, probe_workspace)
+    return probe, probe_workspace, probe_phase
+
+
+def _record_probe_failure(
+    probe: WorkspaceChangeProbe | None,
+    probe_workspace: Workspace | None,
+    probe_phase: str,
+    exc: BaseException,
+) -> None:
+    if probe is None or probe_workspace is None:
+        return
+    changed = probe.has_changed(probe_phase, probe_workspace)
+    if isinstance(exc, AgentInvocationError):
+        exc.workspace_changed = changed
+    else:
+        with contextlib.suppress(Exception):
+            object.__setattr__(exc, "workspace_changed", changed)
+    with contextlib.suppress(Exception):
+        object.__setattr__(PipelineEvent.AGENT_FAILURE, "workspace_changed", changed)
+
+
+def _dispatch_execution_and_observe(
+    cmd: list[str],
+    ctx: AgentRunCtx,
+    opts: InvokeOptions,
+    transport: AgentTransport,
+    prompt_file: str,
+    requires_pty: bool,
+) -> Iterator[str]:
+    probe, probe_workspace, probe_phase = _observe_probe_before(opts)
+    try:
+        if requires_pty:
+            if transport in {
+                AgentTransport.CLAUDE_INTERACTIVE,
+                AgentTransport.NANOCODER,
+            }:
+                yield from _run_shared_interactive_pty(cmd, ctx, opts, transport, prompt_file)
+            elif transport == AgentTransport.AGY:
+                run_id = (opts.extra_env or {}).get(str(MCP_RUN_ID_ENV)) or str(uuid4())
+                if opts.workspace_path is not None:
+                    _clear_session_completion_sentinel(opts.workspace_path, run_id)
+                yield from run_pty_and_read_lines(
+                    cmd,
+                    ctx,
+                    PtyExtras(expected_session_id=run_id),
+                )
+            else:
+                yield from run_pty_and_read_lines(cmd, ctx, PtyExtras())
+        else:
+            yield from run_subprocess_and_read_lines(cmd, ctx)
+    except BaseException as exc:
+        _record_probe_failure(probe, probe_workspace, probe_phase, exc)
+        raise
+
+
 def invoke_agent(
     config: AgentConfig,
     prompt_file: str,
@@ -561,38 +632,21 @@ def invoke_agent(
             input_prompt=DEFAULT_FILE_BACKEND.read_text(Path(prompt_file), encoding="utf-8"),
             relay_activity_sink_register=opts.relay_activity_sink_register,
             relay_health_error=opts.relay_health_error,
+            workspace_probe=opts.workspace_probe,
+            workspace=opts.workspace,
+            phase=opts.phase,
         )
         ctx = replace(ctx, expected_session_id=opts.session_id)
 
         transport = _agent_transport(config)
         support = default_catalog().get(config.cmd)
-        # Transport-driven, NOT name-driven: the AGY transport requires a
-        # PTY by transport identity; every other transport opts in through
-        # the declarative ``support.spec.requires_pty`` flag. No agent-name
-        # substring checks on this path.
         requires_pty = transport == AgentTransport.AGY
         if support is not None and isinstance(support.spec, AgentSpec):
             requires_pty = requires_pty or support.spec.requires_pty
 
-        if requires_pty:
-            if transport in {
-                AgentTransport.CLAUDE_INTERACTIVE,
-                AgentTransport.NANOCODER,
-            }:
-                yield from _run_shared_interactive_pty(cmd, ctx, opts, transport, prompt_file)
-            elif transport == AgentTransport.AGY:
-                run_id = (opts.extra_env or {}).get(str(MCP_RUN_ID_ENV)) or str(uuid4())
-                if opts.workspace_path is not None:
-                    _clear_session_completion_sentinel(opts.workspace_path, run_id)
-                yield from run_pty_and_read_lines(
-                    cmd,
-                    ctx,
-                    PtyExtras(expected_session_id=run_id),
-                )
-            else:
-                yield from run_pty_and_read_lines(cmd, ctx, PtyExtras())
-        else:
-            yield from run_subprocess_and_read_lines(cmd, ctx)
+        yield from _dispatch_execution_and_observe(
+            cmd, ctx, opts, transport, prompt_file, requires_pty
+        )
 
         _log_workspace_completion(monitor)
     finally:

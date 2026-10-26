@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 __all__ = [
     "ATTEMPT_FAILED_EVIDENCE",
     "ResolutionSession",
+    "ResolutionTerminationReason",
     "begin_resolution_stop",
     "classify_failed_resolution_attempt",
     "conflict_chain_max_retries",
@@ -471,26 +472,18 @@ def _candidate_cannot_be_launched(
     reach the driver as a resolver's verdict.
     """
     if session is not None:
-        if agent_name in session.dead_tool_surfaces:
+        if session.ledger is not None and not session.ledger.is_available(
+            PHASE_RESOLUTION, agent_name
+        ):
             logger.warning(
-                "conflict_resolution: refusing to re-enter known-dead tool surface '{}'",
+                "conflict_resolution: refusing to launch unavailable agent '{}'",
                 agent_name,
             )
             session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
             session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
             session.charge_conflict_budget = False
             return True
-        if session.ledger is not None:
-            if not session.ledger.is_available(PHASE_RESOLUTION, agent_name):
-                logger.warning(
-                    "conflict_resolution: refusing to launch unavailable agent '{}'",
-                    agent_name,
-                )
-                session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
-                session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-                session.charge_conflict_budget = False
-                return True
-        elif agent_name in session.stop_dead_surfaces:
+        if agent_name in session.dead_tool_surfaces:
             logger.warning(
                 "conflict_resolution: refusing to re-enter known-dead tool surface '{}'",
                 agent_name,

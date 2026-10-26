@@ -40,7 +40,6 @@ from __future__ import annotations
 import ast
 from contextlib import suppress
 from dataclasses import replace
-from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
@@ -530,8 +529,15 @@ class RecoveryController:
         *,
         options: RecoveryControllerOptions | None = None,
         ledger: AgentFailureLedger | None = None,
+        reset_hint_backend: FileBackend | None = None,
     ) -> None:
         opts = options or RecoveryControllerOptions()
+        self._reset_hint_backend: FileBackend = (
+            reset_hint_backend if reset_hint_backend is not None else DEFAULT_FILE_BACKEND
+        )
+        self._phase_chains: dict[
+            str, tuple[str, ...]
+        ] = {}  # bounded-accumulator-ok: bounded by pipeline phase count
         self._cap = CycleCap(cap=opts.cycle_cap)
         self._classifier = opts.classifier or FailureClassifier()
         self._bus = opts.event_bus or FailureEventBus()
@@ -674,6 +680,54 @@ class RecoveryController:
             artifact_valid=artifact_valid,
         )
 
+    def _get_chain_agents(self, phase: str) -> tuple[str, ...] | None:
+        chain_config = self._chain_config_for_phase(phase)
+        if chain_config is not None:
+            return tuple(chain_config.agents)
+        return self._phase_chains.get(phase)
+
+    def register_phase_chain(self, phase: str, agents: Sequence[str]) -> None:
+        """Register the known agents for a phase chain (seam for testing sole-agent scenarios)."""
+        self._phase_chains[phase] = tuple(agents)
+
+    def record_attempt_fact(
+        self,
+        phase: str,
+        agent: str,
+        *,
+        artifact_valid: bool,
+        workspace_changed: bool,
+        free_retry_category: bool = False,
+    ) -> str | None:
+        """Record attempt fact in the ledger; return a demotion error message if sole agent demoted."""
+        fact = AttemptFact(
+            phase=phase,
+            agent=agent,
+            artifact_valid=artifact_valid,
+            workspace_changed=workspace_changed,
+            free_retry_category=free_retry_category,
+        )
+        outcome = self._ledger.record(fact)
+
+        if outcome.demoted:
+            logger.warning(
+                "Agent '{}' demoted in phase '{}' (consecutive={}, total={}, reason={})",
+                agent,
+                phase,
+                outcome.consecutive_unproductive,
+                outcome.total_unproductive,
+                outcome.reason,
+            )
+            chain_agents = self._get_chain_agents(phase)
+            if chain_agents is not None and len(chain_agents) == 1 and chain_agents[0] == agent:
+                return (
+                    f"Sole agent '{agent}' demoted in phase '{phase}': "
+                    f"unproductive attempt limit reached ({outcome.reason})"
+                )
+            if outcome.status.is_spent:
+                self.note_retry_exhaustion(phase, agent)
+        return None
+
     def _record_attempt_fact(
         self,
         state: PipelineState,
@@ -688,37 +742,20 @@ class RecoveryController:
         """Record attempt fact in the ledger; return a demotion error message if sole agent demoted."""
         if current_agent is None:
             return None
+        if chain is not None:
+            self._phase_chains[phase] = tuple(chain.agents)
         is_free_retry = failure.category in (
             FailureCategory.ENVIRONMENTAL,
             FailureCategory.ARTIFACT_VALIDATION,
             FailureCategory.AMBIGUOUS,
         )
-        fact = AttemptFact(
-            phase=phase,
-            agent=current_agent,
+        return self.record_attempt_fact(
+            phase,
+            current_agent,
             artifact_valid=artifact_valid,
             workspace_changed=workspace_changed,
             free_retry_category=is_free_retry,
         )
-        outcome = self._ledger.record(fact)
-
-        if outcome.demoted:
-            logger.warning(
-                "Agent '{}' demoted in phase '{}' (consecutive={}, total={}, reason={})",
-                current_agent,
-                phase,
-                outcome.consecutive_unproductive,
-                outcome.total_unproductive,
-                outcome.reason,
-            )
-            if chain is not None and len(chain.agents) == 1:
-                return (
-                    f"Sole agent '{current_agent}' demoted in phase '{phase}': "
-                    f"unproductive attempt limit reached ({outcome.reason})"
-                )
-            if outcome.status.is_spent:
-                self.note_retry_exhaustion(phase, current_agent)
-        return None
 
     def _handle_classified_failure(
         self,
@@ -746,7 +783,7 @@ class RecoveryController:
                 retry_delay_ms = self._compute_retry_delay(phase, agent)
 
         failure_evt = FailureEvent(
-            timestamp=datetime.now(UTC),
+            timestamp=self._clock.now_utc(),
             phase=phase,
             agent=agent,
             category=str(failure.category),
@@ -1054,7 +1091,7 @@ class RecoveryController:
         if compute_backoff_ms(delay, 1) > delay:
             attempt += 1
         event = FailureEvent(
-            timestamp=datetime.now(UTC),
+            timestamp=self._clock.now_utc(),
             phase=phase,
             agent=None,
             category=str(failure.category),
@@ -1153,6 +1190,7 @@ class RecoveryController:
         and logs the selection decision to the transcript.
         """
         snap = self._unavailability_tracker.snapshot()
+        self._phase_chains[phase] = tuple(agents)
         cooldowns_dict = snap.get("unavailable_timeouts", {})
         reasons_dict = snap.get("unavailability_reasons", {})
         now_ms = int(self._clock.monotonic() * 1000)
@@ -1200,14 +1238,16 @@ class RecoveryController:
         phase: str,
         failure: ClassifiedFailure,
         *,
-        backend: FileBackend = DEFAULT_FILE_BACKEND,
+        backend: FileBackend | None = None,
     ) -> None:
         """Write a retry hint file describing the stale-session failure.
 
         Args:
             phase: Pipeline phase where the failure occurred.
             failure: Classified failure with stale-session detail.
+            backend: Optional filesystem backend; defaults to injected backend.
         """
+        file_backend = backend or self._reset_hint_backend
         build_retry_hint, retry_hint_path = _get_required_artifact_helpers()
 
         detail = (
@@ -1225,8 +1265,8 @@ class RecoveryController:
         )
         try:
             # filesystem-write-ok: recovery controller state under .agent/recovery, runtime recovery metadata not tracked
-            backend.mkdir(hint_file.parent, parents=True, exist_ok=True)
-            write_text_if_changed(backend, hint_file, hint_content, encoding="utf-8")
+            file_backend.mkdir(hint_file.parent, parents=True, exist_ok=True)
+            write_text_if_changed(file_backend, hint_file, hint_content, encoding="utf-8")
         except OSError:
             logger.warning("Failed to write session reset hint to {}", hint_file)
 
@@ -1304,9 +1344,10 @@ class RecoveryController:
                 phase=phase,
                 from_agent=from_agent,
                 to_agent=next_agent,
-                timestamp_iso=datetime.now(UTC).isoformat(),
+                timestamp_iso=self._clock.now_utc().isoformat(),
             )
-            fallover_evt = FalloverEvent.now(
+            fallover_evt = FalloverEvent(
+                timestamp=self._clock.now_utc(),
                 phase=phase,
                 from_agent=from_agent,
                 to_agent=next_agent,
@@ -1533,6 +1574,7 @@ class RecoveryController:
             order. Each cooldown is a non-negative int.
         """
         snap = self._unavailability_tracker.snapshot()
+        self._phase_chains[phase] = tuple(agents)
         cooldowns_dict = snap.get("unavailable_timeouts", {})
         attempts_dict = snap.get("backoff_attempts", {})
         # Derive the wall-clock from the controller's clock seam so the

@@ -15,6 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
@@ -25,6 +26,7 @@ from ralph.pipeline.conflict_resolution.session import (
     classify_failed_resolution_attempt,
     invoke_resolution_agent,
 )
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger
 from tests._conflict_resolution_phase_parity_seams import (
     _CONFLICTED,
     _config,
@@ -311,7 +313,9 @@ def test_an_unavailable_candidate_does_not_answer_for_the_one_after_it(
     )
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED])
-    session = ResolutionSession(max_rounds_per_stop=1)
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock)
+    session = ResolutionSession(ledger=ledger, max_rounds_per_stop=1)
     called: list[str] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -338,8 +342,6 @@ def test_an_unavailable_candidate_does_not_answer_for_the_one_after_it(
         is False
     )
     assert called == ["ghost"] + ["healthy"] * 9
-    assert "ghost" in session.dead_tool_surfaces
-    assert "healthy" not in session.dead_tool_surfaces
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.charge_conflict_budget is True
     assert session.exhaustion_reason is not None

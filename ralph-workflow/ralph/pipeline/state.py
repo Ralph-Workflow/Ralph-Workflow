@@ -54,6 +54,47 @@ _UNSET_PHASE: Final[str] = "__unset__"
 _DEFAULT_RECOVERY_CYCLE_CAP: Final[int] = 200
 
 
+def _migrate_legacy_guard_into_ledger(d: dict[str, object]) -> None:
+    """Migrate legacy progress_guard snapshots into ledger_snapshot."""
+    raw_guard = d.pop("progress_guard", None)
+    raw_chains = d.get("phase_chains")
+    if isinstance(raw_chains, dict):
+        for chain_val in raw_chains.values():
+            if isinstance(chain_val, dict):
+                chain_val.pop("progress_guard", None)
+    raw_intent = d.get("agent_retry_intent")
+    if isinstance(raw_intent, dict):
+        raw_intent.pop("progress_guard", None)
+    if isinstance(raw_guard, dict) and not d.get("ledger_snapshot"):
+        phase_val = str(d.get("phase") or "development")
+        agent_val = "claude"
+        if isinstance(raw_chains, dict):
+            chain_entry = raw_chains.get(phase_val)
+            if isinstance(chain_entry, dict):
+                agents_list = chain_entry.get("agents")
+                idx = chain_entry.get("current_index", 0)
+                if (
+                    isinstance(agents_list, (list, tuple))
+                    and isinstance(idx, int)
+                    and 0 <= idx < len(agents_list)
+                ):
+                    agent_val = str(agents_list[idx])
+        from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+
+        d["ledger_snapshot"] = {
+            "consecutive_limit": 3,
+            "total_limit": 9,
+            "base_cooldown_seconds": 60.0,
+            "max_cooldown_seconds": 3600.0,
+            "backoff_factor": 2.0,
+            "entries": {
+                f"{phase_val}:{agent_val}": AgentFailureLedger.translate_legacy_entry(
+                    raw_guard, phase_val, agent_val
+                )
+            },
+        }
+
+
 def _migrate_counter_field(
     d: dict[str, object],
     target: dict[str, object],
@@ -217,7 +258,6 @@ class PipelineState(_FrozenPipelineStateModel):
     # checkpoints load cleanly; they are only written via set_waiting.
     wait_reason: WaitReason | None = None
     wait_until_monotonic_ms: int | None = None
-    progress_guard: dict[str, object] | None = None
     # Durable agent failure ledger state across process restarts.
     ledger_snapshot: dict[str, object] | None = None
 
@@ -322,6 +362,9 @@ class PipelineState(_FrozenPipelineStateModel):
             )
         # Drop legacy budget_remaining — no longer a field
         d.pop("budget_remaining", None)
+
+        # Migrate legacy progress_guard snapshots into ledger_snapshot
+        _migrate_legacy_guard_into_ledger(d)
 
         return d
 

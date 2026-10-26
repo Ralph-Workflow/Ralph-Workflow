@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     import threading
+    from datetime import datetime
 
 __all__ = ["Clock"]
 
@@ -16,6 +17,14 @@ class Clock(Protocol):
 
     def monotonic(self) -> float:
         """Return current monotonic time in seconds."""
+        ...  # pragma: no cover
+
+    def now_utc(self) -> datetime:
+        """Return current UTC wall-clock time."""
+        ...  # pragma: no cover
+
+    def epoch(self) -> float:
+        """Return current UTC timestamp in seconds since the Epoch."""
         ...  # pragma: no cover
 
     def sleep(self, seconds: float) -> None:

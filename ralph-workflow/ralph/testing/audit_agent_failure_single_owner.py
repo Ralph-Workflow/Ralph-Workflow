@@ -1,16 +1,18 @@
 """Single-owner guard audit for agent failure and retry tracking.
 
 This audit enforces the single-owner architectural invariant:
-Exactly one component (:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`)
+Exactly one decision owner (:class:`ralph.recovery.agent_failure_ledger.AgentFailureLedger`)
 owns the state and decision logic for whether an agent is failing, unproductive,
-or broken, and whether to retry or stop using it.
+or broken, and whether to retry or stop using it. Recording call sites (such as
+the controller, reducer, and resolver_health) are clients that feed attempt facts
+into the ledger rather than deciding agent failure independently.
 
 Specifically, this audit validates:
 
 1. Production code: No module under ``ralph/recovery/`` or ``ralph/pipeline/``
    (except ``ralph/recovery/agent_failure_ledger.py``) declares streak/counter
    state or logic used for agent stop/retry decisions (such as duplicate retry
-   trackers or in-session retry counters).
+   trackers, retry progress guards, or in-session retry counters).
 
 2. Test code: No test under ``tests/`` accesses private attributes or internal
    counters of ``AgentFailureLedger`` (enforcing black-box testability via the
@@ -46,54 +48,25 @@ TEMPORARY_PRODUCTION_ALLOWLIST: frozenset[str] = frozenset()
 
 TEMPORARY_TEST_ALLOWLIST: frozenset[str] = frozenset()
 
-# Transitional allowlist for competing shapes (e.g. technical_retry_cap, fault hits)
-# until WU-1 deletes them from conflict resolution session.
+# Transitional allowlist for surviving competing shapes in conflict resolution
+# until future work deletes or refactors them into AgentFailureLedger.
+# Note: all test file entries and deleted production modules (_driver_rounds.py)
+# have been consolidated out; only surviving production references remain.
 TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
+    # session.py: dead_tool_surfaces and stop_dead_surfaces track candidate tool-surface
+    # fault state across rebase stops; RALPH_FAULT_ESCALATION_HITS is a diagnostic constant.
     "ralph/pipeline/conflict_resolution/session.py": frozenset(
         {
-            "ralph_fault_hits",
-            "_ralph_fault_hits",
-            "stop_dead_surfaces",
-            "_stop_dead_surfaces",
             "dead_tool_surfaces",
-            "_dead_tool_surfaces",
+            "stop_dead_surfaces",
             "RALPH_FAULT_ESCALATION_HITS",
-            "ralph_fault_escalation_hits",
         }
     ),
-    "ralph/pipeline/conflict_resolution/_driver_rounds.py": frozenset(
-        {
-            "stop_dead_surfaces",
-            "_stop_dead_surfaces",
-            "dead_tool_surfaces",
-            "_dead_tool_surfaces",
-        }
-    ),
+    # chain_candidates.py: dead_tool_surfaces filters candidate chains for tool-faulted agents.
     "ralph/pipeline/conflict_resolution/chain_candidates.py": frozenset(
         {
-            "stop_dead_surfaces",
-            "_stop_dead_surfaces",
             "dead_tool_surfaces",
-            "_dead_tool_surfaces",
         }
-    ),
-    "tests/pipeline/test_conflict_resolution_ledger.py": frozenset(
-        {"stop_dead_surfaces", "dead_tool_surfaces"}
-    ),
-    "tests/test_conflict_resolution_attempt_attribution.py": frozenset(
-        {"stop_dead_surfaces", "dead_tool_surfaces"}
-    ),
-    "tests/test_conflict_resolution_futile_loop.py": frozenset(
-        {"stop_dead_surfaces", "dead_tool_surfaces"}
-    ),
-    "tests/test_conflict_resolution_phase_parity.py": frozenset(
-        {"stop_dead_surfaces", "dead_tool_surfaces"}
-    ),
-    "tests/test_conflict_resolution_pipeline.py": frozenset(
-        {"stop_dead_surfaces", "dead_tool_surfaces"}
-    ),
-    "tests/test_conflict_resolution_relay_failure.py": frozenset(
-        {"stop_dead_surfaces", "dead_tool_surfaces"}
     ),
 }
 
@@ -110,6 +83,7 @@ _FORBIDDEN_TRACKER_MODULES: frozenset[str] = frozenset(
         "_broken_agent_same_shape_tracker",
         "_same_shape_retry_error",
         "_broken_agent_same_shape_error",
+        "_retry_progress_guard",
     }
 )
 
@@ -120,6 +94,11 @@ _FORBIDDEN_TRACKER_SYMBOLS: frozenset[str] = frozenset(
         "SameShapeRetryLoopError",
         "BrokenAgentSameShapeLimitError",
         "SameShapeRetryTrackerOptions",
+        # Permanent bans: Rival retry progress guard and signature tracking (eliminated across U3c/U4b)
+        "RetryProgressGuard",
+        "progress_guard",
+        "retry_failure_signature",
+        "MAX_IDENTICAL_RETRY_ATTEMPTS",
     }
 )
 
@@ -178,6 +157,15 @@ _FORBIDDEN_TRACKER_NAMES: frozenset[str] = frozenset(
         "_barred_agents",
         "excluded_agents",
         "_excluded_agents",
+        # Permanent bans: Rival retry progress guard and signature tracking (eliminated across U3c/U4b)
+        "RetryProgressGuard",
+        "_RetryProgressGuard",
+        "progress_guard",
+        "_progress_guard",
+        "retry_failure_signature",
+        "_retry_failure_signature",
+        "MAX_IDENTICAL_RETRY_ATTEMPTS",
+        "_MAX_IDENTICAL_RETRY_ATTEMPTS",
     }
 )
 
@@ -204,11 +192,14 @@ def _is_forbidden_target_name(name: str) -> bool:
         or "barred_agents" in lower
         or "excluded_agents" in lower
         or "fault_escalation" in lower
+        or "progress_guard" in lower
+        or "retry_failure_signature" in lower
+        or "max_identical_retry_attempts" in lower
     )
 
 
 def _check_production_class(node: ast.ClassDef, rel_path: str) -> list[SingleOwnerViolation]:
-    if (
+    if not is_transitional_allowed(rel_path, node.name) and (
         node.name in _FORBIDDEN_TRACKER_SYMBOLS
         or "SameShape" in node.name
         or "BrokenAgentSameShape" in node.name
@@ -407,13 +398,18 @@ def _check_production_import(
                 detail=f"Import of forbidden tracker '{alias.name}'.",
             )
             for alias in node.names
-            if (
+            if not is_transitional_allowed(rel_path, alias.name)
+            and (
                 any(m in alias.name for m in _FORBIDDEN_TRACKER_MODULES)
                 or alias.name in _FORBIDDEN_TRACKER_SYMBOLS
             )
         )
     elif isinstance(node, ast.ImportFrom):
-        if node.module and any(m in node.module for m in _FORBIDDEN_TRACKER_MODULES):
+        if (
+            node.module
+            and any(m in node.module for m in _FORBIDDEN_TRACKER_MODULES)
+            and not is_transitional_allowed(rel_path, node.module)
+        ):
             violations.append(
                 SingleOwnerViolation(
                     path=rel_path,
@@ -430,7 +426,8 @@ def _check_production_import(
                 detail=f"Import of forbidden tracker symbol '{alias.name}'.",
             )
             for alias in node.names
-            if (
+            if not is_transitional_allowed(rel_path, alias.name)
+            and (
                 alias.name in _FORBIDDEN_TRACKER_SYMBOLS
                 or any(m in alias.name for m in _FORBIDDEN_TRACKER_MODULES)
             )
@@ -573,13 +570,18 @@ def _check_test_import(
                 detail=f"Test imports deleted tracker '{alias.name}'.",
             )
             for alias in node.names
-            if (
+            if not is_transitional_allowed(rel_path, alias.name)
+            and (
                 any(m in alias.name for m in _FORBIDDEN_TRACKER_MODULES)
                 or alias.name in _FORBIDDEN_TRACKER_SYMBOLS
             )
         )
     elif isinstance(node, ast.ImportFrom):
-        if node.module and any(m in node.module for m in _FORBIDDEN_TRACKER_MODULES):
+        if (
+            node.module
+            and any(m in node.module for m in _FORBIDDEN_TRACKER_MODULES)
+            and not is_transitional_allowed(rel_path, node.module)
+        ):
             violations.append(
                 SingleOwnerViolation(
                     path=rel_path,
@@ -596,7 +598,8 @@ def _check_test_import(
                 detail=f"Test imports deleted tracker symbol '{alias.name}'.",
             )
             for alias in node.names
-            if alias.name in _FORBIDDEN_TRACKER_SYMBOLS
+            if not is_transitional_allowed(rel_path, alias.name)
+            and alias.name in _FORBIDDEN_TRACKER_SYMBOLS
         )
     return violations
 
@@ -883,6 +886,41 @@ def handle_fault(session, agent_name):
     )
     assert any("stop_dead_surfaces" in v.detail for v in v6), (
         f"Expected violation for stop_dead_surfaces, got: {v6}"
+    )
+
+    # Negative test 7: Rival RetryProgressGuard, signature tracking, and attempt caps (PA-001 / permanent bans)
+    src_rival = """
+from ralph.pipeline._retry_progress_guard import (
+    MAX_IDENTICAL_RETRY_ATTEMPTS,
+    RetryProgressGuard,
+    retry_failure_signature,
+)
+
+class CustomGuard(RetryProgressGuard):
+    def check_progress(self, signature: str) -> bool:
+        sig = retry_failure_signature("failed", ["output"])
+        return sig == signature and self.max_identical >= MAX_IDENTICAL_RETRY_ATTEMPTS
+"""
+    v7 = audit_production_source("ralph/pipeline/worker.py", src_rival)
+    assert any("RetryProgressGuard" in v.detail for v in v7), (
+        f"Expected violation for RetryProgressGuard, got: {v7}"
+    )
+    assert any("retry_failure_signature" in v.detail for v in v7), (
+        f"Expected violation for retry_failure_signature, got: {v7}"
+    )
+    assert any("MAX_IDENTICAL_RETRY_ATTEMPTS" in v.detail for v in v7), (
+        f"Expected violation for MAX_IDENTICAL_RETRY_ATTEMPTS, got: {v7}"
+    )
+
+    # Negative test 8: Competing progress_guard state assignment (PA-001 / permanent bans)
+    src_rival_state = """
+class AgentSession:
+    def __init__(self):
+        self.progress_guard = None
+"""
+    v8 = audit_production_source("ralph/pipeline/worker.py", src_rival_state)
+    assert any("progress_guard" in v.detail for v in v8), (
+        f"Expected violation for progress_guard, got: {v8}"
     )
 
 

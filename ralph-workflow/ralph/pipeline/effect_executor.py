@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading as _threading
 import time
 import uuid
@@ -56,11 +57,6 @@ from ralph.phases.required_artifacts import (
 )
 from ralph.pipeline._agent_bridge_ctx import _AgentBridgeCtx
 from ralph.pipeline._agent_invocation_ctx import _AgentInvocationCtx
-from ralph.pipeline._retry_progress_guard import (
-    MAX_IDENTICAL_RETRY_ATTEMPTS,
-    RetryProgressGuard,
-    retry_failure_signature,
-)
 from ralph.pipeline._runner_session import set_last_captured_session_id
 from ralph.pipeline.activity_stream import stream_parsed_agent_activity
 from ralph.pipeline.agent_execution_deps import build_agent_execution_deps
@@ -97,6 +93,7 @@ from ralph.workspace import FsWorkspace
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
+    from ralph.agents.clock import Clock
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
@@ -109,6 +106,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.factory import MaterializeMasterPromptFn, PipelineDeps
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PolicyBundle
+    from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
     class _KwargsMaterializeMasterPromptFn(Protocol):
@@ -235,6 +233,31 @@ def execute_agent_effect(
             )
         )
         return PipelineEvent.AGENT_FAILURE
+
+    active_rec = cast(
+        "RecoveryController | None", opts.get("recovery_controller") or opts.get("recovery")
+    )
+    active_ledger = active_rec.ledger if active_rec is not None else pipeline_deps.ledger
+    if active_ledger is None and state is not None and state.ledger_snapshot:
+        from ralph.agents.timeout_clock import SystemClock
+        from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+
+        active_ledger = AgentFailureLedger.from_snapshot(state.ledger_snapshot, clock=SystemClock())
+    if active_ledger is not None and not active_ledger.is_available(
+        str(effect.phase), effect.agent_name
+    ):
+        logger.error(
+            "Aborting agent '{}' invocation: agent is unavailable or spent in failure ledger.",
+            effect.agent_name,
+        )
+        _set_last_captured_retry_intent(
+            AgentRetryIntent(
+                action=None,
+                session_id=None,
+                failure_reason="Agent unavailable or spent in failure ledger",
+            )
+        )
+        return PipelineEvent.AGENT_FAILURE
     effective_agents_policy = (
         policy_bundle.agents
         if policy_bundle is not None
@@ -301,6 +324,10 @@ def execute_agent_effect(
         parallel_worker=cast(
             "bool", opts.get("parallel_worker", False)
         ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+        recovery=cast(
+            "RecoveryController | None",
+            opts.get("recovery_controller") or opts.get("recovery"),
+        ),
     )
     invocation_outcome = "crashed"
     try:
@@ -505,22 +532,6 @@ def _prepare_recovery_attempt(
     return options
 
 
-def _restore_progress_guard(ctx: _AgentInvocationCtx) -> RetryProgressGuard:
-    if ctx.state is not None:
-        raw_guard = None
-        chain = ctx.state.chain_for_phase(ctx.effect.phase)
-        if chain is not None and chain.progress_guard is not None:
-            raw_guard = chain.progress_guard
-        elif ctx.state.progress_guard is not None:
-            raw_guard = ctx.state.progress_guard
-        elif ctx.state.agent_retry_intent.progress_guard is not None:
-            raw_guard = ctx.state.agent_retry_intent.progress_guard
-
-        if raw_guard is not None:
-            return RetryProgressGuard.from_dict(raw_guard)
-    return RetryProgressGuard()
-
-
 def _handle_recovery_attempt_failure(
     ctx: _AgentInvocationCtx,
     exc: Exception,
@@ -529,7 +540,6 @@ def _handle_recovery_attempt_failure(
     effective_run_id: str,
     raw_output: deque[str],
     rendered_output: deque[str],
-    progress_guard: RetryProgressGuard,
 ) -> _AttemptResult:
     recovery_plan = build_agent_recovery_plan(
         _build_recovery_input_for_attempt(
@@ -551,30 +561,64 @@ def _handle_recovery_attempt_failure(
             inactivity_error_type=AgentInactivityTimeoutError,
         )
         if retry_intent is not None:
-            retry_intent = retry_intent.model_copy(
-                update={"progress_guard": progress_guard.snapshot()}
-            )
+            _set_last_captured_retry_intent(retry_intent)
         else:
-            retry_intent = AgentRetryIntent(progress_guard=progress_guard.snapshot())
-        _set_last_captured_retry_intent(retry_intent)
+            _set_last_captured_retry_intent(AgentRetryIntent())
         raise exc
-    failure_signature = retry_failure_signature(recovery_plan.reason, list(rendered_output))
-    if progress_guard.record(failure_signature):
-        logger.error(
-            "Aborting agent '{}' retries: {} consecutive identical "
-            "zero-progress failures. Refusing to spin; failing fast.",
+
+    raw_ws: object = cast("object", getattr(exc, "workspace_changed", False))
+    workspace_changed: bool = bool(raw_ws)
+    recovery = ctx.recovery
+    if recovery is not None:
+        demote_msg = recovery.record_attempt_fact(
+            str(ctx.effect.phase),
             ctx.effect.agent_name,
-            MAX_IDENTICAL_RETRY_ATTEMPTS,
+            artifact_valid=False,
+            workspace_changed=workspace_changed,
         )
-        _set_last_captured_retry_intent(
-            AgentRetryIntent(
-                action=None,
-                session_id=None,
-                failure_reason=recovery_plan.reason,
-                progress_guard=progress_guard.snapshot(),
+        is_available = recovery.ledger.is_available(str(ctx.effect.phase), ctx.effect.agent_name)
+        if demote_msg is not None or not is_available:
+            logger.error(
+                "Aborting agent '{}' retries: unproductive attempt limit reached ({}). "
+                "Refusing to spin; failing fast.",
+                ctx.effect.agent_name,
+                demote_msg or "agent unavailable in ledger",
+            )
+            _set_last_captured_retry_intent(
+                AgentRetryIntent(
+                    action=None,
+                    session_id=None,
+                    failure_reason=recovery_plan.reason,
+                )
+            )
+            return _AttemptResult(PipelineEvent.AGENT_FAILURE, state.prompt_file, session_id)
+    elif ctx.deps.pipeline_deps.ledger is not None:
+        from ralph.recovery.agent_failure_ledger import AttemptFact
+
+        outcome = ctx.deps.pipeline_deps.ledger.record(
+            AttemptFact(
+                phase=str(ctx.effect.phase),
+                agent=ctx.effect.agent_name,
+                artifact_valid=False,
+                workspace_changed=workspace_changed,
             )
         )
-        return _AttemptResult(PipelineEvent.AGENT_FAILURE, state.prompt_file, session_id)
+        if outcome.demoted:
+            logger.error(
+                "Aborting agent '{}' retries: unproductive attempt limit reached ({}). "
+                "Refusing to spin; failing fast.",
+                ctx.effect.agent_name,
+                outcome.reason,
+            )
+            _set_last_captured_retry_intent(
+                AgentRetryIntent(
+                    action=None,
+                    session_id=None,
+                    failure_reason=recovery_plan.reason,
+                )
+            )
+            return _AttemptResult(PipelineEvent.AGENT_FAILURE, state.prompt_file, session_id)
+
     state.prompt_file = recovery_plan.prompt_file
     state.resume_session_id = recovery_plan.session_id
     state.completion_reprompt_used = state.completion_reprompt_used or isinstance(
@@ -588,10 +632,9 @@ def _handle_recovery_attempt_failure(
         inactivity_error_type=AgentInactivityTimeoutError,
     )
     if retry_intent is not None:
-        retry_intent = retry_intent.model_copy(update={"progress_guard": progress_guard.snapshot()})
+        _set_last_captured_retry_intent(retry_intent)
     else:
-        retry_intent = AgentRetryIntent(progress_guard=progress_guard.snapshot())
-    _set_last_captured_retry_intent(retry_intent)
+        _set_last_captured_retry_intent(AgentRetryIntent())
     raise exc
 
 
@@ -688,22 +731,6 @@ def _invoke_agent_with_recovery(
             resume_session_id=session_id or _initial_resume_session_id(ctx),
             last_agent_session_id=_safe_last_agent_session_id(ctx.state),
         )
-        progress_guard = _restore_progress_guard(ctx)
-        if progress_guard.is_exhausted:
-            logger.error(
-                "Aborting agent '{}' retries: retry progress guard is exhausted or failed closed. "
-                "Refusing to spin; failing fast.",
-                ctx.effect.agent_name,
-            )
-            _set_last_captured_retry_intent(
-                AgentRetryIntent(
-                    action=None,
-                    session_id=None,
-                    failure_reason="RetryProgressGuard exhausted",
-                    progress_guard=progress_guard.snapshot(),
-                )
-            )
-            return PipelineEvent.AGENT_FAILURE
 
         terminal_mcp_error = False
 
@@ -740,12 +767,10 @@ def _invoke_agent_with_recovery(
                     agent_label_scope=effective_run_id,
                     raw_line_sink=raw_line_sink,
                 )
-                progress_guard.reset()
                 _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
                 return _AttemptResult(PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id)
             except ctx.deps.agent_invocation_error as exc:
                 if _has_valid_terminal_artifact(ctx, resolved_required_artifact, exc):
-                    progress_guard.reset()
                     _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
                     return _AttemptResult(
                         PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id
@@ -758,7 +783,6 @@ def _invoke_agent_with_recovery(
                     effective_run_id=effective_run_id,
                     raw_output=raw_output,
                     rendered_output=rendered_output,
-                    progress_guard=progress_guard,
                 )
 
         try:
@@ -1344,12 +1368,13 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
     """
     # Journal first: the kill that exhausts the budget (or a conflict resolver's,
     # which has none) is the one an operator needs named.
+    recorded_at = recovery_input.clock.epoch() if recovery_input.clock is not None else time.time()
     record_watchdog_fire(
         recovery_input.workspace_root,
         recovery_input.exc,
         agent=recovery_input.effect.agent_name,
         phase=str(recovery_input.effect.phase),
-        recorded_at=time.time(),
+        recorded_at=recorded_at,
     )
     if recovery_input.attempt_index >= recovery_input.max_recovery_attempts:
         return None
@@ -1571,6 +1596,7 @@ def _build_recovery_input_for_attempt(
         run_id=run_id,
         completion_reprompt_used=state.completion_reprompt_used,
         worker_namespace=ctx.worker_namespace,
+        clock=cast("Clock | None", getattr(ctx.deps.pipeline_deps, "clock", None)),
     )
 
 
@@ -2013,6 +2039,14 @@ def _handle_terminal_agent_invocation_error(
                 chain_cap_decision="reset",
             )
         )
+    raw_ws_changed: object = getattr(exc, "workspace_changed", None)
+    if raw_ws_changed is not None:
+        with contextlib.suppress(Exception):
+            object.__setattr__(
+                PipelineEvent.AGENT_FAILURE,
+                "workspace_changed",
+                bool(raw_ws_changed),
+            )
     origin = exc.failure_origin if isinstance(exc, AgentInvocationError) else "agent"
     issuer = exc.issuer if isinstance(exc, AgentInvocationError) else None
     logger.error("Agent invocation failed: origin={} issuer={} error={}", origin, issuer, exc)

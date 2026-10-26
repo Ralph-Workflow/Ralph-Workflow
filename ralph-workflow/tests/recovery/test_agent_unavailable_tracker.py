@@ -13,6 +13,7 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.run_loop import _apply_connectivity_check
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
+from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
 from ralph.recovery.connectivity import ConnectivityState
@@ -30,9 +31,20 @@ from ralph.recovery.unavailability_reason import (
 )
 
 
-def _minimal_policy_bundle() -> object:
+def _minimal_policy_bundle(agents: list[str] | tuple[str, ...] | None = None) -> object:
     with tempfile.TemporaryDirectory() as d:
-        return load_policy(Path(d) / ".agent")
+        bundle = load_policy(Path(d) / ".agent")
+        if agents is not None:
+            agent_chain = AgentChainConfig(agents=list(agents))
+            agent_drain = AgentDrainConfig(chain="default_chain")
+            agents_policy = bundle.agents.model_copy(
+                update={
+                    "agent_chains": {"default_chain": agent_chain},
+                    "agent_drains": {"development": agent_drain},
+                }
+            )
+            return bundle.model_copy(update={"agents": agents_policy})
+        return bundle
 
 
 def _make_state(agents: list[str]) -> PipelineState:
@@ -354,7 +366,7 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
             clock=clock,
             event_bus=bus,
             unavailability_backoff_policy=policy,
-            policy_bundle=_minimal_policy_bundle(),
+            policy_bundle=_minimal_policy_bundle(["claude", "opencode"]),
         )
     )
     state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")

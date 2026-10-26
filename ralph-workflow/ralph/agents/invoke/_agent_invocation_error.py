@@ -25,6 +25,7 @@ class AgentInvocationError(Exception):
         parsed_output: list[str] | None = None,
         failure_origin: FailureOrigin = "agent",
         issuer: str | None = None,
+        workspace_changed: bool = False,
     ) -> None:
         self.agent_name = agent_name
         self.returncode = returncode
@@ -32,6 +33,7 @@ class AgentInvocationError(Exception):
         self.parsed_output = list(parsed_output) if parsed_output is not None else []
         self.failure_origin = failure_origin
         self.issuer = issuer
+        self.workspace_changed = workspace_changed
         detail = self._detail_message()
         suffix = f": {detail}" if detail else ""
         super().__init__(f"Agent '{agent_name}' failed with code {returncode}{suffix}")

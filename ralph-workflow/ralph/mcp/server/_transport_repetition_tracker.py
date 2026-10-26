@@ -35,12 +35,9 @@ are load-bearing, and both were learned the hard way:
 A genuine loop -- the same call, the same arguments, the same
 non-infrastructure failure, over and over -- still trips unchanged.
 
-This module is the transport-layer complement to
-``ralph/pipeline/_retry_progress_guard.py`` (the agent-recovery layer).
-Both layers share the same intent (cap identical-failure loops) and the
-same stripping vocabulary; the tracker is a small, single-purpose,
-thread-safe dataclass so the production transport can call it from any
-thread without locks other than the embedded one.
+This module provides transport-layer repetition detection for MCP server calls.
+The tracker is a small, single-purpose, thread-safe dataclass so the production
+transport can call it from any thread without locks other than the embedded one.
 
 **The streak outlives the process (E1.7).** A make-before-break
 replacement retires one MCP child and promotes another in its place, so
@@ -112,9 +109,7 @@ if not _STATE_LOCK_TIMEOUT_S > 0:
 if not _STATE_MAX_BYTES > 0:
     raise RuntimeError(f"_STATE_MAX_BYTES must be positive (got {_STATE_MAX_BYTES})")
 
-#: Strip volatile tokens from a failure signature. Mirrors the vocabulary
-#: in :mod:`ralph.pipeline._retry_progress_guard` so the two layers
-#: recognize the same patterns.
+#: Strip volatile tokens from a failure signature.
 _VOLATILE_UUID_HEX = re.compile(r"\b[0-9a-f]{8,}\b")
 _VOLATILE_TIMESTAMP = re.compile(
     r"\b\d{1,2}:\d{2}:\d{2}(?:\.\d+)?\b"

@@ -3916,19 +3916,31 @@ def _handle_cooldown_delay(state: PipelineState, ctx: LoopContext) -> PipelineSt
 handle_cooldown_delay = _handle_cooldown_delay
 
 
-def _retry_guard_requires_intervention(state: PipelineState) -> bool:
-    """Whether the persisted retry guard demands a hard stop at ``failed_route``.
+_MAX_RECOVERY_EPOCHS: int = 3
 
-    A missing guard (fresh state, older checkpoint) never hard-stops: the
-    exhausted-retry case always persists a guard snapshot via
-    ``apply_session_capture`` before ``failed_route`` is entered.
-    """
-    raw = state.progress_guard
-    if raw is None:
-        return False
-    from ralph.pipeline._retry_progress_guard import RetryProgressGuard
 
-    return RetryProgressGuard.from_dict(raw).requires_operator_intervention
+def _ledger_requires_intervention(state: PipelineState, ctx: LoopContext) -> bool:
+    """Whether the ledger or recovery state demands a hard stop at ``failed_route``."""
+    if (
+        state.recovery_epoch >= _MAX_RECOVERY_EPOCHS
+        or state.last_execution_result_status == "failed"
+    ):
+        return True
+    target_phase = state.previous_phase or state.phase
+    chain = state.chain_for_phase(target_phase)
+    agents = chain.agents if chain is not None and chain.agents else ()
+    ledger = ctx.controller.ledger
+    if agents:
+        return all(not ledger.status(target_phase, agent).is_eligible for agent in agents)
+    snap = state.ledger_snapshot or ledger.snapshot()
+    raw_entries = snap.get("entries") if isinstance(snap, Mapping) else None
+    if isinstance(raw_entries, Mapping) and raw_entries:
+        for item in raw_entries.values():
+            if isinstance(item, Mapping) and (
+                item.get("is_spent") or item.get("cooldown_until_ms") is not None
+            ):
+                return True
+    return False
 
 
 def _cycle_cap_exhausted(state: PipelineState, ctx: LoopContext) -> bool:
@@ -3982,11 +3994,9 @@ def _run_inner_loop_after_startup(
     state = _initialize_loop_timeboxes(state, ctx)
     # ``failed_route`` (e.g. ``failed_terminal``) is a *recoverable* terminal:
     # the effect router's ``_recovery_prepare_effect`` turns it back into a
-    # PreparePromptEffect on the pre-failure phase. Only the persisted
-    # RetryProgressGuard (exhausted / failed-closed, d02a57143) converts it
+    # PreparePromptEffect on the pre-failure phase. Only recovery exhaustion
+    # or the ledger status (exhausted / cooldown / spent) converts it
     # into a hard stop, so the budget — not the loop shape — bounds recovery.
-    # Guard is persisted on PipelineState by apply_session_capture, so this
-    # survives checkpoint restarts.
     while (
         (
             state.phase != ctx.policy_bundle.pipeline.terminal_phase
@@ -3994,7 +4004,7 @@ def _run_inner_loop_after_startup(
         )
         or (
             state.phase == ctx.policy_bundle.pipeline.recovery.failed_route
-            and not _retry_guard_requires_intervention(state)
+            and not _ledger_requires_intervention(state, ctx)
             and not _cycle_cap_exhausted(state, ctx)
         )
         or (
@@ -4210,7 +4220,7 @@ def _build_recovery_controller(
             budget_registry=_seed_budget_registry(policy_bundle),
             agent_max_consecutive_unproductive=consecutive_limit,
             agent_max_total_unproductive=total_limit,
-            clock=clock,
+            clock=effective_clock,
             ledger=ledger,
             workspace_probe=effective_probe,
         )

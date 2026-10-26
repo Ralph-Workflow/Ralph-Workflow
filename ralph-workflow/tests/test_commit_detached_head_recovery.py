@@ -269,8 +269,6 @@ def test_exhausted_commit_failure_stops_at_terminal_failure() -> None:
         assert next_state.pending_cycle_outcome is None
         assert next_state.recovery_epoch == cap
         assert next_state.last_execution_result_status == "failed"
-        assert next_state.progress_guard is not None
-        assert next_state.progress_guard["is_exhausted"] is True
     finally:
         set_last_commit_error(None)
 
@@ -840,8 +838,6 @@ def test_persistent_repairable_failure_without_recovery_phase_stops_at_retry_cap
     assert terminal_state.pending_cycle_outcome is None, "Must never report failed work completed"
     assert terminal_state.last_execution_result_status == "failed"
     assert lock_err in (terminal_state.last_error or "")
-    assert terminal_state.progress_guard is not None
-    assert terminal_state.progress_guard["is_exhausted"] is True
     assert message_file.exists(), "Validated commit message file must remain on disk"
 
 

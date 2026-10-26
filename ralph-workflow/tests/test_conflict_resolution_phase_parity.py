@@ -11,13 +11,16 @@ from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
+from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidates
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
+from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
     classify_failed_resolution_attempt,
     invoke_resolution_agent,
 )
 from ralph.pipeline.integration_actions import install_executors, reset_executors
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from tests._conflict_resolution_phase_parity_seams import (
     _CONFLICTED,
     _config,
@@ -493,7 +496,17 @@ def test_a_round_that_invokes_nobody_is_never_reported_as_a_failed_attempt(
     """A chain nobody could spend has no attempt to report as failed."""
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
-    session = ResolutionSession(dead_tool_surfaces=("one", "two"))
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock, total_limit=1)
+    for agent in ("one", "two"):
+        ledger.record(
+            AttemptFact(
+                phase=PHASE_RESOLUTION,
+                agent=agent,
+                artifact_valid=False,
+            )
+        )
+    session = ResolutionSession(ledger=ledger)
     lines: list[str] = []
     monkeypatch.setattr(
         driver_module, "emit_conflict_phase_line", lambda _display, line: lines.append(line)
@@ -532,7 +545,16 @@ def test_a_dead_chain_stops_burning_rounds(monkeypatch: pytest.MonkeyPatch, tmp_
     """No live candidate means no later round can spend one, so stop asking."""
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one",))
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
-    session = ResolutionSession(dead_tool_surfaces=("one",))
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock, total_limit=1)
+    ledger.record(
+        AttemptFact(
+            phase=PHASE_RESOLUTION,
+            agent="one",
+            artifact_valid=False,
+        )
+    )
+    session = ResolutionSession(ledger=ledger)
     rounds: list[int] = []
     monkeypatch.setattr(
         driver_module,
@@ -778,7 +800,8 @@ def test_an_uninstalled_candidate_hands_over_to_the_next_one(
         is True
     )
     assert called == ["pi", "claude"]
-    assert "pi" in session.dead_tool_surfaces
+    assert "pi" in skipped_candidates(session, ("pi", "claude"))
+    assert "claude" not in skipped_candidates(session, ("pi", "claude"))
 
 
 def test_skip_same_agent_retries_advances_the_chain_instead_of_retrying(
@@ -819,7 +842,17 @@ def test_a_live_candidate_behind_the_cursor_is_still_invoked(
     )
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
-    session = ResolutionSession(chain_cursor=1, dead_tool_surfaces=("beta", "gamma"))
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock, total_limit=1)
+    for agent in ("beta", "gamma"):
+        ledger.record(
+            AttemptFact(
+                phase=PHASE_RESOLUTION,
+                agent=agent,
+                artifact_valid=False,
+            )
+        )
+    session = ResolutionSession(chain_cursor=1, ledger=ledger)
     called: list[str] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -876,7 +909,8 @@ def test_one_candidates_infrastructure_fault_does_not_bury_the_next_one(
     )
     # Barred for this stop -- Ralph's plumbing faulted, and the recovery
     # layer calls that retryable -- and never charged to the other agent.
-    assert session.dead_tool_surfaces == ()
+    assert skipped_candidates(session, ("one", "two")) == frozenset()
+    assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
 
 
 def test_conflict_invocations_skip_cooldown_and_restore_priority(

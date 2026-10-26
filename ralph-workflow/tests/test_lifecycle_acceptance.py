@@ -19,6 +19,7 @@ Covers acceptance scenarios 3, 4, 6, 7, 8, 9 from PRODUCT_CRITERIA.md:
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -44,9 +45,7 @@ from ralph.pipeline._publication_state_machine import (
     PublicationDecision,
     next_publication_action,
 )
-from ralph.pipeline._retry_progress_guard import RetryProgressGuard
 from ralph.pipeline._terminal_authority import is_terminal_success_eligible
-from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.auto_integrate_record import (
     MARK_RESOLVING_REBASE,
     PROMOTE_TO_INTEGRATED,
@@ -616,50 +615,44 @@ def test_acceptance_scenario_9_exhausted_retry_does_not_replenish(tmp_path: Path
     Exhaust recovery, restart Ralph, and confirm no automatic attempt budget
     is silently replenished.
     """
-    # Exhaust RetryProgressGuard
-    guard = RetryProgressGuard(max_identical=2)
-    assert not guard.record("sig1")
-    assert guard.record("sig1")
-    assert guard.is_exhausted
-
-    # Snapshot to simulate durable persistence across restart
-    snapshot = guard.snapshot()
-
-    # Reconstitute on simulated restart
-    restarted_guard = RetryProgressGuard.from_dict(snapshot)
-    assert restarted_guard.is_exhausted is True
-    # Attempting more records still immediately reports exhausted
-    assert restarted_guard.record("sig1") is True
-    assert restarted_guard.record("sig2") is True
-
-    # Persist in PipelineState and save to checkpoint
-    phase_chains = {
-        "development": AgentChainState(
-            agents=["claude"],
-            current_index=0,
-            retries=2,
-            progress_guard=snapshot,
-        )
+    # Legacy progress_guard snapshot to simulate durable persistence across restart
+    snapshot = {
+        "max_identical": 2,
+        "last_signature": "sig1",
+        "streak": 2,
+        "is_exhausted": True,
+        "failed_closed": True,
     }
-    prior_pipeline_state = PipelineState(
-        phase="development",
-        policy_entry_phase="development",
-        phase_chains=phase_chains,
-        progress_guard=snapshot,
-    )
+
+    # Persist in legacy checkpoint format
+    legacy_payload = {
+        "phase": "development",
+        "policy_entry_phase": "development",
+        "phase_chains": {
+            "development": {
+                "agents": ["claude"],
+                "current_index": 0,
+                "retries": 2,
+                "progress_guard": snapshot,
+            }
+        },
+        "progress_guard": snapshot,
+    }
     checkpoint_backend = _InMemoryBackend()
     checkpoint = Checkpoint(Path(".agent/checkpoint.json"), backend=checkpoint_backend)
-    checkpoint.save(prior_pipeline_state)
+    checkpoint_backend.write_text(
+        Path(".agent/checkpoint.json"),
+        json.dumps(legacy_payload),
+    )
 
-    # Reconstitute state from durable checkpoint
+    # Reconstitute state from durable checkpoint - confirms legacy translation
     reloaded_state = checkpoint.load()
     assert reloaded_state is not None
-    assert reloaded_state.progress_guard is not None
-    assert reloaded_state.progress_guard["is_exhausted"] is True
-    dev_chain = reloaded_state.chain_for_phase("development")
-    assert dev_chain is not None
-    assert dev_chain.progress_guard is not None
-    assert dev_chain.progress_guard["is_exhausted"] is True
+    assert reloaded_state.ledger_snapshot is not None
+    entries = reloaded_state.ledger_snapshot.get("entries", {})
+    entry = entries.get("development:claude")
+    assert entry is not None
+    assert entry["is_spent"] is True
 
     # Pass reloaded_state through execute_agent_effect and verify Ralph launches zero
     # further identical attempts and fails closed / requires intervention.

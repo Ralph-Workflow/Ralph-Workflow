@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
     from ralph.config.models import GeneralConfig
     from ralph.phases.required_artifacts import RequiredArtifact
+    from ralph.workspace.probe import WorkspaceChangeProbe
+    from ralph.workspace.protocol import Workspace
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,9 @@ class InvokeRuntimeOptions:
     workspace_monitor_factory: (
         Callable[[Path, WorkspaceChangeClassifier | None], WorkspaceMonitor | None] | None
     ) = None
+    workspace_probe: WorkspaceChangeProbe | None = None
+    workspace: Workspace | None = None
+    phase: str | None = None
 
 
 def build_invoke_options_from_config(
@@ -71,6 +76,9 @@ def build_invoke_options_from_config(
         verbose=rt.verbose,
         show_progress=rt.show_progress,
         workspace_path=rt.workspace_path,
+        workspace_probe=rt.workspace_probe,
+        workspace=rt.workspace,
+        phase=rt.phase,
         extra_env=rt.extra_env,
         unsafe_mode=general_config.workflow.unsafe_mode,
         session_id=rt.session_id,

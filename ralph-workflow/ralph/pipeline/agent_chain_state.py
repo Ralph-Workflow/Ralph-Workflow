@@ -23,18 +23,13 @@ class AgentChainState(RalphBaseModel):
     agents: list[str] = Field(default_factory=list)
     current_index: int = 0
     retries: int = 0
-    progress_guard: dict[str, object] | None = None
 
-    def with_retry_increment(
-        self,
-        progress_guard: dict[str, object] | None = None,
-    ) -> AgentChainState:
+    def with_retry_increment(self) -> AgentChainState:
         """Return a copy with retries incremented by 1."""
         return AgentChainState(
             agents=self.agents,
             current_index=self.current_index,
             retries=self.retries + 1,
-            progress_guard=progress_guard if progress_guard is not None else self.progress_guard,
         )
 
     def with_advance(self) -> AgentChainState:
@@ -43,17 +38,4 @@ class AgentChainState(RalphBaseModel):
             agents=self.agents,
             current_index=self.current_index + 1,
             retries=0,
-            progress_guard=None,
-        )
-
-    def with_progress_guard(
-        self,
-        progress_guard: dict[str, object] | None,
-    ) -> AgentChainState:
-        """Return a copy with progress_guard updated."""
-        return AgentChainState(
-            agents=self.agents,
-            current_index=self.current_index,
-            retries=self.retries,
-            progress_guard=progress_guard,
         )

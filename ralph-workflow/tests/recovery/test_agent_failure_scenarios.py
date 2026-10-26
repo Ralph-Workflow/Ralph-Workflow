@@ -169,14 +169,28 @@ def test_scenario_5_all_agents_dead_ends_through_exhaustion_path_bounded(tmp_pat
         FailureCategory.ARTIFACT_VALIDATION,
         FailureCategory.AGENT,
     ],
+    ids=[
+        "environmental",
+        "ambiguous",
+        "artifact_validation",
+        "agent_inactivity_timeout",
+    ],
 )
 def test_scenario_6_every_free_retry_category_is_bounded_identically(
     tmp_path: Path, category: FailureCategory
 ) -> None:
     """Scenario 6: Every free-retry category is bounded the same way.
 
-    Environmental, ambiguous, artifact validation, and timeout are each bounded
-    by consecutive_limit=3, demoting A to B.
+    The four parametrized failure categories are:
+      - FailureCategory.ENVIRONMENTAL: connection and network errors.
+      - FailureCategory.AMBIGUOUS: unclassified runtime exceptions.
+      - FailureCategory.ARTIFACT_VALIDATION: missing or invalid required artifacts.
+      - FailureCategory.AGENT: agent execution failures; repeated inactivity timeout
+        is mapped to and enters as FailureCategory.AGENT (which raises
+        AgentInactivityTimeoutError via the test harness).
+
+    Each category is bounded identically by consecutive_limit=3, demoting agent A
+    to agent B after three consecutive unproductive attempts.
     """
 
     def script(agent: str, _phase: str, _attempt: int, _workspace: object) -> AgentAttemptResult:

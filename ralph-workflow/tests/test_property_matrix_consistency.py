@@ -143,13 +143,11 @@ PROPERTY_MATRIX: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     ),
     (
         "test_property_l_zero_progress_and_resume.py",
-        # Property L: ``MAX_IDENTICAL_RETRY_ATTEMPTS`` is the constant the
-        # zero-progress cap is asserted against; ``structural_restart_fingerprint``
-        # is the structural-dominant safety net that catches restart-from-scratch
-        # spirals across attempts with different concrete tokens.
+        # Property L: the ledger bounds zero-progress loops via consecutive limit
+        # and the resume path does not re-emit the original task.
         (
-            ("pipeline/_retry_progress_guard.py", "MAX_IDENTICAL_RETRY_ATTEMPTS"),
-            ("pipeline/_restart_from_scratch.py", "structural_restart_fingerprint"),
+            ("recovery/agent_failure_ledger.py", "AgentFailureLedger"),
+            ("recovery/retry_prompt.py", "build_retry_error_block"),
         ),
     ),
     (

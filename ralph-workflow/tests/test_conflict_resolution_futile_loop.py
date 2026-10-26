@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
@@ -17,10 +18,13 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     classify_ralph_origin_fault,
     ralph_origin_counts_as_liveness,
 )
+from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidates
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
+from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.status import ResolutionStatusReporter
 from ralph.policy.loader import load_policy
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
@@ -82,9 +86,8 @@ def test_dead_tool_surface_fails_fast_and_hands_over(
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         called.append(agent_name)
         if agent_name == "primary":
-            session.terminal_reason = classify_ralph_origin_fault("transport_loop_detected")
+            session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
             session.charge_conflict_budget = False
-            session.dead_tool_surfaces = (*session.dead_tool_surfaces, agent_name)
             return False
         return False
 
@@ -111,7 +114,7 @@ def test_dead_tool_surface_fails_fast_and_hands_over(
     # earlier candidate's fault forward reported a healthy agent's
     # genuine failure under somebody else's fault, and made the whole
     # stop unchargeable, which discarded its exhaustion evidence.
-    assert session.dead_tool_surfaces == ("primary",)
+    assert "primary" in skipped_candidates(session, ("primary", "fallback"))
     assert session.terminal_reason is ResolutionTerminationReason.ATTEMPT_FAILED
     assert session.charge_conflict_budget is True
 
@@ -120,7 +123,16 @@ def test_known_dead_surface_is_not_reentered(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _install_seams(monkeypatch)
-    session = ResolutionSession(dead_tool_surfaces=("primary",))
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock, total_limit=1)
+    ledger.record(
+        AttemptFact(
+            phase=PHASE_RESOLUTION,
+            agent="primary",
+            artifact_valid=False,
+        )
+    )
+    session = ResolutionSession(ledger=ledger)
     called: list[str] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -143,6 +155,7 @@ def test_known_dead_surface_is_not_reentered(
     # every round, because a round that invoked nobody was the bug.
     assert "primary" not in called
     assert set(called) == {"fallback"}
+    assert "primary" in skipped_candidates(session, ("primary", "fallback"))
 
 
 def test_status_does_not_report_health_from_ralph_fault_text() -> None:
@@ -214,7 +227,9 @@ def test_a_resolver_quoting_ralphs_own_fault_tokens_survives(
     from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
     from ralph.pipeline.conflict_resolution.session import wrap_activity_listener
 
-    session = ResolutionSession()
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock)
+    session = ResolutionSession(ledger=ledger)
     listener = wrap_activity_listener(None, session, agent_name="claude")
     assert listener is not None
     for echoed in (
@@ -235,8 +250,9 @@ def test_a_resolver_quoting_ralphs_own_fault_tokens_survives(
                 stall_active=False,
             )
         )
-    assert session.dead_tool_surfaces == ()
+    assert "claude" not in skipped_candidates(session, ("claude",))
     assert session.terminal_reason is None
+    assert ledger.is_available(PHASE_RESOLUTION, "claude") is True
 
 
 def test_a_watchdog_authored_fault_still_bars_the_surface(
@@ -256,7 +272,9 @@ def test_a_watchdog_authored_fault_still_bars_the_surface(
         wrap_activity_listener,
     )
 
-    session = ResolutionSession()
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock)
+    session = ResolutionSession(ledger=ledger)
     listener = wrap_activity_listener(None, session, agent_name="claude")
     assert listener is not None
     faulting = WaitingStatusEvent(
@@ -271,13 +289,18 @@ def test_a_watchdog_authored_fault_still_bars_the_surface(
         stall_active=False,
     )
     listener(faulting)
-    assert session.stop_dead_surfaces == (), "one tick is not a barred agent"
+    assert "claude" not in skipped_candidates(session, ("claude",)), (
+        "one tick is not a barred agent"
+    )
     assert session.last_attempt_saw_activity is True, "a fault tick is still activity"
 
     for _ in range(RALPH_FAULT_ESCALATION_HITS):
         listener(faulting)
-    assert session.dead_tool_surfaces == (), "a plumbing fault is never run-scoped"
+    assert "claude" not in skipped_candidates(session, ("claude",)), (
+        "a plumbing fault is never run-scoped"
+    )
     assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
+    assert ledger.is_available(PHASE_RESOLUTION, "claude") is True
 
 
 def test_an_unspendable_chain_reports_tool_surface_dead_not_exhaustion(
@@ -285,7 +308,17 @@ def test_an_unspendable_chain_reports_tool_surface_dead_not_exhaustion(
 ) -> None:
     """The reason must reach the outcome, not only the console line."""
     _install_seams(monkeypatch)
-    session = ResolutionSession(dead_tool_surfaces=("primary", "fallback"))
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock, total_limit=1)
+    for agent in ("primary", "fallback"):
+        ledger.record(
+            AttemptFact(
+                phase=PHASE_RESOLUTION,
+                agent=agent,
+                artifact_valid=False,
+            )
+        )
+    session = ResolutionSession(ledger=ledger)
     outcome = driver_module.run_conflict_resolution_outcome(
         root=tmp_path,
         target="main",
@@ -312,7 +345,9 @@ def test_an_agents_activity_event_cannot_kill_its_own_tool_surface(
     from ralph.agents.idle_watchdog.waiting_status_kind import WaitingStatusKind
     from ralph.pipeline.conflict_resolution.session import wrap_activity_listener
 
-    session = ResolutionSession()
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock)
+    session = ResolutionSession(ledger=ledger)
     listener = wrap_activity_listener(None, session, agent_name="claude")
     assert listener is not None
     listener(
@@ -328,8 +363,9 @@ def test_an_agents_activity_event_cannot_kill_its_own_tool_surface(
             stall_active=False,
         )
     )
-    assert session.dead_tool_surfaces == ()
+    assert "claude" not in skipped_candidates(session, ("claude",))
     assert session.terminal_reason is None
+    assert ledger.is_available(PHASE_RESOLUTION, "claude") is True
 
 
 def test_ralph_infrastructure_faults_are_not_recorded_as_an_exhausted_chain(
@@ -454,7 +490,10 @@ def test_an_infrastructure_fault_does_not_kill_the_agent_for_the_whole_rebase(
         session=session,
     )
     assert calls, "the faulting agent still had its attempt"
-    assert session.dead_tool_surfaces == (), "a plumbing fault is not a permanent verdict"
+    assert "solo" not in skipped_candidates(session, ("solo",)), (
+        "a plumbing fault is not a permanent verdict"
+    )
+    assert session.terminal_reason is ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
 
     # A later stop must still reach it.
     _install_seams(monkeypatch)
@@ -479,7 +518,12 @@ def test_a_chain_barred_only_by_ralphs_own_faults_is_retried_not_skipped(
 ) -> None:
     """Doing nothing is the one outcome that cannot resolve the conflict."""
     _install_seams(monkeypatch)
-    session = ResolutionSession(stop_dead_surfaces=("primary", "fallback"))
+    clock = FakeClock()
+    ledger = AgentFailureLedger(clock=clock)
+    session = ResolutionSession(ledger=ledger)
+    session.terminal_reason = ResolutionTerminationReason.TRANSPORT_LOOP_DETECTED
+    session.charge_conflict_budget = False
+    assert skipped_candidates(session, ("primary", "fallback")) == frozenset()
     calls: list[str] = []
 
     driver_module.run_conflict_resolution_pipeline(
@@ -523,7 +567,21 @@ def test_a_candidate_the_registry_cannot_produce_stays_barred_for_the_run(
         invoke=_unavailable,
         session=session,
     )
-    assert session.dead_tool_surfaces == ("primary",)
+    assert "primary" in skipped_candidates(session, ("primary", "fallback"))
+    later: list[str] = []
+    driver_module.run_conflict_resolution_pipeline(
+        root=tmp_path,
+        target="main",
+        config=UnifiedConfig.model_validate({"general": {}}),
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda name, _p, _r: later.append(name) is None,
+        session=session,
+    )
+    assert "primary" not in later
 
 
 def test_every_reason_less_exit_now_names_itself(

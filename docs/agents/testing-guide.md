@@ -1070,7 +1070,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_interrupt_dispatcher.py` | 2 | 1 | 8 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_kimi_wire_provenance.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_launch_payload_ceiling.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_lifecycle_acceptance.py` | 0 | 5 | 4 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
+| `tests/test_lifecycle_acceptance.py` | 0 | 4 | 4 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_lifecycle_bounded_response.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_list_directory_recursive_bounded.py` | 2 | 1 | 3 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_live_post_tool_result_wedge.py` | 0 | 5 | 3 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
@@ -1208,7 +1208,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_property_h_bounded_resources.py` | 0 | 5 | 13 | property | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: property public-seam unit |
 | `tests/test_property_i_timing_safety.py` | 0 | 2 | 0 | property | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: property public-seam unit |
 | `tests/test_property_k_trust_boundary.py` | 0 | 4 | 0 | property | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: property public-seam unit |
-| `tests/test_property_l_zero_progress_and_resume.py` | 0 | 2 | 0 | property | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: property public-seam unit |
+| `tests/test_property_l_zero_progress_and_resume.py` | 0 | 1 | 0 | property | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: property public-seam unit |
 | `tests/test_property_n_spill_inside_workspace.py` | 0 | 2 | 0 | property | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: property public-seam unit |
 | `tests/test_pty_line_reader_pending_bound.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_pty_line_reader_session_capture.py` | 0 | 4 | 9 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
@@ -1241,8 +1241,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_resume_action_aware_prompt.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_retained_resolution_dispatch.py` | 7 | 0 | 2 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_retained_resolution_handoff.py` | 2 | 6 | 0 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
-| `tests/test_retry_budget_durability.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_retry_progress_guard.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_retry_budget_durability.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_retry_prompt_summary.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_retryable_failure.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_rfc013_db_close_best_effort.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
