@@ -30,6 +30,10 @@ def _noop_warn(_display: object, _msg: str) -> None:
     pass
 
 
+def _uninstalled_agent(_agent: str) -> None:
+    """Registry ``.get`` stub: no resolver agent is installed."""
+
+
 def _noop_save(_state: PipelineState, _ctx: run_loop._LoopContext) -> None:
     pass
 
@@ -366,12 +370,20 @@ def test_conflict_cap_exhaustion_escalates_through_ladder_never_handoff(
         names the preserved copy's location and the next autonomous
         ladder rung.
     """
+    # The state production persists when the conflict budget is spent at
+    # the cap: a fresh conflict outcome that carries the durable
+    # ``resolution_exhausted`` latch but NOT the intervention gate (the
+    # shape written by ``record_resolution_exhausted`` after the resolver
+    # chain exhausts the configured cap). Below the cap the retry paces
+    # with a bounded sleep and never escalates; only this spent-budget
+    # record is the cap path the run loop escalates through the ladder.
     state = PipelineState(
         phase="development",
         rebase=RebaseState(
             last_action="conflict",
             last_reason="cap-path unresolved shared.txt",
             consecutive_conflicts=1,
+            resolution_exhausted=True,
         ),
     )
     # (a) The pre-cap state never latches the person-gate.
@@ -410,6 +422,16 @@ def test_conflict_cap_exhaustion_escalates_through_ladder_never_handoff(
             sleep=sleeps.append,
             connectivity_monitor=SimpleNamespace(current_state=None),
             _session_handoff_dispatched=False,
+            # The below-cap pending-retry path consults
+            # ``_resolver_cooldown_wait_ms(ctx)``, which iterates
+            # ``resolution_chain_agents(ctx.policy_bundle)`` and reads
+            # ``ctx.registry`` / ``ctx.controller`` through
+            # ``choose_resolver``. The default ``AgentsPolicy()`` binds no
+            # resolution drain, so the chain is empty and neither attribute
+            # is dereferenced; provide the stubs anyway so a future
+            # parametrization that binds a resolver cannot crash here.
+            registry=SimpleNamespace(get=_uninstalled_agent),
+            controller=None,
         ),
     )
 

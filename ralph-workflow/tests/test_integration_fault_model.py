@@ -825,8 +825,7 @@ def test_dirt_at_every_planning_sync_step_escalates_and_terminates(
         actions.append(verdict.action)
         assert verdict.may_plan is False, f"dirt let planning through at seed {seed}"
         assert verdict.worktree.dispatch_blocked, (
-            f"a drawn dirt shape did not block dispatch at seed {seed}: "
-            f"{verdict.dirt_shape.value}"
+            f"a drawn dirt shape did not block dispatch at seed {seed}: {verdict.dirt_shape.value}"
         )
 
     climbed = [CLEANUP_LADDER_ORDER.index(rung) for rung in rungs if rung is not None]
@@ -841,4 +840,3 @@ def test_dirt_at_every_planning_sync_step_escalates_and_terminates(
         f"a resolver was dispatched for dirt at seed {seed}"
     )
     assert IntegrationAction.LAND_TARGET not in actions
-

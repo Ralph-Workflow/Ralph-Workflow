@@ -116,10 +116,10 @@ directions would be an import cycle.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from enum import StrEnum
 from typing import TYPE_CHECKING, Final
 
 from ralph.pipeline._integration_action import IntegrationAction
+from ralph.pipeline._record_fact_outcome import RecordFactOutcome
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_decision import (
     CLEANUP_LADDER_ORDER,
@@ -158,32 +158,6 @@ __all__ = [
     "load_integration_attempts",
     "project_integration_action",
 ]
-
-
-class RecordFactOutcome(StrEnum):
-    """Typed fail-closed verdict for durable record facts the owner cannot express.
-
-    No live observation can prove these outcomes; they are statements about
-    DURABLE STATE, overlaid on the owner's mutation-ladder answer by
-    :func:`ralph.pipeline._integration_record_facts.apply_record_facts`.
-    Neither outcome ever ends the run blocked on a person: each maps to a
-    cleanup-ladder rung in :data:`NEXT_ACTION_TO_LADDER_RUNG`, the ladder
-    preserves the work to backup refs first and ends in rung 6 (hard
-    reset) — never an operator hand-off.
-
-    ``STALE_INTENT`` — the durable record cannot prove a next step the
-    boundary can act on (a retained obligation with no record behind it,
-    or a missing / malformed / expired bounded-retry deadline). The
-    intent the record described is stale: Git outranks the record, so
-    the seam preserves the work and re-enters the rebase-first ladder.
-
-    ``DIAGNOSTIC_BUDGET_SPENT`` — the record's diagnostic repair-attempt
-    flag is set: the repairs the record describes were tried and
-    exhausted. Escalation continues through the same autonomous ladder.
-    """
-
-    STALE_INTENT = "stale_intent"
-    DIAGNOSTIC_BUDGET_SPENT = "diagnostic_budget_spent"
 
 
 #: The mutation-class decisions: the actions that ask the boundary to

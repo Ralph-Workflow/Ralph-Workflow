@@ -439,7 +439,7 @@ tests/test_bridge_lifetime_primitive.py|0,1,0
 tests/test_busy_refusal_state_factory.py|0,4,0
 tests/test_canonical_artifact_submit.py|2,1,4
 tests/test_capability_state_idempotent.py|0,4,0
-tests/test_catchup_observed_case_composed.py|2,0,0
+tests/test_catchup_observed_case_composed.py|2,1,0
 tests/test_checkpoint_idempotent.py|0,0,6
 tests/test_claude_interactive_parser.py|0,2,0
 tests/test_claude_interactive_pty.py|1,1,0
@@ -488,7 +488,8 @@ tests/test_conflict_resolution_lifecycle.py|0,2,0
 tests/test_conflict_resolution_liveness_matrix.py|0,2,0
 tests/test_conflict_resolution_outcome_judging.py|5,0,0
 tests/test_conflict_resolution_phase_parity.py|11,1,2
-tests/test_conflict_resolution_pipeline.py|11,1,1
+tests/test_conflict_resolution_pipeline.py|8,1,1
+tests/test_conflict_resolution_pipeline_outcome.py|5,1,0
 tests/test_conflict_resolution_rebase_loop.py|16,0,9
 tests/test_conflict_resolution_relay_failure.py|0,1,0
 tests/test_conflict_resolution_resume.py|8,0,0
@@ -785,7 +786,7 @@ tests/test_resolution_failure_cause_contract.py|0,2,0
 tests/test_resolve_retry_intent.py|0,7,0
 tests/test_restart_from_scratch_detector.py|0,3,1
 tests/test_resume_action_aware_prompt.py|0,1,0
-tests/test_retained_resolution_dispatch.py|7,0,2
+tests/test_retained_resolution_dispatch.py|8,0,2
 tests/test_retained_resolution_handoff.py|2,6,0
 tests/test_retry_budget_durability.py|0,1,0
 tests/test_retry_prompt_summary.py|0,1,0
@@ -793,7 +794,7 @@ tests/test_retryable_failure.py|0,2,0
 tests/test_rfc013_db_close_best_effort.py|0,4,0
 tests/test_run_loop_configured_cap.py|12,0,9
 tests/test_run_loop_decision_delegation.py|0,1,3
-tests/test_run_loop_failed_ladder_terminal.py|9,0,8
+tests/test_run_loop_failed_ladder_terminal.py|12,2,13
 tests/test_run_loop_pro_integration.py|30,3,11
 tests/test_run_loop_resolver_cooldown_wait.py|6,2,4
 tests/test_run_loop_resolver_ledger.py|0,0,3
@@ -844,7 +845,7 @@ tests/test_smoke_plumbing_uses_canonical_submit.py|0,3,0
 tests/test_stale_resolution_replay.py|2,3,0
 tests/test_startup_timeouts_invariants.py|7,18,14
 tests/test_state_db_schema_guard.py|0,0,4
-tests/test_strategy_escalation_e2e.py|2,0,2
+tests/test_strategy_escalation_e2e.py|2,1,3
 tests/test_subprocess_agent_executor.py|0,0,12
 tests/test_subprocess_agent_executor_teardown.py|0,2,0
 tests/test_subprocess_env_secret_isolation.py|0,2,0

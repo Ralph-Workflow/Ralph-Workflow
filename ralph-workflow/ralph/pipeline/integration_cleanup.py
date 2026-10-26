@@ -769,7 +769,7 @@ def _operation_gate(
             "on an unknown operation state (tree left untouched)"
         )
         return ResidueCleanupOutcome(operation_unknown=True)
-    kind = cast("InProgressKind", in_progress.value)
+    kind = in_progress.require_known()
     if kind is InProgressKind.NONE:
         return None
     emit(

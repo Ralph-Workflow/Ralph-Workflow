@@ -28,14 +28,12 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.driver import (
-    run_conflict_resolution_outcome,
     run_conflict_resolution_pipeline,
     run_rebase_conflict_resolution_pipeline,
 )
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
-from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
-from ralph.pipeline.conflict_resolution.session import ResolutionSession, begin_resolution_stop
+from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.status import (
     NEUTRAL_PHASE_LABEL,
     PHASE_LABEL,
@@ -46,7 +44,6 @@ from ralph.pipeline.integration_resolution import (
     assert_non_resolution_dispatch_allowed,
     inspect_integration_resolution,
 )
-from ralph.pipeline.rebase_state import ResolutionFailureCause
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
@@ -141,29 +138,6 @@ def _run(
         display_context=None,
         invoke=invoke,
         session=session,
-    )
-
-
-def _run_outcome(
-    tmp_path: Path,
-    *,
-    invoke: driver_module.ResolutionInvoker,
-    display: _FakeDisplay | None = None,
-    session: ResolutionSession | None = None,
-    strategy_history: Sequence[str] = (),
-) -> ResolutionOutcome:
-    return run_conflict_resolution_outcome(
-        root=tmp_path,
-        target="main",
-        config=_config(),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=_policy_bundle(),
-        display=display,
-        display_context=None,
-        invoke=invoke,
-        session=session,
-        strategy_history=strategy_history,
     )
 
 
@@ -881,136 +855,3 @@ def test_a_truncated_conflict_is_not_a_resolution(
 
     assert _run(tmp_path, invoke=_truncates, session=session) is False
     assert session.unresolved_paths == ("src/alpha.py",)
-
-
-def test_invoker_returning_outcome_agent_failure_propagates_cause(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[_CONFLICTED])
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
-
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> ResolutionOutcome:
-        return ResolutionOutcome(
-            succeeded=False,
-            reason=ResolutionTerminationReason.TOOL_SURFACE_DEAD,
-            duration_seconds=1.0,
-            last_activity_kind=None,
-            last_activity_at=None,
-            unresolved_paths=tuple(_CONFLICTED),
-            failure_cause=ResolutionFailureCause.AGENT_FAILURE,
-        )
-
-    outcome = _run_outcome(tmp_path, invoke=_invoke)
-    assert outcome.succeeded is False
-    assert outcome.failure_cause == ResolutionFailureCause.AGENT_FAILURE
-
-
-def test_invoker_returning_outcome_context_failure_propagates_cause(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[_CONFLICTED])
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
-
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> ResolutionOutcome:
-        return ResolutionOutcome(
-            succeeded=False,
-            reason=ResolutionTerminationReason.EXCEPTION,
-            duration_seconds=1.5,
-            last_activity_kind=None,
-            last_activity_at=None,
-            unresolved_paths=tuple(_CONFLICTED),
-            failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
-        )
-
-    outcome = _run_outcome(tmp_path, invoke=_invoke)
-    assert outcome.succeeded is False
-    assert outcome.failure_cause == ResolutionFailureCause.CONTEXT_FAILURE
-
-
-def test_invoker_returning_outcome_success_has_cause_none(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
-
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> ResolutionOutcome:
-        return ResolutionOutcome(
-            succeeded=True,
-            reason=None,
-            duration_seconds=0.5,
-            last_activity_kind="done",
-            last_activity_at=100.0,
-            unresolved_paths=(),
-            failure_cause=ResolutionFailureCause.NONE,
-        )
-
-    outcome = _run_outcome(tmp_path, invoke=_invoke)
-    assert outcome.succeeded is True
-    assert outcome.failure_cause == ResolutionFailureCause.NONE
-    assert outcome.unresolved_paths == ()
-
-
-def test_strategy_rotation_preserves_spent_budget_and_candidate_state() -> None:
-    from ralph.agents.timeout_clock import FakeClock
-    from ralph.pipeline.state import PipelineState
-    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
-
-    clock = FakeClock()
-    ledger = AgentFailureLedger(clock=clock)
-    chain = AgentChainState(agents=["claude", "pi"], current_index=1, retries=1)
-    state = PipelineState(phase=PHASE_RESOLUTION).with_phase_chain(PHASE_RESOLUTION, chain)
-
-    session = ResolutionSession(ledger=ledger, recovery_state=state)
-    session.rounds_spent = 3
-    session.chain_cursor = 1
-    session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-
-    begin_resolution_stop(session, is_strategy_rotation=True)
-    assert session.rounds_spent == 3
-    assert session.chain_cursor == 1
-    assert session.last_failure_cause == ResolutionFailureCause.AGENT_FAILURE
-    assert isinstance(session.recovery_state, PipelineState)
-    res_chain = session.recovery_state.chain_for_phase(PHASE_RESOLUTION)
-    assert res_chain is not None
-    assert res_chain.current_index == 1
-
-    begin_resolution_stop(session, is_strategy_rotation=False)
-    assert session.rounds_spent == 0
-    assert session.chain_cursor == 0
-    assert session.last_failure_cause == ResolutionFailureCause.NONE
-    assert isinstance(session.recovery_state, PipelineState)
-    res_chain_reset = session.recovery_state.chain_for_phase(PHASE_RESOLUTION)
-    assert res_chain_reset is not None
-    assert res_chain_reset.current_index == 0
-
-
-def test_strategy_rotation_does_not_replenish_driver_round_cap(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _install_seams(
-        monkeypatch,
-        unmerged=_CONFLICTED,
-        surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED],
-    )
-    monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _s: None)
-
-    rounds_called: list[int] = []
-
-    def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
-        rounds_called.append(round_index)
-        return False
-
-    session = ResolutionSession(max_rounds_per_stop=2)
-    outcome1 = _run_outcome(tmp_path, invoke=_invoke, session=session)
-    assert outcome1.succeeded is False
-    assert session.rounds_spent == 7
-    assert rounds_called == [1, 1, 1, 2, 3, 4, 5, 6, 7]
-
-    outcome2 = _run_outcome(
-        tmp_path,
-        invoke=_invoke,
-        session=session,
-        strategy_history=("primary-strategy",),
-    )
-    assert outcome2.succeeded is False
-    assert rounds_called == [1, 1, 1, 2, 3, 4, 5, 6, 7]
-    assert session.rounds_spent == 7

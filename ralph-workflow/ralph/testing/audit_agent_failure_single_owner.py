@@ -68,6 +68,31 @@ TEMPORARY_TRANSITIONAL_RULES: dict[str, frozenset[str]] = {
             "dead_tool_surfaces",
         }
     ),
+    "tests/pipeline/test_conflict_resolution_ledger.py": frozenset(
+        {"stop_dead_surfaces", "dead_tool_surfaces"}
+    ),
+    "tests/test_conflict_resolution_attempt_attribution.py": frozenset(
+        {"stop_dead_surfaces", "dead_tool_surfaces"}
+    ),
+    "tests/test_conflict_resolution_futile_loop.py": frozenset(
+        {"stop_dead_surfaces", "dead_tool_surfaces"}
+    ),
+    "tests/test_conflict_resolution_phase_parity.py": frozenset(
+        {"stop_dead_surfaces", "dead_tool_surfaces"}
+    ),
+    "tests/test_conflict_resolution_pipeline.py": frozenset(
+        {"stop_dead_surfaces", "dead_tool_surfaces"}
+    ),
+    # wt-18 F3 split: the outcome/strategy-rotation tests (and their
+    # ``stop_dead_surfaces`` session-fake accesses) moved here verbatim
+    # from test_conflict_resolution_pipeline.py; the transitional
+    # allowance follows the moved code unchanged.
+    "tests/test_conflict_resolution_pipeline_outcome.py": frozenset(
+        {"stop_dead_surfaces", "dead_tool_surfaces"}
+    ),
+    "tests/test_conflict_resolution_relay_failure.py": frozenset(
+        {"stop_dead_surfaces", "dead_tool_surfaces"}
+    ),
 }
 
 

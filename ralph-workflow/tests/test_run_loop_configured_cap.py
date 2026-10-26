@@ -15,7 +15,6 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import run_loop
-from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy

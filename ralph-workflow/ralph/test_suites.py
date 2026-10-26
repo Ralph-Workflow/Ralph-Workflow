@@ -354,6 +354,32 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # files carry subprocess_e2e + required_auto_integrate_e2e markers.
     "tests/test_exec_smoke_subprocess_e2e.py",
     "tests/test_exec_job_shutdown_subprocess_e2e.py",
+    # wt-18 U5 reconciliation: the GitPython real-Git boundary audit
+    # (ralph.testing.audit_test_policy, added in 223d8ab65) honours this
+    # registry as the single sanctioned exception for default-lane tests
+    # whose fixtures build real repositories. These files predate the
+    # audit and run real ``Repo.init`` / ``git.Repo`` crossings in the
+    # default ``make test`` profile; registering them keeps the profile
+    # unchanged and lets the two mechanisms never drift. Each remains a
+    # default-lane file (no subprocess_e2e marker is added or removed).
+    "tests/conftest.py",
+    "tests/pipeline/test_reducer_lock_retry.py",
+    "tests/test_auto_integrate_gates.py",
+    "tests/test_bootstrap_auto_seed_git_exclude.py",
+    "tests/test_bootstrap_auto_seed_gitignore.py",
+    "tests/test_commit_cleanup_diff.py",
+    "tests/test_commit_detached_head_recovery.py",
+    "tests/test_commit_executor.py",
+    "tests/test_cycle_baseline_diff_cycle_baseline_diff.py",
+    "tests/test_cycle_baseline_diff_runner_cycle_start_uses_force_true.py",
+    "tests/test_cycle_baseline_diff_write_cycle_baseline_force_param.py",
+    "tests/test_git_command_queue.py",
+    "tests/test_git_wrapper.py",
+    "tests/test_integration_diagnostic_livelock.py",
+    "tests/test_pipeline_runner_execute_commit_effect.py",
+    "tests/test_prompt_materialize_2.py",
+    "tests/test_prompt_materialize_3.py",
+    "tests/test_worktree_lease.py",
 )
 _VERIFICATION_MARK_EXPRESSION = "(not subprocess_e2e and not smoke) or required_auto_integrate_e2e"
 _SUBPROCESS_E2E_MARK_EXPRESSION = (

@@ -139,10 +139,7 @@ def test_gitpython_aliased_repo_import_is_violation(tmp_path: Path) -> None:
     """An aliased ``Repo`` import (``GitRepo``) still crosses the boundary."""
     test_file = tmp_path / "test_example.py"
     test_file.write_text(
-        "from git import Repo as GitRepo\n"
-        "\n"
-        "def _seed_repo(tmp_path):\n"
-        "    GitRepo.init(tmp_path)\n"
+        "from git import Repo as GitRepo\n\ndef _seed_repo(tmp_path):\n    GitRepo.init(tmp_path)\n"
     )
     violations = audit_test_file(test_file)
     assert len(violations) == 1
@@ -153,12 +150,7 @@ def test_gitpython_aliased_repo_import_is_violation(tmp_path: Path) -> None:
 def test_git_module_attribute_repo_is_violation(tmp_path: Path) -> None:
     """``git.Repo(...)`` through the module import crosses the boundary."""
     test_file = tmp_path / "test_example.py"
-    test_file.write_text(
-        "import git\n"
-        "\n"
-        "def _seed_repo(tmp_path):\n"
-        "    git.Repo.init(tmp_path)\n"
-    )
+    test_file.write_text("import git\n\ndef _seed_repo(tmp_path):\n    git.Repo.init(tmp_path)\n")
     violations = audit_test_file(test_file)
     assert len(violations) == 1
     assert violations[0].category == "io"
@@ -201,10 +193,7 @@ def test_registered_real_git_file_is_exempt(tmp_path: Path) -> None:
     tests_dir.mkdir()
     test_file = tests_dir / "test_registered_real_git.py"
     test_file.write_text(
-        "from git import Repo\n"
-        "\n"
-        "def test_seed(tmp_path):\n"
-        "    Repo.init(tmp_path)\n"
+        "from git import Repo\n\ndef test_seed(tmp_path):\n    Repo.init(tmp_path)\n"
     )
     with (
         mock.patch.object(audit_module, "_PROJECT_ROOT", tmp_path),
