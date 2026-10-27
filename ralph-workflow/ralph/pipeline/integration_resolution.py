@@ -36,6 +36,7 @@ must not do.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -53,10 +54,12 @@ from ralph.git.merge import (
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.git.subprocess_runner import run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
 from ralph.pipeline.integration_dispatch_blocked_error import IntegrationDispatchBlockedError
 from ralph.pipeline.integration_observation import _decode_quoted_porcelain_path
 from ralph.pipeline.integration_resolution_status import IntegrationResolutionStatus
 from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
+from ralph.pipeline.rebase_state import RebaseState
 from ralph.policy.resolution_names import RESOLUTION_DRAIN_NAME
 
 if TYPE_CHECKING:
@@ -414,6 +417,87 @@ def _log_persisted_override(
         )
 
 
+def correct_overtaken_persisted_record(state: RebaseState) -> RebaseState:
+    """Return ``state`` with stale unresolved-integration evidence corrected.
+
+    The live tree has just proven (a clean readiness assessment with no
+    unreadable probes) that the persisted integration record is overtaken:
+    the landing it describes demonstrably happened. The correction must be
+    WRITTEN BACK to the durable record, not merely logged -- otherwise the
+    tree and the record disagree again on every later pass and the same
+    override is rediscovered forever.
+
+    Fail-closed by construction: this function clears only evidence the
+    caller proved stale (it must be called only after a clean
+    :func:`assess_tree_readiness`). The returned state is durable only
+    when the caller persists it through the checkpoint seam or a record
+    store; :func:`inspect_integration_resolution` wires that write-back.
+    """
+    corrected = state
+    if corrected.last_outcome in (
+        RebaseOutcomeKind.CONFLICT,
+        RebaseOutcomeKind.UNKNOWN,
+        RebaseOutcomeKind.LADDER_ESCALATION,
+        RebaseOutcomeKind.INTERVENTION_REQUIRED,
+        RebaseOutcomeKind.DIAGNOSTIC_INTERVENTION_REQUIRED,
+    ):
+        corrected = corrected.model_copy(
+            update={
+                "last_outcome": RebaseOutcomeKind.COMPLETED,
+                "last_reason": (
+                    "live clean tree overtook the persisted unresolved integration record; "
+                    "correction written back"
+                ),
+            }
+        )
+    if corrected.integration_unresolved:
+        corrected = corrected.model_copy(
+            update={
+                "unresolved_integration_carried": False,
+                "legacy_checkpoint_blocked": False,
+                "resolving_rebase": False,
+                "resolving_merge": False,
+                "diagnostic_ownership": None,
+            }
+        )
+    if corrected.recovery_record_retained:
+        corrected = corrected.clear_recovery_record_retained()
+    if corrected.resolution_exhausted:
+        corrected = corrected.clear_resolution_exhausted()
+    return corrected
+
+
+type WritePersistedCorrection = Callable[[RebaseState], None]
+"""Sink the caller hands to :func:`inspect_integration_resolution` to persist a correction.
+
+The observation layer stays pure: it derives the corrected state, but the
+CALLER owns the durable write (checkpoint seam or record store), preserving
+the authority boundary documented at module level. A caller that supplies
+``write_back`` asserts it can make the correction survive a restart; the
+correction itself is only minted for a fully readable, integration-ready
+live assessment.
+"""
+
+
+def _correct_persisted_record(
+    state: RebaseState,
+    readiness: TreeReadinessAssessment,
+    write_back: WritePersistedCorrection | None,
+) -> None:
+    """Correct the persisted record the live tree has proven overtaken.
+
+    AC-11(f): an override of the persisted record by the live tree writes
+    the correction back. Restricted to the safe case -- the assessment is
+    integration-ready AND no probe is unreadable -- so unknown evidence and
+    blocked trees fail closed and leave the record untouched.
+    """
+    if not readiness.integration_ready or readiness.unknown_kinds:
+        return
+    corrected = correct_overtaken_persisted_record(state)
+    if corrected is not state and write_back is not None:
+        write_back(corrected)
+
+
 def inspect_integration_resolution(
     root: Path,
     state: RebaseState,
@@ -421,6 +505,7 @@ def inspect_integration_resolution(
     porcelain: Callable[[Path], tuple[bool, str]] | None = None,
     rebase_active: Callable[[Path], bool] = rebase_in_progress,
     merge_status: Callable[[Path], str] = merge_state,
+    write_back: Callable[[RebaseState], None] | None = None,
 ) -> _AssessedIntegrationResolutionVerdict:
     """Return the three-valued dispatch verdict for ``root`` and ``state``.
 
@@ -449,6 +534,14 @@ def inspect_integration_resolution(
     Durable ownership never outranks live Git facts: a receipt the live
     repository proves has already landed holds nothing back, while an
     in-flight or unreadable one still refuses ordinary dispatch.
+
+    AC-11(f) write-back: when the live tree provably contradicts the
+    persisted record (integration-ready, no unreadable probes), the
+    caller-supplied ``write_back`` sink receives the corrected state so
+    the durable record converges with the tree instead of being
+    re-overridden on every pass. Supplying the sink is the caller's
+    assertion that the correction will survive a restart; without one
+    the observation stays log-only (previous behavior).
     """
     persisted = persisted_integration_resolution_verdict(state)
     readiness = assess_tree_readiness(
@@ -489,6 +582,13 @@ def inspect_integration_resolution(
 
     if persisted is not None:
         _log_persisted_override(persisted, readiness)
+        # AC-11(f): the override of the persisted record by the live tree
+        # must write the correction back to the durable record, not merely
+        # log it -- otherwise the same disagreement is rediscovered on
+        # every later pass. Only a fully readable, integration-ready live
+        # assessment proves the record overtaken; the fail-closed paths
+        # above return before this line.
+        _correct_persisted_record(state, readiness, write_back)
 
     return _AssessedIntegrationResolutionVerdict(
         RESOLVED,

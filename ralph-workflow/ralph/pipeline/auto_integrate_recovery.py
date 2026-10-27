@@ -208,6 +208,11 @@ def _startup_recovery_route(
         return _StartupRecoveryRoute.DEFER_INTERVENTION
     if action is IntegrationAction.WAIT_FOR_BOUNDED_RETRY:
         return _StartupRecoveryRoute.DEFER_RETRY
+    if action.value == "require_intervention":
+        # A plain record (no owned-operation fact) with an
+        # intervention verdict is not an obligation the recovery path
+        # owns: defer to the owner's escalation ladder.
+        return _StartupRecoveryRoute.DEFER_INTERVENTION
     return _StartupRecoveryRoute.RECOVERY_OWNS_OPERATION
 
 

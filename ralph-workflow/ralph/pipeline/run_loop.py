@@ -3174,9 +3174,26 @@ def _block_unresolved_integration(
     if retained_result is not None:
         return retained_result
 
-    verdict = inspect_integration_resolution(ctx.workspace_scope.root, state.rebase)
+    # AC-11(f): the gate pass is the ONE canonical observation point whose
+    # verdict is followed by a checkpoint save on every resume, so it owns
+    # the write-back sink: when the live tree provably overtakes the
+    # persisted record (integration-ready, no unreadable probes), the
+    # corrected state — not merely the plain containment release — is what
+    # a restart reads.
+    corrected: list[RebaseState] = []
+    verdict = inspect_integration_resolution(
+        ctx.workspace_scope.root,
+        state.rebase,
+        write_back=corrected.append,
+    )
     if verdict.dispatch_allowed:
         reconciled = reconcile_stale_unresolved_state(state.rebase)
+        if corrected:
+            # The observation layer minted the typed correction: it is the
+            # stronger durable rewrite (it also clears in-flight resolution
+            # flags and diagnostic ownership and records the completed
+            # outcome), so it is what gets persisted.
+            reconciled = corrected[0]
         if reconciled != state.rebase:
             state = state.copy_with(rebase=reconciled)
             _save_recovered_rebase_checkpoint(state, ctx)

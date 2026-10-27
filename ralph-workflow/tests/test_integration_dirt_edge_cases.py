@@ -49,6 +49,11 @@ from ralph.pipeline.auto_integrate_backoff import (
     wait_before_retry,
 )
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
+from ralph.pipeline.integration_cleanup import (
+    PlanningResidue,
+    detect_planning_residue,
+    run_residue_cleanup,
+)
 from ralph.pipeline.integration_decision import (
     AttemptState,
     DecisionContext,
@@ -221,7 +226,8 @@ def test_two_cleaners_one_lease_loser_reobserves_and_never_reshoots() -> None:
     winner = _run(git, baseline, _FakeLedger())
     assert winner.backup_ref == "refs/ralph-backup/fake-01"
     assert winner.remaining_paths == ("src/app.py",)
-    assert git.state is not None, "progress persisted mid-cleanup"
+    persisted_progress: dict[str, object] | None = git.state
+    assert persisted_progress is not None, "progress persisted mid-cleanup"
 
     # The loser re-observes after the winner dies: the liveness probe
     # names a dead holder and the reclaim is allowed — the age evidence
@@ -397,3 +403,94 @@ def test_commit_hook_rejection_moves_the_loop_to_save_and_restore(
     assert len(warns) == 1
     assert "src/app.py" in warns[0]
     assert "refs/ralph-backup/fake-01" in warns[0]
+
+
+class _ScriptedLedger:
+    """Residue ledger port serving one pre-decided action per charge."""
+
+    def __init__(self, action: NextAction) -> None:
+        self._action = action
+
+    def charge_residue_attempt(self, root: Path, *, residue: PlanningResidue) -> NextAction:
+        del root, residue
+        return self._action
+
+
+def test_repeated_refusal_preserves_the_same_residue_once_not_unboundedly(
+    tmp_path: Path,
+) -> None:
+    """AC-11 edge: a refusal recurring after preservation never re-preserves.
+
+    The 2026-10-27 loop re-attempted the same state every ~7 s. Here the
+    merge refusal recurs because the restore keeps failing, so the SAME
+    residue faces the decision table again and again, charged through
+    the real owner charge path each time (the owner's residue seam
+    projects the residue onto the same observation regardless of root,
+    so the durable ledger is anchored at ``tmp_path``):
+
+    * the direct cleanup rung answers twice (first contact is never a
+      repeat), the alternate-preservation rung once — then every later
+      charge is a STRONGER rung that moves the residue aside instead of
+      taking another copy of the same content;
+    * the preserve-shaped decisions are therefore bounded (3, the two
+      direct rungs plus the alternate rung) — never one per retry;
+    * no resolver is dispatched for the dirt at any depth.
+    """
+    from ralph.pipeline.integration_cleanup import residue_observation
+    from ralph.pipeline.integration_decision import DecisionContext, DirtAttribution, decide
+    from ralph.pipeline.integration_owner import charge_integration_attempt
+
+    git = _FakeCleanupGit()
+    baseline = _baseline(git)
+    git.worktree["src/app.py"] = "merge refused to overwrite this"
+    git.fail_restore = True  # the restore keeps failing: the refusal recurs
+
+    actions: list[NextAction] = []
+    for _ in range(8):
+        blob = git.porcelain_status_z(_ROOT)
+        assert blob is not None
+        diff = git.tracked_diff_hash(_ROOT)
+        assert diff is not None
+        residue = detect_planning_residue(baseline, blob, after_diff_hash=diff)
+        assert residue is not None
+        observation, shape = residue_observation(residue)
+        attempts = load_integration_attempts(tmp_path)
+        action = decide(
+            DecisionContext(
+                observation=observation,
+                attempts=attempts,
+                dirt_shape=shape,
+                dirt_attribution=DirtAttribution.UNOWNED,
+            )
+        )
+        charge_integration_attempt(tmp_path, observation=observation, next_action=action)
+        actions.append(action)
+        # The rung's executor acts on the tree; the restore fails, so the
+        # residue remains and the refusal recurs at the next merge.
+        warns: list[str] = []
+        run_residue_cleanup(
+            _ROOT,
+            baseline=baseline,
+            git=git,
+            ledger=_ScriptedLedger(action),
+            target="main",
+            warn=warns.append,
+        )
+
+    # The climb: direct cleanup twice, then one different, stronger rung
+    # per charged repeat — the identical preserve-and-retry never loops.
+    assert actions[0] is NextAction.SAVE_AND_RESTORE
+    assert actions[1] is NextAction.SAVE_AND_RESTORE
+    assert actions[2] is NextAction.PRESERVE_VIA_TEMP_INDEX
+    assert actions[3] is NextAction.QUARANTINE_AND_RESTORE
+    assert actions[4:] == [
+        NextAction.REBUILD_IN_FRESH_WORKTREE,
+        NextAction.ADAPT_ENVIRONMENT_AND_RETRY,
+        NextAction.LAST_RESORT_RECOVERY,
+        NextAction.LAST_RESORT_RECOVERY,
+    ]
+    # Preserve-shaped decisions are bounded; the stronger rungs never
+    # take another copy of the same content.
+    preserve_shaped = (NextAction.SAVE_AND_RESTORE, NextAction.PRESERVE_VIA_TEMP_INDEX)
+    assert sum(1 for action in actions if action in preserve_shaped) == 3
+    assert NextAction.DISPATCH_RESOLVER not in actions

@@ -161,6 +161,121 @@ def test_refused_merge_names_the_obstruction_instead_of_a_generic_conflict(
     )
 
 
+def test_repeat_identical_refusal_spends_durable_budget_and_climbs(
+    tmp_path: Path,
+) -> None:
+    """AC-11(d): the refusal evidence is charged durably once per attempt.
+
+    The 2026-10-27 loop logged ``counted=False ... remaining=None`` and a
+    fixed delay: the refusal spent nothing, so it could never exhaust
+    anything. Here the refusal's typed evidence (the MergeResult the
+    boundary receives, including ``blocked_paths``) is folded into the
+    observation the owner charges, so a repeat of the SAME refusal
+    evidence:
+
+    * advances the durable repeat count once per attempt (``remaining``
+      decreases attempt by attempt), and
+    * advances the escalation ``cycle`` (the rung) at the threshold,
+      reaching a named escalation state within a fixed bound.
+    """
+    from ralph.pipeline.integration_attempt_ledger import AttemptLedger
+    from ralph.pipeline.integration_decision import (
+        AttemptState,
+        DecisionContext,
+        DirtAttribution,
+        EscalationRung,
+        NextAction,
+        decide,
+    )
+    from ralph.pipeline.integration_observation import (
+        DirtShape,
+        HeadState,
+        InProgressKind,
+        InProgressOwnership,
+        IntegrationRecordState,
+        Observation,
+        TargetVsFeature,
+        TargetVsRemote,
+        WorktreeState,
+    )
+
+    # The refusal result from test_refused_merge_names_the_obstruction_...
+    # folded into the observation the boundary decides on: the live
+    # observation says clean, but the refusal's own file list proves the
+    # tree holds local work Git counts, so the observation the budget is
+    # charged against carries the blocking worktree state.
+    refusal = MergeResult(
+        outcome="conflict",
+        reason=(
+            "merge refused: local changes would be overwritten: "
+            "app/models/evidence_artifact.rb"
+        ),
+        blocked_paths=("app/models/evidence_artifact.rb",),
+    )
+    assert refusal.blocked_paths, "the refusal must carry its file list"
+
+    observation = Observation(
+        target_vs_feature=TargetVsFeature.BEHIND,
+        target_vs_remote=TargetVsRemote.EQUAL,
+        worktree=WorktreeState.TRACKED_CHANGES,
+        head=HeadState.ATTACHED,
+        in_progress_kind=InProgressKind.NONE,
+        in_progress_ownership=InProgressOwnership.OWNED,
+        record=IntegrationRecordState.NONE,
+        agent_active=False,
+    )
+
+    def _decide(attempts: AttemptState) -> NextAction:
+        return decide(
+            DecisionContext(
+                observation=observation,
+                attempts=attempts,
+                dirt_shape=DirtShape.UNSTAGED_MODIFICATION,
+                dirt_attribution=DirtAttribution.UNOWNED,
+            )
+        )
+
+    ledger = AttemptLedger(tmp_path, ledger_path=tmp_path / ".agent" / "refusal-ledger.json")
+    signature = AttemptState().signature(observation)
+    trace: list[NextAction] = []
+    for _ in range(6):
+        state = ledger.read()
+        attempts = AttemptState(
+            rung=state.rung,
+            repeat_counts=state.repeat_counts,
+            unknown_attempts=state.unknown_attempts,
+            unknown_budget=state.unknown_budget,
+            repeat_threshold=state.repeat_threshold,
+        )
+        action = _decide(attempts)
+        trace.append(action)
+        ledger.charge(signature, action.value, is_unknown=False)
+
+    # ``remaining`` advances: every attempt charged the same evidence
+    # once — the signature-level total equals the number of attempts,
+    # so no retry ever ran for free (the observed run's ``counted=False
+    # ... remaining=None``).
+    durable = ledger.read()
+    assert sum(durable.repeat_counts.values()) == len(trace), (
+        "each repeat of the identical refusal evidence charges the durable budget once"
+    )
+    assert durable.repeat_counts[(signature, trace[0].value)] == 2, (
+        "the direct action is charged exactly at the repeat threshold, never re-run past it"
+    )
+    # The first contact answers the direct cleanup action twice; the
+    # escalation cycle advances at the threshold and never re-runs the
+    # action that failed — within a fixed bound (here, by the third
+    # attempt) the trace reaches the named stronger rung.
+    assert trace[0] is NextAction.SAVE_AND_RESTORE
+    assert trace[1] is NextAction.SAVE_AND_RESTORE
+    assert trace[2] is NextAction.PRESERVE_VIA_TEMP_INDEX
+    assert any(action is not NextAction.SAVE_AND_RESTORE for action in trace[2:])
+    assert durable.rung is not EscalationRung.REPAIR
+    # No resolver and no commit agent for a non-conflict refusal.
+    assert NextAction.DISPATCH_RESOLVER not in trace
+    assert NextAction.COMMIT not in trace
+
+
 def test_ancestry_state_separates_no_from_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     codes = iter((0, 1, 128))
     _stub_git(monkeypatch, lambda _argv: (next(codes), "", ""))
