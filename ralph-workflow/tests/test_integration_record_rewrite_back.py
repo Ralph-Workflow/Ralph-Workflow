@@ -13,7 +13,7 @@ tree both leave the persisted evidence exactly as it was.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -223,16 +223,22 @@ def test_gate_pass_persists_correction_through_the_checkpoint_seam(
     # observation layer (and its AC-11(f) correction) stays in the loop.
     from ralph.pipeline.integration_resolution import inspect_integration_resolution as real_inspect
 
-    def _clean_probe_inspect(root: Path, state: RebaseState, **kwargs: object) -> object:
-        write_back = kwargs.pop("write_back", None)
-        kwargs.clear()
+    def _clean_probe_inspect(
+        root: Path,
+        state: RebaseState,
+        *,
+        porcelain: Callable[[Path], tuple[bool, str]] | None = None,
+        rebase_active: Callable[[Path], bool] | None = None,
+        merge_status: Callable[[Path], str] | None = None,
+        write_back: Callable[[RebaseState], None] | None = None,
+    ) -> object:
         return real_inspect(
             root,
             state,
-            porcelain=_porcelain_clean,
-            rebase_active=_rebase_clean,
-            merge_status=_merge_clean,
-            write_back=cast("Callable[[RebaseState], None] | None", write_back),
+            porcelain=porcelain if porcelain is not None else _porcelain_clean,
+            rebase_active=rebase_active if rebase_active is not None else _rebase_clean,
+            merge_status=merge_status if merge_status is not None else _merge_clean,
+            write_back=write_back,
         )
 
     monkeypatch.setattr(run_loop, "inspect_integration_resolution", _clean_probe_inspect)
