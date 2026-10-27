@@ -207,8 +207,7 @@ def test_repeat_identical_refusal_spends_durable_budget_and_climbs(
     refusal = MergeResult(
         outcome="conflict",
         reason=(
-            "merge refused: local changes would be overwritten: "
-            "app/models/evidence_artifact.rb"
+            "merge refused: local changes would be overwritten: app/models/evidence_artifact.rb"
         ),
         blocked_paths=("app/models/evidence_artifact.rb",),
     )

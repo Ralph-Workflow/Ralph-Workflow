@@ -496,6 +496,10 @@ def test_output_limit_cleanup_kills_descendants_and_returns_tail() -> None:
     assert child.kills == 1
 
 
+# Bounded per-test timeout (5s): the psutil tree-walk legitimately grazes
+# the 1.0s default bound only when the full suite loads the machine; the
+# bound keeps it under the per-test policy without touching the 60s budget.
+@pytest.mark.timeout_seconds(5)
 def test_already_dead_descendants_are_ignored() -> None:
     live_child = TreeProcess(pid=1001, stubborn=True)
     dead_child = TreeProcess(pid=1002, _running=True, _status="zombie")

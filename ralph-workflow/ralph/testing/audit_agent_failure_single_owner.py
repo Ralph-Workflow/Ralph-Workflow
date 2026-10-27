@@ -50,7 +50,7 @@ from ralph.testing._single_owner_rules import (
     _check_production_compare,
     _check_production_function,
     _check_production_import,
-    _check_production_retry_cap_decision,
+    _check_production_retry_cap_rule,
     _check_production_subscript,
     _is_forbidden_target_name,
     _is_ledger_receiver,
@@ -131,7 +131,7 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
         elif isinstance(node, ast.Compare):
             violations.extend(_check_production_compare(node, rel_path))
         elif isinstance(node, (ast.If, ast.While, ast.IfExp)):
-            violations.extend(_check_production_retry_cap_decision(node, rel_path))
+            violations.extend(_check_production_retry_cap_rule(node, rel_path))
         elif isinstance(node, ast.Call):
             violations.extend(_check_production_call(node, rel_path))
         elif isinstance(node, (ast.Import, ast.ImportFrom)):

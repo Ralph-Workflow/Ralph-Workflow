@@ -265,9 +265,7 @@ def test_runner_fallover_history_reflects_agent_transitions(
     def _capture_saved_state(state: PipelineState, path: object = None) -> None:
         saved_states.append(state)
 
-    _common_monkeypatches(
-        monkeypatch, tmp_path, bundle, _failing_execute(), _capture_saved_state
-    )
+    _common_monkeypatches(monkeypatch, tmp_path, bundle, _failing_execute(), _capture_saved_state)
 
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 
@@ -312,9 +310,7 @@ def test_runner_recovery_cycle_count_advances(
     def _capture_saved_state(state: PipelineState, path: object = None) -> None:
         saved_states.append(state)
 
-    _common_monkeypatches(
-        monkeypatch, tmp_path, bundle, _failing_execute(), _capture_saved_state
-    )
+    _common_monkeypatches(monkeypatch, tmp_path, bundle, _failing_execute(), _capture_saved_state)
 
     monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
 

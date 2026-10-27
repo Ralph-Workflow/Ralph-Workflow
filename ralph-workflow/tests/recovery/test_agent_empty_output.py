@@ -68,9 +68,7 @@ def test_agent_fault_causes_fallover_when_the_agent_is_demoted() -> None:
         lambda evt: collected_fallovers.append(evt) if isinstance(evt, FalloverEvent) else None
     )
 
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus))
     state = _make_state(["claude", "opencode"])
 
     new_state = state
@@ -91,9 +89,7 @@ def test_agent_fault_causes_fallover_when_the_agent_is_demoted() -> None:
 def test_agent_fault_chain_exhaustion_enters_phase_failed() -> None:
     """A sole agent that the ledger demotes fails the phase."""
     controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            cycle_cap=10, policy_bundle=_minimal_policy_bundle()
-        )
+        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )
     state = _make_state(["claude"])
 

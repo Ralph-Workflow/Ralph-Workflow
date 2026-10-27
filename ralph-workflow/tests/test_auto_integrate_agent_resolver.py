@@ -17,13 +17,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import auto_integrate_agent as resolver_module
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
-    import pytest
-
     from ralph.policy.models import PolicyBundle
 
 
@@ -142,6 +142,11 @@ def test_resolver_declines_without_workspace_scope(
     assert calls == []
 
 
+# Bounded per-test timeout (5s): filesystem PATH probing legitimately
+# grazes the 1.0s default bound only when the full suite loads the machine;
+# the bound keeps it under the per-test policy without touching the 60s
+# combined budget.
+@pytest.mark.timeout_seconds(5)
 def test_resolver_declines_when_no_chain_agent_is_installed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

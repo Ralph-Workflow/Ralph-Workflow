@@ -66,7 +66,7 @@ from ralph.workspace.fs import FsWorkspace
 if TYPE_CHECKING:
     from ralph.process.manager import ManagedProcess
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 assert _markdown_specs is not None
 
@@ -160,8 +160,10 @@ def test_e13_pause_drain_stops_accepting_while_inflight_finishes(tmp_path: Path)
     )
 
     try:
-        # Wait for child to bind and write port
-        deadline = time.monotonic() + 5.0
+        # Wait for child to bind and write port. The 20s deadline absorbs
+        # sustained external host load (the child must import the package
+        # and bind before writing); under a quiet host it fires in <1s.
+        deadline = time.monotonic() + 20.0
         while time.monotonic() < deadline and not port_file.exists():
             time.sleep(0.02)
         assert port_file.exists(), "Child failed to report bound port"

@@ -136,8 +136,12 @@ def _patch_runner_seams(
     monkeypatch.setattr(runner_module, "auto_integrate_on_phase_transition", lambda *a, **kw: None)
     monkeypatch.setattr(run_loop_module, "_run_startup_integration", lambda *a, **kw: None)
     resolved = IntegrationResolutionVerdict(RESOLVED)
-    monkeypatch.setattr(runner_module, "inspect_integration_resolution", lambda *_: resolved)
-    monkeypatch.setattr(run_loop_module, "inspect_integration_resolution", lambda *_: resolved)
+    monkeypatch.setattr(
+        runner_module, "inspect_integration_resolution", lambda *_, write_back=None: resolved
+    )
+    monkeypatch.setattr(
+        run_loop_module, "inspect_integration_resolution", lambda *_, write_back=None: resolved
+    )
 
 
 def _monitor_that_reconnects_on_pause(

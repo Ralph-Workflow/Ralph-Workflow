@@ -115,7 +115,7 @@ def test_dirty_sync_dispatches_normal_commit_before_planning(
     monkeypatch.setattr(
         run_loop,
         "inspect_integration_resolution",
-        lambda *_args: IntegrationResolutionVerdict(RESOLVED),
+        lambda *_args, write_back=None: IntegrationResolutionVerdict(RESOLVED),
     )
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", save)
     monkeypatch.setattr(run_loop, "_run_startup_integration", integrate)

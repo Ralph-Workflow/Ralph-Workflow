@@ -137,9 +137,10 @@ def test_controller_ledger_can_be_restored_from_a_checkpoint_snapshot() -> None:
     restored = AgentFailureLedger.from_snapshot(snapshot, clock=controller.clock)
 
     # The restored ledger answers exactly like the original one.
-    assert restored.status("development", "claude").is_eligible == controller.ledger.status(
-        "development", "claude"
-    ).is_eligible
+    assert (
+        restored.status("development", "claude").is_eligible
+        == controller.ledger.status("development", "claude").is_eligible
+    )
     assert restored.is_available("development", "claude") == controller.ledger.is_available(
         "development", "claude"
     )

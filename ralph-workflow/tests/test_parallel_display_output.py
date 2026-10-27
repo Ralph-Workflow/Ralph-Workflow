@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import queue
 
+import pytest
 from rich.console import Console
 
 from ralph.display.context import make_display_context
@@ -53,6 +54,10 @@ def test_emit_analysis_result_updates_subscriber_state_in_default_mode() -> None
     assert any(entry[1].lower() == "proceed" and "all good" in entry[2] for entry in log), log
 
 
+# Bounded per-test timeout (5s): rich-console rendering legitimately grazes
+# the 1.0s default bound only when the full suite loads the machine; the
+# bound keeps it under the per-test policy without touching the 60s budget.
+@pytest.mark.timeout_seconds(5)
 def test_record_activity_updates_snapshot_fields() -> None:
     """record_activity propagates to snapshot fields and build_snapshot mirrors notify."""
     console = Console(file=io.StringIO(), force_terminal=True, width=120)

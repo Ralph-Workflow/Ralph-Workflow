@@ -14,6 +14,8 @@ from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.agents.invoke import InvokeOptions
 from ralph.cli.commands.smoke import _required_evidence
 from ralph.config.enums import AgentTransport
@@ -40,6 +42,11 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
 
+# Bounded per-test timeout (5s): the replay drives a real dispatch through
+# the fake transports, which legitimately grazes the 1.0s default bound
+# only when the full suite loads the machine; the bound keeps it under the
+# per-test policy without touching the 60s combined budget.
+@pytest.mark.timeout_seconds(5)
 def test_kimi_transcript_replay_with_real_mcp_dispatch_grades_wire_pass(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,

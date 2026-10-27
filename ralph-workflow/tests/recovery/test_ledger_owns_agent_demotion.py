@@ -61,9 +61,7 @@ def _policy_bundle(agents: list[str]) -> PolicyBundle:
 def _make_state(agents: list[str]) -> PipelineState:
     return PipelineState(
         phase=_PHASE,
-        phase_chains={
-            _PHASE: AgentChainState(agents=list(agents), current_index=0, retries=0)
-        },
+        phase_chains={_PHASE: AgentChainState(agents=list(agents), current_index=0, retries=0)},
     )
 
 

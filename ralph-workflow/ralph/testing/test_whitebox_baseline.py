@@ -605,8 +605,9 @@ tests/test_integration_owner_config.py|0,4,0
 tests/test_integration_phase_proof.py|0,1,3
 tests/test_integration_planning_sync_seam.py|0,2,0
 tests/test_integration_public_entry_trace.py|6,1,0
-tests/test_integration_record_legacy_migration.py|0,2,0
-tests/test_integration_remote_ops.py|0,2,0
+ tests/test_integration_record_legacy_migration.py|0,2,0
+ tests/test_integration_record_rewrite_back.py|0,0,2
+ tests/test_integration_remote_ops.py|0,2,0
 tests/test_integration_resolution.py|0,0,1
 tests/test_integration_success_state.py|0,1,0
 tests/test_internal_skills_mcp_prompts.py|0,2,0

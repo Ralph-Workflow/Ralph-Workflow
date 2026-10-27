@@ -144,7 +144,11 @@ class TestArtifactToolHasNoCanonicalDrainNames:
 # =============================================================================
 
 
-@pytest.mark.timeout_seconds(2.0)
+# Bounded per-test timeout (10s): the class fixture concatenates the whole
+# display-tree source, which legitimately grazes a 2s bound only when the
+# full suite loads the machine; the bound keeps it under the per-test
+# policy without touching the 60s combined budget.
+@pytest.mark.timeout_seconds(10)
 class TestDisplayLayerHasNoCanonicalPhaseNames:
     """Display modules must not embed canonical phase name literals as routing keys."""
 

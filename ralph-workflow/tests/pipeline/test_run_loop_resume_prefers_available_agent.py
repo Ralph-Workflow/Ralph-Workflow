@@ -76,7 +76,7 @@ def test_run_loop_resumes_on_highest_priority_newly_available_agent(
     monkeypatch.setattr(
         run_loop,
         "inspect_integration_resolution",
-        lambda *_args: IntegrationResolutionVerdict(RESOLVED),
+        lambda *_args, write_back=None: IntegrationResolutionVerdict(RESOLVED),
     )
     ctx = run_loop._LoopContext(
         policy_bundle=policy_bundle,
@@ -168,7 +168,7 @@ def test_cooldown_resume_does_not_reselect_when_integration_is_unresolved(
     monkeypatch.setattr(
         run_loop,
         "inspect_integration_resolution",
-        lambda *_args: IntegrationResolutionVerdict(RECOVERABLE),
+        lambda *_args, write_back=None: IntegrationResolutionVerdict(RECOVERABLE),
     )
 
     resumed = run_loop._resume_after_cooldown_wait(state, ctx, "development", "offline", 10)
@@ -203,7 +203,9 @@ def test_recoverable_mid_run_verdict_reenters_resolution_before_dispatch(
     inspections = iter((recoverable, resolved))
     startup = MagicMock(return_value=state.rebase)
     monkeypatch.setattr(
-        run_loop, "inspect_integration_resolution", lambda *_args: next(inspections)
+        run_loop,
+        "inspect_integration_resolution",
+        lambda *_args, write_back=None: next(inspections),
     )
     monkeypatch.setattr(run_loop, "_run_startup_integration", startup)
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *_args: None)
@@ -227,7 +229,9 @@ def test_exhausted_mid_run_verdict_terminates_without_resolution_reentry(
         reasons=("chain exhausted",),
     )
     startup = MagicMock()
-    monkeypatch.setattr(run_loop, "inspect_integration_resolution", lambda *_args: exhausted)
+    monkeypatch.setattr(
+        run_loop, "inspect_integration_resolution", lambda *_args, write_back=None: exhausted
+    )
     monkeypatch.setattr(run_loop, "_run_startup_integration", startup)
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *_args: None)
     monkeypatch.setattr(run_loop, "_announce_deferred_startup_integration", lambda *_args: None)
@@ -272,7 +276,9 @@ def test_recoverable_verdict_always_enters_conflict_resolution(
         calls.append("startup_integration")
         return state.rebase
 
-    monkeypatch.setattr(run_loop, "inspect_integration_resolution", lambda *_a: next(inspections))
+    monkeypatch.setattr(
+        run_loop, "inspect_integration_resolution", lambda *_a, write_back=None: next(inspections)
+    )
     monkeypatch.setattr(run_loop, "_run_integration_conflict_resolution", _resolve)
     monkeypatch.setattr(run_loop, "_run_startup_integration", _startup)
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *_a: None)
@@ -304,7 +310,9 @@ def test_conflict_resolution_runs_even_when_startup_integration_defers(
     resolver = MagicMock(return_value=True)
     inspections = iter((recoverable, IntegrationResolutionVerdict(status=RESOLVED)))
 
-    monkeypatch.setattr(run_loop, "inspect_integration_resolution", lambda *_a: next(inspections))
+    monkeypatch.setattr(
+        run_loop, "inspect_integration_resolution", lambda *_a, write_back=None: next(inspections)
+    )
     monkeypatch.setattr(run_loop, "_run_integration_conflict_resolution", resolver)
     monkeypatch.setattr(run_loop, "_run_startup_integration", lambda *_a: None)
     monkeypatch.setattr(run_loop, "_save_recovered_rebase_checkpoint", lambda *_a: None)
@@ -541,7 +549,7 @@ def test_an_exhausted_record_still_reaches_the_resolver_when_it_does_not_bind(
     monkeypatch.setattr(
         run_loop,
         "inspect_integration_resolution",
-        lambda _root, _rebase: IntegrationResolutionVerdict(
+        lambda _root, _rebase, write_back=None: IntegrationResolutionVerdict(
             status=IntegrationResolutionStatus.EXHAUSTED,
             reasons=("conflict resolver exhausted",),
         ),

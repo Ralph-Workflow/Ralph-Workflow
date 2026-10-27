@@ -112,6 +112,11 @@ def test_shared_mcp_tools_partial_renders_exec_job_guidance() -> None:
     assert "do not re-run" in rendered
 
 
+# Bounded per-test timeout (5s): rendering the full Jinja template tree
+# legitimately grazes the 1.0s default bound only when the full suite loads
+# the machine; the bound keeps it under the per-test policy without
+# touching the 60s combined budget.
+@pytest.mark.timeout_seconds(5)
 def test_shared_mcp_tools_partial_omits_exec_guidance_when_exec_not_granted() -> None:
     """When HAS_MCP_EXEC is false, the shared partial omits exec job guidance."""
     ctx = TemplateContext.default()
@@ -127,6 +132,11 @@ def test_shared_mcp_tools_partial_omits_exec_guidance_when_exec_not_granted() ->
     assert "max_runtime_ms" not in rendered
 
 
+# Bounded per-test timeout (5s): rendering the full Jinja template tree
+# legitimately grazes the 1.0s default bound only when the full suite loads
+# the machine; the bound keeps it under the per-test policy without
+# touching the 60s combined budget.
+@pytest.mark.timeout_seconds(5)
 @pytest.mark.parametrize(
     "drain",
     [

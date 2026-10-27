@@ -119,9 +119,7 @@ def test_every_demoted_agent_makes_the_controller_wait_instead_of_failing() -> N
 def test_chain_exhaustion_last_error_is_non_sentinel() -> None:
     """Chain exhaustion last_error must be descriptive and not a forbidden sentinel."""
     controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            cycle_cap=10, policy_bundle=_minimal_policy_bundle()
-        )
+        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )
     state = _make_state(["claude"])
 
@@ -136,9 +134,7 @@ def test_chain_exhaustion_last_error_is_non_sentinel() -> None:
 def test_chain_exhaustion_increments_recovery_cycle_count() -> None:
     """Each full-chain exhaustion must increment recovery_cycle_count by 1."""
     controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            cycle_cap=10, policy_bundle=_minimal_policy_bundle()
-        )
+        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )
     state = _make_state(["claude"])
 
@@ -152,9 +148,7 @@ def test_chain_exhaustion_increments_recovery_cycle_count() -> None:
 def test_single_agent_chain_exhaustion_retains_no_fallover_records() -> None:
     """A single-agent chain increments recovery count without retaining fallover history."""
     controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            cycle_cap=10, policy_bundle=_minimal_policy_bundle()
-        )
+        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )
     state = _make_state(["claude"])
 

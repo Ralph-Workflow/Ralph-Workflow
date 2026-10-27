@@ -249,7 +249,7 @@ def _stub_prompt_materialization(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
 
 
-def _resolved_integration_verdict(*_args: object) -> SimpleNamespace:
+def _resolved_integration_verdict(*_args: object, write_back: object = None) -> SimpleNamespace:
     """Return the clean verdict for an integration-independent harness."""
     return SimpleNamespace(dispatch_allowed=True)
 

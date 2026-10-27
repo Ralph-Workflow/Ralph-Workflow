@@ -62,9 +62,7 @@ def test_env_failure_does_not_increment_cycle_count() -> None:
 def test_agent_failure_chain_exhaustion_increments_cycle_count() -> None:
     """A demoted sole agent fails the phase and increments recovery_cycle_count."""
     controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            cycle_cap=10, policy_bundle=_minimal_policy_bundle()
-        )
+        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=_minimal_policy_bundle())
     )
     state = _make_state(["claude"])
 

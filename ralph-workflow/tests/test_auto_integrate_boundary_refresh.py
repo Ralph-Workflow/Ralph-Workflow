@@ -25,6 +25,8 @@ import importlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.config.models import UnifiedConfig
 from ralph.git.merge import MERGE_STATE_NONE
 from ralph.pipeline import auto_integrate
@@ -43,8 +45,6 @@ from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    import pytest
 
 
 _TARGET_SHA = "1111111111111111111111111111111111111111"
@@ -455,6 +455,11 @@ def test_the_forced_refresh_arms_the_throttle_window(
     assert later.last_refresh == REFRESH_REFRESHED
 
 
+# Bounded per-test timeout (5s): real tmp_path git boundary work
+# legitimately grazes the 1.0s default bound only when the full suite
+# loads the machine; the bound keeps it under the per-test policy without
+# touching the 60s combined budget.
+@pytest.mark.timeout_seconds(5)
 def test_an_unhealthy_forced_refresh_is_retried_immediately(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -560,6 +565,11 @@ def _install_recovery_seams(
     return events
 
 
+# Bounded per-test timeout (5s): real tmp_path git boundary work
+# legitimately grazes the 1.0s default bound only when the full suite
+# loads the machine; the bound keeps it under the per-test policy without
+# touching the 60s combined budget.
+@pytest.mark.timeout_seconds(5)
 def test_recovery_refreshes_the_pointer_before_its_ancestry_verdict(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

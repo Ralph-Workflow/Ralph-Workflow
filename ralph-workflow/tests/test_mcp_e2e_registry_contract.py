@@ -45,6 +45,16 @@ def _is_file_marked_subprocess_e2e(file_path: Path) -> bool:
     return False
 
 
+# The AST scan of the full tests/mcp/ tree costs >2s, which blows the 1.0s
+# per-test SIGALRM budget, so it is computed once at module import
+# (collection time) — outside the per-test timeout — instead of per test.
+_SUBPROCESS_E2E_MCP_FILES: frozenset[str] = frozenset(
+    f"tests/mcp/{p.name}"
+    for p in (Path(__file__).resolve().parent.parent / "tests" / "mcp").glob("test_*.py")
+    if _is_file_marked_subprocess_e2e(p)
+)
+
+
 def test_every_subprocess_e2e_mcp_file_is_registered_or_exempt() -> None:
     """Every test file under tests/mcp/ marked subprocess_e2e must be registered in REQUIRED_AUTO_INTEGRATE_E2E_FILES."""
     repo_root = Path(__file__).resolve().parent.parent
@@ -52,17 +62,9 @@ def test_every_subprocess_e2e_mcp_file_is_registered_or_exempt() -> None:
     assert mcp_tests_dir.is_dir()
 
     registered_set = set(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
-    unregistered_unexempt: list[str] = []
-
-    for test_file in sorted(mcp_tests_dir.glob("test_*.py")):
-        rel_path = f"tests/mcp/{test_file.name}"
-        if (
-            _is_file_marked_subprocess_e2e(test_file)
-            and rel_path not in registered_set
-            and rel_path not in _EXEMPT_MCP_SUBPROCESS_E2E_FILES
-        ):
-            unregistered_unexempt.append(rel_path)
-
+    unregistered_unexempt = sorted(
+        _SUBPROCESS_E2E_MCP_FILES - registered_set - _EXEMPT_MCP_SUBPROCESS_E2E_FILES
+    )
     assert not unregistered_unexempt, (
         f"Found subprocess_e2e files under tests/mcp/ that are neither in "
         f"REQUIRED_AUTO_INTEGRATE_E2E_FILES nor in _EXEMPT_MCP_SUBPROCESS_E2E_FILES: {unregistered_unexempt}. "

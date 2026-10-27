@@ -17,12 +17,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.pipeline import auto_integrate_remote_reconcile as remote_reconcile
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
-    import pytest
-
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.policy.models import PolicyBundle
 
@@ -276,6 +276,11 @@ class TestReconcileTargetOntoRemoteWorkspaceContextEndToEnd:
             "rebase_active": active_rebase[0],
         }
 
+    # Bounded per-test timeout (5s): the test runs real git init/remote setup,
+    # which legitimately grazes the 1.0s default bound only when the full
+    # suite loads the machine; the bound keeps it under the per-test policy
+    # without touching the 60s combined budget.
+    @pytest.mark.timeout_seconds(5)
     def test_reconcile_target_onto_remote_drives_shared_resolver_with_target_context(
         self,
         monkeypatch: pytest.MonkeyPatch,

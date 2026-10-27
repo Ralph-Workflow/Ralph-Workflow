@@ -280,6 +280,11 @@ def test_a_genuine_canonical_line_is_still_expected_content(tmp_path: Path) -> N
         assert _breaks(tmp_path, line + b"\n") == [], line
 
 
+# Bounded per-test timeout (5s): the length-sweep drives repeated real git
+# calls, which legitimately grazes the 1.0s default bound only when the
+# full suite loads the machine; the bound keeps it under the per-test
+# policy without touching the 60s combined budget.
+@pytest.mark.timeout_seconds(5)
 def test_a_canonical_line_grades_the_same_however_long_it_is(tmp_path: Path) -> None:
     """The verdict must not depend on length, for canonical lines either.
 

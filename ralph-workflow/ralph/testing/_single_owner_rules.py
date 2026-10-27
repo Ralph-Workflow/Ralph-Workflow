@@ -715,7 +715,7 @@ def _branch_performs_agent_fate_action(node: ast.If | ast.While | ast.IfExp) -> 
     return False
 
 
-def _check_production_retry_cap_decision(
+def _check_production_retry_cap_rule(
     node: ast.If | ast.While | ast.IfExp, rel_path: str
 ) -> list[SingleOwnerViolation]:
     """Flag a local retry cap that decides an agent's retry or advance fate.

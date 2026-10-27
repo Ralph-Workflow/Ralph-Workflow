@@ -1,6 +1,6 @@
 """Pending commit repair hands off Git's failure without restarting resolution."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from io import StringIO
 from pathlib import Path
@@ -269,7 +269,11 @@ def test_runtime_retained_resolution_retries_owner_before_dispatch(
             return RecordReadOutcome(disposition=RecordReadOutcomeDisposition.ABSENT)
         return RecordReadOutcome(disposition=RecordReadOutcomeDisposition.PRESENT, record=record)
 
-    def inspect(root: Path, rebase: RebaseState) -> IntegrationResolutionVerdict:
+    def inspect(
+        root: Path,
+        rebase: RebaseState,
+        write_back: Callable[[RebaseState], None] | None = None,
+    ) -> IntegrationResolutionVerdict:
         active = record is not None and evidence != "no_live_operation"
         porcelain = "UU shared.txt\n" if active and evidence == "unmerged_live" else ""
 

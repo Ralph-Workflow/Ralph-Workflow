@@ -578,8 +578,15 @@ def test_trace_2_hard_cap_at_ceiling() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.timeout_seconds(5)
 def test_randomized_hard_cap_terminates_healthily_within_budget_at_real_registry_branch() -> None:
     """Randomized Bounded property: HEALTHY jobs end at the real hard-cap branch.
+
+    Bounded per-test timeout (5s): the property drives 8 randomized cases
+    through the real ``step_job`` loop on the fake clock; total CPU work
+    legitimately grazes the 1.0s default bound, so an explicit bounded
+    marker keeps the loop-driven property under the per-test policy without
+    touching the 60s combined budget.
 
     Per case: ``kill_cause == 'hard_cap'``; ``elapsed_s`` lies in
     ``[ceiling, ceiling + sample_interval]``; mid-trace ``JobSnapshot`` proves

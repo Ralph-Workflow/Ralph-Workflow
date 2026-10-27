@@ -21,6 +21,8 @@ from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from pytest import MonkeyPatch
 
     from ralph.pipeline.integration_resolution_types import IntegrationResolutionVerdict
@@ -76,14 +78,20 @@ def run_recovery_scenario(
         workspace.write("checkpoint.json", current.model_dump_json())
         saved.append(PipelineState.model_validate_json(workspace.read("checkpoint.json")))
 
-    def inspect(root: Path, rebase: RebaseState) -> IntegrationResolutionVerdict:
-        return inspect_integration_resolution(
+    def inspect(
+        root: Path,
+        rebase: RebaseState,
+        write_back: Callable[[RebaseState], None] | None = None,
+    ) -> IntegrationResolutionVerdict:
+        verdict = inspect_integration_resolution(
             root,
             rebase,
             porcelain=lambda _root: (True, "" if recovered else "UU shared.txt\n"),
             rebase_active=lambda _root: False,
             merge_status=lambda _root: MERGE_STATE_NONE,
+            write_back=write_back,
         )
+        return verdict
 
     def dispatch(*, state: PipelineState, **_kwargs: object) -> int:
         assert recovered, "unresolved integration must never reach the phase executor"

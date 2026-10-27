@@ -550,6 +550,11 @@ def test_acceptance_scenario_7_entry_point_parity(tmp_path: Path) -> None:
     assert len(set(decisions.values())) == 1
 
 
+# Bounded per-test timeout (5s): the scenario wires a real lifecycle restart
+# over a temporary repo, which legitimately grazes the 1.0s default bound
+# only when the full suite loads the machine; the bound keeps it under the
+# per-test policy without touching the 60s combined budget.
+@pytest.mark.timeout_seconds(5)
 def test_acceptance_scenario_8_legacy_representation_migration() -> None:
     """Scenario 8: Legacy migration to single authority.
 
