@@ -464,19 +464,39 @@ def test_e44_bridge_shutdown_mid_drain_reaps_old_and_candidate(tmp_path: Path) -
 # ---------------------------------------------------------------------------
 
 
+# Real-child test: two genuine ``python -c time.sleep`` children are spawned,
+# signalled and reaped, so the wall time is dominated by OS process lifecycle
+# (fork/exec, psutil termination waves, SIGTERM grace, waitpid). Every wait
+# in the path is bounded, but each syscall stretches when the shared host is
+# heavily loaded (observed: >30s under a ~52-load make verify with thousands
+# of concurrent processes enlarging every psutil scan). The 60s per-test
+# budget matches the project's extreme-environment real-process tests
+# (e.g. tests/test_explore_cold_start_lifecycle.py, 60s); the default 10s
+# only suits in-process work, which is not what this test measures. The 60s
+# combined suite budget in ralph/verify.py is untouched.
+@pytest.mark.timeout_seconds(60)
 def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
     """E4.5: real KeyboardInterrupt during handover leaves zero orphans.
 
     ``_hand_over_accept`` is driven synchronously with ``workspace_root``
     set so the candidate is genuinely "in flight". Deterministic
-    interrupt placement: a watchdog thread polls for the handover's
-    pause sentinel file — proof the main thread has entered the
-    pause/ack-wait stage — and raises SIGINT (via ``signal.raise_signal``,
-    which CPython delivers to the main thread) the moment it appears.
+    interrupt placement: the injected ``sleep_fn`` raises SIGINT (via
+    ``signal.raise_signal``, which CPython delivers to the main thread
+    at the next bytecode) as soon as it observes the handover's pause
+    sentinel file — proof the main thread has entered the pause/ack-wait
+    stage — because production's ``wait_for_old_child_pause_ack`` calls
+    the injected sleeper from the MAIN thread after writing the sentinel.
+    A watchdog thread is kept only as a fallback; a shared one-shot guard
+    guarantees at most one SIGINT, so a late fallback fire cannot strike
+    during cleanup.
     The original fixed 0.1s ``setitimer`` was racy under host load: the
     alarm could fire before the handover started, or the handover's
     ack-wait could complete before the alarm landed. Observing the
     in-flight state removes the race without weakening any assertion.
+    The ack window is constructor-injected at 30s so the pause stage
+    cannot expire before the fallback watchdog's ≤5s deadline under host
+    load (the sleeper children never write the ack sentinel, so with the
+    production 1.0s default the handover would escalate and return first).
     ``bridge.shutdown()`` is the sole cleanup; if the candidate leaks,
     the test fails and the bug is recorded in the report.
     """
@@ -498,31 +518,70 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
         endpoint="http://127.0.0.1:9101/mcp",
     )
 
+    # The sleeper children never write the ack sentinel, so the production
+    # default 1.0s ack timeout caps the pause stage's lifetime at ~1s. Under
+    # host load the watchdog thread can be starved past that, letting the
+    # handover escalate (kill/reap) and return BEFORE SIGINT lands — the
+    # KeyboardInterrupt then never fires mid-handover. Injecting a long ack
+    # window (via the existing constructor seam) keeps ``wait_for_old_child_
+    # pause_ack`` blocked for the watchdog's entire ≤5s deadline, so the
+    # pause stage is guaranteed in flight whenever the watchdog fires.
+    # Trigger state: set once, by whichever mechanism fires first. The
+    # primary trigger is the injected sleep_fn itself: production's
+    # ``wait_for_old_child_pause_ack`` calls the sleeper from the MAIN
+    # thread on every poll iteration, and the pause sentinel is written
+    # just before the wait loop starts, so the first sleeper call is
+    # guaranteed to observe it. This has zero cross-thread scheduling
+    # dependence — under host load a daemon watchdog thread polling the
+    # filesystem can be starved for seconds (observed: load avg >70
+    # starved the 1ms-poll watchdog past its 5s deadline while the main
+    # thread busy-spun on the GIL in the ack wait, and the test then hit
+    # its own 10s execution timeout). The watchdog below remains only as
+    # a fallback for the hypothetical case where production stops calling
+    # sleep_fn inside the ack wait.
+    trigger_fired = threading.Event()
+
+    def _in_flight_sleep(_seconds: float) -> None:
+        # Runs on the main thread inside the ack-wait loop (and, on the
+        # failure path, inside the kill-wait loop / drain worker); the
+        # one-shot guard makes every extra caller a no-op.
+        if pause_sentinel.exists() and not trigger_fired.is_set():
+            trigger_fired.set()
+            signal.raise_signal(signal.SIGINT)
+
     bridge = lifecycle.RestartAwareMcpBridge(
         old_inner,
         restart_fn=lambda: cand_inner,
         restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
         run_id="test-e45-handover",
         workspace_root=tmp_path,
-        sleep_fn=lambda s: None,
+        sleep_fn=_in_flight_sleep,
+        handover_ack_timeout_s=30.0,
     )
     bridge._listening_socket = sock
 
-    # Watchdog: the instant the pause sentinel exists, the main thread is
-    # inside ``request_old_child_pause`` / the ack-wait loop — raise SIGINT
-    # there. ``signal.raise_signal`` from a non-main thread still delivers
-    # the signal to the process, and CPython runs Python-level signal
+    # Fallback watchdog: same trigger as ``_in_flight_sleep``, but from a
+    # daemon thread in case production ever stops invoking the injected
+    # sleeper inside the ack wait. The shared one-shot guard guarantees
+    # at most one SIGINT process-wide, so this can never double-fire
+    # after the primary trigger and strike during cleanup.
+    # ``signal.raise_signal`` from a non-main thread still delivers the
+    # signal to the process, and CPython runs Python-level signal
     # handlers (and the resulting KeyboardInterrupt) in the MAIN thread.
     # filesystem-write-ok: reading a transient handover sentinel file written by production code
+    # Coupling note: ``_make_inner`` builds inners with no ``stage_id``, so
+    # production's ``_hand_over_accept`` writes the un-suffixed ``accept.pause``
+    # (not ``accept.pause.<stage_id>``). If inners ever gain a stage_id, this
+    # sentinel path must track ``f"accept.pause.{old_stage}"``.
     pause_sentinel = snap_dir / "accept.pause"
-    watchdog_fired = threading.Event()
 
     def _sigint_watchdog() -> None:
         deadline = time.monotonic() + 5.0
         while time.monotonic() < deadline:
             if pause_sentinel.exists():
-                watchdog_fired.set()
-                signal.raise_signal(signal.SIGINT)
+                if not trigger_fired.is_set():
+                    trigger_fired.set()
+                    signal.raise_signal(signal.SIGINT)
                 return
             time.sleep(0.001)
 
@@ -541,8 +600,8 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
 
     try:
         assert interrupted, "KeyboardInterrupt did not fire mid-handover"
-        assert watchdog_fired.is_set() or not watchdog.is_alive(), (
-            "SIGINT watchdog neither fired nor finished"
+        assert trigger_fired.is_set(), (
+            "in-flight SIGINT trigger neither fired from sleep_fn nor from the watchdog"
         )
 
         _assert_no_leaks(
