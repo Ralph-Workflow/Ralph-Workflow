@@ -439,3 +439,40 @@ def test_submodule_dirt_outranks_untracked_scratch() -> None:
 
     assert verdict.state is WorktreeState.TRACKED_CHANGES
     assert verdict.dirt_shape is DirtShape.UNSTAGED_MODIFICATION
+
+
+# ---------------------------------------------------------------------------
+# Very large dirt: thousands of porcelain paths must classify in bounded
+# time and memory. The manifest is built in memory (no real git, no
+# multi-GB tree); the classifier consumes the blob through the same
+# pure parse seam every other test here uses, so "bounded" is pinned by
+# the suite's per-test timeout plus the closed-vocabulary outcome: the
+# thousands of entries collapse to ONE verdict, and a second identical
+# classification is byte-equal (no hidden accumulation across calls).
+# ---------------------------------------------------------------------------
+
+
+def test_thousands_of_paths_classify_to_one_bounded_verdict() -> None:
+    """AC-10: a very large dirt manifest stays bounded end to end.
+
+    5,000 tracked modifications plus 5,000 untracked scratch paths —
+    the scale the criterion's "thousands of paths" names — classify to
+    exactly one deterministic verdict: tracked dirt outranks untracked
+    scratch, the shape is the single UNSTAGED_MODIFICATION member, and
+    repeating the classification yields an identical verdict (the
+    classifier is a pure blob -> verdict function, so no per-call state
+    can grow with the manifest size).
+    """
+    entries: list[str] = [f" M src/module_{index}.py\n" for index in range(5_000)]
+    entries.extend(f"?? scratch/{index}.bin\n" for index in range(5_000))
+    porcelain = "".join(entries)
+
+    verdict = classify_worktree(Reading.known(porcelain))
+
+    assert verdict.state is WorktreeState.TRACKED_CHANGES
+    assert verdict.dirt_shape is DirtShape.UNSTAGED_MODIFICATION
+    assert verdict.dispatch is WorktreeDispatch.BLOCKED
+    assert verdict.dispatch_allowed is False
+
+    again = classify_worktree(Reading.known(porcelain))
+    assert again == verdict, "a re-classification of the same manifest is identical"

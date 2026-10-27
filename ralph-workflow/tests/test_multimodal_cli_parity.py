@@ -67,6 +67,7 @@ def _invoke_help(cmd_name: str) -> tuple[int, str]:
     return result.exit_code, output
 
 
+@pytest.mark.timeout_seconds(5)
 def test_smoke_interactive_claude_help_advertises_multimodal() -> None:
     """The interactive Claude smoke command advertises ``--multimodal``."""
     exit_code, output = _invoke_help("smoke-interactive-claude")

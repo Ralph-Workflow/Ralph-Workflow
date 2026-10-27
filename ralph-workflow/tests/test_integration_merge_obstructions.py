@@ -275,6 +275,105 @@ def test_repeat_identical_refusal_spends_durable_budget_and_climbs(
     assert NextAction.COMMIT not in trace
 
 
+def test_clean_verdict_then_mutation_dry_run_must_not_refuse() -> None:
+    """AC-11 differential: a clean verdict never answers a refusal.
+
+    The 2026-10-27 loop observed the inverse too: after every cleanup
+    the re-observation read CLEAN, yet the boundary still answered a
+    refusal-shaped action, so the run idled behind an up-to-date target.
+    The differential this test pins:
+
+    * a CLEAN worktree observation on first contact is answered with a
+      mutation-class decision (the boundary acts — land / reintegrate),
+      never a refusal-class one (no ``WAIT_FOR_ENVIRONMENT``, no
+      resolver dispatch for a clean tree, no save-and-restore of work
+      that does not exist);
+    * the contrast arm re-runs the SAME decision shape under the repeat
+      refusal from ``test_repeat_identical_refusal_spends_durable_
+      budget_and_climbs``: a TRACKED_CHANGES tree at the same signature
+      under repeat pressure is what climbs to a stronger rung — proving
+      the clean answer above is not an accident of a weak assertion.
+
+    Both arms are the pure decision table: no git, no clock, no I/O.
+    """
+    from ralph.pipeline.integration_decision import (
+        AttemptState,
+        DecisionContext,
+        DirtAttribution,
+        NextAction,
+        decide,
+    )
+    from ralph.pipeline.integration_observation import (
+        DirtShape,
+        HeadState,
+        InProgressKind,
+        InProgressOwnership,
+        IntegrationRecordState,
+        Observation,
+        TargetVsFeature,
+        TargetVsRemote,
+        WorktreeState,
+    )
+
+    clean_observation = Observation(
+        target_vs_feature=TargetVsFeature.BEHIND,
+        target_vs_remote=TargetVsRemote.EQUAL,
+        worktree=WorktreeState.CLEAN,
+        head=HeadState.ATTACHED,
+        in_progress_kind=InProgressKind.NONE,
+        in_progress_ownership=InProgressOwnership.OWNED,
+        record=IntegrationRecordState.NONE,
+        agent_active=False,
+    )
+
+    clean_action = decide(
+        DecisionContext(
+            observation=clean_observation,
+            attempts=AttemptState(),
+            dirt_shape=DirtShape.NONE,
+            dirt_attribution=DirtAttribution.UNOWNED,
+        )
+    )
+
+    # The clean verdict is a mutation-class decision: the boundary acts.
+    refusal_class = frozenset(
+        {
+            NextAction.WAIT_FOR_ENVIRONMENT,
+            NextAction.DISPATCH_RESOLVER,
+            NextAction.SAVE_AND_RESTORE,
+        }
+    )
+    assert clean_action not in refusal_class, (
+        "a clean verdict must never answer a refusal-shaped action"
+    )
+    assert clean_action is NextAction.REINTEGRATE
+
+    # Contrast arm: the SAME signature with a dirty worktree (the
+    # refusal's own evidence from the repeat-budget test above) is what
+    # refuses and escalates — the clean answer is the differential, not
+    # a weak assertion.
+    dirty_observation = Observation(
+        target_vs_feature=TargetVsFeature.BEHIND,
+        target_vs_remote=TargetVsRemote.EQUAL,
+        worktree=WorktreeState.TRACKED_CHANGES,
+        head=HeadState.ATTACHED,
+        in_progress_kind=InProgressKind.NONE,
+        in_progress_ownership=InProgressOwnership.OWNED,
+        record=IntegrationRecordState.NONE,
+        agent_active=False,
+    )
+    dirty_action = decide(
+        DecisionContext(
+            observation=dirty_observation,
+            attempts=AttemptState(),
+            dirt_shape=DirtShape.UNSTAGED_MODIFICATION,
+            dirt_attribution=DirtAttribution.UNOWNED,
+        )
+    )
+    assert dirty_action is NextAction.SAVE_AND_RESTORE
+    assert dirty_action in refusal_class
+
+
 def test_ancestry_state_separates_no_from_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     codes = iter((0, 1, 128))
     _stub_git(monkeypatch, lambda _argv: (next(codes), "", ""))

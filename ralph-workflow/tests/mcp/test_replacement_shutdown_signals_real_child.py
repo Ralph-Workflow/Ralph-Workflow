@@ -468,12 +468,21 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
     """E4.5: real KeyboardInterrupt during handover leaves zero orphans.
 
     ``_hand_over_accept`` is driven synchronously with ``workspace_root``
-    set so the candidate is genuinely "in flight". A SIGALRM installed
-    for 0.1s translates to SIGINT in the main thread, raising
-    KeyboardInterrupt out of the ack-wait sleeper. ``bridge.shutdown()``
-    is the sole cleanup; if the candidate leaks, the test fails and the
-    bug is recorded in the report.
+    set so the candidate is genuinely "in flight". Deterministic
+    interrupt placement: a watchdog thread polls for the handover's
+    pause sentinel file — proof the main thread has entered the
+    pause/ack-wait stage — and raises SIGINT (via ``signal.raise_signal``,
+    which CPython delivers to the main thread) the moment it appears.
+    The original fixed 0.1s ``setitimer`` was racy under host load: the
+    alarm could fire before the handover started, or the handover's
+    ack-wait could complete before the alarm landed. Observing the
+    in-flight state removes the race without weakening any assertion.
+    ``bridge.shutdown()`` is the sole cleanup; if the candidate leaks,
+    the test fails and the bug is recorded in the report.
     """
+    # Resolve the real snapshot dir the production code writes sentinels
+    # into (a protected cache path keyed by run_id, NOT tmp_path).
+    snap_dir = lifecycle.snapshot_dir(tmp_path, "test-e45-handover")
     sock, _port = _reserve_listening_socket()
     old_proc = _spawn_long_sleeper(tmp_path, label="e45-handover-old")
     cand_proc = _spawn_long_sleeper(tmp_path, label="e45-handover-cand")
@@ -499,13 +508,26 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
     )
     bridge._listening_socket = sock
 
-    # Install a one-shot SIGALRM that translates to SIGINT after 0.1s,
-    # which raises KeyboardInterrupt in the main thread mid-handshake.
-    def _alarm_to_sigint(signum: int, frame: object) -> None:
-        signal.raise_signal(signal.SIGINT)
+    # Watchdog: the instant the pause sentinel exists, the main thread is
+    # inside ``request_old_child_pause`` / the ack-wait loop — raise SIGINT
+    # there. ``signal.raise_signal`` from a non-main thread still delivers
+    # the signal to the process, and CPython runs Python-level signal
+    # handlers (and the resulting KeyboardInterrupt) in the MAIN thread.
+    # filesystem-write-ok: reading a transient handover sentinel file written by production code
+    pause_sentinel = snap_dir / "accept.pause"
+    watchdog_fired = threading.Event()
 
-    previous_alarm_handler = signal.signal(signal.SIGALRM, _alarm_to_sigint)
-    signal.setitimer(signal.ITIMER_REAL, 0.1)
+    def _sigint_watchdog() -> None:
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            if pause_sentinel.exists():
+                watchdog_fired.set()
+                signal.raise_signal(signal.SIGINT)
+                return
+            time.sleep(0.001)
+
+    watchdog = threading.Thread(target=_sigint_watchdog, name="e45-sigint-watchdog", daemon=True)
+    watchdog.start()
 
     interrupted = False
     try:
@@ -513,13 +535,15 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
     except KeyboardInterrupt:
         interrupted = True
     finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, previous_alarm_handler)
+        watchdog.join(timeout=1.0)
         # Cleanup: bridge shutdown reaps whatever is in _inner / _draining_inners.
         bridge.shutdown()
 
     try:
         assert interrupted, "KeyboardInterrupt did not fire mid-handover"
+        assert watchdog_fired.is_set() or not watchdog.is_alive(), (
+            "SIGINT watchdog neither fired nor finished"
+        )
 
         _assert_no_leaks(
             pids=(old_pid, cand_pid),

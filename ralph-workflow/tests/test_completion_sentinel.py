@@ -277,6 +277,7 @@ def test_check_completion_sentinel_db_tombstone_alone_returns_false(
     assert completion_signals_module._check_completion_sentinel(tmp_path, "run-1") is False
 
 
+@pytest.mark.timeout_seconds(5)
 def test_evaluate_completion_db_tombstone_does_not_resurrect_via_legacy_file(
     tmp_path: Path,
 ) -> None:
