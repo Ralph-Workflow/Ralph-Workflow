@@ -278,6 +278,33 @@ class MergeResult:
     failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
 
 
+def merge_refusal_obstruction(result: MergeResult) -> tuple[str, ...] | None:
+    """Project a merge result onto its typed path-bearing obstruction.
+
+    Non-empty only for a merge git REFUSED to start: the outcome carries
+    the git-named ``blocked_paths`` AND the typed cause
+    :attr:`ResolutionFailureCause.CONTEXT_FAILURE` — a repository-state
+    obstruction, never a content conflict a resolver could repair and
+    never an in-progress merge conflict. That typed pair is what lets a
+    consumer preserve the named paths and repair the observation instead
+    of dispatching a resolver agent.
+
+    Records predating the typed classification (a refusal-shaped result
+    whose cause is :attr:`ResolutionFailureCause.UNRESOLVED_CONFLICT`,
+    or no cause at all) deliberately project to ``None``: their consumer
+    must flow them through safe re-observation of the repository — a
+    fresh ``MERGE_HEAD`` probe proving no merge began — before acting on
+    the blocked-path claim.
+    """
+    if (
+        result.outcome == "conflict"
+        and result.blocked_paths
+        and result.failure_cause is ResolutionFailureCause.CONTEXT_FAILURE
+    ):
+        return result.blocked_paths
+    return None
+
+
 def branch_exists(repo_root: Path | str, name: str) -> bool:
     """Return True when ``refs/heads/<name>`` resolves in ``repo_root``."""
     repo_root_path = Path(repo_root)
@@ -465,11 +492,16 @@ def merge_target_into_current(
             )
     if refusal is not None:
         reason, blocked = refusal
+        # The refusal is a TYPED PATH-BEARING OBSTRUCTION, not a content
+        # conflict: the merge never started (no MERGE_HEAD), so there is
+        # nothing for a resolver to repair. CONTEXT_FAILURE — the
+        # repository-state cause — is what lets the integration bridge
+        # tell this apart from a genuine UNRESOLVED_CONFLICT merge.
         return MergeResult(
             outcome="conflict",
             reason=reason,
             blocked_paths=blocked,
-            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+            failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
         )
     return MergeResult(outcome="conflict", failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT)
 
@@ -830,6 +862,7 @@ __all__ = [
     "fast_forward_via_worktree",
     "is_ancestor",
     "merge_in_progress",
+    "merge_refusal_obstruction",
     "merge_state",
     "merge_target_into_current",
     "observe_unmerged_paths",

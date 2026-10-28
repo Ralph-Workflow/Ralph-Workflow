@@ -8,12 +8,17 @@ exactly as in ``tests/test_integration_cleanup.py``.
 
 * ``assume-unchanged`` / ``skip-worktree`` flags — verified against git
   itself, these flags hide a path from ``git status --porcelain``, from
-  ``git diff HEAD`` and from ``git stash create``. The observation
-  seams therefore read a flagged-only dirty tree as CLEAN, and the typed
-  outcome is ``ResidueCleanupOutcome(clean=True)`` with
-  ``DirtShape.NONE`` — with the blind spot pinned by assertions (no
-  snapshot, no restore, no warning) so it can never be mistaken for
-  coverage.
+  ``git diff HEAD`` and from ``git stash create``, but never from
+  ``git ls-files -v``. The bounded typed index-flag probe
+  (:func:`~ralph.pipeline.integration_observation.read_index_flag_dirt`)
+  closes the blind spot: flagged paths whose content changed classify
+  as ``DirtShape.INDEX_FLAG_HIDDEN`` (blocking, never CLEAN), are
+  unhidden before the backup ref so the snapshot captures the real
+  content, are restored to the baseline, and are named with the ref in
+  exactly one WARNING — the same preserve-then-clean ladder as ordinary
+  residue. An unreadable probe aborts the baseline capture and reports
+  the typed ``flag_probe_unknown`` outcome: back off, never certify
+  clean.
 * Two Ralph processes cleaning the same tree — the repository lease
   payload carries the owner identity and a MONOTONIC stamp
   (:func:`~ralph.git._worktree_lease.lease_payload`); the liveness
@@ -36,6 +41,8 @@ exactly as in ``tests/test_integration_cleanup.py``.
 
 from __future__ import annotations
 
+import hashlib
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -51,7 +58,10 @@ from ralph.pipeline.auto_integrate_backoff import (
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_cleanup import (
     PlanningResidue,
+    capture_planning_baseline,
     detect_planning_residue,
+    residue_attribution,
+    residue_observation,
     run_residue_cleanup,
 )
 from ralph.pipeline.integration_decision import (
@@ -64,6 +74,7 @@ from ralph.pipeline.integration_decision import (
 from ralph.pipeline.integration_observation import (
     DirtShape,
     HeadState,
+    IndexFlagDirt,
     InProgressKind,
     InProgressOwnership,
     IntegrationRecordState,
@@ -81,6 +92,7 @@ from ralph.pipeline.integration_owner import (
 from tests._fake_git_env import SimulatedGitEnvironment
 from tests._fake_git_fault import FaultKind, registered_outcome
 from tests.test_integration_cleanup import (
+    _MISSING,
     _ROOT,
     _baseline,
     _diff_hash,
@@ -97,21 +109,26 @@ pytestmark = pytest.mark.timeout_seconds(10)
 _EXPECTED_FIRST_BACKOFF = RETRY_BASE_DELAY_SECONDS * 0.5
 
 
-class _FlagBlindGit(_FakeCleanupGit):
-    """Cleanup fake emulating git's blindness to index-flagged paths.
+class _FlagAwareGit(_FakeCleanupGit):
+    """Cleanup fake emulating git's index-flag semantics exactly.
 
     Verified against git itself: ``git update-index --assume-unchanged``
     and ``git update-index --skip-worktree`` both hide a path from
     ``git status --porcelain``, from ``git diff HEAD`` and from
-    ``git stash create``. The fake therefore hides the flagged paths
-    from the porcelain blob and the tracked-diff hash exactly the way
-    git does — the observation seam reads the tree as clean no matter
-    what the flagged content is.
+    ``git stash create``, while ``git ls-files -v`` still names the
+    flagged paths and ``git hash-object`` still reads their real content.
+    The fake therefore hides the flagged paths from the porcelain blob
+    and the tracked-diff hash, answers the typed index-flag probe from
+    the flagged set, and models ``git update-index --no-assume-unchanged
+    --no-skip-worktree`` (the unhide the cleanup runs before its backup)
+    by simply unflagging the paths.
     """
 
     def __init__(self, flagged: tuple[str, ...]) -> None:
         super().__init__()
         self._flagged = set(flagged)
+        self.flag_probe_unreadable = False
+        self.clear_flags_calls: list[tuple[str, ...]] = []
 
     def _blob(self) -> str:
         blob = super()._blob()
@@ -123,6 +140,36 @@ class _FlagBlindGit(_FakeCleanupGit):
             return None
         visible = {path: c for path, c in self.worktree.items() if path not in self._flagged}
         return _diff_hash(visible, self.committed)
+
+    def index_flag_dirt(self, root: Path) -> Reading[IndexFlagDirt]:
+        """The typed probe: flagged paths, their kinds, content hashes, changes."""
+        del root
+        if self.flag_probe_unreadable:
+            return Reading[IndexFlagDirt].unknown("git ls-files -v unreadable: exit=128")
+        hashes = tuple(
+            (path, hashlib.sha256(self.worktree.get(path, "").encode()).hexdigest())
+            for path in sorted(self._flagged)
+        )
+        flagged = frozenset(self._flagged)
+        return Reading.known(
+            IndexFlagDirt(
+                assume_unchanged=flagged,
+                skip_worktree=frozenset(),
+                changed_paths=frozenset(
+                    path
+                    for path in self._flagged
+                    if self.worktree.get(path, _MISSING) != self.committed.get(path, _MISSING)
+                ),
+                path_hashes=hashes,
+            )
+        )
+
+    def clear_index_flags(self, root: Path, paths: Sequence[str]) -> bool:
+        """``git update-index --no-assume-unchanged --no-skip-worktree``."""
+        del root
+        self.clear_flags_calls.append(tuple(paths))
+        self._flagged.difference_update(paths)
+        return True
 
 
 class _JumpingClock:
@@ -153,41 +200,116 @@ class _JumpingClock:
 
 
 @pytest.mark.parametrize("flag", ["assume-unchanged", "skip-worktree"])
-def test_flag_hidden_dirt_is_invisible_to_every_observation_seam(flag: str) -> None:
-    """Flag-hidden dirt types as CLEAN — the blind spot, pinned by assertions.
+def test_flag_hidden_dirt_is_preserved_restored_and_warned(flag: str) -> None:
+    """Flag-hidden dirt routes through the SAME preserve-then-clean ladder.
 
     Real git hides ``assume-unchanged`` / ``skip-worktree`` paths from
-    porcelain, from the tracked diff and from the stash snapshot, so the
-    observation layer has no member that can express this dirt. The typed
-    outcome is ``ResidueCleanupOutcome(clean=True)`` with
-    ``DirtShape.NONE`` — and the test pins the consequence: no snapshot,
-    no restore, no warning, so the gap can never be mistaken for
-    coverage. A dedicated typed shape would need a production index-flag
-    probe; see the tracked question in the unit report.
+    porcelain, from the tracked diff and from the stash snapshot — but
+    ``git ls-files -v`` still names them and ``git hash-object`` still
+    reads their content, so the bounded typed index-flag probe closes
+    the blind spot: flagged paths whose content changed type as
+    :attr:`DirtShape.INDEX_FLAG_HIDDEN`, a blocking verdict, never
+    CLEAN. The cleanup unhides the paths (``git update-index
+    --no-assume-unchanged --no-skip-worktree``) so the ordinary backup
+    ref captures the real content, restores the baseline, and names the
+    paths and the ref in exactly one WARNING — the identical ladder
+    ordinary residue climbs, never a resolver dispatch.
     """
     del flag  # both flags behave identically at every observation seam
-    git = _FlagBlindGit(flagged=("src/app.py",))
-    # Baseline: the flagged path is dirty but hidden — the observation
-    # reads the tree as CLEAN and there is nothing visible to snapshot.
+    git = _FlagAwareGit(flagged=("src/app.py",))
+    # Baseline: the flagged path matches HEAD — clean under the flag.
     baseline = _baseline(git)
     assert baseline.human_work_ref is None
+    assert baseline.flag_hashes != ()
 
-    # The same porcelain the planning gate classifies:
-    verdict = classify_worktree(Reading.known(git.porcelain_status_z(_ROOT) or ""))
-    assert verdict.state is WorktreeState.CLEAN
-    assert verdict.dirt_shape is DirtShape.NONE
-    assert verdict.dispatch_allowed
-
-    # The flagged path's content then changes during the dispatch; every
-    # observation seam stays blind. The typed outcome is CLEAN.
+    # Porcelain alone stays blind (git itself hides the path); the typed
+    # probe is what proves the hidden edit. The seam contract: the
+    # classifier with the probe reading is blocked, the classifier on
+    # the raw blob keeps its legacy answer and must never be consulted
+    # without the probe where flags may exist.
     git.worktree["src/app.py"] = "edited under the flag"
+    verdict = classify_worktree(
+        Reading.known(git.porcelain_status_z(_ROOT) or ""),
+        index_flag_dirt=git.index_flag_dirt(_ROOT).value,
+    )
+    assert verdict.state is WorktreeState.TRACKED_CHANGES
+    assert verdict.dirt_shape is DirtShape.INDEX_FLAG_HIDDEN
+    assert verdict.dispatch_blocked
+    assert not verdict.is_clean
+    assert "src/app.py" in verdict.reason
+
+    # The decision table routes the shape to the cleanup ladder: the
+    # first rung is SAVE_AND_RESTORE and no rung is ever a resolver
+    # dispatch (dirt is a condition no agent can change).
+    residue = detect_planning_residue(
+        baseline,
+        git.porcelain_status_z(_ROOT) or "",
+        after_diff_hash=git.tracked_diff_hash(_ROOT) or "",
+        after_flag_dirt=git.index_flag_dirt(_ROOT).value,
+    )
+    assert residue is not None
+    assert residue.index_flag_paths == ("src/app.py",)
+    observation, shape = residue_observation(residue)
+    assert shape is DirtShape.INDEX_FLAG_HIDDEN
+    assert observation.worktree is WorktreeState.TRACKED_CHANGES
+    decided = [
+        decide(
+            DecisionContext(
+                observation=observation,
+                attempts=AttemptState(),
+                dirt_shape=shape,
+                dirt_attribution=residue_attribution(residue),
+            )
+        )
+        for _ in range(3)
+    ]
+    assert decided == [NextAction.SAVE_AND_RESTORE] * 3
+    assert NextAction.DISPATCH_RESOLVER not in decided
+
+    # The cleanup itself: flags cleared BEFORE the backup so the
+    # snapshot sees the real content, one snapshot, baseline restored,
+    # exactly one WARNING naming the path and the backup ref.
     warns: list[str] = []
     outcome = _run(git, baseline, _FakeLedger(), warns)
-    assert outcome.clean
+    assert not outcome.clean
     assert not outcome.refused
+    assert outcome.action is NextAction.SAVE_AND_RESTORE
+    assert outcome.backup_ref == "refs/ralph-backup/fake-01"
+    assert git.clear_flags_calls == [("src/app.py",)]
+    assert git.snapshot_count == 1
+    assert outcome.restored_paths == ("src/app.py",)
+    assert git.worktree["src/app.py"] == "base"
+    assert outcome.remaining_paths == ()
+    assert len(warns) == 1
+    assert "src/app.py" in warns[0]
+    assert "refs/ralph-backup/fake-01" in warns[0]
+
+
+def test_flag_probe_unreadable_backs_off_and_never_certifies_clean() -> None:
+    """An unknown index-flag reading is not "clean": baseline and cleanup fail closed.
+
+    The unreadable probe aborts the baseline capture (the dispatch never
+    starts on an uncertified tree) and any cleanup run reports the typed
+    ``flag_probe_unknown`` outcome: no snapshot, no restore, no flag
+    cleared, one WARNING, tree untouched.
+    """
+    git = _FlagAwareGit(flagged=("src/app.py",))
+    git.flag_probe_unreadable = True
+    assert capture_planning_baseline(_ROOT, git=git) is None
+
+    git.flag_probe_unreadable = False
+    baseline = _baseline(git)
+    git.worktree["src/app.py"] = "edited under the flag"
+    git.flag_probe_unreadable = True
+    warns: list[str] = []
+    outcome = _run(git, baseline, _FakeLedger(), warns)
+    assert outcome.flag_probe_unknown
+    assert not outcome.clean
     assert git.snapshot_count == 0
     assert git.restore_calls == []
-    assert warns == []
+    assert git.clear_flags_calls == []
+    assert git.worktree["src/app.py"] == "edited under the flag"
+    assert len(warns) == 1
 
 
 def test_two_cleaners_one_lease_loser_reobserves_and_never_reshoots() -> None:

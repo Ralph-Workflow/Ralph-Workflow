@@ -30,7 +30,15 @@ that contract mechanically:
   overwrite are blocking: they are moved aside into a quarantine directory
   under ``.agent/`` and restored by the   landing seam via
   :func:`restore_quarantined_untracked`. Unmerged (conflict) state created
-  during planning is NEVER touched by cleanup.
+  during planning is NEVER touched by cleanup. Index-flag-hidden residue —
+  tracked content an ``assume-unchanged`` / ``skip-worktree`` flag hides
+  from porcelain, from the diff and from the stash snapshot — is detected
+  by the typed index-flag probe (:func:`read_index_flag_dirt`), unhidden
+  before the backup snapshot (both the snapshot and the restore are blind
+  to flagged paths), and saved/restored/reported through the identical
+  ladder. An unreadable flag probe aborts the baseline capture and backs
+  off the cleanup (typed ``flag_probe_unknown``): it is never evidence of
+  a clean tree.
 
   An in-progress git operation blocks cleanup entirely: the
   operation-marker probe (``MERGE_HEAD``, ``rebase-merge/``,
@@ -93,6 +101,7 @@ from ralph.pipeline.integration_decision import (
 from ralph.pipeline.integration_observation import (
     DirtShape,
     HeadState,
+    IndexFlagDirt,
     InProgressKind,
     InProgressOwnership,
     IntegrationRecordState,
@@ -102,6 +111,7 @@ from ralph.pipeline.integration_observation import (
     TargetVsRemote,
     WorktreeState,
     read_in_progress_kind,
+    read_index_flag_dirt,
 )
 
 if TYPE_CHECKING:
@@ -182,7 +192,11 @@ class PlanningBaseline:
     content-only edit that leaves the porcelain code unchanged is still
     detected. ``human_work_ref`` is the backup ref holding the pre-dispatch
     tree when the baseline already carried tracked dirt; ``None`` when the
-    baseline tracked tree was clean.
+    baseline tracked tree was clean. ``flag_hashes`` fingerprints every
+    assume-unchanged / skip-worktree flagged path's worktree content at
+    baseline time: porcelain is blind to flagged paths, so the after-read
+    of the index-flag probe diffs against these pairs to detect hidden
+    residue. Empty when nothing is flagged.
     """
 
     head_sha: str
@@ -190,6 +204,7 @@ class PlanningBaseline:
     tracked_diff_hash: str
     fingerprint: str
     human_work_ref: str | None
+    flag_hashes: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -209,6 +224,11 @@ class PlanningResidue:
       landing.
     * ``unmerged_paths`` — conflict state created during the dispatch:
       cleanup never touches these.
+    * ``index_flag_paths`` — tracked paths carrying an
+      assume-unchanged / skip-worktree flag whose worktree content moved
+      since the baseline: porcelain cannot see them, so the index-flag
+      probe's per-path hashes prove the change. Blocking; unhidden,
+      saved and restored exactly like tracked residue.
     """
 
     fingerprint: str
@@ -217,6 +237,7 @@ class PlanningResidue:
     untracked_paths: tuple[str, ...]
     overwritten_untracked_paths: tuple[str, ...]
     unmerged_paths: tuple[str, ...]
+    index_flag_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -239,10 +260,15 @@ class ResidueCleanupOutcome:
     restore/reset action and ``operation_kind`` names what was observed.
     ``operation_unknown`` is the fail-closed variant: the marker probe was
     unreadable, which is never evidence of "no operation".
+    ``flag_probe_unknown`` is the same fail-closed variant for the
+    index-flag probe: the cleanup could not prove whether hidden flagged
+    dirt exists, so it backed off without touching the tree — never
+    certifying the residue check clean.
     """
 
     clean: bool = False
     unreadable: bool = False
+    flag_probe_unknown: bool = False
     head_moved: bool = False
     unmerged: bool = False
     operation_blocked: bool = False
@@ -286,8 +312,16 @@ def compute_fingerprint(
     head_sha: str,
     tracked_entries: Mapping[str, str],
     tracked_diff_hash: str,
+    flag_paths: tuple[str, ...] = (),
 ) -> str:
-    """Content fingerprint of the tracked view: HEAD + entries + diff hash."""
+    """Content fingerprint of the tracked view: HEAD + entries + diff hash.
+
+    ``flag_paths`` names the index-flag-hidden residue paths included in
+    this residue event: two residue events with the same visible diff
+    but a different hidden set are different events, so the resume
+    comparison (which matches on this fingerprint) must distinguish
+    them.
+    """
     digest = hashlib.sha256()
     digest.update(head_sha.encode("utf-8"))
     digest.update(b"\0")
@@ -296,7 +330,10 @@ def compute_fingerprint(
         digest.update(b"\0")
         digest.update(tracked_entries[path].encode("utf-8"))
         digest.update(b"\0")
-    digest.update(tracked_diff_hash.encode("utf-8"))
+        digest.update(tracked_diff_hash.encode("utf-8"))
+    for path in sorted(flag_paths):
+        digest.update(b"\0flag\0")
+        digest.update(path.encode("utf-8"))
     return digest.hexdigest()
 
 
@@ -306,14 +343,33 @@ def detect_planning_residue(
     *,
     after_diff_hash: str,
     incoming_overwrite_paths: frozenset[str] = frozenset(),
+    after_flag_dirt: IndexFlagDirt | None = None,
 ) -> PlanningResidue | None:
     """Pure diff of the post-dispatch tree against the baseline.
 
     Returns ``None`` when planning left nothing detectable. The comparison
     never reads the filesystem: everything is derived from the two porcelain
-    blobs and the two diff hashes.
+    blobs, the two diff hashes and the two index-flag probe readings.
+    ``after_flag_dirt`` is the post-dispatch index-flag probe reading;
+    ``None`` (a caller without probe access) conservatively assumes the
+    baseline flag state is unchanged, which keeps legacy no-flag trees
+    clean. A flagged path whose content hash moved since the baseline —
+    including a path flagged only during the dispatch — is hidden
+    residue: porcelain is blind to it, so the probe's per-path hashes
+    are the only evidence.
     """
-    if after_blob == baseline.status_blob and after_diff_hash == baseline.tracked_diff_hash:
+    before_flag_hashes = dict(baseline.flag_hashes)
+    after_flag_hashes = (
+        after_flag_dirt.path_hashes if after_flag_dirt is not None else baseline.flag_hashes
+    )
+    index_flag_paths = tuple(
+        sorted(path for path, digest in after_flag_hashes if before_flag_hashes.get(path) != digest)
+    )
+    if (
+        after_blob == baseline.status_blob
+        and after_diff_hash == baseline.tracked_diff_hash
+        and not index_flag_paths
+    ):
         return None
     before_tracked = _tracked_entries(baseline.status_blob)
     after_tracked = _tracked_entries(after_blob)
@@ -352,12 +408,13 @@ def detect_planning_residue(
             if entry.xy in _UNMERGED_XY and not entry.path.startswith(_PERMITTED_ARTIFACT_PREFIX)
         )
     )
-    if not (tracked or ambiguous or new_untracked or overwritten or unmerged):
+    if not (tracked or ambiguous or new_untracked or overwritten or unmerged or index_flag_paths):
         return None
     fingerprint = compute_fingerprint(
         head_sha=baseline.head_sha,
         tracked_entries=after_tracked,
         tracked_diff_hash=after_diff_hash,
+        flag_paths=index_flag_paths,
     )
     return PlanningResidue(
         fingerprint=fingerprint,
@@ -366,6 +423,7 @@ def detect_planning_residue(
         untracked_paths=new_untracked,
         overwritten_untracked_paths=overwritten,
         unmerged_paths=unmerged,
+        index_flag_paths=index_flag_paths,
     )
 
 
@@ -383,6 +441,12 @@ def residue_observation(residue: PlanningResidue) -> tuple[Observation, DirtShap
     elif residue.tracked_paths or residue.ambiguous_paths:
         worktree = WorktreeState.TRACKED_CHANGES
         shape = DirtShape.UNSTAGED_MODIFICATION
+    elif residue.index_flag_paths:
+        # Hidden flag dirt is tracked residue the porcelain could not
+        # see: the same blocking class, its own shape so the executor
+        # and the log name WHAT is being preserved.
+        worktree = WorktreeState.TRACKED_CHANGES
+        shape = DirtShape.INDEX_FLAG_HIDDEN
     else:
         worktree = WorktreeState.UNTRACKED
         shape = (
@@ -449,6 +513,27 @@ class CleanupGitPort(Protocol):
 
         :meth:`Reading.unknown` when the probe is unreadable — never
         positive evidence that no operation exists.
+        """
+        ...
+
+    def index_flag_dirt(self, root: Path) -> Reading[IndexFlagDirt]:
+        """Index-flag probe (assume-unchanged / skip-worktree paths + content hashes).
+
+        :meth:`Reading.unknown` when the probe is unreadable — never
+        positive evidence that no flag is set. Porcelain alone cannot
+        see flagged dirt, so a caller without this reading cannot
+        certify the tree residue-free.
+        """
+        ...
+
+    def clear_index_flags(self, root: Path, paths: Sequence[str]) -> bool:
+        """Drop the assume-unchanged / skip-worktree bits on ``paths``.
+
+        The cleanup unhides flag-hidden residue BEFORE its backup
+        snapshot: ``git stash create`` and ``git restore`` are both
+        blind to flagged paths (skip-worktree restore fails outright),
+        so the snapshot would silently miss the real content until the
+        flags come off. Returns whether the unhide succeeded.
         """
         ...
 
@@ -613,8 +698,12 @@ def capture_planning_baseline(
     blob = git.porcelain_status_z(root)
     diff_hash = git.tracked_diff_hash(root)
     head = git.head_sha(root)
-    if blob is None or diff_hash is None or head is None:
+    flag_reading = git.index_flag_dirt(root)
+    if blob is None or diff_hash is None or head is None or not flag_reading.is_known_good:
+        # An unreadable flag probe is never evidence of "no flags": the
+        # baseline must not certify a tree it could not fully observe.
         return None
+    flag_dirt = flag_reading.value if flag_reading.value is not None else IndexFlagDirt.empty()
     tracked = _tracked_entries(blob)
     human_work_ref: str | None = None
     if tracked:
@@ -628,6 +717,7 @@ def capture_planning_baseline(
         tracked_diff_hash=diff_hash,
         fingerprint=fingerprint,
         human_work_ref=human_work_ref,
+        flag_hashes=flag_dirt.path_hashes,
     )
 
 
@@ -676,6 +766,14 @@ def _run_residue_cleanup(
     if after_blob is None or after_diff is None or head is None:
         emit("planning residue check unreadable; tree left untouched")
         return ResidueCleanupOutcome(unreadable=True)
+    flags = git.index_flag_dirt(root)
+    if not flags.is_known_good:
+        emit(
+            "index-flag probe unreadable; cleanup backing off rather than "
+            "certifying hidden flagged dirt clean (tree left untouched)"
+        )
+        return ResidueCleanupOutcome(flag_probe_unknown=True)
+    after_flag_dirt = flags.require_known()
     # Operation gate before anything else (see _operation_gate).
     gated = _operation_gate(root, git, emit)
     if gated is not None:
@@ -688,6 +786,7 @@ def _run_residue_cleanup(
         target=target,
         after_blob=after_blob,
         after_diff=after_diff,
+        after_flag_dirt=after_flag_dirt,
         head=head,
         emit=emit,
     )
@@ -702,6 +801,7 @@ def _classify_and_clear_residue(
     target: str | None,
     after_blob: str,
     after_diff: str,
+    after_flag_dirt: IndexFlagDirt,
     head: str,
     emit: Callable[[str], None],
 ) -> ResidueCleanupOutcome:
@@ -723,6 +823,7 @@ def _classify_and_clear_residue(
         after_blob,
         after_diff_hash=after_diff,
         incoming_overwrite_paths=git.incoming_overwrite_paths(root, target),
+        after_flag_dirt=after_flag_dirt,
     )
     if residue is None:
         _retire_state_when_done(root, git)
@@ -734,7 +835,10 @@ def _classify_and_clear_residue(
         )
         return ResidueCleanupOutcome(unmerged=True)
     if not (
-        residue.tracked_paths or residue.ambiguous_paths or residue.overwritten_untracked_paths
+        residue.tracked_paths
+        or residue.ambiguous_paths
+        or residue.overwritten_untracked_paths
+        or residue.index_flag_paths
     ):
         # Untracked-only residue does not block: planning continues with the
         # files in place. No ledger charge — nothing mutated.
@@ -795,6 +899,21 @@ def _cleanup_blocking_residue(
             f"decision table returned non-cleanup action {action.value} for "
             "planning residue; refusing to run it (residue is never committed "
             "as feature work)"
+        )
+        return ResidueCleanupOutcome(refused=True)
+
+    # Unhide flag-hidden residue BEFORE any snapshot: both the backup
+    # (``git stash create``) and the restore (``git restore``) are blind
+    # to flagged paths — skip-worktree restore fails outright — so
+    # acting while the flags are set would lose the real content the
+    # backup ref exists to preserve. A failed unhide fails closed: no
+    # restore runs against content the snapshot never captured.
+    if residue.index_flag_paths and not git.clear_index_flags(root, residue.index_flag_paths):
+        emit(
+            "index flags on "
+            f"{', '.join(residue.index_flag_paths)} could not be cleared; "
+            "cleanup refusing to restore content the backup snapshot "
+            "cannot see (tree left untouched)"
         )
         return ResidueCleanupOutcome(refused=True)
 
@@ -903,15 +1022,21 @@ def _finalize_progress(
     """
     final_blob = git.porcelain_status_z(root)
     final_diff = git.tracked_diff_hash(root)
-    if final_blob is None or final_diff is None:
+    final_flags = git.index_flag_dirt(root)
+    if final_blob is None or final_diff is None or not final_flags.is_known_good:
         still_dirty = set(restore_targets)
     else:
         final_residue = detect_planning_residue(
             baseline,
             final_blob,
             after_diff_hash=final_diff,
+            after_flag_dirt=final_flags.require_known(),
         )
-        still_dirty = set(final_residue.tracked_paths) if final_residue is not None else set()
+        still_dirty = (
+            set(final_residue.tracked_paths) | set(final_residue.index_flag_paths)
+            if final_residue is not None
+            else set()
+        )
     progress.restored_paths = [path for path in progress.restore_paths if path not in still_dirty]
     progress.completed = not still_dirty
     git.store_state(root, progress.to_payload())
@@ -944,6 +1069,11 @@ def _report_residue_cleanup(
         message_parts.append(
             "pre-existing human work preserved, NOT reverted: "
             f"{', '.join(residue.ambiguous_paths)} (ref: {human_ref})"
+        )
+    if residue.index_flag_paths:
+        message_parts.append(
+            "index-flag-hidden dirt (assume-unchanged/skip-worktree) unhidden, "
+            f"saved and restored: {', '.join(residue.index_flag_paths)}"
         )
     if moved_untracked:
         message_parts.append(
@@ -1014,7 +1144,7 @@ def _resume_or_start_progress(
     return _CleanupProgress(
         fingerprint=residue.fingerprint,
         head_sha=baseline.head_sha,
-        restore_paths=list(residue.tracked_paths),
+        restore_paths=[*residue.tracked_paths, *residue.index_flag_paths],
         ambiguous_paths=list(residue.ambiguous_paths),
         quarantined_untracked=carried_quarantine,
     )
@@ -1134,6 +1264,25 @@ class RunGitCleanupPort:
 
     def in_progress_kind(self, root: Path) -> Reading[InProgressKind]:
         return read_in_progress_kind(root)
+
+    def index_flag_dirt(self, root: Path) -> Reading[IndexFlagDirt]:
+        return read_index_flag_dirt(root)
+
+    def clear_index_flags(self, root: Path, paths: Sequence[str]) -> bool:
+        """Unhide flagged paths: ``git update-index --no-assume-unchanged
+        --no-skip-worktree`` (one plumbing call, no hooks).
+
+        Clearing a flag the path does not carry is a no-op, so a resumed
+        cleanup may call this on already-unhidden paths.
+        """
+        if not paths:
+            return True
+        result = run_git(
+            ("update-index", "--no-assume-unchanged", "--no-skip-worktree", "--", *paths),
+            cwd=root,
+            label="planning-residue:clear-index-flags",
+        )
+        return result.returncode == 0
 
     def snapshot_worktree(self, root: Path, *, head_sha: str) -> str:
         backup_ref, _feature_sha = create_stale_resolution_snapshot(

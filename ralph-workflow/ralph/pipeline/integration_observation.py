@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Final
 
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline._index_flag_records import IndexFlagDirt, read_index_flag_dirt
 from ralph.pipeline._porcelain_records import (
     _decode_quoted_porcelain_path,
     _porcelain_to_shape,
@@ -183,7 +184,14 @@ class DirtShape(Enum):
     The vocabulary is closed and total: every observable tree maps to
     exactly one shape. ``NONE`` is a clean tree, ``UNMERGED`` is a real
     conflict (the operation ladder owns it, never the cleanup path), and
-    ``UNKNOWN`` is an unreadable probe.
+    ``UNKNOWN`` is an unreadable probe. ``INDEX_FLAG_HIDDEN`` is tracked
+    content a ``assume-unchanged`` / ``skip-worktree`` index flag hides
+    from porcelain, from ``git diff HEAD`` and from ``git stash create``
+    (all verified against git itself): the porcelain-only probes read
+    the tree as clean, so the dedicated index-flag probe
+    (:func:`read_index_flag_dirt`) is the only evidence that proves the
+    hidden edit. The shape blocks exactly like ordinary tracked residue
+    and routes to the same preserve-then-clean ladder.
     """
 
     NONE = "none"
@@ -198,6 +206,7 @@ class DirtShape(Enum):
     UNTRACKED_ONLY = "untracked_only"
     UNTRACKED_BLOCKING = "untracked_blocking"
     LINE_ENDING_ONLY = "line_ending_only"
+    INDEX_FLAG_HIDDEN = "index_flag_hidden"
     UNMERGED = "unmerged"
     UNKNOWN = "unknown"
 
@@ -440,6 +449,7 @@ def _verdict_for_state(state: WorktreeState) -> WorktreeVerdict:
 def _verdict_for_porcelain(
     text: str,
     evidence: DirtEvidence | None,
+    index_flag_dirt: IndexFlagDirt | None,
 ) -> WorktreeVerdict:
     """Build the verdict for a KNOWN porcelain blob, refining it by shape.
 
@@ -453,10 +463,30 @@ def _verdict_for_porcelain(
     * ``UNTRACKED_BLOCKING`` — untracked paths that incoming target
       commits would overwrite DO block (git refuses per-file, mid-rebase),
       unlike scratch untracked paths.
+    * ``INDEX_FLAG_HIDDEN`` — a flagged path whose content differs from
+      HEAD blocks exactly like ordinary tracked residue, even when the
+      porcelain blob proves CLEAN. It outranks every refinement except
+      ``UNMERGED`` (a real conflict stays the operation ladder's job).
     """
     state = _porcelain_to_state(text)
     shape = _porcelain_to_shape(text, evidence)
     verdict = _verdict_for_state(state)
+    if (
+        index_flag_dirt is not None
+        and index_flag_dirt.changed_paths
+        and shape is not DirtShape.UNMERGED
+    ):
+        hidden = ", ".join(sorted(index_flag_dirt.changed_paths))
+        return WorktreeVerdict(
+            state=WorktreeState.TRACKED_CHANGES,
+            is_clean=False,
+            dispatch=WorktreeDispatch.BLOCKED,
+            reason=(
+                "index-flag-hidden modified tracked paths "
+                f"(assume-unchanged/skip-worktree): {hidden}"
+            ),
+            dirt_shape=DirtShape.INDEX_FLAG_HIDDEN,
+        )
     if verdict.dirt_shape is shape:
         return verdict
     if shape is DirtShape.LINE_ENDING_ONLY:
@@ -488,6 +518,7 @@ def classify_worktree(
     observation: Reading[str] | WorktreeState,
     *,
     evidence: DirtEvidence | None = None,
+    index_flag_dirt: IndexFlagDirt | None = None,
 ) -> WorktreeVerdict:
     """Classify ONE worktree observation into a state and a dispatch verdict.
 
@@ -526,6 +557,13 @@ def classify_worktree(
     incoming overwrites) that refines the shape; it only ever narrows a
     block (``LINE_ENDING_ONLY`` is clean after refresh), never invents
     one without a dirty porcelain entry to hang it on.
+    ``index_flag_dirt`` is the optional typed index-flag probe reading
+    (:func:`read_index_flag_dirt`); flagged paths whose content differs
+    from HEAD block as ``INDEX_FLAG_HIDDEN`` even when the porcelain
+    blob is clean. A caller that cannot run the probe passes ``None``
+    and keeps the legacy porcelain-only answer — which is exactly why
+    every seam that may face a flagged tree must run the probe and treat
+    its UNKNOWN reading as back-off, never as clean.
     """
     if isinstance(observation, WorktreeState):
         return _verdict_for_state(observation)
@@ -537,7 +575,7 @@ def classify_worktree(
             reason=observation.reason or "worktree probe did not answer",
             dirt_shape=DirtShape.UNKNOWN,
         )
-    return _verdict_for_porcelain(observation.value or "", evidence)
+    return _verdict_for_porcelain(observation.value or "", evidence, index_flag_dirt)
 
 
 # ---------------------------------------------------------------------------
@@ -747,11 +785,26 @@ def read_in_progress_kind(root: Path) -> Reading[InProgressKind]:
 
 
 def read_worktree(root: Path) -> Reading[WorktreeVerdict]:
-    """Observe the worktree and classify it through the one classifier."""
+    """Observe the worktree — porcelain plus the index-flag probe — and classify.
+
+    The porcelain probe alone cannot see assume-unchanged / skip-worktree
+    dirt (git itself hides it), so a confirmed-clean porcelain blob is
+    never enough: the flag probe must also answer. An unreadable flag
+    probe yields UNKNOWN — back off and re-observe — even when the
+    porcelain blob proved clean; it is never evidence of a clean tree.
+    """
     porcelain = read_worktree_porcelain(root)
     if not porcelain.is_known_good:
         return Reading[WorktreeVerdict].unknown(porcelain.reason or "worktree probe did not answer")
-    return Reading.known(classify_worktree(porcelain))
+    # The flag probe runs through THIS module's ``run_git`` binding so a
+    # caller that substitutes the observation seam's git runner (the
+    # parity tests) intercepts the flag probe exactly like the other
+    # probes; production passes the serialized, hardened runner through
+    # the same binding unmodified.
+    flags = read_index_flag_dirt(root, git_runner=run_git)
+    if not flags.is_known_good:
+        return Reading[WorktreeVerdict].unknown(flags.reason or "index-flag probe did not answer")
+    return Reading.known(classify_worktree(porcelain, index_flag_dirt=flags.value))
 
 
 __all__ = [
@@ -760,6 +813,7 @@ __all__ = [
     "HeadState",
     "InProgressKind",
     "InProgressOwnership",
+    "IndexFlagDirt",
     "IntegrationRecordState",
     "Observation",
     "Reading",
@@ -775,6 +829,7 @@ __all__ = [
     "classify_worktree",
     "read_head_state",
     "read_in_progress_kind",
+    "read_index_flag_dirt",
     "read_merge_base",
     "read_worktree",
     "read_worktree_porcelain",

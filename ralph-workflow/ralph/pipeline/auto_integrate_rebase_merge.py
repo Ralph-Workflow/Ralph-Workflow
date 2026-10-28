@@ -19,7 +19,13 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.git.merge import MERGE_STATE_NONE, merge_state
+from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
+from ralph.git.merge import (
+    MERGE_STATE_NONE,
+    merge_refusal_obstruction,
+    merge_state,
+    observe_branch_sha,
+)
 from ralph.git.merge_obstructions import clear_untracked_merge_obstructions
 from ralph.git.rebase.rebase import (
     RebaseConflicts,
@@ -40,6 +46,7 @@ from ralph.pipeline._auto_integrate_rebase_resolve import (
     _resolve_rebase_with_config,
     verify_terminal_state,
 )
+from ralph.pipeline.auto_integrate_backup_refs import create_stale_resolution_snapshot
 from ralph.pipeline.auto_integrate_outcome import (
     record_conflict,
     record_rebase_outcome,
@@ -58,6 +65,23 @@ from ralph.pipeline.conflict_resolution import (
     resolve_rebase_in_progress,
 )
 from ralph.pipeline.conflict_resolution.abort import abort_rebase_discarding_progress
+from ralph.pipeline.integration_decision import (
+    DecisionContext,
+    DirtAttribution,
+    NextAction,
+    decide,
+)
+from ralph.pipeline.integration_observation import (
+    DirtShape,
+    Observation,
+    WorktreeState,
+    classify_worktree,
+)
+from ralph.pipeline.integration_owner import (
+    charge_integration_attempt,
+    ladder_rung_for_action,
+    load_integration_attempts,
+)
 from ralph.pipeline.rebase_state import RebaseState, ResolutionFailureCause, StartupRetentionReason
 
 if TYPE_CHECKING:
@@ -65,6 +89,7 @@ if TYPE_CHECKING:
 
     from ralph.config.conflict_resolution_config import ConflictResolutionConfig
     from ralph.display.parallel_display import ParallelDisplay
+    from ralph.git.merge import MergeResult
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.integration_actions import (
@@ -683,6 +708,192 @@ def _verify_terminal_probe(
     fn(root, expected_head_sha=expected_head_sha, owns_resolution=owns_resolution)
 
 
+def _restore_blocked_paths(root: Path, paths: tuple[str, ...]) -> bool:
+    """Restore the refusal-named paths to HEAD; report success.
+
+    Scoped to exactly the paths git named in its overwrite refusal — the
+    rest of the tree and index are never touched. Best-effort: ``False``
+    names a restore failure (the refusal recurs, now against a charged,
+    finite budget), never an exception.
+    """
+    if not paths:
+        return True
+    result = run_git(
+        (
+            *COMMIT_PIN_CONFIG_ARGS,
+            "restore",
+            "--worktree",
+            "--staged",
+            "--source=HEAD",
+            "--",
+            *paths,
+        ),
+        cwd=root,
+        label="auto-integrate:refusal-restore",
+    )
+    return result.returncode == 0
+
+
+def _preserve_refusal_paths(root: Path) -> tuple[str | None, str | None]:
+    """Preserve the current work — including the refusal-named paths — durably.
+
+    Thin wrapper over the existing stale-resolution snapshot path, so the
+    backup ref holds the staged, worktree and untracked variants of the
+    named paths while the tree and the real index stay untouched. Returns
+    ``(backup_ref, None)`` on success or ``(None, error)``; a failure
+    names the error so the durable record can carry it.
+    """
+    try:
+        head_sha, query_ok = observe_branch_sha(root, "HEAD")
+        if not query_ok or not head_sha:
+            return None, "HEAD unreadable; snapshot refused"
+        backup_ref, _feature_sha = create_stale_resolution_snapshot(root, None, head_sha)
+    except Exception as exc:
+        return None, str(exc) or type(exc).__name__
+    return backup_ref, None
+
+
+def _reobserve_corrected_state(root: Path, target: str) -> tuple[Observation, DirtShape] | None:
+    """Re-observe the repository and correct the contradicted worktree reading.
+
+    The refusal's own file list is git's authoritative answer to "what
+    local work blocks the merge"; when the live worktree reading says
+    CLEAN or UNTRACKED it is overridden by that evidence (the 2026-10-27
+    livelock state: a clean observation answering a path-bearing refusal
+    forever). Returns ``None`` — back off, act on nothing — when the
+    re-observation cannot be read: unknown readings never block and the
+    bridge never acts on them.
+    """
+    from ralph.pipeline.integration_director import IntegrationDirector
+
+    observation = IntegrationDirector(root, target=target).observe()
+    worktree = observation.worktree
+    if worktree is WorktreeState.UNKNOWN:
+        return None
+    if worktree in (WorktreeState.CLEAN, WorktreeState.UNTRACKED):
+        return replace(observation, worktree=WorktreeState.TRACKED_CHANGES), (
+            DirtShape.UNSTAGED_MODIFICATION
+        )
+    return observation, classify_worktree(worktree).dirt_shape
+
+
+def _refusal_bridge_reason(
+    merge_result: MergeResult,
+    action: NextAction,
+    observation: Observation,
+    paths: tuple[str, ...],
+    preserved_ref: str | None,
+    restore_ok: bool | None,
+    preservation_error: str | None,
+) -> str:
+    """Render the one bridge log/record line from the CURRENT observation only."""
+    parts = [
+        f"endpoint merge refused ({merge_result.reason})",
+        f"decided {action.value} from re-observed worktree={observation.worktree.value}",
+    ]
+    if preservation_error is not None:
+        parts.append(f"preservation failed: {preservation_error}")
+    elif preserved_ref is not None:
+        parts.append(f"preserved {len(paths)} path(s) ({', '.join(paths)}) at {preserved_ref}")
+        parts.append(
+            "restored baseline"
+            if restore_ok
+            else "restore FAILED; the refusal will recur against the bounded budget"
+        )
+    parts.append("retrying rebase-first")
+    return "; ".join(parts)
+
+
+def _bridge_merge_refusal(
+    root: Path,
+    target: str,
+    rebase_outcome: RebaseConflicts | RebaseFailed | RebaseNoOp,
+    merge_result: MergeResult,
+) -> RebaseRunResult | None:
+    """Bridge a path-bearing merge refusal into the typed obstruction flow.
+
+    Observed 2026-10-27: the live observation read CLEAN, the endpoint
+    merge refused ("local changes would be overwritten" naming
+    ``app/models/evidence_artifact.rb``), the refusal was recorded as a
+    generic conflict, and the seam re-derived the identical state every
+    ~7 s forever. This bridge closes that loop. It runs ONLY when:
+
+    * the merge result is a path-bearing typed obstruction
+      (:func:`ralph.git.merge.merge_refusal_obstruction`), or a legacy
+      refusal record whose ``blocked_paths`` claim is confirmed by safe
+      re-observation (a fresh ``MERGE_HEAD`` probe proving no merge
+      began); and
+    * the live repository proves no merge is in progress — a genuine
+      ``MERGE_HEAD`` content conflict keeps its existing safety
+      contracts, and an unreadable merge state backs off.
+
+    Then, with no resolver agent and no commit agent for this class: the
+    tree is re-observed and the contradicted clean reading corrected by
+    the refusal's own evidence; the refusal-named paths are preserved to
+    a backup ref through the existing snapshot path and restored to the
+    baseline; the ONE durable attempt budget is charged through the owner
+    seam so identical repeats spend budget and advance the escalation
+    cycle; and the returned state is a skip (never a conflict, never
+    unresolved), so the next seam re-enters at automatic rebase-first
+    against changed evidence. Exactly one warning names the outcome.
+
+    Returns ``None`` whenever any gate is not met, leaving every existing
+    contract (genuine conflicts, resolver dispatch, unreadable states)
+    untouched.
+    """
+    paths = merge_refusal_obstruction(merge_result)
+    if paths is None:
+        if not merge_result.blocked_paths:
+            return None
+        # Pre-change refusal record: paths claimed without the typed
+        # cause. Safe re-observation decides below — only a repository
+        # that proves no merge began is bridged on the legacy claim.
+        paths = merge_result.blocked_paths
+    # MERGE_HEAD semantics override every claim, typed or legacy: an
+    # in-progress merge is a real content conflict; an unreadable state
+    # is never proof of absence, so the bridge backs off rather than acts.
+    if merge_state(root) != MERGE_STATE_NONE:
+        return None
+    corrected = _reobserve_corrected_state(root, target)
+    if corrected is None:
+        return None
+    observation, shape = corrected
+    action = decide(
+        DecisionContext(
+            observation=observation,
+            attempts=load_integration_attempts(root),
+            dirt_shape=shape,
+            dirt_attribution=DirtAttribution.UNOWNED,
+        )
+    )
+    preserved_ref: str | None = None
+    restore_ok: bool | None = None
+    preservation_error: str | None = None
+    if action is NextAction.SAVE_AND_RESTORE:
+        preserved_ref, preservation_error = _preserve_refusal_paths(root)
+        if preserved_ref is not None:
+            restore_ok = _restore_blocked_paths(root, paths)
+    elif action is not NextAction.WAIT_FOR_ENVIRONMENT and ladder_rung_for_action(action) is None:
+        # The table answered outside the refusal-cleanup class (land,
+        # reintegrate, resolver): the existing contracts own that action.
+        return None
+    charge_integration_attempt(root, observation=observation, next_action=action)
+    reason = _refusal_bridge_reason(
+        merge_result, action, observation, paths, preserved_ref, restore_ok, preservation_error
+    )
+    logger.warning("auto_integrate: {}", reason)
+    return RebaseRunResult(
+        rebase_outcome=rebase_outcome,
+        merge_attempted=True,
+        merge_outcome=merge_result,
+        short_circuit=record_skip(
+            reason=reason,
+            target=target,
+            failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+        ),
+    )
+
+
 def _endpoint_merge_result(
     root: Path,
     target: str,
@@ -715,6 +926,9 @@ def _endpoint_merge_result(
                 )
             ),
         )
+    bridged = _bridge_merge_refusal(root, target, rebase_outcome, merge_result)
+    if bridged is not None:
+        return bridged
     if merge_result.outcome == "merge_commit_pending":
         return RebaseRunResult(
             rebase_outcome=rebase_outcome,

@@ -27,7 +27,11 @@ from ralph.pipeline import integration_owner_seam as owner_seam
 from ralph.pipeline.auto_integrate_planning import resolve_planning_residue
 from ralph.pipeline.integration_cleanup import PlanningBaseline
 from ralph.pipeline.integration_decision import NextAction
-from ralph.pipeline.integration_observation import InProgressKind, Reading
+from ralph.pipeline.integration_observation import (
+    IndexFlagDirt,
+    InProgressKind,
+    Reading,
+)
 
 pytestmark = pytest.mark.timeout_seconds(10)
 
@@ -71,6 +75,14 @@ class _FakeCleanupGit:
     def in_progress_kind(self, root: Path) -> Reading[InProgressKind]:
         del root
         return self._in_progress
+
+    def index_flag_dirt(self, root: Path) -> Reading[IndexFlagDirt]:
+        del root
+        return Reading.known(IndexFlagDirt.empty())
+
+    def clear_index_flags(self, root: Path, paths: Sequence[str]) -> bool:
+        del root, paths
+        return True
 
     def snapshot_worktree(self, root: Path, *, head_sha: str) -> str:
         del root, head_sha

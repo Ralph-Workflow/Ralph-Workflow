@@ -40,6 +40,7 @@ from ralph.pipeline.integration_decision import (
 )
 from ralph.pipeline.integration_observation import (
     DirtShape,
+    IndexFlagDirt,
     InProgressKind,
     Reading,
 )
@@ -140,6 +141,15 @@ class _FakeCleanupGit:
         if self.operation_probe_unreadable:
             return Reading[InProgressKind].unknown("git directory unreadable")
         return Reading.known(self.operation_kind)
+
+    def index_flag_dirt(self, root: Path) -> Reading[IndexFlagDirt]:
+        """No index flags by default; ``_FlagAwareGit`` models the flagged case."""
+        del root
+        return Reading.known(IndexFlagDirt.empty())
+
+    def clear_index_flags(self, root: Path, paths: Sequence[str]) -> bool:
+        del root, paths
+        return True
 
     # -- mutations ---------------------------------------------------------
 

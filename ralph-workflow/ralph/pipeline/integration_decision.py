@@ -692,6 +692,10 @@ _BLOCKING_SHAPES: frozenset[DirtShape] = frozenset(
         DirtShape.DELETED,
         DirtShape.RENAMED_OR_COPIED,
         DirtShape.UNTRACKED_BLOCKING,
+        # Flag-hidden tracked dirt (assume-unchanged / skip-worktree) is
+        # real residue: it preserves to a backup ref and restores the
+        # baseline through the same ladder as ordinary tracked dirt.
+        DirtShape.INDEX_FLAG_HIDDEN,
     }
 )
 
