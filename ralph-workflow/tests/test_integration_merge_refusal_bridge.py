@@ -30,7 +30,7 @@ seams (no real git, no subprocess, no sleep, no wall clock):
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import pytest
 from loguru import logger
@@ -46,7 +46,6 @@ from ralph.git.merge import (
     merge_target_into_current,
 )
 from ralph.git.rebase.rebase import RebaseConflicts
-from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_rebase_merge import run_rebase_or_merge
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_decision import EscalationRung
@@ -60,10 +59,10 @@ from ralph.pipeline.integration_observation import (
     TargetVsRemote,
     WorktreeState,
 )
-from ralph.pipeline.rebase_state import ResolutionFailureCause
+from ralph.pipeline.rebase_state import RebaseOutcomeKind, ResolutionFailureCause
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
     from pathlib import Path
 
     from ralph.git.git_call_policy import GitCallClass
@@ -71,9 +70,20 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.timeout_seconds(10)
 
+#: The module under test: the captured warning lines are THIS module's
+#: observable output (the bridge's one warning per outcome). Warnings
+#: from sibling modules — e.g. the record-clearing helper's retention
+#: warning, existing-contract behavior pinned in its own suite — are
+#: outside the bridge surface this file pins.
+_ENGINE_MODULE = "ralph.pipeline.auto_integrate_rebase_merge"
+
 _BLOCK_PATH = "app/models/evidence_artifact.rb"
 _BACKUP_REF = "refs/ralph-backup/fake-refusal-01"
 _HEAD_SHA = "d" * 40
+
+#: The refusal restore's argv tail (after COMMIT_PIN_CONFIG_ARGS) — the
+#: exact ``git restore`` shape that returns the named paths to HEAD.
+_RESTORE_ARGV = ("restore", "--worktree", "--staged", "--source=HEAD", "--", _BLOCK_PATH)
 
 _REFUSAL_STDERR = (
     "error: Your local changes to the following files would be overwritten by merge:\n"
@@ -137,6 +147,51 @@ class _Recorder:
         return self._returns
 
 
+class _GitCalls:
+    """Public ``run_git`` seam double: records every call, answers success.
+
+    Every git mutation in the bridged flow is isolated at a higher public
+    seam, so the only ``run_git`` call that can still arrive is the
+    refusal restore itself; recording at this boundary pins the exact
+    ``git restore`` argv and cwd without touching private names.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[tuple[str, ...], Path | None]] = []
+
+    def __call__(
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path | None = None,
+        label: str = "",
+        options: GitRunOptions | None = None,
+        call_class: GitCallClass | None = None,
+    ) -> GitRunResult:
+        del label, options, call_class
+        raw = tuple(args)
+        self.calls.append((raw, cwd))
+        return GitRunResult(args=raw, returncode=0, stdout="", stderr="")
+
+
+def _restore_invocations(
+    calls: list[tuple[tuple[str, ...], Path | None]],
+) -> list[tuple[tuple[str, ...], Path | None]]:
+    """The recorded ``run_git`` calls that are refusal restores.
+
+    The pin-config prefix is stripped, so each returned argv is exactly
+    what git received (``restore --worktree --staged ...``).
+    """
+    return [
+        (argv[len(COMMIT_PIN_CONFIG_ARGS) :], cwd)
+        for argv, cwd in calls
+        if (
+            argv[: len(COMMIT_PIN_CONFIG_ARGS)] == COMMIT_PIN_CONFIG_ARGS
+            and argv[len(COMMIT_PIN_CONFIG_ARGS) :][:1] == ("restore",)
+        )
+    ]
+
+
 def _install_bridge_seams(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -144,9 +199,8 @@ def _install_bridge_seams(
     observations: list[Observation],
     merge_state: str = MERGE_STATE_NONE,
     preserve_returns: tuple[str, str] | Exception = (_BACKUP_REF, _HEAD_SHA),
-    restore_returns: bool = True,
     refusal: MergeResult | None = None,
-) -> tuple[_StubDirector, _Recorder, _Recorder, list[str], _Recorder]:
+) -> tuple[_StubDirector, _Recorder, _GitCalls, list[str], _Recorder]:
     """Install every seam the bridge touches; return the recorders."""
     import ralph.pipeline.auto_integrate_rebase_merge as engine
     import ralph.pipeline.integration_director as director_mod
@@ -159,7 +213,9 @@ def _install_bridge_seams(
 
     # Drive the PUBLIC run_rebase_or_merge entry: the rebase phase is
     # scripted to stop on conflicts so the attempt falls to the endpoint
-    # merge, where the injected refusal arrives.
+    # merge, where the injected refusal arrives. The routing and
+    # terminal-state probes resolve through the engine's PUBLIC module
+    # globals, so patching those names is all the indirection needed.
     def _fake_routing(_root: Path, _target: str) -> None:
         return None
 
@@ -173,41 +229,36 @@ def _install_bridge_seams(
     def _fake_rebase_in_progress(_root: Path) -> bool:
         return False
 
-    monkeypatch.setattr(engine, "_range_routing_probe", _fake_routing)
-    monkeypatch.setattr(engine, "clear_untracked_merge_obstructions", _fake_clear)
-    monkeypatch.setattr(engine, "rebase_onto", _fake_rebase)
-    monkeypatch.setattr(engine, "rebase_in_progress", _fake_rebase_in_progress)
-
-    def _fake_verify_terminal(*_args: object, **_kwargs: object) -> None:
-        return None
-
-    monkeypatch.setattr(engine, "_verify_terminal_state", _fake_verify_terminal)
+    def _fake_verify_terminal(
+        _root: Path, *, expected_head_sha: str | None, owns_resolution: bool
+    ) -> None:
+        del expected_head_sha, owns_resolution
 
     def _fake_head_sha(_root: Path, _ref: str) -> tuple[str, bool]:
         return _HEAD_SHA, True
 
-    def _fake_clear_record(_root: Path) -> None:
-        return None
-
+    monkeypatch.setattr(engine, "range_routing_reason", _fake_routing)
+    monkeypatch.setattr(engine, "clear_untracked_merge_obstructions", _fake_clear)
+    monkeypatch.setattr(engine, "rebase_onto", _fake_rebase)
+    monkeypatch.setattr(engine, "rebase_in_progress", _fake_rebase_in_progress)
+    monkeypatch.setattr(engine, "verify_terminal_state", _fake_verify_terminal)
     monkeypatch.setattr(engine, "merge_state", _fake_merge_state)
     monkeypatch.setattr(engine, "observe_branch_sha", _fake_head_sha)
-    # Isolate the branch table: the record-clearing helper's own probes
-    # (and its retention warning) are existing-contract behavior tested
-    # elsewhere, not part of the bridge surface.
-    monkeypatch.setattr(engine, "_clear_record_if_no_inflight_op", _fake_clear_record)
 
     preserve = _Recorder(preserve_returns)
     monkeypatch.setattr(engine, "create_stale_resolution_snapshot", preserve)
 
-    restore = _Recorder(restore_returns)
-    monkeypatch.setattr(engine, "_restore_blocked_paths", restore)
+    # The restore runs through the engine's public ``run_git`` boundary;
+    # the double records the exact restore-shaped invocations.
+    git = _GitCalls()
+    monkeypatch.setattr(engine, "run_git", git)
 
     merge = _Recorder(refusal if refusal is not None else _typed_refusal())
     monkeypatch.setattr(engine, "endpoint_merge_with_resolution", merge)
 
     captured, _sink_id = _capture_warnings()
     _ACTIVE_SINKS.append(_sink_id)
-    return director, preserve, restore, captured, merge
+    return director, preserve, git, captured, merge
 
 
 _ACTIVE_SINKS: list[int] = []
@@ -218,12 +269,30 @@ def _drop_sink(_captured: list[str]) -> None:
         logger.remove(_ACTIVE_SINKS.pop())
 
 
+class _WarningMessage(Protocol):
+    """The loguru message object a sink receives: a ``str`` with a record dict."""
+
+    def __str__(self) -> str: ...
+
+    @property
+    def record(self) -> Mapping[str, object]: ...
+
+
 def _capture_warnings() -> tuple[list[str], int]:
-    """Attach a WARNING-level loguru sink; return its buffer and sink id."""
+    """Attach a WARNING-level sink scoped to the module under test.
+
+    Only warnings emitted from :mod:`ralph.pipeline.auto_integrate_rebase_merge`
+    are captured, so the assertions pin the bridge's own log surface:
+    exactly one line per bridged outcome, none on the back-off arms.
+    Sibling-module warnings (the record-clearing helper's retention
+    warning on the conflict path, existing-contract behavior pinned in
+    its own suite) never reach the captured buffer.
+    """
     captured: list[str] = []
 
-    def _sink(message: object) -> None:
-        captured.append(str(message))
+    def _sink(message: _WarningMessage) -> None:
+        if message.record.get("name") == _ENGINE_MODULE:
+            captured.append(str(message))
 
     sink_id = logger.add(_sink, level="WARNING", format="{message}")
     return captured, sink_id
@@ -324,7 +393,7 @@ def test_clean_observation_overwrite_refusal_is_fully_bridged(
     (e) no resolver and no commit agent, (f) exactly one warning naming
     paths and ref.
     """
-    director, preserve, restore, warnings, _merge = _install_bridge_seams(
+    director, preserve, git, warnings, _merge = _install_bridge_seams(
         monkeypatch, tmp_path, observations=[_clean_observation()]
     )
     try:
@@ -352,7 +421,12 @@ def test_clean_observation_overwrite_refusal_is_fully_bridged(
         assert len(preserve.calls) == 1
         assert preserve.calls[0][0] == tmp_path
         assert (_BACKUP_REF) in (state.last_reason or "")
-        assert restore.calls == [(tmp_path, (_BLOCK_PATH,))]
+        # The named paths were restored to HEAD through the public
+        # ``run_git`` boundary: exactly one restore-shaped invocation,
+        # scoped to exactly the refusal-named path at the repo root.
+        restores = _restore_invocations(git.calls)
+        assert len(restores) == 1
+        assert restores[0] == (_RESTORE_ARGV, tmp_path)
         # (e) no resolver agent ran for the refusal class.
         assert resolver_calls == []
         # (f) exactly one warning, naming the paths and the ref.
@@ -378,7 +452,7 @@ def test_identical_repeats_spend_budget_and_advance_cycle(
     preserve-shaped work is bounded (the direct rung executes once), and
     neither a resolver nor a commit action is ever charged.
     """
-    _director, preserve, restore, warnings, _merge = _install_bridge_seams(
+    _director, preserve, git, warnings, _merge = _install_bridge_seams(
         monkeypatch, tmp_path, observations=[_clean_observation()]
     )
     try:
@@ -403,7 +477,7 @@ def test_identical_repeats_spend_budget_and_advance_cycle(
         # are answered by stronger, different rungs — never a third
         # blind preserve of the same content, never a re-run loop.
         assert len(preserve.calls) == 2
-        assert len(restore.calls) == 2
+        assert len(_restore_invocations(git.calls)) == 2
         # One accurate line per outcome.
         assert len(warnings) == 8
     finally:
@@ -430,7 +504,7 @@ def test_durable_record_is_rewritten_from_the_reobserved_tree(
         record=IntegrationRecordState.NONE,
         agent_active=False,
     )
-    director, _preserve, _restore, warnings, _merge = _install_bridge_seams(
+    director, _preserve, _git, warnings, _merge = _install_bridge_seams(
         monkeypatch, tmp_path, observations=[_clean_observation(), staged]
     )
     try:
@@ -451,7 +525,7 @@ def test_genuine_merge_head_conflict_keeps_existing_contracts(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """MERGE_HEAD semantics override the typed claim: content conflict path."""
-    _director, preserve, restore, warnings, _merge = _install_bridge_seams(
+    _director, preserve, git, warnings, _merge = _install_bridge_seams(
         monkeypatch,
         tmp_path,
         observations=[_clean_observation()],
@@ -465,7 +539,7 @@ def test_genuine_merge_head_conflict_keeps_existing_contracts(
         # recorded as a conflict, not bridged, not preserved-over.
         assert state.last_outcome is RebaseOutcomeKind.CONFLICT
         assert preserve.calls == []
-        assert restore.calls == []
+        assert _restore_invocations(git.calls) == []
         # The bridge never charged the budget and never logged a line.
         assert sum(AttemptLedger(tmp_path).read().repeat_counts.values()) == 0
         assert warnings == []
@@ -478,7 +552,7 @@ def test_unreadable_probes_back_off_without_acting(
 ) -> None:
     """Unknown readings never block and never act: back off to the safe path."""
     # (1) The merge-state re-probe itself is unreadable.
-    _director, preserve, restore, warnings, _merge = _install_bridge_seams(
+    _director, preserve, git, warnings, _merge = _install_bridge_seams(
         monkeypatch,
         tmp_path,
         observations=[_clean_observation()],
@@ -490,7 +564,7 @@ def test_unreadable_probes_back_off_without_acting(
         assert state is not None
         assert state.last_outcome is RebaseOutcomeKind.CONFLICT
         assert preserve.calls == []
-        assert restore.calls == []
+        assert _restore_invocations(git.calls) == []
         assert sum(AttemptLedger(tmp_path).read().repeat_counts.values()) == 0
         assert warnings == []
     finally:
@@ -507,7 +581,7 @@ def test_unreadable_probes_back_off_without_acting(
         record=IntegrationRecordState.NONE,
         agent_active=False,
     )
-    _director2, preserve2, restore2, warnings2, _merge2 = _install_bridge_seams(
+    _director2, preserve2, git2, warnings2, _merge2 = _install_bridge_seams(
         monkeypatch, tmp_path, observations=[unknown_observation]
     )
     try:
@@ -516,7 +590,7 @@ def test_unreadable_probes_back_off_without_acting(
         assert state2 is not None
         assert state2.last_outcome is RebaseOutcomeKind.CONFLICT
         assert preserve2.calls == []
-        assert restore2.calls == []
+        assert _restore_invocations(git2.calls) == []
         assert sum(AttemptLedger(tmp_path).read().repeat_counts.values()) == 0
         assert warnings2 == []
     finally:
@@ -538,7 +612,7 @@ def test_legacy_untyped_refusal_flows_through_safe_reobservation(
         blocked_paths=(_BLOCK_PATH,),
         failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
     )
-    _director, _preserve, _restore, warnings, _merge = _install_bridge_seams(
+    _director, _preserve, _git, warnings, _merge = _install_bridge_seams(
         monkeypatch,
         tmp_path,
         observations=[_clean_observation()],
@@ -560,7 +634,7 @@ def test_legacy_untyped_refusal_flows_through_safe_reobservation(
         blocked_paths=(_BLOCK_PATH,),
         failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
     )
-    _d2, preserve2, restore2, warnings2, _m2 = _install_bridge_seams(
+    _d2, preserve2, git2, warnings2, _m2 = _install_bridge_seams(
         monkeypatch,
         tmp_path,
         observations=[_clean_observation()],
@@ -573,7 +647,7 @@ def test_legacy_untyped_refusal_flows_through_safe_reobservation(
         assert state2 is not None
         assert state2.last_outcome is RebaseOutcomeKind.CONFLICT
         assert preserve2.calls == []
-        assert restore2.calls == []
+        assert _restore_invocations(git2.calls) == []
         assert warnings2 == []
     finally:
         _drop_sink(warnings2)
@@ -583,7 +657,7 @@ def test_preservation_failure_is_reported_not_retried_silently(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """When the snapshot path raises, the bridge reports and still charges."""
-    _director, _preserve, restore, warnings, _merge = _install_bridge_seams(
+    _director, _preserve, git, warnings, _merge = _install_bridge_seams(
         monkeypatch,
         tmp_path,
         observations=[_clean_observation()],
@@ -597,7 +671,7 @@ def test_preservation_failure_is_reported_not_retried_silently(
         assert "preservation failed" in (state.last_reason or "")
         # Nothing was restored (there was no durable copy) and the
         # attempt still spent budget exactly once.
-        assert restore.calls == []
+        assert _restore_invocations(git.calls) == []
         assert sum(AttemptLedger(tmp_path).read().repeat_counts.values()) == 1
         assert len(warnings) == 1
     finally:
