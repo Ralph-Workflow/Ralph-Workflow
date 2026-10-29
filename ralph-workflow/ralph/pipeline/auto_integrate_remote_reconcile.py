@@ -94,12 +94,13 @@ def reconcile_target_onto_remote(
     except Exception:
         owner = None
     if owner is not None:
-        with integration_transaction(owner) as acquired:
-            if not acquired or (
+        with integration_transaction(owner) as outcome:
+            if not outcome.acquired or (
                 owner != repo_root and retained_integration_reason(owner) is not None
             ):
                 return ReconciliationOutcome(
-                    False, "target worktree busy; reconciliation will retry"
+                    False,
+                    outcome.describe("target worktree busy; reconciliation will retry"),
                 )
             checked_owner, pre_target_sha, reason = _reconciliation_preconditions(
                 repo_root,
@@ -325,8 +326,8 @@ def _reconciliation_owner(repo_root: Path, target: str) -> Path | None:
         return None
 
     if _is_temporary_reconciliation_worktree(owner):
-        with integration_transaction(owner) as acquired:
-            if not acquired:
+        with integration_transaction(owner) as outcome:
+            if not outcome.acquired:
                 return owner
             _cleanup_temporary_worktree(primary_root, owner, repo_root)
             with contextlib.suppress(Exception):
@@ -397,10 +398,11 @@ def _reconcile_in_temporary_workspace(
         )
 
     try:
-        with integration_transaction(temp_dir) as acquired:
-            if not acquired:
+        with integration_transaction(temp_dir) as outcome:
+            if not outcome.acquired:
                 return ReconciliationOutcome(
-                    False, "target worktree busy; reconciliation will retry"
+                    False,
+                    outcome.describe("target worktree busy; reconciliation will retry"),
                 )
 
             wt_target_sha = branch_sha(temp_dir, target)

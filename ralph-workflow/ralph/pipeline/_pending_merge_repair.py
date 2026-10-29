@@ -63,7 +63,8 @@ def repair_pending_merge(
 
     record_root = workspace_scope.root
     with ExitStack() as stack:
-        if not stack.enter_context(integration_transaction(record_root)):
+        root_lease = stack.enter_context(integration_transaction(record_root))
+        if not root_lease.acquired:
             return False
         record = read_record(record_root)
         if record is None:
@@ -73,10 +74,8 @@ def repair_pending_merge(
                 return False
             owner = Path(record.owning_worktree)
             if owner.resolve() != record_root.resolve():
-                if (
-                    not stack.enter_context(integration_transaction(owner))
-                    or read_record(owner) is not None
-                ):
+                owner_lease = stack.enter_context(integration_transaction(owner))
+                if not owner_lease.acquired or read_record(owner) is not None:
                     return False
                 stack.enter_context(bind_integration_record_root(owner, record_root))
                 workspace_scope = WorkspaceScope(owner)

@@ -260,10 +260,10 @@ def recover_incomplete_integration(
     retry. Restoration refuses to overwrite unfinished edits, and a durable
     record survives until restoration or target landing is proven.
     """
-    with integration_transaction(Path(workspace_scope.root)) as acquired:
-        if not acquired:
+    with integration_transaction(Path(workspace_scope.root)) as outcome:
+        if not outcome.acquired:
             return _record_skip(
-                reason="integration worktree busy; recovery will retry",
+                reason=outcome.describe("integration worktree busy; recovery will retry"),
                 target=None,
                 retention_reason=StartupRetentionReason.OBSERVED_RETAINED_ON_DISK,
                 record_retained=True,

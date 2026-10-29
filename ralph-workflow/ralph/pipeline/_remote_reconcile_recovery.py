@@ -63,7 +63,7 @@ from ralph.pipeline.auto_integrate_record import (
 )
 from ralph.pipeline.auto_integrate_record_store import apply_record_transition
 from ralph.pipeline.auto_integrate_remote_constants import remote_target_name as _remote_target_name
-from ralph.pipeline.auto_integrate_transaction import integration_transaction
+from ralph.pipeline.auto_integrate_transaction import LeaseOutcome, integration_transaction
 from ralph.pipeline.integration_director import (
     DEFAULT_REMOTE,
     DEFAULT_TARGET_BRANCH,
@@ -112,10 +112,15 @@ def recover_target_resolution(
         return _retained(record, "target reconciliation has no owning worktree")
     owner = Path(record.owning_worktree)
     foreign = owner.resolve() != root.resolve()
-    lease = integration_transaction(owner) if foreign else nullcontext(True)
-    with lease as acquired:
-        if not acquired or (foreign and retained_integration_reason(owner) is not None):
-            return _retained(record, "target reconciliation worktree busy; recovery will retry")
+    lease = (
+        integration_transaction(owner) if foreign else nullcontext(LeaseOutcome.acquired_outcome())
+    )
+    with lease as outcome:
+        if not outcome.acquired or (foreign and retained_integration_reason(owner) is not None):
+            return _retained(
+                record,
+                outcome.describe("target reconciliation worktree busy; recovery will retry"),
+            )
         release_state = _maybe_release_target_diagnostic(owner, root, record)
         if release_state is not None:
             return release_state

@@ -47,6 +47,7 @@ from ralph.pipeline.auto_integrate_record import (
 )
 from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
 from ralph.pipeline.auto_integrate_resolution_state import ContainmentVerdict
+from ralph.pipeline.auto_integrate_transaction import LeaseOutcome
 from ralph.pipeline.integration_actions import (
     install_executors,
     reset_executors,
@@ -294,8 +295,8 @@ def _stub_repo_reads(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
     @contextmanager
-    def _fake_tx(_root: Path) -> Iterator[bool]:
-        yield True
+    def _fake_tx(_root: Path) -> Iterator[LeaseOutcome]:
+        yield LeaseOutcome.acquired_outcome()
 
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_transaction.integration_transaction",
@@ -397,8 +398,8 @@ def test_auto_integrate_on_phase_transition_tries_rebase_first(
         (tmp_path / ".git").mkdir()
 
         @contextmanager
-        def _fake_tx(_root: Path) -> Iterator[bool]:
-            yield True
+        def _fake_tx(_root: Path) -> Iterator[LeaseOutcome]:
+            yield LeaseOutcome.acquired_outcome()
 
         monkeypatch.setattr(
             "ralph.pipeline.auto_integrate.integration_transaction",

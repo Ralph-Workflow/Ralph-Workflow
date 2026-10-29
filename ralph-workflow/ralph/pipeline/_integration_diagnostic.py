@@ -401,10 +401,8 @@ def diagnose_retained_integration(
         logger.critical("Integration evidence inspection requires agent dependencies: {}", failure)
         return False
     with ExitStack() as leases:
-        if (
-            not leases.enter_context(integration_transaction(ctx.workspace_scope.root))
-            or (record := read_record(ctx.workspace_scope.root)) is None
-        ):
+        root_lease = leases.enter_context(integration_transaction(ctx.workspace_scope.root))
+        if not root_lease.acquired or (record := read_record(ctx.workspace_scope.root)) is None:
             return False
         record, budget_spent = _settle_spent_budget(
             ctx.workspace_scope.root,
@@ -421,10 +419,10 @@ def diagnose_retained_integration(
             return False
 
         operation_root = _operation_root_for(record, ctx.workspace_scope.root)
-        if operation_root != ctx.workspace_scope.root and not leases.enter_context(
-            integration_transaction(operation_root)
-        ):
-            return False
+        if operation_root != ctx.workspace_scope.root:
+            operation_lease = leases.enter_context(integration_transaction(operation_root))
+            if not operation_lease.acquired:
+                return False
 
         effective_invoke: Callable[[str, Path], bool]
         attempt_session = ResolutionSession()

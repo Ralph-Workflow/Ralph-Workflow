@@ -62,6 +62,7 @@ from ralph.pipeline.auto_integrate_recovery import (
     TerminalStateViolationError,
     post_attempt_verify,
 )
+from ralph.pipeline.auto_integrate_transaction import LeaseOutcome
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.workspace.scope import WorkspaceScope
 
@@ -772,8 +773,8 @@ def test_unreadable_exists_permission_error_reports_ladder_escalation_not_generi
     #    ``integration_transaction`` is a generator-function, but ``with`` only
     #    needs ``__enter__``/__exit__`` on the returned object).
     class _AlwaysAcquired:
-        def __enter__(self) -> bool:
-            return True
+        def __enter__(self) -> LeaseOutcome:
+            return LeaseOutcome.acquired_outcome()
 
         def __exit__(self, *args: object) -> bool:
             return False

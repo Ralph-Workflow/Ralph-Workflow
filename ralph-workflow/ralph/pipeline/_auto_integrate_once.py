@@ -111,10 +111,11 @@ def _integrate_once(
 
     clock_token = install_executors(clock=clock)
     try:
-        with _ai.integration_transaction(root) as acquired:
-            if not acquired:
+        with _ai.integration_transaction(root) as outcome:
+            if not outcome.acquired:
                 return _record_skip(
-                    reason="integration already running in this worktree", target=target
+                    reason=outcome.describe("integration already running in this worktree"),
+                    target=target,
                 ), False
             return _integrate_once_owned(
                 config,

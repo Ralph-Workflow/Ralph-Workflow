@@ -46,6 +46,7 @@ from ralph.pipeline.auto_integrate_record import (
     RecordReadOutcomeDisposition,
 )
 from ralph.pipeline.auto_integrate_resolution_state import ContainmentVerdict
+from ralph.pipeline.auto_integrate_transaction import LeaseOutcome
 from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.pipeline.integration_resolution import TreeReadinessAssessment
 from ralph.pipeline.rebase_state import RebaseState
@@ -312,8 +313,8 @@ def _stub_repository_reads(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(target, value)
 
     @contextmanager
-    def _fake_transaction(_root: Path) -> Iterator[bool]:
-        yield True
+    def _fake_transaction(_root: Path) -> Iterator[LeaseOutcome]:
+        yield LeaseOutcome.acquired_outcome()
 
     for module in (
         "ralph.pipeline.auto_integrate",

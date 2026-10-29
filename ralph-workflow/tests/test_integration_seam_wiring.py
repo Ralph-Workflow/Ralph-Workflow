@@ -81,6 +81,9 @@ _FIVE_BOUNDARIES = (
     "ralph.pipeline._pipeline_state_machine",
     "ralph.pipeline._remote_reconcile_recovery",
     "ralph.pipeline._target_reconciliation_handoff",
+    "ralph.pipeline.run_loop",
+    "ralph.pipeline.auto_integrate_planning",
+    "ralph.pipeline.auto_integrate_catchup",
 )
 
 

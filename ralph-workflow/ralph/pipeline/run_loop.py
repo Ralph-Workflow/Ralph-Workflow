@@ -1650,10 +1650,11 @@ def _run_integration_conflict_resolution(
     hooks = _retry_hooks(ctx)
     if hooks.conflict_resolution is not None:
         return hooks.conflict_resolution(ctx, rebase)
-    with integration_transaction(ctx.workspace_scope.root) as acquired:
-        if not acquired:
+    with integration_transaction(ctx.workspace_scope.root) as outcome:
+        if not outcome.acquired:
             emit_integration_warn_line(
-                ctx.active_display, "integration recovery retained; another owner is active"
+                ctx.active_display,
+                outcome.describe("integration recovery retained; another owner is active"),
             )
             return False
         from ralph.pipeline.auto_integrate_record import read_record

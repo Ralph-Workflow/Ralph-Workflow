@@ -16,6 +16,7 @@ from ralph.pipeline.auto_integrate_record import (
     RecordReadOutcomeDisposition,
     record_path,
 )
+from ralph.pipeline.auto_integrate_transaction import LeaseOutcome
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._resolver_controller import make_resolver_controller
 from tests.test_auto_integrate_record_idempotent import _RecordBackend
@@ -118,8 +119,8 @@ def test_runtime_recovery_waits_when_another_integration_owner_holds_lease(
     from ralph.workspace.scope import WorkspaceScope
 
     @contextmanager
-    def contended(_root: Path) -> Iterator[bool]:
-        yield False
+    def contended(_root: Path) -> Iterator[LeaseOutcome]:
+        yield LeaseOutcome.held_by_live_owner()
 
     monkeypatch.setattr(
         "ralph.pipeline.auto_integrate_transaction.integration_transaction", contended
@@ -177,8 +178,8 @@ def test_commit_repair_uses_supervised_resolution_session_and_retains_pending_st
         return PipelineEvent.AGENT_SUCCESS
 
     @contextmanager
-    def lease(_root: Path) -> Iterator[bool]:
-        yield True
+    def lease(_root: Path) -> Iterator[LeaseOutcome]:
+        yield LeaseOutcome.acquired_outcome()
 
     def read_owned_record(_root: Path) -> IntegrationRecord:
         return record
