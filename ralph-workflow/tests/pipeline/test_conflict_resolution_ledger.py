@@ -43,7 +43,15 @@ def test_resolver_falls_over_after_three_failures(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """When agent A fails 3 times, fallback candidate B is invoked and succeeds."""
-    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
+    # Per-attempt observable facts (§11 observes the unresolved set once
+    # before every charge): agentA's three exception attempts leave the
+    # conflicted path in place (no progress), then agentB's success clears
+    # it.
+    _install_seams(
+        monkeypatch,
+        unmerged=_CONFLICTED,
+        surviving_per_round=[list(_CONFLICTED)] * 3 + [[]],
+    )
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("agentA", "agentB")
     )
@@ -388,7 +396,15 @@ def test_changing_resolver_reaches_total_limit_instead_of_consecutive(
 
     but reaches the total limit (e.g. 5) before being demoted.
     """
-    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
+    # Per-attempt observable facts (§11 observes the unresolved set once
+    # before every charge): agentA's five attempts leave the conflicted
+    # path in place (progress is the workspace write, visible to the
+    # probe), then agentB's success clears it.
+    _install_seams(
+        monkeypatch,
+        unmerged=_CONFLICTED,
+        surviving_per_round=[list(_CONFLICTED)] * 5 + [[]],
+    )
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("agentA", "agentB")
     )

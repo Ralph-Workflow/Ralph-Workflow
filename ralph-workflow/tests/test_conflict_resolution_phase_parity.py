@@ -296,20 +296,40 @@ def test_failed_invoke_routes_launch_provider_and_decline_through_recovery_contr
 
     def _spy(
         self: RecoveryController,
-        raw_failure: BaseException | str,
+        raw_failure: BaseException | str | None,
         *,
         agent: str,
         phase: str = "rebase_conflict_resolution",
         connectivity_state: str | None = None,
+        outcome: object | None = None,
+        unresolved_count: int = 0,
     ) -> object:
-        text = str(raw_failure).lower()
+        from ralph.pipeline.conflict_resolution.attempt_fault import ConflictAttemptOutcome
+
+        effective = outcome if outcome is not None else ConflictAttemptOutcome.RAW
+        if effective is not ConflictAttemptOutcome.RAW:
+            # Typed outcomes (Ralph-observed facts) bypass the text classifier;
+            # a bare false return lands here as the typed ATTEMPT_FAILED shape.
+            seen.append("decline")
+            return RecoveryController.classify_conflict_attempt(
+                self,
+                raw_failure,
+                agent=agent,
+                phase=phase,
+                connectivity_state=connectivity_state,
+                outcome=effective,
+                unresolved_count=unresolved_count,
+            )
+        text = str(raw_failure).lower() if raw_failure is not None else ""
         if "launch" in text:
             seen.append("launch")
         elif "provider" in text:
             seen.append("provider")
         else:
             seen.append("decline")
-        return FailureClassifier().classify(raw_failure, phase=phase, agent=agent)
+        return FailureClassifier().classify(
+            raw_failure if raw_failure is not None else "", phase=phase, agent=agent
+        )
 
     monkeypatch.setattr(
         RecoveryController,
@@ -441,7 +461,9 @@ def test_a_new_stop_restarts_the_chain_on_a_reused_session(
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     clock = FakeClock()
     session = ResolutionSession(ledger=AgentFailureLedger(clock=clock))
-    _install_seams(monkeypatch, surviving_per_round=[[]])
+    # Per-attempt observation: each of one's no-progress false returns leaves
+    # the markers in place; two's success clears them.
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED, []])
 
     def _first_stop(agent_name: str, prompt_path: Path, round_index: int) -> bool:
         return agent_name == "two"
@@ -770,7 +792,9 @@ def test_an_uninstalled_candidate_hands_over_to_the_next_one(
     """Being absent must cost the chain one candidate, not the whole round."""
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("pi", "claude"))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
-    _install_seams(monkeypatch, surviving_per_round=[[]])
+    # Per-attempt observation: pi's no-op attempt leaves the markers in place
+    # (no progress), claude's success clears them.
+    _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, []])
     session = ResolutionSession()
     called: list[str] = []
 

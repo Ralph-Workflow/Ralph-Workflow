@@ -66,7 +66,13 @@ def _resolve(tmp_path: Path, deps: PipelineDeps, calls: list[str]) -> bool:
 def test_resolver_that_failed_in_an_earlier_session_is_not_offered_first(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
+    # Per-attempt observation (clamps to the last entry once exhausted):
+    # primary's three exceptions leave the markers in place (no progress, so
+    # the consecutive streak accrues), fallback's success clears them; the
+    # reused seam then keeps reporting "cleared" for the second resolve.
+    _install_seams(
+        monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[list(_CONFLICTED)] * 3 + [[]]
+    )
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
     )

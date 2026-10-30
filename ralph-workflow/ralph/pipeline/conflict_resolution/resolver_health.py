@@ -27,7 +27,6 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.pipeline.conflict_resolution.attempt_fault import ConflictAttemptOutcome
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.recovery.agent_failure_ledger import AttemptFact
 from ralph.recovery.failure_category import FailureCategory
@@ -35,6 +34,7 @@ from ralph.recovery.failure_category import FailureCategory
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from ralph.pipeline.conflict_resolution.attempt_fault import ConflictAttemptOutcome
     from ralph.recovery.controller import RecoveryController
 
 __all__ = [

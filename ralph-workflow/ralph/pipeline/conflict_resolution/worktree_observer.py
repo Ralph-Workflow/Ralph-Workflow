@@ -65,9 +65,7 @@ class WorktreeConflictObserver(Protocol):
         """Stage identical-blob / matching-gitlink paths; return what was staged."""
         ...
 
-    def paths_with_conflict_markers(
-        self, root: Path, paths: tuple[str, ...]
-    ) -> Sequence[str]:
+    def paths_with_conflict_markers(self, root: Path, paths: tuple[str, ...]) -> Sequence[str]:
         """Paths that still carried conflict markers on the on-disk re-scan."""
         ...
 
@@ -122,9 +120,7 @@ class GitWorktreeConflictObserver:
 
         return _driver_mod.stage_mechanical_conflicts(root, kinds)
 
-    def paths_with_conflict_markers(
-        self, root: Path, paths: tuple[str, ...]
-    ) -> Sequence[str]:
+    def paths_with_conflict_markers(self, root: Path, paths: tuple[str, ...]) -> Sequence[str]:
         from ralph.pipeline.conflict_resolution import driver as _driver_mod
 
         return _driver_mod.paths_with_conflict_markers(root, paths)

@@ -76,6 +76,7 @@ from ralph.pipeline._integration_diagnostic_state import (
     DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
 )
 from ralph.pipeline.auto_integrate_record import BUMP_DIAGNOSTIC_ATTEMPT
+from ralph.pipeline.conflict_resolution.attempt_fault import ConflictAttemptOutcome
 from ralph.pipeline.conflict_resolution.resolver_health import (
     bench_resolver,
     choose_resolver,
@@ -214,21 +215,28 @@ def _invoke_and_judge(
     if verified:
         clear_resolver(controller, agent)
     else:
-        bench_resolver(
-            controller,
-            agent,
-            _failure_text(agent, failure_detail),
-            workspace_changed=workspace_changed,
-        )
+        detail = failure_detail() if failure_detail is not None else None
+        if detail is not None:
+            # Genuine external runtime text (the attempt's own exception or
+            # agent/provider failure text): the RAW text path classifies it.
+            bench_resolver(
+                controller,
+                agent,
+                detail,
+                workspace_changed=workspace_changed,
+            )
+        else:
+            # Typed, never prose: "no verifiable completion proof" is
+            # Ralph's OWN observed fact, so the owner gets the typed
+            # ATTEMPT_FAILED outcome instead of a sentence to re-match.
+            bench_resolver(
+                controller,
+                agent,
+                None,
+                workspace_changed=workspace_changed,
+                outcome=ConflictAttemptOutcome.ATTEMPT_FAILED,
+            )
     return verified
-
-
-def _failure_text(
-    agent: str, failure_detail: Callable[[], BaseException | str | None] | None
-) -> BaseException | str:
-    """The real failure of the attempt, or a statement that it produced no proof."""
-    detail = failure_detail() if failure_detail is not None else None
-    return detail or f"resolver '{agent}' ended without a verified completion proof"
 
 
 def budget_spent_record(

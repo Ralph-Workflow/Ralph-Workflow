@@ -14,6 +14,7 @@ no agent could change. These tests pin the end-to-end acceptance list:
 
 from __future__ import annotations
 
+import fcntl
 from pathlib import Path
 
 import pytest
@@ -93,18 +94,16 @@ def test_persistent_unknown_routes_recovery_to_retained_retry_not_busy(
 def test_live_holder_is_contention_and_releases_after_death(
     tmp_git_repo: Path,
 ) -> None:
-    from ralph.pipeline.auto_integrate_catchup_coordination import (
-        _try_lock,
-        _unlock,
-    )
-
+    # Simulate a live external holder through the OS primitive, not through
+    # Ralph internals: an exclusive flock on the lock inode is exactly what
+    # another worktree's holder would leave behind.
     lock_path = tmp_git_repo / ".git" / "ralph-auto-integrate.lock"
     with lock_path.open("a+", encoding="utf-8") as holder:
-        assert _try_lock(holder)
+        fcntl.flock(holder.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         with integration_transaction(tmp_git_repo) as outcome:
             assert outcome.kind is LeaseOutcomeKind.HELD_BY_LIVE_OWNER
             assert "busy" in outcome.describe("worktree busy; retrying")
-        _unlock(holder)
+        fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
     with integration_transaction(tmp_git_repo) as outcome:
         assert outcome.acquired
     assert lock_path.exists()  # contention never removes the lock file
@@ -131,9 +130,7 @@ def test_unknown_then_recovery_lands_when_environment_heals(
 
         return _Healed()
 
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_transaction.run_git", _flaky
-    )
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_transaction.run_git", _flaky)
 
     with integration_transaction(tmp_git_repo) as first:
         assert first.kind is LeaseOutcomeKind.UNKNOWN

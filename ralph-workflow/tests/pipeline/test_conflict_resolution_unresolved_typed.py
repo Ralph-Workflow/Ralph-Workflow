@@ -24,12 +24,15 @@ through the session. No monkeypatch, no private counter reads, no import of
 the typed enum U3 introduces. Assertions are on captured log text, agent
 invocation order, and public terminal fields only.
 
-Status: A/B/C/E and D2 are the U3 acceptance gate — they FAIL pre-U3 because
-the unresolved-success path still hands prose to the text classifier
-(``flagged_for_review=true`` is logged, the streak never restarts on a count
-drop, demotions fire early). D1 pins the RAW/external bounding that must not
-change. The repo test policy forbids ``xfail`` masking, so the RED state is
-explicit and owned by U3.
+Status: A/B/C/E, D1, and D2 pass — the driver observes the round-level
+unresolved set exactly ONCE through the injected observer before every
+classification/ledger charge (success-with-unresolved, false return, and
+raised exception alike), and hands the ledger
+``workspace_changed=(probe_changed or count_dropped)`` on every branch, so
+a count drop restarts only the consecutive streak while the total still
+accrues. D3/D4 prove the exception and false-return branches carry
+``count_dropped`` progress; D1 pins the RAW/external bounding that must not
+change.
 """
 
 from __future__ import annotations
@@ -179,9 +182,7 @@ class _ScriptedObserver(WorktreeConflictObserver):
         del root, kinds
         return ()
 
-    def paths_with_conflict_markers(
-        self, root: Path, paths: tuple[str, ...]
-    ) -> Sequence[str]:
+    def paths_with_conflict_markers(self, root: Path, paths: tuple[str, ...]) -> Sequence[str]:
         del root
         self.marker_scans.append(tuple(paths))
         return self.surviving
@@ -225,13 +226,18 @@ class _AttemptStep:
     """One scripted invocation of one resolution agent.
 
     ``surviving`` is the unresolved set the on-disk re-scan reports AFTER
-    this invocation (``None`` = leave unchanged). ``raw_error`` turns the
-    invocation into an exception whose text is genuinely unrecognised
-    external output — the external half of the §11.4 rewording proof.
+    this invocation (``None`` = leave unchanged); it is applied BEFORE
+    ``raw_error`` is raised, so an exception can carry observable progress
+    (the D2-exception interleave). ``raw_error`` turns the invocation into
+    an exception whose text is genuinely unrecognised external output —
+    the external half of the §11.4 rewording proof. ``report_success=False``
+    scripts a bare unsuccessful return (the generic attempt-failed shape)
+    instead of the default success claim.
     """
 
     surviving: tuple[str, ...] | None = None
     raw_error: str | None = None
+    report_success: bool = True
 
 
 class _ScriptedRunner:
@@ -255,11 +261,11 @@ class _ScriptedRunner:
         self._attempts[agent_name] = attempt_number + 1
         steps = self._scripts.get(agent_name, (_AttemptStep(surviving=()),))
         step = steps[min(attempt_number, len(steps) - 1)]
-        if step.raw_error is not None:
-            raise RuntimeError(step.raw_error)
         if step.surviving is not None:
             self._observer.surviving = step.surviving
-        return True
+        if step.raw_error is not None:
+            raise RuntimeError(step.raw_error)
+        return step.report_success
 
 
 # ---------------------------------------------------------------------------
@@ -657,9 +663,7 @@ def test_D1_unrecognised_external_error_stays_ambiguous_and_hits_consecutive_lim
         tmp_path,
         candidates=("agentA", "agentB"),
         scripts={
-            "agentA": tuple(
-                _AttemptStep(raw_error=text) for text in _RAW_EXTERNAL_TEXTS
-            ),
+            "agentA": tuple(_AttemptStep(raw_error=text) for text in _RAW_EXTERNAL_TEXTS),
             "agentB": (_AttemptStep(surviving=()),),
         },
         clock=frozen_clock,
@@ -743,6 +747,105 @@ def test_D2_raw_failures_interleaved_with_progress_hit_the_total_limit(
     ), "a streak restart must prevent the 3-consecutive demotion"
     assert sum("Ambiguous failure classification" in line for line in logs) >= 5, (
         "every genuinely external RAW failure must still classify AMBIGUOUS"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Scenario D3 — an exception that CARRIES progress: the drop restarts the streak
+# ---------------------------------------------------------------------------
+
+
+def test_D3_exception_that_drops_the_unresolved_set_restarts_the_streak(
+    tmp_path: Path, frozen_clock: _FrozenSleepClock
+) -> None:
+    """§11 proof 4 (exception branch): the single observation runs BEFORE the
+    exception's charge, so an exception that repaired 6 -> 4 paths is
+    observable progress.
+
+    Pattern: RAW-with-drop (6->4), then three RAW no-progress attempts. The
+    drop must restart the consecutive streak even though the attempt raised,
+    so agentA is demoted only on its fourth invocation (consecutive=3,
+    total=4) and agentB then lands. The exception text is still genuinely
+    external: every RAW attempt keeps classifying AMBIGUOUS.
+    """
+    observer = _ScriptedObserver(_CONFLICTED)
+    outcome, invocations, logs, _ = _drive_captured(
+        tmp_path,
+        candidates=("agentA", "agentB"),
+        scripts={
+            "agentA": (
+                _AttemptStep(surviving=_CONFLICTED[:4], raw_error=_RAW_EXTERNAL_TEXTS[0]),
+                _AttemptStep(raw_error=_RAW_EXTERNAL_TEXTS[1]),
+                _AttemptStep(raw_error=_RAW_EXTERNAL_TEXTS[2]),
+                _AttemptStep(raw_error=_RAW_EXTERNAL_TEXTS[0] + " [retry 3]"),
+            ),
+            "agentB": (_AttemptStep(surviving=()),),
+        },
+        observer=observer,
+        clock=frozen_clock,
+    )
+
+    assert outcome.succeeded is True
+    assert invocations == ["agentA", "agentA", "agentA", "agentA", "agentB"], (
+        "the exception-carried drop must restart the streak: demotion only "
+        f"after 3 further no-progress attempts; got {invocations}"
+    )
+    _assert_demoted(logs, "agentA", consecutive=3, total=4)
+    assert sum("Ambiguous failure classification" in line for line in logs) >= 4, (
+        "every genuinely external RAW failure must still classify AMBIGUOUS"
+    )
+    assert len(observer.marker_scans) == len(invocations), (
+        "exactly ONE unresolved-set observation must precede each attempt's "
+        f"classification/ledger charge; got {len(observer.marker_scans)} scans "
+        f"for {len(invocations)} invocations"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Scenario D4 — a false return that CARRIES progress: the drop restarts the streak
+# ---------------------------------------------------------------------------
+
+
+def test_D4_false_return_with_count_drop_restarts_the_streak(
+    tmp_path: Path, frozen_clock: _FrozenSleepClock
+) -> None:
+    """§11 proof 4 (false-return branch): a bare unsuccessful return whose
+    attempt still repaired 6 -> 4 paths is observable progress.
+
+    The false-return charge used to ride on the workspace probe only; with
+    the single observation boundary it carries ``count_dropped`` too, so
+    the streak restarts and agentA is demoted only on its fourth invocation
+    (consecutive=3, total=4) before agentB lands. A bare unsuccessful
+    return is the typed generic attempt-failed shape, never AMBIGUOUS.
+    """
+    observer = _ScriptedObserver(_CONFLICTED)
+    outcome, invocations, logs, _ = _drive_captured(
+        tmp_path,
+        candidates=("agentA", "agentB"),
+        scripts={
+            "agentA": (
+                _AttemptStep(surviving=_CONFLICTED[:4], report_success=False),
+                _AttemptStep(report_success=False),
+                _AttemptStep(report_success=False),
+                _AttemptStep(report_success=False),
+            ),
+            "agentB": (_AttemptStep(surviving=()),),
+        },
+        observer=observer,
+        clock=frozen_clock,
+    )
+
+    assert outcome.succeeded is True
+    assert invocations == ["agentA", "agentA", "agentA", "agentA", "agentB"], (
+        "the false-return drop must restart the streak: demotion only after "
+        f"3 further no-progress attempts; got {invocations}"
+    )
+    _assert_demoted(logs, "agentA", consecutive=3, total=4)
+    _assert_not_ambiguous(logs)
+    assert len(observer.marker_scans) == len(invocations), (
+        "exactly ONE unresolved-set observation must precede each attempt's "
+        f"classification/ledger charge; got {len(observer.marker_scans)} scans "
+        f"for {len(invocations)} invocations"
     )
 
 

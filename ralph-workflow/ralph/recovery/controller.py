@@ -56,6 +56,7 @@ from ralph.pipeline.agent_retry_intent import (
     cleared_agent_retry_intent,
     resume_agent_retry_intent,
 )
+from ralph.pipeline.conflict_resolution.attempt_fault import ConflictAttemptOutcome
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import FalloverRecord
 from ralph.policy.models import PhaseRetryPolicy
@@ -454,7 +455,6 @@ _assert_never_exit_invariant()
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
-    from ralph.pipeline.conflict_resolution.attempt_fault import ConflictAttemptOutcome
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentChainConfig, PipelinePolicy, PolicyBundle
@@ -1162,16 +1162,11 @@ class RecoveryController:
         default through the text classifier. ``unresolved_count`` is the
         observed on-disk count for ``UNRESOLVED_REMAINING``.
         """
-        from ralph.pipeline.conflict_resolution.attempt_fault import (
-            ConflictAttemptOutcome,
-        )
-
         effective = outcome if outcome is not None else ConflictAttemptOutcome.RAW
         if effective is not ConflictAttemptOutcome.RAW:
             reason = _typed_conflict_attempt_reason(effective, unresolved_count)
             logger.info(
-                "conflict_resolution: typed attempt outcome '{}' for agent '{}' "
-                "in phase '{}': {}",
+                "conflict_resolution: typed attempt outcome '{}' for agent '{}' in phase '{}': {}",
                 effective.value,
                 agent,
                 phase,

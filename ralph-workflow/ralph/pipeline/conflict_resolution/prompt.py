@@ -73,7 +73,12 @@ _UNKNOWN_PATHS_BODY = (
     "one of them."
 )
 
-__all__ = ["PROMPT_TEMPLATE_NAME", "PromptMaterializer", "materialize_round_prompt", "render_conflict_prompt"]
+__all__ = [
+    "PROMPT_TEMPLATE_NAME",
+    "PromptMaterializer",
+    "materialize_round_prompt",
+    "render_conflict_prompt",
+]
 
 
 class PromptMaterializer(Protocol):

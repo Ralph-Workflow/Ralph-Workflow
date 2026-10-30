@@ -797,9 +797,9 @@ def handle(session, agent_name):
     )
 """
     violations = audit_production_source("ralph/pipeline/conflict_resolution/worker.py", source)
-    assert any(
-        v.rule == "production_ralph_authored_classifier_input" for v in violations
-    ), f"Expected production_ralph_authored_classifier_input, got: {violations}"
+    assert any(v.rule == "production_ralph_authored_classifier_input" for v in violations), (
+        f"Expected production_ralph_authored_classifier_input, got: {violations}"
+    )
     assign_violations = [
         v for v in violations if v.rule == "production_ralph_authored_classifier_input"
     ]
@@ -817,9 +817,9 @@ def handle(session, agent_name):
     )
 """
     violations = audit_production_source("ralph/pipeline/conflict_resolution/worker.py", source)
-    assert any(
-        v.rule == "production_ralph_authored_classifier_input" for v in violations
-    ), f"Expected production_ralph_authored_classifier_input, got: {violations}"
+    assert any(v.rule == "production_ralph_authored_classifier_input" for v in violations), (
+        f"Expected production_ralph_authored_classifier_input, got: {violations}"
+    )
 
 
 def test_production_direct_classifier_construction_with_prose_is_flagged() -> None:
@@ -831,9 +831,9 @@ def go() -> None:
     FailureClassifier().classify("candidate produced no output", phase="commit", agent="x")
 """
     violations = audit_production_source("ralph/pipeline/plumbing/worker.py", source)
-    assert any(
-        v.rule == "production_ralph_authored_classifier_input" for v in violations
-    ), f"Expected production_ralph_authored_classifier_input, got: {violations}"
+    assert any(v.rule == "production_ralph_authored_classifier_input" for v in violations), (
+        f"Expected production_ralph_authored_classifier_input, got: {violations}"
+    )
 
 
 def test_production_classifier_wrapper_with_prose_is_flagged() -> None:
@@ -845,9 +845,9 @@ def go() -> bool:
     return should_reset_tool_registry("tool registry is stale", phase="commit", agent="x")
 """
     violations = audit_production_source("ralph/pipeline/plumbing/worker.py", source)
-    assert any(
-        v.rule == "production_ralph_authored_classifier_input" for v in violations
-    ), f"Expected production_ralph_authored_classifier_input, got: {violations}"
+    assert any(v.rule == "production_ralph_authored_classifier_input" for v in violations), (
+        f"Expected production_ralph_authored_classifier_input, got: {violations}"
+    )
 
 
 def test_production_exception_object_failure_arg_is_not_flagged() -> None:
@@ -859,9 +859,9 @@ def go(exc: BaseException) -> bool:
     return should_reset_tool_registry(exc, phase="commit", agent="x")
 """
     violations = audit_production_source("ralph/pipeline/plumbing/worker.py", source)
-    assert not [
-        v for v in violations if v.rule == "production_ralph_authored_classifier_input"
-    ], f"Expected no classifier-input violation for an exception object, got: {violations}"
+    assert not [v for v in violations if v.rule == "production_ralph_authored_classifier_input"], (
+        f"Expected no classifier-input violation for an exception object, got: {violations}"
+    )
 
 
 def test_production_or_chain_with_authored_constant_is_flagged() -> None:
@@ -879,9 +879,9 @@ def handle(session, agent_name):
     )
 """
     violations = audit_production_source("ralph/pipeline/conflict_resolution/worker.py", source)
-    assert any(
-        v.rule == "production_ralph_authored_classifier_input" for v in violations
-    ), f"Expected production_ralph_authored_classifier_input, got: {violations}"
+    assert any(v.rule == "production_ralph_authored_classifier_input" for v in violations), (
+        f"Expected production_ralph_authored_classifier_input, got: {violations}"
+    )
 
 
 def test_production_classifier_provenance_allowlist_is_removed() -> None:
@@ -890,11 +890,11 @@ def test_production_classifier_provenance_allowlist_is_removed() -> None:
     Every formerly allowlisted shape — prose assignments to the session
     failure fields, a classify call reading a tainted field, an or-chain
     carrying ATTEMPT_FAILED_EVIDENCE — must flag again now that production
-    routes typed outcomes instead. This is the completion guard: the
-    temporary allowlist U2 introduced may not be reintroduced.
+    routes typed outcomes instead. This is the completion guard, asserted
+    purely through the public ``audit_production_source`` seam: a
+    reintroduced allowlist covering any of these shapes would silence the
+    matching flag below and turn this test red.
     """
-    import ralph.testing._single_owner_rules as single_owner_rules
-
     driver_source = """
 def handle(session, agent_name, attempt):
     session.last_attempt_failure = "unresolved paths remain in worktree"
@@ -906,9 +906,9 @@ def handle(session, agent_name, attempt):
     violations = audit_production_source(
         "ralph/pipeline/conflict_resolution/driver.py", driver_source
     )
-    assert [
-        v for v in violations if v.rule == "production_ralph_authored_classifier_input"
-    ], f"Expected flagged driver.py sites once the allowlist is removed, got: {violations}"
+    assert [v for v in violations if v.rule == "production_ralph_authored_classifier_input"], (
+        f"Expected flagged driver.py sites once the allowlist is removed, got: {violations}"
+    )
 
     rounds_source = """
 def handle(session, agent_name):
@@ -923,9 +923,9 @@ def handle(session, agent_name):
     violations = audit_production_source(
         "ralph/pipeline/conflict_resolution/_driver_rounds.py", rounds_source
     )
-    assert [
-        v for v in violations if v.rule == "production_ralph_authored_classifier_input"
-    ], f"Expected flagged _driver_rounds.py site once the allowlist is removed, got: {violations}"
+    assert [v for v in violations if v.rule == "production_ralph_authored_classifier_input"], (
+        f"Expected flagged _driver_rounds.py site once the allowlist is removed, got: {violations}"
+    )
 
     session_source = """
 def note(session):
@@ -935,10 +935,139 @@ def note(session):
     violations = audit_production_source(
         "ralph/pipeline/conflict_resolution/session.py", session_source
     )
-    assert [
-        v for v in violations if v.rule == "production_ralph_authored_classifier_input"
-    ], f"Expected flagged session.py site once the allowlist is removed, got: {violations}"
+    assert [v for v in violations if v.rule == "production_ralph_authored_classifier_input"], (
+        f"Expected flagged session.py site once the allowlist is removed, got: {violations}"
+    )
 
-    # The module exposes no remaining allowlist bypass for this rule.
-    assert not hasattr(single_owner_rules, "TEMPORARY_RALPH_AUTHORED_CLASSIFIER_ALLOWLIST")
-    assert not hasattr(single_owner_rules, "is_ralph_authored_classifier_site_allowed")
+
+# --- §11 fix (rev 2), WU-2: the guard covers the wrapper and laundering shapes. ---
+
+
+def test_production_bench_resolver_with_authored_fstring_is_flagged() -> None:
+    """The pending-merge repair wrapper flow: authored f-string through bench_resolver."""
+    source = """
+def handoff(controller, agent):
+    bench_resolver(
+        controller,
+        agent,
+        f"repair agent '{agent}' left no verifiable repair declaration for the pending commit",
+        workspace_changed=False,
+    )
+"""
+    violations = audit_production_source("ralph/pipeline/_pending_merge_repair.py", source)
+    assert any(
+        v.rule == "production_ralph_authored_classifier_input" and "bench_resolver" in v.detail
+        for v in violations
+    ), f"Expected bench_resolver prose violation, got: {violations}"
+
+
+def test_production_bench_resolver_with_reworded_literal_is_flagged() -> None:
+    """Rewording the authored wrapper string does not evade the rule."""
+    source = """
+def handoff(controller, agent):
+    bench_resolver(
+        controller,
+        agent,
+        "resolver produced nothing Ralph can verify",
+        workspace_changed=False,
+    )
+"""
+    violations = audit_production_source("ralph/pipeline/_pending_merge_repair.py", source)
+    assert any(v.rule == "production_ralph_authored_classifier_input" for v in violations), (
+        f"Expected reworded wrapper prose violation, got: {violations}"
+    )
+
+
+def test_production_stored_classifier_instance_with_prose_is_flagged() -> None:
+    """A FailureClassifier stored on self and fed internal prose is flagged."""
+    source = """
+from ralph.recovery.failure_classifier import FailureClassifier
+
+class Runner:
+    def __init__(self):
+        self._classifier = FailureClassifier()
+
+    def go(self) -> None:
+        self._classifier.classify("candidate gave up without doing anything", phase="commit", agent="x")
+"""
+    violations = audit_production_source("ralph/pipeline/plumbing/worker.py", source)
+    assert any(
+        v.rule == "production_ralph_authored_classifier_input"
+        and "FailureClassifier.classify" in v.detail
+        for v in violations
+    ), f"Expected stored-instance prose violation, got: {violations}"
+
+
+def test_production_local_assigned_authored_value_is_flagged() -> None:
+    """The or-chain laundering shape: a local assigned authored prose, then classified."""
+    source = """
+def handoff(controller, agent, failure_detail):
+    detail = failure_detail() if failure_detail is not None else None
+    text = detail or f"resolver '{agent}' ended without a verified completion proof"
+    bench_resolver(controller, agent, text, workspace_changed=False)
+"""
+    violations = audit_production_source(
+        "ralph/pipeline/_integration_diagnostic_handoff.py", source
+    )
+    assert any(
+        v.rule == "production_ralph_authored_classifier_input" and "'text'" in v.detail
+        for v in violations
+    ), f"Expected local-authored-value violation, got: {violations}"
+
+
+def test_production_prose_returning_helper_result_is_flagged() -> None:
+    """The diagnostic-handoff wrapper flow: a same-module helper returning authored prose."""
+    source = """
+def _failure_text(agent, failure_detail):
+    detail = failure_detail() if failure_detail is not None else None
+    return detail or f"resolver '{agent}' ended without a verified completion proof"
+
+def handoff(controller, agent, failure_detail):
+    bench_resolver(controller, agent, _failure_text(agent, failure_detail), workspace_changed=False)
+"""
+    violations = audit_production_source(
+        "ralph/pipeline/_integration_diagnostic_handoff.py", source
+    )
+    assert any(
+        v.rule == "production_ralph_authored_classifier_input" and "_failure_text" in v.detail
+        for v in violations
+    ), f"Expected prose-returning-helper violation, got: {violations}"
+
+
+def test_production_external_exception_through_wrapper_and_instance_is_not_flagged() -> None:
+    """Exception objects are RAW external runtime text and stay accepted."""
+    source = """
+from ralph.recovery.failure_classifier import FailureClassifier
+
+class Runner:
+    def __init__(self):
+        self._classifier = FailureClassifier()
+
+    def go(self, exc: BaseException, controller, agent) -> None:
+        bench_resolver(controller, agent, exc, workspace_changed=False)
+        self._classifier.classify(exc, phase="commit", agent="x")
+"""
+    violations = audit_production_source("ralph/pipeline/plumbing/worker.py", source)
+    assert not [v for v in violations if v.rule == "production_ralph_authored_classifier_input"], (
+        f"Expected no classifier-input violation for exception objects, got: {violations}"
+    )
+
+
+def test_production_typed_bench_resolver_outcome_is_not_flagged() -> None:
+    """The converted wrapper flows: typed outcome with no authored prose stays accepted."""
+    source = """
+from ralph.pipeline.conflict_resolution.attempt_fault import ConflictAttemptOutcome
+
+def handoff(controller, agent, workspace_changed):
+    bench_resolver(
+        controller,
+        agent,
+        None,
+        workspace_changed=workspace_changed,
+        outcome=ConflictAttemptOutcome.ATTEMPT_FAILED,
+    )
+"""
+    violations = audit_production_source("ralph/pipeline/_pending_merge_repair.py", source)
+    assert not violations, (
+        f"Expected no violation for a typed bench_resolver outcome, got: {violations}"
+    )

@@ -71,9 +71,7 @@ class _FakeObserver(WorktreeConflictObserver):
     ) -> tuple[str, ...]:
         return ()
 
-    def paths_with_conflict_markers(
-        self, root: Path, paths: tuple[str, ...]
-    ) -> Sequence[str]:
+    def paths_with_conflict_markers(self, root: Path, paths: tuple[str, ...]) -> Sequence[str]:
         index = min(len(self.marker_scans), len(self._surviving) - 1)
         self.marker_scans.append(tuple(paths))
         return self._surviving[index]
@@ -110,9 +108,7 @@ class _FakeMaterializer(PromptMaterializer):
         del root, target, round_cap, stop, strategy_history
         self.rounds.append(round_index)
         self.conflicted_per_round.append(tuple(conflicted_paths))
-        self.surviving_feedback.append(
-            () if round_index == 1 else tuple(session.unresolved_paths)
-        )
+        self.surviving_feedback.append(() if round_index == 1 else tuple(session.unresolved_paths))
         prompt_path = self._workspace / ".agent" / "tmp" / f"round_{round_index}_prompt.md"
         prompt_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_path.write_text("resolve the conflicts", encoding="utf-8")

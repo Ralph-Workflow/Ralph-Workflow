@@ -19,6 +19,7 @@ from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     write_record,
 )
+from ralph.pipeline.conflict_resolution.attempt_fault import ConflictAttemptOutcome
 from ralph.pipeline.conflict_resolution.resolver_health import (
     bench_resolver,
     choose_resolver,
@@ -308,11 +309,16 @@ def handoff_pending_merge_repair(
         # the required completion, so the agent's history is cleared.
         clear_resolver(controller, agent)
         return invoked_ok
+    # Typed, never prose: the missing declaration is Ralph's OWN observed
+    # fact (the artifact it asked for is not on disk), so the owner gets
+    # the typed ATTEMPT_FAILED outcome. The text classifier's RAW path
+    # stays reserved for the external exception route above.
     bench_resolver(
         controller,
         agent,
-        f"repair agent '{agent}' left no verifiable repair declaration for the pending commit",
+        None,
         workspace_changed=workspace_changed,
+        outcome=ConflictAttemptOutcome.ATTEMPT_FAILED,
     )
     return invoked_ok
 

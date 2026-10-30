@@ -84,13 +84,22 @@ __all__ = [
 
 @dataclass(frozen=True)
 class RoundAttempt:
-    """Record success and whether a resolution candidate was invoked."""
+    """Record success and whether a resolution candidate was invoked.
+
+    ``count_dropped``/``probe_changed`` carry the per-attempt observation
+    facts gathered once through the injected observer BEFORE any
+    classify/charge call (§11, Design item 4), so the driver's
+    success-with-unresolved charge reuses the same single observation
+    instead of scanning the worktree a second time.
+    """
 
     succeeded: bool
     invoked: bool
     agent_ran: bool = False
     agent_name: str | None = None
     candidate_offset: int = 0
+    count_dropped: bool = False
+    probe_changed: bool = False
 
 
 def _evaluate_round_attempt(
@@ -270,7 +279,22 @@ def _execute_single_candidate(
     offset: int,
     policy_bundle: PolicyBundle,
     observe_unresolved: Callable[[], tuple[str, ...]] | None = None,
-) -> tuple[bool, ResolutionOutcome | bool]:
+) -> tuple[bool, ResolutionOutcome | bool, RoundAttempt]:
+    """Run one candidate and charge the ledger after ONE observation.
+
+    Per-attempt observation/charging boundary (§11, Design item 4): the
+    round-level unresolved set is observed ONCE through the injected
+    observer BEFORE any classify/charge call, on every outcome branch
+    (success-with-unresolved, false return, raised exception), so a count
+    drop restarts the consecutive-unproductive streak exactly like a
+    workspace change while the total still accrues. The pre-attempt count
+    is held in a local because the observation overwrites
+    ``session.unresolved_paths`` and the driver rewrites it after every
+    round. The returned :class:`RoundAttempt` carries the observation facts
+    so the driver's success-with-unresolved charge reuses them instead of
+    scanning the worktree again. The raised exception's own text is
+    genuinely external RAW input (site 10) and keeps the text path.
+    """
     # Late binding through the driver namespace: tests monkeypatch
     # ``driver.classify_failed_resolution_attempt`` there.
     from ralph.pipeline.conflict_resolution import driver as _driver_mod
@@ -282,6 +306,11 @@ def _execute_single_candidate(
     workspace = session.workspace
     if probe is not None and workspace is not None:
         probe.observe_before(PHASE_RESOLUTION, workspace)
+    # Hold the pre-attempt count BEFORE the runner can report anything:
+    # the single observation below overwrites ``session.unresolved_paths``.
+    unresolved_before = len(session.unresolved_paths)
+    raised: BaseException | None = None
+    succeeded = False
     try:
         invoker_result = runner(agent_name, prompt_path, round_index)
         succeeded = (
@@ -292,8 +321,7 @@ def _execute_single_candidate(
         if succeeded:
             session.chain_cursor = 0
             session.last_failure_cause = ResolutionFailureCause.NONE
-            return True, invoker_result
-        if isinstance(invoker_result, ResolutionOutcome):
+        elif isinstance(invoker_result, ResolutionOutcome):
             _record_invoker_outcome(session, invoker_result)
     except Exception as exc:
         logger.warning(
@@ -301,48 +329,49 @@ def _execute_single_candidate(
         )
         session.terminal_reason = ResolutionTerminationReason.EXCEPTION
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-        probe_changed = bool(
-            probe and workspace and probe.has_changed(PHASE_RESOLUTION, workspace)
-        )
-        # Per-attempt observation/charging boundary (§11, Design item 4):
-        # observe the round-level unresolved set ONCE through the injected
-        # observer BEFORE charging the ledger, so a count drop restarts the
-        # consecutive-unproductive streak exactly like a workspace change
-        # while the total still accrues. The pre-attempt count is read from
-        # the session before the observation overwrites it — the driver
-        # rewrites ``session.unresolved_paths`` after every round. The
-        # exception text itself is genuinely external RAW input (site 10)
-        # and keeps the text path.
-        count_dropped = False
-        if observe_unresolved is not None:
-            unresolved_before = len(session.unresolved_paths)
-            unresolved_after = observe_unresolved()
-            session.unresolved_paths = unresolved_after
-            count_dropped = len(unresolved_after) < unresolved_before
+        raised = exc
+    # The single observation boundary: exactly ONE unresolved-set
+    # observation precedes every classification/ledger charge, whatever
+    # branch the attempt took.
+    count_dropped = False
+    if observe_unresolved is not None:
+        unresolved_after = observe_unresolved()
+        session.unresolved_paths = unresolved_after
+        count_dropped = len(unresolved_after) < unresolved_before
+    probe_changed = bool(probe and workspace and probe.has_changed(PHASE_RESOLUTION, workspace))
+    progress = RoundAttempt(
+        succeeded=False,
+        invoked=True,
+        agent_ran=True,
+        agent_name=agent_name,
+        candidate_offset=offset,
+        count_dropped=count_dropped,
+        probe_changed=probe_changed,
+    )
+    if raised is not None:
         _driver_mod.classify_failed_resolution_attempt(
             session,
             agent_name,
-            exc,
+            raised,
             candidates=candidates,
             failed_index=offset,
             policy_bundle=policy_bundle,
             bench=True,
             workspace_changed=probe_changed or count_dropped,
         )
-        return False, False
-    else:
-        _handle_candidate_failure(
-            session,
-            agent_name,
-            invoker_result,
-            candidates,
-            offset,
-            policy_bundle,
-            workspace_changed=bool(
-                probe and workspace and probe.has_changed(PHASE_RESOLUTION, workspace)
-            ),
-        )
-        return False, invoker_result
+        return False, False, progress
+    if succeeded:
+        return True, invoker_result, progress
+    _handle_candidate_failure(
+        session,
+        agent_name,
+        invoker_result,
+        candidates,
+        offset,
+        policy_bundle,
+        workspace_changed=probe_changed or count_dropped,
+    )
+    return False, invoker_result, progress
 
 
 def _check_worktree_repair(
@@ -391,8 +420,9 @@ def _run_one_round(
     rounds and stops; the controller selects again before every invocation.
     ``worktree_resolved`` rechecks repairs after an unsuccessful attempt.
     ``observe_unresolved`` observes the round-level unresolved set through
-    the injected observer; the exception path uses it BEFORE charging the
-    ledger so a count drop counts as progress (§11, Design item 4).
+    the injected observer; EVERY outcome branch uses it exactly ONCE
+    BEFORE charging the ledger so a count drop counts as progress
+    (§11, Design item 4).
 
     Clear terminal evidence before each candidate to preserve attribution.
     """
@@ -418,7 +448,7 @@ def _run_one_round(
             display, f"round {round_index}: invoking {agent_name} to resolve the conflicts"
         )
         invoked = True
-        succeeded, invoker_result = _execute_single_candidate(
+        succeeded, invoker_result, progress = _execute_single_candidate(
             runner,
             agent_name,
             prompt_path,
@@ -436,6 +466,8 @@ def _run_one_round(
                 agent_ran=True,
                 agent_name=agent_name,
                 candidate_offset=offset,
+                count_dropped=progress.count_dropped,
+                probe_changed=progress.probe_changed,
             )
         agent_saw = session.last_attempt_saw_activity or (
             isinstance(invoker_result, ResolutionOutcome)
@@ -454,6 +486,8 @@ def _run_one_round(
                 agent_ran=True,
                 agent_name=agent_name,
                 candidate_offset=offset,
+                count_dropped=progress.count_dropped,
+                probe_changed=progress.probe_changed,
             )
         if session.terminal_reason in INFRASTRUCTURE_TERMINATION_REASONS:
             _remember_dead_surface(session, agent_name)

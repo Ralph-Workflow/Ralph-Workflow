@@ -132,11 +132,7 @@ def integration_transaction(root: Path) -> Iterator[LeaseOutcome]:
         return
     with handle:
         acquired = _try_lock(handle)
-        outcome = (
-            LeaseOutcome.acquired_outcome()
-            if acquired
-            else LeaseOutcome.held_by_live_owner()
-        )
+        outcome = LeaseOutcome.acquired_outcome() if acquired else LeaseOutcome.held_by_live_owner()
         try:
             yield outcome
         finally:

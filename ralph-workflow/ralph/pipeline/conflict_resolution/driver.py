@@ -334,7 +334,9 @@ def _prepare_conflicted_paths(
             + "; resolving the rest first",
         )
         conflicted = reachable
-    decisions = tuple(path for path in observer.declared_decision_paths(kinds) if path in set(conflicted))
+    decisions = tuple(
+        path for path in observer.declared_decision_paths(kinds) if path in set(conflicted)
+    )
     staged = observer.stage_mechanical_conflicts(root, kinds)
     remaining = tuple(path for path in conflicted if path not in set(staged))
     if remaining:
@@ -558,12 +560,13 @@ def _execute_round_loop(
                 worktree_resolved=lambda: not decision_paths and not _unresolved(),
                 observe_unresolved=_unresolved,
             )
-            # Hold the pre-round count: the observation below overwrites
-            # ``session.unresolved_paths``, and a drop restarts the
+            # The per-attempt observation boundary already ran INSIDE
+            # ``_run_one_round``: ``session.unresolved_paths`` holds the
+            # single observed unresolved set, and the attempt carries the
+            # observation facts (a count drop restarts the
             # consecutive-unproductive streak exactly like a workspace
-            # change while the total still accrues (§11, Design item 4).
-            unresolved_before = len(session.unresolved_paths)
-            session.unresolved_paths = _unresolved()
+            # change while the total still accrues — §11, Design item 4).
+            # No second scan happens here.
             if attempt.succeeded and session.unresolved_paths and attempt.agent_name is not None:
                 logger.warning(
                     "conflict_resolution: round {} with '{}' reported success, but unresolved paths remain in worktree",
@@ -573,12 +576,6 @@ def _execute_round_loop(
                 unresolved_count = len(session.unresolved_paths)
                 session.terminal_reason = ResolutionTerminationReason.RESOLUTION_INCOMPLETE
                 session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
-                count_dropped = unresolved_count < unresolved_before
-                probe_changed = bool(
-                    session.workspace_probe
-                    and session.workspace
-                    and session.workspace_probe.has_changed(PHASE_RESOLUTION, session.workspace)
-                )
                 classify_failed_resolution_attempt(
                     session,
                     attempt.agent_name,
@@ -588,7 +585,7 @@ def _execute_round_loop(
                     policy_bundle=policy_bundle,
                     outcome=ConflictAttemptOutcome.UNRESOLVED_REMAINING,
                     unresolved_count=unresolved_count,
-                    workspace_changed=probe_changed or count_dropped,
+                    workspace_changed=attempt.probe_changed or attempt.count_dropped,
                 )
             action = _evaluate_round_attempt(
                 attempt,

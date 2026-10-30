@@ -217,7 +217,15 @@ def test_failed_resolver_attempt_uses_the_next_fallback_candidate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """A failed resolver invocation cannot finish recovery or advance a phase."""
-    _install_seams(monkeypatch, unmerged=_CONFLICTED, surviving_per_round=[[]])
+    # Per-attempt observable facts (§11 observes the unresolved set once
+    # before every charge): primary's three exception attempts leave the
+    # conflicted paths in place (no progress), then fallback's success
+    # clears them.
+    _install_seams(
+        monkeypatch,
+        unmerged=_CONFLICTED,
+        surviving_per_round=[list(_CONFLICTED)] * 3 + [[]],
+    )
     monkeypatch.setattr(
         driver_module, "resolution_chain_agents", lambda _bundle: ("primary", "fallback")
     )

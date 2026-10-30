@@ -17,10 +17,13 @@ for example) bound repository state rather than agent health and stay accepted. 
 §11 fix (rev 2) the production scan covers ALL of ``ralph/`` and one more rule applies: no
 module feeds Ralph-authored failure prose (a string literal, an f-string, or a module-level
 Ralph-authored constant such as ``ATTEMPT_FAILED_EVIDENCE``) into the text classifier
-(``classify_failed_resolution_attempt``, ``classify_conflict_attempt``,
-``should_reset_tool_registry``, or ``FailureClassifier().classify(...)``), because authored
-prose classifies as AMBIGUOUS and poisons the failure ledger's decisions. Exception objects
-are RAW external runtime text and stay accepted. 2. Test code:
+(``classify_failed_resolution_attempt``, ``classify_conflict_attempt``, ``bench_resolver``,
+``should_reset_tool_registry``, ``FailureClassifier().classify(...)``, or ``classify(...)``
+on a classifier instance stored in the module), because authored prose classifies as
+AMBIGUOUS and poisons the failure ledger's decisions. The rule follows the prose through
+local laundering: a session failure field, a locally assigned value (``or``-chain fallback
+included), or a same-module helper returning authored prose all flag when classified.
+Exception objects are RAW external runtime text and stay accepted. 2. Test code:
 No test under ``tests/`` accesses private attributes, serialised ledger counters, or internal
 counters of ``AgentFailureLedger`` (enforcing black-box testability via the public seam) or
 imports deprecated retry tracker classes. A test also may not read the recovery controller's
@@ -655,6 +658,10 @@ def test_getattr(controller):
     # verified by the dedicated helper below.
     _verify_controller_failure_owner_seam()
 
+    # The widened classifier-provenance shapes (wrapper, stored instance,
+    # local laundering) are verified by the dedicated helper below.
+    _verify_classifier_provenance_shapes()
+
 
 def _verify_controller_failure_owner_seam() -> None:
     """Verify the controller's failure-owner coupling rules and its public seam.
@@ -728,6 +735,106 @@ def test_snapshot():
     assert any(v.rule == "test_serialised_failure_owner_access" for v in v23), (
         f"Expected test_serialised_failure_owner_access for snapshot()['backoff_attempts'], "
         f"got: {v23}"
+    )
+
+
+def _verify_classifier_provenance_shapes() -> None:
+    """Verify the widened classifier-provenance rule shapes.
+
+    The rule must flag Ralph-authored prose reaching the classifier through
+    every inventoried entry shape — the ``bench_resolver`` wrapper (the two
+    integration wrapper flows), a stored ``FailureClassifier`` instance, a
+    locally assigned authored value, and a same-module helper returning
+    authored prose — while exception objects stay accepted as RAW external
+    runtime text.
+    """
+    # Negative: authored f-string through the bench_resolver wrapper
+    # (the pending-merge repair flow's pre-conversion shape).
+    src_wrapper = """
+def handoff(controller, agent):
+    bench_resolver(
+        controller,
+        agent,
+        f"repair agent '{agent}' left no verifiable repair declaration",
+        workspace_changed=False,
+    )
+"""
+    v = audit_production_source("ralph/pipeline/_scratch_wrapper.py", src_wrapper)
+    assert any(v.rule == "production_ralph_authored_classifier_input" for v in v), (
+        f"Expected production_ralph_authored_classifier_input for bench_resolver prose, got: {v}"
+    )
+
+    # Negative: reworded literal still flags (rewording is not an escape).
+    src_reworded = """
+def handoff(controller, agent):
+    bench_resolver(controller, agent, "resolver produced nothing Ralph can verify")
+"""
+    v = audit_production_source("ralph/pipeline/_scratch_reworded.py", src_reworded)
+    assert any(v.rule == "production_ralph_authored_classifier_input" for v in v), (
+        f"Expected production_ralph_authored_classifier_input for reworded prose, got: {v}"
+    )
+
+    # Negative: stored classifier instance fed internal prose.
+    src_stored = """
+from ralph.recovery.failure_classifier import FailureClassifier
+
+class Runner:
+    def __init__(self):
+        self._classifier = FailureClassifier()
+
+    def go(self) -> None:
+        self._classifier.classify("candidate gave up without doing anything", phase="commit", agent="x")
+"""
+    v = audit_production_source("ralph/pipeline/_scratch_stored.py", src_stored)
+    assert any(
+        v.rule == "production_ralph_authored_classifier_input" and "stored" not in v.detail
+        for v in v
+    ), f"Expected production_ralph_authored_classifier_input for a stored instance, got: {v}"
+
+    # Negative: locally assigned authored value (or-chain fallback) classified.
+    src_local = """
+def handoff(controller, agent, failure_detail):
+    detail = failure_detail() if failure_detail is not None else None
+    text = detail or f"resolver '{agent}' ended without a verified completion proof"
+    bench_resolver(controller, agent, text, workspace_changed=False)
+"""
+    v = audit_production_source("ralph/pipeline/_scratch_local.py", src_local)
+    assert any(
+        v.rule == "production_ralph_authored_classifier_input" and "'text'" in v.detail for v in v
+    ), f"Expected production_ralph_authored_classifier_input for a local authored value, got: {v}"
+
+    # Negative: same-module helper returning authored prose
+    # (the diagnostic-handoff flow's pre-conversion shape).
+    src_helper = """
+def _failure_text(agent, failure_detail):
+    detail = failure_detail() if failure_detail is not None else None
+    return detail or f"resolver '{agent}' ended without a verified completion proof"
+
+def handoff(controller, agent, failure_detail):
+    bench_resolver(controller, agent, _failure_text(agent, failure_detail), workspace_changed=False)
+"""
+    v = audit_production_source("ralph/pipeline/_scratch_helper.py", src_helper)
+    assert any(
+        v.rule == "production_ralph_authored_classifier_input" and "_failure_text" in v.detail
+        for v in v
+    ), f"Expected production_ralph_authored_classifier_input for a prose helper, got: {v}"
+
+    # Positive: exception objects through the wrapper and a stored instance
+    # stay accepted (RAW external runtime text).
+    src_external = """
+from ralph.recovery.failure_classifier import FailureClassifier
+
+class Runner:
+    def __init__(self):
+        self._classifier = FailureClassifier()
+
+    def go(self, exc: BaseException, controller, agent) -> None:
+        bench_resolver(controller, agent, exc, workspace_changed=False)
+        self._classifier.classify(exc, phase="commit", agent="x")
+"""
+    v = audit_production_source("ralph/pipeline/_scratch_external.py", src_external)
+    assert not [x for x in v if x.rule == "production_ralph_authored_classifier_input"], (
+        f"Expected no classifier-input violation for exception objects, got: {v}"
     )
 
 

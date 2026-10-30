@@ -8,6 +8,7 @@ failures are ``UNKNOWN`` with a typed reason and evidence.
 
 from __future__ import annotations
 
+import fcntl
 from pathlib import Path
 
 import pytest
@@ -48,9 +49,7 @@ def test_unresolvable_git_dir_is_unknown_git_dir_unresolved(
     def _fail(*_args: object, **_kwargs: object) -> _Failed:
         return _Failed()
 
-    monkeypatch.setattr(
-        "ralph.pipeline.auto_integrate_transaction.run_git", _fail
-    )
+    monkeypatch.setattr("ralph.pipeline.auto_integrate_transaction.run_git", _fail)
     with integration_transaction(tmp_path) as outcome:
         assert outcome.kind is LeaseOutcomeKind.UNKNOWN
         assert outcome.reason is LeaseUnknownReason.GIT_DIR_UNRESOLVED
@@ -88,19 +87,17 @@ def test_lock_open_io_error_is_unknown_lock_io_error(
 
 
 def test_live_holder_is_contention_and_dead_holder_releases(tmp_git_repo: Path) -> None:
-    from ralph.pipeline.auto_integrate_catchup_coordination import (
-        _try_lock,
-        _unlock,
-    )
-
+    # Simulate a live external holder through the OS primitive, not through
+    # Ralph internals: an exclusive flock on the lock inode is exactly what
+    # another worktree's holder would leave behind.
     lock_path = tmp_git_repo / ".git" / "ralph-auto-integrate.lock"
     with lock_path.open("a+", encoding="utf-8") as holder:
-        assert _try_lock(holder)
+        fcntl.flock(holder.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         with integration_transaction(tmp_git_repo) as outcome:
             assert not outcome.acquired
             assert outcome.kind is LeaseOutcomeKind.HELD_BY_LIVE_OWNER
             assert "busy" in outcome.describe("worktree busy; retrying")
-        _unlock(holder)
+        fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
     # A dead (released) holder self-releases: the next attempt acquires,
     # and the lock file itself is never removed.
     with integration_transaction(tmp_git_repo) as outcome:
