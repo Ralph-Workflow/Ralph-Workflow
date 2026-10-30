@@ -1277,8 +1277,14 @@ def _resolve_recovery_controller(
         return controller
     # The default builder restores the ledger from the checkpoint's
     # ledger_snapshot; only the clock is injectable (default SystemClock).
+    # When no clock is injected, call with the exact pre-seam signature so
+    # legacy patch-based callers (lambdas without a ``clock`` parameter)
+    # keep working.
     default_clock = pipeline_deps.recovery_clock if pipeline_deps is not None else None
-    controller, _ = _build_recovery_controller(state, policy_bundle, config, clock=default_clock)
+    if default_clock is not None:
+        controller, _ = _build_recovery_controller(state, policy_bundle, config, clock=default_clock)
+    else:
+        controller, _ = _build_recovery_controller(state, policy_bundle, config)
     return controller
 
 
@@ -4738,6 +4744,17 @@ def _run_startup_sequence(pipeline_deps: PipelineDeps | None) -> WorkspaceScope 
         workspace_scope = _runner_module.resolve_workspace_scope()
         _runner_module.write_start_commit_if_absent(workspace_scope.root)
         validator: Callable[[Path], int] = _runner_module.validate_custom_mcp_servers
+    elif (
+        pipeline_deps.resolve_workspace_scope_fn is None
+        and pipeline_deps.write_start_commit_fn is None
+        and pipeline_deps.validate_custom_mcp_servers_fn is None
+    ):
+        # All seam fields unset: run the exact pre-seam calls so legacy
+        # patch-based callers (zero-arg ``resolve_workspace_scope`` lambdas)
+        # keep working.
+        workspace_scope = _runner_module.resolve_workspace_scope()
+        _runner_module.write_start_commit_if_absent(workspace_scope.root)
+        validator = _runner_module.validate_custom_mcp_servers
     else:
         resolve_scope = (
             pipeline_deps.resolve_workspace_scope_fn
@@ -4754,7 +4771,10 @@ def _run_startup_sequence(pipeline_deps: PipelineDeps | None) -> WorkspaceScope 
             if pipeline_deps.validate_custom_mcp_servers_fn is not None
             else _runner_module.validate_custom_mcp_servers
         )
-        workspace_scope = resolve_scope(None)
+        if pipeline_deps.resolve_workspace_scope_fn is not None:
+            workspace_scope = resolve_scope(None)
+        else:
+            workspace_scope = _runner_module.resolve_workspace_scope()
         write_start_commit(workspace_scope.root)
     if validator(workspace_scope.root) != 0:
         return None
