@@ -14,6 +14,7 @@ import time
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 import ralph.pipeline.session_bridge as _session_bridge
+from ralph.agents.invoke import invoke_agent as _default_invoke_agent
 from ralph.mcp.protocol.startup import heartbeat_policy_from_env
 from ralph.mcp.server.lifecycle import check_mcp_bridge_health
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
@@ -24,13 +25,14 @@ from ralph.prompts.materialize import materialize_prompt_for_phase
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
     from contextlib import AbstractContextManager
     from datetime import timedelta
     from pathlib import Path
 
+    from ralph.agents.invoke._types import InvokeOptions
     from ralph.config.enums import AgentTransport
-    from ralph.config.models import UnifiedConfig
+    from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.mcp.protocol.startup import HeartbeatPolicy
@@ -95,6 +97,24 @@ class ArtifactRequirementsResolverFn(Protocol):
         phase: str,
         drain: str | None = None,
     ) -> RequiredArtifact | None: ...
+
+
+class InvokeAgentFn(Protocol):
+    """Invoke an agent CLI against a prompt file.
+
+    Structurally identical to ``agent_execution_deps._InvokeAgentFn`` and
+    the public ``ralph.agents.invoke.invoke_agent`` signature, kept as a
+    runtime protocol here so :class:`PipelineDeps` can carry the invoker
+    as a dataclass field without importing TYPE_CHECKING-only names.
+    """
+
+    def __call__(
+        self,
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> Iterable[object]: ...
 
 
 class ConnectivityMonitorLike(Protocol):
@@ -292,6 +312,10 @@ class PipelineDeps:
     ) = None
     commit_effect_executor: Callable[[object, Path], object] | None = None
     has_uncommitted_changes: Callable[[Path], bool] | None = None
+    # Injectable agent invoker (default ``ralph.agents.invoke.invoke_agent``).
+    # Callers that script the agent boundary (scenario harnesses, plumbing
+    # overrides) inject here instead of patching the module-global symbol.
+    invoke_agent: InvokeAgentFn = _default_invoke_agent
     # Injectable monotonic clock (default ``time.monotonic``) used by the
     # runner to sample wall-clock time for the cycle timebox. Tests inject
     # a fake clock for deterministic boundary verification.
@@ -337,6 +361,7 @@ class PipelineDeps:
         ) = None,
         commit_effect_executor: Callable[[object, Path], object] | None = None,
         has_uncommitted_changes: Callable[[Path], bool] | None = None,
+        invoke_agent: InvokeAgentFn = _default_invoke_agent,
         monotonic: Callable[[], float] = time.monotonic,
         wall_time: Callable[[], float] = time.time,
     ) -> None:
@@ -457,6 +482,7 @@ class PipelineDeps:
         object.__setattr__(self, "auto_integrate_resolver", auto_integrate_resolver)
         object.__setattr__(self, "commit_effect_executor", commit_effect_executor)
         object.__setattr__(self, "has_uncommitted_changes", has_uncommitted_changes)
+        object.__setattr__(self, "invoke_agent", invoke_agent)
         object.__setattr__(self, "monotonic", monotonic)
         object.__setattr__(self, "wall_time", wall_time)
 

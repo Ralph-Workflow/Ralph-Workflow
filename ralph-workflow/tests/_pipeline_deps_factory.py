@@ -17,6 +17,7 @@ from ralph.pipeline.factory import (
     ArtifactRequirementsResolverFn,
     CheckMcpBridgeHealthFn,
     HeartbeatPolicyFromEnvFn,
+    InvokeAgentFn,
     MaterializeMasterPromptFn,
     McpSupervisorFactoryFn,
     PhasePromptMaterializerFn,
@@ -222,6 +223,7 @@ def make_test_pipeline_deps(
     marker_watcher_factory: MarkerWatcherFactory | None = None,
     snapshot_registry: SnapshotRegistry | None = None,
     process_teardown: Callable[[], None] | None = None,
+    invoke_agent: InvokeAgentFn | None = None,
 ) -> PipelineDeps:
     """Build a ``PipelineDeps`` suitable for fast, deterministic tests."""
     deps = PipelineDeps(
@@ -257,6 +259,8 @@ def make_test_pipeline_deps(
         deps = dataclasses.replace(deps, marker_watcher_factory=marker_watcher_factory)
     if snapshot_registry is not None:
         deps = dataclasses.replace(deps, snapshot_registry=snapshot_registry)
+    if invoke_agent is not None:
+        deps = dataclasses.replace(deps, invoke_agent=invoke_agent)
     return deps
 
 

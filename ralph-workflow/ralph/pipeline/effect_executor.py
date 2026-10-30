@@ -300,7 +300,7 @@ def execute_agent_effect(
         show_phase_start_cb = show_phase_start_with_context
     deps = build_agent_execution_deps(
         pipeline_deps=pipeline_deps,
-        invoke_agent=_invoke_agent_from_registry_or_opts(opts),
+        invoke_agent=_invoke_agent_from_registry_or_opts(pipeline_deps, opts),
         agent_invocation_error=_agent_invocation_error_from_opts(opts),
         agent_registry=AgentRegistry,
         show_phase_start_cb=show_phase_start_cb,
@@ -464,13 +464,23 @@ def _registry_from_pipeline_deps(
 
 
 def _invoke_agent_from_registry_or_opts(
+    pipeline_deps: PipelineDeps,
     opts: dict[str, object],
 ) -> _InvokeAgentFn:
+    # Precedence: per-call opts override (plumbing seams such as
+    # smoke_plumbing) > the pipeline-deps field (scenario harnesses inject
+    # the scripted agent here instead of patching module globals) >
+    # the module-global production invoker.
     invoke = cast(
         "_InvokeAgentFn | None", opts.get("invoke_agent")
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     if invoke is not None:
         return invoke
+    deps_invoke = cast(
+        "_InvokeAgentFn | None", pipeline_deps.invoke_agent
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    if deps_invoke is not None:
+        return deps_invoke
     return invoke_agent
 
 

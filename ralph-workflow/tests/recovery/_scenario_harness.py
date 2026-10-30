@@ -28,10 +28,9 @@ attribute onto an exception to carry the fact.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import patch
 
 from loguru import logger
 
@@ -69,6 +68,7 @@ from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
+    from ralph.agents.invoke._types import InvokeOptions
     from ralph.display.context import DisplayContext
     from ralph.pipeline.factory import PipelineDeps
 
@@ -371,14 +371,6 @@ def run_scenario(
 
     from ralph.phases.required_artifacts import resolve_phase_required_artifact
 
-    deps = make_test_pipeline_deps(
-        display_context,
-        recovery_controller_factory=lambda _s, _b, _c: (effective_controller, 0),
-        policy_bundle=bundle,
-        registry_factory=lambda _cfg: _ScenarioRegistry(),
-        artifact_requirements_resolver=resolve_phase_required_artifact,
-    )
-
     invocations: list[str] = []
     agent_attempts: dict[str, int] = {}
     cooldown_durations: dict[str, list[float]] = {}
@@ -414,20 +406,34 @@ def run_scenario(
         _apply_attempt_side_effects(result, agent, attempt_num, workspace)
 
     def fake_invoke_agent(
-        agent_config: AgentConfig,
+        config: AgentConfig,
         prompt_file: str,
         *,
-        options: object = None,
+        options: InvokeOptions | None = None,
         _clock: object = None,
     ) -> Iterator[str]:
         del prompt_file, options, _clock
-        agent = agent_config.cmd
+        agent = config.cmd
         invocations.append(agent)
         attempt_num = agent_attempts.get(agent, 0) + 1
         agent_attempts[agent] = attempt_num
 
         result = resolve_attempt_result(agent, SCENARIO_PHASE, attempt_num)
         return iter_attempt_output(agent, attempt_num, result)
+
+    deps = make_test_pipeline_deps(
+        display_context,
+        recovery_controller_factory=lambda _s, _b, _c: (effective_controller, 0),
+        policy_bundle=bundle,
+        registry_factory=lambda _cfg: _ScenarioRegistry(),
+        artifact_requirements_resolver=resolve_phase_required_artifact,
+    )
+    # The scripted agent reaches the executor through the supported
+    # PipelineDeps.invoke_agent seam — never by patching production symbols.
+    # Applied via ``dataclasses.replace`` (the same idiom the test factory
+    # uses for optional kwargs) so wrapped factories with narrower signatures
+    # keep working.
+    deps = replace(deps, invoke_agent=fake_invoke_agent)
 
     state = initial_state or PipelineState(
         phase="development",
@@ -464,28 +470,24 @@ def run_scenario(
     sink_id = logger.add(log_sink, level="DEBUG")
 
     try:
-        with (
-            patch("ralph.pipeline.effect_executor.invoke_agent", side_effect=fake_invoke_agent),
-            patch("ralph.agents.invoke.invoke_agent", side_effect=fake_invoke_agent),
-        ):
-            state, exit_code = _run_scenario_loop(
-                state=state,
-                bundle=bundle,
-                workspace_scope=workspace_scope,
-                config=config,
-                display=display,
-                display_context=display_context,
-                controller=effective_controller,
-                deps=deps,
-                loop_ctx=loop_ctx,
-                max_iterations=max_iterations,
-                stop_after_invocations=stop_after_invocations,
-                invocations=invocations,
-                advance_clock_on_wait=advance_clock_on_wait,
-                cooldown_durations=cooldown_durations,
-                effective_clock=effective_clock,
-                agents=agents,
-            )
+        state, exit_code = _run_scenario_loop(
+            state=state,
+            bundle=bundle,
+            workspace_scope=workspace_scope,
+            config=config,
+            display=display,
+            display_context=display_context,
+            controller=effective_controller,
+            deps=deps,
+            loop_ctx=loop_ctx,
+            max_iterations=max_iterations,
+            stop_after_invocations=stop_after_invocations,
+            invocations=invocations,
+            advance_clock_on_wait=advance_clock_on_wait,
+            cooldown_durations=cooldown_durations,
+            effective_clock=effective_clock,
+            agents=agents,
+        )
 
         return ScenarioOutcome(
             invocations=invocations,

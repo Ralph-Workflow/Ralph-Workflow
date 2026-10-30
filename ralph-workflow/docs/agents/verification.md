@@ -80,6 +80,7 @@ The following do **NOT** circumvent the 60-second combined budget or the lint/ty
 | Using `time.sleep()`, real subprocess, real file I/O in non-`subprocess_e2e` tests | Detected by `ralph/testing/audit_test_policy.py` |
 | Unbounded `subprocess.run` / `httpx.*` / `urlopen` / `socket.create_connection` (no `timeout=`) in `ralph/mcp/`, `ralph/git/`, `ralph/process/manager/` | Detected by `ralph/testing/audit_mcp_timeout.py` |
 | Mutable collection literals (`list` / `dict` / `set` / `deque`) assigned to module-level names or `self.X` in `__init__` without `maxlen=` or a justified `# bounded-accumulator-ok:` marker | Detected by `ralph/testing/audit_resource_lifecycle.py` |
+| Reintroducing same-shape or in-session-escalation trackers, or competing agent-failure caps, alongside the single-owner recovery controller | Detected by `ralph/testing/audit_agent_failure_single_owner.py` |
 
 Every circumvention above is detected by `make verify`. Any bypass requires a documented justification and an entry in the audit allowlist — there is no other path. See [AGENTS.md §'Non-negotiables'](../../AGENTS.md) for the full policy text.
 

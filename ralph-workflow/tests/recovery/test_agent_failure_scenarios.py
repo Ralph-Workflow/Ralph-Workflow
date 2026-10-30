@@ -9,20 +9,37 @@ from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
+from loguru import logger
 
-from ralph.agents.timeout_clock import FakeClock
-from ralph.pipeline import checkpoint
-from ralph.recovery.controller import RecoveryController
+from ralph.config.enums import Verbosity
+from ralph.config.models import UnifiedConfig
+from ralph.display.context import make_display_context
+from ralph.phases.execution import record_workspace_snapshot
+from ralph.phases.required_artifacts import resolve_phase_required_artifact
+from ralph.pipeline import checkpoint, run_loop
+from ralph.pipeline import runner as runner_module
 from ralph.recovery.failure_category import FailureCategory
+from ralph.workspace.fs import FsWorkspace
+from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.recovery._scenario_harness import (
     AgentAttemptResult,
+    _apply_attempt_side_effects,
+    _build_policy_bundle,
+    _ScenarioRegistry,
+    _seed_valid_plan,
     run_scenario,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
+
+    from ralph.agents.invoke._types import InvokeOptions
+    from ralph.config.agent_config import AgentConfig
 
 
 def test_scenario_1_reproduces_bug_fallback_after_unproductive_streak(tmp_path: Path) -> None:
@@ -283,7 +300,10 @@ def test_scenario_9_restart_preserves_remaining_attempts_across_resumption(
     """Scenario 9: Restart.
 
     Stop and resume mid-streak; remaining attempts are preserved across
-    checkpoint serialization and process restart with a fresh clock and controller.
+    checkpoint serialization and process restart. Run 2 resumes through the
+    production restoration path: run_loop.run with no injected controller, so
+    the run loop's own controller builder restores the ledger from the loaded
+    checkpoint's ledger_snapshot.
     """
 
     def script_run_1(
@@ -305,14 +325,8 @@ def test_scenario_9_restart_preserves_remaining_attempts_across_resumption(
     checkpoint.save(outcome_run_1.final_state, checkpoint_path)
     loaded_state = checkpoint.load(checkpoint_path)
     assert loaded_state is not None
-
-    # Second run: resume with fresh clock and fresh controller restored from disk checkpoint snapshot
-    fresh_clock = FakeClock(start=0.0)
     assert loaded_state.ledger_snapshot is not None, (
         "Disk checkpoint must persist and restore ledger_snapshot"
-    )
-    fresh_controller = RecoveryController.from_snapshot(
-        {"ledger": loaded_state.ledger_snapshot}, clock=fresh_clock
     )
 
     def script_run_2(
@@ -322,17 +336,87 @@ def test_scenario_9_restart_preserves_remaining_attempts_across_resumption(
             return AgentAttemptResult(produce_artifact=True)
         return AgentAttemptResult(produce_artifact=False)
 
-    outcome_run_2 = run_scenario(
-        tmp_path,
-        script=script_run_2,
-        agents=("agent_a", "agent_b"),
-        initial_state=loaded_state,
-        clock=fresh_clock,
-        controller=fresh_controller,
-        max_iterations=10,
+    # Second run: resume through the PRODUCTION restoration path. No
+    # controller and no recovery_controller_factory are injected, so
+    # run_loop.run's own _build_recovery_controller rebuilds the
+    # AgentFailureLedger from the loaded checkpoint's ledger_snapshot.
+    workspace = FsWorkspace(tmp_path)
+    _seed_valid_plan(workspace)
+    bundle = _build_policy_bundle(("agent_a", "agent_b"))
+    runner_module.register_role_handlers(bundle.pipeline)
+
+    invocations_run_2: list[str] = []
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+        _clock: object = None,
+    ) -> Iterator[str]:
+        del prompt_file, options, _clock
+        agent = config.cmd
+        invocations_run_2.append(agent)
+        result = script_run_2(agent, "development", len(invocations_run_2), workspace)
+        record_workspace_snapshot(workspace, "development")
+        _apply_attempt_side_effects(result, agent, len(invocations_run_2), workspace)
+        return iter([f"Output from {agent}\n"])
+
+    config = UnifiedConfig.model_validate(
+        {
+            "general": {
+                "auto_integrate_enabled": False,
+                "max_same_agent_retries": 0,
+                "agent_max_consecutive_unproductive": 3,
+            }
+        }
     )
 
-    # In Run 2, agent_a fails 1 more time (completing streak of 3) and is demoted to agent_b
-    assert outcome_run_2.invocations == ["agent_a", "agent_b"]
-    assert outcome_run_2.final_state.phase == "complete"
-    assert outcome_run_2.exit_code == 0
+    deps = make_test_pipeline_deps(
+        make_display_context(),
+        policy_bundle=bundle,
+        registry_factory=lambda _cfg: _ScenarioRegistry(),
+        artifact_requirements_resolver=resolve_phase_required_artifact,
+        recovery_controller_factory=None,  # run_loop must build its own controller
+        invoke_agent=fake_invoke_agent,
+    )
+
+    captured_logs: list[str] = []
+
+    def log_sink(msg: object) -> None:
+        captured_logs.append(str(msg))
+
+    sink_id = logger.add(log_sink, level="DEBUG")
+    try:
+        with (
+            patch(
+                "ralph.pipeline.runner.resolve_workspace_scope",
+                return_value=WorkspaceScope(tmp_path),
+            ),
+            patch("ralph.pipeline.runner.write_start_commit_if_absent"),
+            patch("ralph.pipeline.runner.validate_custom_mcp_servers", return_value=0),
+        ):
+            exit_code = run_loop.run(
+                config,
+                initial_state=loaded_state,
+                pipeline_deps=deps,
+                verbosity=Verbosity.QUIET,
+            )
+    finally:
+        logger.remove(sink_id)
+
+    assert exit_code == 0
+    # In Run 2, agent_a fails 1 more time (completing streak of 3) and is demoted to agent_b.
+    # Had the streak not survived the restart, agent_a would have been invoked 3 more times.
+    assert invocations_run_2 == ["agent_a", "agent_b"]
+    # The preserved streak is visible in the production transcript: after the third
+    # consecutive failure, agent selection skips agent_a behind a fresh cooldown and
+    # picks agent_b — observable in the logged selection evidence, no ledger internals.
+    log_text = " ".join(captured_logs)
+    assert re.search(r"Selected agent agent_b \(skipped agent_a: cooldown \(\d+ms", log_text), (
+        "Expected agent selection to skip agent_a behind a cooldown after the resumed streak"
+    )
+    # End state: the resumed run persisted its terminal state through the public
+    # checkpoint, and the phase completed.
+    resumed_state = checkpoint.load(checkpoint_path)
+    assert resumed_state is not None and resumed_state.phase == "complete"

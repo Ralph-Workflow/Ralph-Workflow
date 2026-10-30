@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
+    from ralph.agents.invoke._types import InvokeOptions
     from ralph.config.agent_config import AgentConfig
 
 
@@ -69,25 +70,17 @@ def test_run_loop_real_resume_restores_ledger_without_injected_controller(
     bundle = _build_policy_bundle(("agent_a", "agent_b"))
     runner_module.register_role_handlers(bundle.pipeline)
 
-    deps = make_test_pipeline_deps(
-        make_display_context(),
-        policy_bundle=bundle,
-        registry_factory=lambda _cfg: _ScenarioRegistry(),
-        artifact_requirements_resolver=resolve_phase_required_artifact,
-        recovery_controller_factory=None,  # run_loop must resolve and build its own controller
-    )
-
     invocations_run_2: list[str] = []
 
     def fake_invoke_agent(
-        agent_config: AgentConfig,
+        config: AgentConfig,
         prompt_file: str,
         *,
-        options: object = None,
+        options: InvokeOptions | None = None,
         _clock: object = None,
     ) -> Iterator[str]:
         del prompt_file, options, _clock
-        agent = agent_config.cmd
+        agent = config.cmd
         invocations_run_2.append(agent)
         result = AgentAttemptResult(produce_artifact=(agent == "agent_b"))
         record_workspace_snapshot(workspace, "development")
@@ -104,14 +97,21 @@ def test_run_loop_real_resume_restores_ledger_without_injected_controller(
         }
     )
 
+    deps = make_test_pipeline_deps(
+        make_display_context(),
+        policy_bundle=bundle,
+        registry_factory=lambda _cfg: _ScenarioRegistry(),
+        artifact_requirements_resolver=resolve_phase_required_artifact,
+        recovery_controller_factory=None,  # run_loop must resolve and build its own controller
+        invoke_agent=fake_invoke_agent,
+    )
+
     with (
         patch(
             "ralph.pipeline.runner.resolve_workspace_scope", return_value=WorkspaceScope(tmp_path)
         ),
         patch("ralph.pipeline.runner.write_start_commit_if_absent"),
         patch("ralph.pipeline.runner.validate_custom_mcp_servers", return_value=0),
-        patch("ralph.pipeline.effect_executor.invoke_agent", side_effect=fake_invoke_agent),
-        patch("ralph.agents.invoke.invoke_agent", side_effect=fake_invoke_agent),
     ):
         exit_code = run_loop.run(
             config,
