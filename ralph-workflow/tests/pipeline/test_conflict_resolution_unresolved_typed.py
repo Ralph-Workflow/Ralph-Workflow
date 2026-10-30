@@ -321,6 +321,31 @@ def _assert_not_ambiguous(logs: Sequence[str]) -> None:
     )
 
 
+def _assert_agent_failure_charged(logs: Sequence[str], unresolved_count: int) -> None:
+    """The owner charged the attempt as an AGENT failure, not any free retry.
+
+    Excludes every free-retry log shape — ambiguous and artifact-validation
+    failures log "retry without budget debit", environmental failures log
+    "not counted against budget" — and positively requires the typed-attempt
+    log line carrying the §11.2 reason. Only non-RAW typed outcomes emit that
+    line, and by the public contract they map to FailureCategory.AGENT, never
+    to a free-retry category, so a regression of the category (with the
+    reason preserved) still fails this assertion.
+    """
+    assert not any("retry without budget debit" in line for line in logs), (
+        "an owner-known failure fact must never be routed as a free retry"
+    )
+    assert not any("not counted against budget" in line for line in logs), (
+        "an owner-known failure fact must never be routed as an environmental free retry"
+    )
+    assert any(
+        "typed attempt outcome" in line and _typed_reason(unresolved_count) in line for line in logs
+    ), (
+        "the owner must observe the typed fact with the §11.2 reason; "
+        "only non-RAW typed outcomes emit this log and they map to AGENT"
+    )
+
+
 def _assert_demoted(logs: Sequence[str], agent: str, *, consecutive: int, total: int) -> None:
     """The ledger demoted ``agent`` at exactly the asserted unproductive counts."""
     needle = (
@@ -468,6 +493,7 @@ def test_A_success_with_unchanged_conflicted_set_is_typed_agent_failure(
     )
     _assert_demoted(logs, "agentA", consecutive=3, total=3)
     _assert_not_ambiguous(logs)
+    _assert_agent_failure_charged(logs, 6)
 
 
 # ---------------------------------------------------------------------------
