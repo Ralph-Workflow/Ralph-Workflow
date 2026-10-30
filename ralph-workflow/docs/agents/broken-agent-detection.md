@@ -47,7 +47,7 @@ A workspace change resets only the CONSECUTIVE count. The TOTAL count keeps ever
 
 The cooldown starts at 60 seconds, doubles on each consecutive demotion, and is capped at 3600 seconds. Those durations are fixed and are not configurable in `ralph-workflow.toml`. When the cooldown expires the agent becomes eligible again and its consecutive count starts from zero. The ledger state is written into the run's persisted state, so the counts and the cooldown survive a restart.
 
-A broken-agent exit skips same-agent retries, so that first failure advances to the next available agent when the chain has one; other unproductive attempts (a missing artifact, for example) retry the same agent until the consecutive limit demotes it. A sole-agent chain has nowhere to fall over to, so reaching the limit fails the phase with a clear diagnostic message instead of retrying indefinitely.
+A broken-agent exit skips same-agent retries, so that first failure advances to the next available agent when the chain has one; other unproductive attempts (a missing artifact, for example) retry the same agent until the consecutive limit demotes it. In an ordinary phase a sole-agent chain has nowhere to fall over to, so reaching the limit fails the phase with a clear diagnostic message instead of retrying indefinitely. Conflict resolution and integration are the exception: when every resolver candidate is demoted or otherwise ineligible, integration remains pending/waiting, the rebase state is preserved on disk, and resolution retries when a candidate comes off cooldown. That stop is pending work, not a failure — it never hands off to the operator and never reports a failed rebase or integration.
 
 ## Operator Log Lines
 
