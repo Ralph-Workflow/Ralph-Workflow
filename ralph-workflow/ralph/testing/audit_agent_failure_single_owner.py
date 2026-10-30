@@ -7,13 +7,20 @@ logic for whether an agent is failing, unproductive, or broken, and whether to r
 using it. Recording call sites (such as the controller, reducer, and resolver_health) are
 clients that feed attempt facts into the ledger rather than deciding agent failure
 independently. Specifically, this audit validates: 1. Production code: No module under
-``ralph/recovery/``, ``ralph/pipeline/``, or ``ralph/agents/invoke/`` (except
+``ralph/`` (except
 ``ralph/recovery/agent_failure_ledger.py``) declares streak/counter state or logic used for
 agent stop/retry decisions (such as duplicate retry trackers, retry progress guards, or
 in-session retry counters), imports a deleted tracker, or decides an agent's fate with a
 LOCAL retry cap -- a retry counter compared against a locally declared retry cap that then
 retries or advances an agent. Genuine repository-safety bounds (a merge-repair attempt cap,
-for example) bound repository state rather than agent health and stay accepted. 2. Test code:
+for example) bound repository state rather than agent health and stay accepted. Since the
+§11 fix (rev 2) the production scan covers ALL of ``ralph/`` and one more rule applies: no
+module feeds Ralph-authored failure prose (a string literal, an f-string, or a module-level
+Ralph-authored constant such as ``ATTEMPT_FAILED_EVIDENCE``) into the text classifier
+(``classify_failed_resolution_attempt``, ``classify_conflict_attempt``,
+``should_reset_tool_registry``, or ``FailureClassifier().classify(...)``), because authored
+prose classifies as AMBIGUOUS and poisons the failure ledger's decisions. Exception objects
+are RAW external runtime text and stay accepted. 2. Test code:
 No test under ``tests/`` accesses private attributes, serialised ledger counters, or internal
 counters of ``AgentFailureLedger`` (enforcing black-box testability via the public seam) or
 imports deprecated retry tracker classes. A test also may not read the recovery controller's
@@ -52,6 +59,7 @@ from ralph.testing._single_owner_rules import (
     _check_production_import,
     _check_production_retry_cap_rule,
     _check_production_subscript,
+    _check_ralph_authored_classifier_inputs,
     _is_forbidden_target_name,
     _is_ledger_receiver,
     _is_ledger_serialised_root,
@@ -75,11 +83,10 @@ __all__ = [
     "main",
 ]
 
-PRODUCTION_SCAN_SUBTREES: tuple[str, ...] = (
-    "ralph/recovery",
-    "ralph/pipeline",
-    "ralph/agents/invoke",
-)
+# The production scan covers ALL of ralph/ since the §11 fix (rev 2): the
+# text-classifier provenance rule must see every entry into the classifier,
+# and no production subtree may own agent failure decisions.
+PRODUCTION_SCAN_SUBTREES: tuple[str, ...] = ("ralph",)
 
 
 def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViolation]:
@@ -136,6 +143,7 @@ def audit_production_source(rel_path: str, source: str) -> list[SingleOwnerViola
             violations.extend(_check_production_call(node, rel_path))
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
             violations.extend(_check_production_import(node, rel_path))
+    violations.extend(_check_ralph_authored_classifier_inputs(tree, rel_path))
     return violations
 
 
@@ -536,9 +544,9 @@ class AgentSession:
         f"Expected violation for progress_guard, got: {v8}"
     )
 
-    # Negative test 9: the widened agents/invoke scope must reject output-derived
+    # Negative test 9: the widened all-of-ralph scope must reject output-derived
     # failure signatures instead of letting them evade the ledger-owner guard.
-    assert "ralph/agents/invoke" in PRODUCTION_SCAN_SUBTREES
+    assert "ralph" in PRODUCTION_SCAN_SUBTREES
     src_agents_invoke_signature = """
 def _retry_failure_signature(exc: Exception) -> tuple[str, str]:
     return type(exc).__name__, str(exc)

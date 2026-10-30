@@ -20,6 +20,19 @@ The rules implemented here are:
    merge-repair attempt cap, for example) bound repository state rather than
    agent health and stay accepted.
 3. No module imports a deleted tracker module or symbol.
+4. No module feeds Ralph-authored failure prose (a string literal, an
+   f-string, or a module-level Ralph-authored constant such as
+   ``ATTEMPT_FAILED_EVIDENCE``) into the text classifier
+   (:func:`ralph.pipeline.conflict_resolution.session.classify_failed_resolution_attempt`,
+   ``RecoveryController.classify_conflict_attempt``,
+   :func:`ralph.recovery.failure_classifier.should_reset_tool_registry`, or a
+   direct ``FailureClassifier().classify(...)`` call). The classifier must
+   only ever see RAW external runtime text (exception objects, subprocess
+   stderr); Ralph-authored prose reaches AMBIGUOUS and poisons the failure
+   ledger's decisions. Assigning Ralph-authored prose to a session failure
+   field (``last_attempt_failure`` / ``last_attempt_evidence``) that is then
+   classified is the same violation. Exception objects passed as the failure
+   argument are legitimate RAW inputs and are never flagged.
 
 The audit entry point (:mod:`ralph.testing.audit_agent_failure_single_owner`)
 scans the tree, applies these rules, and adds the test-side rules that keep
@@ -772,6 +785,251 @@ def _check_production_subscript(node: ast.Subscript, rel_path: str) -> list[Sing
             )
         ]
     return []
+
+
+#: Function/method names that enter the text classifier, mapped to the
+#: positional index of the failure argument. ``classify_failed_resolution_attempt``
+#: takes (session, agent_name, raw_failure, ...); every other entry takes the
+#: failure as its first positional argument.
+_CLASSIFIER_ENTRY_FUNCTIONS: dict[str, int] = {
+    "classify_failed_resolution_attempt": 2,
+    "classify_conflict_attempt": 0,
+    "should_reset_tool_registry": 0,
+}
+
+#: Session failure fields that carry failure text into the classifier.
+_FAILURE_TEXT_FIELDS: frozenset[str] = frozenset(
+    {
+        "last_attempt_failure",
+        "last_attempt_evidence",
+    }
+)
+
+#: Module-level Ralph-authored evidence constants imported across modules
+#: (assigned in ralph/pipeline/conflict_resolution/session.py). A Name with
+#: one of these identifiers is Ralph-authored prose wherever it appears.
+_KNOWN_RALPH_AUTHORED_CONSTANTS: frozenset[str] = frozenset(
+    {
+        "ATTEMPT_FAILED_EVIDENCE",
+    }
+)
+
+
+def _classifier_entry_name(call: ast.Call) -> str | None:
+    """Return the classifier entry name for a call, or None for unrelated calls.
+
+    Matches ``classify_failed_resolution_attempt(...)``,
+    ``controller.classify_conflict_attempt(...)``,
+    ``should_reset_tool_registry(...)``, and a direct
+    ``FailureClassifier().classify(...)`` construction call.
+    """
+    func = call.func
+    if isinstance(func, ast.Name) and func.id in _CLASSIFIER_ENTRY_FUNCTIONS:
+        return func.id
+    if isinstance(func, ast.Attribute):
+        if func.attr in _CLASSIFIER_ENTRY_FUNCTIONS:
+            return func.attr
+        if func.attr == "classify":
+            inner = func.value
+            if (
+                isinstance(inner, ast.Call)
+                and isinstance(inner.func, ast.Name)
+                and inner.func.id == "FailureClassifier"
+            ):
+                return "FailureClassifier.classify"
+    return None
+
+
+def _classifier_failure_arg(call: ast.Call, entry: str) -> ast.AST | None:
+    """Return the failure argument expression of a classifier entry call."""
+    index = _CLASSIFIER_ENTRY_FUNCTIONS.get(entry, 0)
+    if len(call.args) > index:
+        return call.args[index]
+    for keyword in call.keywords:
+        if keyword.arg in ("raw_failure", "failure", "exc"):
+            return keyword.value
+    return None
+
+
+def _expr_is_ralph_authored_prose(node: ast.AST, module_constants: set[str]) -> bool:
+    """Return True when an expression IS Ralph-authored string prose.
+
+    A string literal, an f-string, or a Name referencing a module-level
+    Ralph-authored string constant (locally assigned or in the known
+    cross-module constant set) is prose Ralph wrote; everything else —
+    exception objects, call results, parameters — is external runtime text.
+    """
+    if isinstance(node, ast.Constant):
+        return isinstance(node.value, str)
+    if isinstance(node, ast.JoinedStr):
+        return True
+    if isinstance(node, ast.Name):
+        return node.id in module_constants or node.id in _KNOWN_RALPH_AUTHORED_CONSTANTS
+    return False
+
+
+def _expr_contains_ralph_authored_prose(node: ast.AST, module_constants: set[str]) -> bool:
+    """Return True when any operand of an (or-)chain is Ralph-authored prose."""
+    if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
+        return any(
+            _expr_contains_ralph_authored_prose(value, module_constants) for value in node.values
+        )
+    return _expr_is_ralph_authored_prose(node, module_constants)
+
+
+def _expr_reads_failure_field(node: ast.AST, tainted_fields: dict[str, int]) -> str | None:
+    """Return the tainted failure field an expression reads, if any.
+
+    Matches a bare field name or any attribute with a tainted field name,
+    including inside an (or-)chain such as
+    ``session.last_attempt_failure or ... or ATTEMPT_FAILED_EVIDENCE``.
+    """
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and child.id in tainted_fields:
+            return child.id
+        if isinstance(child, ast.Attribute) and child.attr in tainted_fields:
+            return child.attr
+    return None
+
+
+def _collect_module_string_constants(tree: ast.Module) -> set[str]:
+    """Return names assigned a module-level string literal in the module."""
+    constants: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if (
+                    isinstance(target, ast.Name)
+                    and isinstance(node.value, ast.Constant)
+                    and isinstance(node.value.value, str)
+                ):
+                    constants.add(target.id)
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            constants.add(node.target.id)
+    return constants
+
+
+def _assignment_target_field(target: ast.AST) -> str | None:
+    """Return the failure-field name an assignment target writes, if any."""
+    if isinstance(target, ast.Name) and target.id in _FAILURE_TEXT_FIELDS:
+        return target.id
+    if isinstance(target, ast.Attribute) and target.attr in _FAILURE_TEXT_FIELDS:
+        return target.attr
+    return None
+
+
+def _collect_tainted_failure_fields(
+    tree: ast.Module, module_constants: set[str]
+) -> dict[str, int]:
+    """Map each failure field assigned Ralph-authored prose to its first line."""
+    tainted_fields: dict[str, int] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        value = node.value
+        if value is None:
+            continue
+        targets = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
+        for target in targets:
+            field = _assignment_target_field(target)
+            if (
+                field is not None
+                and _expr_contains_ralph_authored_prose(value, module_constants)
+                and field not in tainted_fields
+            ):
+                tainted_fields[field] = node.lineno
+    return tainted_fields
+
+
+def _ralph_authored_classifier_call_violation(
+    node: ast.Call,
+    entry: str,
+    arg: ast.AST,
+    direct_prose: bool,
+    tainted_field: str | None,
+    rel_path: str,
+) -> SingleOwnerViolation:
+    """Build the violation for a classifier entry call fed Ralph-authored prose."""
+    if direct_prose:
+        detail = (
+            f"Classifier entry '{entry}' receives Ralph-authored failure prose "
+            f"('{ast.unparse(arg)}') instead of RAW external runtime text; "
+            "authored prose classifies as AMBIGUOUS and poisons failure-ledger "
+            "decisions — hand the owner a typed ConflictAttemptOutcome instead."
+        )
+    else:
+        detail = (
+            f"Classifier entry '{entry}' classifies '{tainted_field}', a session "
+            "field assigned Ralph-authored failure prose in this module; "
+            "the classifier must only see RAW external runtime text — "
+            "hand the owner a typed ConflictAttemptOutcome instead."
+        )
+    return SingleOwnerViolation(
+        path=rel_path,
+        line=node.lineno,
+        rule="production_ralph_authored_classifier_input",
+        detail=detail,
+    )
+
+
+def _check_ralph_authored_classifier_inputs(
+    tree: ast.Module, rel_path: str
+) -> list[SingleOwnerViolation]:
+    """Flag Ralph-authored failure prose entering the text classifier.
+
+    Per module, this flags (a) any classifier entry call
+    (``classify_failed_resolution_attempt``, ``classify_conflict_attempt``,
+    ``should_reset_tool_registry``, or ``FailureClassifier().classify(...)``)
+    whose failure argument is a string literal, an f-string, or a
+    module-level Ralph-authored constant (directly or inside an ``or``
+    fallback chain); and (b) any assignment of such prose to
+    ``last_attempt_failure`` / ``last_attempt_evidence`` — a session field a
+    later classify call classifies. Exception objects are RAW external
+    runtime text and are never flagged. The §11 typed-conflict-facts fix
+    (U3) converted every formerly Ralph-authored site to a typed outcome
+    parameter, so no temporary allowlist remains.
+    """
+    module_constants = _collect_module_string_constants(tree)
+    tainted_fields = _collect_tainted_failure_fields(tree, module_constants)
+
+    violations: list[SingleOwnerViolation] = [
+        SingleOwnerViolation(
+            path=rel_path,
+            line=line,
+            rule="production_ralph_authored_classifier_input",
+            detail=(
+                f"Assignment of Ralph-authored failure prose to '{field}' feeds the "
+                "text classifier authored text instead of RAW external runtime text; "
+                "the classifier must only see exception objects or external output."
+            ),
+        )
+        for field, line in tainted_fields.items()
+    ]
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        entry = _classifier_entry_name(node)
+        if entry is None:
+            continue
+        arg = _classifier_failure_arg(node, entry)
+        if arg is None:
+            continue
+        direct_prose = _expr_contains_ralph_authored_prose(arg, module_constants)
+        tainted_field = _expr_reads_failure_field(arg, tainted_fields)
+        if not direct_prose and tainted_field is None:
+            continue
+        violations.append(
+            _ralph_authored_classifier_call_violation(
+                node, entry, arg, direct_prose, tainted_field, rel_path
+            )
+        )
+    return violations
 
 
 def _is_ledger_receiver(node: ast.AST) -> bool:

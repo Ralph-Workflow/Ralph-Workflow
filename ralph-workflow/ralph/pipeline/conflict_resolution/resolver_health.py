@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.pipeline.conflict_resolution.attempt_fault import ConflictAttemptOutcome
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.recovery.agent_failure_ledger import AttemptFact
 from ralph.recovery.failure_category import FailureCategory
@@ -123,15 +124,25 @@ def _record_resolver_fact(
 def bench_resolver(
     controller: RecoveryController,
     agent: str,
-    raw_failure: BaseException | str,
+    raw_failure: BaseException | str | None,
     *,
     workspace_changed: bool = False,
+    outcome: ConflictAttemptOutcome | None = None,
+    unresolved_count: int = 0,
 ) -> None:
-    """Record an unproductive resolution attempt for ``agent`` in the resolution phase."""
+    """Record an unproductive resolution attempt for ``agent`` in the resolution phase.
+
+    ``outcome`` forwards a typed §11 attempt fact (default ``RAW`` keeps the
+    text path for genuinely external caller-supplied failures).
+    """
     is_free_retry = False
     with suppress(Exception):
         classified = controller.classify_conflict_attempt(
-            raw_failure, agent=agent, connectivity_state="online"
+            raw_failure,
+            agent=agent,
+            connectivity_state="online",
+            outcome=outcome,
+            unresolved_count=unresolved_count,
         )
         is_free_retry = classified.category in (
             FailureCategory.ENVIRONMENTAL,

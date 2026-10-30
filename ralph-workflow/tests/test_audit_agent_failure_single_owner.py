@@ -378,7 +378,9 @@ def _retry_failure_signature(exc: Exception) -> tuple[str, str]:
 
 
 def test_agents_invoke_is_in_production_scan_scope() -> None:
-    assert "ralph/agents/invoke" in PRODUCTION_SCAN_SUBTREES
+    # The §11 fix (rev 2) widened the production scan to all of ralph/, which
+    # necessarily covers ralph/agents/invoke.
+    assert "ralph" in PRODUCTION_SCAN_SUBTREES
 
 
 def test_competing_max_identical_retry_attempts_assignment_and_compare_flagged() -> None:
@@ -780,3 +782,163 @@ def test_unrelated_private_reads(controller, runner, subprocess_runner, resolver
 """
     violations = audit_test_source("tests/recovery/test_sample.py", source)
     assert not violations
+
+
+# --- §11 fix (rev 2): no Ralph-authored prose may reach the text classifier. ---
+
+
+def test_production_ralph_authored_prose_assignment_then_classify_is_flagged() -> None:
+    """The exact regression shape: prose assigned to the session field, then classified."""
+    source = """
+def handle(session, agent_name):
+    session.last_attempt_failure = "unresolved paths remain in worktree"
+    classify_failed_resolution_attempt(
+        session, agent_name, session.last_attempt_failure, candidates=(), failed_index=0,
+    )
+"""
+    violations = audit_production_source("ralph/pipeline/conflict_resolution/worker.py", source)
+    assert any(
+        v.rule == "production_ralph_authored_classifier_input" for v in violations
+    ), f"Expected production_ralph_authored_classifier_input, got: {violations}"
+    assign_violations = [
+        v for v in violations if v.rule == "production_ralph_authored_classifier_input"
+    ]
+    assert any("last_attempt_failure" in v.detail for v in assign_violations)
+    assert any("classifier entry" in v.detail.lower() for v in assign_violations)
+
+
+def test_production_reworded_prose_variant_is_flagged() -> None:
+    """Rewording the authored string does not evade the rule."""
+    source = """
+def handle(session, agent_name):
+    session.last_attempt_evidence = f"candidate gave up without doing anything"
+    classify_failed_resolution_attempt(
+        session, agent_name, session.last_attempt_evidence, candidates=(), failed_index=0,
+    )
+"""
+    violations = audit_production_source("ralph/pipeline/conflict_resolution/worker.py", source)
+    assert any(
+        v.rule == "production_ralph_authored_classifier_input" for v in violations
+    ), f"Expected production_ralph_authored_classifier_input, got: {violations}"
+
+
+def test_production_direct_classifier_construction_with_prose_is_flagged() -> None:
+    """A direct FailureClassifier().classify(<internal prose>) call is flagged."""
+    source = """
+from ralph.recovery.failure_classifier import FailureClassifier
+
+def go() -> None:
+    FailureClassifier().classify("candidate produced no output", phase="commit", agent="x")
+"""
+    violations = audit_production_source("ralph/pipeline/plumbing/worker.py", source)
+    assert any(
+        v.rule == "production_ralph_authored_classifier_input" for v in violations
+    ), f"Expected production_ralph_authored_classifier_input, got: {violations}"
+
+
+def test_production_classifier_wrapper_with_prose_is_flagged() -> None:
+    """The should_reset_tool_registry wrapper fed internal prose is flagged."""
+    source = """
+from ralph.recovery.failure_classifier import should_reset_tool_registry
+
+def go() -> bool:
+    return should_reset_tool_registry("tool registry is stale", phase="commit", agent="x")
+"""
+    violations = audit_production_source("ralph/pipeline/plumbing/worker.py", source)
+    assert any(
+        v.rule == "production_ralph_authored_classifier_input" for v in violations
+    ), f"Expected production_ralph_authored_classifier_input, got: {violations}"
+
+
+def test_production_exception_object_failure_arg_is_not_flagged() -> None:
+    """Exception objects are RAW external runtime text and stay accepted."""
+    source = """
+from ralph.recovery.failure_classifier import should_reset_tool_registry
+
+def go(exc: BaseException) -> bool:
+    return should_reset_tool_registry(exc, phase="commit", agent="x")
+"""
+    violations = audit_production_source("ralph/pipeline/plumbing/worker.py", source)
+    assert not [
+        v for v in violations if v.rule == "production_ralph_authored_classifier_input"
+    ], f"Expected no classifier-input violation for an exception object, got: {violations}"
+
+
+def test_production_or_chain_with_authored_constant_is_flagged() -> None:
+    """An or-fallback chain carrying ATTEMPT_FAILED_EVIDENCE is flagged."""
+    source = """
+ATTEMPT_FAILED_EVIDENCE = "conflict attempt failed"
+
+def handle(session, agent_name):
+    classify_failed_resolution_attempt(
+        session,
+        agent_name,
+        session.last_attempt_failure or session.last_attempt_evidence or ATTEMPT_FAILED_EVIDENCE,
+        candidates=(),
+        failed_index=0,
+    )
+"""
+    violations = audit_production_source("ralph/pipeline/conflict_resolution/worker.py", source)
+    assert any(
+        v.rule == "production_ralph_authored_classifier_input" for v in violations
+    ), f"Expected production_ralph_authored_classifier_input, got: {violations}"
+
+
+def test_production_classifier_provenance_allowlist_is_removed() -> None:
+    """The U3 §11 conversion removed the temporary classifier-input allowlist.
+
+    Every formerly allowlisted shape — prose assignments to the session
+    failure fields, a classify call reading a tainted field, an or-chain
+    carrying ATTEMPT_FAILED_EVIDENCE — must flag again now that production
+    routes typed outcomes instead. This is the completion guard: the
+    temporary allowlist U2 introduced may not be reintroduced.
+    """
+    import ralph.testing._single_owner_rules as single_owner_rules
+
+    driver_source = """
+def handle(session, agent_name, attempt):
+    session.last_attempt_failure = "unresolved paths remain in worktree"
+    session.last_attempt_evidence = "unresolved paths remain in worktree"
+    classify_failed_resolution_attempt(
+        session, agent_name, session.last_attempt_failure, candidates=(), failed_index=0,
+    )
+"""
+    violations = audit_production_source(
+        "ralph/pipeline/conflict_resolution/driver.py", driver_source
+    )
+    assert [
+        v for v in violations if v.rule == "production_ralph_authored_classifier_input"
+    ], f"Expected flagged driver.py sites once the allowlist is removed, got: {violations}"
+
+    rounds_source = """
+def handle(session, agent_name):
+    _driver_mod.classify_failed_resolution_attempt(
+        session,
+        agent_name,
+        session.last_attempt_failure or session.last_attempt_evidence or ATTEMPT_FAILED_EVIDENCE,
+        candidates=(),
+        failed_index=0,
+    )
+"""
+    violations = audit_production_source(
+        "ralph/pipeline/conflict_resolution/_driver_rounds.py", rounds_source
+    )
+    assert [
+        v for v in violations if v.rule == "production_ralph_authored_classifier_input"
+    ], f"Expected flagged _driver_rounds.py site once the allowlist is removed, got: {violations}"
+
+    session_source = """
+def note(session):
+    if not session.last_attempt_evidence:
+        session.last_attempt_evidence = "candidate produced no activity before it exited"
+"""
+    violations = audit_production_source(
+        "ralph/pipeline/conflict_resolution/session.py", session_source
+    )
+    assert [
+        v for v in violations if v.rule == "production_ralph_authored_classifier_input"
+    ], f"Expected flagged session.py site once the allowlist is removed, got: {violations}"
+
+    # The module exposes no remaining allowlist bypass for this rule.
+    assert not hasattr(single_owner_rules, "TEMPORARY_RALPH_AUTHORED_CLASSIFIER_ALLOWLIST")
+    assert not hasattr(single_owner_rules, "is_ralph_authored_classifier_site_allowed")

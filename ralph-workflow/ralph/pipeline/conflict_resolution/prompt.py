@@ -24,7 +24,7 @@ runtime-artifact rules rather than introducing a new path shape.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from loguru import logger
 
@@ -50,6 +50,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.mcp.artifacts.file_backend import FileBackend
+    from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
 #: Packaged Jinja template holding the resolution prompt body. Kept
 #: alongside the pipeline prompt templates so it follows the same
@@ -71,7 +73,58 @@ _UNKNOWN_PATHS_BODY = (
     "one of them."
 )
 
-__all__ = ["PROMPT_TEMPLATE_NAME", "render_conflict_prompt"]
+__all__ = ["PROMPT_TEMPLATE_NAME", "PromptMaterializer", "materialize_round_prompt", "render_conflict_prompt"]
+
+
+class PromptMaterializer(Protocol):
+    """Render and write one round's prompt; return the path, or ``None`` on failure.
+
+    The round loop used to call :func:`render_conflict_prompt` (through
+    the driver module) directly. This protocol is the public, injectable
+    replacement: scenario tests inject a fake materializer instead of
+    monkeypatching driver internals, and a ``None`` return fails the
+    round exactly as an unmaterializable prompt always has.
+    """
+
+    def __call__(
+        self,
+        *,
+        root: Path,
+        target: str,
+        conflicted_paths: Sequence[str],
+        round_index: int,
+        round_cap: int,
+        session: ResolutionSession,
+        stop: RebaseStop | None,
+        strategy_history: tuple[str, ...],
+    ) -> Path | None: ...
+
+
+def materialize_round_prompt(
+    *,
+    root: Path,
+    target: str,
+    conflicted_paths: Sequence[str],
+    round_index: int,
+    round_cap: int,
+    session: ResolutionSession,
+    stop: RebaseStop | None,
+    strategy_history: tuple[str, ...] = (),
+) -> Path | None:
+    """Default :class:`PromptMaterializer` entry for one resolution round.
+
+    Deriving the surviving-marker feedback and the rebase-stop fields
+    from the session lives in
+    :func:`ralph.pipeline.conflict_resolution._driver_events.render_round_prompt`,
+    which resolves ``render_conflict_prompt`` through the driver module
+    at call time. The legacy monkeypatch surface on the driver module
+    therefore keeps working when no materializer is injected.
+    """
+    from ralph.pipeline.conflict_resolution._driver_events import render_round_prompt
+
+    return render_round_prompt(
+        root, target, conflicted_paths, round_index, round_cap, session, stop, strategy_history
+    )
 
 
 def render_conflict_prompt(

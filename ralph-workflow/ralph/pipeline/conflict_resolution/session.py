@@ -14,6 +14,7 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.attempt_fault import (
+    ConflictAttemptOutcome,
     classify_ralph_origin_fault,
 )
 from ralph.pipeline.conflict_resolution.chain_candidates import session_ledger
@@ -98,6 +99,12 @@ class ResolutionSession:
     skip_same_agent_retries: bool = False
     last_attempt_evidence: str | None = None
     last_attempt_failure: BaseException | str | None = None
+    #: Typed outcome of the last attempt (§11): set by the launcher on the
+    #: shapes Ralph observes itself (no-activity, attempt-failed); the
+    #: driver forwards it so the classifier never re-matches Ralph-authored
+    #: prose. ``None`` means the caller must decide (RAW for exception
+    #: objects, ATTEMPT_FAILED for a bare unsuccessful return).
+    last_attempt_outcome: ConflictAttemptOutcome | None = None
     last_attempt_saw_activity: bool = False
     rounds_spent: int = 0
     last_failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
@@ -137,6 +144,7 @@ def begin_resolution_stop(
     session.skip_same_agent_retries = False
     session.last_attempt_evidence = None
     session.last_attempt_failure = None
+    session.last_attempt_outcome = None
     session.last_attempt_saw_activity = False
     session.terminal_reason = None
     session.last_activity_kind = None
@@ -241,7 +249,7 @@ def ensure_session_controller(
 def classify_failed_resolution_attempt(
     session: ResolutionSession | None,
     agent_name: str,
-    raw_failure: BaseException | str,
+    raw_failure: BaseException | str | None = None,
     *,
     candidates: Sequence[str] = (),
     failed_index: int = 0,
@@ -249,15 +257,30 @@ def classify_failed_resolution_attempt(
     bench: bool = False,
     workspace_changed: bool = False,
     artifact_valid: bool = False,
+    outcome: ConflictAttemptOutcome | None = None,
+    unresolved_count: int = 0,
 ) -> None:
-    """Route a failed conflict invoke through RecoveryController.handle."""
+    """Route a failed conflict invoke through RecoveryController.handle.
+
+    ``outcome`` carries the typed §11 fact for shapes Ralph observes
+    itself; ``raw_failure`` is only classified as text when the outcome is
+    ``RAW`` (the default), which is reserved for genuinely external
+    runtime output (exception objects, subprocess stderr). Typed outcomes
+    ignore ``raw_failure`` for classification — it is kept only as
+    diagnostic context.
+    """
     del bench
     from ralph.pipeline.agent_chain_state import AgentChainState
     from ralph.pipeline.state import PipelineState
     from ralph.recovery.classifier import FailureContext
 
     controller = ensure_session_controller(session, policy_bundle)
-    classified = controller.classify_conflict_attempt(raw_failure, agent=agent_name)
+    classified = controller.classify_conflict_attempt(
+        raw_failure,
+        agent=agent_name,
+        outcome=outcome,
+        unresolved_count=unresolved_count,
+    )
     agents = list(candidates) if candidates else [agent_name]
     bounded_index = min(max(failed_index, 0), max(len(agents) - 1, 0))
     recovery_state: PipelineState
@@ -274,10 +297,14 @@ def classify_failed_resolution_attempt(
                 )
             },
         )
+    # ``handle`` only reads ``raw_failure`` when no pre-classified failure
+    # is supplied; typed outcomes always supply one, so a None raw failure
+    # is passed as inert diagnostic context only.
+    handle_failure: BaseException | str = raw_failure if raw_failure is not None else ""
     try:
         new_state, _effects, _event = controller.handle(
             recovery_state,
-            raw_failure,
+            handle_failure,
             FailureContext(
                 phase=PHASE_RESOLUTION,
                 agent=agent_name,
@@ -289,7 +316,7 @@ def classify_failed_resolution_attempt(
     except TypeError:
         new_state, _effects, _event = controller.handle(
             recovery_state,
-            raw_failure,
+            handle_failure,
             FailureContext(
                 phase=PHASE_RESOLUTION,
                 agent=agent_name,
@@ -370,6 +397,7 @@ def invoke_resolution_agent(
     if session is not None:
         session.last_attempt_evidence = None
         session.last_attempt_failure = None
+        session.last_attempt_outcome = None
         session.last_attempt_saw_activity = False
     # The retry intent is a thread-local the executor writes on failure
     # and clears only on SUCCESS, so a candidate that failed through one
@@ -524,8 +552,10 @@ def _record_attempt_without_agent_work(session: ResolutionSession | None) -> Non
     session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
     if session.terminal_reason is None:
         session.terminal_reason = ResolutionTerminationReason.CANDIDATE_EXITED
-    if not session.last_attempt_evidence:
-        session.last_attempt_evidence = "candidate produced no activity before it exited"
+    # Typed, never prose: the no-activity shape is Ralph's own observation
+    # of the supervision stream, so it reaches the classifier as a typed
+    # outcome rather than a sentence to re-match.
+    session.last_attempt_outcome = ConflictAttemptOutcome.NO_ACTIVITY
 
 
 def _record_attempt_failure(
@@ -561,6 +591,12 @@ def _failed_attempt_evidence(session: ResolutionSession | None, agent_name: str)
     intent = _effect_executor_module.pop_last_captured_retry_intent()
     if session is not None and intent.skip_same_agent_retries:
         session.skip_same_agent_retries = True
+    if session is not None:
+        # The attempt ran and failed: typed, never prose. ``failure_reason``
+        # stays on the session fields as diagnostic context (it names the
+        # agent process's exit class), but the classifier verdict rides on
+        # the typed outcome rather than a re-match of that text.
+        session.last_attempt_outcome = ConflictAttemptOutcome.ATTEMPT_FAILED
     if not intent.failure_reason:
         return ATTEMPT_FAILED_EVIDENCE
     if session is not None:

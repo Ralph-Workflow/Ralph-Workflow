@@ -32,6 +32,7 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     INFRASTRUCTURE_TERMINATION_REASONS,
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
+    ConflictAttemptOutcome,
     attempt_fault_to_termination_reason,
     classify_attempt_fault,
 )
@@ -51,12 +52,8 @@ from ralph.pipeline.conflict_resolution.resolution_action import (
 )
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.round_verdict import (
-    is_effectively_empty as _is_effectively_empty,
-)
-from ralph.pipeline.conflict_resolution.round_verdict import (
     round_termination_reason as _round_termination_reason,
 )
-from ralph.pipeline.conflict_resolution.session import ATTEMPT_FAILED_EVIDENCE
 from ralph.pipeline.integration_actions import _DEFAULT_CLOCK, current_clock
 from ralph.pipeline.rebase_state import ResolutionFailureCause
 
@@ -67,6 +64,7 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.conflict_resolution.driver import ResolutionInvoker
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
+    from ralph.pipeline.conflict_resolution.worktree_observer import WorktreeConflictObserver
     from ralph.policy.models import PolicyBundle
 
 __all__ = [
@@ -150,6 +148,7 @@ def _paths_still_unresolved(
     *,
     present_before: frozenset[str],
     substantive: frozenset[str],
+    observer: WorktreeConflictObserver,
 ) -> tuple[str, ...]:
     """Paths a round has NOT resolved, by the evidence on disk.
 
@@ -160,11 +159,7 @@ def _paths_still_unresolved(
     deletion; an ordinary conflict may not, because neither side asked
     for the file to disappear.
     """
-    # Late binding through the driver namespace: tests monkeypatch
-    # ``driver.paths_with_conflict_markers`` there.
-    from ralph.pipeline.conflict_resolution import driver as _driver_mod
-
-    marked = list(_driver_mod.paths_with_conflict_markers(root, conflicted))
+    marked = list(observer.paths_with_conflict_markers(root, conflicted))
     decisions = set(decision_paths)
     # A path both sides wrote content into, now empty, is not a
     # resolution: a truncating resolver dropped BOTH sides, and with the
@@ -172,7 +167,7 @@ def _paths_still_unresolved(
     emptied = (
         path
         for path in conflicted
-        if path in substantive and path not in marked and _is_effectively_empty(root / path)
+        if path in substantive and path not in marked and observer.is_effectively_empty(root / path)
     )
     vanished = (
         path
@@ -180,7 +175,7 @@ def _paths_still_unresolved(
         if path in present_before
         and path not in decisions
         and path not in marked
-        and not (root / path).exists()
+        and not observer.path_exists(root / path)
     )
     seen: set[str] = set()
     unresolved: list[str] = []
@@ -235,10 +230,24 @@ def _handle_candidate_failure(
             session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
         else:
             session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
+    # Typed outcomes (§11): exception objects are genuinely external RAW
+    # text; every other shape here is one Ralph observed itself, so the
+    # classifier rides on the typed outcome and never re-matches session
+    # prose. A bare unsuccessful return with no recorded outcome is the
+    # generic attempt-failed shape.
+    raw_failure: BaseException | str | None
+    if isinstance(session.last_attempt_failure, BaseException):
+        outcome = ConflictAttemptOutcome.RAW
+        raw_failure = session.last_attempt_failure
+    else:
+        outcome = session.last_attempt_outcome or ConflictAttemptOutcome.ATTEMPT_FAILED
+        raw_failure = (
+            session.last_attempt_failure if isinstance(session.last_attempt_failure, str) else None
+        )
     _driver_mod.classify_failed_resolution_attempt(
         session,
         agent_name,
-        session.last_attempt_failure or session.last_attempt_evidence or ATTEMPT_FAILED_EVIDENCE,
+        raw_failure,
         candidates=candidates,
         failed_index=offset,
         policy_bundle=policy_bundle,
@@ -247,6 +256,7 @@ def _handle_candidate_failure(
             and session.terminal_reason != ResolutionTerminationReason.ATTEMPT_FAILED
         ),
         workspace_changed=workspace_changed,
+        outcome=outcome,
     )
 
 
@@ -259,6 +269,7 @@ def _execute_single_candidate(
     candidates: tuple[str, ...],
     offset: int,
     policy_bundle: PolicyBundle,
+    observe_unresolved: Callable[[], tuple[str, ...]] | None = None,
 ) -> tuple[bool, ResolutionOutcome | bool]:
     # Late binding through the driver namespace: tests monkeypatch
     # ``driver.classify_failed_resolution_attempt`` there.
@@ -290,6 +301,24 @@ def _execute_single_candidate(
         )
         session.terminal_reason = ResolutionTerminationReason.EXCEPTION
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+        probe_changed = bool(
+            probe and workspace and probe.has_changed(PHASE_RESOLUTION, workspace)
+        )
+        # Per-attempt observation/charging boundary (§11, Design item 4):
+        # observe the round-level unresolved set ONCE through the injected
+        # observer BEFORE charging the ledger, so a count drop restarts the
+        # consecutive-unproductive streak exactly like a workspace change
+        # while the total still accrues. The pre-attempt count is read from
+        # the session before the observation overwrites it — the driver
+        # rewrites ``session.unresolved_paths`` after every round. The
+        # exception text itself is genuinely external RAW input (site 10)
+        # and keeps the text path.
+        count_dropped = False
+        if observe_unresolved is not None:
+            unresolved_before = len(session.unresolved_paths)
+            unresolved_after = observe_unresolved()
+            session.unresolved_paths = unresolved_after
+            count_dropped = len(unresolved_after) < unresolved_before
         _driver_mod.classify_failed_resolution_attempt(
             session,
             agent_name,
@@ -298,9 +327,7 @@ def _execute_single_candidate(
             failed_index=offset,
             policy_bundle=policy_bundle,
             bench=True,
-            workspace_changed=bool(
-                probe and workspace and probe.has_changed(PHASE_RESOLUTION, workspace)
-            ),
+            workspace_changed=probe_changed or count_dropped,
         )
         return False, False
     else:
@@ -356,12 +383,16 @@ def _run_one_round(
     session: ResolutionSession,
     policy_bundle: PolicyBundle,
     worktree_resolved: Callable[[], bool] | None = None,
+    observe_unresolved: Callable[[], tuple[str, ...]] | None = None,
 ) -> RoundAttempt:
     """Spend eligible candidates in priority order, respecting bounded retries.
 
     A successful candidate does not advance priority. Cooldowns survive
     rounds and stops; the controller selects again before every invocation.
     ``worktree_resolved`` rechecks repairs after an unsuccessful attempt.
+    ``observe_unresolved`` observes the round-level unresolved set through
+    the injected observer; the exception path uses it BEFORE charging the
+    ledger so a count drop counts as progress (§11, Design item 4).
 
     Clear terminal evidence before each candidate to preserve attribution.
     """
@@ -396,6 +427,7 @@ def _run_one_round(
             candidates,
             offset,
             policy_bundle,
+            observe_unresolved,
         )
         if succeeded:
             return RoundAttempt(

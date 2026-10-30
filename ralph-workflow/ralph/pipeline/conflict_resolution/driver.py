@@ -31,9 +31,6 @@ from ralph.pipeline.conflict_resolution._driver_events import (
 from ralph.pipeline.conflict_resolution._driver_events import (
     emit_success as _emit_success,
 )
-from ralph.pipeline.conflict_resolution._driver_events import (
-    render_round_prompt as _render_round_prompt,
-)
 from ralph.pipeline.conflict_resolution._driver_rounds import (
     RoundAttempt,
     _evaluate_round_attempt,
@@ -43,6 +40,9 @@ from ralph.pipeline.conflict_resolution._driver_rounds import (
 )
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
+)
+from ralph.pipeline.conflict_resolution.attempt_fault import (
+    ConflictAttemptOutcome,
 )
 from ralph.pipeline.conflict_resolution.chain_candidates import (
     skipped_candidates,
@@ -61,7 +61,11 @@ from ralph.pipeline.conflict_resolution.pipeline_entrypoints import (
     run_conflict_resolution_pipeline,
     run_rebase_conflict_resolution_pipeline,
 )
-from ralph.pipeline.conflict_resolution.prompt import render_conflict_prompt
+from ralph.pipeline.conflict_resolution.prompt import (
+    PromptMaterializer,
+    materialize_round_prompt,
+    render_conflict_prompt,
+)
 from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
 from ralph.pipeline.conflict_resolution.resolution_action import (
     ResolutionAction,
@@ -73,9 +77,6 @@ from ralph.pipeline.conflict_resolution.round_status import (
 )
 from ralph.pipeline.conflict_resolution.round_status import (
     restore_previous_status_bar as _restore_status_bar,
-)
-from ralph.pipeline.conflict_resolution.round_verdict import (
-    is_effectively_empty as _is_effectively_empty,
 )
 from ralph.pipeline.conflict_resolution.round_verdict import (
     reset_round_reporting as _reset_round_reporting,
@@ -105,6 +106,10 @@ from ralph.pipeline.conflict_resolution.status import (
     capture_status_bar_model,
     emit_conflict_phase_line,
 )
+from ralph.pipeline.conflict_resolution.worktree_observer import (
+    GitWorktreeConflictObserver,
+    WorktreeConflictObserver,
+)
 from ralph.pipeline.integration_actions import current_clock
 from ralph.pipeline.rebase_state import ResolutionFailureCause
 
@@ -131,16 +136,21 @@ __all__ = [
     "RoundAttempt",
     "_sleep_seconds",
     "classify_failed_resolution_attempt",
+    "classify_unmerged_conflicts",
     "conflict_chain_max_retries",
+    "declared_decision_paths",
     "emit_conflict_phase_line",
     "invoke_resolution_agent",
     "paths_with_conflict_markers",
     "render_conflict_prompt",
+    "retained_merge_paths",
     "run_conflict_resolution_outcome",
     "run_conflict_resolution_pipeline",
     "run_rebase_conflict_resolution_outcome",
     "run_rebase_conflict_resolution_pipeline",
     "select_resolution_action",
+    "stage_mechanical_conflicts",
+    "unmerged_paths",
 ]
 
 
@@ -167,6 +177,8 @@ def run_conflict_resolution_outcome(
     clock: MonotonicClock | None = None,
     session: ResolutionSession | None = None,
     strategy_history: tuple[str, ...] = (),
+    observer: WorktreeConflictObserver | None = None,
+    prompt_materializer: PromptMaterializer | None = None,
 ) -> ResolutionOutcome:
     """Resolve an in-progress merge through fixed-window liveness supervision."""
     active_session = session or _new_resolution_session(config)
@@ -186,6 +198,8 @@ def run_conflict_resolution_outcome(
             stop=None,
             session=active_session,
             strategy_history=strategy_history,
+            observer=observer,
+            prompt_materializer=prompt_materializer,
         )
         return _resolution_outcome(active_session, resolved)
     except Exception as exc:
@@ -213,6 +227,8 @@ def run_rebase_conflict_resolution_outcome(
     clock: MonotonicClock | None = None,
     session: ResolutionSession | None = None,
     strategy_history: tuple[str, ...] = (),
+    observer: WorktreeConflictObserver | None = None,
+    prompt_materializer: PromptMaterializer | None = None,
 ) -> ResolutionOutcome:
     """Resolve one paused rebase stop with typed terminal evidence."""
     active_session = (
@@ -233,6 +249,8 @@ def run_rebase_conflict_resolution_outcome(
             stop=stop,
             session=active_session,
             strategy_history=strategy_history,
+            observer=observer,
+            prompt_materializer=prompt_materializer,
         )
         return _resolution_outcome(active_session, resolved)
     except Exception as exc:
@@ -260,12 +278,13 @@ def _prepare_conflicted_paths(
     stop: RebaseStop | None,
     session: ResolutionSession,
     display: ParallelDisplay | None,
+    observer: WorktreeConflictObserver,
 ) -> tuple[tuple[str, ...], bool | None, tuple[str, ...]]:
     """Classify on sight; return remaining paths, an early verdict, and decisions."""
     conflicted = (
         stop.conflicted_files
         if stop is not None
-        else retained_merge_paths(root, tuple(unmerged_paths(root)))
+        else observer.retained_merge_paths(root, tuple(observer.unmerged_paths(root)))
     )
     if _QUERY_FAILED_SENTINEL in conflicted:
         # Ralph cannot see the conflict. Typed, or this exit reports a
@@ -285,7 +304,7 @@ def _prepare_conflicted_paths(
         emit_conflict_phase_line(display, "no conflicted paths; nothing for a resolver to repair")
         return (), False, ()
     session.out_of_reach_paths = ()
-    kinds = classify_unmerged_conflicts(root, conflicted)
+    kinds = observer.classify_unmerged_conflicts(root, conflicted)
     unreachable = out_of_reach_paths(kinds)
     reachable = tuple(path for path in conflicted if path not in set(unreachable))
     if unreachable and not reachable:
@@ -315,8 +334,8 @@ def _prepare_conflicted_paths(
             + "; resolving the rest first",
         )
         conflicted = reachable
-    decisions = tuple(path for path in declared_decision_paths(kinds) if path in set(conflicted))
-    staged = stage_mechanical_conflicts(root, kinds)
+    decisions = tuple(path for path in observer.declared_decision_paths(kinds) if path in set(conflicted))
+    staged = observer.stage_mechanical_conflicts(root, kinds)
     remaining = tuple(path for path in conflicted if path not in set(staged))
     if remaining:
         return remaining, None, decisions
@@ -349,8 +368,14 @@ def _run_rounds(
     stop: RebaseStop | None,
     session: ResolutionSession,
     strategy_history: tuple[str, ...],
+    observer: WorktreeConflictObserver | None,
+    prompt_materializer: PromptMaterializer | None,
 ) -> bool:
     """Execute completed-work routing while one session owns all timing context."""
+    active_observer = observer if observer is not None else GitWorktreeConflictObserver()
+    materialize_prompt = (
+        prompt_materializer if prompt_materializer is not None else materialize_round_prompt
+    )
     limits = config.conflict_resolution
     round_cap = session.max_rounds_per_stop or limits.max_rounds_per_stop
     inactivity_timeout = session.inactivity_timeout_seconds or limits.inactivity_timeout_seconds
@@ -383,7 +408,9 @@ def _run_rounds(
             from ralph.workspace.probe import DefaultWorkspaceChangeProbe
 
             session.workspace_probe = DefaultWorkspaceChangeProbe()
-    prepared, early, decision_paths = _prepare_conflicted_paths(root, stop, session, display)
+    prepared, early, decision_paths = _prepare_conflicted_paths(
+        root, stop, session, display, active_observer
+    )
     if early is not None:
         return early
     conflicted = prepared
@@ -421,9 +448,11 @@ def _run_rounds(
     # round 1 is already absent when round 2 starts, so a per-round
     # snapshot stopped calling it vanished -- and the empty marker scan
     # (it cannot read a file that is gone) then credited the deletion.
-    present_at_entry = frozenset(path for path in conflicted if (root / path).exists())
+    present_at_entry = frozenset(
+        path for path in conflicted if active_observer.path_exists(root / path)
+    )
     substantive_at_entry = frozenset(
-        path for path in present_at_entry if not _is_effectively_empty(root / path)
+        path for path in present_at_entry if not active_observer.is_effectively_empty(root / path)
     )
     resolved = _execute_round_loop(
         root,
@@ -441,6 +470,8 @@ def _run_rounds(
         stop,
         strategy_history,
         policy_bundle,
+        active_observer,
+        materialize_prompt,
     )
     if resolved:
         return True
@@ -473,6 +504,8 @@ def _execute_round_loop(
     stop: RebaseStop | None,
     strategy_history: tuple[str, ...],
     policy_bundle: PolicyBundle,
+    observer: WorktreeConflictObserver,
+    prompt_materializer: PromptMaterializer,
 ) -> bool:
     prompt_path: Path | None = None
     try:
@@ -485,15 +518,15 @@ def _execute_round_loop(
             _push_round_status(
                 display, root, target, round_index, max(round_index, round_cap), stop
             )
-            prompt_path = _render_round_prompt(
-                root,
-                target,
-                conflicted,
-                round_index,
-                max(round_index, round_cap),
-                session,
-                stop,
-                strategy_history,
+            prompt_path = prompt_materializer(
+                root=root,
+                target=target,
+                conflicted_paths=conflicted,
+                round_index=round_index,
+                round_cap=max(round_index, round_cap),
+                session=session,
+                stop=stop,
+                strategy_history=strategy_history,
             )
             if prompt_path is None:
                 session.terminal_reason = ResolutionTerminationReason.PROMPT_UNAVAILABLE
@@ -511,6 +544,7 @@ def _execute_round_loop(
                     decision_paths,
                     present_before=present_at_entry,
                     substantive=substantive_at_entry,
+                    observer=observer,
                 )
 
             attempt = _run_one_round(
@@ -522,7 +556,13 @@ def _execute_round_loop(
                 session,
                 policy_bundle,
                 worktree_resolved=lambda: not decision_paths and not _unresolved(),
+                observe_unresolved=_unresolved,
             )
+            # Hold the pre-round count: the observation below overwrites
+            # ``session.unresolved_paths``, and a drop restarts the
+            # consecutive-unproductive streak exactly like a workspace
+            # change while the total still accrues (§11, Design item 4).
+            unresolved_before = len(session.unresolved_paths)
             session.unresolved_paths = _unresolved()
             if attempt.succeeded and session.unresolved_paths and attempt.agent_name is not None:
                 logger.warning(
@@ -530,26 +570,25 @@ def _execute_round_loop(
                     round_index,
                     attempt.agent_name,
                 )
-                session.last_attempt_failure = (
-                    "unresolved paths remain in worktree after candidate reported success"
-                )
-                session.last_attempt_evidence = (
-                    "unresolved paths remain in worktree after candidate reported success"
-                )
+                unresolved_count = len(session.unresolved_paths)
                 session.terminal_reason = ResolutionTerminationReason.RESOLUTION_INCOMPLETE
                 session.last_failure_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
+                count_dropped = unresolved_count < unresolved_before
+                probe_changed = bool(
+                    session.workspace_probe
+                    and session.workspace
+                    and session.workspace_probe.has_changed(PHASE_RESOLUTION, session.workspace)
+                )
                 classify_failed_resolution_attempt(
                     session,
                     attempt.agent_name,
-                    session.last_attempt_failure,
+                    None,
                     candidates=candidates,
                     failed_index=attempt.candidate_offset,
                     policy_bundle=policy_bundle,
-                    workspace_changed=bool(
-                        session.workspace_probe
-                        and session.workspace
-                        and session.workspace_probe.has_changed(PHASE_RESOLUTION, session.workspace)
-                    ),
+                    outcome=ConflictAttemptOutcome.UNRESOLVED_REMAINING,
+                    unresolved_count=unresolved_count,
+                    workspace_changed=probe_changed or count_dropped,
                 )
             action = _evaluate_round_attempt(
                 attempt,

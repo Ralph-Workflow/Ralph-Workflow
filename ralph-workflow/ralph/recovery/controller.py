@@ -454,11 +454,29 @@ _assert_never_exit_invariant()
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
+    from ralph.pipeline.conflict_resolution.attempt_fault import ConflictAttemptOutcome
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentChainConfig, PipelinePolicy, PolicyBundle
     from ralph.recovery.unavailability_reason import UnavailabilityReason
     from ralph.workspace.probe import WorkspaceChangeProbe
+
+
+def _typed_conflict_attempt_reason(
+    outcome: ConflictAttemptOutcome,
+    unresolved_count: int,
+) -> str:
+    """Return the human-readable reason for a typed conflict-attempt outcome.
+
+    These strings are classifier OUTPUT (diagnostics), never classifier
+    input: they are composed from the typed outcome and observed counts,
+    not re-matched from prose.
+    """
+    if outcome.value == "unresolved_remaining":
+        return f"agent reported success but {unresolved_count} conflicted path(s) remain"
+    if outcome.value == "no_activity":
+        return "candidate produced no activity before it exited"
+    return "conflict attempt failed"
 
 
 def _build_exit_failure_effect(*, reason: str) -> Effect:
@@ -1124,15 +1142,53 @@ class RecoveryController:
 
     def classify_conflict_attempt(
         self,
-        raw_failure: BaseException | str,
+        raw_failure: BaseException | str | None,
         *,
         agent: str,
         phase: str = RESOLUTION_DRAIN_NAME,
         connectivity_state: str | None = None,
+        outcome: ConflictAttemptOutcome | None = None,
+        unresolved_count: int = 0,
     ) -> ClassifiedFailure:
-        """Classify a failed conflict-resolution invoke without pipeline state."""
+        """Classify a failed conflict-resolution invoke without pipeline state.
+
+        ``outcome`` carries the typed §11 fact: shapes Ralph itself can
+        describe typed (``UNRESOLVED_REMAINING`` — the resolver exited
+        success while conflicted paths remain — and the launcher-observed
+        ``NO_ACTIVITY`` / ``ATTEMPT_FAILED`` shapes) bypass the text
+        classifier entirely and return a typed :class:`ClassifiedFailure`,
+        so Ralph-authored prose can never fall through to AMBIGUOUS.
+        Only genuinely unrecognised EXTERNAL output takes the ``RAW``
+        default through the text classifier. ``unresolved_count`` is the
+        observed on-disk count for ``UNRESOLVED_REMAINING``.
+        """
+        from ralph.pipeline.conflict_resolution.attempt_fault import (
+            ConflictAttemptOutcome,
+        )
+
+        effective = outcome if outcome is not None else ConflictAttemptOutcome.RAW
+        if effective is not ConflictAttemptOutcome.RAW:
+            reason = _typed_conflict_attempt_reason(effective, unresolved_count)
+            logger.info(
+                "conflict_resolution: typed attempt outcome '{}' for agent '{}' "
+                "in phase '{}': {}",
+                effective.value,
+                agent,
+                phase,
+                reason,
+            )
+            return ClassifiedFailure(
+                category=FailureCategory.AGENT,
+                reason=reason,
+                attributed_agent=agent,
+                attributed_phase=phase,
+                counts_against_budget=False,
+                original_exception=raw_failure if isinstance(raw_failure, BaseException) else None,
+                raw_message="" if raw_failure is None else str(raw_failure),
+            )
+        raw_text: BaseException | str = raw_failure if raw_failure is not None else ""
         return self._classifier.classify(
-            raw_failure, phase=phase, agent=agent, connectivity_state=connectivity_state
+            raw_text, phase=phase, agent=agent, connectivity_state=connectivity_state
         )
 
     def next_conflict_candidate(self, candidates: Sequence[str], *, failed_index: int) -> int:
