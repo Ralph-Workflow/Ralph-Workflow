@@ -71,6 +71,14 @@ from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
 from ralph.workspace.scope import WorkspaceScope
 from tests.test_checkpoint_and_record_persistence_boundary import _InMemoryBackend
 
+# Exercises ACTUAL entry points (_run_inner_loop and friends), which spawn
+# real managed git probes (~30 subprocesses in the heaviest test) against
+# the temporary workspace. The default 1s per-test wall is scheduling-
+# starvation-sensitive under pytest-xdist on a loaded host (observed
+# SIGALRM expiry at 1.10s wall for ~0.5s of work). Same budget as the other
+# git-spawning recovery module (tests/test_commit_detached_head_recovery.py).
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 def _small_policy() -> PipelinePolicy:
     return PipelinePolicy(
