@@ -1275,7 +1275,10 @@ def _resolve_recovery_controller(
     if recovery_controller_factory is not None:
         controller, _ = recovery_controller_factory(state, policy_bundle, config)
         return controller
-    controller, _ = _build_recovery_controller(state, policy_bundle, config)
+    # The default builder restores the ledger from the checkpoint's
+    # ledger_snapshot; only the clock is injectable (default SystemClock).
+    default_clock = pipeline_deps.recovery_clock if pipeline_deps is not None else None
+    controller, _ = _build_recovery_controller(state, policy_bundle, config, clock=default_clock)
     return controller
 
 
@@ -4722,6 +4725,42 @@ def _execute_with_cleanup(
     return exit_code
 
 
+def _run_startup_sequence(pipeline_deps: PipelineDeps | None) -> WorkspaceScope | None:
+    """Run the startup collaborator sequence; return the workspace scope.
+
+    Each collaborator resolves through the standard DI precedence: an
+    explicitly injected ``pipeline_deps`` field wins; when the field is
+    ``None`` the runner module's production function is called directly —
+    the exact pre-seam call, in the same order. Returns ``None`` when the
+    custom-MCP-servers validation fails (the caller exits with code 1).
+    """
+    if pipeline_deps is None:
+        workspace_scope = _runner_module.resolve_workspace_scope()
+        _runner_module.write_start_commit_if_absent(workspace_scope.root)
+        validator: Callable[[Path], int] = _runner_module.validate_custom_mcp_servers
+    else:
+        resolve_scope = (
+            pipeline_deps.resolve_workspace_scope_fn
+            if pipeline_deps.resolve_workspace_scope_fn is not None
+            else _runner_module.resolve_workspace_scope
+        )
+        write_start_commit = (
+            pipeline_deps.write_start_commit_fn
+            if pipeline_deps.write_start_commit_fn is not None
+            else _runner_module.write_start_commit_if_absent
+        )
+        validator = (
+            pipeline_deps.validate_custom_mcp_servers_fn
+            if pipeline_deps.validate_custom_mcp_servers_fn is not None
+            else _runner_module.validate_custom_mcp_servers
+        )
+        workspace_scope = resolve_scope(None)
+        write_start_commit(workspace_scope.root)
+    if validator(workspace_scope.root) != 0:
+        return None
+    return workspace_scope
+
+
 def run(
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
@@ -4795,9 +4834,8 @@ def run(
     Returns:
         Exit code (0 for success, non-zero for failure).
     """
-    workspace_scope = _runner_module.resolve_workspace_scope()
-    _runner_module.write_start_commit_if_absent(workspace_scope.root)
-    if _runner_module.validate_custom_mcp_servers(workspace_scope.root) != 0:
+    workspace_scope = _run_startup_sequence(pipeline_deps)
+    if workspace_scope is None:
         return 1
 
     if pipeline_deps is not None and (

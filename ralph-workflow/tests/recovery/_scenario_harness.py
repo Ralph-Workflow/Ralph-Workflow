@@ -68,7 +68,7 @@ from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
-    from ralph.agents.invoke._types import InvokeOptions
+    from ralph.agents.invoke import InvokeOptions
     from ralph.display.context import DisplayContext
     from ralph.pipeline.factory import PipelineDeps
 

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from ralph.agents.invoke._types import InvokeOptions
+    from ralph.agents.invoke import InvokeOptions
     from ralph.config.agent_config import AgentConfig
 
 

@@ -9,18 +9,18 @@ from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING
-from unittest.mock import patch
 
 import pytest
 from loguru import logger
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import Verbosity
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.phases import register_role_handlers
 from ralph.phases.execution import record_workspace_snapshot
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline import checkpoint, run_loop
-from ralph.pipeline import runner as runner_module
 from ralph.recovery.failure_category import FailureCategory
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from ralph.agents.invoke._types import InvokeOptions
+    from ralph.agents.invoke import InvokeOptions
     from ralph.config.agent_config import AgentConfig
 
 
@@ -143,7 +143,9 @@ def test_scenario_4_cooldown_expiry_retries_preferred_agent_with_longer_next_coo
 
     # Assert growing backoff from observable transcript selection logs
     log_text = " ".join(outcome.logs)
-    matches = [int(m) for m in re.findall(r"skipped agent_a: cooldown \((\d+)ms", log_text)]
+    cooldown_re: re.Pattern[str] = re.compile(r"skipped agent_a: cooldown \((\d+)ms")
+    cooldown_matches: list[str] = cooldown_re.findall(log_text)
+    matches = [int(m) for m in cooldown_matches]
     distinct_cooldowns: list[int] = []
     for m in matches:
         if not distinct_cooldowns or m != distinct_cooldowns[-1]:
@@ -339,11 +341,13 @@ def test_scenario_9_restart_preserves_remaining_attempts_across_resumption(
     # Second run: resume through the PRODUCTION restoration path. No
     # controller and no recovery_controller_factory are injected, so
     # run_loop.run's own _build_recovery_controller rebuilds the
-    # AgentFailureLedger from the loaded checkpoint's ledger_snapshot.
+    # AgentFailureLedger from the loaded checkpoint's ledger_snapshot. The
+    # startup collaborators and the recovery clock arrive through the
+    # supported PipelineDeps boundary — no production symbol is patched.
     workspace = FsWorkspace(tmp_path)
     _seed_valid_plan(workspace)
     bundle = _build_policy_bundle(("agent_a", "agent_b"))
-    runner_module.register_role_handlers(bundle.pipeline)
+    register_role_handlers(bundle.pipeline)
 
     invocations_run_2: list[str] = []
 
@@ -372,6 +376,11 @@ def test_scenario_9_restart_preserves_remaining_attempts_across_resumption(
         }
     )
 
+    # The resumed run's clock continues from where run 1's fake clock left
+    # off, so any cooldown timestamps persisted in the ledger snapshot are
+    # expired at resume — exactly what the production SystemClock guarantees.
+    resume_clock = FakeClock(start=outcome_run_1.clock.monotonic())
+
     deps = make_test_pipeline_deps(
         make_display_context(),
         policy_bundle=bundle,
@@ -379,6 +388,10 @@ def test_scenario_9_restart_preserves_remaining_attempts_across_resumption(
         artifact_requirements_resolver=resolve_phase_required_artifact,
         recovery_controller_factory=None,  # run_loop must build its own controller
         invoke_agent=fake_invoke_agent,
+        resolve_workspace_scope_fn=lambda _start: WorkspaceScope(tmp_path),
+        write_start_commit_fn=lambda _root: None,
+        validate_custom_mcp_servers_fn=lambda _root: 0,
+        recovery_clock=resume_clock,
     )
 
     captured_logs: list[str] = []
@@ -388,20 +401,12 @@ def test_scenario_9_restart_preserves_remaining_attempts_across_resumption(
 
     sink_id = logger.add(log_sink, level="DEBUG")
     try:
-        with (
-            patch(
-                "ralph.pipeline.runner.resolve_workspace_scope",
-                return_value=WorkspaceScope(tmp_path),
-            ),
-            patch("ralph.pipeline.runner.write_start_commit_if_absent"),
-            patch("ralph.pipeline.runner.validate_custom_mcp_servers", return_value=0),
-        ):
-            exit_code = run_loop.run(
-                config,
-                initial_state=loaded_state,
-                pipeline_deps=deps,
-                verbosity=Verbosity.QUIET,
-            )
+        exit_code = run_loop.run(
+            config,
+            initial_state=loaded_state,
+            pipeline_deps=deps,
+            verbosity=Verbosity.QUIET,
+        )
     finally:
         logger.remove(sink_id)
 

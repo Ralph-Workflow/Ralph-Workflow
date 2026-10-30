@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from datetime import timedelta
     from pathlib import Path
 
+    from ralph.agents.clock import Clock
     from ralph.agents.invoke._types import InvokeOptions
     from ralph.config.enums import AgentTransport
     from ralph.config.models import AgentConfig, UnifiedConfig
@@ -248,6 +249,25 @@ class PipelineCore:
 _UNSET: object = object()
 
 
+def _assign_startup_seam_fields(
+    deps: PipelineDeps,
+    *,
+    resolve_workspace_scope_fn: Callable[[Path | str | None], WorkspaceScope] | None,
+    write_start_commit_fn: Callable[[Path], None] | None,
+    validate_custom_mcp_servers_fn: Callable[[Path], int] | None,
+    recovery_clock: Clock | None,
+) -> None:
+    """Assign the opt-in run-startup seam fields on a ``PipelineDeps``.
+
+    Extracted from ``PipelineDeps.__init__`` so the constructor stays under
+    the ruff branch/statement caps as the seam grows.
+    """
+    object.__setattr__(deps, "resolve_workspace_scope_fn", resolve_workspace_scope_fn)
+    object.__setattr__(deps, "write_start_commit_fn", write_start_commit_fn)
+    object.__setattr__(deps, "validate_custom_mcp_servers_fn", validate_custom_mcp_servers_fn)
+    object.__setattr__(deps, "recovery_clock", recovery_clock)
+
+
 @dataclasses.dataclass(frozen=True, init=False)
 class PipelineDeps:
     """Injectable dependency bundle for the pipeline and plumbing commands.
@@ -321,6 +341,20 @@ class PipelineDeps:
     # a fake clock for deterministic boundary verification.
     monotonic: Callable[[], float] = time.monotonic
     wall_time: Callable[[], float] = time.time
+    # Injectable run-startup collaborators (all ``None`` by default). When a
+    # field is ``None``, ``run_loop.run`` falls back to the runner module's
+    # production function — the exact pre-seam call — so production behavior
+    # and legacy patch-based callers are unchanged. Tests inject fakes here
+    # to drive ``run_loop.run`` black-box without patching production module
+    # symbols.
+    resolve_workspace_scope_fn: Callable[[Path | str | None], WorkspaceScope] | None = None
+    write_start_commit_fn: Callable[[Path], None] | None = None
+    validate_custom_mcp_servers_fn: Callable[[Path], int] | None = None
+    # Injectable monotonic clock for the recovery controller that the run
+    # loop builds itself on resume. ``None`` keeps the production default
+    # (``SystemClock`` inside ``_build_recovery_controller``); the ledger
+    # restoration from the checkpoint's ``ledger_snapshot`` is unchanged.
+    recovery_clock: Clock | None = None
 
     def __init__(
         self,
@@ -364,6 +398,10 @@ class PipelineDeps:
         invoke_agent: InvokeAgentFn = _default_invoke_agent,
         monotonic: Callable[[], float] = time.monotonic,
         wall_time: Callable[[], float] = time.time,
+        resolve_workspace_scope_fn: Callable[[Path | str | None], WorkspaceScope] | None = None,
+        write_start_commit_fn: Callable[[Path], None] | None = None,
+        validate_custom_mcp_servers_fn: Callable[[Path], int] | None = None,
+        recovery_clock: Clock | None = None,
     ) -> None:
         core_overrides: dict[str, object] = {}
         if display_context is not _UNSET:
@@ -485,6 +523,13 @@ class PipelineDeps:
         object.__setattr__(self, "invoke_agent", invoke_agent)
         object.__setattr__(self, "monotonic", monotonic)
         object.__setattr__(self, "wall_time", wall_time)
+        _assign_startup_seam_fields(
+            self,
+            resolve_workspace_scope_fn=resolve_workspace_scope_fn,
+            write_start_commit_fn=write_start_commit_fn,
+            validate_custom_mcp_servers_fn=validate_custom_mcp_servers_fn,
+            recovery_clock=recovery_clock,
+        )
 
     @property
     def display_context(self) -> DisplayContext:

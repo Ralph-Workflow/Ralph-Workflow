@@ -28,6 +28,7 @@ from ralph.recovery.testing import FakeConnectivityMonitor
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.agents.clock import Clock
     from ralph.config.enums import AgentTransport
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
@@ -43,6 +44,7 @@ if TYPE_CHECKING:
     )
     from ralph.pro_support.state_query import SnapshotRegistry
     from ralph.prompts.materialize import PromptPhaseContext, PromptPhaseOptions
+    from ralph.workspace.scope import WorkspaceScope
 
 
 class _FakeBridge:
@@ -224,6 +226,10 @@ def make_test_pipeline_deps(
     snapshot_registry: SnapshotRegistry | None = None,
     process_teardown: Callable[[], None] | None = None,
     invoke_agent: InvokeAgentFn | None = None,
+    resolve_workspace_scope_fn: Callable[[Path | str | None], WorkspaceScope] | None = None,
+    write_start_commit_fn: Callable[[Path], None] | None = None,
+    validate_custom_mcp_servers_fn: Callable[[Path], int] | None = None,
+    recovery_clock: Clock | None = None,
 ) -> PipelineDeps:
     """Build a ``PipelineDeps`` suitable for fast, deterministic tests."""
     deps = PipelineDeps(
@@ -261,6 +267,16 @@ def make_test_pipeline_deps(
         deps = dataclasses.replace(deps, snapshot_registry=snapshot_registry)
     if invoke_agent is not None:
         deps = dataclasses.replace(deps, invoke_agent=invoke_agent)
+    if resolve_workspace_scope_fn is not None:
+        deps = dataclasses.replace(deps, resolve_workspace_scope_fn=resolve_workspace_scope_fn)
+    if write_start_commit_fn is not None:
+        deps = dataclasses.replace(deps, write_start_commit_fn=write_start_commit_fn)
+    if validate_custom_mcp_servers_fn is not None:
+        deps = dataclasses.replace(
+            deps, validate_custom_mcp_servers_fn=validate_custom_mcp_servers_fn
+        )
+    if recovery_clock is not None:
+        deps = dataclasses.replace(deps, recovery_clock=recovery_clock)
     return deps
 
 
