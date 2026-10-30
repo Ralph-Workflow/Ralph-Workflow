@@ -6,9 +6,13 @@ already typed in the driver (``ResolutionFailureCause.UNRESOLVED_CONFLICT``,
 ``ResolutionTerminationReason.RESOLUTION_INCOMPLETE``); the owner must be
 handed a typed fact, not a prose sentence to re-match. Post-fix:
 
-* the failure classifies as ``FailureCategory.AGENT`` (budget-debited, not a
-  free retry) with the typed reason
-  ``"agent reported success but {N} conflicted path(s) remain"``;
+* the failure classifies as ``FailureCategory.AGENT`` — not a free retry,
+  not ambiguous — with the typed reason
+  ``"agent reported success but {N} conflicted path(s) remain"``; the typed
+  classification does not debit the classified retry budget
+  (``counts_against_budget=False``), while the ledger's SEPARATE
+  unproductive-attempt accounting still accrues the attempt toward the
+  consecutive (3) and total (9) limits;
 * nothing is logged as ambiguous or "flagged for review";
 * progress is a fact: an attempt after which the unresolved count dropped (or
   the workspace probe changed) restarts the consecutive-unproductive streak;
@@ -31,7 +35,9 @@ raised exception alike), and hands the ledger
 ``workspace_changed=(probe_changed or count_dropped)`` on every branch, so
 a count drop restarts only the consecutive streak while the total still
 accrues. D3/D4 prove the exception and false-return branches carry
-``count_dropped`` progress; D1 pins the RAW/external bounding that must not
+``count_dropped`` progress; D5 proves the active-failed-outcome repair
+decision reuses that same single observation instead of scanning the
+worktree a second time; D1 pins the RAW/external bounding that must not
 change.
 """
 
@@ -55,6 +61,7 @@ from ralph.pipeline.conflict_resolution.driver import (
 )
 from ralph.pipeline.conflict_resolution.prompt import PromptMaterializer
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
+from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import (
     ResolutionSession,
     ResolutionTerminationReason,
@@ -65,12 +72,12 @@ from ralph.pipeline.conflict_resolution.worktree_observer import (
     WorktreeConflictObserver,
 )
 from ralph.pipeline.integration_actions import install_executors, reset_executors
+from ralph.pipeline.rebase_state import ResolutionFailureCause
 from ralph.policy.loader import default_dir, load_policy
 from ralph.policy.models import AgentChainConfig
 from tests._resolver_controller import make_resolver_controller
 
 if TYPE_CHECKING:
-    from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
     from ralph.policy.models import PolicyBundle
 
 #: The 6 paths the §11 incident observed staying conflicted every round.
@@ -232,12 +239,15 @@ class _AttemptStep:
     an exception whose text is genuinely unrecognised external output —
     the external half of the §11.4 rewording proof. ``report_success=False``
     scripts a bare unsuccessful return (the generic attempt-failed shape)
-    instead of the default success claim.
+    instead of the default success claim. ``active_failure=True`` scripts a
+    failed :class:`ResolutionOutcome` that still reports agent activity
+    (the §11.11 active-failure shape) instead of a bare return.
     """
 
     surviving: tuple[str, ...] | None = None
     raw_error: str | None = None
     report_success: bool = True
+    active_failure: bool = False
 
 
 class _ScriptedRunner:
@@ -254,7 +264,9 @@ class _ScriptedRunner:
         self._invocations = invocations
         self._attempts: dict[str, int] = {}
 
-    def __call__(self, agent_name: str, prompt_path: Path, round_index: int) -> bool:
+    def __call__(
+        self, agent_name: str, prompt_path: Path, round_index: int
+    ) -> ResolutionOutcome | bool:
         del prompt_path, round_index
         self._invocations.append(agent_name)
         attempt_number = self._attempts.get(agent_name, 0)
@@ -265,6 +277,16 @@ class _ScriptedRunner:
             self._observer.surviving = step.surviving
         if step.raw_error is not None:
             raise RuntimeError(step.raw_error)
+        if step.active_failure:
+            return ResolutionOutcome(
+                succeeded=False,
+                reason=ResolutionTerminationReason.EXCEPTION,
+                duration_seconds=30.0,
+                last_activity_kind="tool_call",
+                last_activity_at=1.0,
+                unresolved_paths=(),
+                failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+            )
         return step.report_success
 
 
@@ -846,6 +868,47 @@ def test_D4_false_return_with_count_drop_restarts_the_streak(
         "exactly ONE unresolved-set observation must precede each attempt's "
         f"classification/ledger charge; got {len(observer.marker_scans)} scans "
         f"for {len(invocations)} invocations"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Scenario D5 — an active FAILED outcome whose attempt repaired the worktree:
+# the repair decision reuses the single observed set, never a second scan
+# ---------------------------------------------------------------------------
+
+
+def test_D5_active_failed_outcome_reuses_the_single_observation_for_repair(
+    tmp_path: Path, frozen_clock: _FrozenSleepClock
+) -> None:
+    """§11.11/analysis WU-1: an active failed ``ResolutionOutcome`` that
+    reported activity must not trigger a second unresolved-set scan.
+
+    The analysis reproduction (2026-10-29) drove this shape through the
+    public seam and observed ``INVOCATIONS 3 SCANS 6``: the per-attempt
+    observation ran, then ``_check_worktree_repair`` invoked
+    ``worktree_resolved`` — a fresh observer scan — leaving a
+    time-of-check/time-of-use gap between the fact that decided health
+    and the fact that decided repair. The repair decision must ride on
+    the SAME single observation, so one invocation accounts for exactly
+    one scan, and the worktree-repair acceptance still lands.
+    """
+    observer = _ScriptedObserver(_CONFLICTED)
+    outcome, invocations, _, _session = _drive_captured(
+        tmp_path,
+        candidates=("agentA",),
+        scripts={"agentA": (_AttemptStep(surviving=(), active_failure=True),)},
+        observer=observer,
+        clock=frozen_clock,
+    )
+
+    assert outcome.succeeded is True
+    assert invocations == ["agentA"], (
+        f"the repaired worktree must end the stop in one attempt; got {invocations}"
+    )
+    assert len(observer.marker_scans) == len(invocations), (
+        "exactly ONE unresolved-set observation must serve both the "
+        "classification/ledger charge and the repair decision; got "
+        f"{len(observer.marker_scans)} scans for {len(invocations)} invocations"
     )
 
 

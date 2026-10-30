@@ -418,7 +418,9 @@ def _run_one_round(
 
     A successful candidate does not advance priority. Cooldowns survive
     rounds and stops; the controller selects again before every invocation.
-    ``worktree_resolved`` rechecks repairs after an unsuccessful attempt.
+    ``worktree_resolved`` decides the post-attempt worktree-repair from the
+    SAME single observed set stored in ``session.unresolved_paths`` — it
+    must not rescan the worktree (analysis WU-1).
     ``observe_unresolved`` observes the round-level unresolved set through
     the injected observer; EVERY outcome branch uses it exactly ONCE
     BEFORE charging the ledger so a count drop counts as progress

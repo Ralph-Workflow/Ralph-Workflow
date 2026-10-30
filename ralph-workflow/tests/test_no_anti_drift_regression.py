@@ -628,6 +628,12 @@ class TestFailureClassifierOwnership:
             pathlib.Path("ralph/agents/invoke/_direct_mcp_recovery.py"),
             pathlib.Path("ralph/agents/invoke/_completion.py"),
             pathlib.Path("ralph/pipeline/agent_retry_decision.py"),
+            # The single-owner guard itself constructs ``FailureClassifier``
+            # instances to verify provenance shapes of classification
+            # inputs (§11 fix, U2); the guard is an authorized test-only
+            # site, not a second production decision-maker.
+            pathlib.Path("ralph/testing/audit_agent_failure_single_owner.py"),
+            pathlib.Path("ralph/testing/_single_owner_rules.py"),
         }
         # Test files (tests/recovery/, tests/test_recovery_*) may also construct
         # FailureClassifier to test its behavior — that is a legitimate test site.

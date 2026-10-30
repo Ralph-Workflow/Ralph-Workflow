@@ -1215,6 +1215,13 @@ ralph.pipeline.conflict_resolution.status
    :members:
    :show-inheritance:
 
+ralph.pipeline.conflict_resolution.worktree_observer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.worktree_observer
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.conflict_resolution.session
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

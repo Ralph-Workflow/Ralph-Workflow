@@ -557,7 +557,15 @@ def _execute_round_loop(
                 display,
                 session,
                 policy_bundle,
-                worktree_resolved=lambda: not decision_paths and not _unresolved(),
+                # The repair decision rides on the SAME single observation
+                # that preceded the attempt's classify/ledger charge:
+                # ``observe_unresolved`` (passed alongside) has already
+                # stored the post-attempt unresolved set in
+                # ``session.unresolved_paths`` before ``_check_worktree_repair``
+                # runs, so no second observer scan happens here and the
+                # health fact and the repair fact can never diverge
+                # (analysis WU-1, §11 Design item 4).
+                worktree_resolved=lambda: not decision_paths and not session.unresolved_paths,
                 observe_unresolved=_unresolved,
             )
             # The per-attempt observation boundary already ran INSIDE

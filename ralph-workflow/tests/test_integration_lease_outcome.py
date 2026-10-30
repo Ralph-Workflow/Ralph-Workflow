@@ -74,10 +74,19 @@ def test_lock_open_io_error_is_unknown_lock_io_error(
 
     real_open = Path.open
 
-    def _raise(self: Path, *args: object, **kwargs: object) -> object:
+    def _raise(
+        self: Path,
+        mode: str = "r",
+        buffering: int = -1,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> object:
         if self.name == "ralph-auto-integrate.lock":
             raise OSError(13, "Permission denied")
-        return real_open(self, *args, **kwargs)  # type: ignore[arg-type]
+        return real_open(
+            self, mode, buffering=buffering, encoding=encoding, errors=errors, newline=newline
+        )
 
     monkeypatch.setattr(Path, "open", _raise)
     with integration_transaction(tmp_path) as outcome:
