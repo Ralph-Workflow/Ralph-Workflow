@@ -97,8 +97,8 @@ cannot be combined with one another. Each one overrides an explicit `-D`.
 | `--quick` | `-Q` | `False` | Quick mode: one developer iteration |
 | `--long` | `-L` | `False` | Long mode: five developer iterations |
 | `--thorough` | `-T` | `False` | Thorough mode: ten developer iterations |
-| `--developer-agent <name>` | `-a` | (from config) | Override the developer agent by name |
-| `--developer-model <flag>` | | (from config) | Forward a model flag to the developer agent binary |
+| `--developer-agent <name>` | `-a` | (from config) | Run the developer role on this agent only (the `development` drain is pinned to it; configured fallbacks are dropped) |
+| `--developer-model <model>` | | (from config) | Run the developer role as `<agent>/<model>`, where `<agent>` is `-a` or else the first configured developer agent |
 
 ## Execution control
 

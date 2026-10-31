@@ -78,6 +78,9 @@ _MIN_CHECK_SECONDS = 0.01
 #: Gap between re-raises of an overrun the handler could not deliver
 #: (swallowed, or the main thread was not running Python code).
 _RETRY_SECONDS = 0.25
+#: How long the watchdog sleeps between phases before re-checking; ``arm``
+#: wakes it at once, so this only bounds a wait that nothing ends.
+_IDLE_WAKE_SECONDS = 60.0
 _SIGNAL = signal.SIGPROF
 # Bound now: tests monkeypatch ``signal``/``time`` attributes during setup,
 # and the budget must keep reading the real ones.
@@ -228,7 +231,7 @@ class _Watchdog:
             while True:
                 phase = self._phases[-1] if self._phases else None
                 if phase is None:
-                    self._condition.wait()
+                    self._condition.wait(_IDLE_WAKE_SECONDS)
                     continue
                 delay = phase.next_check - _monotonic()
                 if delay > 0:
@@ -259,10 +262,12 @@ def phase_budget(label: str, budget: float) -> Generator[None, None, None]:
     except TestExecutionTimeoutError:
         _WATCHDOG.disarm(phase)
         raise
-    except BaseException:
+    except BaseException as exc:
+        # An overrun that code under test swallowed outranks whatever the
+        # block raised afterwards; the original stays attached as the cause.
         failure = _WATCHDOG.disarm(phase)
         if failure is not None and phase.overrun is not None:
-            raise TestExecutionTimeoutError(failure) from None
+            raise TestExecutionTimeoutError(failure) from exc
         raise
     failure = _WATCHDOG.disarm(phase)
     if failure is not None:

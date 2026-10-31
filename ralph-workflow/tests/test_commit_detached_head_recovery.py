@@ -15,6 +15,11 @@ from typing import TYPE_CHECKING
 import pytest
 from git import Actor, Repo
 
+from ralph.pipeline._commit_reattach_fallback import (
+    create_fresh_branch_for_detached,
+    fast_forward_reattach,
+    occupied_worktree_branches,
+)
 from ralph.pipeline.commit_executor import execute_commit_effect, set_last_commit_error
 from ralph.pipeline.commit_state import CommitState
 from ralph.pipeline.effects import CommitEffect
@@ -426,7 +431,6 @@ def test_collision_handling_at_divergent_sha_uses_collision_safe_name(
     tmp_path: Path,
 ) -> None:
     """AC10: When candidate branch exists at a divergent SHA, fresh branch uses collision-safe name and does not overwrite."""
-    from ralph.pipeline._commit_reattach_fallback import create_fresh_branch_for_detached
 
     def _local_branch_exists(root: Path, branch_name: str) -> bool:
         return branch_name in Repo(root).heads
@@ -492,11 +496,6 @@ def test_failed_worktree_query_blocks_fast_forward_of_possibly_occupied_branch(
     fallback must not move the candidate ref and every candidate counts as
     occupied.
     """
-    from ralph.pipeline._commit_reattach_fallback import (
-        fast_forward_reattach,
-        occupied_worktree_branches,
-    )
-
     repo_root = tmp_path / "repo"
     repo = _make_test_repo(repo_root, "feature/work")
     feature_sha = repo.heads["feature/work"].commit.hexsha

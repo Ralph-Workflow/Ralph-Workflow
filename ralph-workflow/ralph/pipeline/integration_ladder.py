@@ -114,6 +114,7 @@ __all__ = [
     "last_resort_recovery",
     "preserve_via_temp_index",
     "quarantine_and_restore",
+    "reap_worktree_stale_locks",
     "rebuild_in_fresh_worktree",
     "record_salvage_attempt",
     "resume_rung",
@@ -856,6 +857,19 @@ def default_git_plumbing() -> GitPlumbing:
     from ralph.pipeline._integration_ladder_adapters import _ProductionGitPlumbing
 
     return _ProductionGitPlumbing()
+
+
+def reap_worktree_stale_locks(git_dir: Path, common_dir: Path) -> tuple[str, ...]:
+    """Remove the provably orphaned git locks of ONE worktree; return those removed.
+
+    The production rung-6 lock removal: only this worktree's private git
+    dir and the common dir's shared top-level and ref locks are
+    considered (never a sibling linked worktree's), and each lock must
+    pass the shared stale-lock reaper's age, liveness and identity gates.
+    """
+    from ralph.pipeline._integration_ladder_adapters import reap_ladder_stale_locks
+
+    return reap_ladder_stale_locks(git_dir, common_dir)
 
 
 def default_file_quarantine() -> FileQuarantine:

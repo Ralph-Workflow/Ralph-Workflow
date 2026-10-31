@@ -442,9 +442,7 @@ def test_run_verify_charges_orphaned_descendant_cpu_to_the_suite(
         def __exit__(self, *exc_info: object) -> None:
             self.orphaned_cpu_seconds = next(orphaned)
 
-    exit_code = verify_module.run_verify(
-        cwd=tmp_path, runner=host, orphan_tracker=lambda: _Tracker()
-    )
+    exit_code = verify_module.run_verify(cwd=tmp_path, runner=host, orphan_tracker=_Tracker)
     captured = capsys.readouterr()
     assert exit_code == TIMEOUT_EXIT_CODE
     assert "suite CPU 700.0 / 600.0 core-s" in captured.out

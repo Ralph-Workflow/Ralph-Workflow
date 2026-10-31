@@ -67,10 +67,9 @@ if TYPE_CHECKING:
         ) -> ShardProcess: ...
 
 
-# The 1.0 s per-test ITIMER_REAL budget charges wall clock. Each shard runs
-# pytest with xdist (``-n N`` per shard) so the in-shard wall clock scales
-# with the host's per-shard worker budget rather than with the count of
-# files in the shard. The default profile uses one plain pytest process per
+# Each shard is one pytest process (in-shard xdist is opt-in, see
+# ``_xdist_workers_per_shard``), so a shard's wall clock scales with the
+# files it is given. The default profile uses one plain pytest process per
 # shard. Operators may override ``PYTEST_WORKERS`` for smaller hosts.
 _PYTEST_SHARD_PROCESS_MANAGER = ProcessManager(
     policy=ProcessManagerPolicy(log_events=False, enable_zombie_reaper=False)

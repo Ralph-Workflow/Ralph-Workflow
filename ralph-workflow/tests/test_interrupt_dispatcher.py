@@ -1270,6 +1270,16 @@ def test_async_dispatcher_synthesis_threads_kill_process_group_and_hard_exit(
 
 
 @pytest.mark.subprocess_e2e
+class _ExitsOnGracefulShutdown(FakeProcessManager):
+    """A fake whose agents exit when the graceful label shutdown reaches them."""
+
+    def shutdown_all_for_label(
+        self, label_prefix: str, *, grace_period_s: float | None = None
+    ) -> None:
+        super().shutdown_all_for_label(label_prefix, grace_period_s=grace_period_s)
+        self.drain()
+
+
 def test_async_install_signal_handlers_3arg_call_path_controller_none_branch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1285,7 +1295,12 @@ def test_async_install_signal_handlers_3arg_call_path_controller_none_branch(
     a FakeProcessManager that owns the active record.
     """
     os_exit_calls: list[tuple[int, ...]] = []
-    manager = FakeProcessManager()
+    # The agent honours the first SIGINT's graceful label shutdown and exits,
+    # so the shutdown block drains instead of running out its grace period
+    # and force-exiting. (The plain fake never lets a record exit; this test
+    # only "passed" while the per-test timeout fired inside that wait and the
+    # bridge swallowed it.)
+    manager = _ExitsOnGracefulShutdown()
     manager.add_active(pid=_PID, pgid=_PGID, label="invoke:fake")
 
     def _fake_os_exit(code: int) -> None:

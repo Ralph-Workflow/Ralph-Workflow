@@ -85,6 +85,20 @@ class ManagedAsyncProcess:
             self._manager._mark_exited(self._record, rc)
         return rc
 
+    async def wait_supervised(self) -> int:
+        """Wait for the process to exit, however long it runs.
+
+        :meth:`wait` caps the wait at ``PROCESS_EXIT_WAIT_SECONDS`` because it
+        is meant for an exit that is already due (after a terminate). A caller
+        waiting out a whole agent run must not inherit that cap -- it would
+        fail every agent that works longer -- so it uses this method and
+        bounds the run itself, e.g. with the idle watchdog's teardown.
+        """
+        rc = await self._proc.wait()  # mcp-timeout-ok: run length bounded by the caller's watchdog
+        if self._record.status not in _TERMINAL_STATUSES:
+            self._manager._mark_exited(self._record, rc)
+        return rc
+
     async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
         try:
             comm_result = await asyncio.wait_for(

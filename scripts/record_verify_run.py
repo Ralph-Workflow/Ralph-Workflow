@@ -45,9 +45,11 @@ import re
 import subprocess
 import sys
 import time
-from collections.abc import Callable
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = WORKSPACE_ROOT / "ralph-workflow"

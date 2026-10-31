@@ -242,7 +242,7 @@ class SubprocessAgentExecutor:
         every fire path), so a healthy-but-slow agent is not killed by a hard
         ceiling.
         """
-        wait_task = asyncio.create_task(handle.wait())  # mcp-timeout-ok: idle-wd-bounded
+        wait_task = asyncio.create_task(handle.wait_supervised())  # mcp-timeout-ok: idle-wd-bounded
         try:
             await _until_root_exit(handle, drain_task, wait_task)
             if not drain_task.done():
