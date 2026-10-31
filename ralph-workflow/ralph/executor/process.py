@@ -184,7 +184,20 @@ async def run_process_async(
         done, _pending = await asyncio.wait({communicate_task}, timeout=timeout)
         if communicate_task not in done:
             await handle.terminate(grace_period_s=0)
-            stdout_bytes, stderr_bytes = await communicate_task
+            # terminate() only reaches the psutil-enumerated tree; a
+            # daemonized descendant still in the child's group keeps the
+            # pipes open, so sweep the group before draining them.
+            _reap_subtree(child_pid, child_pgid, label=effective_label)
+            # Bounded like the sync drain: a wedged child must not make the
+            # caller's ``timeout`` unmeetable.
+            drained, _ = await asyncio.wait(
+                {communicate_task}, timeout=_POST_TERMINATE_DRAIN_SECONDS
+            )
+            if communicate_task in drained:
+                stdout_bytes, stderr_bytes = communicate_task.result()
+            else:
+                communicate_task.cancel()
+                stdout_bytes, stderr_bytes = b"", b""
             # Return exit code TIMEOUT_EXIT_CODE on timeout (standard unix timeout exit code)
             # instead of raising an exception, so callers can handle it gracefully
             return ProcessResult(
@@ -261,17 +274,23 @@ def run_process(
     child_pgid = _verified_pgid(child_pid)
     try:
         stdout_bytes, stderr_bytes = handle.communicate(timeout=effective_options.timeout)
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as timeout_exc:
         handle.terminate(grace_period_s=0)
+        # terminate() only reaches the psutil-enumerated tree; a daemonized
+        # descendant still in the child's group keeps the pipes open, so the
+        # group sweep must run BEFORE the drain, not only in ``finally``.
+        _reap_subtree(child_pid, child_pgid, label=effective_label)
         # Bound the post-terminate drain so a wedged child (one that ignores
         # SIGKILL, e.g. uninterruptible D-state) cannot hang the caller. The
-        # child has already been escalated to SIGKILL above, so a healthy OS
+        # tree has already been escalated to SIGKILL above, so a healthy OS
         # closes the pipes within milliseconds; the bound only fires in the
-        # pathological case where the OS never reaps the child.
+        # pathological case where the OS never reaps the child. Either way
+        # the output captured so far is kept, never replaced by ``b""``.
         try:
             stdout_bytes, stderr_bytes = handle.communicate(timeout=_POST_TERMINATE_DRAIN_SECONDS)
-        except subprocess.TimeoutExpired:
-            stdout_bytes, stderr_bytes = b"", b""
+        except subprocess.TimeoutExpired as drain_exc:
+            stdout_bytes = _partial_output(drain_exc, timeout_exc, "output")
+            stderr_bytes = _partial_output(drain_exc, timeout_exc, "stderr")
         # Return exit code TIMEOUT_EXIT_CODE on timeout (standard unix timeout exit code)
         # instead of raising an exception, so callers can handle it gracefully
         return ProcessResult(
@@ -298,6 +317,22 @@ def run_process(
         stdout=_decode_output(stdout_bytes),
         stderr=_decode_output(stderr_bytes),
     )
+
+
+def _partial_output(
+    latest: subprocess.TimeoutExpired, earlier: subprocess.TimeoutExpired, stream: str
+) -> bytes:
+    """Return the most complete partial ``stream`` a pair of timeouts carried.
+
+    ``Popen.communicate`` attaches everything read so far to the
+    ``TimeoutExpired`` it raises, so the later timeout normally holds the
+    superset; the earlier one is the fallback.
+    """
+    for exc in (latest, earlier):
+        captured: object = getattr(exc, stream, None)
+        if isinstance(captured, bytes) and captured:
+            return captured
+    return b""
 
 
 def _normalize_command(command: str, args: Sequence[str]) -> tuple[str, ...]:

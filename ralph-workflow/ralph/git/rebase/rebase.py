@@ -229,9 +229,7 @@ def rebase_onto(
     # cannot keep integration spinning: the same per-call
     # timeout that closes the original rebase closes the loop
     # here too.
-    while (
-        result.returncode != 0 and rebase_in_progress(path) and _rebase_stop_reports_empty(result)
-    ):
+    while result.returncode != 0 and _rebase_stop_is_empty(result, path, executor):
         skip_result = executor.execute("git", ("rebase", "--skip"), cwd=path)
         # A skip that itself succeeded means the empty stop landed
         # and either the replay continues or the rebase finished;
@@ -248,7 +246,7 @@ def rebase_onto(
         # (typically a fresh conflict on the next commit). Stop
         # the empty-stop loop and let ``_rebase_result_from_process``
         # classify the new ``ProcessResult``.
-        if not rebase_in_progress(path) or not _rebase_stop_reports_empty(result):
+        if not _rebase_stop_is_empty(result, path, executor):
             break
 
     return _rebase_result_from_process(result, path, executor)
@@ -263,25 +261,64 @@ def _rename_detection_was_skipped(result: ProcessResult) -> bool:
     )
 
 
+#: The lines git itself prints when a replay stops because the commit is
+#: EMPTY (sequencer, ``git commit`` status, and the apply backend). Each is
+#: matched at the START of a line, never as a substring of the output: git
+#: echoes the replayed commit's SUBJECT inside ``could not apply <sha>...
+#: <subject>`` and the todo hint, so a conflicting commit titled "Fix crash
+#: when the list is empty" read as an empty stop and was ``--skip``-ped out
+#: of history while the rebase reported success.
+_EMPTY_STOP_LINE_PREFIXES: tuple[str, ...] = (
+    "the previous cherry-pick is ",
+    "nothing to commit",
+    "no changes - did you forget to use 'git add'",
+    "no changes -- patch already applied",
+)
+
+#: Severity prefixes git puts in front of a message line.
+_GIT_MESSAGE_PREFIXES: tuple[str, ...] = ("error: ", "fatal: ")
+
+
 def is_empty_rebase_stop(stderr: str, stdout: str) -> bool:
-    """True when a non-zero rebase stop was an "empty" stop, not a conflict.
+    """True when git's output names an "empty commit" stop, not a conflict.
 
-    The signal is the substring that older git prints when it
-    stops to ask whether to drop the commit. A genuine content
-    conflict is reported differently and is left to the
-    index-authoritative ``_rebase_result_from_process`` gate
-    below. The substring check is a heuristic; the index is the
-    authority, and a false positive here costs at most one
-    ``--skip`` invocation on a non-empty commit (which the engine
-    answers by re-entering the loop or failing out as
-    ``RebaseFailed``).
+    Only git's own empty-stop message lines count, matched at the start
+    of a line (after an optional ``error:``/``fatal:`` prefix). A bare
+    substring search over the whole output matched the replayed commit's
+    subject -- git prints it in ``could not apply <sha>... <subject>`` --
+    so a genuine conflict on a commit whose subject said "is empty" was
+    skipped and silently dropped. The text is still only one half of the
+    evidence: the rebase engine answers a stop with ``--skip`` only when
+    the repository state corroborates it (see ``_rebase_stop_is_empty``).
     """
-    payload = f"{stderr}\n{stdout}".lower()
-    return "nothing to commit" in payload or "is empty" in payload
+    for raw_line in f"{stderr}\n{stdout}".splitlines():
+        line = raw_line.strip().lower()
+        for prefix in _GIT_MESSAGE_PREFIXES:
+            line = line.removeprefix(prefix)
+        if line.startswith(_EMPTY_STOP_LINE_PREFIXES):
+            return True
+    return False
 
 
-def _rebase_stop_reports_empty(result: ProcessResult) -> bool:
-    return is_empty_rebase_stop(result.stderr, result.stdout)
+def _rebase_stop_is_empty(result: ProcessResult, path: Path, executor: ProcessExecutor) -> bool:
+    """Whether a paused rebase is provably stopped on an EMPTY commit.
+
+    ``git rebase --skip`` discards the commit being replayed, so it is
+    only ever answered to a stop the repository state proves empty: a
+    rebase is in progress, no path is unmerged, the staged tree equals
+    ``HEAD`` (the replay contributed nothing), and git's own output names
+    an empty stop. A conflict leaves unmerged paths; a pick that git
+    refused (an untracked file in the way) leaves an untouched index but
+    no empty-stop message -- neither is ever skipped.
+    """
+    if not rebase_in_progress(path):
+        return False
+    if not is_empty_rebase_stop(result.stderr, result.stdout):
+        return False
+    if _conflicted_files_if_rebasing(path, executor):
+        return False
+    staged = executor.execute("git", ("diff", "--cached", "--quiet", "HEAD", "--"), cwd=path)
+    return staged.returncode == 0
 
 
 def _validate_rebase_request(

@@ -31,6 +31,7 @@ from ralph.git.merge import (
     observe_branch_sha,
     paths_with_conflict_markers,
     reset_keep,
+    staged_conflict_marker_paths,
     worktree_for_branch,
 )
 
@@ -176,6 +177,33 @@ def test_merge_target_into_current_conflict_aborts_cleanly(tmp_git_repo: Path) -
     assert _run(tmp_git_repo, "diff", "--name-only", "--diff-filter=U").stdout.strip() == ""
     assert _run(tmp_git_repo, "status", "--porcelain").stdout.strip() == ""
     assert _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip() == feature_sha
+
+
+def test_a_resolved_merge_with_an_rst_heading_has_no_staged_markers(tmp_git_repo: Path) -> None:
+    """A target's ``Changes\\n=======`` heading never blocks a resolved merge.
+
+    git's own ``diff --cached --check`` reports that underline as a
+    "leftover conflict marker"; counting it left the merge pending forever.
+    """
+    base = _base_branch(tmp_git_repo)
+    _commit_file(tmp_git_repo, "a.txt", "base\n", "base a")
+    _run(tmp_git_repo, "checkout", "-b", "feature")
+    _commit_file(tmp_git_repo, "a.txt", "feature\n", "feature a")
+    _run(tmp_git_repo, "checkout", base)
+    (tmp_git_repo / "CHANGES.rst").write_text("Changes\n=======\n\n- new\n", encoding="utf-8")
+    _commit_file(tmp_git_repo, "a.txt", "main\n", "main a")
+    _run(tmp_git_repo, "add", "CHANGES.rst")
+    _run(tmp_git_repo, "commit", "-m", "changelog")
+    _run(tmp_git_repo, "checkout", "feature")
+
+    assert merge_target_into_current(tmp_git_repo, base, keep_conflicts=True).outcome == "conflict"
+    (tmp_git_repo / "a.txt").write_text("feature+main\n", encoding="utf-8")
+    _run(tmp_git_repo, "add", "a.txt")
+
+    assert staged_conflict_marker_paths(tmp_git_repo) == []
+    (tmp_git_repo / "a.txt").write_text("<<<<<<< ours\nfeature\n=======\n", encoding="utf-8")
+    _run(tmp_git_repo, "add", "a.txt")
+    assert staged_conflict_marker_paths(tmp_git_repo) == ["a.txt"]
 
 
 def test_reset_keep_restores_branch_to_pre_integration_sha(tmp_git_repo: Path) -> None:

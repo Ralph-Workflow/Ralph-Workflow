@@ -18,6 +18,7 @@ from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.pipeline.auto_integrate_backup_refs import (
     create_rebase_backup_ref,
     delete_rebase_backup_ref,
+    preserve_dirt_commit,
     qualified_backup_ref,
 )
 from ralph.pipeline.auto_integrate_record import IntegrationRecord
@@ -147,3 +148,51 @@ def test_delete_rebase_backup_ref_exact_name_unchanged(tmp_path: Path) -> None:
     assert ref_a
     delete_rebase_backup_ref(wt_a, ref_a)
     assert _backup_refs(wt_a) == []
+
+
+def _repo_with_edit(tmp_path: Path) -> tuple[Path, str]:
+    root = tmp_path / "repo"
+    root.mkdir()
+    assert _run(root.parent, "init", "-b", "main", str(root)).returncode == 0
+    _run(root, "config", "user.email", "t@example.com")
+    _run(root, "config", "user.name", "t")
+    head = _commit(root, "a.txt", "a\n", "seed")
+    (root / "a.txt").write_text("edited\n", encoding="utf-8")
+    (root / "notes.txt").write_text("untracked notes\n", encoding="utf-8")
+    return root, head
+
+
+def test_snapshot_records_an_untracked_nested_repo_as_a_gitlink(tmp_path: Path) -> None:
+    """An embedded clone is listed as ``vendored/`` and cannot be hashed as a blob.
+
+    The snapshot records it as a gitlink at the nested HEAD instead of
+    failing, so the surrounding work is still preserved.
+    """
+    root, head = _repo_with_edit(tmp_path)
+    nested = root / "vendored"
+    nested.mkdir()
+    assert _run(nested, "init", "-b", "main").returncode == 0
+    _run(nested, "config", "user.email", "t@example.com")
+    _run(nested, "config", "user.name", "t")
+    nested_head = _commit(nested, "x.txt", "x\n", "nested seed")
+
+    backup_ref = preserve_dirt_commit(root, head)
+
+    assert _run(root, "show", f"{backup_ref}:notes.txt").stdout == "untracked notes\n"
+    assert _run(root, "show", f"{backup_ref}^2:a.txt").stdout == "edited\n"
+    row = _run(root, "ls-tree", backup_ref, "vendored").stdout.strip()
+    assert row == f"160000 commit {nested_head}\tvendored"
+
+
+def test_snapshot_skips_an_untracked_nested_repo_without_commits(tmp_path: Path) -> None:
+    root, head = _repo_with_edit(tmp_path)
+    nested = root / "vendored"
+    nested.mkdir()
+    assert _run(nested, "init", "-b", "main").returncode == 0
+    (nested / "x.txt").write_text("x\n", encoding="utf-8")
+
+    backup_ref = preserve_dirt_commit(root, head)
+
+    assert _run(root, "show", f"{backup_ref}:notes.txt").stdout == "untracked notes\n"
+    assert _run(root, "show", f"{backup_ref}^2:a.txt").stdout == "edited\n"
+    assert _run(root, "ls-tree", backup_ref, "vendored").stdout.strip() == ""

@@ -79,28 +79,75 @@ def integration_target_branch(**opts: object) -> str | None:
     return None
 
 
-def occupied_worktree_branches(repo_root: Path, **opts: object) -> frozenset[str]:
+class WorktreeOccupancy(frozenset[str]):
+    """Branches checked out in other worktrees, with a fail-closed query verdict.
+
+    A successful ``git worktree list`` yields the plain set of occupied
+    branches. When the query fails (git error, non-zero exit) Ralph cannot
+    know which branches a sibling worktree holds, so the verdict is
+    ``query_failed`` and membership answers ``True`` for EVERY branch: each
+    caller that skips occupied candidates (exact-tip reattach, fast-forward,
+    fresh-branch naming) therefore fails closed without a separate check,
+    mirroring :func:`ralph.git.merge.worktree_lookup`'s
+    ``WORKTREE_QUERY_FAILED`` verdict.
+    """
+
+    __slots__ = ("_query_failed",)
+
+    _query_failed: bool
+
+    def __new__(
+        cls, branches: frozenset[str] = frozenset(), *, query_failed: bool = False
+    ) -> WorktreeOccupancy:
+        """Build the occupancy verdict from the parsed ``branches``."""
+        instance = super().__new__(cls, branches)
+        instance._query_failed = query_failed
+        return instance
+
+    @property
+    def query_failed(self) -> bool:
+        """Return whether the worktree query failed (occupancy unknown)."""
+        return self._query_failed
+
+    def __contains__(self, branch: object) -> bool:
+        """Treat every branch as occupied when the query failed."""
+        return self._query_failed or super().__contains__(branch)
+
+
+def occupied_worktree_branches(repo_root: Path, **opts: object) -> WorktreeOccupancy:
     """Return branches currently checked out in OTHER worktrees.
 
     A fast-forward that strands another agent's working copy is
     forbidden (GAP-1 / AC-10 / C1). The current worktree is
     excluded by definition -- its checked-out branch is the
     detached HEAD we are trying to reattach.
+
+    When ``git worktree list`` cannot be read the result carries
+    ``query_failed`` and reports every branch as occupied (fail
+    closed) instead of an empty set that would let a caller move a
+    branch a sibling worktree has checked out.
     """
     occupied: set[str] = set()
     raw_occupied = opts.get("occupied_worktree_branches") or opts.get("occupied")
     if isinstance(raw_occupied, (set, frozenset, list, tuple)):
-        occupied.update(raw_occupied)
+        occupied.update(str(name) for name in raw_occupied)
     try:
         res = run_git(
             ("worktree", "list", "--porcelain"),
             cwd=repo_root,
             label="commit:worktree-list-occupied",
         )
-    except Exception:
-        return frozenset(occupied)
+    except Exception as exc:
+        logger.warning(
+            "reattach fallback: worktree list failed ({}); treating every branch as occupied", exc
+        )
+        return WorktreeOccupancy(frozenset(occupied), query_failed=True)
     if res.returncode != 0:
-        return frozenset(occupied)
+        logger.warning(
+            "reattach fallback: worktree list exited {}; treating every branch as occupied",
+            res.returncode,
+        )
+        return WorktreeOccupancy(frozenset(occupied), query_failed=True)
     try:
         resolved_root = repo_root.resolve()
     except Exception:
@@ -116,7 +163,7 @@ def occupied_worktree_branches(repo_root: Path, **opts: object) -> frozenset[str
             except Exception:
                 pass
             occupied.add(line[len("branch refs/heads/") :].strip())
-    return frozenset(occupied)
+    return WorktreeOccupancy(frozenset(occupied))
 
 
 def branch_tip_sha(repo_root: Path, branch: str) -> str | None:
@@ -160,6 +207,12 @@ def fast_forward_reattach(
     from ralph.git.merge import is_ancestor as _is_ancestor
 
     if detached_head_sha is None:
+        return False
+    if isinstance(occupied, WorktreeOccupancy) and occupied.query_failed:
+        logger.warning(
+            "reattach fallback: worktree occupancy unknown; skipping fast-forward so no "
+            "branch checked out in another worktree is moved"
+        )
         return False
     for candidate in candidates:
         if not branch_exists(repo_root, candidate):

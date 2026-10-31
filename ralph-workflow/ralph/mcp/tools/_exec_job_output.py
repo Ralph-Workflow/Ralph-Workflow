@@ -35,13 +35,28 @@ def serialize_liveness_verdict(verdict: LivenessVerdict | None) -> dict[str, obj
 def _append_tail_buffer(
     head: bytearray, tail: bytearray, chunk: bytes, max_bytes: int = 65_536
 ) -> None:
-    """Retain bounded head and tail buffers of raw bytes."""
+    """Retain bounded, non-overlapping head and tail buffers of raw bytes.
+
+    The head keeps the first ``max_bytes`` of the stream; only bytes past the
+    head feed the tail, which keeps the last ``max_bytes`` of those. A stream
+    that fits in both is therefore captured exactly once.
+    """
     head_capacity = max(0, max_bytes - len(head))
-    if head_capacity > 0:
-        head.extend(chunk[:head_capacity])
-    tail.extend(chunk)
+    head.extend(chunk[:head_capacity])
+    tail.extend(chunk[head_capacity:])
     if len(tail) > max_bytes:
         del tail[:-max_bytes]
+
+
+def _merge_stream_buffers(head: bytearray, tail: bytearray, total_bytes: int) -> tuple[bytes, bool]:
+    """Join a stream's head/tail buffers; return the payload and whether bytes were dropped.
+
+    The truncation marker separates head and tail only when the stream was
+    longer than both together, i.e. when bytes between them were discarded.
+    """
+    if total_bytes > len(head) + len(tail):
+        return bytes(head) + b"\n... [truncated] ...\n" + bytes(tail), True
+    return bytes(head) + bytes(tail), False
 
 
 def _format_job_output(
@@ -50,13 +65,17 @@ def _format_job_output(
     *,
     total_stdout_len: int,
     total_stderr_len: int,
+    truncated: bool,
     spill_dir: Path | None = None,
 ) -> dict[str, object]:
-    """Format captured job output according to standard exec preview/spill shape."""
+    """Format captured job output according to standard exec preview/spill shape.
+
+    ``truncated`` reports whether either stream dropped bytes between its
+    head and tail capture buffers.
+    """
     stdout_text = stdout_bytes.decode("utf-8", errors="replace")
     stderr_text = stderr_bytes.decode("utf-8", errors="replace")
     combined_len = total_stdout_len + total_stderr_len
-    truncated = (total_stdout_len > len(stdout_bytes)) or (total_stderr_len > len(stderr_bytes))
 
     preview_text = ""
     spill_path: str | None = None

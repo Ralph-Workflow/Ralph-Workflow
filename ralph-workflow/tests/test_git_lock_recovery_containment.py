@@ -53,6 +53,30 @@ def test_ralph_owned_locks_are_never_reapable(tmp_path: Path, rel: str) -> None:
     assert not lr.lock_path_is_reapable(lock)
 
 
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "refs/heads/ralph-cleanup.lock",
+        "refs/heads/ralph/feature.lock",
+        "logs/refs/heads/ralph/feature.lock",
+        "worktrees/w/refs/heads/ralph.lock",
+    ],
+)
+def test_a_users_branch_lock_named_ralph_is_still_a_git_lock(tmp_path: Path, rel: str) -> None:
+    """Only ``<gitdir>/ralph/`` and Ralph's integration lock are exempt.
+
+    A user's ``ralph-cleanup`` or ``ralph/feature`` branch leaves an ordinary
+    git ref lock behind; matching on the ``ralph`` name prefix treated it as
+    Ralph-owned, so a stale one was never reaped and blocked that branch.
+    """
+    git_dir = _git_dir(tmp_path)
+    lock = git_dir / rel
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("")
+    assert lr.lock_path_is_reapable(lock)
+    assert lock in lr.git_lock_candidates(git_dir)
+
+
 def test_relative_and_dotdot_lock_paths_are_refused(tmp_path: Path) -> None:
     git_dir = _git_dir(tmp_path)
     assert lr.parse_lock_path_from_error("Unable to create '.git/index.lock': File exists") is None

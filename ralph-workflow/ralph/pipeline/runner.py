@@ -2339,7 +2339,12 @@ def _run_pipeline_step(
     except KeyboardInterrupt:
         # Re-raise — the ``finally`` clause still records ``crashed`` first.
         raise
-    except BaseException as exc:
+    # Ordinary errors -- and a ``SystemExit`` raised by library code (e.g.
+    # ``McpConfigError``), which the recovery-first design routes to recovery
+    # -- become a recoverable crash. Any other ``BaseException`` (a harness
+    # deadline, ``GeneratorExit``, ``asyncio.CancelledError``) is control flow
+    # from outside the step and propagates; ``finally`` still records it.
+    except (Exception, SystemExit) as exc:
         _phase_outcome = "crashed"
         logger.exception(
             "Pipeline step crashed in phase={phase}: {err}",
@@ -2401,7 +2406,7 @@ def _run_pipeline_step(
         # body leaks it on every path that raises, including Ctrl-C.
         withdraw_cycle_deadline_env()
         # SINGLE recording site for all exit paths (inline/FanOut/
-        # MissingPlanHandoff/success/KeyboardInterrupt/BaseException).
+        # MissingPlanHandoff/success/crash/any propagating BaseException).
         # Fail-soft: telemetry must never break the pipeline.
         with contextlib.suppress(Exception):
             phase_timing = _phase_timer.finish()

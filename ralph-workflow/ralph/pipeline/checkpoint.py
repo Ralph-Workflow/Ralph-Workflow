@@ -43,14 +43,34 @@ _FORBIDDEN_ERROR_SENTINELS: frozenset[str] = frozenset(
 )
 
 
+def _staging_path(path: Path) -> Path:
+    """Return the staging stem ``save()`` writes through for ``path``.
+
+    The atomic writer derives a unique ``<stem>.<hex>`` file from this stem,
+    so both the stem and its suffixed siblings are interrupted-save debris.
+    """
+    return path.with_suffix(".tmp")
+
+
 def _cleanup_stray_tmp(
     path: Path,
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> None:
-    tmp = Path(str(path) + ".tmp")
-    # filesystem-write-ok: discard interrupted checkpoint staging before recovery reads canonical bytes
-    backend.unlink(tmp, missing_ok=True)
+    staging = _staging_path(path)
+    # The legacy ``checkpoint.json.tmp`` spelling is still swept so debris
+    # from older releases does not linger beside the canonical file.
+    legacy = Path(str(path) + ".tmp")
+    unique_prefix = f"{staging.name}."
+    stray = [staging, legacy]
+    stray.extend(
+        candidate
+        for candidate in backend.glob(path.parent, f"{unique_prefix}*")
+        if candidate.parent == path.parent and candidate.name.startswith(unique_prefix)
+    )
+    for tmp in stray:
+        # filesystem-write-ok: discard interrupted checkpoint staging before recovery reads canonical bytes
+        backend.unlink(tmp, missing_ok=True)
 
 
 class Checkpoint:
@@ -154,7 +174,7 @@ def save(
     state = _normalize_recovery_state(state)
     serialized = state.model_dump_json(indent=2)
     # filesystem-write-ok: pipeline checkpoint state under .agent/ or worktree-local path, runtime recovery metadata not tracked
-    tmp_path = path.with_suffix(".tmp")
+    tmp_path = _staging_path(path)
     try:
         atomic_write_text_if_changed(
             backend,

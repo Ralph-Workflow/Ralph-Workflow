@@ -751,7 +751,11 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
         return current
     except KeyboardInterrupt:
         raise
-    except BaseException as exc:
+    # ``SystemExit`` from library code is a recoverable fan-out failure under the
+    # recovery-first design; ``asyncio.CancelledError`` and every other
+    # non-``Exception`` BaseException (harness deadline, ``GeneratorExit``) must
+    # propagate so cancellation and outside aborts are never swallowed.
+    except (Exception, SystemExit) as exc:
         logger.exception(
             "Fan-out execution crashed in phase={phase}: {err}",
             phase=current.phase,

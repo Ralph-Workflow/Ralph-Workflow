@@ -1239,7 +1239,10 @@ class PtyLineReader:
         pid = cast(
             "int | None", getattr(self._handle, "pid", None)
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        if pid is not None and self._handle.poll() is None:
+        # Unconditional, like every other fire path: ``terminate`` has just
+        # reaped the leader, so gating on ``poll() is None`` skipped the sweep
+        # and left re-parented session members alive after every fire.
+        if pid is not None:
             teardown_subtree(pid, issuer="invoke:pty")
         # Real resume-safety from the canonical helper at
         # ``_process_reader._is_resumable_fire_reason`` so the PTY

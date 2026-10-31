@@ -769,3 +769,151 @@ def test_allows_a_failing_import_caught_by_an_import_error_handler() -> None:
     violations = _audit({"pkg/a.py": a_source, "pkg/b.py": _B_NEEDS_A_FIRST})
 
     assert violations == []
+
+
+# --- imports run by calls made at import time -------------------------------
+
+_Y_NEEDS_X_FIRST = "from ralph.pkg.x import X\nY = 2\n"
+_W_NEEDS_Z_FIRST = "from ralph.pkg.z import Z\n"
+
+_CALLED_AT_IMPORT_TIME = {
+    "direct": """
+        def _load() -> int:
+            from ralph.pkg.y import Y
+            return Y
+
+
+        VALUE = _load()
+        X = 1
+        """,
+    "transitive": """
+        def _inner() -> int:
+            from ralph.pkg.y import Y
+            return Y
+
+
+        def _outer() -> int:
+            return _inner()
+
+
+        VALUE = _outer()
+        X = 1
+        """,
+    "mutually-recursive": """
+        def _even(n: int) -> bool:
+            from ralph.pkg.y import Y
+            return True if n == 0 else _odd(n - 1)
+
+
+        def _odd(n: int) -> bool:
+            return False if n == 0 else _even(n - 1)
+
+
+        VALUE = _even(2)
+        X = 1
+        """,
+}
+
+
+@pytest.mark.parametrize(
+    "x_source", list(_CALLED_AT_IMPORT_TIME.values()), ids=list(_CALLED_AT_IMPORT_TIME)
+)
+def test_flags_imports_in_module_local_functions_called_at_import_time(x_source: str) -> None:
+    """``VALUE = _load()`` runs ``_load``'s imports while the module is executing.
+
+    A fresh interpreter fails both ways round: importing ``x`` first makes
+    ``y``'s ``from ralph.pkg.x import X`` see ``x`` partially initialised, and
+    importing ``y`` first makes ``_load``'s ``from ralph.pkg.y import Y`` see
+    ``y`` partially initialised. Calls are followed through other local
+    functions, and mutual recursion between them terminates.
+    """
+    violations = _audit({"pkg/x.py": x_source, "pkg/y.py": _Y_NEEDS_X_FIRST})
+
+    assert ("ralph.pkg.y", 1, "ralph.pkg.x", "X") in _sites(violations)
+    assert ("ralph.pkg.x", 2, "ralph.pkg.y", "Y") in _sites(violations)
+
+
+def test_flags_imports_in_a_local_function_used_as_a_decorator() -> None:
+    """A bare ``@_register`` calls ``_register`` when the decorated ``def`` runs."""
+    x_source = """
+        def _register(fn: object) -> object:
+            from ralph.pkg.y import Y
+            return fn
+
+
+        @_register
+        def handler() -> int:
+            return 1
+
+
+        X = 1
+        """
+
+    violations = _audit({"pkg/x.py": x_source, "pkg/y.py": _Y_NEEDS_X_FIRST})
+
+    assert ("ralph.pkg.x", 2, "ralph.pkg.y", "Y") in _sites(violations)
+
+
+def test_allows_a_call_whose_failing_import_is_caught_by_an_import_error_handler() -> None:
+    """The ``try`` around the call guards the imports inside the called body too.
+
+    Importing ``y`` first re-enters ``x``, whose ``_load`` then fails on the
+    partially initialised ``y``; the handler runs instead, ``x`` finishes,
+    and ``y`` reads the ``X`` it needs.
+    """
+    x_source = """
+        def _load() -> int:
+            from ralph.pkg.y import Y
+            return Y
+
+
+        X = 1
+        try:
+            VALUE = _load()
+        except ImportError:
+            VALUE = None
+        """
+
+    violations = _audit({"pkg/x.py": x_source, "pkg/y.py": _Y_NEEDS_X_FIRST})
+
+    assert violations == []
+
+
+def test_names_a_called_function_imports_stay_local_to_it() -> None:
+    """A function's ``from m import y`` binds ``y`` in the function, not the module."""
+    a_source = """
+        def _f() -> int:
+            from ralph.pkg.helpers import y
+            return y
+
+
+        _f()
+        from ralph.pkg import b
+        y = 1
+        """
+
+    violations = _audit(
+        {
+            "pkg/a.py": a_source,
+            "pkg/helpers.py": "y = 1\n",
+            "pkg/b.py": "from ralph.pkg.a import y\n",
+        }
+    )
+
+    assert ("ralph.pkg.b", 1, "ralph.pkg.a", "y") in _sites(violations)
+
+
+@pytest.mark.parametrize(
+    "z_source",
+    [
+        'import importlib\n\n_m = importlib.import_module("ralph.pkg.w")\nZ = 1\n',
+        'import importlib as il\n\n_m = il.import_module("ralph.pkg.w")\nZ = 1\n',
+        'from importlib import import_module as load\n\n_m = load("ralph.pkg.w")\nZ = 1\n',
+    ],
+    ids=["importlib", "aliased-importlib", "imported-import-module"],
+)
+def test_flags_a_literal_import_module_call_at_import_time(z_source: str) -> None:
+    """``importlib.import_module("ralph.x")`` imports ``ralph.x`` like an import statement."""
+    violations = _audit({"pkg/z.py": z_source, "pkg/w.py": _W_NEEDS_Z_FIRST})
+
+    assert _sites(violations) == [("ralph.pkg.w", 1, "ralph.pkg.z", "Z")]

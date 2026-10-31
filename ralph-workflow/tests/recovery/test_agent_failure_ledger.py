@@ -541,3 +541,65 @@ def test_attempt_outcome_properties() -> None:
     )
     assert spent_outcome.demoted
     assert spent_outcome.reason == "spent_reason"
+
+
+_FIVE_DAYS_S = 5 * 86400.0
+_WALL_START_S = 1_800_000_000.0
+
+
+def _cooled_down_snapshot(clock: FakeClock) -> dict[str, object]:
+    ledger = AgentFailureLedger(clock=clock, base_cooldown_seconds=60.0)
+    for _ in range(3):
+        ledger.record(AttemptFact(phase="development", agent="claude", artifact_valid=False))
+    assert ledger.earliest_wait_ms("development", ["claude"]) == 60_000
+    return ledger.snapshot()
+
+
+def test_cooldown_restored_after_reboot_keeps_its_remaining_duration() -> None:
+    """A monotonic deadline from the previous boot must not survive a reboot.
+
+    The host was up five days when the cooldown tripped; after a reboot the
+    monotonic clock restarts near zero. Twenty wall-clock seconds later the
+    cooldown has forty seconds left -- not five days.
+    """
+    snap = _cooled_down_snapshot(FakeClock(start=_FIVE_DAYS_S, epoch_start=_WALL_START_S))
+    after_reboot = FakeClock(start=120.0, epoch_start=_WALL_START_S + 20.0)
+
+    restored = AgentFailureLedger.from_snapshot(snap, clock=after_reboot)
+
+    assert restored.earliest_wait_ms("development", ["claude"]) == 40_000
+    after_reboot.advance(40.0)
+    assert isinstance(restored.status("development", "claude"), Eligible)
+
+
+def test_cooldown_that_elapsed_across_reboot_restores_eligible() -> None:
+    snap = _cooled_down_snapshot(FakeClock(start=_FIVE_DAYS_S, epoch_start=_WALL_START_S))
+    after_reboot = FakeClock(start=120.0, epoch_start=_WALL_START_S + 130.0)
+
+    restored = AgentFailureLedger.from_snapshot(snap, clock=after_reboot)
+
+    assert isinstance(restored.status("development", "claude"), Eligible)
+    assert restored.earliest_wait_ms("development", ["claude"]) == 0
+
+
+def test_legacy_monotonic_only_cooldown_is_clamped_to_max_cooldown() -> None:
+    """Pre-epoch snapshots carry only the monotonic deadline; restore caps it."""
+    snap = _cooled_down_snapshot(FakeClock(start=_FIVE_DAYS_S, epoch_start=_WALL_START_S))
+    raw_entries = snap["entries"]
+    assert isinstance(raw_entries, dict)
+    legacy_entries: dict[str, object] = {}
+    for key, item in raw_entries.items():
+        assert isinstance(item, dict)
+        legacy_entries[key] = {
+            field: value
+            for field, value in item.items()
+            if field in {"phase", "agent", "consecutive_unproductive", "total_unproductive"}
+            or field in {"cooldown_until_ms", "cooldown_reason", "cooldown_count", "is_spent"}
+        }
+    legacy = {**snap, "entries": legacy_entries}
+    after_reboot = FakeClock(start=120.0, epoch_start=_WALL_START_S + 20.0)
+
+    restored = AgentFailureLedger.from_snapshot(legacy, clock=after_reboot)
+
+    wait_ms = restored.earliest_wait_ms("development", ["claude"])
+    assert 0 < wait_ms <= int(restored.max_cooldown_seconds * 1000)

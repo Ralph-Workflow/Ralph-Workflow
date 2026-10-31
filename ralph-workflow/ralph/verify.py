@@ -23,12 +23,6 @@ enforcement. It owns these pinned limits:
   a tracked step is killed however busy the host is: hang detection, not
   a speed budget.
 
-* ``_INTEGRATION_PER_TEST_TIMEOUT_SECONDS`` — the 1-second per-test
-  cap for tests under ``tests/integration/``. Enforced by
-  ``tests/conftest.py`` as CPU seconds (``ITIMER_PROF``) plus a
-  wall-clock hang cap of 5x (``ITIMER_REAL``). Any integration test that exceeds this cap
-  is a design defect: fix the production coupling, not the timeout.
-
 * ``_VERIFY_STEP_TIMEOUT_SECONDS`` — the per-step timeout for the
   non-test verification steps (ruff, mypy, the policy/lifecycle
   audits). Independent of the combined test budget.
@@ -76,6 +70,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -86,11 +81,22 @@ from ralph.executor.process import (
     run_process,
 )
 from ralph.process._spawn_env import sanitize_process_environment
-from ralph.verify_budget import SuiteBudgetReport, sample_suite_resources
+from ralph.verify_budget import SuiteBudgetReport, orphaned_cpu_tracker, sample_suite_resources
+from ralph.verify_timeout import (
+    DEFAULT_SUITE_TIMEOUT_SECONDS,
+    DEFAULT_TEST_TIMEOUT_SECONDS,
+    SUITE_TIMEOUT_ENV,
+    TEST_TIMEOUT_ENV,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
+    from contextlib import AbstractContextManager
     from typing import Protocol
+
+    class OrphanCpuReading(Protocol):
+        @property
+        def orphaned_cpu_seconds(self) -> float: ...
 
     class VerifyRunner(Protocol):
         def __call__(
@@ -131,18 +137,10 @@ _TOTAL_TEST_HANG_CAP_SECONDS: Final = 180.0
 #: suite to ~1.2x, so only a hang reaches this. Pinned to
 #: ``3 * _TOTAL_TEST_BUDGET_SECONDS`` by an import-time check.
 
-_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 1.0
-#: ABSOLUTE and IMMUTABLE per-test timeout for integration tests under
-#: ``tests/integration/``. Enforced by ``tests/conftest.py`` in CPU seconds
-#: (``ITIMER_PROF``) plus a 5x wall-clock hang cap (``ITIMER_REAL``).
-#: Any integration test that exceeds this cap is a design defect —
-#: fix the production coupling, not the timeout. Pinned to 1.0 by an
-#: import-time epsilon check.
-
 _BUDGET_EPSILON: Final = 1e-9
 #: Equality tolerance used by the import-time ``abs(x - target) < eps``
-#: checks that pin ``_TOTAL_TEST_BUDGET_SECONDS = 60.0`` and
-#: ``_INTEGRATION_PER_TEST_TIMEOUT_SECONDS = 1.0``.
+#: checks that pin ``_TOTAL_TEST_BUDGET_SECONDS = 60.0``,
+#: ``_TOTAL_TEST_CPU_BUDGET_SECONDS = 600.0`` and the hang cap.
 
 _MIN_VERIFY_STEP_TIMEOUT_SECONDS: Final = 5.0
 #: Minimum allowed value of ``_VERIFY_STEP_TIMEOUT_SECONDS``. Lowering
@@ -589,14 +587,6 @@ if not abs(_TOTAL_TEST_HANG_CAP_SECONDS - 3 * _TOTAL_TEST_BUDGET_SECONDS) < _BUD
         f"(got {_TOTAL_TEST_HANG_CAP_SECONDS})"
     )
 
-# Per-test integration timeout integrity: 1.0 seconds is ABSOLUTE and
-# IMMUTABLE. No integration test may take longer than this.
-if not abs(_INTEGRATION_PER_TEST_TIMEOUT_SECONDS - 1.0) < _BUDGET_EPSILON:
-    raise RuntimeError(
-        "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS must be 1.0 "
-        f"(got {_INTEGRATION_PER_TEST_TIMEOUT_SECONDS})"
-    )
-
 # _VERIFY_STEP_TIMEOUT_SECONDS integrity: must be positive and non-trivial.
 # Zero or negative would disable per-step timeouts entirely, causing
 # ruff/mypy/audit steps to potentially hang.
@@ -781,7 +771,12 @@ def _failed_command_label(
     return label
 
 
-def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
+def run_verify(
+    *,
+    cwd: Path,
+    runner: VerifyRunner = _default_runner,
+    orphan_tracker: Callable[[], AbstractContextManager[OrphanCpuReading]] = orphaned_cpu_tracker,
+) -> int:
     """Run all verification steps and return the first non-zero exit code, or 0.
 
     Cumulative test budget enforcement:
@@ -807,6 +802,9 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
             (``ralph.executor.process.run_process``); tests inject a fake
             runner that records invocations and bypasses the real
             subprocess layer.
+        orphan_tracker: Context-manager factory wrapped around each tracked
+            step; it reports the CPU of descendants orphaned during the
+            step, which rusage misses (``orphaned_cpu_tracker``).
 
     Returns:
         ``0`` when every step exits 0, or the first non-zero exit code
@@ -855,6 +853,7 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
             )
 
         suite_cpu_start, host_busy_start = sample_suite_resources()
+        orphans = orphan_tracker() if is_tracked else nullcontext()
         step_start = time.monotonic()
         # Reset PYTHONPATH to the workspace root and Loguru to INFO before
         # spawning each verify step. An ambient PYTHONPATH inherited from the
@@ -872,20 +871,31 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
         # environment (PATH, HOME, secrets, ...) is untouched. In particular,
         # a caller's ``LOGURU_LEVEL=WARNING`` would otherwise suppress the
         # INFO records that the worker logging regressions intentionally prove.
-        result = runner(
-            command,
-            args,
-            cwd=cwd,
-            env={"PYTHONPATH": str(cwd), "LOGURU_LEVEL": "INFO"},
-            timeout=effective_timeout,
-            capture_output=False,
-        )
+        # The per-test and per-suite timeouts are forced to their defaults: an
+        # exported ``RALPH_PYTEST_TEST_TIMEOUT_SECONDS`` would otherwise retune,
+        # or (as 0) disarm, the timers every test step runs under.
+        with orphans as orphan_reading:
+            result = runner(
+                command,
+                args,
+                cwd=cwd,
+                env={
+                    "PYTHONPATH": str(cwd),
+                    "LOGURU_LEVEL": "INFO",
+                    TEST_TIMEOUT_ENV: str(DEFAULT_TEST_TIMEOUT_SECONDS),
+                    SUITE_TIMEOUT_ENV: str(DEFAULT_SUITE_TIMEOUT_SECONDS),
+                },
+                timeout=effective_timeout,
+                capture_output=False,
+            )
         step_elapsed = time.monotonic() - step_start
         suite_cpu_end, host_busy_end = sample_suite_resources()
 
         if is_tracked:
+            # Orphans are reaped by init, so rusage misses their CPU.
+            orphan_cpu = 0.0 if orphan_reading is None else orphan_reading.orphaned_cpu_seconds
             cumulative_test_elapsed += step_elapsed
-            cumulative_suite_cpu += suite_cpu_end - suite_cpu_start
+            cumulative_suite_cpu += suite_cpu_end - suite_cpu_start + orphan_cpu
             cumulative_host_busy += host_busy_end - host_busy_start
 
         if result.stdout:

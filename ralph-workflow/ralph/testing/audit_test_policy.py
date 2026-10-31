@@ -49,6 +49,7 @@ from ralph.testing.whitebox_detectors import (
     count_private_imports,
     count_setattr_private,
     has_subprocess_e2e_marker,
+    resolve_dotted_name,
 )
 from ralph.testing.whitebox_reconciliation import (
     BASELINE_DRIFT_CATEGORIES,
@@ -167,6 +168,16 @@ _NETWORK_CALLS: frozenset[str] = frozenset(
         "httpx.get",
         "httpx.post",
     }
+)
+
+_SLEEP_CALLS: frozenset[str] = frozenset({"time.sleep", "asyncio.sleep"})
+_WALL_CLOCK_CALLS: frozenset[str] = frozenset({"time.monotonic", "time.perf_counter"})
+
+#: Every module-qualified call a category check matches by name. A call
+#: written through an import alias (``import time as t``, ``from time
+#: import sleep``) is resolved to one of these before it is checked.
+_ALIAS_RESOLVED_CALLS: frozenset[str] = (
+    _SLEEP_CALLS | _WALL_CLOCK_CALLS | _SUBPROCESS_CALLS | _NETWORK_CALLS
 )
 
 #: Roots of dotted call names that cross the real-Git boundary when the
@@ -340,18 +351,34 @@ class TestPolicyAuditor:
 
     def _check_calls(self) -> None:
         """Check every call site of the module, in source order."""
-        for node, func_name, inside_wait_for in self.facts.call_sites:
+        for node, written_name, inside_wait_for in self.facts.call_sites:
+            func_name = self._resolve_call_name(written_name)
             self._check_sleep_call(node, func_name)
             self._check_io_call(node, func_name)
             self._check_git_call(node, func_name)
             self._check_wall_clock_call(node, func_name)
             self._check_blocking_wait_call(node, func_name, inside_wait_for)
 
+    def _resolve_call_name(self, written_name: str | None) -> str | None:
+        """Return the module-qualified banned call ``written_name`` denotes.
+
+        A name that resolves through the module's import aliases to a call
+        some category bans (``t.sleep`` -> ``time.sleep``, a bare ``run``
+        imported from ``subprocess`` -> ``subprocess.run``) is checked as
+        that call; any other name is checked as written.
+        """
+        if written_name is None:
+            return None
+        for candidate in sorted(resolve_dotted_name(written_name, self.facts.import_aliases)):
+            if candidate in _ALIAS_RESOLVED_CALLS:
+                return candidate
+        return written_name
+
     def _check_sleep_call(self, node: ast.Call, func_name: str | None) -> None:
         """Detect time.sleep(N) and asyncio.sleep(N) where N > 0."""
         if func_name is None:
             return
-        if func_name not in ("time.sleep", "asyncio.sleep"):
+        if func_name not in _SLEEP_CALLS:
             return
         if self._skip_sleep:
             return
@@ -465,7 +492,7 @@ class TestPolicyAuditor:
         """Detect time.monotonic()/time.perf_counter() in elapsed-time loops."""
         if func_name is None:
             return
-        if func_name in ("time.monotonic", "time.perf_counter"):
+        if func_name in _WALL_CLOCK_CALLS:
             if self._skip_wall_clock or self._is_target_patched(func_name):
                 return
             self._add_violation(

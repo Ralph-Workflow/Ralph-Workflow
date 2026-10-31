@@ -31,12 +31,24 @@ every file under ``ralph/``:
     (their ``else:`` arms do; ``if not TYPE_CHECKING:`` runs only its body),
     and imports inside functions run later, so none of them take part;
   * class bodies run at import time, so their imports take part;
+  * a call made at import time to a function defined earlier in the same
+    module (``VALUE = _load()``, a bare ``@_register`` decorator, a default
+    argument) runs that function's body, so its imports take part too --
+    followed through further local calls, with a recursion guard, and bound
+    in the function's own scope rather than the module's;
+  * ``importlib.import_module("ralph.x")`` with a literal absolute name
+    (through ``import importlib [as alias]`` or ``from importlib import
+    import_module [as alias]``) imports ``ralph.x`` like an import statement;
   * an import inside a ``try`` whose handler catches ``ImportError`` cannot
     fail the module, because the handler runs instead.
 
 Other branches (``if``/``try``/``with``/loops) are treated as executing
 every arm. Modules outside ``ralph`` are opaque: they never import ``ralph``
-back, so they cannot take part in a ``ralph`` cycle.
+back, so they cannot take part in a ``ralph`` cycle. Calls the audit cannot
+resolve statically are not followed: methods and instantiated classes,
+functions imported from other modules or reached through a variable,
+``async def`` (calling one runs nothing), ``global`` rebinding inside a
+called function, and ``import_module`` with a computed or relative name.
 
 Usage:
     python -m ralph.testing.audit_import_order
@@ -132,7 +144,19 @@ class _AttrRead:
     guarded: bool
 
 
-_Op = _Import | _FromImport | _Bind | _AttrRead
+@dataclass(frozen=True)
+class _DynamicImport:
+    module: str
+
+
+@dataclass(frozen=True)
+class _Call:
+    """The operations a module-local function's body runs when called at import time."""
+
+    ops: tuple[_Op, ...]
+
+
+type _Op = _Import | _FromImport | _Bind | _AttrRead | _DynamicImport | _Call
 
 
 def _is_type_checking_guard(test: ast.expr) -> bool:
@@ -184,6 +208,8 @@ def _evaluated_expressions(node: ast.stmt) -> list[ast.expr]:
         evaluated = [*node.decorator_list, *defaults]
     elif isinstance(node, ast.ClassDef):
         evaluated = [*node.decorator_list, *node.bases, *(k.value for k in node.keywords)]
+    elif isinstance(node, ast.Return) and node.value is not None:
+        evaluated = [node.value]
     elif isinstance(node, (ast.If, ast.While)):
         evaluated = [node.test]
     elif isinstance(node, (ast.For, ast.AsyncFor)):
@@ -209,6 +235,25 @@ def _attribute_chains(node: ast.AST) -> list[tuple[str, tuple[str, ...], int]]:
             return [(current.id, tuple(reversed(attrs)), node.lineno)]
         return _attribute_chains(current)
     return [chain for child in ast.iter_child_nodes(node) for chain in _attribute_chains(child)]
+
+
+def _calls(node: ast.AST) -> list[ast.Call]:
+    """Return every call ``node`` makes, innermost first (arguments run before the call)."""
+    if isinstance(node, ast.Lambda):
+        return []
+    found = [call for child in ast.iter_child_nodes(node) for call in _calls(child)]
+    if isinstance(node, ast.Call):
+        found.append(node)
+    return found
+
+
+def _literal_module_name(call: ast.Call) -> str | None:
+    if len(call.args) != 1 or call.keywords:
+        return None
+    argument = call.args[0]
+    if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+        return None if argument.value.startswith(".") else argument.value
+    return None
 
 
 def _is_main_guard(test: ast.expr) -> bool:
@@ -245,6 +290,14 @@ class _OpCollector:
     ops: list[_Op] = field(default_factory=list)
     guarded: bool = False
     attribute_guarded: bool = False
+    #: Module-local ``def`` statements bound so far, by name: a call to one runs its body.
+    functions: dict[str, ast.FunctionDef] = field(default_factory=dict)
+    #: Names bound to the ``importlib`` module.
+    importlib_names: set[str] = field(default_factory=set)
+    #: Names bound to ``importlib.import_module``.
+    import_module_names: set[str] = field(default_factory=set)
+    #: The functions whose bodies are being followed: the recursion guard.
+    calling: frozenset[str] = frozenset()
 
     def statements(self, body: Iterable[ast.stmt]) -> None:
         for statement in body:
@@ -257,9 +310,11 @@ class _OpCollector:
             for alias in node.names:
                 if alias.asname:
                     self.ops.append(_Import(alias.name, alias.asname, alias.name))
+                    self.rebind(alias.asname, importlib=alias.name == "importlib")
                 else:
                     root = alias.name.split(".")[0]
                     self.ops.append(_Import(alias.name, root, root))
+                    self.rebind(root, importlib=root == "importlib")
         elif isinstance(node, ast.ImportFrom):
             self.from_import(node)
         elif isinstance(node, ast.If):
@@ -272,19 +327,72 @@ class _OpCollector:
             self.binds(node)
             self.nested(node)
 
+    def rebind(self, name: str, *, importlib: bool = False, import_module: bool = False) -> None:
+        """Forget what ``name`` was bound to before; record it if it is now importlib."""
+        self.functions.pop(name, None)
+        self.importlib_names.discard(name)
+        self.import_module_names.discard(name)
+        if importlib:
+            self.importlib_names.add(name)
+        if import_module:
+            self.import_module_names.add(name)
+
     def reads(self, node: ast.stmt) -> None:
-        """Record the ``module.attr`` reads a statement performs when it runs."""
-        for expression in _evaluated_expressions(node):
+        """Record the ``module.attr`` reads and the calls a statement performs when it runs."""
+        expressions = _evaluated_expressions(node)
+        for expression in expressions:
             self.ops.extend(
                 _AttrRead(local, attrs, lineno, self.attribute_guarded)
                 for local, attrs, lineno in _attribute_chains(expression)
             )
+        for expression in expressions:
+            for call in _calls(expression):
+                self.call(call.func, call)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            # A bare decorator is called with the decorated object.
+            for decorator in reversed(node.decorator_list):
+                if isinstance(decorator, ast.Name):
+                    self.call(decorator, None)
+
+    def call(self, func: ast.expr, call: ast.Call | None) -> None:
+        """Record what calling ``func`` at import time runs, when that is known statically."""
+        is_import_module = (isinstance(func, ast.Name) and func.id in self.import_module_names) or (
+            isinstance(func, ast.Attribute)
+            and func.attr == "import_module"
+            and isinstance(func.value, ast.Name)
+            and func.value.id in self.importlib_names
+        )
+        if is_import_module:
+            module = _literal_module_name(call) if call is not None else None
+            if module is not None:
+                self.ops.append(_DynamicImport(module))
+            return
+        if not isinstance(func, ast.Name) or func.id in self.calling:
+            return
+        function = self.functions.get(func.id)
+        if function is None:
+            return
+        body = _OpCollector(
+            self.module,
+            self.is_package,
+            guarded=self.guarded,
+            attribute_guarded=self.attribute_guarded,
+            functions=dict(self.functions),
+            importlib_names=set(self.importlib_names),
+            import_module_names=set(self.import_module_names),
+            calling=self.calling | {func.id},
+        )
+        body.statements(function.body)
+        self.ops.append(_Call(tuple(body.ops)))
 
     def binds(self, node: ast.stmt) -> None:
         """Record the names a non-import statement binds at module level."""
         targets: list[ast.expr] = []
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             self.ops.append(_Bind(node.name))
+            self.rebind(node.name)
+            if isinstance(node, ast.FunctionDef):
+                self.functions[node.name] = node
         elif isinstance(node, ast.TypeAlias):
             targets.append(node.name)
         elif isinstance(node, ast.Assign):
@@ -295,7 +403,9 @@ class _OpCollector:
             targets.append(node.target)
         elif isinstance(node, (ast.With, ast.AsyncWith)):
             targets.extend(item.optional_vars for item in node.items if item.optional_vars)
-        self.ops.extend(_Bind(name) for target in targets for name in _target_names(target))
+        for name in [name for target in targets for name in _target_names(target)]:
+            self.ops.append(_Bind(name))
+            self.rebind(name)
 
     def nested(self, node: ast.stmt) -> None:
         """Run the bodies of loops, ``with`` blocks and ``match`` cases."""
@@ -315,10 +425,15 @@ class _OpCollector:
             self.is_package,
             guarded=self.guarded,
             attribute_guarded=self.attribute_guarded,
+            functions=dict(self.functions),
+            importlib_names=set(self.importlib_names),
+            import_module_names=set(self.import_module_names),
+            calling=self.calling,
         )
         body.statements(node.body)
         self.ops.extend(op for op in body.ops if not isinstance(op, _Bind))
         self.ops.append(_Bind(node.name))
+        self.rebind(node.name)
 
     def conditional(self, node: ast.If) -> None:
         if _is_type_checking_guard(node.test) or _is_main_guard(node.test):
@@ -344,6 +459,7 @@ class _OpCollector:
         for handler in node.handlers:
             if handler.name:
                 self.ops.append(_Bind(handler.name))
+                self.rebind(handler.name)
             self.statements(handler.body)
         self.statements(node.orelse)
         self.statements(node.finalbody)
@@ -357,6 +473,12 @@ class _OpCollector:
             return
         names = tuple((alias.name, alias.asname or alias.name) for alias in node.names)
         self.ops.append(_FromImport(target, names, node.lineno, self.guarded))
+        for name, bound in names:
+            self.rebind(
+                bound,
+                importlib=target == "importlib" and name == "importlib",
+                import_module=target == "importlib" and name == "import_module",
+            )
 
 
 def collect_ops(source: str, module: str, *, is_package: bool, label: str) -> tuple[_Op, ...]:
@@ -382,6 +504,9 @@ class _Simulation:
     aliases: dict[str, dict[str, str]] = field(default_factory=dict)
     executing: list[str] = field(default_factory=list)
     violations: list[Violation] = field(default_factory=list)
+    #: One entry per running scope: ``None`` for a module body, else the local
+    #: names (and the modules they alias) of a function called at import time.
+    frames: list[dict[str, str | None] | None] = field(default_factory=list)
 
     def import_module(self, name: str) -> None:
         if name in self.bound or name not in self.modules:
@@ -394,13 +519,19 @@ class _Simulation:
         self.bound[name] = set()
         self.aliases[name] = {}
         self.executing.append(name)
+        self.frames.append(None)
         for op in self.modules[name]:
             self.run(name, op)
+        self.frames.pop()
         self.executing.pop()
         if parent in self.bound:
             self.bound[parent].add(child)
 
     def bind(self, module: str, name: str, alias: str | None = None) -> None:
+        frame = self.frames[-1] if self.frames else None
+        if frame is not None:
+            frame[name] = alias
+            return
         self.bound[module].add(name)
         if alias is None:
             self.aliases[module].pop(name, None)
@@ -417,6 +548,15 @@ class _Simulation:
             self.bind(module, op.local, op.alias)
         elif isinstance(op, _AttrRead):
             self.read(module, op)
+        elif isinstance(op, _DynamicImport):
+            parts = op.module.split(".")
+            for depth in range(1, len(parts) + 1):
+                self.import_module(".".join(parts[:depth]))
+        elif isinstance(op, _Call):
+            self.frames.append({})
+            for nested in op.ops:
+                self.run(module, nested)
+            self.frames.pop()
         else:
             self.from_import(module, op)
 
@@ -442,7 +582,11 @@ class _Simulation:
                 self.report(module, op.lineno, op.module, name, "from-import")
 
     def read(self, module: str, op: _AttrRead) -> None:
-        target = self.aliases[module].get(op.local)
+        frame = self.frames[-1] if self.frames else None
+        if frame is not None and op.local in frame:
+            target = frame[op.local]
+        else:
+            target = self.aliases[module].get(op.local)
         for attr in op.attrs:
             names = self.bound.get(target) if target is not None else None
             if target is None or names is None:

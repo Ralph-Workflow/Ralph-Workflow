@@ -25,6 +25,13 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.subprocess_e2e
 
+#: What git's sequencer actually prints when a replayed commit is empty.
+#: The empty-stop classifier matches git's own message lines, never a bare
+#: ``is empty`` substring (which also matches a commit SUBJECT).
+_GIT_EMPTY_CHERRY_PICK_STDERR = (
+    "The previous cherry-pick is now empty, possibly due to conflict resolution.\n"
+)
+
 _CONTINUE_OK = GitRunResult(
     args=("git", "rebase", "--continue"), returncode=0, stdout="", stderr=""
 )
@@ -187,10 +194,12 @@ def test_continue_rebase_at_skips_consecutive_empty_commits(
     def _run_git(args: list[str], **_kwargs: object) -> GitRunResult:
         if args[-1] == "--continue":
             state["continue_calls"] += 1
-            raise subprocess.CalledProcessError(1, args, stderr="previous cherry-pick is empty")
+            raise subprocess.CalledProcessError(1, args, stderr=_GIT_EMPTY_CHERRY_PICK_STDERR)
         state["skip_calls"] += 1
         if state["skip_calls"] == 1:
-            return GitRunResult(args=("git", *args), returncode=1, stdout="", stderr="is empty")
+            return GitRunResult(
+                args=("git", *args), returncode=1, stdout="", stderr=_GIT_EMPTY_CHERRY_PICK_STDERR
+            )
         state["in_progress"] = False
         return GitRunResult(args=("git", *args), returncode=0, stdout="", stderr="")
 

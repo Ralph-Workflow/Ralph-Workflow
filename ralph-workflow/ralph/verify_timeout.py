@@ -13,6 +13,7 @@ design defect — fix the production coupling, not the timeout.
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import sys
 from pathlib import Path
@@ -145,13 +146,23 @@ def timeout_seconds_from_env(name: str, default: float) -> float:
 
     Returns:
         The parsed float from the environment, or ``default`` if the
-        variable is missing. Raises ``ValueError`` if the variable is
-        set but not parseable as a float.
+        variable is missing.
+
+    Raises:
+        ValueError: The variable is set but is not a positive, finite
+            number. Zero used to disarm the timers outright, so it is
+            rejected rather than honoured.
     """
     raw_value = os.getenv(name)
     if raw_value is None:
         return default
-    return float(raw_value)
+    seconds = float(raw_value)
+    if not (math.isfinite(seconds) and seconds > 0):
+        raise ValueError(
+            f"{name}={raw_value!r} must be a positive, finite number of seconds: "
+            "zero, negative or infinite values would disable the timeout"
+        )
+    return seconds
 
 
 def build_timeout_env(

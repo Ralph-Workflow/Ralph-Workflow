@@ -399,8 +399,13 @@ def test_git_itself_corroborates_the_marker_scan(
         call_class: GitCallClass | None = None,
     ) -> GitRunResult:
         del options, call_class
-        assert args == ("diff", "--cached", "--check")
         assert cwd == root
+        if args[:2] == ("cat-file", "blob"):
+            # The staged blobs git checked, served for the reported lines.
+            return GitRunResult(
+                args=("git", *args), returncode=0, stdout=staged[args[2]], stderr=""
+            )
+        assert args == ("diff", "--cached", "--check")
         assert label == "git-staged-marker-check"
         return GitRunResult(
             args=("git", *args),
@@ -414,6 +419,10 @@ def test_git_itself_corroborates_the_marker_scan(
             stderr="",
         )
 
+    staged = {
+        ":0:f.txt": "a\n<<<<<<< ours\nb\n=======\nc\n>>>>>>> theirs\n",
+        ":0:narrow.txt": "a\n<<<< ours\n",
+    }
     monkeypatch.setattr(merge_module, "run_git", _fake_run_git)
 
     reported = merge_module.staged_conflict_marker_paths(root)

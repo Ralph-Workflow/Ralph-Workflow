@@ -2,6 +2,7 @@
 
 import fcntl
 import os
+import shlex
 import shutil
 import stat
 import tempfile
@@ -91,6 +92,56 @@ def point_current(current: Path, generation: Path) -> None:
     staging.replace(
         current
     )  # filesystem-write-ok: atomically refresh the compatibility generation pointer.
+
+
+def prune_generations(generations: Path, *, current: Path, launcher: Path) -> tuple[Path, ...]:
+    """Remove every generation neither ``current`` nor the ``launcher`` references.
+
+    Each install publishes a complete snapshot (source plus ``.venv``), so
+    without pruning they pile up forever. Call this while holding the install
+    lock and BEFORE publishing the new generation: the build being replaced is
+    still referenced then and survives one more install, so an ``rdev`` run
+    started from it is not deleted from under itself. When nothing provably
+    references a generation (no ``current`` link and no launcher naming one,
+    or a launcher that cannot be read or names no generation) nothing is
+    removed: an unknown launcher is not proof that a generation is unused.
+
+    Returns:
+        The generation directories that were removed.
+    """
+    if not generations.is_dir():
+        return ()
+    referenced = _launcher_generations(launcher, generations)
+    if referenced is None:
+        return ()
+    if current.is_symlink():
+        referenced.add(current.resolve())
+    if not referenced:
+        return ()
+    removed = tuple(
+        entry
+        for entry in sorted(generations.iterdir())
+        if entry.is_dir() and not entry.is_symlink() and entry.resolve() not in referenced
+    )
+    for entry in removed:
+        _remove_tree(entry)
+    return removed
+
+
+def _launcher_generations(launcher: Path, generations: Path) -> set[Path] | None:
+    """Return the generations ``launcher`` runs, or ``None`` when that is unknowable."""
+    if not launcher.exists():
+        return set()
+    try:
+        # filesystem-read-ok: the installer-owned launcher names the live generation.
+        tokens = shlex.split(launcher.read_text(encoding="utf-8"), comments=True)
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+    root = generations.resolve()
+    named = {
+        Path(token).resolve() for token in tokens if token and Path(token).parent.resolve() == root
+    }
+    return named or None
 
 
 def _ensure_private_root(root: Path) -> None:

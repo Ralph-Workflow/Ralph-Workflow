@@ -25,7 +25,7 @@ backoff is the read, not a sleep — the existing ``run_git`` 120 s
 ceiling remains the hard wall).
 
 The worktree lease uses ``os.open(O_CREAT|O_EXCL)`` on a lock-file
-under ``<git_dir>/ralph/agent-lease.lock``. ``O_EXCL`` gives
+under ``<common-git-dir>/ralph/agent-lease.lock``. ``O_EXCL`` gives
 POSIX-atomic acquisition: a second ``begin_agent_lease`` call on the
 same repo fails fast with :class:`WorktreeLeaseUnavailable`. Tests and
 background callers use :func:`try_acquire_lease` for the non-throwing
@@ -774,7 +774,7 @@ def begin_agent_lease(
         OSError: Filesystem-level failure (permission, disk full).
     """
     repo = _repo_or_open(repo_or_path)
-    lock_path = _lease_lock_path(Path(repo.git_dir))
+    lock_path = _lease_lock_path(_resolve_common_dir(repo))
     effective_holder = holder or WorktreeLeaseHolder(name="agent-phase")
     return _acquire_lease(
         lock_path,
@@ -827,7 +827,7 @@ def is_lease_held(repo_or_path: RepoPath | Path | str) -> bool:
     skip a tick.
     """
     repo = _repo_or_open(repo_or_path)
-    lock_path = _lease_lock_path(Path(repo.git_dir))
+    lock_path = _lease_lock_path(_resolve_common_dir(repo))
     return _lease_is_held(
         lock_path,
         probe=_lease_holder_liveness_probe,

@@ -10,12 +10,11 @@ from __future__ import annotations
 from contextlib import nullcontext
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+import pytest
+
+import ralph
 from ralph import install as install_module
-
-if TYPE_CHECKING:
-    import pytest
 
 _build_meta = import_module("ralph._build_meta")
 
@@ -53,6 +52,39 @@ def test_read_snapshot_identity_reports_the_checkout_a_snapshot_came_from(
         source_commit="205114bfc38f4069723a3bfa8c7926c610aef8ce",
         version="0.9.19",
     )
+
+
+@pytest.mark.parametrize(
+    "source_path",
+    [
+        "/Volumes/Crucial X9/other-checkout/ralph-workflow",
+        "/home/o'brien/checkouts/ralph-workflow",
+        'C:\\Users\\dev\\"quoted"\\ralph-workflow',
+    ],
+)
+def test_snapshot_identity_round_trips_through_the_real_build_meta_writer(
+    tmp_path: Path, source_path: str
+) -> None:
+    """The identity reader must parse exactly what the installer's writer emits."""
+    package = tmp_path / "snapshot" / "ralph"
+    package.mkdir(parents=True)
+    repo_package = Path(install_module.__file__).parent
+    for name in ("_build_meta.py", "__init__.py"):
+        (package / name).write_text((repo_package / name).read_text(encoding="utf-8"))
+    commit = "e4f9f9ca8abcdef0e4f9f9ca8abcdef0e4f9f9ca"
+
+    install_module.write_build_flavor(
+        package.parent,
+        "-dev",
+        source_commit=commit,
+        source_path=source_path,
+        installed_at="2026-10-30T12:00:00+00:00",
+    )
+    identity = install_module.read_snapshot_identity(package.parent)
+
+    assert identity is not None
+    assert (identity.source_path, identity.source_commit) == (source_path, commit)
+    assert identity.version == ralph.__version__
 
 
 def test_read_snapshot_identity_returns_none_when_no_snapshot_is_installed(

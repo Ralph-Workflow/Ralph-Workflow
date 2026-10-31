@@ -391,16 +391,16 @@ def test_graph_deadline_exceeded_returns_bounded_incomplete_result(
     with ``deadline_exceeded=true`` and the missing-data marker.
     No mutable work is exposed to readers.
     """
-    import time as _time
-
     from ralph.mcp.explore import graph as graph_module
     from ralph.mcp.explore.store import ExploreStore
 
     _seed_workspace(tmp_path)
     store = ExploreStore(tmp_path / ".agent" / "ralph-explore")
     try:
-        # Pick a deadline already in the past.
-        past = _time.monotonic() - 0.1
+        # A deadline already in the past: the smallest positive monotonic
+        # instant (a non-positive deadline disables the check), which any
+        # running clock has passed -- no real clock read needed.
+        past = 1e-9
         result = graph_module.run_query(
             store,
             query_type="neighbors",

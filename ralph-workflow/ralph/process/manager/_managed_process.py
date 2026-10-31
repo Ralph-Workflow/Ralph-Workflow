@@ -410,9 +410,15 @@ class ManagedProcess:
             stderr_thread.join(timeout=0.5)
             self._close_output_pipes()
 
-        rc = self.wait(timeout=0.5)
         stdout = bytes(stdout_buffer)
         stderr = bytes(stderr_buffer)
+        rc = (
+            self.wait(timeout=0.5)
+            if limit_exceeded.is_set()
+            else self._wait_after_output_eof(
+                last_output_at_ref[0], timeout, absolute_deadline, hard_timeout, stdout, stderr
+            )
+        )
         if limit_exceeded.is_set():
             raise ManagedProcessOutputLimitExceededError(
                 output_limit_bytes=output_limit_bytes,
@@ -422,6 +428,45 @@ class ManagedProcess:
         if self._record.status not in _TERMINAL_STATUSES:
             self._manager._mark_exited(self._record, rc)
         return stdout, stderr
+
+    def _wait_after_output_eof(
+        self,
+        last_output_at: float,
+        timeout: float | None,
+        absolute_deadline: float | None,
+        hard_timeout: float | None,
+        stdout: bytes,
+        stderr: bytes,
+    ) -> int:
+        """Wait for a child whose stdout/stderr hit EOF, under the caller's deadlines.
+
+        A child may close its stdio and keep running (``exec >/dev/null``,
+        a daemonizing wrapper). Reader EOF says nothing about exit, so the
+        wait is bounded by the same inactivity / hard deadlines as the drain
+        -- never by a fixed short window that would report a timeout the
+        caller's budget never reached. No output can arrive after EOF, so
+        the inactivity deadline is fixed at the last chunk seen.
+        """
+        inactivity_deadline = last_output_at + timeout if timeout is not None else None
+        deadlines = [d for d in (inactivity_deadline, absolute_deadline) if d is not None]
+        if not deadlines:
+            # The caller set neither deadline: same contract as communicate(timeout=None).
+            return self.wait()  # mcp-timeout-ok: caller passed no timeout and no hard_timeout
+        deadline = min(deadlines)
+        try:
+            return self.wait(timeout=max(0.0, deadline - _time.monotonic()))
+        except subprocess.TimeoutExpired:
+            hard_cap_hit = absolute_deadline is not None and deadline == absolute_deadline
+            timeout_value = hard_timeout if hard_cap_hit else timeout
+            if timeout_value is None:
+                raise
+            raise DeadlineTimeoutExpired(
+                [],
+                timeout_value,
+                timeout_cause="hard_cap" if hard_cap_hit else "inactivity",
+                output=stdout,
+                stderr=stderr,
+            ) from None
 
     def _snapshot_live_descendants(self) -> list[_PsutilProcessLike]:
         psutil_mod = self._manager._psutil

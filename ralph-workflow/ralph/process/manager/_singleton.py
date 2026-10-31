@@ -36,15 +36,16 @@ def shutdown_process_manager(*, grace_period_s: float = 0.5) -> None:
     This is the body of the interpreter-exit hook, and the explicit
     shutdown entry point for an embedder that owns the process lifetime.
     Failing to stop a child must never turn into an interpreter-exit
-    traceback, so every error raised by ``shutdown_all`` is suppressed.
+    traceback, so every ``Exception`` raised by ``shutdown_all`` is
+    suppressed. ``BaseException`` subclasses that are not errors --
+    ``KeyboardInterrupt``, ``SystemExit``, a test harness's per-test
+    timeout -- are control flow and propagate.
     """
-    try:
-        pm = _pm_state.instance
-        if pm is None:
-            return
+    pm = _pm_state.instance
+    if pm is None:
+        return
+    with contextlib.suppress(Exception):
         pm.shutdown_all(grace_period_s=grace_period_s)
-    except BaseException:
-        pass
 
 
 def _register_atexit_shutdown() -> None:
@@ -93,9 +94,11 @@ def reset_process_manager(*, reset_atexit_registration: bool = False) -> None:
     seeing the prior instance via ``get_process_manager`` while it is
     still being torn down.
 
-    Any exception raised by ``shutdown_all`` is swallowed (test
+    Any ``Exception`` raised by ``shutdown_all`` is swallowed (test
     teardown must never raise) so a refusing-to-die process cannot
-    break the suite.
+    break the suite. Non-error ``BaseException`` control flow
+    (``KeyboardInterrupt``, ``SystemExit``, a per-test timeout)
+    propagates; the singleton is still cleared first.
 
     Args:
         reset_atexit_registration: When True, also clear the flag that
@@ -105,12 +108,14 @@ def reset_process_manager(*, reset_atexit_registration: bool = False) -> None:
             registration itself.
     """
     prior = _pm_state.instance
-    if prior is not None:
-        with contextlib.suppress(BaseException):
-            prior.shutdown_all(grace_period_s=0.5)
-    _pm_state.instance = None
-    if reset_atexit_registration:
-        _pm_state.atexit_registered = False
+    try:
+        if prior is not None:
+            with contextlib.suppress(Exception):
+                prior.shutdown_all(grace_period_s=0.5)
+    finally:
+        _pm_state.instance = None
+        if reset_atexit_registration:
+            _pm_state.atexit_registered = False
 
 
 @contextlib.contextmanager

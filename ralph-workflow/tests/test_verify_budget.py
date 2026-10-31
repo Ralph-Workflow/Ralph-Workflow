@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph import verify as verify_module
+from ralph import verify_budget as verify_budget_module
 from ralph.executor.process import TIMEOUT_EXIT_CODE, ProcessResult
 from ralph.verify_budget import SuiteBudgetReport
 
@@ -206,3 +207,197 @@ def test_run_verify_stops_once_the_hang_cap_is_spent(
         "the smoke step must not start once the hang cap is spent"
     )
     assert "budget exhausted — cumulative test time exceeded" in captured.err
+
+
+# --- capacity-bound hosts ---------------------------------------------------
+
+
+def _report_on(
+    *, cores: int, wall: float, suite_cpu: float, host_busy: float
+) -> SuiteBudgetReport:
+    return SuiteBudgetReport(
+        wall_seconds=wall,
+        suite_cpu_seconds=suite_cpu,
+        host_busy_seconds=host_busy,
+        cpu_count=cores,
+        wall_budget_seconds=60.0,
+        cpu_budget_seconds=600.0,
+    )
+
+
+def test_a_suite_that_saturates_a_small_host_is_capacity_bound_not_failed() -> None:
+    # ~470 core-s of suite work on a 4-core CI runner needs >= 117.5 s of
+    # wall clock even perfectly parallel; the suite kept 3.9 of 4 cores busy.
+    report = _report_on(cores=4, wall=120.0, suite_cpu=470.0, host_busy=475.0)
+    assert report.suite_utilisation == pytest.approx(470.0 / (4 * 120.0 - 5.0))
+    assert report.outcome == "host_capacity"
+    assert report.announce() is None
+
+
+def test_a_wall_overrun_with_idle_capacity_left_still_fails() -> None:
+    # 12 cores, 70 s wall, but the suite used only 300 core-s: 36 % of what
+    # the host could have given it. The wall clock was not capacity-bound.
+    report = _report_on(cores=12, wall=70.0, suite_cpu=300.0, host_busy=300.0)
+    assert report.suite_utilisation == pytest.approx(300.0 / 840.0)
+    assert report.outcome == "over_wall_budget"
+    assert report.announce() == "wall clock exceeded even after crediting host contention"
+
+
+def test_capacity_counts_only_the_cores_foreign_load_left_to_the_suite() -> None:
+    # Foreign load held 2 of 4 cores for the whole run; the suite saturated
+    # the other two. Contention credit alone (60 s) cannot explain 150 s,
+    # but the suite left no capacity unused.
+    report = _report_on(cores=4, wall=150.0, suite_cpu=290.0, host_busy=290.0 + 2 * 150.0)
+    assert report.adjusted_wall_seconds > 60.0
+    assert report.outcome == "host_capacity"
+
+
+def test_capacity_rule_never_shelters_a_cpu_overrun() -> None:
+    report = _report_on(cores=4, wall=170.0, suite_cpu=650.0, host_busy=660.0)
+    assert report.outcome == "over_cpu_budget"
+
+
+def test_describe_reports_the_suite_utilisation() -> None:
+    text = _report_on(cores=4, wall=120.0, suite_cpu=470.0, host_busy=475.0).describe()
+    assert "suite kept 99% of the free cores busy" in text
+
+
+def test_run_verify_warns_but_passes_on_a_capacity_bound_host(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    host = _FakeHost({"test": (100.0, 400.0, 0.0), "test-verification-smoke": (20.0, 70.0, 0.0)})
+    monkeypatch.setattr(time, "monotonic", host.monotonic)
+    monkeypatch.setattr(verify_module, "sample_suite_resources", host.sample)
+    monkeypatch.setattr(verify_module.os, "cpu_count", lambda: 4)
+    exit_code = verify_module.run_verify(cwd=tmp_path, runner=host)
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "WARNING" in captured.err
+    assert "capacity" in captured.err
+    assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
+
+
+# --- orphaned descendants ---------------------------------------------------
+
+
+class _FakeCpuTimes:
+    def __init__(self, seconds: float) -> None:
+        self.user = seconds
+        self.system = 0.0
+
+
+class _FakeProcess:
+    """A process the tracker can observe: CPU, parent, and whether it still runs."""
+
+    def __init__(self, pid: int, parent: int, cpu: float = 0.0) -> None:
+        self.pid = pid
+        self.parent = parent
+        self.cpu = cpu
+        self.running = True
+
+    def create_time(self) -> float:
+        return float(self.pid)
+
+    def cpu_times(self) -> _FakeCpuTimes:
+        return _FakeCpuTimes(self.cpu)
+
+    def ppid(self) -> int:
+        return self.parent
+
+    def is_running(self) -> bool:
+        return self.running
+
+
+class _FakeRoot:
+    """The verify process: ``children`` reports whatever is still in its tree."""
+
+    pid = 1000
+
+    def __init__(self) -> None:
+        self.tree: list[_FakeProcess] = []
+
+    def children(self, *, recursive: bool) -> list[_FakeProcess]:
+        assert recursive
+        return [process for process in self.tree if process.running]
+
+
+def test_cpu_of_a_descendant_orphaned_during_the_step_is_charged_to_the_suite() -> None:
+    root = _FakeRoot()
+    make = _FakeProcess(2000, parent=root.pid)
+    root.tree = [make]
+    tracker = verify_budget_module.orphaned_cpu_tracker(root)
+
+    tracker.sample()
+    daemon = _FakeProcess(2001, parent=make.pid, cpu=0.5)
+    root.tree.append(daemon)
+    tracker.sample()
+    # ``make`` exits; its background child is re-parented to init and keeps
+    # burning CPU that ``getrusage(RUSAGE_CHILDREN)`` will never see.
+    make.running = False
+    daemon.parent = 1
+    daemon.cpu = 2.0
+    root.tree.remove(daemon)
+    tracker.sample()
+    daemon.cpu = 3.0
+    tracker.sample()
+    daemon.running = False
+    tracker.sample()
+
+    assert tracker.orphaned_cpu_seconds == pytest.approx(3.0)
+
+
+def test_descendants_reaped_inside_the_tree_are_left_to_rusage() -> None:
+    root = _FakeRoot()
+    child = _FakeProcess(2000, parent=root.pid, cpu=1.0)
+    root.tree = [child]
+    tracker = verify_budget_module.orphaned_cpu_tracker(root)
+    tracker.sample()
+    child.cpu = 4.0
+    tracker.sample()
+    child.running = False
+    tracker.sample()
+
+    assert tracker.orphaned_cpu_seconds == 0.0
+
+
+def test_an_orphan_older_than_the_step_is_charged_only_for_the_step() -> None:
+    root = _FakeRoot()
+    worker = _FakeProcess(2000, parent=root.pid, cpu=10.0)
+    root.tree = [worker]
+    tracker = verify_budget_module.orphaned_cpu_tracker(root)
+    tracker.sample(baseline=True)
+    worker.parent = 1
+    worker.cpu = 12.5
+    root.tree = []
+    tracker.sample()
+
+    assert tracker.orphaned_cpu_seconds == pytest.approx(2.5)
+
+
+def test_run_verify_charges_orphaned_descendant_cpu_to_the_suite(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 300 core-s of suite CPU through rusage plus 400 core-s burnt by an
+    # orphan: over the 600 core-s CPU budget, though rusage alone is not.
+    host = _FakeHost({"test": (40.0, 300.0, 400.0), "test-verification-smoke": (10.0, 0.0, 0.0)})
+    monkeypatch.setattr(time, "monotonic", host.monotonic)
+    monkeypatch.setattr(verify_module, "sample_suite_resources", host.sample)
+    monkeypatch.setattr(verify_module.os, "cpu_count", lambda: _CORES)
+    orphaned = iter((400.0, 0.0))
+
+    class _Tracker:
+        orphaned_cpu_seconds = 0.0
+
+        def __enter__(self) -> _Tracker:
+            return self
+
+        def __exit__(self, *exc_info: object) -> None:
+            self.orphaned_cpu_seconds = next(orphaned)
+
+    exit_code = verify_module.run_verify(
+        cwd=tmp_path, runner=host, orphan_tracker=lambda: _Tracker()
+    )
+    captured = capsys.readouterr()
+    assert exit_code == TIMEOUT_EXIT_CODE
+    assert "suite CPU 700.0 / 600.0 core-s" in captured.out
+    assert "suite CPU exceeded" in captured.err

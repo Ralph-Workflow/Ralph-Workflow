@@ -185,6 +185,22 @@ def _forget_child_session(pid: int) -> None:
         _SESSION_REGISTRY.pop(pid, None)
 
 
+def _has_exited(proc: psutil.Process) -> bool:
+    """Return True once ``proc`` has exited, including as an unreaped zombie.
+
+    ``psutil.Process.is_running()`` stays True for a zombie, and a direct child
+    whose owner (a ``subprocess.Popen``) has not ``wait()``-ed yet stays a
+    zombie for as long as teardown polls -- so polling ``is_running()`` alone
+    burns the whole escalation window, twice. A zombie has already exited and
+    can run nothing; it is deliberately NOT reaped here, because reaping it
+    behind its ``Popen``'s back makes that ``Popen`` report exit status 0.
+    """
+    try:
+        return not proc.is_running() or proc.status() == psutil.STATUS_ZOMBIE
+    except psutil.Error:
+        return True
+
+
 def _label_family(value: str) -> str:
     """Return the subsystem family used to authorize a teardown."""
     return value.split(":", 1)[0]
@@ -345,10 +361,7 @@ class DefaultProcessTeardown:
             for proc in procs:
                 if proc.pid in gone:
                     continue
-                try:
-                    if not proc.is_running():
-                        gone.add(proc.pid)
-                except psutil.Error:
+                if _has_exited(proc):
                     gone.add(proc.pid)
             if len(gone) >= len(procs):
                 break

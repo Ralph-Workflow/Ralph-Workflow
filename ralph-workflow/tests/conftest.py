@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import os
 import shutil
-import signal
 import sys
 import tempfile
-import threading
 from collections.abc import Generator
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -32,18 +30,15 @@ from ralph.policy.models import (
     PipelinePolicy,
     RecoveryPolicy,
 )
-from ralph.runtime import (
-    DEFAULT_TEST_TIMEOUT_SECONDS,
-    TEST_TIMEOUT_ENV,
-    timeout_seconds_from_env,
-)
 from ralph.test_suites import (
     REQUIRED_AUTO_INTEGRATE_E2E_FILES,
 )
 from ralph.workspace.memory import MemoryWorkspace
 from tests.integration._mock_agent_invoker import MockAgentInvoker
 
-pytest_plugins = ("ralph.testing.pytest_timeout_plugin",)
+# ``tests._per_test_budget`` charges every test phase (setup, call and
+# teardown) against the per-test budget: main-thread CPU plus a wall hang cap.
+pytest_plugins = ("ralph.testing.pytest_timeout_plugin", "tests._per_test_budget")
 _REQUIRED_AUTO_INTEGRATE_E2E_PATHS = frozenset(REQUIRED_AUTO_INTEGRATE_E2E_FILES) | {
     # wt-18 WU-3: the ladder adapter's real-git regression (config-first
     # argv ordering, compare-and-swap land) must stay on the default
@@ -270,7 +265,6 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 if TYPE_CHECKING:
     from collections.abc import Generator
-    from types import FrameType
 
 
 @pytest.fixture(autouse=True)
@@ -307,118 +301,6 @@ def _reset_rich_style_color_caches() -> Generator[None, None, None]:
         rich.style.Style._add,
     ):
         cached_callable.cache_clear()
-
-
-class TestExecutionTimeoutError(BaseException):
-    """The per-test SIGALRM budget ran out.
-
-    A ``BaseException``, like ``KeyboardInterrupt``, so code under test
-    cannot swallow it. As a ``TimeoutError`` it was an ``OSError``: an
-    ``except OSError: continue`` around a file read turned an overrun into
-    a silently skipped file (a fresh audit scan then reported phantom
-    baseline drift), and ``except Exception`` blocks hid overruns entirely.
-    """
-
-
-#: The per-test wall-clock HANG cap, as a multiple of the per-test budget
-#: (and at most ``_WALL_HANG_MAX_EXTRA_SECONDS`` above it). The budget itself
-#: is charged in CPU seconds -- see :func:`pytest_runtest_call`.
-_WALL_HANG_FACTOR = 5.0
-_WALL_HANG_MAX_EXTRA_SECONDS = 60.0
-
-
-def _wall_hang_cap(budget_seconds: float) -> float:
-    return min(budget_seconds * _WALL_HANG_FACTOR, budget_seconds + _WALL_HANG_MAX_EXTRA_SECONDS)
-
-
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_call(item: pytest.Item) -> Generator[None, object, None]:
-    """Enforce the per-test budget: CPU seconds, plus a wall-clock hang cap.
-
-    The budget (``timeout_seconds`` marker, else the 1 s default) is charged
-    against the CPU this process spends (``ITIMER_PROF``): the work the test
-    controls. ``make test`` saturates every core, so a wall-clock budget
-    measured the host instead -- a 0.1 s test was seen taking 1 s of wall
-    clock. A test that waits rather than works (a sleep, a blocked read, a
-    hang) uses no CPU, so a wall-clock cap (``ITIMER_REAL``) of
-    :func:`_wall_hang_cap` still fails it. Both raise the uncatchable
-    :class:`TestExecutionTimeoutError`.
-    """
-    if threading.current_thread() is not threading.main_thread():
-        yield
-        return
-
-    timeout_marker = item.get_closest_marker("timeout_seconds")
-    if timeout_marker is not None and timeout_marker.args:
-        timeout_seconds = float(timeout_marker.args[0])
-    else:
-        timeout_seconds = timeout_seconds_from_env(TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS)
-    wall_cap_seconds = _wall_hang_cap(timeout_seconds)
-
-    # ``_completed`` is mutated by the handlers and by the ``finally`` block
-    # below to make the per-test timer contract race-safe. Once the test body
-    # returns, a handler must not raise even if its signal was already pending
-    # in the kernel queue while we cancelled the timer. A single-element list
-    # keeps the closure scoped to this test invocation; a plain ``bool`` would
-    # capture by value and could not be mutated from the nested handlers.
-    _completed = [False]
-
-    # A signal can be delivered just AFTER its timer was cancelled (seen on
-    # macOS for ITIMER_PROF). A handler whose own timer still has time left
-    # is therefore looking at a stale signal from an earlier test and ignores
-    # it; an expired one-shot timer reads back as 0.
-    def _handle_cpu_budget(signum: int, frame: FrameType | None) -> None:
-        del signum, frame
-        if _completed[0] or signal.getitimer(signal.ITIMER_PROF)[0] > 0:
-            return
-        raise TestExecutionTimeoutError(
-            f"test used more than {timeout_seconds} CPU seconds: {item.nodeid}"
-        )
-
-    def _handle_wall_hang(signum: int, frame: FrameType | None) -> None:
-        del signum, frame
-        if _completed[0] or signal.getitimer(signal.ITIMER_REAL)[0] > 0:
-            return
-        raise TestExecutionTimeoutError(
-            f"test exceeded the {wall_cap_seconds} s wall-clock hang cap "
-            f"({timeout_seconds} s budget): {item.nodeid}"
-        )
-
-    timers = (
-        (signal.SIGPROF, signal.ITIMER_PROF, timeout_seconds, _handle_cpu_budget),
-        (signal.SIGALRM, signal.ITIMER_REAL, wall_cap_seconds, _handle_wall_hang),
-    )
-    previous_handlers = [signal.getsignal(signum) for signum, *_rest in timers]
-    for signum, which, seconds, handler in timers:
-        signal.signal(signum, handler)
-        signal.setitimer(which, seconds)
-    try:
-        yield
-    finally:
-        # Cancel both timers, then drain any signal already queued in the
-        # kernel: block the signals, point them at ``SIG_IGN`` so a pending
-        # one is discarded on delivery instead of reaching the previous
-        # handler (``SIG_DFL`` for SIGALRM/SIGPROF terminates the worker),
-        # unblock, and only then restore the previous handlers.
-        # ``pthread_sigmask`` is POSIX-only; elsewhere this degrades to a
-        # best-effort cancel without the mask.
-        _completed[0] = True
-        signums = [signum for signum, *_rest in timers]
-        for _signum, which, _seconds, _handler in timers:
-            signal.setitimer(which, 0)
-        if hasattr(signal, "pthread_sigmask"):
-            signal.pthread_sigmask(signal.SIG_BLOCK, signums)
-            for signum in signums:
-                signal.signal(signum, signal.SIG_IGN)
-            signal.pthread_sigmask(signal.SIG_UNBLOCK, signums)
-        for signum, previous in zip(signums, previous_handlers, strict=True):
-            restored = signal.SIG_DFL if previous is None else previous
-            if signum == signal.SIGPROF and restored == signal.SIG_DFL:
-                # Nothing else uses SIGPROF, and its default action terminates
-                # the process: a late delivery after this point (see above)
-                # killed a whole shard with exit -27. Leave it ignored.
-                restored = signal.SIG_IGN
-            signal.signal(signum, restored)
 
 
 @pytest.fixture(autouse=True)

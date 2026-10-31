@@ -30,6 +30,16 @@ def test_timeout_seconds_from_env_uses_default_when_missing(
     assert timeout_seconds_from_env(TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS) == 1.0
 
 
+@pytest.mark.parametrize("raw", ["0", "0.0", "-1", "nan", "inf"])
+def test_timeout_seconds_from_env_rejects_values_that_would_disarm_the_timeout(
+    monkeypatch: pytest.MonkeyPatch, raw: str
+) -> None:
+    monkeypatch.setenv(TEST_TIMEOUT_ENV, raw)
+
+    with pytest.raises(ValueError, match=TEST_TIMEOUT_ENV):
+        timeout_seconds_from_env(TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS)
+
+
 def test_default_suite_timeout_is_the_hang_cap() -> None:
     assert DEFAULT_SUITE_TIMEOUT_SECONDS == 180.0, (
         "Policy violation: DEFAULT_SUITE_TIMEOUT_SECONDS must be 180.0, the "

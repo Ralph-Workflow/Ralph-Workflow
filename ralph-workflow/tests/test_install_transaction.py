@@ -6,12 +6,14 @@ from pathlib import Path
 import pytest
 
 from ralph._install_errors import InstallError
+from ralph.install import render_dev_launcher
 from ralph.install_transaction import (
     InstallLockUnavailableError,
     cleanup_staging,
     finalize_generation,
     install_lock,
     point_current,
+    prune_generations,
     publish_generation,
 )
 
@@ -150,3 +152,50 @@ def test_install_lock_rejects_symlinked_root_or_lock(tmp_path: Path) -> None:
     lock_link.symlink_to(lock_target)
     with pytest.raises(InstallLockUnavailableError, match="symlink"), install_lock(lock_link):
         pass
+
+
+def _generation_tree(tmp_path: Path, *names: str) -> Path:
+    generations = tmp_path / "generations"
+    for name in names:
+        _write_tree(generations / name, {"ralph/__init__.py": name})
+    return generations
+
+
+def test_prune_generations_keeps_only_what_current_and_the_launcher_reference(
+    tmp_path: Path,
+) -> None:
+    """Every install leaves a full snapshot behind; unreferenced ones must go."""
+    generations = _generation_tree(tmp_path, "old-1", "old-2", "live", "launched")
+    current = tmp_path / "current"
+    current.symlink_to(generations / "live", target_is_directory=True)
+    launcher = tmp_path / "bin" / "rdev"
+    launcher.parent.mkdir()
+    launcher.write_text(render_dev_launcher(generations / "launched", "/usr/bin/uv"))
+
+    removed = prune_generations(generations, current=current, launcher=launcher)
+
+    assert sorted(path.name for path in generations.iterdir()) == ["launched", "live"]
+    assert sorted(path.name for path in removed) == ["old-1", "old-2"]
+
+
+def test_prune_generations_keeps_everything_when_the_launcher_names_no_generation(
+    tmp_path: Path,
+) -> None:
+    """A hand-edited launcher is not proof that a generation is unused."""
+    generations = _generation_tree(tmp_path, "old", "live")
+    current = tmp_path / "current"
+    current.symlink_to(generations / "live", target_is_directory=True)
+    launcher = tmp_path / "rdev"
+    launcher.write_text('#!/usr/bin/env bash\nexec my-own-wrapper "$@"\n')
+
+    assert prune_generations(generations, current=current, launcher=launcher) == ()
+    assert sorted(path.name for path in generations.iterdir()) == ["live", "old"]
+
+
+def test_prune_generations_tolerates_a_first_install(tmp_path: Path) -> None:
+    assert (
+        prune_generations(
+            tmp_path / "generations", current=tmp_path / "current", launcher=tmp_path / "rdev"
+        )
+        == ()
+    )

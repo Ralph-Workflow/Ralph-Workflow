@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import functools
 import os
 import shlex
 import subprocess
@@ -11,7 +12,7 @@ import threading
 import traceback
 from collections import deque
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, cast
+from typing import IO, TYPE_CHECKING, TextIO, cast
 
 import psutil
 from loguru import logger
@@ -144,10 +145,20 @@ def _agent_command_name(config: AgentConfig) -> str:
 
 
 def _deliver_prompt_on_stdin(handle: ManagedProcess, prompt: str) -> None:
-    """Write *prompt* to the child's stdin and close it.
+    """Feed *prompt* to the child's stdin from a daemon thread, then close it.
 
     OpenCode blocks on ``Bun.stdin.text()`` until EOF, so the close is what
     releases the run -- leaving the pipe open hangs the agent before it starts.
+
+    The write never runs on the caller's thread. A child that does not read
+    stdin fills the pipe buffer (64 KiB) and blocks the writer; on the caller's
+    thread that happened before the reader and its idle watchdog existed, so
+    neither ``idle_timeout_seconds`` nor ``max_session_seconds`` could stop the
+    run. The writer owns a duplicate of the pipe descriptor and the stream
+    object is closed at once, so closing the handle never waits behind a
+    blocked write. A child that exits before reading everything ends the write
+    with ``BrokenPipeError``; that is the child's exit, which the reader then
+    classifies from the exit code and stderr like any other.
     """
     stream = handle.stdin
     if stream is None:  # pragma: no cover - spawn always provides a pipe here
@@ -155,13 +166,47 @@ def _deliver_prompt_on_stdin(handle: ManagedProcess, prompt: str) -> None:
     # The spawn below sets ``text=True``, so this pipe is a text stream even
     # though ``ManagedProcess.stdin`` is annotated for the bytes case.
     text_stream = cast(
-        "IO[str]", stream
+        "TextIO", stream
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     try:
-        text_stream.write(prompt)
-        text_stream.flush()
+        write_fd = os.dup(text_stream.fileno())
+    except (OSError, ValueError):
+        # Not backed by a descriptor (an in-memory stand-in): nothing to dup.
+        target = functools.partial(_write_prompt_to_stream, text_stream, prompt)
+    else:
+        payload = prompt.encode(text_stream.encoding or "utf-8", text_stream.errors or "strict")
+        with contextlib.suppress(OSError, ValueError):
+            text_stream.close()
+        target = functools.partial(_write_prompt_to_fd, write_fd, payload)
+    threading.Thread(target=target, name="ralph-stdin-prompt", daemon=True).start()
+
+
+def _write_prompt_to_fd(fd: int, payload: bytes) -> None:
+    """Write *payload* to *fd* and close it; a closed reader ends the write."""
+    view = memoryview(payload)
+    try:
+        while view:
+            written = os.write(fd, view)
+            view = view[written:]
+    except OSError:
+        # BrokenPipeError: the child exited (or was killed) before reading the
+        # whole prompt. Its exit code and stderr tell the reader why.
+        pass
     finally:
-        text_stream.close()
+        with contextlib.suppress(OSError):
+            os.close(fd)
+
+
+def _write_prompt_to_stream(stream: TextIO, prompt: str) -> None:
+    """Write *prompt* through *stream* and close it; a closed reader ends the write."""
+    try:
+        stream.write(prompt)
+        stream.flush()
+    except (OSError, ValueError):
+        pass
+    finally:
+        with contextlib.suppress(OSError, ValueError):
+            stream.close()
 
 
 def split_prompt_for_stdin_delivery(
@@ -1711,8 +1756,6 @@ def _run_subprocess_and_read_lines(
     strategy = ctx.execution_strategy or GenericExecutionStrategy()
     probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
     with handle:
-        if stdin_prompt is not None:
-            _deliver_prompt_on_stdin(handle, stdin_prompt)
         stdout_pipe = handle.stdout
         if stdout_pipe is None:
             msg = "Failed to capture stdout"
@@ -1757,6 +1800,10 @@ def _run_subprocess_and_read_lines(
         )
         reader = ProcessLineReader(handle, reader_ctx, clock, agy_cli_log=agy_cli_log)
         lines_iter = reader.read_lines()
+        if stdin_prompt is not None:
+            # Only now that the reader exists: a child that never drains its
+            # stdin must stay under the reader's idle watchdog.
+            _deliver_prompt_on_stdin(handle, stdin_prompt)
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)
         explicit_completion_seen = False
         captured_session_id: str | None = None

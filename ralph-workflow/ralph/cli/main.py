@@ -74,7 +74,7 @@ from ralph.display.terminal_restore import (
 )
 from ralph.onboarding import init_help_text, init_local_config_help_text
 from ralph.pipeline import checkpoint as ckpt
-from ralph.policy.loader import load_policy, load_policy_for_workspace_scope
+from ralph.policy.loader import load_policy_for_config_dir, load_policy_for_workspace_scope
 from ralph.policy.validation import validate_agent_chains_satisfiable, validate_chain_agents_on_path
 from ralph.process._spawn_env import sanitize_process_environment
 from ralph.project_policy.policy_mode import PolicyMode
@@ -92,7 +92,7 @@ if TYPE_CHECKING:
     from rich.console import Console
 
     from ralph.agents.registry import AgentRegistry
-    from ralph.cli._cli_overrides import CLIOverrides
+    from ralph.cli._general_overrides import GeneralOverrides
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
@@ -947,7 +947,7 @@ def main(
       the run is rejected.
 
     Pipeline-invocation side effect: when none of the early-exit branches
-    fire, the handler builds a ``CLIOverrides`` bundle, calls
+    fire, the handler builds the CLI overrides mapping, calls
     ``bootstrap_global_configs`` + ``configure_logging``, resolves the
     effective developer-iteration count, and dispatches to
     ``run_pipeline``. The run writes ``.agent/checkpoint.json`` and
@@ -1859,7 +1859,7 @@ def _handle_check_config(
         config_value = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
         registry = _load_agent_registry_factory().from_config(config_value)
         if config_path is not None:
-            bundle = load_policy(config_path.parent, config=config_value)
+            bundle = load_policy_for_config_dir(config_path.parent, config=config_value)
         else:
             if workspace_scope is None:
                 raise RuntimeError("workspace scope is required for the active configuration")
@@ -2042,17 +2042,14 @@ def _build_cli_overrides(
     input: CLIOverrideInput,
 ) -> dict[str, object]:
     """Build CLI overrides dictionary from CLIOverrideInput."""
-    overrides: CLIOverrides = {
-        "general": {
-            "git_user_name": None,
-            "git_user_email": None,
-            "execution": {},
-            "workflow": {},
-        },
-        "developer_agent": None,
-        "developer_model": None,
-    }
+    # Only flags the operator actually passed become overrides: the merge lets
+    # an override value (including ``None``) replace the config file's value,
+    # so an absent flag must leave its key out entirely.
+    general: GeneralOverrides = {"execution": {}, "workflow": {}}
+    overrides: dict[str, object] = {"general": general}
 
+    # ``developer_agent`` / ``developer_model`` are CLI-only UnifiedConfig
+    # fields; the policy loader rebinds the ``development`` drain to them.
     if input.developer_agent is not None:
         overrides["developer_agent"] = input.developer_agent
 
@@ -2060,18 +2057,18 @@ def _build_cli_overrides(
         overrides["developer_model"] = input.developer_model
 
     if input.git_user_name is not None:
-        overrides["general"]["git_user_name"] = input.git_user_name
+        general["git_user_name"] = input.git_user_name
 
     if input.git_user_email is not None:
-        overrides["general"]["git_user_email"] = input.git_user_email
+        general["git_user_email"] = input.git_user_email
 
     if input.developer_iters is not None:
-        overrides["general"]["developer_iters"] = input.developer_iters
+        general["developer_iters"] = input.developer_iters
 
     if input.unsafe_mode is not None:
-        overrides["general"]["workflow"] = {"unsafe_mode": input.unsafe_mode}
+        general["workflow"] = {"unsafe_mode": input.unsafe_mode}
 
-    return dict(overrides)
+    return overrides
 
 
 # Public aliases — test-accessible names and monkeypatch interception points.
@@ -2153,7 +2150,7 @@ def handle_check_config(
         config_value = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
         registry = _load_agent_registry_factory().from_config(config_value)
         if config_path is not None:
-            bundle = load_policy(config_path.parent, config=config_value)
+            bundle = load_policy_for_config_dir(config_path.parent, config=config_value)
         else:
             if workspace_scope is None:
                 raise RuntimeError("workspace scope is required for the active configuration")

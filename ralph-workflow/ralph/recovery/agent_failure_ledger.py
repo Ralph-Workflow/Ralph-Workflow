@@ -363,8 +363,16 @@ class AgentFailureLedger:
             )
 
     def snapshot(self) -> dict[str, object]:
-        """Return a serializable dictionary snapshot of ledger state."""
+        """Return a serializable dictionary snapshot of ledger state.
+
+        ``cooldown_until_ms`` is a deadline on this process's monotonic clock,
+        which restarts on reboot, so each active cooldown is also persisted as
+        a wall-clock deadline (``cooldown_until_epoch_ms``) that
+        :meth:`from_snapshot` re-anchors onto the restoring clock.
+        """
         with self._lock:
+            now_ms = int(self._clock.monotonic() * 1000)
+            now_epoch_ms = int(self._clock.epoch() * 1000)
             entries_dict: dict[str, object] = {
                 f"{phase}:{agent}": {
                     "phase": phase,
@@ -372,6 +380,9 @@ class AgentFailureLedger:
                     "consecutive_unproductive": entry.consecutive_unproductive,
                     "total_unproductive": entry.total_unproductive,
                     "cooldown_until_ms": entry.cooldown_until_ms,
+                    "cooldown_until_epoch_ms": None
+                    if entry.cooldown_until_ms is None
+                    else now_epoch_ms + max(0, entry.cooldown_until_ms - now_ms),
                     "cooldown_reason": entry.cooldown_reason,
                     "cooldown_count": entry.cooldown_count,
                     "is_spent": entry.is_spent,
@@ -512,6 +523,9 @@ class AgentFailureLedger:
             max_cooldown_seconds=max_cooldown_seconds,
             backoff_factor=backoff_factor,
         )
+        now_mono_ms = int(clock.monotonic() * 1000)
+        now_epoch_ms = int(clock.epoch() * 1000)
+        max_cooldown_ms = int(ledger.max_cooldown_seconds * 1000)
         raw_entries = snap.get("entries")
         if isinstance(raw_entries, Mapping):
             for item in raw_entries.values():
@@ -524,7 +538,12 @@ class AgentFailureLedger:
                         continue
                     consecutive_val = item.get("consecutive_unproductive")
                     total_val = item.get("total_unproductive")
-                    until_val = item.get("cooldown_until_ms")
+                    until_ms = _restored_cooldown_until_ms(
+                        item,
+                        now_mono_ms=now_mono_ms,
+                        now_epoch_ms=now_epoch_ms,
+                        max_cooldown_ms=max_cooldown_ms,
+                    )
                     reason_val = item.get("cooldown_reason")
                     cooldown_count_val = item.get("cooldown_count")
                     is_spent_val = item.get("is_spent")
@@ -537,9 +556,7 @@ class AgentFailureLedger:
                         total_unproductive=int(total_val)
                         if isinstance(total_val, (int, float, str))
                         else 0,
-                        cooldown_until_ms=int(until_val)
-                        if isinstance(until_val, (int, float, str))
-                        else None,
+                        cooldown_until_ms=until_ms,
                         cooldown_reason=str(reason_val) if isinstance(reason_val, str) else None,
                         cooldown_count=int(cooldown_count_val)
                         if isinstance(cooldown_count_val, (int, float, str))
@@ -551,6 +568,39 @@ class AgentFailureLedger:
                     )
                     ledger._entries[(phase_val, agent_val)] = entry
         return ledger
+
+
+def _restored_cooldown_until_ms(
+    item: Mapping[str, object],
+    *,
+    now_mono_ms: int,
+    now_epoch_ms: int,
+    max_cooldown_ms: int,
+) -> int | None:
+    """Re-anchor a persisted cooldown deadline onto the restoring monotonic clock.
+
+    The wall-clock deadline (``cooldown_until_epoch_ms``) survives a reboot,
+    so the remaining duration is measured against the restoring clock's
+    epoch. Legacy snapshots carry only the previous boot's monotonic deadline
+    (``cooldown_until_ms``); it is measured against the restoring monotonic
+    clock. Either way the remaining duration is clamped to
+    ``[0, max_cooldown_ms]`` -- no cooldown the ledger can grant outlasts its
+    maximum, so a deadline from a different clock domain can never strand an
+    agent for the previous uptime. A zero remainder restores as an elapsed
+    cooldown that the next status read expires normally.
+    """
+    epoch_val = item.get("cooldown_until_epoch_ms")
+    until_val = item.get("cooldown_until_ms")
+    if isinstance(epoch_val, (int, float)) and not isinstance(epoch_val, bool):
+        remaining_ms = int(epoch_val) - now_epoch_ms
+    elif isinstance(until_val, (int, float, str)) and not isinstance(until_val, bool):
+        try:
+            remaining_ms = int(float(until_val)) - now_mono_ms
+        except ValueError:
+            return None
+    else:
+        return None
+    return now_mono_ms + min(max(remaining_ms, 0), max_cooldown_ms)
 
 
 def _counter_value(raw: object) -> int:

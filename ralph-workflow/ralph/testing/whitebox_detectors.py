@@ -6,7 +6,10 @@ The test-policy audit needs, for every parsed test module:
   ``ralph`` imports, and private attribute reads in high-confidence contexts),
 * the exact dotted targets the module patches,
 * the pytest markers the module declares, and
-* every call site with its dotted callee name and its wait-for context.
+* every call site with its dotted callee name and its wait-for context, and
+* the module's import-alias table, so a call written through an alias
+  (``import time as t`` / ``from time import sleep``) resolves to the
+  module function it really calls (:func:`resolve_dotted_name`).
 
 All of it comes from ONE traversal per module
 (:func:`analyze_module`). ``ast.parse`` is the irreducible cost of auditing
@@ -37,6 +40,13 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Collection
 
 WhiteboxCounts = dict[str, int]
+
+#: A module's import aliases: every name an import binds to something other
+#: than itself, mapped to the dotted names it may stand for (``t`` ->
+#: ``time`` for ``import time as t``, ``sleep`` -> ``time.sleep`` for
+#: ``from time import sleep``). A name rebound by several imports maps to
+#: all of them.
+ImportAliases = dict[str, frozenset[str]]
 
 #: One call site: the call node, its dotted callee name (``None`` when the
 #: callee is not a plain dotted name), and whether the call sits inside an
@@ -95,6 +105,7 @@ class ModuleFacts:
     call_sites: tuple[CallSite, ...]
     markers: frozenset[str]
     has_subprocess_e2e_marker: bool
+    import_aliases: ImportAliases
 
 
 def _is_dunder(name: str) -> bool:
@@ -125,6 +136,44 @@ def _dotted_name(node: ast.expr) -> str | None:
     parts.append(current.id)
     parts.reverse()
     return ".".join(parts)
+
+
+def _import_aliases(imports: list[ast.Import | ast.ImportFrom]) -> ImportAliases:
+    """Return the alias table of every absolute import in the module.
+
+    ``import a.b`` binds ``a`` to itself and is not an alias; relative and
+    star imports bind nothing the detectors can name, so they are skipped.
+    Imports are collected from every scope: a function-local
+    ``import subprocess as sp`` still makes ``sp.run`` a subprocess call.
+    """
+    aliases: dict[str, set[str]] = {}
+    for node in imports:
+        if isinstance(node, ast.ImportFrom):
+            if node.level or not node.module:
+                continue
+            for alias in node.names:
+                if alias.name != "*":
+                    bound = alias.asname or alias.name
+                    aliases.setdefault(bound, set()).add(f"{node.module}.{alias.name}")
+        else:
+            for alias in node.names:
+                if alias.asname is not None and alias.asname != alias.name:
+                    aliases.setdefault(alias.asname, set()).add(alias.name)
+    return {name: frozenset(targets) for name, targets in aliases.items()}
+
+
+def resolve_dotted_name(name: str, aliases: ImportAliases) -> frozenset[str]:
+    """Return every dotted name ``name`` may denote, ``name`` itself included.
+
+    The first segment is looked up in the module's import aliases, so
+    ``t.sleep`` resolves to ``time.sleep`` under ``import time as t`` and a
+    bare ``run`` to ``subprocess.run`` under ``from subprocess import run``.
+    """
+    head, separator, rest = name.partition(".")
+    targets = aliases.get(head)
+    if not targets:
+        return frozenset({name})
+    return frozenset({name, *(f"{target}{separator}{rest}" for target in targets)})
 
 
 def _argument_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str, ...]:
@@ -397,7 +446,15 @@ def canonical_target_string(target: str) -> str:
     return target
 
 
-def _add_setattr_targets(targets: set[str], node: ast.Call) -> None:
+def _add_receiver_targets(
+    targets: set[str], receiver: str, attribute: str, aliases: ImportAliases
+) -> None:
+    """Record ``receiver.attribute`` under every name the receiver may denote."""
+    for resolved in resolve_dotted_name(receiver, aliases):
+        targets.add(canonical_patch_target(resolved, attribute))
+
+
+def _add_setattr_targets(targets: set[str], node: ast.Call, aliases: ImportAliases) -> None:
     """Record the targets a ``monkeypatch.setattr`` call patches."""
     if node.args and isinstance(node.args[0], ast.Constant):
         first_node = node.args[0]
@@ -413,13 +470,14 @@ def _add_setattr_targets(targets: set[str], node: ast.Call) -> None:
         return
     receiver = _dotted_name(node.args[0])
     if receiver is not None:
-        targets.add(canonical_patch_target(receiver, attribute_constant.value))
+        _add_receiver_targets(targets, receiver, attribute_constant.value, aliases)
 
 
 def _patched_targets(
     scan: _Scan,
     bound: Collection[str],
     monkeypatch_patterns: Collection[str],
+    aliases: ImportAliases,
 ) -> set[str]:
     """Collect the exact dotted targets patched in one scanned module."""
     normalized = {pattern.removesuffix("(") for pattern in monkeypatch_patterns}
@@ -429,7 +487,7 @@ def _patched_targets(
             continue
 
         if _is_monkeypatch_setattr(node, bound):
-            _add_setattr_targets(targets, node)
+            _add_setattr_targets(targets, node, aliases)
             continue
 
         if function_name in normalized and node.args:
@@ -451,7 +509,7 @@ def _patched_targets(
                 and isinstance(attribute_expression, ast.Constant)
                 and isinstance(attribute_expression.value, str)
             ):
-                targets.add(canonical_patch_target(receiver, attribute_expression.value))
+                _add_receiver_targets(targets, receiver, attribute_expression.value, aliases)
     return targets
 
 
@@ -560,21 +618,24 @@ def analyze_module(
 
     Returns:
         The white-box counts, the patched targets, the monkeypatch-bound
-        names, the call sites and the declared pytest markers.
+        names, the call sites, the declared pytest markers and the import
+        aliases.
     """
     scan = _scan_tree(tree)
     bound = _monkeypatch_names(scan)
+    aliases = _import_aliases(scan.imports)
     wait_for_identities = _wait_for_call_ids(scan.call_sites)
     call_sites = tuple(
         (node, call_name, id(node) in wait_for_identities) for node, call_name in scan.call_sites
     )
     return ModuleFacts(
         counts=_whitebox_counts(scan, bound),
-        patched_targets=frozenset(_patched_targets(scan, bound, monkeypatch_patterns)),
+        patched_targets=frozenset(_patched_targets(scan, bound, monkeypatch_patterns, aliases)),
         monkeypatch_names=frozenset(bound),
         call_sites=call_sites,
         markers=frozenset(_collect_markers(scan)),
         has_subprocess_e2e_marker=_has_subprocess_e2e_marker(scan),
+        import_aliases=aliases,
     )
 
 

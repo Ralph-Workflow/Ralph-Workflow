@@ -482,6 +482,50 @@ def test_collision_handling_at_divergent_sha_uses_collision_safe_name(
     assert repo.heads[expected_second_name].commit.hexsha == divergent_sha
 
 
+def test_failed_worktree_query_blocks_fast_forward_of_possibly_occupied_branch(
+    tmp_path: Path,
+) -> None:
+    """AC10: an unreadable worktree list fails closed instead of reporting no occupancy.
+
+    When ``git worktree list`` cannot be read, Ralph cannot tell whether a
+    sibling worktree has the candidate checked out, so the fast-forward
+    fallback must not move the candidate ref and every candidate counts as
+    occupied.
+    """
+    from ralph.pipeline._commit_reattach_fallback import (
+        fast_forward_reattach,
+        occupied_worktree_branches,
+    )
+
+    repo_root = tmp_path / "repo"
+    repo = _make_test_repo(repo_root, "feature/work")
+    feature_sha = repo.heads["feature/work"].commit.hexsha
+    actor = Actor("Test Committer", "test@example.com")
+    _detach_head_at(repo, feature_sha)
+    (repo_root / "descendant.txt").write_text("descendant\n", encoding="utf-8")
+    repo.index.add(["descendant.txt"])
+    repo.index.commit("descendant on detached HEAD", author=actor, committer=actor)
+    descendant_sha = repo.head.commit.hexsha
+
+    not_a_repo = tmp_path / "not-a-repo"
+    not_a_repo.mkdir()
+    occupancy = occupied_worktree_branches(not_a_repo)
+
+    assert occupancy.query_failed
+    assert "feature/work" in occupancy
+    moved = fast_forward_reattach(
+        repo_root,
+        detached_head_sha=descendant_sha,
+        candidates=iter(["feature/work"]),
+        branch_exists=lambda root, name: name in Repo(root).heads,
+        integration_target=None,
+        occupied=occupancy,
+    )
+
+    assert moved is False
+    assert Repo(repo_root).heads["feature/work"].commit.hexsha == feature_sha
+
+
 @pytest.mark.timeout_seconds(10)
 def test_committed_feature_work_lands_on_configured_integration_target(
     tmp_path: Path,

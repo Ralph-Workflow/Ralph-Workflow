@@ -140,7 +140,11 @@ def _phase_event_after_agent_run(
         events = _hp(effect, ctx)
     except KeyboardInterrupt:
         raise
-    except BaseException as exc:
+    # ``SystemExit`` from library code is a recoverable phase failure under the
+    # recovery-first design; any other non-``Exception`` BaseException (harness
+    # deadline, ``GeneratorExit``, cancellation) is outside control flow and
+    # propagates unchanged.
+    except (Exception, SystemExit) as exc:
         if isinstance(exc, McpServerError):
             logger.warning(
                 "Phase handler McpServerError in phase={phase}: "

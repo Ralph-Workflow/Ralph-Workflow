@@ -23,7 +23,7 @@ Exported surface:
   subprocess runners. Both require a successful ``git`` exit code
   unless the lenient variant is used. They are the only call sites of
   the internal ``_run_git_subprocess`` helper, which always carries
-  the fixed ``_GIT_READ_TIMEOUT_SECONDS = 30.0`` bound.
+  the fixed ``GIT_READ_TIMEOUT_SECONDS = 30.0`` bound.
 
 Trust boundary: every handler is gated on a ``McpCapability`` and runs
 through a process spawned by ``ralph.process.manager``. The 30-second
@@ -75,8 +75,11 @@ through ``run_git_command`` / ``run_git_command_lenient`` (via the
 
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
+import threading
+import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
@@ -138,6 +141,15 @@ class _SpawnedProcessLike(Protocol):
         """Return the stdout pipe."""
         ...
 
+    @property
+    def stderr(self) -> object:
+        """Return the stderr pipe."""
+        ...
+
+    def kill(self) -> None:
+        """Kill the process tree."""
+        ...
+
     def communicate_and_cleanup(self, *args: object, **kwargs: object) -> object:
         """Wait for the process to exit and clean up resources."""
         ...
@@ -178,9 +190,12 @@ def parse_git_diff_params(params: Mapping[str, object]) -> GitDiffParams:
     (``--ext-diff``, ``--textconv``, ``--convience-diff`` etc.).
     These flags would let a caller make git write to the
     workspace or invoke an external helper, bypassing the
-    intended capability separation. Malformed types (non-string
-    args, non-list containers) are silently dropped so the
-    legacy parsing contract is preserved.
+    intended capability separation. Rejecting the flags is not
+    enough on its own: git also runs ``diff.external`` and
+    textconv drivers from config, so every ``git diff`` this
+    module spawns is prefixed with ``--no-ext-diff --no-textconv``.
+    Malformed types (non-string args, non-list containers) are
+    silently dropped so the legacy parsing contract is preserved.
     """
     args_value = params.get("args")
     args = (
@@ -445,7 +460,15 @@ def _parse_numstat_count(value: str) -> int:
 # the exec tool) and fail closed — communicate_and_cleanup terminates and kills
 # the process tree on expiry, then re-raises TimeoutExpired for
 # run_git_command* to convert into an actionable is_error result.
-_GIT_READ_TIMEOUT_SECONDS = 30.0
+GIT_READ_TIMEOUT_SECONDS = 30.0
+
+#: Prepended to every ``git diff`` this module runs. The read-only contract
+#: (AC-06) forbids external helpers, and git runs ``diff.external`` and
+#: textconv drivers from config by default, not only when asked by flag.
+_NO_EXTERNAL_DIFF_HELPER_ARGS: tuple[str, ...] = ("--no-ext-diff", "--no-textconv")
+
+#: Read size for the streamed ``git diff`` stdout and the stderr drain.
+_PIPE_READ_CHUNK_BYTES = 8192
 
 
 def _run_git_subprocess(command: list[str], cwd: Path) -> subprocess.CompletedProcess[bytes]:
@@ -458,7 +481,7 @@ def _run_git_subprocess(command: list[str], cwd: Path) -> subprocess.CompletedPr
             label="git-mcp-read",
         ),
     )
-    stdout, stderr = proc.communicate_and_cleanup(timeout=_GIT_READ_TIMEOUT_SECONDS)
+    stdout, stderr = proc.communicate_and_cleanup(timeout=GIT_READ_TIMEOUT_SECONDS)
     returncode = proc.returncode if proc.returncode is not None else 0
     return subprocess.CompletedProcess(command, returncode, stdout or b"", stderr or b"")
 
@@ -931,7 +954,11 @@ def handle_git_diff(
     if format_value == "raw":
         return _git_read_result_with_outside_warning(
             lambda: lenient_stdout(
-                run_git_command_lenient(workspace, ["diff", *parsed.args], cwd=resolved_cwd)
+                run_git_command_lenient(
+                    workspace,
+                    ["diff", *_NO_EXTERNAL_DIFF_HELPER_ARGS, *parsed.args],
+                    cwd=resolved_cwd,
+                )
             ),
             is_outside=is_outside,
             warning_text=warning_text,
@@ -968,7 +995,9 @@ def _build_diff_summary_payload(
     Ponytail: isolated helper so the timeout-wrapping
     ``_git_read_result`` can call it without a try/except chain.
     """
-    raw_result = run_git_command_lenient(workspace, ["diff", "--numstat", *git_args], cwd=cwd)
+    raw_result = run_git_command_lenient(
+        workspace, ["diff", "--numstat", *_NO_EXTERNAL_DIFF_HELPER_ARGS, *git_args], cwd=cwd
+    )
     numstat_output = raw_result.stdout.decode("utf-8", errors="replace")
     cards: list[dict[str, object]] = []
     for line in numstat_output.splitlines():
@@ -1019,74 +1048,124 @@ def _collect_git_diff_capped(
 ) -> tuple[str, bool]:
     """Run ``git diff`` and stream at most ``max_bytes`` bytes.
 
-    AC-06: bounded streaming. The subprocess is spawned
-    through the shared ``ProcessManager`` so the same
-    ``_GIT_READ_TIMEOUT_SECONDS`` timeout applies as the
-    legacy ``run_git_command`` path. The stdout pipe is
-    consumed in 8 KiB chunks until either EOF is reached or
-    the running total equals/exceeds ``max_bytes``. When the
-    cap is hit, the last chunk is sliced at the byte
-    boundary and the subprocess is terminated; no more bytes
-    are read. The decoded string uses ``errors="replace"``
-    so any partial UTF-8 sequence at the truncation
-    boundary becomes ``U+FFFD`` rather than an invalid
-    encoding.
+    AC-06: bounded streaming. The subprocess is spawned through the shared
+    ``ProcessManager`` with external diff helpers disabled
+    (``--no-ext-diff --no-textconv``). Its stdout is consumed in 8 KiB
+    chunks until EOF or until more than ``max_bytes`` bytes arrive; on the
+    cap the last chunk is sliced at the byte boundary and the subprocess is
+    killed, so no more bytes are read. stderr is drained concurrently and
+    discarded: an unread stderr pipe that fills up blocks git, and with it
+    the stdout read below, forever. The whole read is bounded by
+    ``GIT_READ_TIMEOUT_SECONDS``; on expiry git is killed and a
+    ``timed_out`` :class:`ExecutionError` is raised for the handler to turn
+    into its actionable, non-retryable error result. The decoded string
+    never carries a partial UTF-8 sequence from the truncation boundary.
 
-    Returns ``(decoded_text, truncated)`` where
-    ``truncated`` is ``True`` iff the underlying diff was
-    longer than ``max_bytes`` bytes (i.e. the cap was
-    actually applied). The encoded excerpt length never
-    exceeds ``max_bytes``.
+    Returns ``(decoded_text, truncated)`` where ``truncated`` is ``True``
+    iff the underlying diff was longer than ``max_bytes`` bytes (i.e. the
+    cap was actually applied). The encoded excerpt length never exceeds
+    ``max_bytes``.
     """
     if max_bytes <= 0:
         return ("", False)
     effective_cwd = cwd if cwd is not None else _workspace_root(workspace)
-    proc = get_process_manager().spawn(
-        ["git", "diff", *git_args],
-        SpawnOptions(
-            cwd=str(effective_cwd),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            label="git-mcp-read",
+    timeout_seconds = GIT_READ_TIMEOUT_SECONDS
+    deadline = time.monotonic() + timeout_seconds
+    proc = cast(
+        "_SpawnedProcessLike",
+        get_process_manager().spawn(
+            ["git", "diff", *_NO_EXTERNAL_DIFF_HELPER_ARGS, *git_args],
+            SpawnOptions(
+                cwd=str(effective_cwd),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                label="git-mcp-read",
+            ),
         ),
-    )
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     stdout = proc.stdout
     if stdout is None:  # pragma: no cover — defensive
         return ("", False)
-    chunks, truncated = _read_git_diff_until_cap(
-        cast("_ReadablePipe", stdout),
-        max_bytes,  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    )
-    _terminate_git_diff_proc(
-        cast("_SpawnedProcessLike", proc)
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    stderr_drain = _start_pipe_drain(proc.stderr)
+    outcome: list[tuple[list[bytes], bool]] = []
+    failure: list[Exception] = []
+
+    def _read_stdout() -> None:
+        try:
+            outcome.append(
+                _read_git_diff_until_cap(
+                    cast("_ReadablePipe", stdout),
+                    max_bytes,  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                )
+            )
+        except Exception as exc:
+            failure.append(exc)
+
+    reader = threading.Thread(target=_read_stdout, name="git-diff-stdout", daemon=True)
+    reader.start()
+    reader.join(timeout=timeout_seconds)
+    if reader.is_alive():
+        _kill_git_diff_proc(proc)
+        raise ExecutionError(
+            f"git command timed out after {timeout_seconds:g}s: diff {' '.join(git_args)}".rstrip(),
+            timed_out=True,
+        )
+    if failure:
+        _kill_git_diff_proc(proc)
+        raise ExecutionError(f"Failed to read git diff output: {failure[0]}") from failure[0]
+    chunks, truncated = outcome[0]
+    if truncated:
+        _kill_git_diff_proc(proc)
+    if stderr_drain is not None:
+        stderr_drain.join(timeout=max(deadline - time.monotonic(), 0.0))
+    _terminate_git_diff_proc(proc, timeout=max(deadline - time.monotonic(), 0.1))
     return (
         _decode_git_diff_capped(b"".join(chunks), truncated),
         truncated,
     )
 
 
+def _start_pipe_drain(pipe: object) -> threading.Thread | None:
+    """Read ``pipe`` to EOF on a daemon thread, discarding the bytes.
+
+    Keeps a chatty child from blocking on a full pipe that nobody reads.
+    Read errors (the pipe closed under the reader) end the drain quietly.
+    """
+    if pipe is None:
+        return None
+    readable = cast(
+        "_ReadablePipe", pipe
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+
+    def _drain() -> None:
+        with contextlib.suppress(Exception):
+            while readable.read(_PIPE_READ_CHUNK_BYTES):
+                pass
+
+    drain = threading.Thread(target=_drain, name="git-diff-stderr", daemon=True)
+    drain.start()
+    return drain
+
+
 def _read_git_diff_until_cap(
     stdout: _ReadablePipe,
     max_bytes: int,
 ) -> tuple[list[bytes], bool]:
-    """Stream stdout until EOF or ``max_bytes`` is collected.
+    """Stream stdout until EOF or more than ``max_bytes`` bytes arrive.
 
-    AC-06: the streaming loop reads in 8 KiB chunks and
-    stops when either EOF is reached (returning
-    ``truncated=False``) or the running total equals/exceeds
-    ``max_bytes`` (returning ``truncated=True`` with the
-    last chunk sliced at the exact byte boundary).
+    AC-06: the streaming loop reads in 8 KiB chunks and stops when either
+    EOF is reached (returning ``truncated=False``) or the running total
+    exceeds ``max_bytes`` (returning ``truncated=True`` with the last chunk
+    sliced at the exact byte boundary). A diff of exactly ``max_bytes``
+    bytes is complete, not truncated.
     """
     chunks: list[bytes] = []
     total = 0
-    # Ponytail: local constant, never re-bound.
-    read_chunk_size = 8192
     while True:
-        chunk = stdout.read(read_chunk_size)
+        chunk = stdout.read(_PIPE_READ_CHUNK_BYTES)
         if not chunk:
             break
-        if total + len(chunk) >= max_bytes:
+        if total + len(chunk) > max_bytes:
             # Cap at the exact byte boundary. The
             # remaining bytes in this chunk are not
             # appended, so the encoded length of the
@@ -1101,22 +1180,27 @@ def _read_git_diff_until_cap(
     return chunks, False
 
 
-def _terminate_git_diff_proc(proc: _SpawnedProcessLike) -> None:
-    """Best-effort terminate the diff subprocess.
+def _kill_git_diff_proc(proc: _SpawnedProcessLike) -> None:
+    """Best-effort kill of a diff subprocess whose output is no longer read.
 
-    AC-06: the subprocess is always torn down so file
-    handles do not leak across calls. The
-    ``communicate_and_cleanup`` call is bounded by
-    ``_GIT_READ_TIMEOUT_SECONDS``; ``TimeoutExpired`` and
-    other exceptions are swallowed because the bytes we
-    need have already been read.
+    The process manager raises the SIGTERM-to-SIGKILL grace for git, so git
+    still gets to remove any lock file it holds.
     """
-    try:
-        proc.communicate_and_cleanup(timeout=_GIT_READ_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired:
-        pass
-    except Exception:
-        pass
+    with contextlib.suppress(Exception):
+        proc.kill()
+
+
+def _terminate_git_diff_proc(proc: _SpawnedProcessLike, *, timeout: float) -> None:
+    """Best-effort reap of the diff subprocess and its descendants.
+
+    AC-06: the subprocess is always torn down so file handles do not leak
+    across calls. The ``communicate_and_cleanup`` call is bounded by what
+    is left of the ``GIT_READ_TIMEOUT_SECONDS`` budget; ``TimeoutExpired``
+    and other exceptions are swallowed because the bytes we need have
+    already been read.
+    """
+    with contextlib.suppress(Exception):
+        proc.communicate_and_cleanup(timeout=timeout)
 
 
 def _decode_git_diff_capped(encoded: bytes, truncated: bool) -> str:
@@ -1176,7 +1260,7 @@ def handle_git_log(
 
     Side effects:
         Spawns a ``git log`` subprocess registered with the global
-        ``ProcessManager``. Bounded by ``_GIT_READ_TIMEOUT_SECONDS = 30``.
+        ``ProcessManager``. Bounded by ``GIT_READ_TIMEOUT_SECONDS = 30``.
         No workspace writes, no network calls.
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git log")
@@ -1262,7 +1346,7 @@ def handle_git_show(
 
     Side effects:
         Spawns a ``git show`` subprocess registered with the global
-        ``ProcessManager``. Bounded by ``_GIT_READ_TIMEOUT_SECONDS = 30``.
+        ``ProcessManager``. Bounded by ``GIT_READ_TIMEOUT_SECONDS = 30``.
         No workspace writes, no network calls.
     """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git show")
@@ -1353,6 +1437,7 @@ def _build_git_show_summary_payload(workspace: object, ref: str, cwd: Path | Non
 
 __all__ = [
     "GIT_DIFF_READ_CAPABILITY",
+    "GIT_READ_TIMEOUT_SECONDS",
     "GIT_STATUS_READ_CAPABILITY",
     "ExecutionError",
     "GitDiffParams",

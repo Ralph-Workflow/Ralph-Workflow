@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -14,7 +15,6 @@ from ralph.git.subprocess_runner import GitRunOptions, run_git
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 #: ``git ls-tree`` rows are ``<mode> <type> <object>``.
 _LS_TREE_META_FIELDS = 3
@@ -231,10 +231,53 @@ def _snapshot_worktree_entries(
 
 
 def _snapshot_untracked_entries(root: Path) -> list[tuple[str, str, str, str]]:
-    """Return the untracked rows (mode, type, oid) the snapshot must keep."""
-    return [
-        (path, *_snapshot_untracked_blob(root, path)) for path in _snapshot_untracked_paths(root)
-    ]
+    """Return the untracked rows (mode, type, oid) the snapshot must keep.
+
+    ``ls-files --others`` lists an untracked embedded repository (a nested
+    clone) as one ``name/`` entry rather than its files. It cannot be hashed
+    as a blob, so it is recorded the way git itself records an embedded
+    repository -- a gitlink at the nested HEAD -- or skipped when the nested
+    repository has no commit to point at. Either way the rest of the work is
+    still preserved instead of the whole snapshot failing.
+    """
+    entries: list[tuple[str, str, str, str]] = []
+    for path in _snapshot_untracked_paths(root):
+        if path.endswith("/"):
+            gitlink = _snapshot_nested_repo_gitlink(root, path.rstrip("/"))
+            if gitlink is not None:
+                entries.append(gitlink)
+            continue
+        entries.append((path, *_snapshot_untracked_blob(root, path)))
+    return entries
+
+
+def _snapshot_nested_repo_gitlink(root: Path, path: str) -> tuple[str, str, str, str] | None:
+    """Return the gitlink row for an untracked nested repository, if it has a HEAD.
+
+    The nested toplevel is checked so a nested ``.git`` git cannot open
+    never resolves to the OUTER repository's HEAD instead.
+    """
+    nested_root = root / path
+    result = run_git(
+        ("rev-parse", "--show-toplevel", "HEAD^{commit}"),
+        cwd=nested_root,
+        label="auto-integrate:stale-snapshot-nested-head",
+    )
+    lines = result.stdout.split("\n")
+    toplevel = lines[0].strip() if lines else ""
+    nested_head = lines[1].strip() if len(lines) > 1 else ""
+    if (
+        result.returncode != 0
+        or not nested_head
+        or not toplevel
+        or Path(toplevel).resolve() != nested_root.resolve()
+    ):
+        logger.warning(
+            "auto_integrate: snapshot skips untracked nested repository {} (no commit to record)",
+            path,
+        )
+        return None
+    return (path, "160000", "commit", nested_head)
 
 
 def _snapshot_untracked_blob(root: Path, path: str) -> tuple[str, str, str]:

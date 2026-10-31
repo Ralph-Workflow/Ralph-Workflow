@@ -273,6 +273,44 @@ def test_rebase_onto_detects_conflicts(monkeypatch: pytest.MonkeyPatch, tmp_git_
     assert result.files == ["README.md"]
 
 
+def test_rebase_onto_never_skips_a_conflict_whose_subject_says_is_empty(
+    tmp_git_repo: Path,
+) -> None:
+    """A real conflict is reported, never ``--skip``-ped out of history.
+
+    git echoes the replayed subject in ``could not apply <sha>... <subject>``;
+    reading "is empty" anywhere in that output as an empty stop dropped the
+    commit and reported the rebase a success.
+    """
+    subject = "Fix crash when the list is empty"
+    with Repo(tmp_git_repo) as repo:
+        base = repo.active_branch.name
+        target = tmp_git_repo / "a.py"
+        target.write_text("x = 0\n")
+        repo.index.add(["a.py"])
+        repo.index.commit("base")
+        repo.git.checkout("-b", "feature-is-empty")
+        target.write_text("x = 1\n")
+        repo.index.add(["a.py"])
+        repo.index.commit(subject)
+        repo.git.checkout(base)
+        target.write_text("x = 2\n")
+        repo.index.add(["a.py"])
+        repo.index.commit("main change")
+        repo.git.checkout("feature-is-empty")
+
+    try:
+        result = rebase_onto(upstream_branch=base, repo_root=tmp_git_repo)
+
+        assert isinstance(result, RebaseConflicts)
+        assert result.files == ["a.py"]
+    finally:
+        with contextlib.suppress(RebaseOperationError):
+            abort_rebase(repo_root=tmp_git_repo)
+    with Repo(tmp_git_repo) as repo:
+        assert repo.git.log("--format=%s", f"{base}..feature-is-empty") == subject
+
+
 @pytest.mark.subprocess_e2e
 def test_get_conflicted_files_reports_conflicts(tmp_git_repo: Path) -> None:
     repo = Repo(tmp_git_repo)

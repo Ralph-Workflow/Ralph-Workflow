@@ -41,6 +41,43 @@ from ralph.mcp.explore._store_types import (
 logger = logging.getLogger(__name__)
 
 
+#: Rows fetched per page while a glob-filtered FTS search pages through hits.
+_FTS_GLOB_PAGE_ROWS = 256
+
+# Both FTS queries take the same bindings (see ``_scoped_fts_rows``). The
+# prefix clause is a no-op for an empty prefix; ``substr`` instead of
+# ``LIKE`` keeps the comparison literal and case-sensitive. ``LIMIT -1`` is
+# SQLite for "no limit".
+_FTS_SEARCH_SQL = """
+    SELECT path, chunk_id, snippet(chunks_fts, 0, '', '', '...', 8) AS snippet
+    FROM chunks_fts
+    WHERE chunks_fts MATCH ?
+      AND (? = '' OR path = ? OR substr(path, 1, ?) = ?)
+    ORDER BY bm25(chunks_fts)
+    LIMIT ?
+"""
+
+_FTS_SEARCH_GREP_SQL = """
+    SELECT
+        fts.path AS path,
+        fts.chunk_id AS chunk_id,
+        fts.text AS text,
+        c.start_line AS start_line,
+        c.end_line AS end_line,
+        c.text_hash AS text_hash,
+        c.generation AS generation,
+        f.content_hash AS file_content_hash
+    FROM chunks_fts AS fts
+    JOIN chunks AS c ON c.chunk_id = fts.chunk_id
+    JOIN files AS f ON f.path = fts.path
+    WHERE fts.chunks_fts MATCH ?
+      AND f.is_deleted = 0
+      AND (? = '' OR fts.path = ? OR substr(fts.path, 1, ?) = ?)
+    ORDER BY bm25(chunks_fts)
+    LIMIT ?
+"""
+
+
 class ExploreStore(
     _ContentCacheMethods,
     _FileRowMethods,
@@ -280,39 +317,19 @@ class ExploreStore(
         matches to paths that equal the prefix or start with
         ``prefix + '/'``. ``include_globs`` / ``exclude_globs`` apply
         the same glob semantics as the legacy live grep so the
-        indexed branch cannot leak out-of-scope matches.
+        indexed branch cannot leak out-of-scope matches. Scope is
+        applied BEFORE ``limit``: the result holds up to ``limit``
+        in-scope rows in bm25 order, however many better-ranked rows
+        fall outside the scope.
         """
-        from ralph.mcp.explore.path_filter import (
-            compile_path_filter,
-        )
-
-        path_filter = compile_path_filter(
+        return self._scoped_fts_rows(
+            _FTS_SEARCH_SQL,
+            query,
+            limit=limit,
             path_prefix=path_prefix,
             include_globs=include_globs,
             exclude_globs=exclude_globs,
         )
-        cur = self._conn.execute(
-            """
-            SELECT path, chunk_id, snippet(chunks_fts, 0, '', '', '...', 8) AS snippet
-            FROM chunks_fts
-            WHERE chunks_fts MATCH ?
-            ORDER BY bm25(chunks_fts)
-            LIMIT ?
-            """,
-            (query, limit),
-        )
-        raw_results = cast(
-            "list[sqlite3.Row]", cur.fetchall()
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        if path_filter is None:
-            return raw_results
-        filtered: list[sqlite3.Row] = []
-        for row in raw_results:
-            path_obj: object = row["path"]
-            path_str = str(path_obj) if path_obj is not None else ""
-            if path_filter(path_str):
-                filtered.append(row)
-        return filtered
 
     def fts_search_grep(
         self,
@@ -336,52 +353,80 @@ class ExploreStore(
 
         AC-02 indexed-grep filter parity: ``path_prefix``,
         ``include_globs``, ``exclude_globs`` apply the same
-        semantics as :meth:`fts_search`. The path filter is
-        evaluated against the FTS row's ``path`` so the index can
-        never return out-of-scope matches.
+        semantics as :meth:`fts_search`, and likewise BEFORE
+        ``limit``. The path filter is evaluated against the FTS
+        row's ``path`` so the index can never return out-of-scope
+        matches.
+        """
+        return self._scoped_fts_rows(
+            _FTS_SEARCH_GREP_SQL,
+            query,
+            limit=limit,
+            path_prefix=path_prefix,
+            include_globs=include_globs,
+            exclude_globs=exclude_globs,
+        )
+
+    def _scoped_fts_rows(
+        self,
+        sql: str,
+        query: str,
+        *,
+        limit: int,
+        path_prefix: str | None,
+        include_globs: Sequence[str] | None,
+        exclude_globs: Sequence[str] | None,
+    ) -> list[sqlite3.Row]:
+        """Return up to ``limit`` bm25-ranked rows of ``sql`` that are in scope.
+
+        ``sql`` binds ``(query, prefix, prefix, len(prefix + '/'),
+        prefix + '/', limit)``. The prefix is compared in SQL, literally
+        and case-sensitively, so it narrows the ranked rows before the
+        ``LIMIT``. Globs have no SQL equivalent, so with globs the query
+        runs unlimited and rows are paged through, in rank order, until
+        ``limit`` of them pass the glob filter or the rows run out.
         """
         from ralph.mcp.explore.path_filter import (
             compile_path_filter,
         )
 
-        path_filter = compile_path_filter(
-            path_prefix=path_prefix,
+        prefix = (path_prefix or "").rstrip("/")
+        glob_filter = compile_path_filter(
+            path_prefix=None,
             include_globs=include_globs,
             exclude_globs=exclude_globs,
         )
-        cur = self._conn.execute(
-            """
-            SELECT
-                fts.path AS path,
-                fts.chunk_id AS chunk_id,
-                fts.text AS text,
-                c.start_line AS start_line,
-                c.end_line AS end_line,
-                c.text_hash AS text_hash,
-                c.generation AS generation,
-                f.content_hash AS file_content_hash
-            FROM chunks_fts AS fts
-            JOIN chunks AS c ON c.chunk_id = fts.chunk_id
-            JOIN files AS f ON f.path = fts.path
-            WHERE fts.chunks_fts MATCH ?
-              AND f.is_deleted = 0
-            ORDER BY bm25(chunks_fts)
-            LIMIT ?
-            """,
-            (query, limit),
+        dir_prefix = prefix + "/"
+        params = (
+            query,
+            prefix,
+            prefix,
+            len(dir_prefix),
+            dir_prefix,
+            limit if glob_filter is None else -1,
         )
-        raw_results = cast(
-            "list[sqlite3.Row]", cur.fetchall()
-        )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        if path_filter is None:
-            return raw_results
-        filtered: list[sqlite3.Row] = []
-        for row in raw_results:
-            path_obj: object = row["path"]
-            path_str = str(path_obj) if path_obj is not None else ""
-            if path_filter(path_str):
-                filtered.append(row)
-        return filtered
+        cur = self._conn.execute(sql, params)
+        try:
+            if glob_filter is None:
+                return cast(
+                    "list[sqlite3.Row]", cur.fetchall()
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            selected: list[sqlite3.Row] = []
+            while len(selected) < limit:
+                page = cast(
+                    "list[sqlite3.Row]", cur.fetchmany(_FTS_GLOB_PAGE_ROWS)
+                )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+                if not page:
+                    break
+                for row in page:
+                    path_obj: object = row["path"]
+                    if glob_filter(str(path_obj) if path_obj is not None else ""):
+                        selected.append(row)
+                        if len(selected) >= limit:
+                            break
+            return selected
+        finally:
+            cur.close()
 
     # --- Evidence -----------------------------------------------------
 

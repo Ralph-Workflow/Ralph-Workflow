@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import re
+import ast
 import shutil
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -48,9 +48,28 @@ class SnapshotIdentity:
 
 
 def _read_string_assignment(source: str, name: str) -> str:
-    """Return the double-quoted value assigned to ``name``, or ``""`` when absent."""
-    match = re.search(rf'^{re.escape(name)}(?::\s*str)?\s*=\s*"([^"]*)"', source, re.MULTILINE)
-    return match.group(1) if match else ""
+    """Return the string literal assigned to ``name``, or ``""`` when absent.
+
+    Parsed as Python, not matched as text: the installer writes these values
+    with ``repr`` (single quotes, escapes), and a published package may use
+    double quotes, so only a real literal parse reads both back faithfully.
+    The source is never executed.
+    """
+    try:
+        module = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return ""
+    for statement in module.body:
+        if isinstance(statement, ast.Assign):
+            targets, value = statement.targets, statement.value
+        elif isinstance(statement, ast.AnnAssign) and statement.value is not None:
+            targets, value = [statement.target], statement.value
+        else:
+            continue
+        named = any(isinstance(target, ast.Name) and target.id == name for target in targets)
+        if named and isinstance(value, ast.Constant) and isinstance(value.value, str):
+            return value.value
+    return ""
 
 
 def read_snapshot_identity(snapshot_dir: Path) -> SnapshotIdentity | None:

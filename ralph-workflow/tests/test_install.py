@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import shlex
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -10,7 +10,7 @@ import pytest
 from ralph import install as install_module
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
 
 def test_install_dev_checkout_syncs_env_and_writes_rdev_launcher() -> None:
@@ -137,3 +137,52 @@ def test_dev_launcher_quotes_absolute_uv_and_snapshot_paths(hostile_path: Path) 
     # The snapshot interpreter runs isolated so a caller's PYTHONPATH cannot shadow it.
     assert argv[6:8] == ["python", "-I"]
     assert argv[-1] == "$@"
+
+
+def test_install_dev_checkout_prunes_old_generations_under_the_lock_before_publishing() -> None:
+    """Each install leaves a full snapshot; pruning must run locked, before the new publish."""
+    events: list[str] = []
+
+    @contextmanager
+    def recording_lock(_path: Path) -> Iterator[None]:
+        events.append("lock")
+        yield
+        events.append("unlock")
+
+    def prune(generations: Path, *, current: Path, launcher: Path) -> tuple[Path, ...]:
+        events.append(f"prune {generations} {current} {launcher}")
+        return ()
+
+    def publish(
+        candidate: Path, _generations: Path, *, publish_launcher: Callable[[Path], None]
+    ) -> Path:
+        events.append("publish")
+        publish_launcher(candidate)
+        return candidate
+
+    install_module.install_dev_checkout(
+        run=lambda _command, *, cwd: None,
+        uv_executable="/usr/local/bin/uv",
+        cwd=Path("/checkout"),
+        launcher_dir=Path("/bin"),
+        install_root=Path("/install"),
+        copy_tree=lambda _source, destination: destination,
+        write_flavor=lambda *_args, **_kwargs: None,
+        write_launcher=lambda _path, _content: None,
+        preflight=lambda _uv: None,
+        run_version=lambda _uv, _snapshot: "0.9.27-dev",
+        lock=recording_lock,
+        candidate_factory=lambda staging: staging / "candidate",
+        publish=publish,
+        update_current=lambda _current, _generation: None,
+        read_identity=lambda _snapshot: None,
+        emit=lambda _line: None,
+        prune=prune,
+    )
+
+    assert events == [
+        "lock",
+        "prune /install/generations /install/current /bin/rdev",
+        "publish",
+        "unlock",
+    ]

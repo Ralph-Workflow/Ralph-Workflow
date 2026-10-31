@@ -14,7 +14,7 @@ still accepting the legacy unprefixed names for backward compatibility.
 from __future__ import annotations
 
 import tomllib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from os import getenv
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -23,6 +23,7 @@ from loguru import logger
 from pydantic import TypeAdapter, ValidationError
 
 import ralph.policy
+from ralph.config._developer_override import apply_developer_override
 from ralph.config.config_error_messages import warn_unknown_top_level_fields
 from ralph.phases import register_role_handlers
 from ralph.policy.conflict_chain_warnings import (
@@ -572,6 +573,10 @@ def _reject_phase_authored_pipeline_override(*, scope: str, path: Path) -> None:
     )
 
 
+def _declares_timebox(data: Mapping[str, object]) -> bool:
+    return "cycle_timebox" in data or "development_timebox" in data
+
+
 def _resolve_pipeline_data(
     *,
     default_policy_dir: Path,
@@ -587,15 +592,7 @@ def _resolve_pipeline_data(
     default_pipeline_data = _load_toml(default_policy_dir / "pipeline.toml")
     local_pipeline_data = _load_toml(pipeline_path)
     if global_pipeline_path is None:
-        data = local_pipeline_data or default_pipeline_data
-        explicit = bool(
-            local_pipeline_data
-            and (
-                "cycle_timebox" in local_pipeline_data
-                or "development_timebox" in local_pipeline_data
-            )
-        )
-        return data, explicit
+        return local_pipeline_data or default_pipeline_data, _declares_timebox(local_pipeline_data)
 
     global_pipeline_data = _load_toml(global_pipeline_path)
     if _is_phase_authored_pipeline_data(global_pipeline_data):
@@ -606,15 +603,7 @@ def _resolve_pipeline_data(
     pipeline_data = _merge_pipeline_defaults(default_pipeline_data, global_pipeline_data)
     if local_pipeline_data:
         pipeline_data = _merge_pipeline_defaults(pipeline_data, local_pipeline_data)
-    explicit = (
-        bool(global_pipeline_data)
-        and (
-            "cycle_timebox" in global_pipeline_data or "development_timebox" in global_pipeline_data
-        )
-    ) or (
-        bool(local_pipeline_data)
-        and ("cycle_timebox" in local_pipeline_data or "development_timebox" in local_pipeline_data)
-    )
+    explicit = _declares_timebox(global_pipeline_data) or _declares_timebox(local_pipeline_data)
     return pipeline_data, explicit
 
 
@@ -828,21 +817,14 @@ def _load_agents_policy_from_path(
     agents_path: Path,
     config: UnifiedConfig | None = None,
 ) -> AgentsPolicy:
-    agents_policy = (
-        build_agents_policy_from_config(config)
-        if config is not None and _config_defines_agent_policy(config)
-        else None
-    )
-    if agents_policy is not None:
-        return _merge_agents_policy_onto_defaults(agents_policy)
-
-    if not agents_path.exists():
-        return _cached_default_agents_policy()
-
-    agents_data = _load_toml(agents_path)
-    if not agents_data:
-        return _cached_default_agents_policy()
-    return _merge_agents_policy_onto_defaults(_validate_agents(agents_data))
+    """Load the agents policy, then apply any ``--developer-agent`` pin from ``config``."""
+    if config is not None and _config_defines_agent_policy(config):
+        policy = _merge_agents_policy_onto_defaults(build_agents_policy_from_config(config))
+    elif agents_data := (_load_toml(agents_path) if agents_path.exists() else {}):
+        policy = _merge_agents_policy_onto_defaults(_validate_agents(agents_data))
+    else:
+        policy = _cached_default_agents_policy()
+    return apply_developer_override(policy, config)
 
 
 def load_agents_policy(config_dir: Path, config: UnifiedConfig | None = None) -> AgentsPolicy:
@@ -940,7 +922,7 @@ def load_policy(config_dir: Path, config: UnifiedConfig | None = None) -> Policy
     """Load all three policy TOML files and return a validated PolicyBundle.
 
     Files are loaded from ``config_dir`` (the .agent/ directory). Any absent
-    file is silently replaced with the bundled default.
+    file is silently replaced with the bundled default (no global layering).
     """
     return _load_policy_from_paths(
         agents_path=config_dir / "agents.toml",
@@ -950,21 +932,34 @@ def load_policy(config_dir: Path, config: UnifiedConfig | None = None) -> Policy
     )
 
 
-def load_policy_for_workspace_scope(
-    workspace_scope: WorkspaceScope,
-    config: UnifiedConfig | None = None,
+def _load_layered_policy(
+    resolve: Callable[[str], Path], config: UnifiedConfig | None
 ) -> PolicyBundle:
-    """Load policy for a workspace with worktree-aware per-file inheritance."""
     return _load_policy_from_paths(
-        agents_path=workspace_scope.resolve_agent_file("agents.toml"),
-        pipeline_path=workspace_scope.resolve_agent_file("pipeline.toml"),
-        artifacts_path=workspace_scope.resolve_agent_file("artifacts.toml"),
+        agents_path=resolve("agents.toml"),
+        pipeline_path=resolve("pipeline.toml"),
+        artifacts_path=resolve("artifacts.toml"),
         config=config,
         global_policy_paths=(
             _global_policy_path("pipeline.toml"),
             _global_policy_path("artifacts.toml"),
         ),
     )
+
+
+def load_policy_for_config_dir(
+    config_dir: Path, config: UnifiedConfig | None = None
+) -> PolicyBundle:
+    """Load ``config_dir``'s policy layered like :func:`load_policy_for_workspace_scope`."""
+    return _load_layered_policy(lambda name: config_dir / name, config)
+
+
+def load_policy_for_workspace_scope(
+    workspace_scope: WorkspaceScope,
+    config: UnifiedConfig | None = None,
+) -> PolicyBundle:
+    """Load policy for a workspace with worktree-aware per-file inheritance."""
+    return _load_layered_policy(workspace_scope.resolve_agent_file, config)
 
 
 def default_dir() -> Path:

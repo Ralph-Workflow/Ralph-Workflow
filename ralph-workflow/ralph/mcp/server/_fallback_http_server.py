@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import socket
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -88,17 +89,33 @@ class _FallbackHttpServer(ThreadingHTTPServer):
     def drop_listening_socket(self) -> None:
         """Drop the inherited listening socket during make-before-break handover.
 
-        Replaces self.socket with an idle non-listening socketpair end so
-        serve_forever() does not crash on a closed fd while existing in-flight
-        requests drain to completion.
+        In-flight requests keep draining on their own connections while the
+        listener goes away. ``serve_forever()`` registered the listener's fd
+        number with its selector once, at start, so that fd must stay open
+        and must never become ready: closing it makes every poll report the
+        fd invalid and every wake run a failing ``accept()``, a busy-spin for
+        the rest of the drain. Instead the fd is re-pointed (``dup2``) at one
+        end of an idle socketpair. That releases this process's hold on the
+        listener exactly as closing it would, and leaves the selector waiting
+        on a socket nothing ever writes to. Both pair ends stay open until
+        ``server_close``: a closed peer would make the idle end readable.
         """
         old_sock = self.socket
         dummy_r, dummy_w = socket.socketpair()
         self._dummy_pair = (dummy_r, dummy_w)
+        old_fd = old_sock.fileno()
+        if old_fd >= 0:
+            try:
+                os.dup2(dummy_r.fileno(), old_fd, inheritable=False)
+            except OSError:
+                pass
+            else:
+                # ``self.socket`` keeps the fd the selector watches; it now
+                # names the idle pair end and is closed by ``server_close``.
+                return
         self.socket = dummy_r
-        if old_sock is not None:
-            with contextlib.suppress(OSError):
-                old_sock.close()
+        with contextlib.suppress(OSError):
+            old_sock.close()
 
     def server_close(self) -> None:
         dummy_pair = self._dummy_pair

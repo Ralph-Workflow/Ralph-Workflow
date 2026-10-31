@@ -44,6 +44,7 @@ from ralph.install_transaction import (
     create_candidate,
     install_lock,
     point_current,
+    prune_generations,
     publish_generation,
 )
 from ralph.process._spawn_env import sanitize_process_environment
@@ -76,6 +77,47 @@ class GenerationPublisher(Protocol):
     ) -> Path: ...
 
 
+def global_executable(
+    name: str,
+    *,
+    search_path: str | None = None,
+    own_bin: Path | None = None,
+) -> str | None:
+    """Find ``name`` on ``PATH``, skipping this installer's own virtualenv ``bin``.
+
+    ``make`` runs the installer through ``uv run``, which puts the checkout's
+    ``.venv/bin`` first on ``PATH``, so a bare ``shutil.which`` reported the
+    installer's own environment as an existing global install: ``make install``
+    printed a false conflict notice and an interactive ``make stable`` aborted.
+    A real global launcher symlinked to that venv is still found through its
+    own ``PATH`` entry.
+    """
+    excluded = own_bin if own_bin is not None else _own_environment_bin()
+    entries = (
+        search_path if search_path is not None else os.environ.get("PATH", os.defpath)
+    ).split(os.pathsep)
+    if excluded is not None:
+        entries = [entry for entry in entries if not entry or not _same_directory(entry, excluded)]
+    return shutil.which(name, path=os.pathsep.join(entries))
+
+
+def _own_environment_bin() -> Path | None:
+    if sys.prefix == sys.base_prefix:
+        return None
+    return Path(sys.prefix) / "bin"
+
+
+def _same_directory(entry: str, directory: Path) -> bool:
+    try:
+        return Path(entry).resolve() == directory.resolve()
+    except OSError:
+        return False
+
+
+class _GenerationPruner(Protocol):
+    def __call__(self, generations: Path, *, current: Path, launcher: Path) -> tuple[Path, ...]: ...
+
+
 def _publish_launcher(
     generation: Path,
     launcher_path: Path,
@@ -106,15 +148,20 @@ def install_dev_checkout(
     candidate_factory: Callable[[Path], Path] = create_candidate,
     publish: GenerationPublisher = publish_generation,
     update_current: Callable[[Path, Path], None] = point_current,
+    prune: _GenerationPruner = prune_generations,
 ) -> None:
     """Build, validate, and transactionally publish a checkout snapshot."""
     if uv_executable is None:
         raise InstallError(f"uv >= 0.7.0 is required; install it: {_UV_INSTALL_URL}")
     root = install_root or Path.home() / ".local" / "share" / "ralph-workflow-dev"
     staging, generations, current = root / ".staging", root / "generations", root / "current"
+    launcher_path = launcher_dir / DEV_LAUNCHER_NAME
     preflight(uv_executable)
     with lock(root / ".install.lock"):
         cleanup_staging(staging)
+        # Before publishing, so the build being replaced (still referenced
+        # now) survives this install and only older snapshots are removed.
+        prune(generations, current=current, launcher=launcher_path)
         completed = False
         try:
             replaced = read_identity(current)
@@ -132,7 +179,6 @@ def install_dev_checkout(
             run((uv_executable, "sync", "--locked", "--extra", "dev"), cwd=copied_dir)
             run((uv_executable, "sync", "--locked", "--extra", "dev", "--check"), cwd=copied_dir)
             validate_snapshot_version(run_version, uv_executable, copied_dir, flavor)
-            launcher_path = launcher_dir / DEV_LAUNCHER_NAME
             generation = publish(
                 copied_dir,
                 generations,
@@ -164,7 +210,7 @@ def install_stable_release(
     cwd: Path,
     version: str | None = None,
     from_path: Path | None = None,
-    which_fn: Callable[[str], str | None] = shutil.which,
+    which_fn: Callable[[str], str | None] = global_executable,
     resolve_installed_package_file: Callable[[str], Path | None] = resolve_package_file,
     write_flavor: _BuildMetaWriter = write_build_flavor,
     resolve_commit: Callable[[Path], str] = resolve_source_commit,
@@ -184,6 +230,9 @@ def install_stable_release(
         command.append(f"{STABLE_PACKAGE_NAME}=={version}")
     run(tuple(command), cwd=cwd)
     if from_path is not None:
+        # ``global_executable``, not ``shutil.which``: under ``uv run`` the
+        # checkout's editable ``.venv/bin/ralph`` comes first on PATH, and
+        # marking it would rewrite this checkout's own ``_build_meta.py``.
         installed_package_file = resolve_installed_package_file(which_fn("ralph") or "")
         if installed_package_file is None:
             raise InstallError(
@@ -228,7 +277,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     stable, build, version, from_path = _parse_args(argv)
     package_dir = Path(__file__).resolve().parents[1]
     if stable or version is not None or from_path is not None:
-        uv_executable = _absolute_uv_path(shutil.which("uv"))
+        uv_executable = _absolute_uv_path(global_executable("uv"))
         if uv_executable is None:
             raise InstallError(f"uv >= 0.7.0 is required; install it: {_UV_INSTALL_URL}")
         preflight_uv(uv_executable)
@@ -242,51 +291,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     else:
         _report_dev_launcher_conflict()
+        # The launcher bakes in this uv path, so it must be a global uv: the
+        # checkout's dev-extra ``.venv/bin/uv`` dies with that virtualenv.
         install_dev_checkout(
             run=run_command,
-            uv_executable=_absolute_uv_path(shutil.which("uv")),
+            uv_executable=_absolute_uv_path(global_executable("uv")),
             cwd=package_dir,
             launcher_dir=Path.home() / ".local" / "bin",
             flavor="-build" if build else "-dev",
         )
     return 0
-
-
-def global_executable(
-    name: str,
-    *,
-    search_path: str | None = None,
-    own_bin: Path | None = None,
-) -> str | None:
-    """Find ``name`` on ``PATH``, skipping this installer's own virtualenv ``bin``.
-
-    ``make`` runs the installer through ``uv run``, which puts the checkout's
-    ``.venv/bin`` first on ``PATH``, so a bare ``shutil.which`` reported the
-    installer's own environment as an existing global install: ``make install``
-    printed a false conflict notice and an interactive ``make stable`` aborted.
-    A real global launcher symlinked to that venv is still found through its
-    own ``PATH`` entry.
-    """
-    excluded = own_bin if own_bin is not None else _own_environment_bin()
-    entries = (
-        search_path if search_path is not None else os.environ.get("PATH", os.defpath)
-    ).split(os.pathsep)
-    if excluded is not None:
-        entries = [entry for entry in entries if not entry or not _same_directory(entry, excluded)]
-    return shutil.which(name, path=os.pathsep.join(entries))
-
-
-def _own_environment_bin() -> Path | None:
-    if sys.prefix == sys.base_prefix:
-        return None
-    return Path(sys.prefix) / "bin"
-
-
-def _same_directory(entry: str, directory: Path) -> bool:
-    try:
-        return Path(entry).resolve() == directory.resolve()
-    except OSError:
-        return False
 
 
 def _absolute_uv_path(found: str | None) -> str | None:

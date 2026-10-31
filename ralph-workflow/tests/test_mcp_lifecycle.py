@@ -30,18 +30,33 @@ if TYPE_CHECKING:
 PREFLIGHT_TIMEOUT = 123
 
 
+#: The port every fake reservation reports. Nothing binds it: the spawn and
+#: preflight seams are fakes, so the port only has to appear in the endpoint.
+_FAKE_LISTENING_PORT = 43210
+
+
+class _FakeListeningSocket:
+    """Stand-in for the parent-owned listening socket (no real bind).
+
+    The lifecycle only hands ``fileno()`` to the (fake) spawn and calls
+    ``close()`` on shutdown or on a failed start, so this records exactly
+    that: a closed socket reports ``fileno() == -1`` like a real one.
+    """
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    def fileno(self) -> int:
+        return -1 if self.closed else 7
+
+    def close(self) -> None:
+        self.closed = True
+
+
 def _default_fake_reserve_listening_socket(
     port: int | None = None,
 ) -> tuple[str, int, object]:
-    # Use port 0 (kernel-assigned) when no port is given, so the
-    # helper is callable from every test without port collisions.
-    import socket as _s
-
-    sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
-    sock.bind(("127.0.0.1", port or 0))
-    sock.listen(128)
-    bound_port = sock.getsockname()[1]
-    return "127.0.0.1", bound_port, sock
+    return "127.0.0.1", port or _FAKE_LISTENING_PORT, _FakeListeningSocket()
 
 
 def _fake_served_tools(endpoint: str, timeout_s: float = 1.0) -> list[dict[str, object]]:
@@ -98,12 +113,8 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
     seen: dict[str, object] = {}
 
     def fake_reserve_listening_socket() -> tuple[str, int, object]:
-        seen["reserved_socket"] = True
-        import socket as _s
-
-        sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
-        sock.bind(("127.0.0.1", 53123))
-        sock.listen(128)
+        sock = _FakeListeningSocket()
+        seen["reserved_socket"] = sock
         return "127.0.0.1", 53123, sock
 
     def fake_create_session_file(root: Path, session: object) -> Path:
@@ -159,9 +170,11 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
     assert seen["endpoint"] == "http://127.0.0.1:53123/mcp"
     assert seen["timeout"] == timedelta(seconds=PREFLIGHT_TIMEOUT)
     assert seen["cwd"] == tmp_path
-    # R1: the parent-owned listening socket is released on shutdown
-    # so the next test (which re-uses the same port) can bind it.
+    # R1: the parent-owned listening socket is released on shutdown.
     bridge.shutdown()
+    reserved = seen["reserved_socket"]
+    assert isinstance(reserved, _FakeListeningSocket)
+    assert reserved.closed
 
 
 @pytest.mark.timeout_seconds(5)
@@ -736,31 +749,16 @@ def test_restart_aware_bridge_passing_probe_does_not_trigger_restart() -> None:
     assert probe_calls  # probe was called
 
 
-def _free_tcp_port() -> int:
-    """Grab an ephemeral free TCP port (socket closed before use)."""
-    import socket as _s
-
-    with _s.socket(_s.AF_INET, _s.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return int(s.getsockname()[1])
-
-
 def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> None:
     """start_mcp_server reuses the same port on every restart so the endpoint stays stable."""
     reserved_listening_calls: list[str] = []
     spawn_call_count = [0]
 
-    # Ephemeral port: parallel shards must not collide on a fixed port.
-    stable_port = _free_tcp_port()
+    stable_port = _FAKE_LISTENING_PORT
 
     def fake_reserve_listening_socket_for_stable_test() -> tuple[str, int, object]:
-        import socket as _s
-
-        sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
-        sock.bind(("127.0.0.1", stable_port))
-        sock.listen(128)
         reserved_listening_calls.append("called")
-        return "127.0.0.1", stable_port, sock
+        return "127.0.0.1", stable_port, _FakeListeningSocket()
 
     def fake_create_session_file(root: Path, session: object) -> Path:
         path = tmp_path / f"session-stable-{spawn_call_count[0]}.json"
@@ -1036,20 +1034,14 @@ def test_listening_socket_closed_on_first_spawn_preflight_failure(tmp_path: Path
 
     When the FIRST spawn's preflight fails, start_mcp_server raises
     before a bridge exists to own the socket. The failure path must
-    close the reserved socket so the port returns to the kernel (a
-    fresh bind on the same port succeeds) and no FD is leaked.
+    close the reserved socket so its FD (and the bound port) is not leaked.
     """
-    import socket as _s
-
-    reserved_socks: list[object] = []
-    fixed_port = _free_tcp_port()
+    reserved_socks: list[_FakeListeningSocket] = []
 
     def fake_reserve_listening_socket() -> tuple[str, int, object]:
-        sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
-        sock.bind(("127.0.0.1", fixed_port))
-        sock.listen(128)
+        sock = _FakeListeningSocket()
         reserved_socks.append(sock)
-        return "127.0.0.1", fixed_port, sock
+        return "127.0.0.1", _FAKE_LISTENING_PORT, sock
 
     def fake_create_session_file(root: Path, session: object) -> Path:
         path = tmp_path / "session-preflight-fail.json"
@@ -1095,14 +1087,7 @@ def test_listening_socket_closed_on_first_spawn_preflight_failure(tmp_path: Path
         lifecycle.start_mcp_server(session, lifecycle.FsWorkspace(tmp_path), deps=deps)
 
     assert len(reserved_socks) == 1
-    sock = reserved_socks[0]
-    assert sock.fileno() == -1  # a closed socket has no file descriptor
-    # The port is back in the kernel: a fresh bind on the SAME port succeeds.
-    probe = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
-    try:
-        probe.bind(("127.0.0.1", fixed_port))
-    finally:
-        probe.close()
+    assert reserved_socks[0].closed, "the failed start must close the reserved socket"
 
 
 def _lifecycle_deps_capturing_env(
@@ -1110,13 +1095,7 @@ def _lifecycle_deps_capturing_env(
     captured_env: dict[str, str],
 ) -> lifecycle.LifecycleDeps:
     def fake_reserve_listening_socket() -> tuple[str, int, object]:
-        import socket as _s
-
-        sock = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
-        sock.bind(("127.0.0.1", 0))
-        sock.listen(128)
-        port = sock.getsockname()[1]
-        return "127.0.0.1", port, sock
+        return "127.0.0.1", _FAKE_LISTENING_PORT, _FakeListeningSocket()
 
     def fake_create_session_file(root: Path, session: object) -> Path:
         path = tmp_path / "session.json"

@@ -28,6 +28,7 @@ import ralph.timeout_defaults as td
 from ralph.mcp.tools._exec_job_output import (
     _append_tail_buffer,
     _format_job_output,
+    _merge_stream_buffers,
     serialize_liveness_verdict,
 )
 from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
@@ -58,6 +59,8 @@ KillCause = Literal[
     "stalled", "no_progress", "hard_cap", "abandoned", "session_end", "restart_lost"
 ]
 _MAX_UNTERMINATED_LINE_BYTES = 1000
+# Bound on how long a finishing job waits for its reader threads to hit EOF.
+_READER_DRAIN_TIMEOUT_S = 1.0
 
 # Signature of the runtime hook registrars cached in ``_runtime_hook_cache``.
 _HookRegistrar = Callable[[Callable[[], None]], None]
@@ -296,13 +299,7 @@ class _ActiveJob:
         self.tree_sampler = TreeSampler(psutil_module, clock, liveness_config)
         self.runner_thread: threading.Thread | None = None
         self.watcher_thread: threading.Thread | None = None
-
-
-def _merge_stream_buffers(head: bytearray, tail: bytearray, total_bytes: int) -> bytes:
-    """Join a job's head/tail output buffers into the payload shown to callers."""
-    if len(tail) > 0 and total_bytes > len(head):
-        return bytes(head) + b"\n... [truncated] ...\n" + bytes(tail)
-    return bytes(head) if len(head) > 0 else bytes(tail)
+        self.reader_threads: tuple[threading.Thread, ...] = ()
 
 
 class ExecJobRegistry:
@@ -319,6 +316,7 @@ class ExecJobRegistry:
         auto_register_runtime_hooks: bool = True,
         background_sampler: bool = True,
         spill_dir: Path | None = None,
+        reader_drain_timeout_s: float = _READER_DRAIN_TIMEOUT_S,
     ) -> None:
         self._pm = process_manager if process_manager is not None else get_process_manager()
         self._clock = clock if clock is not None else time.monotonic
@@ -331,6 +329,7 @@ class ExecJobRegistry:
         self._sample_interval_s = sample_interval_s
         self._background_sampler = background_sampler
         self._spill_dir = spill_dir
+        self._reader_drain_timeout_s = reader_drain_timeout_s
 
         self._lock = threading.Lock()
         self._running_jobs: dict[
@@ -379,10 +378,10 @@ class ExecJobRegistry:
     def _render_job_output(self, job: _ActiveJob) -> dict[str, object]:
         """Construct a formatted output dictionary for an active or finished job."""
         with job.lock:
-            stdout_bytes = _merge_stream_buffers(
+            stdout_bytes, stdout_cut = _merge_stream_buffers(
                 job.stdout_head, job.stdout_tail, job.total_stdout_bytes
             )
-            stderr_bytes = _merge_stream_buffers(
+            stderr_bytes, stderr_cut = _merge_stream_buffers(
                 job.stderr_head, job.stderr_tail, job.total_stderr_bytes
             )
             total_stdout = job.total_stdout_bytes
@@ -393,6 +392,7 @@ class ExecJobRegistry:
             stderr_bytes,
             total_stdout_len=total_stdout,
             total_stderr_len=total_stderr,
+            truncated=stdout_cut or stderr_cut,
             spill_dir=job.spill_dir,
         )
 
@@ -434,17 +434,30 @@ class ExecJobRegistry:
             for req_id in to_remove:
                 self._subscriptions.pop(req_id, None)
 
-    def _close_job_streams(self, job: _ActiveJob) -> None:
-        """Reap orphaned descendants and close the managed output pipes."""
-        handle = job.handle
-        if handle is None:
-            return
-        with contextlib.suppress(Exception):
-            self._pm.cleanup_orphans(handle)
-        for stream in (handle.stdout, handle.stderr):
-            if stream is not None:
-                with contextlib.suppress(Exception):
-                    stream.close()
+    def _settle_job(self, job: _ActiveJob, returncode: int | None, cause: KillCause | None) -> None:
+        """Reap orphans, drain readers (bounded), publish the result, then wake waiters.
+
+        Never closes a pipe: ``BufferedReader.close()`` blocks while a reader sits
+        in ``read1()``, which a ``setsid`` grandchild that escaped ``cleanup_orphans``
+        can prolong indefinitely. Each reader closes its own stream at EOF.
+        """
+        if job.handle is not None:
+            with contextlib.suppress(Exception):
+                self._pm.cleanup_orphans(job.handle)
+        deadline = time.monotonic() + self._reader_drain_timeout_s
+        for reader in job.reader_threads:
+            reader.join(timeout=max(0.0, deadline - time.monotonic()))
+        if any(reader.is_alive() for reader in job.reader_threads):
+            logger.warning(
+                "Exec job %s: detached process holds its pipes; output may be partial", job.job_id
+            )
+        self._publish_finished_result(
+            job,
+            self._build_job_result(
+                job, returncode=returncode, kill_cause=cause, cancelled=job.cancelled
+            ),
+        )
+        job.done_event.set()
 
     def _build_job_result(
         self,
@@ -491,14 +504,7 @@ class ExecJobRegistry:
         if job.handle is not None:
             with contextlib.suppress(Exception):
                 job.handle.terminate(grace_period_s=0.0)
-        self._close_job_streams(job)
-        job.done_event.set()
-        self._publish_finished_result(
-            job,
-            self._build_job_result(
-                job, returncode=job.returncode, kill_cause=cause, cancelled=job.cancelled
-            ),
-        )
+        self._settle_job(job, job.returncode, cause)
 
     def _mark_finished(self, job: _ActiveJob, returncode: int) -> None:
         """Record normal process exit and reap orphaned descendants."""
@@ -509,14 +515,7 @@ class ExecJobRegistry:
             job.returncode = returncode
             job.kill_cause = None
 
-        self._close_job_streams(job)
-        job.done_event.set()
-        self._publish_finished_result(
-            job,
-            self._build_job_result(
-                job, returncode=returncode, kill_cause=None, cancelled=job.cancelled
-            ),
-        )
+        self._settle_job(job, returncode, None)
 
     def step_job(self, job_id: str, dt: float | None = None) -> None:
         """Perform one liveness sampling, assessment, and kill check iteration."""
@@ -594,59 +593,55 @@ class ExecJobRegistry:
         self._dispatch_progress_for_job(job)
 
     def _read_stream(self, job: _ActiveJob, stream: IO[bytes] | None, is_stdout: bool) -> None:
-        """Reader thread helper draining stdout/stderr chunks."""
+        """Reader thread: drain one pipe, then close it from this thread at EOF."""
         if stream is None:
             return
         buffer_line = bytearray()
-        while True:
-            try:
-                chunk = (
-                    stream.read1(8192)
-                    if isinstance(stream, io.BufferedIOBase)
-                    else stream.read(8192)
-                )
-            except Exception:
-                break
-            if not chunk:
-                break
-            now = self._clock()
-            with job.lock:
-                job.last_output_at = now
-                if is_stdout:
-                    job.total_stdout_bytes += len(chunk)
-                    _append_tail_buffer(job.stdout_head, job.stdout_tail, chunk)
-                else:
-                    job.total_stderr_bytes += len(chunk)
-                    _append_tail_buffer(job.stderr_head, job.stderr_tail, chunk)
+        try:
+            while True:
+                try:
+                    chunk = (
+                        stream.read1(8192)
+                        if isinstance(stream, io.BufferedIOBase)
+                        else stream.read(8192)
+                    )
+                except Exception:
+                    break
+                if not chunk:
+                    break
+                now = self._clock()
+                with job.lock:
+                    job.last_output_at = now
+                    if is_stdout:
+                        job.total_stdout_bytes += len(chunk)
+                        _append_tail_buffer(job.stdout_head, job.stdout_tail, chunk)
+                    else:
+                        job.total_stderr_bytes += len(chunk)
+                        _append_tail_buffer(job.stderr_head, job.stderr_tail, chunk)
 
-                buffer_line.extend(chunk)
-                while b"\n" in buffer_line:
-                    line_bytes, _, rest = buffer_line.partition(b"\n")
-                    buffer_line = bytearray(rest)
-                    decoded = line_bytes.decode("utf-8", errors="replace").strip()
-                    if decoded:
+                    buffer_line.extend(chunk)
+                    while b"\n" in buffer_line:
+                        line_bytes, _, rest = buffer_line.partition(b"\n")
+                        buffer_line = bytearray(rest)
+                        decoded = line_bytes.decode("utf-8", errors="replace").strip()
+                        if decoded:
+                            job.output_lines.append(OutputEvidence(now, decoded))
+                    if len(buffer_line) > _MAX_UNTERMINATED_LINE_BYTES:
+                        decoded = buffer_line.decode("utf-8", errors="replace").strip()
                         job.output_lines.append(OutputEvidence(now, decoded))
-                if len(buffer_line) > _MAX_UNTERMINATED_LINE_BYTES:
-                    decoded = buffer_line.decode("utf-8", errors="replace").strip()
-                    job.output_lines.append(OutputEvidence(now, decoded))
-                    buffer_line = bytearray()
+                        buffer_line = bytearray()
+        finally:
+            with contextlib.suppress(Exception):
+                stream.close()
 
-    def _watch_job(
-        self,
-        job: _ActiveJob,
-        handle: ManagedProcess,
-        t_stdout: threading.Thread,
-        t_stderr: threading.Thread,
-    ) -> None:
-        """Watch process exit, join stream reader threads, and mark job finished."""
+    def _watch_job(self, job: _ActiveJob, handle: ManagedProcess) -> None:
+        """Watch process exit and mark the job finished."""
         while job.running and not job.done_event.is_set():
             try:
                 rc = handle.poll()
             except Exception:
                 rc = None
             if rc is not None:
-                t_stdout.join(timeout=1.0)
-                t_stderr.join(timeout=1.0)
                 self._mark_finished(job, returncode=rc)
                 break
             if job.done_event.wait(timeout=0.02):
@@ -720,17 +715,18 @@ class ExecJobRegistry:
             self._teardown_progress_for_job(job_id)
             raise ExecJobError(job_id, f"Failed to spawn job: {exc}") from exc
 
-        # Spawn stdout and stderr reader threads
-        t_stdout = self._spawn_daemon(
-            partial(self._read_stream, active, handle.stdout, True), f"job-stdout-{job_id}"
-        )
-        t_stderr = self._spawn_daemon(
-            partial(self._read_stream, active, handle.stderr, False), f"job-stderr-{job_id}"
+        active.reader_threads = (
+            self._spawn_daemon(
+                partial(self._read_stream, active, handle.stdout, True), f"job-stdout-{job_id}"
+            ),
+            self._spawn_daemon(
+                partial(self._read_stream, active, handle.stderr, False), f"job-stderr-{job_id}"
+            ),
         )
 
         if self._background_sampler:
             active.watcher_thread = self._spawn_daemon(
-                partial(self._watch_job, active, handle, t_stdout, t_stderr),
+                partial(self._watch_job, active, handle),
                 f"job-watch-{job_id}",
             )
             active.runner_thread = self._spawn_daemon(
@@ -817,6 +813,9 @@ class ExecJobRegistry:
                         instruction="call exec_wait; do not re-run",
                     )
         finally:
+            # Abandonment measures think time since this reply, not since the wait began.
+            with self._lock:
+                active.last_wait_time = self._clock()
             if progress is not None:
                 self.unsubscribe_progress(progress.request_id)
 

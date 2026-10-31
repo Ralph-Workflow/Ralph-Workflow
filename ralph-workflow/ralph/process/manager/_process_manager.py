@@ -14,7 +14,7 @@ import time as _time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final, Protocol, TypeGuard
 
 from loguru import logger
 
@@ -79,6 +79,45 @@ def _extract_psutil_returncode(procs: Sequence[object], target_pid: int) -> int 
                 return raw_rc
             break
     return None
+
+
+def _is_own_process_group(pgid: int) -> bool:
+    """Return True when ``pgid`` is this process's own process group."""
+    if not hasattr(os, "getpgid"):
+        return False
+    try:
+        return pgid == os.getpgid(0)
+    except OSError:
+        # Cannot prove the group is foreign; refuse rather than guess.
+        return True
+
+
+def _seed_popen_returncode(target: object, rc: int) -> None:
+    """Record a harvested exit status on a ``subprocess.Popen`` that has not seen it.
+
+    ``psutil.wait_procs`` (and the WNOHANG zombie sweeps) reap a direct child
+    with ``waitpid`` behind the owning ``Popen``'s back. The ``Popen``'s own
+    later ``poll()`` / ``wait()`` then gets ``ECHILD`` and CPython records
+    ``returncode = 0`` -- a child Ralph SIGTERM'd or SIGKILL'd would report
+    success. Seeding ``returncode`` with the status the harvest actually
+    collected makes every later ``poll()`` / ``wait()`` return it instead.
+    """
+    if _is_popen(target) and target.returncode is None:
+        target.returncode = rc
+
+
+class _ReturncodeSlot(Protocol):
+    """The writable ``returncode`` slot of a ``subprocess.Popen``."""
+
+    returncode: int | None
+
+
+_POPEN_TYPE: Final[type[object]] = subprocess.Popen
+
+
+def _is_popen(target: object) -> TypeGuard[_ReturncodeSlot]:
+    """Return True only for a real ``subprocess.Popen`` (never a fake or async process)."""
+    return isinstance(target, _POPEN_TYPE)
 
 
 def _collect_psutil_exit_pairs(procs: Sequence[object]) -> list[tuple[int, int]]:
@@ -427,6 +466,7 @@ class ProcessManager:
                 if callable(note_fn):
                     with contextlib.suppress(Exception):
                         note_fn(rc)
+                _seed_popen_returncode(target, rc)
 
     def _reap_sync_and_mark(
         self,
@@ -452,7 +492,10 @@ class ProcessManager:
                         last_known_rc = None
         except (OSError, ProcessLookupError, ChildProcessError):
             last_known_rc = None
-        if last_known_rc is None and record.returncode is not None:
+        if record.returncode is not None:
+            # A status harvested by psutil / waitpid is authoritative: once
+            # the child was reaped elsewhere, ``proc.poll()`` only sees
+            # ECHILD, which CPython's Popen reports as a clean exit 0.
             last_known_rc = record.returncode
         if last_known_rc is not None:
             self._note_proc_external_returncode(record, proc, last_known_rc)
@@ -1354,8 +1397,14 @@ class ProcessManager:
         A group containing git is first sent SIGTERM and given the git cleanup
         window to exit (git removes its lock files from that handler); anything
         still alive -- and every group without git -- is SIGKILLed.
+
+        Ralph's OWN process group is never signalled: a record can carry it
+        (a PTY child that never became a session leader, or a caller passing
+        a raw PGID), and ``killpg`` on it would take down Ralph itself and
+        every sibling sharing its terminal group. Same refusal as
+        ``ralph.process.teardown``'s group guard.
         """
-        if pgid <= 1 or not hasattr(os, "killpg"):
+        if pgid <= 1 or not hasattr(os, "killpg") or _is_own_process_group(pgid):
             return
         members = group_pids(pgid)
         grace_s = git_aware_grace(0.0, members)
@@ -1925,9 +1974,12 @@ class ProcessManager:
         if harvested_rc is None and still_harvested_rc is not None:
             harvested_rc = still_harvested_rc
             self._note_proc_external_returncode(record, proc, harvested_rc)
-        rc = proc.poll()
+        # Prefer what psutil harvested: wait_procs reaped the root with
+        # waitpid, so ``proc.poll()`` hits ECHILD and a plain Popen would
+        # report the killed child as a clean exit 0.
+        rc = harvested_rc if harvested_rc is not None else proc.poll()
         if rc is None:
-            rc = harvested_rc if harvested_rc is not None else record.returncode
+            rc = record.returncode
         if still_alive:
             if self._check_and_reap_zombie_survivors(
                 record, still_alive, psutil_mod, proc=proc, harvested_rc=rc

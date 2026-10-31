@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING
 from ralph import verify as verify_module
 from ralph.executor.process import TIMEOUT_EXIT_CODE, ProcessResult
 from ralph.verify import main
-from ralph.verify_timeout import DEFAULT_SUITE_TIMEOUT_SECONDS
+from ralph.verify_timeout import (
+    DEFAULT_SUITE_TIMEOUT_SECONDS,
+    DEFAULT_TEST_TIMEOUT_SECONDS,
+    SUITE_TIMEOUT_ENV,
+    TEST_TIMEOUT_ENV,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -552,6 +557,23 @@ def test_verify_regression_inherited_loguru_level_is_overridden(tmp_path: Path) 
         for environment in runner.environments
         if environment is not None
     )
+
+
+def test_verify_regression_exported_timeout_overrides_cannot_reach_the_steps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An exported ``RALPH_PYTEST_*_TIMEOUT_SECONDS=0`` must not disarm verify's timers."""
+    monkeypatch.setenv(TEST_TIMEOUT_ENV, "0")
+    monkeypatch.setenv(SUITE_TIMEOUT_ENV, "0")
+    runner = StubRunner(_all_steps_success_responses())
+
+    assert verify_module.run_verify(cwd=tmp_path, runner=runner) == 0
+
+    assert runner.environments
+    for environment in runner.environments:
+        assert environment is not None
+        assert environment[TEST_TIMEOUT_ENV] == str(DEFAULT_TEST_TIMEOUT_SECONDS)
+        assert environment[SUITE_TIMEOUT_ENV] == str(DEFAULT_SUITE_TIMEOUT_SECONDS)
 
 
 def test_hang_cap_matches_suite_timeout_policy() -> None:

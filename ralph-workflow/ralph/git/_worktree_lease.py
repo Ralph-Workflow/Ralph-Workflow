@@ -67,6 +67,7 @@ __all__ = [
     "decide_lease_steal",
     "default_lease_clock",
     "lease_age_seconds",
+    "lease_fd_owns_path",
     "lease_payload",
     "probe_lease_holder_liveness",
     "reclaim_dead_lease",
@@ -229,7 +230,7 @@ def probe_lease_holder_liveness(lock_path: Path, holder_pid: int | None) -> Leas
     back to the repository-wide probe, which can only prove the negative.
 
     Args:
-        lock_path: The lease lock-file (``<git_dir>/ralph/agent-lease.lock``).
+        lock_path: The lease lock-file (``<common-git-dir>/ralph/agent-lease.lock``).
         holder_pid: The holder PID recorded in the lock-file, if any.
 
     Returns:
@@ -424,6 +425,25 @@ def take_lease_flock(fd: int) -> bool:
     return True
 
 
+def lease_fd_owns_path(fd: int, lock_path: Path) -> bool:
+    """Whether ``lock_path`` still names the inode ``fd`` has open.
+
+    A ``flock`` only excludes holders of the SAME inode. Once the file at
+    the path has been unlinked or replaced, a lock on the old inode
+    excludes nobody, so it is never evidence of holding the lease.
+
+    Returns:
+        True when the path's ``(st_dev, st_ino)`` equals the fd's; False
+        when they differ or either cannot be read.
+    """
+    try:
+        held = os.fstat(fd)
+        current = lock_path.stat()  # filesystem-read-ok: lease inode identity probe
+    except OSError:
+        return False
+    return (held.st_dev, held.st_ino) == (current.st_dev, current.st_ino)
+
+
 def _takeover_lock_file(
     lock_path: Path,
     holder_name: str,
@@ -436,6 +456,12 @@ def _takeover_lock_file(
     The kernel releases that lock when the previous holder dies, so the
     ``flock`` succeeding IS the positive evidence that nobody holds the
     lease any more -- and only one contender can win it.
+
+    That holds only while the locked inode is still the one AT the path:
+    between our ``open`` and our ``flock`` the file can be released
+    (unlinked) and re-created by another acquirer, and a lock on the
+    detached inode would let two holders coexist. The takeover is
+    therefore refused unless the path still names the inode we locked.
     """
     try:
         fd = os.open(  # filesystem-write-ok: lease takeover; resource-lifecycle-ok: the lease release closes fd
@@ -445,7 +471,7 @@ def _takeover_lock_file(
     except OSError:
         return None
     try:
-        if not take_lease_flock(fd):
+        if not take_lease_flock(fd) or not lease_fd_owns_path(fd, lock_path):
             os.close(fd)
             return None
         payload = lease_payload(holder_name, clock=clock)

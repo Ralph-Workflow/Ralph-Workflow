@@ -126,23 +126,67 @@ def staged_conflict_marker_paths(repo_root: Path | str) -> list[str]:
     rather than whatever the worktree happens to hold. It is the
     corroborating gate for the textual scan, not a replacement -- a
     resolution has to pass both.
+
+    git reports a lone ``=======`` line (at the effective marker width)
+    as a "leftover conflict marker" too, but that is ordinary
+    reStructuredText/Markdown heading punctuation, and the textual scan
+    deliberately allows it. Counting it here blocked a fully resolved
+    merge forever whenever either side carried such a heading. Each
+    reported line is therefore read back from the STAGED blob -- the
+    bytes git checked -- and only an opening ``<`` or closing ``>``
+    fence counts. A line that cannot be read back still counts:
+    unverifiable is never clean.
     """
+    root = Path(repo_root)
     result = run_git(
         ("diff", "--cached", "--check"),
-        cwd=Path(repo_root),
+        cwd=root,
         label="git-staged-marker-check",
     )
     if result.returncode not in (0, 2):
         return ["<staged-marker-query-failed>"]
-    reported: list[str] = []
+    reports: dict[str, list[int]] = {}
     for line in result.stdout.splitlines():
         head, marker, _rest = line.partition(": leftover conflict marker")
         if not marker:
             continue
-        path, _, _line_no = head.rpartition(":")
-        if path and path not in reported:
-            reported.append(path)
-    return reported
+        path, _, line_no = head.rpartition(":")
+        if path:
+            reports.setdefault(path, []).append(int(line_no) if line_no.isdigit() else 0)
+    return [
+        path
+        for path, line_numbers in reports.items()
+        if _staged_fence_reported(root, path, line_numbers)
+    ]
+
+
+def _staged_fence_reported(repo_root: Path, path: str, line_numbers: Sequence[int]) -> bool:
+    """Whether any reported line of ``path``'s staged blob is a ``<``/``>`` fence.
+
+    ``git diff --check`` already applied the effective
+    ``conflict-marker-size``, so the width is not re-checked: only the
+    fence CHARACTER decides between a conflict fence and a separator.
+    """
+    if path.startswith('"'):
+        # A C-quoted name cannot be looked up verbatim; keep git's report.
+        return True
+    try:
+        blob = run_git(
+            ("cat-file", "blob", f":0:{path}"),
+            cwd=repo_root,
+            label="git-staged-marker-line",
+        )
+    except (UnicodeDecodeError, ValueError):
+        return True
+    if blob.returncode != 0:
+        return True
+    lines = blob.stdout.split("\n")
+    for line_no in line_numbers:
+        if not 1 <= line_no <= len(lines):
+            return True
+        if lines[line_no - 1].startswith(("<", ">")):
+            return True
+    return False
 
 
 def _readable_text(path: Path) -> str | None:

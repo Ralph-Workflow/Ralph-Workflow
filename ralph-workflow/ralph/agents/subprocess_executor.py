@@ -11,7 +11,7 @@ from pathlib import Path
 from subprocess import DEVNULL as _DEVNULL
 from subprocess import PIPE as _PIPE
 from subprocess import STDOUT as _STDOUT
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from loguru import logger
 
@@ -38,16 +38,29 @@ from ralph.process.manager import (
     get_process_manager,
 )
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
+from ralph.process.teardown import teardown_subtree, verified_child_session_pgid
 from ralph.recovery.failure_classifier import _is_subscription_limit_message
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+    from collections.abc import AsyncIterator, Callable, Coroutine, Mapping, Sequence
     from contextvars import Token
 
     from ralph.display.activity_model import ActivityProvider
     from ralph.interrupt.asyncio_bridge import SignalBridge
     from ralph.pipeline.work_units import WorkUnit
     from ralph.process.manager._managed_async_process import ManagedAsyncProcess
+
+
+#: How long output may keep arriving after the agent process itself exits.
+#: Its own last writes are already in the pipe and drain at once; this only
+#: bounds a grandchild (a backgrounded tool, an MCP server) that inherited
+#: stdout and keeps it open. Waiting for EOF instead blocked ``run()`` for as
+#: long as such a grandchild lived, and the coordinator calls ``run()`` with
+#: no timeout of its own.
+POST_EXIT_DRAIN_GRACE_SECONDS: Final[float] = 2.0
+
+#: How often the supervisor re-checks the agent's return code while it runs.
+_EXIT_POLL_SECONDS: Final[float] = 0.05
 
 
 def agent_process_label(unit_id: str, env: dict[str, str] | None = None) -> str:
@@ -116,9 +129,11 @@ class SubprocessAgentExecutor:
         activity_router: ActivityRouter | None = None,
         raw_overflow_root: Path | None = None,
         subagent_sink: Callable[[str], None] | None = None,
+        post_exit_drain_grace_seconds: float = POST_EXIT_DRAIN_GRACE_SECONDS,
         _pm: ProcessManager | None = None,
     ) -> None:
         self._command = tuple(command)
+        self._post_exit_drain_grace_seconds = post_exit_drain_grace_seconds
         self._signal_bridge = signal_bridge
         self._cwd = cwd
         self._extra_env = extra_env
@@ -172,16 +187,80 @@ class SubprocessAgentExecutor:
         if raw_log is not None:
             raw_log.close()
 
-    @staticmethod
-    async def _cancel_wait_and_terminate(
-        wait_task: asyncio.Task[int],
+    async def _supervise(
+        self,
         handle: ManagedAsyncProcess,
+        drain: Coroutine[object, object, None],
+        unit_id: str,
     ) -> None:
-        """Stop a sibling wait task before terminating its managed process."""
-        wait_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await wait_task
-        await handle.terminate(grace_period_s=0)
+        """Run the agent to exit, then terminate and reap its session on every path."""
+        # Captured while the agent is certainly alive: once it exits its PID
+        # proves nothing, and only a group verified now may be signalled later.
+        session_pgid = _verified_session_pgid(handle.pid)
+        drain_task: asyncio.Task[None] = asyncio.create_task(drain)
+        try:
+            try:
+                await self._await_exit_and_drain(handle, drain_task, unit_id, session_pgid)
+            except BaseException:
+                # Cancellation, or a drain failure (a quota stop, a parser
+                # fault): stop the drain, then terminate, so a naturally
+                # exiting child cannot race into an EXITED record with its
+                # process tree still alive.
+                await _cancel_task(drain_task)
+                await handle.terminate(grace_period_s=0)
+                raise
+        finally:
+            if handle.record.status not in _TERMINAL_STATUSES:
+                with contextlib.suppress(Exception):
+                    await handle.terminate(grace_period_s=0)
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(handle.wait(), timeout=0.5)  # mcp-timeout-ok: wf-bounded
+            # Every exit path: the agent ran in its own session, and anything
+            # it left behind there (detached or still holding stdout) goes too.
+            await _reap_session(handle, session_pgid)
+
+    async def _await_exit_and_drain(
+        self,
+        handle: ManagedAsyncProcess,
+        drain_task: asyncio.Task[None],
+        unit_id: str,
+        session_pgid: int | None,
+    ) -> None:
+        """Wait for the agent to exit, giving its output a bounded drain after.
+
+        ``handle.wait()`` alone cannot mark the exit: asyncio resolves it only
+        once every pipe has closed, so a grandchild that inherited stdout keeps
+        it pending for as long as that grandchild lives. The exit is also read
+        from the return code (see ``_until_root_exit``). Once the agent has exited, the drain gets
+        ``post_exit_drain_grace_seconds`` to reach EOF; past that the drain is
+        abandoned and the session is reaped, which closes the pipe, and only
+        then is ``handle.wait()`` awaited to record the exit.
+
+        The wait for the agent itself has no ceiling: it is bounded by the
+        activity-aware idle watchdog teardown (see
+        audit_activity_aware_watchdog.py — teardown_subtree is enforced on
+        every fire path), so a healthy-but-slow agent is not killed by a hard
+        ceiling.
+        """
+        wait_task = asyncio.create_task(handle.wait())  # mcp-timeout-ok: idle-wd-bounded
+        try:
+            await _until_root_exit(handle, drain_task, wait_task)
+            if not drain_task.done():
+                await asyncio.wait({drain_task}, timeout=self._post_exit_drain_grace_seconds)
+            if drain_task.done():
+                drain_task.result()
+            else:
+                logger.warning(
+                    "unit {unit} exited but its stdout is still held open after {grace}s; "
+                    "abandoning the drain and reaping the session",
+                    unit=unit_id,
+                    grace=self._post_exit_drain_grace_seconds,
+                )
+                await _cancel_task(drain_task)
+                await _reap_session(handle, session_pgid)
+            await wait_task  # mcp-timeout-ok: idle-wd-bounded
+        finally:
+            await _cancel_task(wait_task)
 
     def _record_dropped_frame(self, unit_id: str, marker: str) -> None:
         """Note a dropped oversized frame in the unit's verbatim capture.
@@ -309,40 +388,12 @@ class SubprocessAgentExecutor:
                 last_line = line
 
         try:
-            try:
-                assert handle is not None
-                # The handle.wait() inside the gather is bounded by the
-                # activity-aware idle watchdog teardown (see
-                # audit_activity_aware_watchdog.py — teardown_subtree is
-                # enforced on every fire path) and the surrounding finally
-                # block always terminates a non-terminal handle, so a
-                # healthy-but-slow agent is not killed by a hard ceiling.
-                # The drain_output() coroutine exits on stdout EOF.
-                wait_task = asyncio.create_task(handle.wait())  # mcp-timeout-ok: idle-wd-bounded
-                await asyncio.gather(drain_output(), wait_task)
-            except asyncio.CancelledError:
-                assert handle is not None
-                await handle.terminate(grace_period_s=0)
-                raise
-            except BaseException:
-                # ``asyncio.gather`` propagates a drain failure without
-                # cancelling its sibling wait. Cancel that task before
-                # termination so a parser/output fault cannot race a
-                # naturally-exiting child into an EXITED record and leave its
-                # process tree alive.
-                assert handle is not None
-                await self._cancel_wait_and_terminate(wait_task, handle)
-                raise
+            await self._supervise(handle, drain_output(), unit.unit_id)
         finally:
             if self._subagent_sink_token is not None:
                 with contextlib.suppress(Exception):
                     reset_subagent_sink(self._subagent_sink_token)
                 self._subagent_sink_token = None
-            if handle is not None and handle.record.status not in _TERMINAL_STATUSES:
-                with contextlib.suppress(Exception):
-                    await handle.terminate(grace_period_s=0)
-                with contextlib.suppress(Exception):
-                    await asyncio.wait_for(handle.wait(), timeout=0.5)  # mcp-timeout-ok: wf-bounded
 
         duration_ms = int((time.monotonic() - start_time) * 1000)
         exit_code = handle.returncode if handle.returncode is not None else 0
@@ -353,6 +404,59 @@ class SubprocessAgentExecutor:
             final_message=last_line,
             duration_ms=duration_ms,
         )
+
+
+async def _cancel_task(task: asyncio.Task[object] | None) -> None:
+    """Cancel ``task`` (if still running) and wait for it to unwind."""
+    if task is None or task.done():
+        return
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
+def _verified_session_pgid(pid: int) -> int | None:
+    """Return the agent's own session group, verified while it is alive."""
+    try:
+        return verified_child_session_pgid(pid)
+    except Exception:
+        return None
+
+
+async def _until_root_exit(
+    handle: ManagedAsyncProcess,
+    drain_task: asyncio.Task[None],
+    wait_task: asyncio.Task[int],
+) -> None:
+    """Return once the agent process itself has exited.
+
+    The exit shows either as ``wait_task`` finishing or as a return code: the
+    child watcher records the code as soon as the process is reaped, while
+    ``wait()`` also waits for every pipe to close. A drain failure is raised
+    as soon as it happens.
+    """
+    while not wait_task.done() and handle.returncode is None:
+        pending: set[asyncio.Task[None] | asyncio.Task[int]] = (
+            {wait_task} if drain_task.done() else {drain_task, wait_task}
+        )
+        await asyncio.wait(  # mcp-timeout-ok: bounded by timeout=
+            pending, timeout=_EXIT_POLL_SECONDS, return_when=asyncio.FIRST_COMPLETED
+        )
+        if drain_task.done():
+            drain_task.result()
+
+
+async def _reap_session(handle: ManagedAsyncProcess, pgid: int | None) -> None:
+    """Tear down everything left in the agent's session, off the event loop.
+
+    Best-effort: a teardown failure must never mask the run's own result or
+    exception. ``teardown_subtree`` refuses any PID or group this process
+    cannot prove it owns, so a fake or reused PID is a no-op. The issuer is
+    the spawn's own label, which the teardown's label-family check accepts.
+    """
+    issuer = handle.record.label or "agent"
+    with contextlib.suppress(Exception):
+        await asyncio.to_thread(teardown_subtree, handle.pid, issuer=issuer, pgid=pgid)
 
 
 async def drain_agent_lines(

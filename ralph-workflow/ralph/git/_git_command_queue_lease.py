@@ -35,6 +35,7 @@ from ralph.git._worktree_lease import (
     LeaseClock,
     LeaseStealDecision,
     _read_lease_record,
+    lease_fd_owns_path,
     lease_payload,
     reclaim_dead_lease,
     take_lease_flock,
@@ -46,7 +47,7 @@ if TYPE_CHECKING:
 
     from ralph.git._worktree_lease import LeaseLiveness
 
-#: Worktree lease lock-filename (placed under ``<git_dir>/ralph/``).
+#: Worktree lease lock-filename (placed under ``<common-git-dir>/ralph/``).
 _AGENT_LEASE_FILENAME: str = "agent-lease.lock"
 
 
@@ -85,8 +86,8 @@ class _WorktreeLease:
     """Context manager granted by the queue's ``begin_agent_lease``.
 
     The lease owns the lock-file at
-    ``<repo>/.git/ralph/agent-lease.lock``. ``__exit__`` closes the
-    fd, removes the lock-file, and clears the cached handle so a
+    ``<common-git-dir>/ralph/agent-lease.lock``. ``__exit__`` removes
+    the lock-file, closes the fd, and clears the cached handle so a
     follow-up ``begin_agent_lease`` call can succeed immediately.
 
     The lease is NOT thread-aware: ``__exit__`` from one thread while
@@ -115,20 +116,30 @@ class _WorktreeLease:
         """Drop the lease and remove the lock-file.
 
         Idempotent: calling twice is safe. Safe to call from
-        ``__exit__`` and from an explicit ``end_agent_lease``. The
-        underlying unlink is wrapped in ``contextlib.suppress(OSError)``
-        so a crash-recovered lock-file (already removed by another
-        process) does not error the caller.
+        ``__exit__`` and from an explicit ``end_agent_lease``.
+
+        The lock-file is unlinked WHILE the ``flock`` is still held, and
+        only then is the fd closed. Closing first dropped the lock while
+        the file was still at its path: a contender could take the
+        ``flock`` on that inode in the gap, the unlink then detached it,
+        and a third acquirer ``O_EXCL``-created a fresh file -- two
+        holders at once. The unlink is also skipped when the path no
+        longer names OUR inode, so a release never deletes another
+        holder's lease. A crash-recovered lock-file (already removed by
+        another process) does not error the caller.
         """
         if self._released:
             return
         self._released = True
-        if self._fd is not None:
+        fd = self._fd
+        self._fd = None
+        if fd is None:
+            return
+        if lease_fd_owns_path(fd, self._lock_path):
             with contextlib.suppress(OSError):
-                os.close(self._fd)
-            self._fd = None
+                self._lock_path.unlink()
         with contextlib.suppress(OSError):
-            self._lock_path.unlink()
+            os.close(fd)
 
     def __enter__(self) -> _WorktreeLease:
         return self

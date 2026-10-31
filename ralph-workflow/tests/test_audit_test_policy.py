@@ -275,6 +275,57 @@ def test_wait_with_timeout_is_allowed(tmp_path: Path) -> None:
     assert len(violations) == 0
 
 
+@pytest.mark.parametrize(
+    ("source", "category"),
+    [
+        ("import time as t\nt.sleep(5)\n", "sleep"),
+        ("from time import sleep\nsleep(5)\n", "sleep"),
+        ("from time import sleep as nap\nnap(5)\n", "sleep"),
+        ("from asyncio import sleep\nsleep(0.5)\n", "sleep"),
+        ("import subprocess as sp\nsp.run(['true'])\n", "io"),
+        ("from subprocess import run\nrun(['true'])\n", "io"),
+        ("from os import system\nsystem('true')\n", "io"),
+        ("from socket import create_connection\ncreate_connection(('h', 1))\n", "io"),
+        ("import urllib.request as ur\nur.urlopen('http://h')\n", "io"),
+        ("from time import monotonic\nmonotonic()\n", "wall-clock"),
+        ("def test_x():\n    import subprocess as sp\n    sp.check_output(['true'])\n", "io"),
+    ],
+)
+def test_calls_through_an_import_alias_are_violations(
+    tmp_path: Path, source: str, category: str
+) -> None:
+    """A banned call is banned however the module or function was imported."""
+    test_file = tmp_path / "test_example.py"
+    test_file.write_text(source)
+    violations = audit_test_file(test_file)
+    assert [violation.category for violation in violations] == [category]
+
+
+def test_aliased_sleep_zero_is_still_allowed(tmp_path: Path) -> None:
+    """Resolving an alias does not turn an allowed zero sleep into a violation."""
+    test_file = tmp_path / "test_example.py"
+    test_file.write_text("from asyncio import sleep\nsleep(0)\n")
+    assert audit_test_file(test_file) == []
+
+
+def test_patching_the_alias_target_exempts_the_aliased_call(tmp_path: Path) -> None:
+    """Patching ``time.sleep`` exempts a call made through ``import time as t``."""
+    test_file = tmp_path / "test_example.py"
+    test_file.write_text("import time as t\nmonkeypatch.setattr(t, 'sleep', fake)\nt.sleep(0.3)\n")
+    assert audit_test_file(test_file) == []
+
+
+def test_unrelated_names_sharing_a_banned_suffix_are_not_violations(tmp_path: Path) -> None:
+    """A local ``run``/``sleep`` that no import binds to a banned module is ignored."""
+    test_file = tmp_path / "test_example.py"
+    test_file.write_text(
+        "from ralph.example import run\n"
+        "def sleep(seconds):\n    return seconds\n"
+        "run(['true'])\nsleep(5)\n"
+    )
+    assert audit_test_file(test_file) == []
+
+
 def test_clean_file_no_violations(tmp_path: Path) -> None:
     """A test file with no policy violations should return empty list."""
     test_file = tmp_path / "test_example.py"

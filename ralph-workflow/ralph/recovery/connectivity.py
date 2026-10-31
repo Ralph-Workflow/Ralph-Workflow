@@ -46,6 +46,14 @@ class ConnectivityMonitor:
 
     All timing and network I/O is injectable so tests run deterministically
     without real sockets.
+
+    OFFLINE means *connectivity was lost*: the monitor reports it only after
+    a probe has succeeded at least once. When every probe target has been
+    unreachable since start (egress that blocks TCP/53 to the default DNS
+    resolvers, a proxy-only corporate network, an offline local-model setup)
+    the targets say nothing about whether the agent can work, so the state
+    stays UNKNOWN and the run is not paused on the strength of a probe that
+    was never able to succeed in this environment.
     """
 
     def __init__(
@@ -65,6 +73,7 @@ class ConnectivityMonitor:
         self._task: asyncio.Task[None] | None = None
         self._online_event: asyncio.Event = asyncio.Event()
         self._stopped: bool = False
+        self._seen_online: bool = False
 
     @property
     def current_state(self) -> ConnectivityState:
@@ -95,7 +104,11 @@ class ConnectivityMonitor:
             self._task = None
 
     async def wait_online(self) -> None:
-        """Suspend until connectivity is restored (or monitor is stopped)."""
+        """Suspend until connectivity is restored (or monitor is stopped).
+
+        Also returns once the probe targets have been unreachable since
+        start, since that state is UNKNOWN rather than OFFLINE.
+        """
         await self._online_event.wait()
 
     async def _probe_once(self) -> bool:
@@ -106,10 +119,24 @@ class ConnectivityMonitor:
         )
         return any(r is True for r in results)
 
+    def _state_after_probe(self, *, reachable: bool) -> ConnectivityState:
+        """Map one probe round onto a state; OFFLINE requires a prior ONLINE."""
+        if reachable:
+            self._seen_online = True
+            return ConnectivityState.ONLINE
+        if self._seen_online:
+            return ConnectivityState.OFFLINE
+        return ConnectivityState.UNKNOWN
+
     async def _probe_loop(self) -> None:
         while not self._stopped:
             reachable = await self._probe_once()
-            new_state = ConnectivityState.ONLINE if reachable else ConnectivityState.OFFLINE
+            new_state = self._state_after_probe(reachable=reachable)
+            if not reachable and not self._seen_online:
+                # Unreachable since start: the targets are blocked, not the
+                # network lost. Waiters are released rather than parked on
+                # an ONLINE transition that may never come.
+                self._online_event.set()
             if new_state != self._current_state:
                 self._current_state = new_state
                 if new_state == ConnectivityState.ONLINE:

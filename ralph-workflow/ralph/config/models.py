@@ -51,6 +51,12 @@ class UnifiedConfig(RalphBaseModel):
     ccs_aliases: dict[str, str | CcsAliasConfig] = Field(default_factory=dict)
     agent_chains: dict[str, AgentChainConfig] = Field(default_factory=dict)
     agent_drains: dict[str, AgentDrainConfig] = Field(default_factory=dict)
+    # CLI-only pins from ``--developer-agent`` / ``--developer-model``. The
+    # config loader strips them from TOML layers (see
+    # ``ralph.config.loader.CLI_ONLY_CONFIG_FIELDS``); the policy loader
+    # rebinds the ``development`` drain to the agent they name.
+    developer_agent: str | None = None
+    developer_model: str | None = None
 
     @model_validator(mode="before")
     @classmethod

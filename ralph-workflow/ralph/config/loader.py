@@ -72,6 +72,18 @@ _CLOSED_SUBTABLE_LEAVES: tuple[tuple[str, type[RalphBaseModel]], ...] = (
 )
 
 
+#: ``UnifiedConfig`` fields only the CLI may set (``--developer-agent`` /
+#: ``--developer-model``). A config file that names one gets the unknown-key
+#: warning and the key is dropped, so the warning's "ignored" is true.
+CLI_ONLY_CONFIG_FIELDS: frozenset[str] = frozenset({"developer_agent", "developer_model"})
+
+
+def _drop_cli_only_fields(*layers: dict[str, object]) -> None:
+    for data in layers:
+        for field in CLI_ONLY_CONFIG_FIELDS:
+            data.pop(field, None)
+
+
 class ConfigTomlError(ValueError):
     """A malformed main configuration file that needs user correction."""
 
@@ -233,7 +245,7 @@ def collect_unknown_config_fields(data: dict[str, object], path: Path) -> list[s
     # 1. Top-level closed keys
     _collect_unknown_leaves(
         data,
-        known_fields=set(UnifiedConfig.model_fields),
+        known_fields=set(UnifiedConfig.model_fields) - CLI_ONLY_CONFIG_FIELDS,
         path=path,
         prefix="",
         suggester=emit,
@@ -532,6 +544,8 @@ def load_config(
             for warning in collect_unknown_config_fields(layer_data, layer_path):
                 unknown_field_warning(warning)
 
+    _drop_cli_only_fields(agents_data, global_data, propagated_data, local_data)
+
     # Merge: agents -> global -> propagated -> local. The agents file sits
     # lowest so an [agents.*] table still present in an operator's existing
     # ralph-workflow.toml keeps its precedence across the upgrade.
@@ -555,10 +569,12 @@ def load_config(
         offending_path = _attribute_validation_error_to_layer(
             exc,
             local_path,
-            local_data,
-            _global_config_path(),
-            global_data,
-            propagated_entries,
+            [
+                (local_path, local_data),
+                *reversed(propagated_entries),
+                (_global_config_path(), global_data),
+                (agents_path, agents_data),
+            ],
             cli_overrides,
         )
         logger.error(format_config_validation_error(exc, offending_path))
@@ -581,6 +597,7 @@ def load_local_only(config_path: Path) -> UnifiedConfig:
         _warn_and_remove_retired_auto_integrate_keys(general)
         _warn_reserved_provider_fallback(general)
     warn_unknown_fields(data, config_path)
+    _drop_cli_only_fields(data)
     try:
         config = UnifiedConfig.model_validate(data)
         if config.conflict_resolution.total_resolution_cap_seconds is not None:
@@ -597,81 +614,31 @@ def load_local_only(config_path: Path) -> UnifiedConfig:
 def _attribute_validation_error_to_layer(
     exc: ValidationError,
     local_path: Path,
-    local_data: dict[str, object],
-    global_path: Path,
-    global_data: dict[str, object],
-    propagated_entries: list[tuple[Path, dict[str, object]]],
+    file_layers: list[tuple[Path, dict[str, object]]],
     cli_overrides: dict[str, object] | None,
 ) -> Path:
     """Return the config file that actually owns a failing field.
 
-    Walks every ValidationError ``loc`` tuple and asks: which layer
-    actually set that field? Layer precedence (highest first):
-    CLI overrides > project-local > propagated > user-global > defaults.
-    The first layer that sets the failing field is the one to blame,
-    so the operator does not get sent to edit the wrong file.
-
-    When the bad value is set in multiple layers (the merge result
-    carries the highest-precedence layer's value but the bad value
-    ALSO appears in a lower layer), the message names the highest
-    layer that contributed the bad value -- if the layer attribution
-    is ambiguous across errors, we fall back to the most-frequently
-    named layer, and as a last resort the project-local path.
+    ``file_layers`` lists every file layer highest-precedence first
+    (project-local, propagated, user-global, agents file). For each
+    ValidationError ``loc`` the first layer that sets that exact field is
+    blamed, so the operator does not get sent to edit the wrong file. A
+    field set by a CLI flag names no file, so CLI-owned errors fall back to
+    the project-local path, as does an error no layer can be tied to.
     """
     details = cast("list[dict[str, object]]", exc.errors())
-    if not details:
-        return local_path
-
-    # Highest-precedence layer first; each entry is (layer_name, path).
-    layer_paths: list[tuple[str, Path | None]] = [
-        ("cli", None),  # CLI overrides are not a file
-    ]
-    layer_paths.append(("local", local_path))
-    for prop_path, _ in propagated_entries:
-        layer_paths.append(("propagated", prop_path))
-    layer_paths.append(("global", global_path))
-
-    votes: dict[str, int] = {}
+    blamed: set[int] = set()
     for detail in details:
         loc = cast("tuple[object, ...]", detail.get("loc") or ())
-        layer = _layer_for_loc(
-            loc,
-            local_data,
-            global_data,
-            propagated_entries,
-            cli_overrides,
+        if cli_overrides and _loc_in_data(loc, cli_overrides):
+            continue
+        owner = next(
+            (index for index, (_path, data) in enumerate(file_layers) if _loc_in_data(loc, data)),
+            None,
         )
-        votes[layer] = votes.get(layer, 0) + 1
-
-    # Pick the highest-precedence layer that was voted for at all.
-    for name, path in layer_paths:
-        if votes.get(name, 0) > 0 and path is not None:
-            return path
-
-    return local_path
-
-
-def _layer_for_loc(
-    loc: tuple[object, ...],
-    local_data: dict[str, object],
-    global_data: dict[str, object],
-    propagated_entries: list[tuple[Path, dict[str, object]]],
-    cli_overrides: dict[str, object] | None,
-) -> str:
-    """Return the layer name that owns ``loc`` (highest precedence first)."""
-    if cli_overrides:
-        dotted = ".".join(str(part) for part in loc if part)
-        top = loc[0] if loc else ""
-        if dotted in cli_overrides or top in cli_overrides:
-            return "cli"
-    if _loc_in_data(loc, local_data):
-        return "local"
-    for _prop_path, prop_data in propagated_entries:
-        if _loc_in_data(loc, prop_data):
-            return "propagated"
-    if _loc_in_data(loc, global_data):
-        return "global"
-    return "local"  # ambiguous: blame the highest-precedence file
+        if owner is not None:
+            blamed.add(owner)
+    return file_layers[min(blamed)][0] if blamed else local_path
 
 
 def _loc_in_data(loc: tuple[object, ...], data: dict[str, object]) -> bool:

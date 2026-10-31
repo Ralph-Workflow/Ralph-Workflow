@@ -62,13 +62,28 @@ def _is_inside_git_dir(path: Path) -> bool:
     return False
 
 
+#: Ralph's integration advisory lock, kept at the top of a (private) git dir.
+_RALPH_INTEGRATION_LOCK_NAME = "ralph-auto-integrate.lock"
+
+#: The worktree lease lock-file, kept in ``<git dir>/ralph/``.
+_RALPH_LEASE_LOCK_NAME = "agent-lease.lock"
+
+
 def _is_ralph_lock(path: Path) -> bool:
-    """Ralph's own lock files (lease, auto-integrate) are never git locks."""
-    return (
-        path.name.startswith("ralph")
-        or path.name == "agent-lease.lock"
-        or path.parent.name == "ralph"
-    )
+    """Ralph's own lock files (lease, auto-integrate) are never git locks.
+
+    Decided by LOCATION, never by a ``ralph`` name prefix: a user's
+    ``ralph-cleanup`` or ``ralph/feature`` branch leaves an ordinary ref
+    lock (``refs/heads/ralph-cleanup.lock``) that must stay reapable. Ralph
+    owns only what sits in ``<git dir>/ralph/`` (the lease lives there),
+    the lease file itself, and the integration lock at the top of a git dir.
+    """
+    if path.name == _RALPH_LEASE_LOCK_NAME and path.parent.name == "ralph":
+        return True
+    git_dir = _gitdir_for_lock(path)
+    if path.parent == git_dir:
+        return path.name == _RALPH_INTEGRATION_LOCK_NAME
+    return path.is_relative_to(git_dir / "ralph")
 
 
 def _lock_path_is_reapable(lock_path: Path) -> bool:

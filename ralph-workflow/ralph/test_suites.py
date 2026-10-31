@@ -239,8 +239,8 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # worker (~6 s for opts-key drift, ~2.5 s for kwargs-forwarding)
     # and would tip a single-file shard past the 60 s combined
     # budget even when every other shard finishes inside it. Moving
-    # them to the E2E shard gives the four in-shard xdist workers
-    # (the host-invariant ``_REQUIRED_E2E_SHARD_XDIST_WORKERS`` cap)
+    # them to the E2E shard gives its in-shard xdist workers
+    # (``_REQUIRED_E2E_SHARD_XDIST_WORKERS`` capped by the host's cores)
     # enough headroom to absorb the scan, and keeps the regression
     # gates on the default ``make test`` profile so the silent-key
     # drop cannot rot. They are marked ``subprocess_e2e`` so the
@@ -464,12 +464,16 @@ _PYTEST_DURATIONS_REPORT: int = 10
 # ``_BUDGET_TRACKED_STEPS``, 13 s wall), ``make test`` + smoke = 60.4 s
 # exceeds the immutable 60 s budget. Twelve workers keep the expanded real-git
 # suite and the verification smoke inside that budget on the 40-core host.
-# The cumulative budget itself is untouched.
+# The cumulative budget itself is untouched. Twelve is a CAP: a host with
+# fewer cores gets one worker per core (a 4-core CI runner given twelve
+# workers was oversubscribed three times over), while the 12-core and
+# 40-core hosts keep all twelve.
+_REQUIRED_E2E_SHARD_XDIST_WORKERS = "12"
+
+
 def _required_e2e_xdist_workers() -> str:
-    return "12"
-
-
-_REQUIRED_E2E_SHARD_XDIST_WORKERS = _required_e2e_xdist_workers()
+    available_cores = os.cpu_count() or 1
+    return str(min(int(_REQUIRED_E2E_SHARD_XDIST_WORKERS), available_cores))
 
 
 def _exclusive_subprocess_e2e_xdist_workers() -> str:
@@ -1526,7 +1530,7 @@ def _select_test_files(
     selected_files = tuple(
         path for path in discovered_files if path not in set(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
     )
-    required_workers = _REQUIRED_E2E_SHARD_XDIST_WORKERS if required_files else None
+    required_workers = _required_e2e_xdist_workers() if required_files else None
     return (selected_files, _VERIFICATION_MARK_EXPRESSION, required_files, required_workers)
 
 

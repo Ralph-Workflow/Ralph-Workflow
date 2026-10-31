@@ -79,7 +79,6 @@ def _invariant_cases() -> list[_CaseSpec]:
     cpu_budget_anchor = "_TOTAL_TEST_CPU_BUDGET_SECONDS: Final = 600.0"
     hang_cap_anchor = "_TOTAL_TEST_HANG_CAP_SECONDS: Final = 180.0"
     step_timeout_anchor = "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0"
-    integration_anchor = "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 1.0"
     resource_label_anchor = '"resource lifecycle audit (audit_resource_lifecycle)"'
     resource_label_gone = '"resource lifecycle audit (REMOVED)"'
     polling_label_anchor = (
@@ -247,36 +246,6 @@ def _invariant_cases() -> list[_CaseSpec]:
             "minus_o": True,
             "expect_ok": False,
             "stderr_substrings": ["RuntimeError", "must be positive"],
-        },
-        {
-            "name": "integration_per_test_timeout_must_be_1",
-            "patches": [
-                (
-                    integration_anchor,
-                    "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 2.0",
-                )
-            ],
-            "minus_o": False,
-            "expect_ok": False,
-            "stderr_substrings": [
-                "RuntimeError",
-                "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS must be 1.0",
-            ],
-        },
-        {
-            "name": "integration_per_test_timeout_survives_minus_o",
-            "patches": [
-                (
-                    integration_anchor,
-                    "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 2.0",
-                )
-            ],
-            "minus_o": True,
-            "expect_ok": False,
-            "stderr_substrings": [
-                "RuntimeError",
-                "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS must be 1.0",
-            ],
         },
         {
             "name": "audit_resource_lifecycle_step_must_be_present",
