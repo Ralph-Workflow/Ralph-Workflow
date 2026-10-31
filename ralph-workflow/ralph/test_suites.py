@@ -146,6 +146,11 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # must stay on the default ``make test`` profile so the publication
     # reconciler cannot regress to fire-once semantics or fire-and-forget
     # ``origin``/``main`` defaults.
+    # 2026-10-30 regression: with remote sync enabled, post-commit, startup and
+    # the periodic catch-up ticker MUST fast-forward the local target to the
+    # remote (docs/agents/remote-sync.md). Remote sync is the most important
+    # feature, so its real-Git contract runs on every default ``make test``.
+    "tests/test_auto_integrate_remote_sync_fast_forward_contract.py",
     "tests/test_auto_integrate_acceptance_scenarios_e2e.py",
     # Real-Git proof that auto-rebase is idempotent and that a run starting
     # inside a paused, conflicted rebase hands every stop to the resolver.
@@ -502,6 +507,7 @@ _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
     "tests/test_no_anti_drift_regression.py": 76,
     "tests/test_audit_opts_key_drift.py": 280,
     "tests/test_auto_integrate_acceptance_scenarios_e2e.py": 200,
+    "tests/test_auto_integrate_remote_sync_fast_forward_contract.py": 215,
     "tests/test_auto_rebase_idempotence_e2e.py": 120,
     "tests/test_integration_obstruction_real_git.py": 180,
     "tests/mcp/test_bounded_catalog_publish.py": 100,

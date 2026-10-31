@@ -44,6 +44,11 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_retained_resolution_handoff.py",
     "tests/test_retained_resolution_dispatch.py",
     "tests/integration/test_retained_integration_acceptance.py",
+    # 2026-10-30 regression: with remote sync enabled, post-commit, startup and
+    # the periodic catch-up ticker MUST fast-forward the local target to the
+    # remote (docs/agents/remote-sync.md). Remote sync is the most important
+    # feature, so its real-Git contract runs on every default ``make test``.
+    "tests/test_auto_integrate_remote_sync_fast_forward_contract.py",
     "tests/test_auto_integrate_acceptance_scenarios_e2e.py",
     "tests/test_auto_rebase_idempotence_e2e.py",
     "tests/test_backup_ref_operation_scope.py",
