@@ -694,6 +694,9 @@ def test_default_profile_dedicated_required_e2e_shard_uses_twelve_xdist_workers(
     immutable cumulative 60 s budget, so the tail shard is over-provisioned
     against the cores the general shards release.
     """
+    # The worker count is capped by the host's cores; pin a 12-core host so
+    # the assertion below does not depend on the machine running the test.
+    monkeypatch.setattr(test_suites_module.os, "cpu_count", lambda: 12)
     monkeypatch.setenv("PYTEST_WORKERS", "2")
     reap_spawn_counts: list[int] = []
     spawner = _StubSpawner([])

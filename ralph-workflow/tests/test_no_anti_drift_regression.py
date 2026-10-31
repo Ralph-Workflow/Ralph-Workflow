@@ -92,7 +92,7 @@ def _legacy_console_display_references() -> tuple[pathlib.Path, ...]:
 # walks three ralph subtrees (agents, display, pipeline) and tokenizes
 # the few files that contain the mcp__ substring. Under shard
 # contention the cold-cache pass can spike past the 1 s per-test
-# ITIMER_REAL budget -- a 0.04 s cold-cache cost amortized over ~12x
+# budget -- a 0.04 s cold-cache cost amortized over ~12x
 # shard parallelism stretches to >1 s. Pre-warming at session start
 # (while the worker is otherwise idle) keeps every per-test invocation
 # inside the watchdog window without changing the global 1 s budget.

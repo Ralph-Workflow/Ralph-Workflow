@@ -205,6 +205,11 @@ SOURCE_READ_ALLOWLIST: set[str] = {
 
 #: Files that may measure real wall-clock time in a test.
 WALL_CLOCK_ALLOWLIST: set[str] = {
+    # The per-test budget plugin itself (registered by tests/conftest.py). It
+    # enforces the 5x wall-clock HANG cap on every test phase, so reading the
+    # real monotonic clock IS its job; it binds time.monotonic at import so
+    # tests that patch the clock cannot skew the cap. Not a test.
+    "_per_test_budget",
     # Single timestamp measurement for fake process creation — not an
     # elapsed-time loop. Aliased as _time.monotonic().
     "test_process_manager",

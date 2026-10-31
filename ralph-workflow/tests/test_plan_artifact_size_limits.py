@@ -29,13 +29,13 @@ def test_non_raw_payload_has_no_serialization_based_size_check() -> None:
 # ``analyze_plan_document``. Standalone it completes in ~0.27 s, but
 # under xdist load (multiple pytest workers contending for the GIL +
 # fork+re-exec startup overlap) the same 4 MB scan spends >1.0 s and
-# the per-test ``ITIMER_REAL`` guard (default
+# the per-test budget (``tests/_per_test_budget.py``, default
 # ``DEFAULT_TEST_TIMEOUT_SECONDS``) raises ``TestExecutionTimeoutError``.
 # The ``timeout_seconds`` marker is the documented per-test override
 # (``pytest.ini``: "override the per-test timeout for slower
 # integration cases") and is the single explicit escape hatch that
-# does NOT touch the immutable ``_INTEGRATION_PER_TEST_TIMEOUT_SECONDS``
-# / ``_TOTAL_TEST_BUDGET_SECONDS`` constants guarded by the
+# does NOT touch the pinned ``_TOTAL_TEST_BUDGET_SECONDS`` /
+# ``_TOTAL_TEST_CPU_BUDGET_SECONDS`` constants guarded by the
 # ``tests/test_verify_invariants.py`` import-time checks. ``30`` is
 # generous: even the worst observed load-sensitivity measurement
 # (~5 s) is well under the cap.

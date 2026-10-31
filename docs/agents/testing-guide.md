@@ -13,7 +13,7 @@ Read before writing or modifying any test.
 
 **Every test must finish within 1 second.**
 
-**Combined budget (enforced by `make verify`):** When `make verify` runs `make test`, the combined wall-clock time of all test suites must stay within 60 seconds total, enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS = 60.0`. You cannot circumvent this by adding suites, renaming targets, or redistributing tests. `conftest.py` installs a `SIGALRM`-based watchdog on every test. If a test exceeds the limit it is killed with `TestExecutionTimeoutError`. Do not work around this; fix the design.
+**Combined budget (enforced by `make verify`):** When `make verify` runs `make test`, the combined wall-clock time of all test suites must stay within 60 seconds total, enforced by `ralph.verify._TOTAL_TEST_BUDGET_SECONDS = 60.0`. You cannot circumvent this by adding suites, renaming targets, or redistributing tests. `tests/_per_test_budget.py` (registered from `conftest.py`) charges every test phase its own main-thread CPU budget, with a 5x wall-clock hang cap. If a test exceeds the limit it is killed with `TestExecutionTimeoutError`. Do not work around this; fix the design.
 
 Budget enforcement invariants in `ralph/verify.py` use `if`/`raise RuntimeError` (NOT `assert`) — this prevents `python -O` from stripping the checks. All import-time invariants survive `-O`.
 

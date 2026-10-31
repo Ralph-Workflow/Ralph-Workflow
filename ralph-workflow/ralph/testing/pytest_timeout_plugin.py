@@ -114,9 +114,9 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     if _is_xdist_worker(config):
         return
 
+    # ``timeout_seconds_from_env`` rejects non-positive values, so the watchdog
+    # always runs: a cap cannot be disarmed through the environment.
     timeout_seconds = timeout_seconds_from_env(SUITE_TIMEOUT_ENV, DEFAULT_SUITE_TIMEOUT_SECONDS)
-    if timeout_seconds <= 0:
-        return
 
     cancel_event = threading.Event()
     thread = threading.Thread(

@@ -623,7 +623,7 @@ def test_static_discovery_finds_pytest_patterns_and_required_files(
     """Discovery walks the ``tests/`` tree and applies the pytest naming
     pattern. The on-disk shape is exercised against a tiny synthetic
     ``tests/`` tree so the assertion is deterministic and well inside the
-    1s per-test ITIMER_REAL budget even under shard-saturated disk
+    1s per-test budget even under shard-saturated disk
     contention. The full-tree variant walked ``Path.cwd()/tests/`` (~1.3k
     files), and even with a 5s override the cold-cache walk on the
     maintained 8-shard run could exceed the SIGALRM cap, masking the
@@ -667,7 +667,7 @@ def test_static_discovery_populates_source_cache_for_retained_files(
     """Each retained file's decoded source must end up in the source cache so
     ``_test_file_weight`` does not re-read the same file from disk during
     shard weight computation. The synthetic ``tests/`` tree is small enough
-    to fit comfortably inside the 1s ITIMER_REAL per-test budget, so the
+    to fit comfortably inside the 1s per-test budget, so the
     assertion is deterministic under shard-saturated disk contention (the
     previous full-tree variant flaked at >5s on the maintained 32-core
     profile).

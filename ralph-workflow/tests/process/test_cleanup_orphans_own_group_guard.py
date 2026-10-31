@@ -1,6 +1,6 @@
 """Regression: ``cleanup_orphans`` must never signal Ralph's own process group.
 
-``ProcessManager``'s group sweep (``os.killpg(pgid, SIGKILL)``) only refused
+``ProcessManager``'s group sweep (a SIGKILL of the whole process group) only refused
 PGIDs 0 and 1. A record can carry Ralph's OWN group -- a PTY child that never
 became a session leader, or a caller handing a raw PGID to
 ``cleanup_orphans`` -- and ``killpg`` on it SIGKILLs Ralph itself plus every

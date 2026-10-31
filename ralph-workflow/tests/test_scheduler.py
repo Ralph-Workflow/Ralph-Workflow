@@ -166,7 +166,7 @@ def build_dag_units(
     # exceed that, which Hypothesis reports as a ``FlakyFailure`` even though
     # the property itself is deterministic (``derandomize=True``). Raising the
     # deadline to 750 ms keeps the perf signal but moves it BELOW the 1.0 s
-    # per-test ``ITIMER_REAL`` cap enforced by ``tests/conftest.py``, so a
+    # per-test budget enforced by ``tests/_per_test_budget.py``, so a
     # genuine runaway surfaces as an actionable per-example failure instead of
     # an opaque session abort. ``HealthCheck.too_slow`` (a different,
     # data-generation check) stays suppressed.
