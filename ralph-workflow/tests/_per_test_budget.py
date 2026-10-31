@@ -168,15 +168,16 @@ class _Watchdog:
         # One bound-method object, so ``getsignal`` can be compared by identity.
         self._handler = self._on_signal
 
-    def arm(self, label: str, budget: float) -> _Phase:
+    def arm(self, label: str, budget: float, wall_cap: float | None = None) -> _Phase:
         now = _monotonic()
+        cap = wall_hang_cap(budget) if wall_cap is None else wall_cap
         phase = _Phase(
             label=label,
             budget=budget,
-            wall_cap=wall_hang_cap(budget),
+            wall_cap=cap,
             cpu_start=_thread_time(),
             wall_start=now,
-            next_check=now + min(budget, wall_hang_cap(budget)),
+            next_check=now + min(budget, cap),
         )
         if _current_handler(_SIGNAL) is not self._handler:
             _install_handler(_SIGNAL, self._handler)
@@ -248,15 +249,21 @@ _WATCHDOG = _Watchdog()
 
 
 @contextmanager
-def phase_budget(label: str, budget: float) -> Generator[None, None, None]:
+def phase_budget(
+    label: str, budget: float, *, wall_cap: float | None = None
+) -> Generator[None, None, None]:
     """Charge the enclosed block, run on the main thread, against ``budget``.
+
+    ``wall_cap`` overrides the :func:`wall_hang_cap` default; tests of the CPU
+    path raise it so a loaded host (where the main thread gets well under a
+    fifth of a core) cannot trip the hang cap first.
 
     Raises:
         TestExecutionTimeoutError: the block used more than ``budget`` CPU
             seconds of the main thread, exceeded :func:`wall_hang_cap`, or
             disarmed the budget by tampering with ``SIGPROF``.
     """
-    phase = _WATCHDOG.arm(label, budget)
+    phase = _WATCHDOG.arm(label, budget, wall_cap)
     try:
         yield
     except TestExecutionTimeoutError:

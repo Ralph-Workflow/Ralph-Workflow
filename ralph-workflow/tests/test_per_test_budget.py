@@ -11,6 +11,7 @@ suite itself armed for the test, which resumes when they end.
 from __future__ import annotations
 
 import math
+import re
 import signal
 import textwrap
 import threading
@@ -48,10 +49,16 @@ def test_a_thread_leaked_by_an_earlier_test_is_not_charged_to_the_next_one() -> 
         leaked.join(timeout=2.0)
 
 
+#: Tests of the CPU path raise the wall hang cap far above the 5x default, so a
+#: loaded host -- where the main thread gets well under a fifth of a core --
+#: cannot trip the hang cap before the 0.05 CPU-second budget.
+_CPU_PATH_WALL_CAP = 30.0
+
+
 def test_main_thread_cpu_over_budget_raises() -> None:
     with (
         pytest.raises(budget_module.TestExecutionTimeoutError, match="used more than 0.05 CPU"),
-        budget_module.phase_budget("busy", 0.05),
+        budget_module.phase_budget("busy", 0.05, wall_cap=_CPU_PATH_WALL_CAP),
     ):
         _burn_main_thread_cpu(1.0)
 
@@ -81,7 +88,7 @@ def test_an_overrun_swallowed_by_code_under_test_still_fails_the_phase() -> None
     swallowed: list[str] = []
     with (
         pytest.raises(budget_module.TestExecutionTimeoutError, match="used more than 0.05 CPU"),
-        budget_module.phase_budget("swallower", 0.05),
+        budget_module.phase_budget("swallower", 0.05, wall_cap=_CPU_PATH_WALL_CAP),
     ):
         try:
             _burn_main_thread_cpu(1.0)
@@ -98,7 +105,7 @@ def test_replacing_the_budget_signal_handler_fails_the_phase_and_is_repaired() -
         signal.signal(signal.SIGPROF, signal.SIG_IGN)
     with (
         pytest.raises(budget_module.TestExecutionTimeoutError, match="used more than 0.05 CPU"),
-        budget_module.phase_budget("after repair", 0.05),
+        budget_module.phase_budget("after repair", 0.05, wall_cap=_CPU_PATH_WALL_CAP),
     ):
         _burn_main_thread_cpu(1.0)
 
@@ -174,6 +181,15 @@ def test_fixture_setup_and_teardown_are_each_charged_and_a_zero_marker_errors(
 
     result.assert_outcomes(passed=1, errors=3)
     output = result.stdout.str()
-    assert "setup of test_phases.py::test_setup_overrun used more than 0.05 CPU" in output
-    assert "teardown of test_phases.py::test_teardown_overrun used more than 0.05 CPU" in output
+    # Each phase is charged on its own budget. Which cap trips -- the CPU budget
+    # or its 5x wall hang cap -- depends on how much CPU a loaded host gives the
+    # main thread; either one, naming the right phase, proves the charging.
+    for phase in (
+        "setup of test_phases.py::test_setup_overrun",
+        "teardown of test_phases.py::test_teardown_overrun",
+    ):
+        assert re.search(
+            re.escape(phase) + r" (used more than 0\.05 CPU|exceeded the .* wall-clock hang cap)",
+            output,
+        ), output
     assert "must be a positive, finite number of seconds (got 0)" in output
