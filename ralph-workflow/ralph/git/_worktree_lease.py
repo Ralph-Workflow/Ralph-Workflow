@@ -257,7 +257,21 @@ def _probe_holder_pid(lock_path: Path, git_dir: Path, holder_pid: int) -> LeaseL
     platform with no procfs (macOS) a missing ``/proc/<pid>`` proves nothing
     about the holder, so the check answers ``"unknown"`` and the caller falls
     back to the repository-wide probe, which consults ``lsof`` there.
+
+    A recorded PID that names no process at all (``ESRCH``) is positive
+    evidence on every platform: the holder is gone. That answer needs no
+    ``lsof`` (which a loaded macOS host can time out into ``"unknown"``,
+    refusing the reclaim of a crashed holder's lease), and it stays safe
+    because the takeover's non-blocking ``flock`` remains the final arbiter
+    should any other process still hold the file.
     """
+    if holder_pid > 0:
+        try:
+            os.kill(holder_pid, 0)
+        except ProcessLookupError:
+            return "dead"
+        except OSError:
+            pass  # exists but not ours to signal (EPERM): prove nothing here
     proc_root = Path("/proc")
     # filesystem-read-ok: platform probe for procfs itself, not a workspace read
     if not proc_root.is_dir():
