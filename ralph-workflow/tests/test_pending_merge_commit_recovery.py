@@ -71,7 +71,7 @@ def test_pending_merge_refuses_changed_or_unreadable_evidence(
         # The pending-merge identity query fails: the public git runner
         # answers with a non-zero status, so no identity value is read.
         monkeypatch.setattr(
-            "ralph.pipeline._pending_merge_commit.run_git",
+            "ralph.git.subprocess_runner.run_git",
             lambda *_args, **_kwargs: GitRunResult(
                 args=(),
                 returncode=1,

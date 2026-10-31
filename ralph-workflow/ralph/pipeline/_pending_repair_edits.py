@@ -8,8 +8,8 @@ import os
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
+from ralph.git import subprocess_runner  # call-time run_git: never capture a test fake
 from ralph.git.merge import staged_conflict_marker_paths, unmerged_paths
-from ralph.git.subprocess_runner import run_git
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._pending_merge_commit import _git_value, pending_merge_identity_matches
@@ -52,12 +52,14 @@ def _refusal(reason: str, result: GitRunResult) -> RuntimeError:
 
 
 def capture_unstaged_work(root: Path) -> dict[str, str]:
-    result = run_git(("diff", "--name-only", "-z"), cwd=root, label="repair:dirty-paths")
+    result = subprocess_runner.run_git(
+        ("diff", "--name-only", "-z"), cwd=root, label="repair:dirty-paths"
+    )
     if result.returncode:
         raise _refusal("cannot enumerate existing unstaged work", result)
     captured: dict[str, str] = {}
     for path in filter(None, result.stdout.split("\0")):
-        diff = run_git(
+        diff = subprocess_runner.run_git(
             (
                 "--literal-pathspecs",
                 "diff",
@@ -73,7 +75,7 @@ def capture_unstaged_work(root: Path) -> dict[str, str]:
         if diff.returncode:
             raise _refusal(f"cannot protect existing work in {path}", diff)
         captured[path] = diff.stdout
-    loose = run_git(
+    loose = subprocess_runner.run_git(
         ("ls-files", "--others", "--exclude-standard", "-z"),
         cwd=root,
         label="repair:untracked",
@@ -83,7 +85,7 @@ def capture_unstaged_work(root: Path) -> dict[str, str]:
     for path in filter(None, loose.stdout.split("\0")):
         if path.startswith(".agent/"):
             continue
-        digest = run_git(
+        digest = subprocess_runner.run_git(
             ("hash-object", "--no-filters", "--", path),
             cwd=root,
             label="repair:untracked-snapshot",
@@ -147,7 +149,7 @@ def accept_repair_edits(
         repair_pending_paths=tuple(sorted(declared)),
     )
     write_record(root, staged_transition, backend=backend)
-    result = run_git(
+    result = subprocess_runner.run_git(
         ("--literal-pathspecs", "add", "--", *sorted(declared)),
         cwd=root,
         label="repair:stage-scoped",
@@ -173,7 +175,7 @@ def resume_source_repair(
     )
     if not baseline:
         return "source repair baseline unavailable; integration retained"
-    patch = run_git(
+    patch = subprocess_runner.run_git(
         (
             "diff",
             "--cached",
@@ -192,7 +194,7 @@ def resume_source_repair(
     if patch.stdout != record.repair_pending_diff and record.repair_pending_paths:
         if not _stage_after_crash(root, record, baseline):
             return "prepared source correction changed or could not be staged; integration retained"
-        patch = run_git(
+        patch = subprocess_runner.run_git(
             (
                 "diff",
                 "--cached",
@@ -234,7 +236,7 @@ def resume_source_repair(
 
 def _stage_after_crash(root: Path, record: IntegrationRecord, baseline: str) -> bool:
     proposed = _proposed_patch(root, baseline, record.repair_pending_paths)
-    staged_paths = run_git(
+    staged_paths = subprocess_runner.run_git(
         ("diff", "--cached", "--name-only", "-z", baseline),
         cwd=root,
         label="repair:partial-index-paths",
@@ -260,7 +262,7 @@ def _stage_after_crash(root: Path, record: IntegrationRecord, baseline: str) -> 
     ):
         return False
     for path in filter(None, staged_paths.stdout.split("\0")):
-        staged_delta = run_git(
+        staged_delta = subprocess_runner.run_git(
             (
                 "--literal-pathspecs",
                 "diff",
@@ -282,7 +284,7 @@ def _stage_after_crash(root: Path, record: IntegrationRecord, baseline: str) -> 
         ):
             return False
     return (
-        run_git(
+        subprocess_runner.run_git(
             ("--literal-pathspecs", "add", "--", *record.repair_pending_paths),
             cwd=root,
             label="repair:resume-stage",
@@ -294,7 +296,7 @@ def _stage_after_crash(root: Path, record: IntegrationRecord, baseline: str) -> 
 def _proposed_patch(root: Path, baseline: str, paths: tuple[str, ...]) -> str:
     patches: list[str] = []
     for path in paths:
-        exists = run_git(
+        exists = subprocess_runner.run_git(
             ("cat-file", "-e", f"{baseline}:{path}"), cwd=root, label="repair:baseline-path"
         )
         options = ("--binary", "--full-index", "--no-renames", "--no-ext-diff", "--no-textconv")
@@ -303,7 +305,7 @@ def _proposed_patch(root: Path, baseline: str, paths: tuple[str, ...]) -> str:
             if exists.returncode == 0
             else ("--literal-pathspecs", "diff", "--no-index", *options, "--", os.devnull, path)
         )
-        result = run_git(args, cwd=root, label="repair:proposed-path")
+        result = subprocess_runner.run_git(args, cwd=root, label="repair:proposed-path")
         if result.returncode not in ({0} if exists.returncode == 0 else {0, 1}):
             raise RuntimeError(f"cannot preserve proposed correction in {path}")
         patches.append(result.stdout)
@@ -311,7 +313,7 @@ def _proposed_patch(root: Path, baseline: str, paths: tuple[str, ...]) -> str:
 
 
 def capture_commit_controls(root: Path, backend: FileBackend = DEFAULT_FILE_BACKEND) -> str:
-    config = run_git(
+    config = subprocess_runner.run_git(
         ("config", "--get-regexp", "^(core\\.hookspath|commit\\.gpgsign|gpg\\.program)$"),
         cwd=root,
         label="repair:commit-controls",

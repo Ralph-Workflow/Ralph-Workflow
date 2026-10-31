@@ -169,7 +169,7 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `auto_integrate_target` | `"main"` | Local mainline branch used verbatim. It must be non-empty; if the branch is absent, the step records a skip. |
 | `auto_integrate_remote_enabled` | `true` when the remote exists | Enables remote freshness checks and publication when the configured remote exists. Set `false` for local-only operation. |
 | `auto_integrate_remote` | `"origin"` | Configured remote used when remote synchronization is enabled. It must be non-empty; an unavailable remote records a local-only outcome while integration continues. |
-| `auto_integrate_remote_interval_seconds` | `0.0` | Non-negative seconds between freshness probes. `0.0` fetches at every seam; a positive interval records suppressed probes as unverified. |
+| `auto_integrate_remote_interval_seconds` | `0.0` | Non-negative seconds between freshness probes. `0.0` fetches at every seam; a positive interval records suppressed probes as unverified. The periodic catch-up ticker fetches at most once per this interval (`0.0` keeps its 300 s default), and still applies an already-fetched remote tip on every tick; see the remote sync contract in `docs/agents/remote-sync.md`. |
 | `auto_integrate_reclaim_target_worktree` | `true` | Snapshot and reset only the worktree owning the target branch when its dirty state blocks an advance. Set `false` to retain refuse-and-retry behavior. |
 | `max_retries` | `3` | Max retries per agent attempt when synthesized from the main config |
 | `retry_delay_ms` | `1000` | Base delay between retries |

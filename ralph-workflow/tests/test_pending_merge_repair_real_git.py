@@ -9,6 +9,7 @@ from rich.console import Console
 
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.git import subprocess_runner
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.pipeline._pending_merge_repair import repair_pending_merge
 from ralph.pipeline.auto_integrate_record import IntegrationRecord, read_record
@@ -97,7 +98,7 @@ def test_hook_source_fix_is_reverified_and_landed_without_sweeping_wip(
 
     monkeypatch.setattr("ralph.pipeline.effect_executor.execute_agent_effect", execute)
     original_write = repair_edits.write_record
-    original_git = repair_edits.run_git
+    original_git = subprocess_runner.run_git
 
     def fail_publication(
         workspace_root: Path,
@@ -124,7 +125,7 @@ def test_hook_source_fix_is_reverified_and_landed_without_sweeping_wip(
         if case == "after_stage":
             crash.setattr(repair_edits, "write_record", fail_publication)
         if case in {"before_stage", "staged_intruder"}:
-            crash.setattr(repair_edits, "run_git", fail_staging)
+            crash.setattr(subprocess_runner, "run_git", fail_staging)
         repaired = repair_pending_merge(
             controller=make_resolver_controller(),
             workspace_scope=WorkspaceScope(root),

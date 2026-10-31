@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
+from ralph.git import subprocess_runner  # call-time run_git: never capture a test fake
 from ralph.git.merge import (
     MERGE_STATE_IN_PROGRESS,
     MERGE_STATE_NONE,
@@ -15,7 +16,6 @@ from ralph.git.merge import (
     staged_conflict_marker_paths,
     unmerged_paths,
 )
-from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
 from ralph.pipeline.auto_integrate_record import (
     MARK_PENDING_MERGE_COMMIT,
@@ -27,7 +27,7 @@ from ralph.pipeline.auto_integrate_record import (
 
 
 def _git_value(root: Path, *args: str) -> str | None:
-    result = run_git(args, cwd=root, label="pending-merge:identity")
+    result = subprocess_runner.run_git(args, cwd=root, label="pending-merge:identity")
     return result.stdout.strip() if result.returncode == 0 and result.stdout.strip() else None
 
 
