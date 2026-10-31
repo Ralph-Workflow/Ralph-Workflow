@@ -24,12 +24,12 @@ import pytest
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.pipeline.work_unit import WorkUnit
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 #: Long past any reasonable post-exit drain grace, so a run that waits for the
 #: grandchild cannot finish inside ``_RUN_DEADLINE_SECONDS``.
-_GRANDCHILD_SECONDS = 30
-_RUN_DEADLINE_SECONDS = 8.0
+_GRANDCHILD_SECONDS = 60
+_RUN_DEADLINE_SECONDS = 15.0
 _REAP_DEADLINE_SECONDS = 3.0
 
 

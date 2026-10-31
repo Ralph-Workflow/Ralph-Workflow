@@ -29,7 +29,7 @@ from ralph.pipeline._integration_owner_seam import (
 )
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_decision import AttemptState, CleanupLadderRung
-from ralph.pipeline.integration_ladder import LadderStepResult
+from ralph.pipeline.integration_ladder import LAST_RESORT_DISABLED_NO_SIGNATURE, LadderStepResult
 from ralph.pipeline.integration_observation import (
     DirtShape,
     HeadState,
@@ -44,6 +44,7 @@ from ralph.pipeline.integration_observation import (
     WorktreeState,
     WorktreeVerdict,
 )
+from tests._integration_ladder_fakes import _FakePlumbing, _FakeQuarantineFs
 
 pytestmark = pytest.mark.timeout_seconds(10)
 
@@ -436,3 +437,29 @@ def test_execute_planning_ladder_rung_forwards_the_observation_operation_kind(
     assert seen == [InProgressKind.MERGE]
     assert outcome is not None
     assert outcome.outcome == "failed"
+
+
+def test_planning_seam_reaches_rung6_only_as_an_explicitly_disabled_reset(
+    tmp_path: Path,
+) -> None:
+    """The planning seam holds no re-observed signature, so rung 6 never resets.
+
+    The rung answers with the named ``disabled`` verdict (not a misleading
+    precondition miss) and no git mutation runs.
+    """
+    ledger = AttemptLedger(tmp_path, ledger_path=_ledger_path(tmp_path))
+    git = _FakePlumbing()
+
+    outcome = execute_planning_ladder_rung(
+        tmp_path,
+        _verdict_with_rung(CleanupLadderRung.LAST_RESORT),
+        ledger=ledger,
+        git=git,
+        fs=_FakeQuarantineFs(),
+        state_dir=tmp_path / ".agent",
+    )
+
+    assert outcome is not None
+    assert outcome.outcome == "failed"
+    assert outcome.reason == LAST_RESORT_DISABLED_NO_SIGNATURE
+    assert git.calls == []

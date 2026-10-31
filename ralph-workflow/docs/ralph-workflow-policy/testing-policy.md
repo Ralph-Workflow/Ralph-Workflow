@@ -113,7 +113,7 @@ failure to obtain green.
 `make verify` is the authoritative entry point and runs `make test`
 (the default lane) plus the aggregate `make test-verification-smoke`
 step; both are charged against the pinned combined budget enforced by
-`ralph/verify.py` (60 s wall clock net of host contention, 600 CPU
+`ralph/verify.py` (60 s wall clock net of host contention or capacity, 600 CPU
 core-seconds). An agent that
 needs only the default lane may run `make test` from `ralph-workflow/`
 for fast feedback, but only `make verify` proves that a change complies

@@ -98,6 +98,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "LADDER_ATTEMPT_BUDGET",
+    "LAST_RESORT_DISABLED_NO_SIGNATURE",
     "LAST_RESORT_PRECONDITIONS",
     "EnvironmentFailure",
     "EnvironmentProbe",
@@ -138,6 +139,11 @@ LAST_RESORT_PRECONDITIONS: Final[tuple[str, ...]] = (
     "ladder_attempt_budget_spent",
     "fresh_reobservation_confirms_blocking_state",
 )
+
+#: Rung-6 verdict for a caller that supplies no re-observed blocking
+#: signature: the hard reset is explicitly disabled for it (see
+#: :func:`last_resort_recovery`).
+LAST_RESORT_DISABLED_NO_SIGNATURE: Final[str] = "failed:disabled:no-blocking-signature"
 
 #: Salvage-attempt kinds the last-resort precondition (b) waits for,
 #: recorded under ``salvage:<kind>`` by the owning seams through
@@ -647,10 +653,31 @@ def last_resort_recovery(
     target when the tip is unusable), blocking untracked paths are
     cleaned, stale locks removed, the worktree recreated if even the
     reset fails. Preserved refs/sidecars are never touched.
+
+    **Disabled without a blocking signature.** The reset is only safe for
+    a caller that re-observed the blocking state within the current tick
+    and passes BOTH the decided and the fresh signature (plus the real
+    feature tip and branch). A caller that passes no ``decided_signature``
+    -- today the planning seam
+    (:func:`ralph.pipeline._integration_owner_seam.execute_planning_ladder_rung`),
+    which holds neither a re-observation signature nor the feature tip --
+    gets the explicit verdict ``failed:disabled:no-blocking-signature``
+    instead of a misleading precondition miss, and the tree is never
+    touched. Stale locks are removed through the shared age + liveness +
+    identity reaper and only from this worktree's own git dir plus the
+    common dir's shared top-level and ref locks.
     """
     rung = CleanupLadderRung.LAST_RESORT
     key = _rung_key(rung)
     _record_evidence(ledger, key, "intent")
+    if not decided_signature:
+        value = LAST_RESORT_DISABLED_NO_SIGNATURE
+        _record_evidence(ledger, key, value)
+        logger.warning(
+            "integration ladder rung 6 (last resort) is disabled for this caller: no "
+            "re-observed blocking signature was supplied, so the hard reset never runs"
+        )
+        return LadderStepResult(rung, "failed", value, evidence={key: value})
     state = ledger.read()
     preconditions = evaluate_last_resort_preconditions(
         state, decided_signature=decided_signature, fresh_signature=fresh_signature, budget=budget

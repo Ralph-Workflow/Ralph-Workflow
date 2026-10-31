@@ -16,6 +16,7 @@ import pytest
 
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger, AttemptLedgerState
 from ralph.pipeline.integration_ladder import (
+    LAST_RESORT_DISABLED_NO_SIGNATURE,
     LAST_RESORT_PRECONDITIONS,
     evaluate_last_resort_preconditions,
     last_resort_recovery,
@@ -244,3 +245,34 @@ def test_evaluate_preconditions_reports_every_one() -> None:
     assert results["rungs_1_to_5_tried_or_shown_impossible"].startswith("unmet")
     assert results["ladder_attempt_budget_spent"].startswith("unmet")
     assert results["fresh_reobservation_confirms_blocking_state"].startswith("met")
+
+
+def test_rung6_without_a_blocking_signature_is_explicitly_disabled(tmp_path: Path) -> None:
+    """A caller that supplies no reconfirmed blocking signature cannot run the reset.
+
+    Even with every ledger precondition seeded, the rung refuses with a
+    named ``disabled`` verdict rather than a misleading precondition miss,
+    and never touches the tree.
+    """
+    ledger = _ledger(tmp_path)
+    _seed_all_preconditions(ledger)
+    git = _FakePlumbing(readable_refs=frozenset({"tipsha"}))
+
+    result = last_resort_recovery(
+        tmp_path,
+        git=git,
+        fs=_FakeQuarantineFs(),
+        ledger=ledger,
+        state_dir=tmp_path / ".agent",
+        clock=FakeClock(),
+        feature_tip="tipsha",
+        target="main",
+        branch="feature",
+        decided_signature="",
+        fresh_signature="",
+    )
+
+    assert result.outcome == "failed"
+    assert result.reason == LAST_RESORT_DISABLED_NO_SIGNATURE
+    assert git.calls == []
+    assert LAST_RESORT_DISABLED_NO_SIGNATURE in _evidence(tmp_path).values()

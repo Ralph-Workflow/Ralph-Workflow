@@ -35,6 +35,117 @@ if TYPE_CHECKING:
 _HOOKS_DISABLED: Final[tuple[str, ...]] = ("-c", "core.hooksPath=/dev/null")
 
 
+#: Top-level locks of a PRIVATE git dir: they guard this checkout's own
+#: index, HEAD and operation state.
+_PRIVATE_TOP_LEVEL_LOCKS: Final[tuple[str, ...]] = (
+    "index.lock",
+    "HEAD.lock",
+    "ORIG_HEAD.lock",
+    "MERGE_HEAD.lock",
+    "FETCH_HEAD.lock",
+)
+
+#: Top-level locks of the COMMON git dir that every worktree shares.
+_SHARED_TOP_LEVEL_LOCKS: Final[tuple[str, ...]] = (
+    "packed-refs.lock",
+    "config.lock",
+    "shallow.lock",
+)
+
+_LADDER_LOCK_OPERATION: Final[str] = "integration-ladder:remove-stale-locks"
+
+
+def _walk_lock_files(base: Path) -> list[Path]:
+    """Return ``*.lock`` files under ``base`` without following a symlink."""
+    found: list[Path] = []
+    if base.is_symlink() or not base.is_dir():
+        return found
+    for (
+        dirpath,
+        dirnames,
+        filenames,
+    ) in os.walk(  # filesystem-read-ok: enumerate git ref/reflog lock files under this worktree's git dir without following symlinks
+        base, followlinks=False, onerror=lambda _e: None
+    ):
+        here = Path(dirpath)
+        dirnames[:] = [d for d in dirnames if not (here / d).is_symlink()]
+        found.extend(here / name for name in filenames if name.endswith(".lock"))
+    return sorted(found)
+
+
+def _ladder_lock_candidates(git_dir: Path, common_dir: Path) -> list[Path]:
+    """Return the locks rung 6 may consider: this worktree's, never a sibling's.
+
+    * the private git dir's top-level locks and its ``refs``/``logs`` locks;
+    * the common dir's SHARED top-level locks and its ``refs`` locks.
+
+    ``worktrees/`` (sibling linked worktrees' private git dirs) and
+    ``modules/`` are never walked, and from a linked worktree the common
+    dir's ``index.lock``/``HEAD.lock`` belong to the main checkout, so
+    they are never candidates either.
+    """
+    same_dir = git_dir == common_dir
+    names = _PRIVATE_TOP_LEVEL_LOCKS + (_SHARED_TOP_LEVEL_LOCKS if same_dir else ())
+    candidates = [git_dir / name for name in names]
+    candidates.extend(_walk_lock_files(git_dir / "refs"))
+    candidates.extend(_walk_lock_files(git_dir / "logs"))
+    if not same_dir:
+        candidates.extend(common_dir / name for name in _SHARED_TOP_LEVEL_LOCKS)
+        candidates.extend(_walk_lock_files(common_dir / "refs"))
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for path in candidates:
+        if path not in seen:
+            seen.add(path)
+            unique.append(path)
+    return unique
+
+
+def reap_ladder_stale_locks(git_dir: Path, common_dir: Path) -> tuple[str, ...]:
+    """Remove the provably orphaned git locks of ONE worktree; return those removed.
+
+    Every candidate (see :func:`_ladder_lock_candidates`) must first be
+    proven to have no live holder by
+    :func:`ralph.git.lock_recovery.lock_has_no_live_holder` (checked against
+    both the private and the common git dir), and is then handed to the
+    shared stale-lock reaper through
+    :func:`ralph.git.lock_recovery.recover_stale_git_lock`, which refuses a
+    lock that is too young, still held, unprovable, or changed between the
+    probe and the unlink. A held, young or unprovable lock is left alone.
+
+    Returned names are relative to the git dir that owns the lock
+    (``git_dir`` when the lock sits under it, else ``common_dir``).
+    """
+    from ralph.git.lock_recovery import (
+        lock_has_no_live_holder,
+        lock_path_is_reapable,
+        recover_stale_git_lock,
+    )
+
+    removed: list[str] = []
+    for lock_path in _ladder_lock_candidates(git_dir, common_dir):
+        try:
+            if not lock_path.exists() or not lock_path_is_reapable(lock_path):
+                continue
+            owner = git_dir if lock_path.is_relative_to(git_dir) else common_dir
+            if lock_has_no_live_holder(lock_path, owner, common_dir) != "dead":
+                continue  # a live or unprovable holder's lock is never removed
+            # The shared reaper is addressed with git's own wording for the
+            # lock it names, so age, identity and its serialized unlink all
+            # apply exactly as they do to an in-call recovery.
+            contention = FileExistsError(
+                errno.EEXIST, f"Unable to create '{lock_path}': File exists."
+            )
+            if (
+                recover_stale_git_lock(_LADDER_LOCK_OPERATION, contention)
+                and not lock_path.exists()
+            ):
+                removed.append(str(lock_path.relative_to(owner)))
+        except OSError:
+            continue
+    return tuple(removed)
+
+
 class _ProductionGitPlumbing:
     """Production :data:`GitPlumbing` over the queue-routed git runner."""
 
@@ -227,29 +338,11 @@ class _ProductionGitPlumbing:
         return result.returncode == 0
 
     def remove_stale_locks(self, root: Path) -> tuple[str, ...]:
-        from ralph.git.lock_recovery import (
-            lock_identity,
-            lock_path_is_reapable,
-            unlink_if_unchanged,
-        )
-
         git_dir = self._git_dir(root)
         if git_dir is None:
             return ()
-        removed: list[str] = []
-        try:
-            locks = sorted(git_dir.rglob("*.lock"))
-        except OSError:
-            return ()
-        for lock_path in locks:
-            try:
-                if not lock_path_is_reapable(lock_path):
-                    continue  # a live holder's lock is never removed
-                if unlink_if_unchanged(lock_path, lock_identity(lock_path)):
-                    removed.append(str(lock_path.relative_to(git_dir)))
-            except OSError:
-                continue
-        return tuple(removed)
+        common_dir = self._git_common_dir(root) or git_dir
+        return reap_ladder_stale_locks(git_dir, common_dir)
 
     def recreate_worktree(self, root: Path, branch: str) -> bool:
         from ralph.git.subprocess_runner import run_git
@@ -409,12 +502,18 @@ class _ProductionGitPlumbing:
         return result.returncode == 0
 
     def _git_dir(self, root: Path) -> Path | None:
+        return self._rev_parse_dir(root, "--git-dir")
+
+    def _git_common_dir(self, root: Path) -> Path | None:
+        return self._rev_parse_dir(root, "--git-common-dir")
+
+    def _rev_parse_dir(self, root: Path, flag: str) -> Path | None:
         from ralph.git.subprocess_runner import run_git
 
         result = run_git(
-            ("rev-parse", "--git-dir"),
+            ("rev-parse", flag),
             cwd=root,
-            label="integration-ladder:git-dir",
+            label=f"integration-ladder:rev-parse{flag}",
         )
         raw = result.stdout.strip()
         if result.returncode != 0 or not raw:

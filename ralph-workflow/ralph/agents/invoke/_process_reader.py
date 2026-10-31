@@ -170,15 +170,19 @@ def _deliver_prompt_on_stdin(handle: ManagedProcess, prompt: str) -> None:
     )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
     try:
         write_fd = os.dup(text_stream.fileno())
-    except (OSError, ValueError):
-        # Not backed by a descriptor (an in-memory stand-in): nothing to dup.
-        target = functools.partial(_write_prompt_to_stream, text_stream, prompt)
-    else:
-        payload = prompt.encode(text_stream.encoding or "utf-8", text_stream.errors or "strict")
-        with contextlib.suppress(OSError, ValueError):
-            text_stream.close()
-        target = functools.partial(_write_prompt_to_fd, write_fd, payload)
-    threading.Thread(target=target, name="ralph-stdin-prompt", daemon=True).start()
+    except (AttributeError, OSError, ValueError):
+        # Not backed by a descriptor (an in-memory stand-in): there is no pipe
+        # buffer to fill, so the write cannot block and needs no thread.
+        _write_prompt_to_stream(text_stream, prompt)
+        return
+    payload = prompt.encode(text_stream.encoding or "utf-8", text_stream.errors or "strict")
+    with contextlib.suppress(OSError, ValueError):
+        text_stream.close()
+    threading.Thread(
+        target=functools.partial(_write_prompt_to_fd, write_fd, payload),
+        name="ralph-stdin-prompt",
+        daemon=True,
+    ).start()
 
 
 def _write_prompt_to_fd(fd: int, payload: bytes) -> None:

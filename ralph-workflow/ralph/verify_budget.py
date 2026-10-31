@@ -1,23 +1,23 @@
 """Contention-aware accounting for the combined ``make verify`` test budget.
 
 ``ralph/verify.py`` charges every budget-tracked test step against two
-limits, because wall clock alone cannot tell a slower suite from a busier
-machine:
+limits -- CPU and wall clock -- because wall clock alone cannot tell a
+slower suite from a busier (or smaller) machine:
 
 * **CPU** -- the core-seconds the suite's own processes consumed, read from
   ``getrusage(RUSAGE_CHILDREN)`` deltas. Those include every descendant
   reaped inside the tree, so the short-lived git and child interpreters a
   process sampler misses are counted too. A descendant whose parent exits
-  first is re-parented to init and reaped there, so rusage never sees it,
-  while host busy time does -- its CPU would be credited as *foreign*
-  contention. :func:`orphaned_cpu_tracker` therefore samples the step's
-  live process tree once a second and charges the CPU of descendants that
-  leave the tree still running (orphans) to the suite. An orphan that is
-  born, orphaned and gone between two samples is still missed, so the
-  bias that remains is small and in the suite's favour only by what a
-  sub-second orphan burns. This is the work the suite itself does; other
-  load on the host barely moves it, so exceeding the CPU budget is always
-  a failure.
+  first is re-parented to init and reaped there: rusage never sees its
+  CPU, while host busy time does, so it would be credited as *foreign*
+  contention. :func:`orphaned_cpu_tracker` samples each step twice a
+  second -- the live process tree, plus every process in the sessions the
+  tree's members belong to (``run_process`` gives each step its own) --
+  and charges the CPU of descendants found alive outside the tree to the
+  suite. An orphan that starts and ends between two samples is still
+  missed, so a small bias in the suite's favour remains. This is the work
+  the suite itself does; other load on the host barely moves it, so
+  exceeding the CPU budget is always a failure.
 
 * **Wall clock** -- the 60 s target a developer actually waits for. On a
   shared host it also measures everything else that ran. While the tests
@@ -39,8 +39,8 @@ machine:
   limit and the overrun is reported as a host-capacity WARNING. A wall
   overrun that left capacity idle (the suite waited instead of working)
   stays a failure. The rule cannot shelter a slow suite on a large host:
-  saturating 11+ cores for over 60 s costs more than the CPU budget, which
-  fails first.
+  saturating 12 or more cores for over 60 s costs more than the 600
+  core-s CPU budget, which fails first.
 
 The credit is an upper bound -- it assumes every foreign core-second
 displaced the suite -- which is why the CPU budget is a hard limit: a
@@ -62,7 +62,7 @@ from typing import TYPE_CHECKING, Literal
 import psutil
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
     from types import TracebackType
     from typing import Protocol
 
@@ -84,6 +84,7 @@ if TYPE_CHECKING:
         @property
         def pid(self) -> int: ...
         def children(self, *, recursive: bool) -> Sequence[_Process]: ...
+
 
 #: Share of the free cores the suite's own CPU must have kept busy for a
 #: wall overrun to count as capacity-bound rather than slow.
@@ -110,7 +111,7 @@ def sample_suite_resources() -> tuple[float, float]:
 
 
 #: How often the step's process tree is sampled for orphaned descendants.
-_ORPHAN_SAMPLE_INTERVAL_SECONDS = 1.0
+_ORPHAN_SAMPLE_INTERVAL_SECONDS = 0.5
 
 
 @dataclass(slots=True)
@@ -124,9 +125,20 @@ class _Descendant:
 class _OrphanedCpuTracker:
     """Charges a step the CPU of descendants that were orphaned while it ran."""
 
-    def __init__(self, root: _ProcessTree, interval: float) -> None:
+    def __init__(
+        self,
+        root: _ProcessTree,
+        interval: float,
+        session_of: Callable[[int], int | None],
+        session_members: Callable[[frozenset[int]], Sequence[_Process]],
+    ) -> None:
         self._root = root
         self._interval = interval
+        self._session_of = session_of
+        self._session_members = session_members
+        # bounded-accumulator-ok: one session per process group the step started
+        # (``run_process`` gives each step its own); dies with the step.
+        self._sessions: set[int] = set()
         # bounded-accumulator-ok: live descendants of one step only; an entry is
         # dropped as soon as its process is gone, and the tracker dies with the step.
         self._descendants: dict[tuple[int, float], _Descendant] = {}
@@ -163,8 +175,22 @@ class _OrphanedCpuTracker:
         except psutil.Error:
             return
         tree_pids = {self._root.pid} | {process.pid for process in in_tree}
-        seen: set[tuple[int, float]] = set()
+        own_session = self._session_of(self._root.pid)
         for process in in_tree:
+            session = self._session_of(process.pid)
+            if session is not None and session != own_session:
+                self._sessions.add(session)
+        # A descendant whose parent exited before any sample saw it is no
+        # longer in the tree, but it is still in the step's session.
+        strays = [
+            process
+            for process in (
+                self._session_members(frozenset(self._sessions)) if self._sessions else ()
+            )
+            if process.pid not in tree_pids
+        ]
+        seen: set[tuple[int, float]] = set()
+        for process, orphaned in [(p, False) for p in in_tree] + [(p, True) for p in strays]:
             observed = _observe(process)
             if observed is None:
                 continue
@@ -172,9 +198,10 @@ class _OrphanedCpuTracker:
             seen.add(key)
             known = self._descendants.get(key)
             if known is None:
-                self._descendants[key] = _Descendant(process, cpu if baseline else 0.0, cpu)
-            else:
-                known.cpu = max(known.cpu, cpu)
+                known = _Descendant(process, cpu if baseline else 0.0, cpu)
+                self._descendants[key] = known
+            known.cpu = max(known.cpu, cpu)
+            known.orphaned = known.orphaned or orphaned
         for key, known in list(self._descendants.items()):
             if key not in seen:
                 self._follow_departed(key, known, tree_pids)
@@ -217,21 +244,53 @@ def _observe(process: _Process) -> tuple[tuple[int, float], float] | None:
         return None
 
 
+def _host_session_of(pid: int) -> int | None:
+    try:
+        return os.getsid(pid)
+    except OSError:
+        return None
+
+
+def _host_session_members(sessions: frozenset[int]) -> list[_Process]:
+    members: list[_Process] = []
+    for pid in psutil.pids():
+        if _host_session_of(pid) in sessions:
+            try:
+                members.append(psutil.Process(pid))
+            except psutil.Error:
+                continue
+    return members
+
+
 def orphaned_cpu_tracker(
     root: _ProcessTree | None = None,
     *,
     interval: float = _ORPHAN_SAMPLE_INTERVAL_SECONDS,
+    session_of: Callable[[int], int | None] = _host_session_of,
+    session_members: Callable[[frozenset[int]], Sequence[_Process]] = _host_session_members,
 ) -> _OrphanedCpuTracker:
     """Return a context manager that tracks orphaned descendants' CPU for one step.
+
+    A descendant counts as orphaned once it is alive outside ``root``'s
+    process tree: re-parented after its parent exited, or found in a session
+    a tree member belongs to (other than ``root``'s own) without being in
+    the tree.
 
     Args:
         root: The process whose tree is watched; this process by default.
         interval: Seconds between background samples while the step runs.
+        session_of: Session id of a pid, or ``None`` if it is gone.
+        session_members: Live processes in any of the given sessions.
 
     The CPU the step's orphans spent while it ran is in
     ``orphaned_cpu_seconds`` once the ``with`` block exits.
     """
-    return _OrphanedCpuTracker(root if root is not None else psutil.Process(os.getpid()), interval)
+    return _OrphanedCpuTracker(
+        root if root is not None else psutil.Process(os.getpid()),
+        interval,
+        session_of,
+        session_members,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -325,7 +384,11 @@ class SuiteBudgetReport:
         return None
 
     def describe(self) -> str:
-        """One human-readable line with every number the verdict used."""
+        """One human-readable line with every number the verdict used.
+
+        ``scripts/record_verify_run.py`` parses this exact shape into the
+        verify receipt; change both together.
+        """
         foreign_cores = self.foreign_cpu_seconds / self.wall_seconds if self.wall_seconds else 0.0
         return (
             f"wall {self.wall_seconds:.2f}s / {self.wall_budget_seconds:.1f}s "

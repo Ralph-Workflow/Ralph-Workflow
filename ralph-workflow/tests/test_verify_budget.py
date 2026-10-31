@@ -12,7 +12,7 @@ busy the machine running them is.
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import pytest
 
@@ -212,9 +212,7 @@ def test_run_verify_stops_once_the_hang_cap_is_spent(
 # --- capacity-bound hosts ---------------------------------------------------
 
 
-def _report_on(
-    *, cores: int, wall: float, suite_cpu: float, host_busy: float
-) -> SuiteBudgetReport:
+def _report_on(*, cores: int, wall: float, suite_cpu: float, host_busy: float) -> SuiteBudgetReport:
     return SuiteBudgetReport(
         wall_seconds=wall,
         suite_cpu_seconds=suite_cpu,
@@ -287,11 +285,12 @@ class _FakeCpuTimes:
 
 
 class _FakeProcess:
-    """A process the tracker can observe: CPU, parent, and whether it still runs."""
+    """A process the tracker can observe: CPU, parent, session, liveness."""
 
-    def __init__(self, pid: int, parent: int, cpu: float = 0.0) -> None:
+    def __init__(self, pid: int, parent: int, session: int, cpu: float = 0.0) -> None:
         self.pid = pid
         self.parent = parent
+        self.session = session
         self.cpu = cpu
         self.running = True
 
@@ -308,35 +307,61 @@ class _FakeProcess:
         return self.running
 
 
-class _FakeRoot:
-    """The verify process: ``children`` reports whatever is still in its tree."""
+class _OrphanTracker(Protocol):
+    orphaned_cpu_seconds: float
+
+    def sample(self, *, baseline: bool = False) -> None: ...
+
+
+class _FakeHostProcesses:
+    """The verify process (pid 1000, session 1) and every live process on the host."""
 
     pid = 1000
 
     def __init__(self) -> None:
-        self.tree: list[_FakeProcess] = []
+        self.processes: list[_FakeProcess] = []
+
+    def spawn(self, pid: int, parent: int, session: int, cpu: float = 0.0) -> _FakeProcess:
+        process = _FakeProcess(pid, parent, session, cpu)
+        self.processes.append(process)
+        return process
 
     def children(self, *, recursive: bool) -> list[_FakeProcess]:
         assert recursive
-        return [process for process in self.tree if process.running]
+        tree: list[_FakeProcess] = []
+        parents = {self.pid}
+        for process in self.processes:  # spawned parent-first
+            if process.running and process.parent in parents:
+                tree.append(process)
+                parents.add(process.pid)
+        return tree
+
+    def session_of(self, pid: int) -> int | None:
+        if pid == self.pid:
+            return 1
+        return next((p.session for p in self.processes if p.pid == pid and p.running), None)
+
+    def session_members(self, sessions: frozenset[int]) -> list[_FakeProcess]:
+        return [p for p in self.processes if p.running and p.session in sessions]
+
+    def tracker(self) -> _OrphanTracker:
+        return verify_budget_module.orphaned_cpu_tracker(
+            self, session_of=self.session_of, session_members=self.session_members
+        )
 
 
 def test_cpu_of_a_descendant_orphaned_during_the_step_is_charged_to_the_suite() -> None:
-    root = _FakeRoot()
-    make = _FakeProcess(2000, parent=root.pid)
-    root.tree = [make]
-    tracker = verify_budget_module.orphaned_cpu_tracker(root)
-
+    host = _FakeHostProcesses()
+    make = host.spawn(2000, parent=host.pid, session=2000)
+    tracker = host.tracker()
     tracker.sample()
-    daemon = _FakeProcess(2001, parent=make.pid, cpu=0.5)
-    root.tree.append(daemon)
+    daemon = host.spawn(2001, parent=make.pid, session=2000, cpu=0.5)
     tracker.sample()
     # ``make`` exits; its background child is re-parented to init and keeps
     # burning CPU that ``getrusage(RUSAGE_CHILDREN)`` will never see.
     make.running = False
     daemon.parent = 1
     daemon.cpu = 2.0
-    root.tree.remove(daemon)
     tracker.sample()
     daemon.cpu = 3.0
     tracker.sample()
@@ -346,11 +371,25 @@ def test_cpu_of_a_descendant_orphaned_during_the_step_is_charged_to_the_suite() 
     assert tracker.orphaned_cpu_seconds == pytest.approx(3.0)
 
 
+def test_a_descendant_orphaned_before_any_sample_saw_it_is_found_by_its_session() -> None:
+    host = _FakeHostProcesses()
+    host.spawn(2000, parent=host.pid, session=2000)
+    tracker = host.tracker()
+    tracker.sample()
+    # ``sh -c 'burn & exit'``: the shell is gone before the next sample, so
+    # the burner was never seen inside the tree -- only in the step's session.
+    host.spawn(2002, parent=1, session=2000, cpu=1.5)
+    unrelated = host.spawn(3000, parent=1, session=3000, cpu=9.0)
+    tracker.sample()
+
+    assert unrelated.cpu == 9.0
+    assert tracker.orphaned_cpu_seconds == pytest.approx(1.5)
+
+
 def test_descendants_reaped_inside_the_tree_are_left_to_rusage() -> None:
-    root = _FakeRoot()
-    child = _FakeProcess(2000, parent=root.pid, cpu=1.0)
-    root.tree = [child]
-    tracker = verify_budget_module.orphaned_cpu_tracker(root)
+    host = _FakeHostProcesses()
+    child = host.spawn(2000, parent=host.pid, session=2000, cpu=1.0)
+    tracker = host.tracker()
     tracker.sample()
     child.cpu = 4.0
     tracker.sample()
@@ -361,17 +400,26 @@ def test_descendants_reaped_inside_the_tree_are_left_to_rusage() -> None:
 
 
 def test_an_orphan_older_than_the_step_is_charged_only_for_the_step() -> None:
-    root = _FakeRoot()
-    worker = _FakeProcess(2000, parent=root.pid, cpu=10.0)
-    root.tree = [worker]
-    tracker = verify_budget_module.orphaned_cpu_tracker(root)
+    host = _FakeHostProcesses()
+    worker = host.spawn(2000, parent=host.pid, session=2000, cpu=10.0)
+    tracker = host.tracker()
     tracker.sample(baseline=True)
     worker.parent = 1
     worker.cpu = 12.5
-    root.tree = []
     tracker.sample()
 
     assert tracker.orphaned_cpu_seconds == pytest.approx(2.5)
+
+
+def test_processes_sharing_the_verify_session_are_never_charged() -> None:
+    host = _FakeHostProcesses()
+    host.spawn(2000, parent=host.pid, session=1)
+    tracker = host.tracker()
+    tracker.sample()
+    host.spawn(2001, parent=1, session=1, cpu=5.0)
+    tracker.sample()
+
+    assert tracker.orphaned_cpu_seconds == 0.0
 
 
 def test_run_verify_charges_orphaned_descendant_cpu_to_the_suite(

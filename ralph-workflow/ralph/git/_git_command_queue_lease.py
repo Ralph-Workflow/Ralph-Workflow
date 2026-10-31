@@ -183,19 +183,27 @@ def _acquire_lock_file(
             raise OSError(errno.EAGAIN, msg, str(lock_path))
         written = os.write(fd, payload)
     except OSError:
-        with contextlib.suppress(OSError):
-            os.close(fd)
-        with contextlib.suppress(OSError):
-            lock_path.unlink()
+        _discard_created_lock_file(fd, lock_path)
         raise
     if written != len(payload):
-        with contextlib.suppress(OSError):
-            os.close(fd)
-        with contextlib.suppress(OSError):
-            lock_path.unlink()
+        _discard_created_lock_file(fd, lock_path)
         msg = f"short write to lease file {lock_path!r}"
         raise OSError(errno.EIO, msg, str(lock_path))
     return fd
+
+
+def _discard_created_lock_file(fd: int, lock_path: Path) -> None:
+    """Undo a failed creation: unlink OUR file first, then drop the fd.
+
+    Same ordering as :meth:`_WorktreeLease.release`: closing first would
+    let a contender lock the still-linked inode, and the unlink would then
+    delete the file that contender believes it holds.
+    """
+    if lease_fd_owns_path(fd, lock_path):
+        with contextlib.suppress(OSError):
+            lock_path.unlink()
+    with contextlib.suppress(OSError):
+        os.close(fd)
 
 
 def _reclaim_dead_lease(

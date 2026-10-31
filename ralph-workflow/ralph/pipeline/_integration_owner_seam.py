@@ -345,6 +345,15 @@ def execute_planning_ladder_rung(
     :class:`~ralph.pipeline.integration_ladder.LadderStepResult` and
     re-observes before deciding again: acting twice on one observation
     is what the durable ledger's escalation budget exists to prevent.
+
+    Rung 6 (the hard reset) is deliberately NOT armed from this seam. A
+    safe reset needs a blocking signature re-observed within the current
+    tick plus the real feature tip and branch, and the planning verdict
+    carries none of them; wiring placeholders would reset toward the
+    target and strand committed feature work. The seam therefore passes
+    no signature and the rung answers with the explicit
+    :data:`~ralph.pipeline.integration_ladder.LAST_RESORT_DISABLED_NO_SIGNATURE`
+    verdict, never touching the tree.
     """
     if verdict.ladder_rung is None:
         return None

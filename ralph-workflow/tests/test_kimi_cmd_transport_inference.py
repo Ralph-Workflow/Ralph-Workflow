@@ -41,8 +41,13 @@ def test_unknown_cmd_still_falls_through_to_generic() -> None:
     assert config.transport is AgentTransport.GENERIC
 
 
-def test_absolute_kimi_path_falls_through_to_generic() -> None:
-    """The table matches the literal first token, not the basename."""
+def test_absolute_kimi_path_infers_kimi_transport() -> None:
+    """The table matches the binary's basename, so an absolute path keeps its transport.
+
+    Matching only the literal first token silently downgraded
+    ``/usr/local/bin/kimi`` to ``GENERIC`` and dropped its MCP wiring --
+    the exact failure this table exists to prevent.
+    """
     config = AgentConfig(cmd="/usr/local/bin/kimi", json_parser=JsonParserType.GENERIC)
 
-    assert config.transport is AgentTransport.GENERIC
+    assert config.transport is AgentTransport.KIMI

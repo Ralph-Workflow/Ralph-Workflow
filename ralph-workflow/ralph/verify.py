@@ -929,7 +929,7 @@ def run_verify(
         wall_budget_seconds=_TOTAL_TEST_BUDGET_SECONDS,
         cpu_budget_seconds=_TOTAL_TEST_CPU_BUDGET_SECONDS,
     )
-    # The first line's exact shape is parsed by scripts/record_verify_run.py.
+    # Both lines' exact shapes are parsed by scripts/record_verify_run.py.
     print(
         f"\nCumulative test elapsed: {cumulative_test_elapsed:.2f}s"
         f" / budget: {_TOTAL_TEST_BUDGET_SECONDS:.1f}s",
