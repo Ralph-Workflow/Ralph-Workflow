@@ -36,14 +36,29 @@ _HANDOVER_ACK_TIMEOUT_S: float = 1.0
 #: Drain deadline (seconds) before terminating the retired child.
 _HANDOVER_DRAIN_S: float = 0.5
 
-#: Private readiness communication timeout (seconds).
+#: Private readiness communication timeout (seconds): the readiness exchange
+#: itself, once the candidate is running.
 _PRIVATE_READINESS_TIMEOUT_S: float = 5.0
+
+#: Extra time a make-before-break candidate gets for interpreter boot and
+#: imports. Its readiness wait starts at spawn, and a candidate is a full
+#: ``python -m ralph.mcp.server`` -- the same boot a first start gets a
+#: separate allowance for. Without it a loaded host refused every candidate
+#: before it could answer (boot measured ~0.65 s idle, ~6 s with 72 CPU
+#: burners on 12 cores). The old child keeps serving meanwhile, so this bounds
+#: how long a replacement takes, not an agent's wait.
+_CANDIDATE_BOOT_ALLOWANCE_S: float = 15.0
 
 if not _HANDOVER_ACK_TIMEOUT_S > 0:
     raise RuntimeError(f"_HANDOVER_ACK_TIMEOUT_S must be positive (got {_HANDOVER_ACK_TIMEOUT_S})")
 
 if not _HANDOVER_DRAIN_S > 0:
     raise RuntimeError(f"_HANDOVER_DRAIN_S must be positive (got {_HANDOVER_DRAIN_S})")
+
+if not _CANDIDATE_BOOT_ALLOWANCE_S > 0:
+    raise RuntimeError(
+        f"_CANDIDATE_BOOT_ALLOWANCE_S must be positive (got {_CANDIDATE_BOOT_ALLOWANCE_S})"
+    )
 
 if not _PRIVATE_READINESS_TIMEOUT_S > 0:
     raise RuntimeError(
@@ -664,6 +679,7 @@ def wait_for_candidate_resume(
 
 
 __all__ = [
+    "_CANDIDATE_BOOT_ALLOWANCE_S",
     "_HANDOVER_ACK_TIMEOUT_S",
     "_HANDOVER_DRAIN_S",
     "_PRIVATE_READINESS_TIMEOUT_S",

@@ -255,6 +255,7 @@ from ralph.mcp.protocol.startup import (
     probe_mcp_http_endpoint,
 )
 from ralph.mcp.server._handover_protocol import (
+    _CANDIDATE_BOOT_ALLOWANCE_S,
     _HANDOVER_ACK_TIMEOUT_S,
     _HANDOVER_DRAIN_S,
     _PRIVATE_READINESS_TIMEOUT_S,
@@ -508,8 +509,9 @@ if not (
 # ---------------------------------------------------------------------------
 # Worst-case arithmetic bounds and import-time invariants (E6.4 + E2.3)
 # ---------------------------------------------------------------------------
-#: Candidate private-channel readiness verification deadline.
-_CANDIDATE_DEADLINE_S: Final[float] = _PRIVATE_READINESS_TIMEOUT_S
+#: Candidate private-channel readiness verification deadline, measured from
+#: spawn: the candidate's interpreter boot plus the readiness exchange.
+_CANDIDATE_DEADLINE_S: Final[float] = _CANDIDATE_BOOT_ALLOWANCE_S + _PRIVATE_READINESS_TIMEOUT_S
 #: Candidate whole startup budget from environment.
 _CANDIDATE_STARTUP_DEADLINE_S: Final[float] = mcp_whole_startup_budget_from_env()
 #: Preflight deadline ceiling in seconds.
@@ -572,7 +574,7 @@ _E64_BOUND_A_COMPONENTS_S: Final[tuple[float, ...]] = (
     _FAILED_ATTEMPT_CLEANUP_S,
 )
 #: Handover stage durations bound (b) is composed of, in protocol order:
-#: candidate private-channel readiness, old-child pause acknowledgement
+#: candidate boot and private-channel readiness, old-child pause acknowledgement
 #: (or its kill), the kill confirmation, the drain window, and the bounded
 #: teardown of a candidate that failed before the accept handover.
 _E64_BOUND_B_COMPONENTS_S: Final[tuple[float, ...]] = (
@@ -1760,6 +1762,9 @@ class RestartAwareMcpBridge:
                 expected_effective_config_fingerprint=cfg_fp,
                 expected_tool_hash=self._expected_tool_hash,
                 expected_tool_hash_required=self._baseline_capture_failed,
+                # The clock starts at spawn, so it must cover the candidate's
+                # interpreter boot as well as the readiness exchange.
+                timeout=_CANDIDATE_DEADLINE_S,
             )
             if result.ok:
                 # Retain the VALIDATED candidate catalogue as the new drift

@@ -51,9 +51,10 @@ from ralph.process.manager import ProcessManagerPolicy
 #: + ``5.0`` (terminal reap wait).
 _E64_BOUND_A_PINNED_S = 880.0
 #: Hand-computed candidate delay with the old child alive:
-#: ``candidate_readiness + ack + kill_wait + drain + teardown``
-#: ``== 5.0 + 1.0 + 1.0 + 0.5 + 12.0 == 19.5``.
-_E64_BOUND_B_PINNED_S = 19.5
+#: ``candidate_deadline + ack + kill_wait + drain + teardown``, where the
+#: candidate deadline is boot (15.0) plus readiness (5.0):
+#: ``== 20.0 + 1.0 + 1.0 + 0.5 + 12.0 == 34.5``.
+_E64_BOUND_B_PINNED_S = 34.5
 
 
 class _LiveProcess:
@@ -128,7 +129,7 @@ def test_e64_bound_b_dominates_every_stage_it_is_composed_of(tmp_path: pathlib.P
     """Bound (ii) must dominate the sum of its per-stage durations."""
     diagnostics = _bridge(tmp_path).diagnostics()
     components = diagnostics.bound_b_components_s
-    assert components == (5.0, 1.0, 1.0, 0.5, 12.0)
+    assert components == (20.0, 1.0, 1.0, 0.5, 12.0)
     assert bound_dominates(diagnostics.candidate_delay_bound_alive_child_s, components)
 
 
@@ -188,7 +189,7 @@ def test_e64_bounds_match_independently_recomputed_numbers(tmp_path: pathlib.Pat
     assert McpRestartPolicy.max_restarts == 20
     assert McpRestartPolicy.cooldown_seconds == 2.0
     assert diagnostics.preflight_deadline_s == 30.0
-    assert diagnostics.candidate_deadline_s == 5.0
+    assert diagnostics.candidate_deadline_s == 20.0  # 15.0 boot allowance + 5.0 readiness
     assert diagnostics.handover_ack_timeout_s == 1.0
     assert diagnostics.handover_kill_wait_s == 1.0
     assert diagnostics.handover_drain_s == 0.5

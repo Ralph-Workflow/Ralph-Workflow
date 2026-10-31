@@ -72,7 +72,10 @@ JsonRpcResponse = dict[str, object]
 _HTTP_OK = 200
 _HTTP_ACCEPTED = 202
 # Generous bound: still fail-closed, but tolerant of slow scheduling under load.
-_HTTP_JSONRPC_POST_TIMEOUT_S = 20.0
+# It must dominate the alive-child replacement bound
+# (``lifecycle._CANDIDATE_DELAY_BOUND_ALIVE_CHILD_S``, 34.5 s), which includes
+# the candidate's own boot allowance.
+_HTTP_JSONRPC_POST_TIMEOUT_S = 40.0
 
 #: Total attempts (the original plus replays) this client makes for ONE
 #: JSON-RPC POST. E3.4 caps a severed-connection replay at exactly one extra
