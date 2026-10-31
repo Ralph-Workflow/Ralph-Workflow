@@ -1121,9 +1121,11 @@ def test_async_first_sigint_propagates_kill_label_to_controller(
     The first-SIGINT handler dispatches ``begin_interrupt`` +
     ``run_early_escalation_poll`` via ``loop.run_in_executor``. The
     loop shim runs the executor body synchronously so the test can
-    observe the controller's ``shutdown_all_for_label`` call.
+    observe the controller's ``shutdown_all_for_label`` call. The agent
+    exits on that graceful shutdown, so the shutdown block drains at once
+    instead of sleeping through its whole grace period.
     """
-    manager = FakeProcessManager()
+    manager = _ExitsOnGracefulShutdown()
     manager.add_active(pid=_PID, pgid=_PGID, label="invoke:fake")
     _, dispatcher = _build_dispatcher(process_manager=manager)
 
