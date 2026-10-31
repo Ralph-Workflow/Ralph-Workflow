@@ -12,40 +12,16 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-from enum import Enum, auto
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline.auto_integrate_catchup_coordination import _try_lock, _unlock
+from ralph.pipeline.lease_outcome_kind import LeaseOutcomeKind
+from ralph.pipeline.lease_unknown_reason import LeaseUnknownReason
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-
-
-class LeaseOutcomeKind(Enum):
-    """Closed set of lease outcomes.
-
-    ``ACQUIRED`` — lease held; caller owns the worktree for the block.
-    ``HELD_BY_LIVE_OWNER`` — another live process holds the advisory lock
-    (real contention; bounded retry applies, and only here).
-    ``UNKNOWN`` — an environment failure prevented classification; the
-    caller must never treat this as "busy" and must never dispatch an
-    agent for it: back off via the injectable clock, re-observe, and let
-    the existing fallback ladder handle persistence past the bound.
-    """
-
-    ACQUIRED = auto()
-    HELD_BY_LIVE_OWNER = auto()
-    UNKNOWN = auto()
-
-
-class LeaseUnknownReason(Enum):
-    """Why the lease state could not be classified (environment failures only)."""
-
-    GIT_DIR_UNRESOLVED = auto()  # `rev-parse --absolute-git-dir` failed or was empty
-    GIT_DIR_INVALID = auto()  # `.git` directory present without a `HEAD` marker
-    LOCK_IO_ERROR = auto()  # OSError opening the advisory lock file
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +118,5 @@ def integration_transaction(root: Path) -> Iterator[LeaseOutcome]:
 
 __all__ = [
     "LeaseOutcome",
-    "LeaseOutcomeKind",
-    "LeaseUnknownReason",
     "integration_transaction",
 ]

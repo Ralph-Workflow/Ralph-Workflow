@@ -30,6 +30,7 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.display.theme import RALPH_THEME
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.auto_integrate_conflict_budget import resolve_failure_ledger
 from ralph.pipeline.conflict_resolution import bind_active_rebase_resolution_session
 from ralph.pipeline.conflict_resolution.chain_candidates import (
@@ -47,7 +48,6 @@ from ralph.pipeline.conflict_resolution.session import (
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import build_default_pipeline_deps
-from ralph.pipeline.rebase_state import ResolutionFailureCause
 from ralph.policy.loader import load_policy
 from ralph.recovery.agent_failure_ledger import (
     AgentFailureLedger,

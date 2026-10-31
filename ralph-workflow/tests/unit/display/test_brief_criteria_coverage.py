@@ -264,7 +264,7 @@ def _reset_probes_caches() -> None:
     # monkeypatches a role anchor does not leave stale entries
     # behind for the next ID's claim.
     try:
-        from ralph import _markdown_theme
+        from ralph.display import _markdown_theme
 
         _markdown_theme._markdown_palette_for_surface_cached.cache_clear()
     except (AttributeError, ImportError):
@@ -290,7 +290,7 @@ def _reset_probes_caches() -> None:
     except (AttributeError, ImportError):
         pass
     try:
-        from ralph import syntax_theme
+        from ralph.display import syntax_theme
 
         if hasattr(syntax_theme, "_syntax_theme_for_surface_cached"):
             syntax_theme._syntax_theme_for_surface_cached.cache_clear()

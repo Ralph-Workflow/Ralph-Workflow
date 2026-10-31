@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 from pydantic import ConfigDict, Field, model_validator
 
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline._publication_state_machine import PublicationDecision
 from ralph.pydantic_compat import RalphBaseModel
@@ -21,20 +22,6 @@ if TYPE_CHECKING:
 _FROZEN = ConfigDict(frozen=True)
 HISTORY_AWARE_CONFLICT_STRATEGY_INDEX = 3
 _LEGACY_AGENT_FAILURE_REASON = "resolution_agent_failure"
-
-
-class _ResolutionFailureCause(StrEnum):
-    """Structured root cause for an integration or conflict resolution failure."""
-
-    NONE = "NONE"
-    AGENT_FAILURE = "AGENT_FAILURE"
-    UNRESOLVED_CONFLICT = "UNRESOLVED_CONFLICT"
-    CONTEXT_FAILURE = "CONTEXT_FAILURE"
-
-
-_ResolutionFailureCause.__name__ = "ResolutionFailureCause"
-_ResolutionFailureCause.__qualname__ = "ResolutionFailureCause"
-ResolutionFailureCause = _ResolutionFailureCause
 
 
 class _StartupRetentionReason(StrEnum):

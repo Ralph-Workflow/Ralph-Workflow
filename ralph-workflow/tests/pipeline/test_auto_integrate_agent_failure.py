@@ -33,9 +33,10 @@ from loguru import logger as loguru_logger
 
 from ralph.config.models import UnifiedConfig
 from ralph.git.rebase.rebase import rebase_in_progress
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.integration_actions import install_executors, reset_executors
-from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState, ResolutionFailureCause
+from ralph.pipeline.rebase_state import RebaseOutcomeKind, RebaseState
 from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.scope import WorkspaceScope

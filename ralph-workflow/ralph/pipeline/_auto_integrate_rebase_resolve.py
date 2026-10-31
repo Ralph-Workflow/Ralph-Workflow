@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.git.rebase.rebase import RebaseConflicts, RebaseSuccess
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.auto_integrate_outcome import record_conflict
 from ralph.pipeline.auto_integrate_record import clear_record
 from ralph.pipeline.auto_integrate_recovery import (
@@ -37,7 +38,6 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
 )
 from ralph.pipeline.conflict_resolution.status import conflict_status_bar_session
 from ralph.pipeline.rebase_state import (
-    ResolutionFailureCause,
     StartupRetentionReason,
 )
 

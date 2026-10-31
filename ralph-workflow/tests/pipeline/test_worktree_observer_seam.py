@@ -22,9 +22,12 @@ from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_ou
 from ralph.pipeline.conflict_resolution.prompt import PromptMaterializer
 from ralph.pipeline.conflict_resolution.sight import ConflictSight
 from ralph.pipeline.conflict_resolution.worktree_observer import WorktreeConflictObserver
+from ralph.pipeline.integration_actions import install_executors, reset_executors
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from ralph.pipeline.conflict_resolution.driver import ResolutionInvoker
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
     from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
@@ -35,6 +38,37 @@ _POLICY_BUNDLE = load_policy(Path(__file__).resolve().parents[2] / "ralph" / "po
 _CONFIG = UnifiedConfig.model_validate({"general": {}})
 
 pytestmark = pytest.mark.timeout_seconds(5)
+
+
+class _RecordingClock:
+    """A clock whose sleeps advance fake time instead of the wall clock."""
+
+    def __init__(self) -> None:
+        self.time_s = 0.0
+        self.slept: list[float] = []
+
+    def now(self) -> float:
+        return self.time_s
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+        self.time_s += seconds
+
+
+@pytest.fixture(autouse=True)
+def _no_real_waits() -> Iterator[_RecordingClock]:
+    """Run every round on a fake clock.
+
+    A round whose only resolver is cooling down waits out the cooldown
+    through the installed clock. On the real clock that wait was a 5 s
+    ``time.sleep`` -- which the per-test timeout used to interrupt and the
+    round loop then absorbed, so the scenario silently spent its whole
+    budget sleeping.
+    """
+    clock = _RecordingClock()
+    token = install_executors(clock=clock)
+    yield clock
+    reset_executors(token)
 
 
 class _FakeObserver(WorktreeConflictObserver):

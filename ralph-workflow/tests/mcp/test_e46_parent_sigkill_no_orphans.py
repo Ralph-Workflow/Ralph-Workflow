@@ -208,15 +208,10 @@ bridge._restart_fn = restart_fn
 # 1. Production candidate spawn (make-before-break entry).
 candidate = bridge._spawn_candidate()
 
-# 2. Production verification in flight against a slow candidate.
-verifier = threading.Thread(
-    target=lambda: bridge._verify_candidate(candidate),
-    name="e46-verifier",
-    daemon=True,
-)
-verifier.start()
-
-deadline = time.monotonic() + 5.0
+# 2. Wait for the candidate to boot and report its pids. This bounds only
+#    child interpreter start-up + imports (3-8x slower on a saturated host),
+#    so the deadline is generous; a quiet host clears it in well under 1 s.
+deadline = time.monotonic() + 20.0
 payload = {}
 while time.monotonic() < deadline:
     if candidate_pids_path.exists():
@@ -231,7 +226,18 @@ while time.monotonic() < deadline:
 if not payload:
     raise SystemExit("candidate never reported its pids")
 
-# 3. Production drain: the old child moves into _draining_inners, still alive
+# 3. Production verification in flight against the (never-answering)
+#    candidate. Started only once the candidate is up so the private
+#    readiness wait (5 s) is still pending at SIGKILL time however long
+#    the candidate took to boot.
+verifier = threading.Thread(
+    target=lambda: bridge._verify_candidate(candidate),
+    name="e46-verifier",
+    daemon=True,
+)
+verifier.start()
+
+# 4. Production drain: the old child moves into _draining_inners, still alive
 #    inside the _HANDOVER_DRAIN_S window while the candidate is unverified.
 bridge._drain_old(bridge._inner)
 
@@ -318,7 +324,10 @@ def e46_overlap(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, 
         ],
         capture_output=True,
         text=True,
-        timeout=20.0,
+        # Bounds only the failure path: the watcher boots, starts a real MCP
+        # child, and waits up to 20 s for the candidate to boot -- each a
+        # child interpreter start that slows several-fold under host load.
+        timeout=60.0,
         check=False,
     )
     assert proc.returncode == -9, (

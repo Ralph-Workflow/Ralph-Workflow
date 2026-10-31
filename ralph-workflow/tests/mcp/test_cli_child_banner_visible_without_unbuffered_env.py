@@ -40,7 +40,10 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 
 _BANNER_PREFIX = b"Ralph MCP server listening on "
 _BANNER_TIMEOUT_S = 1.0
-_READY_TIMEOUT_S = 5.0
+#: Bounds only how long the child may take to come up -- a fresh interpreter
+#: boot plus imports, which a saturated host stretches many times over. It
+#: is not the property under test; the banner window after ready_to_serve is.
+_READY_TIMEOUT_S = 15.0
 
 
 def _bind_free_port() -> int:
@@ -159,7 +162,7 @@ def test_cli_child_banner_visible_within_one_second(tmp_path: Path) -> None:
     try:
         # Step 1: Wait for independent serving signal: poll
         # read_last_stage(workspace, spawn_id=stage_id) == "ready_to_serve"
-        # with a bounded timeout (5.0s).
+        # with a bounded timeout (_READY_TIMEOUT_S).
         ready_deadline = time.monotonic() + _READY_TIMEOUT_S
         ready_reached = False
         while time.monotonic() < ready_deadline:

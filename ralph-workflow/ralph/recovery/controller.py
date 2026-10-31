@@ -56,7 +56,6 @@ from ralph.pipeline.agent_retry_intent import (
     cleared_agent_retry_intent,
     resume_agent_retry_intent,
 )
-from ralph.pipeline.conflict_resolution.attempt_fault import ConflictAttemptOutcome
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import FalloverRecord
 from ralph.policy.models import PhaseRetryPolicy
@@ -83,6 +82,7 @@ from ralph.recovery.classifier import (
     FailureClassifier,
     FailureContext,
 )
+from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 from ralph.recovery.cycle_cap import CycleCap
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions

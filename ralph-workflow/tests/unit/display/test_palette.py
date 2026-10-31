@@ -23,7 +23,7 @@ from ralph.display._palette import (
     resolve_palette,
     rgb_to_oklab,
 )
-from ralph.syntax_theme import SyntaxThemes
+from ralph.display.syntax_theme import SyntaxThemes
 
 _DA_002_SURFACES: tuple[str, ...] = (
     "#7A7A7A",

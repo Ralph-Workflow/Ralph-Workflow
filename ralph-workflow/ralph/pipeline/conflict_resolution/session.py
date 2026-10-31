@@ -9,19 +9,19 @@ from loguru import logger
 
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError, SupervisionInfrastructureError
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline import effect_executor as _effect_executor_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.attempt_fault import (
-    ConflictAttemptOutcome,
     classify_ralph_origin_fault,
 )
 from ralph.pipeline.conflict_resolution.chain_candidates import session_ledger
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.rebase_state import ResolutionFailureCause
+from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence

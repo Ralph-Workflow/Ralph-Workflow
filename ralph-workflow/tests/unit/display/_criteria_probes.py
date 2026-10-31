@@ -473,10 +473,10 @@ def _probe_d_1(monkeypatch: pytest.MonkeyPatch) -> None:
     # Redefine SyntaxThemes.dark to return a sabotaged variant
     # (skipped colour changed to error's hue).
     # Actually, simpler: patch the `_SYNTAX_ROLES` to swap skipped->error.
-    from ralph.syntax_theme import _SYNTAX_ROLES
+    from ralph.display.syntax_theme import _SYNTAX_ROLES
 
     sabotaged = tuple("error" if r == "skipped" else r for r in _SYNTAX_ROLES)
-    monkeypatch.setattr("ralph.syntax_theme._SYNTAX_ROLES", sabotaged)
+    monkeypatch.setattr("ralph.display.syntax_theme._SYNTAX_ROLES", sabotaged)
 
 
 # -- D-2: syntax palettes are solved against the preview fill.
@@ -501,7 +501,7 @@ def _probe_d_3(monkeypatch: pytest.MonkeyPatch) -> None:
     # Patch the syntax theme to drop the String token.
     from collections import defaultdict
 
-    from ralph.syntax_theme import SyntaxThemes
+    from ralph.display.syntax_theme import SyntaxThemes
 
     def sabotaged(*args: object, **kwargs: object) -> object:
         styles = SyntaxThemes.dark().styles
@@ -532,7 +532,7 @@ def _probe_d_3(monkeypatch: pytest.MonkeyPatch) -> None:
 # come from solve_for_surface.
 @register_probe("D-4")
 def _probe_d_4(monkeypatch: pytest.MonkeyPatch) -> None:
-    from ralph import _markdown_theme
+    from ralph.display import _markdown_theme
 
     def sabotaged(preview_surface: str) -> tuple[str, ...]:
         return ("#DEADBE", "#DEADBE", "#DEADBE", "#DEADBE", "#DEADBE", "#DEADBE")

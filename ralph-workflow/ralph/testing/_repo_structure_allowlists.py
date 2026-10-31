@@ -1616,7 +1616,7 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
         # and is likewise allowed.
         (
             "tests/unit/display/_criteria_probes.py",
-            "ralph",
+            "ralph.display",
             ("_markdown_theme",),
         ),
         (
@@ -1641,12 +1641,12 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
         ),
         (
             "tests/unit/display/_criteria_probes.py",
-            "ralph.syntax_theme",
+            "ralph.display.syntax_theme",
             ("_SYNTAX_ROLES",),
         ),
         (
             "tests/unit/display/test_brief_criteria_coverage.py",
-            "ralph",
+            "ralph.display",
             ("_markdown_theme",),
         ),
         (

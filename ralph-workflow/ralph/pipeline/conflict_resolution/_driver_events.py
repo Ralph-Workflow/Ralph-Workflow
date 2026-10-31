@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.status import emit_conflict_phase_line
-from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence

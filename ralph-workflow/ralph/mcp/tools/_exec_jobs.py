@@ -135,9 +135,9 @@ class _PsutilLivenessProc:
         return self._proc.cpu_times()
 
     def io_counters(self) -> object:
-        if sys.platform == "darwin":
-            raise AttributeError("psutil does not provide io_counters on macOS")
-        return self._proc.io_counters()
+        if sys.platform != "darwin":
+            return self._proc.io_counters()
+        raise AttributeError("psutil does not provide io_counters on macOS")
 
     def num_ctx_switches(self) -> object:
         return self._proc.num_ctx_switches()

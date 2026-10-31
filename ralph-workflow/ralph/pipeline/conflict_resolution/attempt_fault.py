@@ -22,26 +22,10 @@ class AttemptFault(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
-class ConflictAttemptOutcome(StrEnum):
-    """Typed outcome of one conflict-resolution attempt (the §11 fix).
-
-    The owner must be handed a typed fact, never a prose sentence to
-    re-match: every shape Ralph itself can already describe typed is one of
-    these values, and only genuinely unrecognised EXTERNAL output takes the
-    ``RAW`` text path through the failure classifier.
-    """
-
-    UNRESOLVED_REMAINING = "unresolved_remaining"
-    NO_ACTIVITY = "no_activity"
-    ATTEMPT_FAILED = "attempt_failed"
-    RAW = "raw"
-
-
 __all__ = [
     "INFRASTRUCTURE_TERMINATION_REASONS",
     "RESOLVER_NOT_SPENT_TERMINATION_REASONS",
     "AttemptFault",
-    "ConflictAttemptOutcome",
     "attempt_fault_to_termination_reason",
     "classify_attempt_fault",
     "classify_ralph_origin_fault",

@@ -8,7 +8,6 @@ import signal
 import sys
 import tempfile
 import threading
-import time
 from collections.abc import Generator
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -310,12 +309,41 @@ def _reset_rich_style_color_caches() -> Generator[None, None, None]:
         cached_callable.cache_clear()
 
 
-class TestExecutionTimeoutError(TimeoutError):
-    pass
+class TestExecutionTimeoutError(BaseException):
+    """The per-test SIGALRM budget ran out.
+
+    A ``BaseException``, like ``KeyboardInterrupt``, so code under test
+    cannot swallow it. As a ``TimeoutError`` it was an ``OSError``: an
+    ``except OSError: continue`` around a file read turned an overrun into
+    a silently skipped file (a fresh audit scan then reported phantom
+    baseline drift), and ``except Exception`` blocks hid overruns entirely.
+    """
+
+
+#: The per-test wall-clock HANG cap, as a multiple of the per-test budget
+#: (and at most ``_WALL_HANG_MAX_EXTRA_SECONDS`` above it). The budget itself
+#: is charged in CPU seconds -- see :func:`pytest_runtest_call`.
+_WALL_HANG_FACTOR = 5.0
+_WALL_HANG_MAX_EXTRA_SECONDS = 60.0
+
+
+def _wall_hang_cap(budget_seconds: float) -> float:
+    return min(budget_seconds * _WALL_HANG_FACTOR, budget_seconds + _WALL_HANG_MAX_EXTRA_SECONDS)
 
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_call(item: pytest.Item) -> Generator[None, object, None]:
+    """Enforce the per-test budget: CPU seconds, plus a wall-clock hang cap.
+
+    The budget (``timeout_seconds`` marker, else the 1 s default) is charged
+    against the CPU this process spends (``ITIMER_PROF``): the work the test
+    controls. ``make test`` saturates every core, so a wall-clock budget
+    measured the host instead -- a 0.1 s test was seen taking 1 s of wall
+    clock. A test that waits rather than works (a sleep, a blocked read, a
+    hang) uses no CPU, so a wall-clock cap (``ITIMER_REAL``) of
+    :func:`_wall_hang_cap` still fails it. Both raise the uncatchable
+    :class:`TestExecutionTimeoutError`.
+    """
     if threading.current_thread() is not threading.main_thread():
         yield
         return
@@ -325,78 +353,72 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, object, None]:
         timeout_seconds = float(timeout_marker.args[0])
     else:
         timeout_seconds = timeout_seconds_from_env(TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS)
+    wall_cap_seconds = _wall_hang_cap(timeout_seconds)
 
-    # ``_completed`` is mutated by ``_handle_timeout`` and by the ``finally``
-    # block below to make the per-test SIGALRM contract race-safe. Once the
-    # test body returns, the handler must not raise even if a SIGALRM was
-    # already pending in the kernel queue while we tried to cancel the
-    # ITIMER_REAL timer. Storing the flag in a single-element list keeps the
-    # closure scoped to this test invocation; a plain ``bool`` would capture
-    # by value and could not be mutated from the nested handler.
+    # ``_completed`` is mutated by the handlers and by the ``finally`` block
+    # below to make the per-test timer contract race-safe. Once the test body
+    # returns, a handler must not raise even if its signal was already pending
+    # in the kernel queue while we cancelled the timer. A single-element list
+    # keeps the closure scoped to this test invocation; a plain ``bool`` would
+    # capture by value and could not be mutated from the nested handlers.
     _completed = [False]
 
-    def _handle_timeout(signum: int, frame: FrameType | None) -> None:
+    # A signal can be delivered just AFTER its timer was cancelled (seen on
+    # macOS for ITIMER_PROF). A handler whose own timer still has time left
+    # is therefore looking at a stale signal from an earlier test and ignores
+    # it; an expired one-shot timer reads back as 0.
+    def _handle_cpu_budget(signum: int, frame: FrameType | None) -> None:
         del signum, frame
-        # Race-safe: if cleanup already flipped ``_completed`` to ``True``,
-        # the SIGALRM is from a just-cancelled timer and must be swallowed.
-        if _completed[0]:
+        if _completed[0] or signal.getitimer(signal.ITIMER_PROF)[0] > 0:
             return
-        raise TestExecutionTimeoutError(f"test exceeded {timeout_seconds} seconds: {item.nodeid}")
+        raise TestExecutionTimeoutError(
+            f"test used more than {timeout_seconds} CPU seconds: {item.nodeid}"
+        )
 
-    previous_handler = signal.getsignal(signal.SIGALRM)
-    signal.signal(signal.SIGALRM, _handle_timeout)
-    signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
-    # wt-05-test-opti: capture the start time cheaply via ``time.monotonic_ns``
-    # so the cleanup path can decide whether the pthread_sigmask dance is
-    # required. The mask dance costs ~3 syscalls + 1 signal trampoline per
-    # test; for tests that completed in well under the budget, the timer
-    # cannot possibly have fired yet so the dance is dead weight. The
-    # threshold (``timeout_seconds - 0.5``) keeps the mask in the danger
-    # zone where a SIGALRM could realistically still be pending.
-    _start_ns = time.monotonic_ns()
+    def _handle_wall_hang(signum: int, frame: FrameType | None) -> None:
+        del signum, frame
+        if _completed[0] or signal.getitimer(signal.ITIMER_REAL)[0] > 0:
+            return
+        raise TestExecutionTimeoutError(
+            f"test exceeded the {wall_cap_seconds} s wall-clock hang cap "
+            f"({timeout_seconds} s budget): {item.nodeid}"
+        )
+
+    timers = (
+        (signal.SIGPROF, signal.ITIMER_PROF, timeout_seconds, _handle_cpu_budget),
+        (signal.SIGALRM, signal.ITIMER_REAL, wall_cap_seconds, _handle_wall_hang),
+    )
+    previous_handlers = [signal.getsignal(signum) for signum, *_rest in timers]
+    for signum, which, seconds, handler in timers:
+        signal.signal(signum, handler)
+        signal.setitimer(which, seconds)
     try:
         yield
     finally:
-        # Block SIGALRM FIRST so a SIGALRM that was already queued in the
-        # kernel cannot fire ``_handle_timeout`` during cleanup. ``sigwait``
-        # semantics on POSIX deliver the pending signal as soon as we
-        # unblock, so we then point the handler at ``SIG_IGN`` to drain it,
-        # and only then restore the previous handler. ``signal.SIG_IGN``
-        # discards the pending signal but does not terminate the worker,
-        # which is what we want for the spurious-timeout race under heavy
-        # pytest-xdist load. ``pthread_sigmask`` is a POSIX-only call; on
-        # Windows the per-test SIGALRM enforcement is delegated to the
-        # test-timeout plugin and the cleanup path here degrades to a
-        # best-effort cancel without the mask, which is the same behaviour
-        # the previous implementation provided.
+        # Cancel both timers, then drain any signal already queued in the
+        # kernel: block the signals, point them at ``SIG_IGN`` so a pending
+        # one is discarded on delivery instead of reaching the previous
+        # handler (``SIG_DFL`` for SIGALRM/SIGPROF terminates the worker),
+        # unblock, and only then restore the previous handlers.
+        # ``pthread_sigmask`` is POSIX-only; elsewhere this degrades to a
+        # best-effort cancel without the mask.
         _completed[0] = True
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        elapsed_ns = time.monotonic_ns() - _start_ns
-        elapsed_seconds = elapsed_ns / 1_000_000_000
-        # ``elapsed_seconds + 0.5 < timeout_seconds`` means there is a
-        # >=500 ms safety margin before the timer would have fired.
-        # SIGALRM cannot be pending because the ITIMER_REAL deliver time
-        # has not been reached yet, so the mask dance is unnecessary.
-        _skip_mask = elapsed_seconds + 0.5 < timeout_seconds
-        if hasattr(signal, "pthread_sigmask") and not _skip_mask:
-            # Block SIGALRM so any pending signal cannot fire
-            # ``_handle_timeout`` during cleanup. ``pthread_sigmask`` queues
-            # the pending signal while the mask blocks it.
-            signal.pthread_sigmask(signal.SIG_BLOCK, [signal.SIGALRM])
-            # Point the handler at SIG_IGN BEFORE unblocking so the queued
-            # SIGALRM is discarded at delivery time instead of falling
-            # through to ``previous_handler``. The default SIGALRM action
-            # (``SIG_DFL``) terminates the worker process, so a stray
-            # pending signal must not be allowed to reach it.
-            signal.signal(signal.SIGALRM, signal.SIG_IGN)
-            # Unblock: any pending SIGALRM is delivered to SIG_IGN and
-            # silently discarded.
-            signal.pthread_sigmask(signal.SIG_UNBLOCK, [signal.SIGALRM])
-            # Now safe to restore the real previous handler for any
-            # subsequent SIGALRMs (none expected after timer cancellation).
-            signal.signal(signal.SIGALRM, previous_handler)
-        else:  # fast-finishing or non-POSIX fallback
-            signal.signal(signal.SIGALRM, previous_handler)
+        signums = [signum for signum, *_rest in timers]
+        for _signum, which, _seconds, _handler in timers:
+            signal.setitimer(which, 0)
+        if hasattr(signal, "pthread_sigmask"):
+            signal.pthread_sigmask(signal.SIG_BLOCK, signums)
+            for signum in signums:
+                signal.signal(signum, signal.SIG_IGN)
+            signal.pthread_sigmask(signal.SIG_UNBLOCK, signums)
+        for signum, previous in zip(signums, previous_handlers, strict=True):
+            restored = signal.SIG_DFL if previous is None else previous
+            if signum == signal.SIGPROF and restored == signal.SIG_DFL:
+                # Nothing else uses SIGPROF, and its default action terminates
+                # the process: a late delivery after this point (see above)
+                # killed a whole shard with exit -27. Leave it ignored.
+                restored = signal.SIG_IGN
+            signal.signal(signum, restored)
 
 
 @pytest.fixture(autouse=True)

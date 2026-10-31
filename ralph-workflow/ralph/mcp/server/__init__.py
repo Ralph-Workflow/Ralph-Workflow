@@ -156,9 +156,15 @@ def __getattr__(name: str) -> object:
         # Lazy: an eager lifecycle import here creates a cycle
         # (upstream.config -> server._mcp_server_error -> package init).
         return cast("object", getattr(import_module(target), name))
+    submodule = f"{__name__}.{name}"
     try:
-        return import_module(f"ralph.mcp.server.{name}")
-    except ImportError:
-        pass
+        return import_module(submodule)
+    except ModuleNotFoundError as exc:
+        # Only "this submodule does not exist" means "no such attribute". A
+        # submodule that exists but fails to import (a circular import, a
+        # missing dependency of its own) must surface, not become an
+        # AttributeError that hides the real cause.
+        if exc.name != submodule:
+            raise
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)

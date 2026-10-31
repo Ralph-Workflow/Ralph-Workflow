@@ -1280,9 +1280,9 @@ def _resolve_recovery_controller(
     # When no clock is injected, call with the exact pre-seam signature so
     # legacy patch-based callers (lambdas without a ``clock`` parameter)
     # keep working.
-    default_clock = pipeline_deps.recovery_clock if pipeline_deps is not None else None
-    if default_clock is not None:
-        controller, _ = _build_recovery_controller(state, policy_bundle, config, clock=default_clock)
+    clock = pipeline_deps.recovery_clock if pipeline_deps is not None else None
+    if clock is not None:
+        controller, _ = _build_recovery_controller(state, policy_bundle, config, clock=clock)
     else:
         controller, _ = _build_recovery_controller(state, policy_bundle, config)
     return controller

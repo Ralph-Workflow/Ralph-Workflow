@@ -26,10 +26,10 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_action import (
     RebaseOutcomeKind,
 )
-from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_record import IntegrationRecord

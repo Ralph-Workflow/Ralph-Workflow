@@ -76,6 +76,8 @@ def _invariant_cases() -> list[_CaseSpec]:
         "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2, len(_VERIFY_STEPS) - 2})"
     )
     budget_anchor = "_TOTAL_TEST_BUDGET_SECONDS: Final = 60.0"
+    cpu_budget_anchor = "_TOTAL_TEST_CPU_BUDGET_SECONDS: Final = 600.0"
+    hang_cap_anchor = "_TOTAL_TEST_HANG_CAP_SECONDS: Final = 180.0"
     step_timeout_anchor = "_VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0"
     integration_anchor = "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 1.0"
     resource_label_anchor = '"resource lifecycle audit (audit_resource_lifecycle)"'
@@ -128,6 +130,34 @@ def _invariant_cases() -> list[_CaseSpec]:
             "minus_o": True,
             "expect_ok": False,
             "stderr_substrings": ["RuntimeError", "must be positive"],
+        },
+        {
+            "name": "cpu_budget_must_be_600",
+            "patches": [(cpu_budget_anchor, "_TOTAL_TEST_CPU_BUDGET_SECONDS: Final = 900.0")],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "must be 600.0"],
+        },
+        {
+            "name": "cpu_budget_survives_minus_o",
+            "patches": [(cpu_budget_anchor, "_TOTAL_TEST_CPU_BUDGET_SECONDS: Final = 900.0")],
+            "minus_o": True,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "must be 600.0"],
+        },
+        {
+            "name": "hang_cap_must_be_three_budgets",
+            "patches": [(hang_cap_anchor, "_TOTAL_TEST_HANG_CAP_SECONDS: Final = 600.0")],
+            "minus_o": False,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "must be 3 x _TOTAL_TEST_BUDGET_SECONDS"],
+        },
+        {
+            "name": "hang_cap_survives_minus_o",
+            "patches": [(hang_cap_anchor, "_TOTAL_TEST_HANG_CAP_SECONDS: Final = 600.0")],
+            "minus_o": True,
+            "expect_ok": False,
+            "stderr_substrings": ["RuntimeError", "must be 3 x _TOTAL_TEST_BUDGET_SECONDS"],
         },
         {
             "name": "known_labels_must_not_be_empty",

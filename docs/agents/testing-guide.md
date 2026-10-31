@@ -697,7 +697,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/mcp/test_replacement_shutdown_signals_real_child.py` | 0 | 4 | 2 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
 | `tests/mcp/test_reserved_socket_held_across_respawn.py` | 0 | 2 | 1 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
 | `tests/mcp/test_respawn_no_discovery.py` | 0 | 1 | 7 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
-| `tests/mcp/test_root_cause_real_child_bridge.py` | 0 | 9 | 13 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
+| `tests/mcp/test_root_cause_real_child_bridge.py` | 0 | 9 | 12 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
 | `tests/mcp/test_runtime_blocked_registry_built_surfaces_typed_error.py` | 0 | 3 | 2 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
 | `tests/mcp/test_runtime_blocked_workspace_read_surfaces_typed_error.py` | 1 | 0 | 0 | mcp-bridge | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: mcp public-seam unit |
 | `tests/mcp/test_runtime_respawn_precheck.py` | 0 | 1 | 0 | mcp-bridge | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: mcp public-seam unit |
@@ -1340,7 +1340,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_unsafe_exec_stderr_and_timeout_consistency.py` | 0 | 1 | 5 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_upstream_result_shapes_are_all_normalised.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_validation_error_injection.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_verify.py` | 5 | 0 | 37 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
+| `tests/test_verify.py` | 5 | 0 | 36 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_visual_capture.py` | 0 | 5 | 2 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_visual_capture_command_contract.py` | 0 | 0 | 4 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
 | `tests/test_visual_capture_lifecycle.py` | 0 | 0 | 1 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |

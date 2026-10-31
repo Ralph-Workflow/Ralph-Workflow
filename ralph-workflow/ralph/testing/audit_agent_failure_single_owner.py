@@ -32,8 +32,11 @@ private failure-owner state through its SERIALISED snapshot (for example
 are the same private state, so both coupling forms are rejected.
 
 The production rules and the shared policy data live in the private rule engine
-:mod:`ralph.testing._single_owner_rules`; this module owns the scan, the test-side rules,
-the self-verification of every rule, and the command-line entry point.
+:mod:`ralph.testing._single_owner_rules` (with the local retry-cap rule in
+:mod:`ralph.testing._single_owner_retry_cap_rule` and the test-side policy data and
+violation builders in :mod:`ralph.testing._single_owner_test_rules`); this module owns the
+scan, the test-side rules, the self-verification of every rule, and the command-line entry
+point.
 """
 
 from __future__ import annotations
@@ -43,12 +46,10 @@ import os
 import sys
 from pathlib import Path
 
+from ralph.testing._single_owner_retry_cap_rule import _check_production_retry_cap_rule
 from ralph.testing._single_owner_rules import (
     _FORBIDDEN_TRACKER_MODULES,
     _FORBIDDEN_TRACKER_SYMBOLS,
-    _GETATTR_MIN_ARGS,
-    _PRIVATE_FAILURE_OWNER_SERIALISED_KEYS,
-    _PRIVATE_LEDGER_COUNTERS,
     TEMPORARY_PRODUCTION_ALLOWLIST,
     TEMPORARY_TEST_ALLOWLIST,
     TEMPORARY_TRANSITIONAL_RULES,
@@ -60,16 +61,20 @@ from ralph.testing._single_owner_rules import (
     _check_production_compare,
     _check_production_function,
     _check_production_import,
-    _check_production_retry_cap_rule,
     _check_production_subscript,
     _check_ralph_authored_classifier_inputs,
     _is_forbidden_target_name,
     _is_ledger_receiver,
+    is_transitional_allowed,
+)
+from ralph.testing._single_owner_test_rules import (
+    _GETATTR_MIN_ARGS,
+    _PRIVATE_FAILURE_OWNER_SERIALISED_KEYS,
+    _PRIVATE_LEDGER_COUNTERS,
     _is_ledger_serialised_root,
     _is_private_failure_owner_name,
     _is_serialised_snapshot_call,
     _serialised_counter_violation,
-    is_transitional_allowed,
     private_failure_owner_violation,
     serialised_failure_owner_violation,
 )

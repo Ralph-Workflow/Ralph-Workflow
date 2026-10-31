@@ -322,6 +322,12 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="agent failure single owner audit ok\n",
         ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_import_order")): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_import_order"),
+            returncode=0,
+            stdout="All modules import cleanly when imported first.\n",
+        ),
         (
             "uv",
             ("run", "python", "-m", "ralph.testing.audit_workspace_resource_inventory"),
@@ -406,16 +412,16 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_kwargs_forwarding")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_opts_key_drift")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_failure_single_owner")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_import_order")),
         ("make", ("test-verification-smoke",)),
         ("uv", _MCP_AGENT_BOUNDARY_AUDIT_ARGS),
     ]
     assert all(args != ("test-auto-integrate-e2e",) for _command, args, *_rest in runner.calls)
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[1][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    assert runner.calls[2][3] == verify_module._TOTAL_TEST_BUDGET_SECONDS, (
-        "make test step timeout is _TOTAL_TEST_BUDGET_SECONDS so the cumulative "
-        "tracker — not a per-step cap — decides when the budget is exhausted "
-        "(wt-056)"
+    assert runner.calls[2][3] == verify_module._TOTAL_TEST_HANG_CAP_SECONDS, (
+        "make test step timeout is the cumulative hang cap: the budget verdict is "
+        "decided after the tracked steps finish, net of host contention (wt-056)"
     )
     assert runner.calls[3][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[4][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
@@ -445,15 +451,13 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[32][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[33][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[34][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
-    # The aggregate smoke invocation is charged to the same remaining budget.
+    # The aggregate smoke invocation is charged to the same remaining hang cap.
     # Tiny clock deltas in this fake-runner scenario may shave microseconds.
     last_timeout = runner.calls[-2][3]
     assert last_timeout is not None
-    assert last_timeout == verify_module._TOTAL_TEST_BUDGET_SECONDS or (
-        abs(last_timeout - verify_module._TOTAL_TEST_BUDGET_SECONDS) < 0.001
-    ), (
-        f"last step timeout {last_timeout!r} does not match the budget "
-        f"constant {verify_module._TOTAL_TEST_BUDGET_SECONDS!r}"
+    assert abs(last_timeout - verify_module._TOTAL_TEST_HANG_CAP_SECONDS) < 0.001, (
+        f"last step timeout {last_timeout!r} does not match the hang cap "
+        f"{verify_module._TOTAL_TEST_HANG_CAP_SECONDS!r}"
     )
     assert all(call[4] is False for call in runner.calls)
     assert "Running full verification..." in captured.out
@@ -550,9 +554,9 @@ def test_verify_regression_inherited_loguru_level_is_overridden(tmp_path: Path) 
     )
 
 
-def test_total_test_budget_matches_suite_timeout_policy() -> None:
-    assert verify_module._TOTAL_TEST_BUDGET_SECONDS == DEFAULT_SUITE_TIMEOUT_SECONDS, (
-        "_TOTAL_TEST_BUDGET_SECONDS and DEFAULT_SUITE_TIMEOUT_SECONDS must stay in sync"
+def test_hang_cap_matches_suite_timeout_policy() -> None:
+    assert verify_module._TOTAL_TEST_HANG_CAP_SECONDS == DEFAULT_SUITE_TIMEOUT_SECONDS, (
+        "_TOTAL_TEST_HANG_CAP_SECONDS and DEFAULT_SUITE_TIMEOUT_SECONDS must stay in sync"
     )
 
 

@@ -117,6 +117,7 @@ def test_e13_pause_drain_stops_accepting_while_inflight_finishes(tmp_path: Path)
     ralph_root = str(Path(__file__).resolve().parents[2])
     port_file = tmp_path / "port.txt"
     pause_file = tmp_path / "accept.pause"
+    probe_entered_file = tmp_path / "probe.entered"
 
     child_script = tmp_path / "e13_child.py"
     child_script.write_text(
@@ -138,6 +139,7 @@ def test_e13_pause_drain_stops_accepting_while_inflight_finishes(tmp_path: Path)
                 "httpd = srv.prepare_httpd()",
                 "",
                 "def slow_probe():",
+                f"    Path({str(probe_entered_file)!r}).touch()",
                 "    time.sleep(0.3)",
                 "    return SimpleNamespace(healthy=True, latency_ms=300.0, reason=None)",
                 "",
@@ -184,8 +186,15 @@ def test_e13_pause_drain_stops_accepting_while_inflight_finishes(tmp_path: Path)
         req_thread = threading.Thread(target=_do_inflight)
         req_thread.start()
 
-        # Allow request to enter slow_probe
-        time.sleep(0.08)
+        # Wait until the request is genuinely in flight -- inside the child's
+        # slow_probe -- before pausing. A fixed sleep raced the child: on a
+        # loaded host the request had not been accepted yet, the pause
+        # dropped the listener first, and the "in-flight" request was
+        # refused instead.
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and not probe_entered_file.exists():
+            time.sleep(0.01)
+        assert probe_entered_file.exists(), "In-flight request never reached slow_probe"
 
         # 2. Trigger handover pause sentinel
         request_old_child_pause(pause_file)
@@ -253,6 +262,7 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
     (see :func:`test_e14_duplicate_submission_across_swap_applied_once`).
     """
     port_file = tmp_path / "port_e14.txt"
+    handler_entered_file = tmp_path / "e14_handler.entered"
 
     # Standalone subprocess server: a minimal HTTP server that accepts a
     # POST /mcp request, sleeps long enough for the parent to kill it,
@@ -278,6 +288,7 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
                 "        length = int(self.headers.get('Content-Length', '0'))",
                 "        if length:",
                 "            self.rfile.read(length)",
+                f"        Path({str(handler_entered_file)!r}).touch()",
                 "        time.sleep(2.0)",
                 "        body = json.dumps({",
                 "            'jsonrpc': '2.0',",
@@ -347,8 +358,12 @@ def test_e14_outcome_unknown(tmp_path: Path) -> None:
 
         t = threading.Thread(target=_do_non_idempotent_request)
         t.start()
-        # Give the request time to enter the slow non-idempotent handler
-        time.sleep(0.1)
+        # Wait until the request is genuinely inside the slow non-idempotent
+        # handler (the child touches a marker after reading the body). A
+        # fixed sleep raced the child on a loaded host: the kill could land
+        # before the request was dispatched, so the "mid-flight" sever was
+        # really a refused/unread connection and the test passed vacuously.
+        _wait_for_marker(handler_entered_file, "non-idempotent request never entered the handler")
 
         # Sever the call mid-flight by killing the child — this is the
         # documented "outcome unknown" surface for non-idempotent calls.
@@ -698,10 +713,23 @@ def test_e15_ack_before_resume_hung_child_killed_before_resume(tmp_path: Path) -
 # ---------------------------------------------------------------------------
 # E1.5: Streaming/long-call drain fate during handover (real subprocess)
 # ---------------------------------------------------------------------------
+def _wait_for_marker(marker: Path, message: str) -> None:
+    """Poll until a child-written marker file exists.
+
+    The 10 s bound only limits the failure path; a quiet host sees the marker
+    within milliseconds, a saturated one within a few hundred.
+    """
+    deadline = time.monotonic() + 10.0
+    while time.monotonic() < deadline and not marker.exists():
+        time.sleep(0.01)
+    assert marker.exists(), message
+
+
 def _write_streaming_child_script(
     tmp_path: Path,
     port_file: Path,
     script_name: str,
+    handler_entered_file: Path,
 ) -> Path:
     """Write a real subprocess script that holds POSTs open for ~2 s.
 
@@ -709,7 +737,9 @@ def _write_streaming_child_script(
     returned script is a self-contained :class:`HTTPServer` that writes
     the bound port to ``port_file`` and serves each POST with a 2 s
     delay — the surface the parent relies on to observe a drain-induced
-    severed in-flight call.
+    severed in-flight call. ``handler_entered_file`` is touched once a POST
+    body has been read, so the parent can wait for the call to be genuinely
+    in flight instead of sleeping.
     """
     child_script = tmp_path / script_name
     child_script.write_text(
@@ -726,6 +756,7 @@ def _write_streaming_child_script(
                 "        length = int(self.headers.get('Content-Length', '0'))",
                 "        if length:",
                 "            self.rfile.read(length)",
+                f"        Path({str(handler_entered_file)!r}).touch()",
                 "        # Hold the long-running call open.",
                 "        time.sleep(2.0)",
                 "        body = json.dumps({",
@@ -850,7 +881,10 @@ def test_e15_streaming_call_drain_fate_real_subprocess(tmp_path: Path) -> None:
     blocked by the in-flight request.
     """
     port_file = tmp_path / "port_e15_stream.txt"
-    child_script = _write_streaming_child_script(tmp_path, port_file, "e15_streaming_child.py")
+    handler_entered_file = tmp_path / "e15_handler.entered"
+    child_script = _write_streaming_child_script(
+        tmp_path, port_file, "e15_streaming_child.py", handler_entered_file
+    )
     proc, port = _spawn_and_wait_for_port(
         tmp_path,
         child_script,
@@ -858,11 +892,10 @@ def test_e15_streaming_call_drain_fate_real_subprocess(tmp_path: Path) -> None:
         expected_port_file=port_file,
     )
 
-    # Give the subprocess a bounded head start to bind its HTTPServer and
-    # enter ``serve_forever``. The port file is written AFTER the bind, but
-    # the spawn handshake may resolve before serve_forever parks on the
-    # listening socket — a tiny grace prevents connect races.
-    time.sleep(0.05)
+    # No head-start sleep: ``HTTPServer(...)`` binds AND listens before the
+    # port file is written, so a connect queues in the backlog until
+    # ``serve_forever`` accepts it. The handler-entered marker below is the
+    # real synchronization point.
 
     try:
         # 1. Open an in-flight streaming call (long-running).
@@ -898,7 +931,10 @@ def test_e15_streaming_call_drain_fate_real_subprocess(tmp_path: Path) -> None:
 
         worker = threading.Thread(target=_do_streaming_call)
         worker.start()
-        time.sleep(0.05)  # let the request enter the slow handler
+        # Wait until the request is inside the slow handler. A fixed sleep
+        # raced child dispatch on a loaded host, so the drain could sever a
+        # call that never started and the typed-error assertion held vacuously.
+        _wait_for_marker(handler_entered_file, "streaming request never entered the handler")
 
         # 2. Simulate the drain by closing the listening socket and
         # terminating the subprocess. The in-flight call must surface a

@@ -20,11 +20,9 @@ from pathlib import Path
 import pytest
 
 from ralph.pipeline.auto_integrate_recovery import recover_incomplete_integration
-from ralph.pipeline.auto_integrate_transaction import (
-    LeaseOutcomeKind,
-    LeaseUnknownReason,
-    integration_transaction,
-)
+from ralph.pipeline.auto_integrate_transaction import integration_transaction
+from ralph.pipeline.lease_outcome_kind import LeaseOutcomeKind
+from ralph.pipeline.lease_unknown_reason import LeaseUnknownReason
 from ralph.workspace.scope import WorkspaceScope
 
 

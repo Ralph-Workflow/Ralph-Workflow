@@ -304,7 +304,7 @@ def test_failed_invoke_routes_launch_provider_and_decline_through_recovery_contr
         outcome: object | None = None,
         unresolved_count: int = 0,
     ) -> object:
-        from ralph.pipeline.conflict_resolution.attempt_fault import ConflictAttemptOutcome
+        from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
         effective = outcome if outcome is not None else ConflictAttemptOutcome.RAW
         if effective is not ConflictAttemptOutcome.RAW:

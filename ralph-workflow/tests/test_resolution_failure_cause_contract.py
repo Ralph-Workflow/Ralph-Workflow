@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from ralph.git.merge import MergeResult
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_budget_seam import (
     apply_completed_attempt_budget,
@@ -24,7 +25,7 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
-from ralph.pipeline.rebase_state import RebaseState, ResolutionFailureCause
+from ralph.pipeline.rebase_state import RebaseState
 
 
 def test_resolution_failure_cause_enum_members() -> None:

@@ -25,6 +25,7 @@ from ralph.checkpoint.execution_history import ExecutionHistory
 from ralph.checkpoint.execution_step import ExecutionStep
 from ralph.checkpoint.run_context import RunContext
 from ralph.checkpoint.step_outcome import StepOutcome
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.auto_integrate_record import (
@@ -49,7 +50,7 @@ from ralph.pipeline.auto_integrate_record_store import (
     RecordUnreadableError as StoreRecordUnreadableError,
 )
 from ralph.pipeline.checkpoint import Checkpoint
-from ralph.pipeline.rebase_state import RebaseState, ResolutionFailureCause
+from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.state_models import (
     ResolutionFailureCause as ExportedResolutionFailureCause,

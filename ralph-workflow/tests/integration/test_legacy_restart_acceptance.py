@@ -6,10 +6,11 @@ disk bytes (checkpoint claims ``development``, the legacy record claims
 production startup/recovery path — the same ``Checkpoint.load`` resume
 read and the same ``read_record`` recovery preamble
 (``recover_incomplete_integration``) that ``run_loop`` startup uses.
-Migration must resolve to exactly one authoritative state — explicit
-intervention with business dispatch blocked for the legacy
-repository-global ``ls-files`` record — and never merge contradictory
-truths heuristically.
+Migration must resolve to exactly one authoritative state and never
+merge contradictory truths heuristically. Git outranks both files: with
+no operation in progress and HEAD already on the target, Git disproves
+the record's ``integrating`` claim, so recovery clears the record rather
+than retaining it (a retained stale record deferred catch-up forever).
 """
 
 from __future__ import annotations
@@ -112,38 +113,43 @@ def _restart_via_production_recovery(root: Path) -> tuple[RebaseState, Path]:
     return recovered, checkpoint_path
 
 
+def _assert_git_is_the_single_authority(root: Path, recovered: RebaseState) -> None:
+    """Recovery reconciled from Git: no record survives, dispatch resumes.
+
+    Git shows no operation in progress and HEAD already sits on the
+    target, so it disproves the legacy record's ``integrating`` claim.
+    Recovery must not come back owning that record (a retained stale
+    record deferred catch-up forever) and must not leave a hybrid of the
+    checkpoint and the record behind: the record is cleared, so Git is
+    the one authority and ordinary dispatch is allowed.
+    """
+    assert recovery_retained_record(recovered) is False
+    assert read_record(root) is None
+    verdict = inspect_integration_resolution(root, recovered)
+    assert verdict.dispatch_allowed is True
+
+
 def test_legacy_restart_intervention_record_is_single_authority(tmp_git_repo: Path) -> None:
-    """Contradicting legacy pair with global evidence loads cleanly; the
-    new diagnostic path drops the legacy global key silently and
-    re-derives state from Git. The record wins over the checkpoint's
-    ``development`` and blocks business dispatch (a separate gate
-    from the dropped intervention)."""
+    """Contradicting legacy pair with global evidence loads cleanly: the
+    legacy repository-global key is dropped silently on load (it never
+    raises intervention), and recovery re-derives state from Git, which
+    outranks both the checkpoint and the record."""
     _seed_raw_legacy_pair(tmp_git_repo, _LEGACY_INTERVENTION_PAYLOAD)
+
+    pre_recovery = read_record(tmp_git_repo)
+    assert pre_recovery is not None
+    assert pre_recovery.phase == "integrating"
+    assert pre_recovery.diagnostic_intervention_required is False
+    assert ("ls-files", "some_tracked_files") not in pre_recovery.diagnostic_evidence
 
     recovered, _ = _restart_via_production_recovery(tmp_git_repo)
 
-    # (a) Recovery retained the durable record: exactly one authoritative
-    # state, no merged hybrid truth between checkpoint and record.
-    assert recovery_retained_record(recovered) is True
-
-    # The legacy repository-global evidence is dropped silently; the
-    # diagnostic path re-derives state from Git on the next seam.
-    persisted = read_record(tmp_git_repo)
-    assert persisted is not None
-    assert persisted.phase == "integrating"
-    assert persisted.diagnostic_intervention_required is False
-    assert ("ls-files", "some_tracked_files") not in persisted.diagnostic_evidence
-
-    # (b) No business dispatch: the authoritative verdict over the recovery
-    # outcome blocks ordinary phase dispatch while the record is retained.
-    verdict = inspect_integration_resolution(tmp_git_repo, recovered)
-    assert verdict.dispatch_allowed is False
+    _assert_git_is_the_single_authority(tmp_git_repo, recovered)
 
 
 def test_legacy_restart_clean_dict_evidence_is_single_authority(tmp_git_repo: Path) -> None:
     """Contradicting legacy pair with dictionary evidence migrates cleanly
-    on load and auto-releases through recovery; the record still blocks
-    recovery and business dispatch as the single authority."""
+    on load, and recovery resolves it to the single Git authority."""
     _seed_raw_legacy_pair(tmp_git_repo, _LEGACY_DICT_EVIDENCE_PAYLOAD)
 
     # Legacy dictionary evidence migrates cleanly to the new key space on load.
@@ -152,29 +158,18 @@ def test_legacy_restart_clean_dict_evidence_is_single_authority(tmp_git_repo: Pa
     pre_evidence = dict(pre_recovery.diagnostic_evidence)
     assert pre_evidence.get("unstaged_work") == "unstaged diff"
     assert pre_evidence.get("commit_controls") == "controls data"
+    assert not pre_recovery.diagnostic_intervention_required
 
     recovered, _ = _restart_via_production_recovery(tmp_git_repo)
 
-    # On recovery, missing-lease legacy evidence auto-releases fail-open
-    # per AC1/O1 so unverified legacy evidence never livelocks.
-    persisted = read_record(tmp_git_repo)
-    assert persisted is not None
-    assert persisted.phase == "integrating"
-    assert not persisted.diagnostic_intervention_required
-    assert persisted.diagnostic_evidence == ()
-
-    # The record is still the single recovery authority: it is retained and
-    # ordinary dispatch stays blocked until recovery finishes.
-    assert recovery_retained_record(recovered) is True
-    verdict = inspect_integration_resolution(tmp_git_repo, recovered)
-    assert verdict.dispatch_allowed is False
+    _assert_git_is_the_single_authority(tmp_git_repo, recovered)
 
 
 def test_policy_defaults_bundle_consistent(tmp_git_repo: Path) -> None:
     """The default policy bundle loads and a stale pre-seeded
     ``last_decision`` in the legacy checkpoint does not survive the
-    production restart: the recovery preamble recomputes the authoritative
-    decision from the retained record."""
+    production restart: the recovery outcome is recomputed from the
+    current authority, not copied from the checkpoint."""
     bundle = load_policy(Path(__file__).parents[2] / "ralph" / "policy" / "defaults")
     assert bundle.pipeline is not None
 
@@ -188,10 +183,5 @@ def test_policy_defaults_bundle_consistent(tmp_git_repo: Path) -> None:
     )
     recovered, _ = _restart_via_production_recovery(tmp_git_repo)
 
-    # A stale pre-seeded last_decision must not survive the restart: the
-    # recovery outcome recomputes from current authority outputs only.
     assert recovered.last_decision != "continue_phase"
-    assert recovered.last_decision == "block_for_recovery"
-    assert recovery_retained_record(recovered) is True
-    verdict = inspect_integration_resolution(tmp_git_repo, recovered)
-    assert verdict.dispatch_allowed is False
+    _assert_git_is_the_single_authority(tmp_git_repo, recovered)

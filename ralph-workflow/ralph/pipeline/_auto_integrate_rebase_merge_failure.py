@@ -18,8 +18,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.git.rebase._rebase_kind import RebaseKind
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.auto_integrate_outcome import record_skip
-from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
     from ralph.git.rebase.rebase import RebaseFailed

@@ -667,8 +667,8 @@ def _resumed_failure_outcome(record: IntegrationRecord, reason: str) -> RebaseSt
     """Map a refused continuation onto the typed retained or conflict state."""
     logger.critical("CRITICAL: {}", reason)
     if is_in_active_resolution_state(record):
+        from ralph.git.resolution_failure_cause import ResolutionFailureCause
         from ralph.pipeline.auto_integrate_outcome import record_conflict
-        from ralph.pipeline.rebase_state import ResolutionFailureCause
 
         conflicted = record_conflict(
             reason=reason,

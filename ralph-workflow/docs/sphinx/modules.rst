@@ -123,13 +123,6 @@ ralph.logging
    :members:
    :show-inheritance:
 
-ralph.syntax_theme
-~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.syntax_theme
-   :members:
-   :show-inheritance:
-
 ralph.onboarding
 ~~~~~~~~~~~~~~~~
 
@@ -244,6 +237,13 @@ ralph.verify
 ~~~~~~~~~~~~
 
 .. automodule:: ralph.verify
+   :members:
+   :show-inheritance:
+
+ralph.verify_budget
+~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.verify_budget
    :members:
    :show-inheritance:
 
@@ -1222,6 +1222,13 @@ ralph.pipeline.conflict_resolution.worktree_observer
    :members:
    :show-inheritance:
 
+ralph.pipeline.conflict_resolution.git_worktree_observer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.conflict_resolution.git_worktree_observer
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.conflict_resolution.session
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1475,6 +1482,20 @@ ralph.pipeline.auto_integrate_transaction
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.auto_integrate_transaction
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.lease_outcome_kind
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.lease_outcome_kind
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.lease_unknown_reason
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.lease_unknown_reason
    :members:
    :show-inheritance:
 
@@ -3325,6 +3346,13 @@ ralph.git.remote_push
    :members:
    :show-inheritance:
 
+ralph.git.resolution_failure_cause
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.resolution_failure_cause
+   :members:
+   :show-inheritance:
+
 ralph.git.wrapper
 ~~~~~~~~~~~~~~~~~
 
@@ -3450,6 +3478,13 @@ ralph.recovery.connectivity
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.recovery.connectivity
+   :members:
+   :show-inheritance:
+
+ralph.recovery.conflict_attempt_outcome
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.conflict_attempt_outcome
    :members:
    :show-inheritance:
 
@@ -4023,6 +4058,13 @@ ralph.display.subscriber
    :members:
    :show-inheritance:
 
+ralph.display.syntax_theme
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.syntax_theme
+   :members:
+   :show-inheritance:
+
 ralph.display.theme
 ~~~~~~~~~~~~~~~~~~~
 
@@ -4576,6 +4618,13 @@ ralph.testing.audit_opts_key_drift
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.testing.audit_opts_key_drift
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_import_order
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_import_order
    :members:
    :show-inheritance:
 

@@ -484,9 +484,12 @@ def test_e15_inflight_calls_handled_cleanly_during_drain() -> None:
     assert old_inner in bridge._draining_inners
     assert old_inner.process.poll() is None
 
-    # Complete drain
+    # Complete drain, then join the drain worker instead of sleeping: a fixed
+    # 50 ms grace raced the worker thread's wake-up on a saturated host.
+    (drain_thread,) = tuple(bridge._drain_threads)
     drain_completed.set()
-    time.sleep(0.05)
+    drain_thread.join(timeout=5.0)
+    assert not drain_thread.is_alive(), "drain worker did not finish after drain completed"
     # Drain worker removes old_inner and shuts it down
     assert old_inner.process.poll() is not None
 

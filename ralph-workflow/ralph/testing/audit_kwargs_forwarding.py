@@ -94,15 +94,13 @@ _POOL_WORKER_CAP = 4
 #: work it would save, so the scan stays in-process.
 _PARALLEL_MIN_FILES = 16
 
-#: Fork children inherit the parent's imported modules, so the pool works no
-#: matter what the embedding process's ``__main__`` looks like (pytest, an
-#: xdist worker, a bare script). The forkserver/spawn methods re-import
-#: ``__main__`` in the child and would fail for non-importable mains.
-_FORK_CONTEXT = (
-    multiprocessing.get_context("fork")
-    if "fork" in multiprocessing.get_all_start_methods()
-    else None
-)
+#: Spawned, never forked. The audit runs inside pytest/xdist workers that
+#: hold sqlite connections and other native state; a forked child that
+#: finalizes an inherited sqlite handle calls os_log, which is not
+#: fork-safe on macOS, and the pool worker dies with SIGSEGV
+#: (``BrokenProcessPool``). The worker function lives in this importable
+#: module, so a spawned child needs nothing from the parent's ``__main__``.
+_POOL_CONTEXT = multiprocessing.get_context("spawn")
 
 _Scope = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
 
@@ -301,7 +299,7 @@ def audit_tree(
         for payload in payloads:
             violations.extend(_audit_file_payload(payload))
         return violations, scanned
-    with ProcessPoolExecutor(max_workers=workers, mp_context=_FORK_CONTEXT) as pool:
+    with ProcessPoolExecutor(max_workers=workers, mp_context=_POOL_CONTEXT) as pool:
         for result in pool.map(_audit_file_payload, payloads):
             violations.extend(result)
     return violations, scanned

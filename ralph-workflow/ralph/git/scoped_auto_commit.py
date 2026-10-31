@@ -46,10 +46,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from loguru import logger
 
-from ralph.git._deterministic_commit_attempt import (
-    _commit_selected_paths,
-    _select_deterministic_paths,
-)
+from ralph.git import _deterministic_commit_attempt as _deterministic
 from ralph.git._dirty_paths import (
     _list_dirty_paths,
     list_dirty_paths,
@@ -657,14 +654,14 @@ def commit_deterministic_writes(
                 # Compare each in-scope path's HEAD blob hash against the
                 # caller-recorded pre-write content hash. SKIPPED paths
                 # stay dirty for the agent flow.
-                selected = _select_deterministic_paths(
+                selected = _deterministic._select_deterministic_paths(
                     repo, path_list, pre_contents, intentional_transitions
                 )
                 if isinstance(selected, ScopedCommitResult):
                     return selected
                 stageable, skipped = selected
 
-                return _commit_selected_paths(
+                return _deterministic._commit_selected_paths(
                     repo,
                     repo_root_path,
                     stageable,

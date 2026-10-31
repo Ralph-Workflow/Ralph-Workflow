@@ -50,6 +50,7 @@ from ralph.git.merge import (
     staged_conflict_marker_paths,
     unmerged_paths,
 )
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._pending_merge_commit import (
     mark_pending_merge,
     prepare_pending_merge,
@@ -61,7 +62,6 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
-from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 #: Sentinel :func:`unmerged_paths` reports when the git query itself
 #: failed, so a broken repository is never mistaken for "resolved".

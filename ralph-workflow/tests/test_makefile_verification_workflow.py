@@ -204,7 +204,7 @@ def test_install_make_smoke_is_an_explicit_authoritative_target() -> None:
         label == "make test-verification-smoke"
         and command == "make"
         and args == ("test-verification-smoke",)
-        and timeout == verify_module._TOTAL_TEST_BUDGET_SECONDS
+        and timeout == verify_module._TOTAL_TEST_HANG_CAP_SECONDS
         for label, command, args, timeout in verify_module._VERIFY_STEPS
     )
 

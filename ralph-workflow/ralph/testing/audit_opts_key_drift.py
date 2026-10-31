@@ -65,7 +65,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 _POOL_WORKER_CAP = 4
-_FORK_CONTEXT = multiprocessing.get_context("fork")
+#: Spawned, never forked: a forked child of a pytest/xdist worker inherits its
+#: sqlite handles, and finalizing one calls os_log, which is not fork-safe on
+#: macOS -- the pool worker dies with SIGSEGV (``BrokenProcessPool``).
+_POOL_CONTEXT = multiprocessing.get_context("spawn")
 _PARALLEL_PAYLOAD_THRESHOLD = 32
 _PARALLEL_CHUNK_SIZE = 128
 
@@ -381,7 +384,7 @@ def build_index(package_root: Path, roots: tuple[str, ...] = DEFAULT_ROOTS) -> d
     if workers <= 1 or len(payloads) < _PARALLEL_PAYLOAD_THRESHOLD:
         return dict(_parse_module_payload(p) for p in payloads)
 
-    with ProcessPoolExecutor(max_workers=workers, mp_context=_FORK_CONTEXT) as pool:
+    with ProcessPoolExecutor(max_workers=workers, mp_context=_POOL_CONTEXT) as pool:
         return dict(pool.map(_parse_module_payload, payloads, chunksize=_PARALLEL_CHUNK_SIZE))
 
 

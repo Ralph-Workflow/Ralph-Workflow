@@ -73,8 +73,8 @@ from loguru import logger
 from ralph.git.errors import GitOperationError
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.merge_obstructions import clear_untracked_merge_obstructions, merge_refusal
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.git.subprocess_runner import run_git
-from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence

@@ -26,7 +26,7 @@ import pytest
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
 from ralph.mcp.upstream.models import UpstreamTool
-from ralph.mcp.upstream.tool_catalog_cache import cache_tool_catalog
+from ralph.mcp.upstream.tool_catalog_cache import cache_tool_catalog, reset_tool_catalog_cache
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -304,13 +304,17 @@ def _fetch_endpoint_tool_names(endpoint: str, *, timeout: float = 5.0) -> list[s
     ]
 
 
-def _endpoint_serves_fake_tool(endpoint: str) -> bool:
-    """True when tools/list on the endpoint includes the fake upstream tool."""
-    try:
-        names = _fetch_endpoint_tool_names(endpoint, timeout=5.0)
-    except OSError:
-        return False
-    return any("fake-upstream-tool" in name for name in names)
+#: Bound for the first tools/list answered by a freshly (re)spawned child.
+#: The bridge owns the listening socket, so a TCP connect succeeds from the
+#: backlog before the child exists; this request is the first point that
+#: actually waits for the child interpreter to boot, import, and serve --
+#: several-fold slower on a saturated host. Bounds only the failure path.
+_CHILD_SERVING_TIMEOUT_S = 15.0
+
+
+def _wait_child_serving_tool_names(endpoint: str) -> list[str]:
+    """Return the tools served once the current child answers tools/list."""
+    return _fetch_endpoint_tool_names(endpoint, timeout=_CHILD_SERVING_TIMEOUT_S)
 
 
 def _poll_endpoint(endpoint: str, deadline: float) -> bool:
@@ -343,7 +347,7 @@ def _make_deps(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.timeout_seconds(30)
+@pytest.mark.timeout_seconds(45)
 def test_respawn_with_cached_catalog_makes_zero_discovery_calls(tmp_path: Path) -> None:
     """After a real respawn, the child uses the parent's cached tool catalog and
     makes ZERO new tools/list calls to the fake upstream.
@@ -389,6 +393,9 @@ def test_respawn_with_cached_catalog_makes_zero_discovery_calls(tmp_path: Path) 
             deadline = time.monotonic() + 10.0
             ready = _poll_endpoint(endpoint, deadline)
             assert ready, f"first child endpoint {endpoint} must be accessible"
+            # TCP connect only proves the parent-owned listener; wait for the
+            # first child to actually serve before snapshotting the count.
+            _wait_child_serving_tool_names(endpoint)
 
             # Snapshot the fake server's tools/list count AFTER the first child started.
             # The first child uses the pre-populated cached catalog
@@ -416,6 +423,11 @@ def test_respawn_with_cached_catalog_makes_zero_discovery_calls(tmp_path: Path) 
             assert bridge._inner is not stale_inner, (
                 "restart must replace the inner StandaloneMcpProcess"
             )
+            # The TCP probe above is satisfied by the parent-owned backlog;
+            # only a served tools/list proves the respawned child finished
+            # start-up (where any upstream re-probe would happen).
+            respawned = _wait_child_serving_tool_names(endpoint)
+            assert any("fake-upstream-tool" in name for name in respawned), respawned[:30]
 
             # Check the fake server's tools/list call count.
             # Delta must be ZERO: the respawn child used the cached catalog
@@ -481,7 +493,7 @@ def test_respawn_increments_restart_count(tmp_path: Path) -> None:
         fake_server.stop()
 
 
-@pytest.mark.timeout_seconds(30)
+@pytest.mark.timeout_seconds(45)
 def test_cold_first_start_then_warm_respawn_zero_discovery(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -500,6 +512,11 @@ def test_cold_first_start_then_warm_respawn_zero_discovery(
     try:
         # NOTE: we do NOT pre-populate the cache here.
         # The first child discovers the fake upstream itself (cache miss).
+        # The in-process cache is keyed by workspace path and pytest reuses a
+        # deleted tmp dir's name, so drop any entry a prior test in this
+        # process left for the same path; otherwise the first child gets a
+        # catalog env, never probes, and never publishes.
+        reset_tool_catalog_cache()
         session = _make_session()
         workspace = FsWorkspace(tmp_path)
 
@@ -546,6 +563,10 @@ def test_cold_first_start_then_warm_respawn_zero_discovery(
             deadline = time.monotonic() + 15.0
             ready = _poll_endpoint(endpoint, deadline)
             assert ready, f"respawned child endpoint {endpoint} must be accessible"
+            # The TCP probe is satisfied by the parent-owned backlog; wait for
+            # the respawned child to serve (finishing start-up, where any
+            # upstream re-probe would happen) before reading the count.
+            served = _wait_child_serving_tool_names(endpoint)
 
             delta = fake_server.tools_list_count - 1
             assert delta == 0, (
@@ -557,7 +578,6 @@ def test_cold_first_start_then_warm_respawn_zero_discovery(
 
             # The respawned child is alive and serves the fake tool.
             assert bridge.process.poll() is None, "respawned child must be alive"
-            served = _fetch_endpoint_tool_names(endpoint, timeout=5.0)
             assert any("fake-upstream-tool" in name for name in served), served[:30]
 
         finally:

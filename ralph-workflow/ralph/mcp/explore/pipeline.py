@@ -45,7 +45,7 @@ from pathlib import Path
 # exception classes, and constants are shared across modules
 # (avoids duplicate-class identity bugs and mypy
 # incompatible-return-type errors).
-from ralph.mcp.explore._pipeline_run import _run_reindex
+from ralph.mcp.explore import _pipeline_run
 from ralph.mcp.explore._pipeline_staged import (
     _finalize,
     _staged_full_reindex,
@@ -131,7 +131,7 @@ def reindex(
             return _finalize_with_recovery(
                 store, state, workspace_root, now_fn=now_fn, result=staged_result
             )
-        status = _run_reindex(
+        status = _pipeline_run._run_reindex(
             store,
             workspace_root,
             options=opts,

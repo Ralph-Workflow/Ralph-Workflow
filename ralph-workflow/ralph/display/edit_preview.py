@@ -112,7 +112,6 @@ from rich.style import Style
 from rich.syntax import Syntax
 from rich.text import Text
 
-from ralph._markdown_theme import markdown_theme_context
 from ralph.display._edit_preview_render import (
     _ELISION_GLYPH,
     _MAX_PREVIEW_LINES,
@@ -124,6 +123,7 @@ from ralph.display._edit_preview_render import (
     _make_syntax,
     _safe_lines,
 )
+from ralph.display._markdown_theme import markdown_theme_context
 from ralph.display.language_inference import lexer_for_path
 from ralph.display.line_sanitizer import strip_terminal_control
 from ralph.display.preview_payload import PreviewPayload, payload_from_tool_event

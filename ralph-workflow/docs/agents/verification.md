@@ -44,14 +44,23 @@ A corollary for anyone adding a check: **wire it into `make verify`.** A check t
 
 Any edit to a public-facing markdown file (README, USERS.md, docs/, the Sphinx operator manual) is in scope for the [fabrication guard](fabrication-guard.md). USERS.md is the single canonical community directory; the previous near-duplicate community surfaces (`SHOWCASE.md`, `ECOSYSTEM.md`, `COMPARISONS.md`, `CREDIT_TEMPLATE.md`) were removed in the 2026-07-07 docs cleanup. The guard runs as a pre-commit hook at Level 1; re-run it explicitly with `./scripts/fabrication_guard.py --level 1 <file>` or `--level 2 <file>` for network existence checks. Bypassing the guard (for example with `--no-verify`) is itself fabrication.
 
-## Total test budget — 60 seconds, ABSOLUTE and IMMUTABLE
+## Total test budget
 
-The 60-second combined total test budget is **absolute and immutable**. It cannot be changed, overridden, or circumvented. `make verify` runs `make test`, which selects `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` across the maintained pytest shards. The previously serial "production-clock workspace baseline" preflight has been removed: those files now join the same LPT partition as every other selected file, distributed across the parallel shards (`ralph/test_suites.py:1494-1500`). A dedicated Python process no longer runs serially before the fan-out, so the critical path is the slowest shard rather than a serial preflight + parallel shards.
+The combined total test budget is **pinned**: 60 seconds of wall clock net of host contention, and 600 CPU core-seconds. It cannot be changed, overridden, or circumvented. `make verify` runs `make test`, which selects `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` across the maintained pytest shards. The previously serial "production-clock workspace baseline" preflight has been removed: those files now join the same LPT partition as every other selected file, distributed across the parallel shards (`ralph/test_suites.py:1494-1500`). A dedicated Python process no longer runs serially before the fan-out, so the critical path is the slowest shard rather than a serial preflight + parallel shards.
+
+Wall clock on a shared host also measures every other process, so `ralph/verify.py` judges the tracked steps two ways once they have all passed (`ralph/verify_budget.py` documents the rule):
+
+- **CPU** — the core-seconds the suite's own process trees consumed (`getrusage(RUSAGE_CHILDREN)`, every reaped descendant included) may not exceed `_TOTAL_TEST_CPU_BUDGET_SECONDS = 600.0`. The suite controls this number; host load barely moves it, so exceeding it always fails. Calibrated 2026-10-30 on the maintained 6P+6E Apple Silicon host: `make test` 396–422 core-s plus the aggregate smoke 47 core-s.
+- **Wall clock** — over 60 s fails unless it fits once the CPU other processes used meanwhile is credited (their core-seconds ÷ the host's logical CPUs: the most wall time foreign load can have taken). Fitting only with that credit passes with a host-contention WARNING that prints every number used. On an idle host the credit is ~0 and 60 s applies exactly. The credit is an upper bound, which is why the CPU budget is the hard backstop.
+
+The tracked steps are killed only at the cumulative `_TOTAL_TEST_HANG_CAP_SECONDS = 180.0`, and each pytest invocation only at `DEFAULT_SUITE_TIMEOUT_SECONDS = 180.0`: those are hang detection, not speed budgets. Measured on the maintained host, `make test` needs ~400 CPU core-seconds and saturates all 12 cores, so its wall clock tracks host capacity — a wall-clock-only gate failed whenever anything else ran.
 
 `ralph/verify.py` enforces these import-time invariants (using `if`/`raise RuntimeError`, NOT `assert`, so they survive `python -O`):
 
 - `_TOTAL_TEST_BUDGET_SECONDS > 0` (must be positive)
 - `abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9` (epsilon check on the 60.0 constant)
+- `abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 600.0) < 1e-9` (epsilon check on the CPU budget)
+- `_TOTAL_TEST_HANG_CAP_SECONDS == 3 * _TOTAL_TEST_BUDGET_SECONDS` (the hang cap cannot drift into a budget)
 - `_BUDGET_TRACKED_STEPS` indices are valid indices into `_VERIFY_STEPS`
 - Every budget-tracked step has a positive timeout
 - `_VERIFY_STEP_TIMEOUT_SECONDS > 0` and `>= 5.0` (non-trivial per-step cap)
@@ -59,20 +68,22 @@ The 60-second combined total test budget is **absolute and immutable**. It canno
 - `'make test'` is present in `_KNOWN_TEST_STEP_LABELS`
 - Every label in `_KNOWN_TEST_STEP_LABELS` is tracked; every tracked step has its label
 
-All invariants are tested in `tests/test_verify_invariants.py` under both normal execution and `python -O`. A timeout failure is a test design defect — fix the production coupling, never adjust the budget. Per-suite caps (`PYTEST_SUITE_TIMEOUT_SECONDS`, `DEFAULT_SUITE_TIMEOUT_SECONDS`) are SECONDARY; raising them does NOT increase the combined budget. The cumulative tracker sums time across ALL budget-tracked steps via `time.monotonic()`. See [AGENTS.md §'═══ ABSOLUTE TEST BUDGET — 60s, IMMUTABLE ═══'](../../AGENTS.md) for the canonical non-circumvention table.
+All invariants are tested in `tests/test_verify_invariants.py` under both normal execution and `python -O`. A budget failure is a test design defect — fix the production coupling, never adjust the budget. A host-contention WARNING is not a licence to grow the suite: the CPU budget still binds. Per-suite caps (`PYTEST_SUITE_TIMEOUT_SECONDS`, `DEFAULT_SUITE_TIMEOUT_SECONDS`) are hang caps; raising them does NOT increase the combined budget. The cumulative tracker sums time across ALL budget-tracked steps via `time.monotonic()`. See [AGENTS.md §'TEST BUDGET'](../../AGENTS.md) for the canonical non-circumvention table.
+
+Each test's own budget (the `timeout_seconds` marker, else 1 s) is charged in CPU seconds the test process spends (`ITIMER_PROF` in `tests/conftest.py`), with a wall-clock hang cap of 5x the budget (at most +60 s) for tests that wait instead of work; both raise `TestExecutionTimeoutError`, a `BaseException` so code under test cannot swallow it. A test must not assert on wall clock it does not own. A deadline that only bounds how long a real child process takes to start is sized for a saturated host (with a comment saying so); synchronization uses an observable condition (a marker file, an event), never a fixed sleep; a latency gate re-times an over-limit sample before counting it, so only a slowdown that reproduces fails.
 
 ## Non-circumvention table
 
-The following do **NOT** circumvent the 60-second combined budget or the lint/typecheck enforcement (detected by the corresponding audit module under `ralph/testing/audit_*.py`):
+The following do **NOT** circumvent the combined test budget or the lint/typecheck enforcement (detected by the corresponding audit module under `ralph/testing/audit_*.py`):
 
 | Attempted circumvention | Why it fails |
 |---|---|
 | Splitting tests into N suites | Cumulative tracker sums time across ALL tracked steps — not per-suite |
 | Moving slow tests to a different suite/target | All budget-tracked steps count toward the same combined budget |
 | Renaming test targets or adding new test-related `_VERIFY_STEPS` without updating `_KNOWN_TEST_STEP_LABELS` | `_BUDGET_TRACKED_STEPS` stays frozen — new targets do not get budget tracking |
-| Raising `PYTEST_SUITE_TIMEOUT_SECONDS` / `DEFAULT_SUITE_TIMEOUT_SECONDS` | Per-suite cap only; combined budget enforced separately by `_TOTAL_TEST_BUDGET_SECONDS` |
+| Raising `PYTEST_SUITE_TIMEOUT_SECONDS` / `DEFAULT_SUITE_TIMEOUT_SECONDS` | Per-suite hang cap only; combined budget enforced separately by `_TOTAL_TEST_BUDGET_SECONDS` / `_TOTAL_TEST_CPU_BUDGET_SECONDS` |
 | Setting `RALPH_PYTEST_SUITE_TIMEOUT_SECONDS` / `RALPH_PYTEST_TEST_TIMEOUT_SECONDS` | Env vars only adjust per-suite/per-test caps, not the combined budget |
-| Modifying `_BUDGET_TRACKED_STEPS` / raising `_TOTAL_TEST_BUDGET_SECONDS` | Blocked by import-time `if`/`raise RuntimeError` checks — immune to `python -O` |
+| Modifying `_BUDGET_TRACKED_STEPS` / raising `_TOTAL_TEST_BUDGET_SECONDS`, `_TOTAL_TEST_CPU_BUDGET_SECONDS` or `_TOTAL_TEST_HANG_CAP_SECONDS` | Blocked by import-time `if`/`raise RuntimeError` checks — immune to `python -O` |
 | Emptying `_KNOWN_TEST_STEP_LABELS` / `_BUDGET_TRACKED_STEPS` | Blocked by import-time non-empty RuntimeError check — immune to `python -O` |
 | Removing `'make test'` from `_KNOWN_TEST_STEP_LABELS` | Blocked by import-time containment RuntimeError check — immune to `python -O` |
 | Adding `per-file-ignores` / `extend-per-file-ignores` / blanket `# noqa` | Detected by `ralph/testing/audit_lint_bypass.py` |

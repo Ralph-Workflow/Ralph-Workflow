@@ -46,6 +46,7 @@ from ralph.git.merge import (
     merge_target_into_current,
 )
 from ralph.git.rebase.rebase import RebaseConflicts
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.auto_integrate_rebase_merge import run_rebase_or_merge
 from ralph.pipeline.integration_attempt_ledger import AttemptLedger
 from ralph.pipeline.integration_decision import EscalationRung
@@ -59,7 +60,7 @@ from ralph.pipeline.integration_observation import (
     TargetVsRemote,
     WorktreeState,
 )
-from ralph.pipeline.rebase_state import RebaseOutcomeKind, ResolutionFailureCause
+from ralph.pipeline.rebase_state import RebaseOutcomeKind
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence

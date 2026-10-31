@@ -179,6 +179,83 @@ def test_e42_two_supervisors_concurrent_replacement_single_winner(tmp_path: path
         _reap_procs(procs)
 
 
+def test_e42_dead_child_seen_by_both_supervisors_is_replaced_once(
+    tmp_path: pathlib.Path,
+) -> None:
+    """E4.2 regression: both supervisors observe the SAME dead child before either swaps it.
+
+    The first supervisor is parked in the off-lock restart cooldown (after it
+    observed the dead child, before it replaced it) while the second runs its
+    check. The second must not charge a second attempt or replace the child
+    the first is about to spawn; it either waits for the first replacement
+    and no-ops, or (pre-fix) races it -- which this ordering makes
+    deterministic instead of load-dependent.
+    """
+    procs: list[ManagedProcess] = []
+    try:
+        p_init = _spawn_real_process(tmp_path, label="e42-dead-init", exit_code=1)
+        procs.append(p_init)
+        initial_inner = _make_real_inner(tmp_path, p_init)
+
+        first_in_cooldown = threading.Event()
+        second_finished = threading.Event()
+        cooldown_calls = [0]
+
+        def gated_cooldown(_seconds: float) -> None:
+            cooldown_calls[0] += 1
+            if cooldown_calls[0] == 1:
+                first_in_cooldown.set()
+                # Bounded: with the single-winner gate the second check blocks
+                # until this replacement finishes, so it can never set the
+                # event; 0.3 s is how long a rival gets to (wrongly) replace.
+                second_finished.wait(timeout=0.3)
+
+        spawned: list[int] = []
+
+        def restart_fn() -> StandaloneMcpProcess:
+            p = _spawn_real_process(tmp_path, label=f"e42-dead-cand-{len(spawned) + 1}")
+            spawned.append(p.pid)
+            procs.append(p)
+            return _make_real_inner(tmp_path, p)
+
+        bridge = lifecycle.RestartAwareMcpBridge(
+            initial_inner,
+            restart_fn=restart_fn,
+            restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=1.0),
+            run_id="test-e42-dead-run",
+            sleep_fn=gated_cooldown,
+        )
+
+        results: dict[str, bool] = {}
+        errors: list[Exception] = []
+
+        def run_check(name: str) -> None:
+            try:
+                results[name] = bridge.check_health_and_restart_if_needed()
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                if name == "second":
+                    second_finished.set()
+
+        first = threading.Thread(target=run_check, args=("first",))
+        first.start()
+        assert first_in_cooldown.wait(timeout=10.0), "first check never reached the cooldown"
+        second = threading.Thread(target=run_check, args=("second",))
+        second.start()
+        first.join(timeout=10.0)
+        second.join(timeout=10.0)
+
+        assert not errors, f"Unexpected errors during concurrent checks: {errors}"
+        assert results == {"first": True, "second": False}, results
+        assert bridge.restart_count == 1
+        assert len(spawned) == 1, f"dead child replaced more than once: {spawned}"
+        assert bridge.process.pid == spawned[0]
+        assert bridge.process.poll() is None
+    finally:
+        _reap_procs(procs)
+
+
 def test_e27_single_candidate_during_startup_serialization(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

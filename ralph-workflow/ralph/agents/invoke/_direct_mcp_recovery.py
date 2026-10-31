@@ -34,7 +34,7 @@ from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityT
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
 from ralph.agents.invoke._supervision_infrastructure_error import SupervisionInfrastructureError
 from ralph.mcp.server._mcp_server_error import McpServerError
-from ralph.pipeline.agent_retry_decision import resolve_retry_intent
+from ralph.pipeline import agent_retry_decision
 from ralph.runtime_events import RuntimeEventRecorder, record_runtime_event, runtime_event_scope
 
 from ._session import (
@@ -195,7 +195,7 @@ def _retry_plan_for_exception(
         or resumable_session_id
         or current_session_id
     )
-    intent = resolve_retry_intent(
+    intent = agent_retry_decision.resolve_retry_intent(
         exc,
         phase="standalone",
         agent=_exception_agent_name(exc),

@@ -29,13 +29,13 @@ from loguru import logger
 from ralph.git.errors import GitOperationError
 from ralph.git.merge import branch_sha, conflict_stage_entries, unmerged_paths
 from ralph.git.operations import get_head_sha
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.auto_integrate_conflict_budget import (
     MAX_TRACKED_CONFLICT_ATTEMPTS,
     ConflictIdentity,
     apply_conflict_budget,
     prior_conflict_count,
 )
-from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 if TYPE_CHECKING:
     from pathlib import Path

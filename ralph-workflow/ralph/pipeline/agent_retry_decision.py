@@ -20,8 +20,8 @@ counts are invariant — do not raise them.
 from __future__ import annotations
 
 from ralph.agents.invoke._broken_agent_exit_error import BrokenAgentExitError
+from ralph.pipeline import retryable_failure
 from ralph.pipeline.agent_retry_intent import AgentRetryIntent, agent_retry_intent_for_failure
-from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.recovery.failure_classifier import FailureClassifier, _is_subscription_limit_message
 from ralph.recovery.failure_details import failure_detail_parts
 
@@ -65,7 +65,7 @@ def resolve_retry_intent(
             else None,
             broken_agent_stderr=exc.stderr if isinstance(exc, BrokenAgentExitError) else "",
         )
-    if retryable_agent_failure_reason(exc, inactivity_error_type) is None:
+    if retryable_failure.retryable_agent_failure_reason(exc, inactivity_error_type) is None:
         return None
     classified = FailureClassifier().classify(exc, phase=phase, agent=agent)
     return agent_retry_intent_for_failure(

@@ -44,6 +44,7 @@ from ralph.mcp.explore._bench_fixtures import (
     REQUIRED_FIXTURES,
 )
 from ralph.mcp.explore._bench_product_baseline import (
+    flow_limits_seconds,
     gate_product_baseline,
     load_product_baseline_limits,
     main,
@@ -487,6 +488,7 @@ __all__ = [
     "SystemClock",
     "capture_baseline",
     "derive_visible_catalog",
+    "flow_limits_seconds",
     "gate_product_baseline",
     "load_product_baseline_limits",
     "main",

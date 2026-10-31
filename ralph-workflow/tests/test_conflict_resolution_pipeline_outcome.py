@@ -19,13 +19,13 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.config.models import UnifiedConfig
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution import driver as driver_module
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import ResolutionSession, begin_resolution_stop
-from ralph.pipeline.rebase_state import ResolutionFailureCause
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:

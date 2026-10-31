@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import contextlib
 import errno
+import functools
 import json
 import os
 import signal
@@ -45,6 +46,7 @@ from ralph.mcp.protocol.env import (
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server._handover_protocol import (
+    check_candidate_readiness,
     compute_tool_set_hash,
     create_handover_socketpair,
     verify_candidate_readiness,
@@ -69,6 +71,19 @@ pytestmark = [
 # ---------------------------------------------------------------------------
 # Fixtures and Test Helpers
 # ---------------------------------------------------------------------------
+
+
+def _descendant_pids() -> set[int]:
+    """Return the PIDs of every live descendant of the test process.
+
+    The leak invariants below diff against a snapshot taken before the test
+    spawns anything: the test process is a long-lived pytest worker, and
+    earlier tests legitimately leave process-lifetime descendants behind
+    (``multiprocessing`` resource tracker, GitPython ``git cat-file --batch``
+    readers awaiting GC). Those are not candidate leaks, and counting them
+    made the assertion depend on which files ran earlier in the same worker.
+    """
+    return {d.pid for d in psutil.Process(os.getpid()).children(recursive=True)}
 
 
 @pytest.fixture
@@ -109,6 +124,19 @@ def managed_spawner(tmp_path: Path) -> Iterator[Callable[..., ManagedProcess]]:
                     p.kill()
                 with contextlib.suppress(Exception):
                     p.wait(timeout=2.0)
+
+
+#: Bound for the first tools/list from a child started with a no-op
+#: preflight. ``start_mcp_server`` then returns as soon as the child is
+#: spawned; the bridge-owned listener queues the request until the child has
+#: booted, imported, and started serving -- several-fold slower on a
+#: saturated host. Bounds only the failure path.
+_CHILD_SERVING_TIMEOUT_S = 15.0
+
+
+def _wait_child_serving(endpoint: str) -> list[str]:
+    """Return the served tool names once the freshly started child answers."""
+    return _http_tools_list_names(endpoint, timeout=_CHILD_SERVING_TIMEOUT_S)
 
 
 def _write_responder_script(tmp_path: Path) -> Path:
@@ -265,8 +293,12 @@ def test_c1_tool_hash_mismatch_rejected_real_child(
     assert cand_proc.poll() is not None
 
 
+# Above the module 10 s: covers the real start-up preflight plus the
+# widened candidate readiness bound below (both failure-path-only bounds).
+@pytest.mark.timeout_seconds(60)
 def test_c1_matching_tool_hash_promoted_and_private_hash_equals_served_tools(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Pins C1: When candidate tool schema matches active tool hash, candidate is promoted.
 
@@ -280,13 +312,19 @@ def test_c1_matching_tool_hash_promoted_and_private_hash_equals_served_tools(
         capabilities={"WorkspaceRead"},
     )
     workspace = FsWorkspace(tmp_path)
-    real_spawn = lifecycle._default_lifecycle_deps().spawn_process
-
-    def noop_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:
-        del endpoint, required_tools, timeout
-
-    deps = lifecycle._default_lifecycle_deps().__replace__(
-        preflight=noop_preflight, spawn_process=real_spawn
+    # Real start-up preflight: ``start_mcp_server`` captures the C1 drift
+    # baseline right after preflight. With a no-op preflight the baseline
+    # fetch raced the still-booting child (5 s), and on a loaded host the
+    # baseline was missing, so the candidate was refused by design.
+    deps = lifecycle._default_lifecycle_deps()
+    # The candidate is a real ``python -m ralph.mcp.server`` child; the
+    # production private-readiness deadline (5 s) covers its interpreter boot
+    # and imports, which a saturated test host stretches past 5 s. Only that
+    # wall-clock bound is widened; the readiness/hash checks are production.
+    monkeypatch.setattr(
+        lifecycle,
+        "check_candidate_readiness",
+        functools.partial(check_candidate_readiness, timeout=20.0),
     )
     extras = lifecycle.McpServerExtras(
         restart_policy=McpRestartPolicy(max_restarts=5, cooldown_seconds=0.0),
@@ -437,6 +475,8 @@ sys.stderr.buffer.flush()
     assert proc.poll() == 0
 
 
+# Above the module 10 s: includes the 15 s child-serving start-up bound.
+@pytest.mark.timeout_seconds(30)
 def test_c2_failed_candidate_survival_and_single_failure_not_terminal(
     tmp_path: Path,
 ) -> None:
@@ -470,6 +510,7 @@ def test_c2_failed_candidate_survival_and_single_failure_not_terminal(
         restart_policy=McpRestartPolicy(cooldown_seconds=0.0),
     )
 
+    preexisting_pids = _descendant_pids()
     bridge = lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras)
 
     try:
@@ -482,7 +523,7 @@ def test_c2_failed_candidate_survival_and_single_failure_not_terminal(
         # Before the failed restart: old child already serves tools/list over the
         # shared endpoint (baseline). This proves the bridge is on a real
         # production path with a live inheritor child.
-        names_before = _http_tools_list_names(endpoint, timeout=2.0)
+        names_before = _wait_child_serving(endpoint)
         assert isinstance(names_before, list)
 
         # Replace restart_fn with a function that simulates a failed candidate
@@ -519,10 +560,7 @@ def test_c2_failed_candidate_survival_and_single_failure_not_terminal(
         # child, and the candidate spawn path raised before any new process was
         # spawned. No additional processes or process groups are alive beyond
         # the bridge's child.
-        own_pid = os.getpid()
-        descendants_before = {
-            d.pid for d in psutil.Process(own_pid).children(recursive=True) if d.pid != old_pid
-        }
+        descendants_before = _descendant_pids() - preexisting_pids - {old_pid}
         assert descendants_before == set(), (
             f"failed candidate spawn leaked unrelated child PIDs: {descendants_before}"
         )
@@ -532,6 +570,8 @@ def test_c2_failed_candidate_survival_and_single_failure_not_terminal(
             bridge.shutdown()
 
 
+# Above the module 10 s: includes the 15 s child-serving start-up bound.
+@pytest.mark.timeout_seconds(30)
 def test_c2_live_old_child_serves_tools_list_during_failed_candidate(
     tmp_path: Path,
 ) -> None:
@@ -567,6 +607,7 @@ def test_c2_live_old_child_serves_tools_list_during_failed_candidate(
         restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
     )
 
+    preexisting_pids = _descendant_pids()
     bridge = lifecycle.start_mcp_server(session, workspace, deps=deps, extras=extras)
 
     try:
@@ -574,6 +615,10 @@ def test_c2_live_old_child_serves_tools_list_during_failed_candidate(
         endpoint = bridge.endpoint_uri()
         assert bridge.process.poll() is None
         live_pid = bridge.process.pid
+        # No-op preflight: wait until the child really serves, so "STILL
+        # serves" below is measured against a child that was serving before
+        # the failed restarts rather than racing its start-up.
+        assert isinstance(_wait_child_serving(endpoint), list)
 
         # Drive the restart attempt with a wedged restart_fn.
         attempts = [0]
@@ -616,8 +661,7 @@ def test_c2_live_old_child_serves_tools_list_during_failed_candidate(
         # could invoke the subprocess factory), so the candidate's process
         # group is vacuously reaped. The old child's process group is the
         # bridge's only descendant.
-        own_pid = os.getpid()
-        descendants = {d.pid for d in psutil.Process(own_pid).children(recursive=True)}
+        descendants = _descendant_pids() - preexisting_pids
         assert live_pid in descendants, "old child must be alive under the bridge"
         candidate_pids = descendants - {live_pid}
         assert candidate_pids == set(), f"failed candidate spawned leaked PIDs: {candidate_pids}"
@@ -1186,7 +1230,7 @@ def test_c5_e22_candidate_stage_failures_parametrized(
        - all candidate processes are reaped (poll() is not None)
        - no leaked children of the test process besides the old child
     """
-    own_pid = os.getpid()
+    preexisting_pids = _descendant_pids()
 
     old_proc = managed_spawner(
         [sys.executable, "-c", "import time; time.sleep(300)"],
@@ -1290,9 +1334,7 @@ def test_c5_e22_candidate_stage_failures_parametrized(
         )
 
     # Invariant 4: No unrelated descendants of the test process besides the old child.
-    descendants = {
-        d.pid for d in psutil.Process(own_pid).children(recursive=True) if d.pid != old_proc.pid
-    }
+    descendants = _descendant_pids() - preexisting_pids - {old_proc.pid}
     assert descendants == set(), (
         f"fail_mode={fail_mode}: unrelated descendant PIDs leaked: {sorted(descendants)}"
     )

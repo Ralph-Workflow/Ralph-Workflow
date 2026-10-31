@@ -55,10 +55,12 @@ from loguru import logger as loguru_logger
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.models import UnifiedConfig
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution.driver import (
     run_conflict_resolution_outcome,
     run_rebase_conflict_resolution_outcome,
 )
+from ralph.pipeline.conflict_resolution.git_worktree_observer import GitWorktreeConflictObserver
 from ralph.pipeline.conflict_resolution.prompt import PromptMaterializer
 from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
@@ -67,12 +69,8 @@ from ralph.pipeline.conflict_resolution.session import (
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.sight import ConflictSight
-from ralph.pipeline.conflict_resolution.worktree_observer import (
-    GitWorktreeConflictObserver,
-    WorktreeConflictObserver,
-)
+from ralph.pipeline.conflict_resolution.worktree_observer import WorktreeConflictObserver
 from ralph.pipeline.integration_actions import install_executors, reset_executors
-from ralph.pipeline.rebase_state import ResolutionFailureCause
 from ralph.policy.loader import default_dir, load_policy
 from ralph.policy.models import AgentChainConfig
 from tests._resolver_controller import make_resolver_controller

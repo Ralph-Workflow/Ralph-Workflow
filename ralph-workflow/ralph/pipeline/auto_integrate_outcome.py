@@ -28,9 +28,10 @@ from ralph.git.rebase.rebase import (
     RebaseNoOp,
     RebaseSuccess,
 )
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_resolve import RESOLUTION_FAILED
-from ralph.pipeline.rebase_state import RebaseState, ResolutionFailureCause
+from ralph.pipeline.rebase_state import RebaseState
 
 if TYPE_CHECKING:
     from ralph.git.merge import MergeResult

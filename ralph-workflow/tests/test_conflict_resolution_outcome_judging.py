@@ -5,13 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.conflict_resolution.session import invoke_resolution_agent
 from ralph.policy.models import PolicyBundle
 
 if TYPE_CHECKING:
-    import pytest
-
     from ralph.git.git_call_policy import GitCallClass
     from ralph.git.subprocess_runner import GitRunOptions
 
@@ -141,9 +141,18 @@ def test_a_markerless_decision_demands_declared_completion(
     bundle = _policy_bundle()
     captured: list[bool] = []
 
+    class _FirstInvocationSeen(BaseException):
+        """Ends the run once the resolver is invoked.
+
+        Failed rounds are not charged here (``classify_failed_resolution_attempt``
+        is stubbed), so the round loop would otherwise retry forever; it used
+        to end only when the per-test timeout interrupted it. A
+        ``BaseException`` so the driver's failure handling cannot absorb it.
+        """
+
     def _capture(**kwargs: object) -> bool:
         captured.append(bool(kwargs.get("require_completion_evidence")))
-        return False
+        raise _FirstInvocationSeen
 
     monkeypatch.setattr(driver_module, "unmerged_paths", lambda _root: ["gone.py"])
     monkeypatch.setattr(driver_module, "paths_with_conflict_markers", lambda _r, _p: [])
@@ -167,16 +176,17 @@ def test_a_markerless_decision_demands_declared_completion(
     monkeypatch.setattr(driver_module, "render_conflict_prompt", lambda **_kwargs: prompt)
     monkeypatch.setattr(Path, "unlink", lambda _path: None)
 
-    driver_module.run_conflict_resolution_pipeline(
-        root=root,
-        target="main",
-        config=UnifiedConfig.model_validate({"general": {}}),
-        pipeline_deps=None,
-        workspace_scope=None,
-        policy_bundle=bundle,
-        display=None,
-        display_context=None,
-    )
+    with pytest.raises(_FirstInvocationSeen):
+        driver_module.run_conflict_resolution_pipeline(
+            root=root,
+            target="main",
+            config=UnifiedConfig.model_validate({"general": {}}),
+            pipeline_deps=None,
+            workspace_scope=None,
+            policy_bundle=bundle,
+            display=None,
+            display_context=None,
+        )
     assert captured, "the resolver must be invoked for a markerless decision"
     assert all(captured), "and it must be required to declare its decision"
 

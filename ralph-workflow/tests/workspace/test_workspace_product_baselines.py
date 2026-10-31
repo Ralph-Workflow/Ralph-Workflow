@@ -25,6 +25,7 @@ import pytest
 from ralph.agents.timeout_clock import FakeClock
 from ralph.mcp.explore._bench_types import FlowTiming, ScriptedCall
 from ralph.mcp.explore.bench import (
+    flow_limits_seconds,
     gate_product_baseline,
     load_product_baseline_limits,
     measure_representative_flows,
@@ -171,6 +172,69 @@ def test_delayed_executor_fails_p95_gate() -> None:
     assert failures, "gate must reject the deliberately delayed executor"
     assert any("file_content_search" in failure for failure in failures), failures
     assert any("0.5" in failure for failure in failures), failures
+
+
+_STALL_LIMITS: dict[str, object] = {
+    "response_limits_ms": {
+        "file_content_search": 50,
+        "symbol_structure": 75,
+        "graph_impact_tests": 150,
+    }
+}
+
+
+def test_flow_limits_seconds_maps_every_flow_to_its_group_limit() -> None:
+    limits = flow_limits_seconds(_STALL_LIMITS)
+    assert limits["search_files"] == pytest.approx(0.050)
+    assert limits["list_directory"] == pytest.approx(0.075)
+    assert limits["ralph_graph"] == pytest.approx(0.150)
+    assert flow_limits_seconds({}) == {}
+
+
+def test_an_over_limit_sample_that_does_not_reproduce_does_not_fail_the_gate() -> None:
+    """A one-off stall (the host preempting the measuring thread) is re-timed.
+
+    Every 10th call stalls for 200 ms and every other call takes 1 ms. The
+    p95 of 20 raw samples would include two stalls and fail the 50 ms limit;
+    each stalled sample is re-timed, the re-timing is fast, and the gate
+    passes on the handler's real cost.
+    """
+    clock = FakeClock()
+    calls = [0]
+
+    def executor(_call: ScriptedCall) -> Mapping[str, object]:
+        calls[0] += 1
+        clock.advance(0.2 if calls[0] % 10 == 0 else 0.001)
+        return {"text": "ok"}
+
+    flows = _scripted_flows()
+    timings = measure_representative_flows(
+        executor, flows, clock=clock, confirm_over_seconds=flow_limits_seconds(_STALL_LIMITS)
+    )
+    assert all(len(timing.samples_seconds) == 20 for timing in timings.values())
+    assert max(max(timing.samples_seconds) for timing in timings.values()) == pytest.approx(0.001)
+    # The scripted flows cover the file_content_search group only, so the
+    # gate's one complaint is the unmeasured flows of the other groups.
+    failures = gate_product_baseline(timings, _STALL_LIMITS)
+    assert not any("p95" in failure for failure in failures), failures
+
+
+def test_a_consistently_slow_handler_still_fails_the_gate_after_re_timing() -> None:
+    """Re-timing never hides a slower handler: it is slow on every attempt."""
+    clock = FakeClock()
+
+    def executor(_call: ScriptedCall) -> Mapping[str, object]:
+        clock.advance(0.060)
+        return {"text": "ok"}
+
+    timings = measure_representative_flows(
+        executor,
+        _scripted_flows(),
+        clock=clock,
+        confirm_over_seconds=flow_limits_seconds(_STALL_LIMITS),
+    )
+    failures = gate_product_baseline(timings, _STALL_LIMITS)
+    assert any("search_files: p95 60.000 ms > 50 ms" in failure for failure in failures), failures
 
 
 def test_gate_rejects_missing_and_unknown_flows() -> None:

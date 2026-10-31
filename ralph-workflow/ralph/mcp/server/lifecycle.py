@@ -1029,6 +1029,13 @@ class RestartAwareMcpBridge:
         # producer ran outside the lock.
         self._bridge_generation = 0
         self._lock = threading.RLock()
+        # E4.2 single-winner gate for the dead-child route. Held (OFF
+        # ``self._lock``) for the whole observe-dead -> replace sequence so a
+        # second concurrent health check waits for the first replacement and
+        # then sees the swapped ``_inner`` instead of also observing the same
+        # dead child and replacing the freshly promoted one. Only health-check
+        # callers take it; ``bridge.process`` readers never do (E4.1).
+        self._dead_child_replace_lock = threading.Lock()
         # Workspace root used to locate the child MCP server log for the
         # durable restart-decision evidence.  Stored on the bridge so the
         # log tail can be captured at the r3-sink call site (which is
@@ -2493,6 +2500,26 @@ class RestartAwareMcpBridge:
             ),
         )
 
+    def _restart_observed_dead_child(self, observed_inner: StandaloneMcpProcess) -> bool:
+        """Replace ``observed_inner`` (seen exited) unless a rival already did.
+
+        E4.2: the dead-child observation and its replacement are serialized
+        by ``_dead_child_replace_lock``. Without it two supervisors could both
+        read the same exited child before either swapped ``_inner``, and the
+        second would charge a second attempt and shut down the healthy child
+        the first had just spawned. A caller that finds the observed dead
+        child already replaced returns ``False`` (no-op); one that finds it
+        still in place (the first attempt failed or exhausted the budget)
+        retries it, so a terminal budget error still reaches every caller.
+        Must be called WITHOUT ``self._lock`` held (E4.1).
+        """
+        with self._dead_child_replace_lock:
+            with self._lock:
+                already_replaced = self._inner is not observed_inner
+            if already_replaced:
+                return False
+            return self._perform_restart(process_exited=True, probe_duration_s=None)
+
     def check_health_and_restart_if_needed(self) -> bool:
         """Check if MCP server is alive and responsive; restart if not.
 
@@ -2509,11 +2536,14 @@ class RestartAwareMcpBridge:
         E4.1: the dead-child liveness read happens under the lock, but the
         replacement it triggers runs OFF it, so an agent reading
         ``bridge.process`` is never queued behind a candidate startup.
+
+        E4.2: concurrent dead-child replacements are single-winner; see
+        :meth:`_restart_observed_dead_child`.
         """
         with self._lock:
-            inner_exited = self._inner.process.poll() is not None
+            observed_inner, inner_exited = self._inner, self._inner.process.poll() is not None
         if inner_exited:
-            return self._perform_restart(process_exited=True, probe_duration_s=None)
+            return self._restart_observed_dead_child(observed_inner)
 
         with self._lock:
             probe_failed, probe_duration_s, infra_error, overrun = self._run_health_probe()

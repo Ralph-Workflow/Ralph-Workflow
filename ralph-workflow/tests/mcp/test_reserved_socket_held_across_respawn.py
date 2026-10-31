@@ -73,8 +73,16 @@ class _FakeProcess:
         pass
 
 
-def test_parent_holds_listening_socket_from_start_until_shutdown(tmp_path: pathlib.Path) -> None:
+def test_parent_holds_listening_socket_from_start_until_shutdown(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Parent holds listening socket from start_mcp_server until shutdown()."""
+    # The spawned child is fake, so nothing serves the endpoint: without this
+    # the tool-hash baseline read waits out its full timeout (5 s), which the
+    # per-test cap used to interrupt and the baseline capture then absorbed.
+    monkeypatch.setattr(
+        lifecycle, "served_tool_entries", lambda _endpoint, _timeout: [{"name": "read_file"}]
+    )
     session = AgentSession(
         session_id="test-session",
         run_id="run-1",

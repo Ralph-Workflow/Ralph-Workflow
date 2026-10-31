@@ -19,12 +19,12 @@ from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     write_record,
 )
-from ralph.pipeline.conflict_resolution.attempt_fault import ConflictAttemptOutcome
 from ralph.pipeline.conflict_resolution.resolver_health import (
     bench_resolver,
     choose_resolver,
     clear_resolver,
 )
+from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence

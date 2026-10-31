@@ -34,6 +34,7 @@ from ralph.git.rebase.rebase import (
     rebase_in_progress,
     rebase_onto,
 )
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._auto_integrate_rebase_merge_failure import (
     _environmental_rebase_reason,
@@ -82,7 +83,7 @@ from ralph.pipeline.integration_owner import (
     ladder_rung_for_action,
     load_integration_attempts,
 )
-from ralph.pipeline.rebase_state import RebaseState, ResolutionFailureCause, StartupRetentionReason
+from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
 if TYPE_CHECKING:
     from pathlib import Path

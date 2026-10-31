@@ -35,13 +35,13 @@ from ralph.display.edit_preview import build_edit_preview
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.scene_catalog import CONTRAST_FLOOR
 from ralph.display.snapshot import PipelineSnapshot
+from ralph.display.syntax_theme import SyntaxThemes
 from ralph.display.theme import (
     display_styles_for_background,
     pick_status_styles,
     preview_background_for_background,
     terminal_background_is_light,
 )
-from ralph.syntax_theme import SyntaxThemes
 
 _PREVIEW_SURFACES = {
     False: preview_background_for_background(False),
@@ -61,7 +61,7 @@ _REQUIRED_TOKENS = (
     Generic.Inserted,
     # DA-002/D-3: previously fell through to Pygments' own color-less
     # default, which Rich then hardcodes to non-adaptive black -- see
-    # ralph/syntax_theme.py's _GENERIC_HEADING-and-friends comment.
+    # ralph/display/syntax_theme.py's _GENERIC_HEADING-and-friends comment.
     # Generic.Heading/Generic.Strong are what Pygments' DiffLexer emits,
     # so this is production-reachable through edit_preview.py, not just a
     # theoretical Pygments token nobody hits.
@@ -439,7 +439,7 @@ def test_visual_floor_markdown_palette_on_undetermined_background_clears_contras
     """S-5: every entry of _markdown_theme._PALETTES[None] clears CONTRAST_FLOOR against both #000000 and #FFFFFF."""
     from importlib import import_module
 
-    _markdown_theme = import_module("ralph._markdown_theme")
+    _markdown_theme = import_module("ralph.display._markdown_theme")
 
     palette = _markdown_theme._PALETTES[None]
     assert palette
@@ -474,7 +474,7 @@ def test_visual_floor_markdown_palette_draws_from_the_same_palette_roles() -> No
     from ralph.display._palette import resolve_palette
     from ralph.display.theme import preview_background_for_background
 
-    _markdown_theme = import_module("ralph._markdown_theme")
+    _markdown_theme = import_module("ralph.display._markdown_theme")
 
     entry_to_role: dict[str, str] = {
         "default": "foreground",

@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution._driver_events import (
     emit_attempt_outcome as _emit_attempt_outcome,
 )
@@ -32,7 +33,6 @@ from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     INFRASTRUCTURE_TERMINATION_REASONS,
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
-    ConflictAttemptOutcome,
     attempt_fault_to_termination_reason,
     classify_attempt_fault,
 )
@@ -55,7 +55,7 @@ from ralph.pipeline.conflict_resolution.round_verdict import (
     round_termination_reason as _round_termination_reason,
 )
 from ralph.pipeline.integration_actions import _DEFAULT_CLOCK, current_clock
-from ralph.pipeline.rebase_state import ResolutionFailureCause
+from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
     from collections.abc import Callable

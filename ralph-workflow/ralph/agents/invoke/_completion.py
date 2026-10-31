@@ -52,7 +52,7 @@ from ralph.agents.invoke._session import (
 )
 from ralph.agents.registry import lookup_empty_output_diagnostic_factory
 from ralph.agents.timeout_clock import Clock, SystemClock
-from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
+from ralph.pipeline import retryable_failure as _retry
 from ralph.process._agent_launch_error import AgentLaunchError
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.teardown import ProcessTeardown, teardown_subtree
@@ -945,7 +945,7 @@ def log_invocation_exit(exc: AgentInvocationError) -> None:
     the private helper did.
     """
     classified = FailureClassifier().classify(exc, phase="invoke", agent=exc.agent_name)
-    retryable = retryable_agent_failure_reason(exc, AgentInactivityTimeoutError) is not None
+    retryable = _retry.retryable_agent_failure_reason(exc, AgentInactivityTimeoutError) is not None
     if classified.reset_session:
         # Keep stale-session recovery distinct from generic retryable exits.
         stderr_has_session_marker = contains_casefolded_marker(

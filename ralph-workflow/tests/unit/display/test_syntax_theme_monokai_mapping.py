@@ -20,7 +20,7 @@ from pygments.token import (
 )
 
 from ralph.display._palette import ROLE_ANCHORS, hex_to_rgb, oklab_to_oklch, rgb_to_oklab
-from ralph.syntax_theme import SyntaxThemes
+from ralph.display.syntax_theme import SyntaxThemes
 
 _NEUTRAL_ROLES = frozenset({"foreground", "comment"})
 

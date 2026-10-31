@@ -13,11 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from ralph.pipeline.auto_integrate_transaction import (
-    LeaseOutcomeKind,
-    LeaseUnknownReason,
-    integration_transaction,
-)
+from ralph.pipeline.auto_integrate_transaction import integration_transaction
+from ralph.pipeline.lease_outcome_kind import LeaseOutcomeKind
+from ralph.pipeline.lease_unknown_reason import LeaseUnknownReason
 
 
 def test_missing_git_marker_is_degraded_acquired(tmp_path: Path) -> None:

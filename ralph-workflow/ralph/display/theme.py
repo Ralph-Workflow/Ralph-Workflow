@@ -46,7 +46,7 @@ from ralph.display._palette import (
     _PURE_BLACK_HEX,
     _PURE_WHITE_HEX,
 )
-from ralph.syntax_theme import SyntaxThemes
+from ralph.display.syntax_theme import SyntaxThemes
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping

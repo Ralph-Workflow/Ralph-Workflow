@@ -684,11 +684,11 @@ def test_all_cooldown_outer_integration_preserves_rebase_state_not_failed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """When all resolvers are cooling down, outer integration reports pending/waiting, not failed, and preserves rebase state."""
+    from ralph.git.resolution_failure_cause import ResolutionFailureCause
     from ralph.pipeline.auto_integrate_outcome import record_conflict
     from ralph.pipeline.conflict_resolution.round_verdict import (
         ResolutionTerminationReason,
     )
-    from ralph.pipeline.rebase_state import ResolutionFailureCause
 
     _install_seams(monkeypatch, unmerged=_CONFLICTED)
     monkeypatch.setattr(

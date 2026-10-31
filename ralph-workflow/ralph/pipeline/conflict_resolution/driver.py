@@ -21,6 +21,7 @@ from ralph.git.merge import (
     paths_with_conflict_markers,
     unmerged_paths,
 )
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline._retained_resolution_scope import retained_merge_paths
 from ralph.pipeline.conflict_resolution._driver_events import (
     announce_declared_decisions as _announce_declared_decisions,
@@ -41,12 +42,10 @@ from ralph.pipeline.conflict_resolution._driver_rounds import (
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
 )
-from ralph.pipeline.conflict_resolution.attempt_fault import (
-    ConflictAttemptOutcome,
-)
 from ralph.pipeline.conflict_resolution.chain_candidates import (
     skipped_candidates,
 )
+from ralph.pipeline.conflict_resolution.git_worktree_observer import GitWorktreeConflictObserver
 from ralph.pipeline.conflict_resolution.graph import (
     PHASE_RESOLUTION,
 )
@@ -106,12 +105,8 @@ from ralph.pipeline.conflict_resolution.status import (
     capture_status_bar_model,
     emit_conflict_phase_line,
 )
-from ralph.pipeline.conflict_resolution.worktree_observer import (
-    GitWorktreeConflictObserver,
-    WorktreeConflictObserver,
-)
 from ralph.pipeline.integration_actions import current_clock
-from ralph.pipeline.rebase_state import ResolutionFailureCause
+from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -120,6 +115,7 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
+    from ralph.pipeline.conflict_resolution.worktree_observer import WorktreeConflictObserver
     from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.scope import WorkspaceScope

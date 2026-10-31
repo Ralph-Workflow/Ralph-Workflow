@@ -252,8 +252,15 @@ def _probe_holder_pid(lock_path: Path, git_dir: Path, holder_pid: int) -> LeaseL
 
     A holder that still holds the lease file open is ``"live"``; a holder
     whose process is gone (or that provably cannot hold the lease) is
-    ``"dead"``; anything the check cannot rule out is ``"unknown"``.
+    ``"dead"``; anything the check cannot rule out is ``"unknown"``. On a
+    platform with no procfs (macOS) a missing ``/proc/<pid>`` proves nothing
+    about the holder, so the check answers ``"unknown"`` and the caller falls
+    back to the repository-wide probe, which consults ``lsof`` there.
     """
+    proc_root = Path("/proc")
+    # filesystem-read-ok: platform probe for procfs itself, not a workspace read
+    if not proc_root.is_dir():
+        return "unknown"
     try:
         lock, live_cwds, common_worktrees_dir, gitdir_bytes, gitdir_common_bytes = (
             _resolve_repo_identity(lock_path, git_dir, None)
@@ -263,7 +270,7 @@ def _probe_holder_pid(lock_path: Path, git_dir: Path, holder_pid: int) -> LeaseL
     except OSError:
         return "unknown"
     return _check_pid_liveness(
-        Path("/proc"),
+        proc_root,
         str(holder_pid),
         lock_resolved,
         live_cwds,

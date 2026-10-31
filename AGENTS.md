@@ -135,11 +135,14 @@ failure). Fabrication is the single gravest threat to this project's credibility
 - All code **must** be testable in a black box way. If you cannot test it easily, it strongly suggests you have to refactor.
 - If there is a test failure, either the tests is implemented wrong, the code behavior is wrong, or the test is testing the wrong behavior. DO NOT change the test to match the current implementation. A test may never make any assumptions about the underlying implementation of the code.
 
-### ═══ ABSOLUTE TEST BUDGET — 60s, IMMUTABLE ═══
+### ═══ TEST BUDGET — 60s wall clock net of host contention, 600 CPU core-seconds, PINNED ═══
 
-- All tests must complete in 60s or less, no exceptions.
-- This 60-second limit is the COMBINED TOTAL wall-clock budget for ALL test suites running sequentially under `make verify`. It is ABSOLUTE and IMMUTABLE — enforced by `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`. Individual suite timeouts (PYTEST_SUITE_TIMEOUT_SECONDS, DEFAULT_SUITE_TIMEOUT_SECONDS) are per-suite caps only; the combined budget cannot be circumvented by splitting tests, adding suites, or changing per-suite limits. A timeout failure is a test design defect — fix the test, not the budget.
-- Per-suite timeouts (PYTEST_SUITE_TIMEOUT_SECONDS, DEFAULT_SUITE_TIMEOUT_SECONDS) are SECONDARY caps only. The AUTHORITATIVE and only budget that matters is `_TOTAL_TEST_BUDGET_SECONDS = 60.0` tracked cumulatively by `ralph/verify.py` via `time.monotonic()` across ALL `_BUDGET_TRACKED_STEPS`. Raising per-suite limits does NOT increase the combined budget.
+- All tests must complete in 60s or less of their own time, no exceptions.
+- This 60-second limit is the COMBINED TOTAL wall-clock budget for ALL test suites running sequentially under `make verify`, enforced by `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`. The combined budget cannot be circumvented by splitting tests, adding suites, or changing per-suite limits. A budget failure is a test design defect — fix the test, not the budget.
+- Wall clock on a shared host also measures every other process. `ralph/verify.py` therefore charges the tracked steps two ways (`ralph/verify_budget.py` documents the rule):
+  - **CPU** — the core-seconds the suite's own process trees consumed (`getrusage(RUSAGE_CHILDREN)`), capped at `_TOTAL_TEST_CPU_BUDGET_SECONDS = 600.0`. This is the work the suite controls, so exceeding it ALWAYS fails, however idle or busy the host.
+  - **Wall clock** — over 60 s is a FAILURE unless it fits once the CPU other processes used meanwhile is credited (their core-seconds ÷ the host's cores). A run that fits only with that credit passes with a host-contention WARNING; on an idle host the credit is ~0 and 60 s applies as written. A WARNING is not a licence to grow the suite: the CPU budget still binds.
+- Per-suite timeouts (PYTEST_SUITE_TIMEOUT_SECONDS, DEFAULT_SUITE_TIMEOUT_SECONDS = 180) and the cumulative `_TOTAL_TEST_HANG_CAP_SECONDS = 180.0` are HANG caps only, not speed budgets. Raising them does NOT increase the combined budget.
 - The budget enforcement in `ralph/verify.py` uses `if`/`raise RuntimeError` (NOT `assert`) — this prevents `python -O` from stripping the invariant checks. All import-time invariants survive `-O`.
 
 **Every import-time invariant in `ralph/verify.py` that guards the budget:**
@@ -148,6 +151,8 @@ failure). Fabrication is the single gravest threat to this project's credibility
 |---|---|---|
 | `_TOTAL_TEST_BUDGET_SECONDS > 0` | `must be positive` | Budget can't be zero or negative |
 | `abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9` | `must be 60.0` | Budget constant can't be silently altered |
+| `abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 600.0) < 1e-9` | `must be 600.0` | CPU budget can't be silently altered |
+| `_TOTAL_TEST_HANG_CAP_SECONDS == 3 * _TOTAL_TEST_BUDGET_SECONDS` | `must be 3 x _TOTAL_TEST_BUDGET_SECONDS` | Hang cap can't drift into a budget |
 | `_BUDGET_TRACKED_STEPS` indices valid | `indices must be valid` | Tracked steps must exist in `_VERIFY_STEPS` |
 | Tracked steps have positive timeout | `must have a positive timeout` | Budget-tracked steps need timeout |
 | `_KNOWN_TEST_STEP_LABELS` non-empty | `must not be empty` | Can't empty label set to hide test steps |
@@ -159,13 +164,13 @@ failure). Fabrication is the single gravest threat to this project's credibility
 
 All invariants are tested in `tests/test_verify_invariants.py` under `python -O` to confirm immunity.
 
-**Non-circumvention rule — test budget** — the following do **NOT** circumvent the 60-second combined budget (see also `docs/agents/verification.md` §'Total test budget — 60 seconds, ABSOLUTE and IMMUTABLE' for the full cross-reference table):
+**Non-circumvention rule — test budget** — the following do **NOT** circumvent the combined budget (see also `docs/agents/verification.md` §'Total test budget' for the full cross-reference table):
   - Splitting tests into more suites (N suites does NOT give N × 60 s; cumulative tracker sums time across ALL budget-tracked steps)
   - Moving slow tests to a different suite, target, or Makefile recipe
   - Renaming test targets or adding new test-related `_VERIFY_STEPS` entries without also adding to `_KNOWN_TEST_STEP_LABELS` and `_BUDGET_TRACKED_STEPS`
   - Raising `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS` in the Makefile
   - Setting environment variables (`RALPH_PYTEST_SUITE_TIMEOUT_SECONDS`, `RALPH_PYTEST_TEST_TIMEOUT_SECONDS`)
-  - Raising `_TOTAL_TEST_BUDGET_SECONDS`, or narrowing `_BUDGET_TRACKED_STEPS` / `_KNOWN_TEST_STEP_LABELS` so a step that runs a test suite stops being charged, in `ralph/verify.py` (blocked by import-time RuntimeError checks — immune to `python -O`). EVERY `_VERIFY_STEPS` entry that runs tests belongs in both sets. The current `make test` profile includes the registered real-git auto-integration files through the `required_auto_integrate_e2e` marker even when they also carry `subprocess_e2e`; any future separate test step must be tracked too.
+  - Raising `_TOTAL_TEST_BUDGET_SECONDS`, `_TOTAL_TEST_CPU_BUDGET_SECONDS` or `_TOTAL_TEST_HANG_CAP_SECONDS`, or narrowing `_BUDGET_TRACKED_STEPS` / `_KNOWN_TEST_STEP_LABELS` so a step that runs a test suite stops being charged, in `ralph/verify.py` (blocked by import-time RuntimeError checks — immune to `python -O`). EVERY `_VERIFY_STEPS` entry that runs tests belongs in both sets. The current `make test` profile includes the registered real-git auto-integration files through the `required_auto_integrate_e2e` marker even when they also carry `subprocess_e2e`; any future separate test step must be tracked too.
   - Emptying `_KNOWN_TEST_STEP_LABELS` to hide test steps from budget tracking (blocked by import-time non-empty RuntimeError check)
   - Emptying `_BUDGET_TRACKED_STEPS` to disable budget enforcement (blocked by import-time non-empty RuntimeError check)
   - Removing `'make test'` from `_KNOWN_TEST_STEP_LABELS` to silently exclude the primary test step (blocked by import-time containment RuntimeError check)
@@ -246,7 +251,7 @@ If verification fails, fix the issue and rerun it.
 
 Run the extra smoke checks or focused tests from `docs/agents/verification.md` whenever the touched area requires them.
 
-The 60s combined test budget is absolute; see `docs/agents/verification.md` for the full policy.
+The combined test budget (60s wall clock net of host contention, 600 CPU core-seconds) is pinned; see `docs/agents/verification.md` for the full policy.
 
 ## Documentation and file hygiene
 

@@ -76,7 +76,6 @@ from ralph.pipeline._integration_diagnostic_state import (
     DIAGNOSTIC_REPAIR_ATTEMPT_CAP,
 )
 from ralph.pipeline.auto_integrate_record import BUMP_DIAGNOSTIC_ATTEMPT
-from ralph.pipeline.conflict_resolution.attempt_fault import ConflictAttemptOutcome
 from ralph.pipeline.conflict_resolution.resolver_health import (
     bench_resolver,
     choose_resolver,
@@ -91,6 +90,7 @@ from ralph.pipeline.integration_ladder import (
     run_ladder_rung,
 )
 from ralph.pipeline.integration_owner import RecordFactOutcome
+from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence

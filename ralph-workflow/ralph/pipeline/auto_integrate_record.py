@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Literal
 from loguru import logger
 from pydantic import ConfigDict
 
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import atomic_write_bytes_if_changed
 from ralph.pipeline._auto_integrate_record_restamp import (
@@ -53,7 +54,6 @@ from ralph.pipeline.auto_integrate_transition import (
     Transition,
     transition_by_name,
 )
-from ralph.pipeline.rebase_state import ResolutionFailureCause
 from ralph.pydantic_compat import RalphBaseModel
 
 if TYPE_CHECKING:

@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.auto_integrate_record import (
     AUTO_INTEGRATE_RECORD_FILENAME,
     RAISE_DIAGNOSTIC_INTERVENTION,
@@ -28,7 +29,6 @@ from ralph.pipeline.auto_integrate_record import (
     parse_record_payload,
     read_record,
 )
-from ralph.pipeline.rebase_state import ResolutionFailureCause
 
 
 def _write_legacy_record(
