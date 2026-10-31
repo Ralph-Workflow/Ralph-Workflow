@@ -70,6 +70,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.pipeline._integration_action import RebaseOutcomeKind
+from ralph.pipeline.auto_integrate_backoff import MAX_RETRY_DEADLINE_HORIZON_SECONDS
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -389,7 +390,11 @@ def apply_conflict_budget(
     carried = prior_conflict_count(prior, target, identity, attempts=attempts)
     effective_deadline = retry_deadline
     if effective_deadline is None and clock is not None and cooldown_seconds is not None:
-        effective_deadline = _read_clock_seconds(clock) + float(cooldown_seconds)
+        # Never arm a monotonic deadline past the horizon readers accept
+        # (``retry_deadline_is_live``): beyond it a deadline is read as a
+        # stale reading from a previous boot and expires.
+        cooldown = min(float(cooldown_seconds), MAX_RETRY_DEADLINE_HORIZON_SECONDS)
+        effective_deadline = _read_clock_seconds(clock) + cooldown
 
     if record.fast_forwarded:
         updated = record.record_consecutive_conflicts(0, cap=attempts).set_retry_deadline(None)

@@ -56,13 +56,38 @@ RETRY_BASE_DELAY_SECONDS = 0.5
 #: so waiting longer here buys nothing.
 RETRY_MAX_DELAY_SECONDS = 4.0
 
+#: Longest bounded-retry wait any writer may arm: one hour, the default
+#: ceiling of an agent cooldown (``AgentFailureLedger``), and far above
+#: :data:`RETRY_MAX_DELAY_SECONDS`. ``RebaseState.retry_deadline`` is a
+#: MONOTONIC instant persisted in the checkpoint. After a reboot the
+#: monotonic clock restarts near zero, so a deadline written during the
+#: previous boot lies about the previous uptime in the future. Writers
+#: never arm a deadline beyond this horizon, so a reader that finds one
+#: further away knows it came from another clock origin and treats it as
+#: expired (:func:`retry_deadline_is_live`).
+MAX_RETRY_DEADLINE_HORIZON_SECONDS = 3600.0
+
 __all__ = [
+    "MAX_RETRY_DEADLINE_HORIZON_SECONDS",
     "RETRY_BASE_DELAY_SECONDS",
     "RETRY_MAX_DELAY_SECONDS",
     "compute_retry_deadline",
     "compute_retry_delay",
+    "retry_deadline_is_live",
     "wait_before_retry",
 ]
+
+
+def retry_deadline_is_live(deadline: float, now: float) -> bool:
+    """Whether a persisted retry ``deadline`` still authorises waiting at ``now``.
+
+    Live means strictly in the future and no further away than
+    :data:`MAX_RETRY_DEADLINE_HORIZON_SECONDS`. A deadline beyond the
+    horizon cannot have been armed on this clock (no writer arms one that
+    far out); it is a monotonic reading from a previous boot and is stale.
+    """
+    remaining = deadline - now
+    return 0.0 < remaining <= MAX_RETRY_DEADLINE_HORIZON_SECONDS
 
 
 def _read_clock_seconds(clock: object) -> float:
@@ -114,6 +139,8 @@ def compute_retry_deadline(
 
     Respects clock boundaries: only queries the injected clock, never
     falls back to direct time.monotonic / time.time calls in decision code.
+    The delay is capped at :data:`MAX_RETRY_DEADLINE_HORIZON_SECONDS`, the
+    horizon readers accept.
     """
     now = _read_clock_seconds(clock)
     delay = (
@@ -121,7 +148,7 @@ def compute_retry_deadline(
         if cooldown_seconds is not None
         else compute_retry_delay(attempt, jitter=jitter)
     )
-    return now + delay
+    return now + min(delay, MAX_RETRY_DEADLINE_HORIZON_SECONDS)
 
 
 def wait_before_retry(

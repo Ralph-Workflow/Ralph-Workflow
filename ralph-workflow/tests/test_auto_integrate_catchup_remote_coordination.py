@@ -8,7 +8,11 @@ import pytest
 
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline import auto_integrate_catchup as catchup
-from ralph.pipeline.auto_integrate_catchup_coordination import remote_sync_transaction
+from ralph.pipeline.auto_integrate_catchup_coordination import (
+    REMOTE_SYNC_INTERVAL_SECONDS,
+    remote_sync_interval_seconds,
+    remote_sync_transaction,
+)
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_DIVERGED,
     REFRESH_ORIGIN_AHEAD,
@@ -24,18 +28,16 @@ _LOCAL_SHA = "a" * 40
 _REMOTE_SHA = "b" * 40
 
 
-def _config(*, remote_enabled: bool = True, interval: float = 30.0) -> UnifiedConfig:
-    return UnifiedConfig.model_validate(
-        {
-            "general": {
-                "auto_integrate_enabled": True,
-                "auto_integrate_target": "main",
-                "auto_integrate_remote_enabled": remote_enabled,
-                "auto_integrate_remote": "origin",
-                "auto_integrate_remote_interval_seconds": interval,
-            }
-        }
-    )
+def _config(*, remote_enabled: bool = True, interval: float | None = 30.0) -> UnifiedConfig:
+    general: dict[str, object] = {
+        "auto_integrate_enabled": True,
+        "auto_integrate_target": "main",
+        "auto_integrate_remote_enabled": remote_enabled,
+        "auto_integrate_remote": "origin",
+    }
+    if interval is not None:
+        general["auto_integrate_remote_interval_seconds"] = interval
+    return UnifiedConfig.model_validate({"general": general})
 
 
 def _open_local_gates(monkeypatch: pytest.MonkeyPatch) -> list[str]:
@@ -86,7 +88,9 @@ def _open_local_gates(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 def _lease(*, acquired: bool = True, fetch_allowed: bool = True):
     @contextmanager
-    def _acquire(_root: Path, _remote: str, _target: str) -> Iterator[object | None]:
+    def _acquire(
+        _root: Path, _remote: str, _target: str, **_kwargs: object
+    ) -> Iterator[object | None]:
         if not acquired:
             yield None
             return
@@ -213,9 +217,31 @@ def test_shared_throttle_prevents_second_fetch_but_allows_local_catchup(
     assert checkout_merges == [_REMOTE_SHA]
 
 
-def test_remote_sync_uses_five_minute_cadence_while_local_catchup_continues(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize(
+    ("interval", "probe_times", "expected_fetches"),
+    [
+        pytest.param(None, (0.0, 299.0, 300.0), [0.0, 300.0], id="unset-defaults-to-300s"),
+        pytest.param(0.0, (0.0, 299.0, 300.0), [0.0, 300.0], id="zero-defaults-to-300s"),
+        pytest.param(60.0, (0.0, 59.0, 60.0), [0.0, 60.0], id="configured-60s"),
+        pytest.param(900.0, (0.0, 300.0, 900.0), [0.0, 900.0], id="configured-900s"),
+    ],
+)
+def test_remote_sync_fetch_cadence_honours_configured_interval_while_local_catchup_continues(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    interval: float | None,
+    probe_times: tuple[float, float, float],
+    expected_fetches: list[float],
 ) -> None:
+    """The ticker fetches once per ``auto_integrate_remote_interval_seconds``.
+
+    A positive configured interval is the fleet-wide fetch cadence; unset or
+    ``0.0`` (the field default, "fetch at every seam") keeps the ticker's
+    documented 300 s cadence. Probes at the start, just inside and exactly
+    at one cadence fetch twice; every probe still fast-forwards the checkout.
+    Before the fix the cadence was hard-coded to 300 s, so a 60 s interval
+    fetched at 0 s only and a 900 s interval fetched again at 300 s.
+    """
     common_dir = tmp_path / ".git"
     common_dir.mkdir()
     checkout_merges = _open_local_gates(monkeypatch)
@@ -233,19 +259,36 @@ def test_remote_sync_uses_five_minute_cadence_while_local_catchup_continues(
         lambda *_args, **_kwargs: fetches.append(now) or REFRESH_DIVERGED,
     )
 
-    first = catchup.attempt_catchup_fast_forward(_config(interval=0.0), tmp_path)
-    now = 299.0
-    inside_cadence = catchup.attempt_catchup_fast_forward(_config(interval=0.0), tmp_path)
-    now = 300.0
-    at_boundary = catchup.attempt_catchup_fast_forward(_config(interval=0.0), tmp_path)
+    outcomes: list[str] = []
+    for probe_time in probe_times:
+        now = probe_time
+        outcomes.append(catchup.attempt_catchup_fast_forward(_config(interval=interval), tmp_path))
 
-    assert [first, inside_cadence, at_boundary] == [
-        catchup.CATCHUP_FAST_FORWARDED,
-        catchup.CATCHUP_FAST_FORWARDED,
-        catchup.CATCHUP_FAST_FORWARDED,
-    ]
-    assert fetches == [0.0, 300.0]
+    assert outcomes == [catchup.CATCHUP_FAST_FORWARDED] * 3
+    assert fetches == expected_fetches
     assert checkout_merges == [_REMOTE_SHA, _REMOTE_SHA, _REMOTE_SHA]
+
+
+@pytest.mark.parametrize(
+    ("interval", "expected"),
+    [
+        pytest.param(None, REMOTE_SYNC_INTERVAL_SECONDS, id="unset"),
+        pytest.param(0.0, REMOTE_SYNC_INTERVAL_SECONDS, id="zero-means-every-seam"),
+        pytest.param(45.0, 45.0, id="configured"),
+        pytest.param(3600.0, 3600.0, id="configured-hour"),
+        pytest.param(float("inf"), REMOTE_SYNC_INTERVAL_SECONDS, id="infinite-is-unusable"),
+    ],
+)
+def test_remote_sync_interval_reads_the_configured_cadence(
+    interval: float | None, expected: float
+) -> None:
+    """Only a positive, finite configured interval replaces the 300 s default.
+
+    An infinite interval would persist a non-finite ``fetch_after`` that the
+    throttle treats as corrupt -- a fetch on every tick -- so it falls back.
+    """
+    assert REMOTE_SYNC_INTERVAL_SECONDS == 300.0
+    assert remote_sync_interval_seconds(_config(interval=interval)) == expected
 
 
 def test_remote_disabled_does_not_attempt_coordination(

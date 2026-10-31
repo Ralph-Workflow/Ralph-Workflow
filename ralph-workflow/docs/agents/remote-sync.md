@@ -2,8 +2,9 @@
 
 > **Page role:** explanation and reference for contributors who change
 > auto-integration. It states what remote sync guarantees, which code paths
-> pull from the remote, how the background ticker is scheduled, when the code
-> refuses to move a ref, and which tests pin all of it. Operator-facing
+> pull from the remote, how the background ticker is scheduled, how it stays
+> out of a checkout an agent is working in, when the code refuses to move a
+> ref, and which tests pin all of it. Operator-facing
 > configuration lives in the manual's
 > [Auto-integration section](../sphinx/configuration.md#auto-integration).
 
@@ -27,6 +28,9 @@ default) and the remote named by `general.auto_integrate_remote` (default
    tip. The local target is never force-moved and nothing is force-pushed.
 4. Unsafe states fail closed and are recorded (see
    [Fail-closed cases](#fail-closed-cases)). A later seam or tick retries.
+5. The ticker never moves a checkout while an agent phase runs in it (see
+   [Agent phases](#agent-phases)). Fetching and the advance of a target
+   checked out elsewhere continue throughout the phase.
 
 With remote sync **disabled** (`auto_integrate_remote_enabled = false`), or in
 a repository without the configured remote, auto-integration is
@@ -59,8 +63,16 @@ table in `auto_integrate_ff.fast_forward_target`.
   holds a non-blocking OS lock keyed by (common git dir, remote, target) and
   persists a `fetch_after` deadline under `<common-dir>/ralph/auto-integrate-catchup/`.
   All worktrees of one repository share it, so the fleet's ticker fetches at
-  most once per `REMOTE_SYNC_INTERVAL_SECONDS` (300 s). Clock rollback and
-  corrupt state are bounded to one interval.
+  most once per cadence. The cadence is
+  `general.auto_integrate_remote_interval_seconds` when that is a positive,
+  finite number. Otherwise it is `REMOTE_SYNC_INTERVAL_SECONDS` (300 s):
+  `0.0`, the field's default, means "fetch at every seam" for the commit,
+  phase and startup seams, and the ticker keeps 300 s for it so that every
+  worktree does not fetch every 30 s.
+  `auto_integrate_catchup_coordination.remote_sync_interval_seconds` makes
+  this choice. Clock rollback and corrupt state are bounded to one cadence,
+  and a persisted deadline further away than one cadence is re-anchored, so
+  lowering the interval takes effect on the next tick.
 - **Advance on every tick.** The throttle limits only the network fetch. On a
   throttled tick, `_cached_remote_strictly_ahead` compares the local target
   with the remote-tracking ref that some earlier fetch left (the post-tick
@@ -76,10 +88,46 @@ table in `auto_integrate_ff.fast_forward_target`.
 - **Branch independence.** The target sync runs whatever the run checkout is
   on, including a detached HEAD.
 
+### Agent phases
+
+The ticker is a daemon thread in the run loop's own process. The
+repository mutation lease cannot protect an agent: nothing takes it for an
+agent phase, and it is per common git dir, so holding it for a whole phase
+would lock out parallel agents in sibling worktrees. Before this rule only
+"the worktree is dirty" protected an agent. A clean checkout (the agent is
+planning, reading, or between edits) could be fast-forwarded underneath it.
+
+- **Marking.** `runner._execute_effect` wraps every `InvokeAgentEffect` in
+  `process_agent_phases().agent_phase(workspace_scope.root)`
+  (`ralph/pipeline/_auto_integrate_agent_phase.py`). The mark is per
+  checkout and is released on every exit path, including exceptions and
+  `KeyboardInterrupt`.
+- **What waits.** While a checkout is marked, the ticker does not
+  fast-forward it, does not advance a target whose checkout it is (trunk
+  layout: the agent works on the target), and does not run publication
+  when the target's checkout is the agent's. The tick reports
+  `deferred: an agent phase is active in this checkout`
+  (`CATCHUP_DEFERRED_AGENT_PHASE`). That outcome is settled: an hours-long
+  phase never trips the stall warning.
+- **What continues.** The fetch keeps its cadence. A target that is
+  checked out in another worktree, or nowhere, still follows the remote, so
+  remote sync keeps working through long phases.
+- **After the phase.** The first tick after the phase ends applies what was
+  deferred, and the phase-transition seam integrates as before.
+- **No race at the start.** Each ticker mutation of a checkout (its
+  observation and its `merge --ff-only`) runs inside
+  `AgentPhaseActivity.mutation_window()`. Entering a phase waits for an open
+  window to close, so a phase never starts halfway through a fast-forward of
+  its own checkout. When the target lives in the run checkout itself,
+  publication runs inside the window too. The owner seam
+  (`decide_seam_action`) receives the real `agent_active` fact, read inside
+  the window.
+
 ## Fail-closed cases
 
 | State | Behaviour |
 |---|---|
+| Agent phase running in the checkout the ticker would move (ticker) | `deferred: an agent phase is active in this checkout`; nothing in that checkout moves; the fetch and any other target advance still run; the first tick after the phase applies the move. |
 | Dirty checkout that owns the target (ticker) | `refused`; ref, index and files untouched; the next tick retries from the cached tracking ref once the owner is clean. |
 | Dirty checkout that owns the target (post-commit or phase seam on that checkout) | The boundary defers; nothing moves. |
 | Target owner refuses `merge --ff-only` (publication, startup, rejected push) | Reclamation is off on these paths. The result is recorded as `pull failed` with the real refusal reason and a deferred publication. |
@@ -132,10 +180,10 @@ The root causes, with pre-fix line numbers at `77b10ca38`:
 
 | Test | Pins |
 |---|---|
-| `tests/test_auto_integrate_remote_sync_fast_forward_contract.py` | Real-Git contract across post-commit, ticker and startup, in feature-worktree, trunk, detached, dirty, diverged, non-default-remote and remote-disabled topologies (root causes 1-4). |
-| `tests/test_auto_integrate_remote_sync_ticker_cadence.py` | Fast in-process proofs: a throttled tick applies only a strictly-ahead tracking ref; publication advances the target itself and reports a refusal by its cause. |
+| `tests/test_auto_integrate_remote_sync_fast_forward_contract.py` | Real-Git contract across post-commit, ticker and startup, in feature-worktree, trunk, detached, dirty, diverged, non-default-remote and remote-disabled topologies (root causes 1-4); an agent phase leaves its checkout alone while `main` keeps following origin. |
+| `tests/test_auto_integrate_remote_sync_ticker_cadence.py` | Fast in-process proofs: a throttled tick applies only a strictly-ahead tracking ref; publication advances the target itself and reports a refusal by its cause; an agent phase defers its checkout (and, in the trunk layout, the target and publication) without a stall, the target still syncs, the first tick after the phase lands the move, and the runner marks the phase on every exit path. |
 | `tests/test_auto_integrate_catchup_e2e.py` | Real-Git ticker landing, clean and dirty target owners, cross-worktree lock. |
-| `tests/test_auto_integrate_catchup_remote_coordination.py` | The 300 s fetch cadence and the shared persisted throttle. |
+| `tests/test_auto_integrate_catchup_remote_coordination.py` | The fetch cadence (configured interval, 300 s when unset or `0.0`) and the shared persisted throttle. |
 | `tests/test_auto_integrate_remote_refresh.py` | The read-only probe, divergence reconciliation, and the remote-disabled local-only contract. |
 | `tests/test_auto_integrate_acceptance_scenarios_e2e.py` | Publication convergence against a real bare remote. |
 

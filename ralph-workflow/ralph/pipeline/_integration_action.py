@@ -23,6 +23,7 @@ import time
 from enum import StrEnum
 
 from ralph.pipeline._rebase_outcome_kind import RebaseOutcomeKind
+from ralph.pipeline.auto_integrate_backoff import retry_deadline_is_live
 
 
 class IntegrationAction(StrEnum):
@@ -155,6 +156,13 @@ def _conflict_action(
     ``None`` for records that are not in the conflict or
     retained-recovery lifecycle, so the caller can fall through to
     the next authority check.
+
+    ``retry_deadline`` is a persisted MONOTONIC instant. A deadline
+    further in the future than any writer arms
+    (``MAX_RETRY_DEADLINE_HORIZON_SECONDS``) was written against another
+    clock origin -- a previous boot -- and is treated as expired, so a
+    reboot cannot hold the record in ``WAIT_FOR_BOUNDED_RETRY`` for the
+    previous uptime.
     """
     last_outcome: object = _safe_attr(record, "last_outcome")
     recovery_retained: object = _safe_attr(record, "recovery_record_retained")
@@ -170,7 +178,7 @@ def _conflict_action(
     now = _current_time(clock)
     if now is None:
         now = time.monotonic()
-    if now >= deadline_val:
+    if not retry_deadline_is_live(deadline_val, now):
         return IntegrationAction.REQUIRE_INTERVENTION
     return IntegrationAction.WAIT_FOR_BOUNDED_RETRY
 

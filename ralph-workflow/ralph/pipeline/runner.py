@@ -48,6 +48,7 @@ from ralph.phases import handle_phase, register_role_handlers
 from ralph.phases.timing import PhaseTimer
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import progress
+from ralph.pipeline._auto_integrate_agent_phase import process_agent_phases
 from ralph.pipeline._integration_action import (
     IntegrationAction,
     RebaseOutcomeKind,
@@ -405,18 +406,22 @@ def _execute_effect(
     if pipeline_deps is None:
         pipeline_deps = DefaultPipelineFactory().build(config, resolved_display_context)
     if isinstance(effect, InvokeAgentEffect):
-        return execute_agent_effect(
-            effect,
-            config,
-            pipeline_deps,
-            workspace_scope,
-            display=display,
-            display_context=resolved_display_context,
-            verbosity=verbosity,
-            state=state,
-            policy_bundle=policy_bundle,
-            run_id=run_id,
-        )
+        # The agent phase owns this checkout until it returns or raises
+        # (KeyboardInterrupt included): the in-process catch-up ticker
+        # defers every move of it and keeps syncing the target elsewhere.
+        with process_agent_phases().agent_phase(workspace_scope.root):
+            return execute_agent_effect(
+                effect,
+                config,
+                pipeline_deps,
+                workspace_scope,
+                display=display,
+                display_context=resolved_display_context,
+                verbosity=verbosity,
+                state=state,
+                policy_bundle=policy_bundle,
+                run_id=run_id,
+            )
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect_from_deps(
             effect, pipeline_deps, workspace_scope, display, verbosity, config=config

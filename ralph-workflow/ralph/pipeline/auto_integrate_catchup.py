@@ -8,19 +8,26 @@ advance the durable ladder instead of issuing the same merge forever.
 
 With remote sync enabled (``auto_integrate_remote_enabled``) each tick first
 makes the local target follow the configured remote: it fetches at most once
-per shared five-minute cadence, but on EVERY tick fast-forwards the target to
-a remote-tracking tip that strictly descends it, whatever branch this
-checkout is on. A dirty target owner, a diverged target and an unreachable
-remote fail closed. With remote sync disabled the tick is local-only. The
-contract, scheduling, throttle, leases and regression tests are documented in
-``docs/agents/remote-sync.md``.
+per shared fetch cadence (``auto_integrate_remote_interval_seconds``, 300 s
+when unset), but on EVERY tick fast-forwards the target to a remote-tracking
+tip that strictly descends it, whatever branch this checkout is on. A dirty
+target owner, a diverged target and an unreachable remote fail closed. With
+remote sync disabled the tick is local-only.
+
+While an agent phase runs in a checkout (the runner marks it through
+:mod:`ralph.pipeline._auto_integrate_agent_phase`), the tick never moves THAT
+checkout: it records :data:`CATCHUP_DEFERRED_AGENT_PHASE`, a settled outcome
+that never ages into a stall, and keeps fetching and advancing a target that
+is checked out elsewhere or nowhere. The first tick after the phase ends
+applies what was deferred. The contract, scheduling, throttle, leases and
+regression tests are documented in ``docs/agents/remote-sync.md``.
 """
 
 from __future__ import annotations
 
 import subprocess
 import threading
-from contextlib import contextmanager, suppress
+from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
@@ -49,11 +56,17 @@ from ralph.git.merge import (
     worktree_lookup,
 )
 from ralph.git.operations import find_main_worktree_root
+from ralph.pipeline._auto_integrate_agent_phase import (
+    AgentPhaseActivity,
+    process_agent_phases,
+    same_checkout,
+)
 from ralph.pipeline._integration_action import IntegrationAction
 from ralph.pipeline._integration_owner_seam import decide_seam_action
 from ralph.pipeline.auto_integrate_backoff import compute_retry_delay
 from ralph.pipeline.auto_integrate_catchup_coordination import (
     RemoteSyncLease,
+    remote_sync_interval_seconds,
     remote_sync_transaction,
 )
 from ralph.pipeline.auto_integrate_ff import fast_forward_target
@@ -101,6 +114,10 @@ CATCHUP_REFUSED = "refused"
 CATCHUP_REMOTE_SKIPPED = "remote-skipped"
 CATCHUP_FAST_FORWARDED = "fast-forwarded"
 
+#: An agent phase is running in the checkout the tick would have moved. The
+#: move waits for the phase to end; this is a settled outcome, never a stall.
+CATCHUP_DEFERRED_AGENT_PHASE = "deferred: an agent phase is active in this checkout"
+
 #: Named outcomes for the mutation path: an operator must be able to tell an
 #: active agent, a timeout, a killed child and a definite refusal apart.
 CATCHUP_REFUSED_AGENT_ACTIVE = "refused: agent is currently active"
@@ -126,6 +143,7 @@ _CATCHUP_SETTLED_OUTCOMES = (
     CATCHUP_UP_TO_DATE,
     CATCHUP_DIRTY,
     CATCHUP_REFUSED_AGENT_ACTIVE,
+    CATCHUP_DEFERRED_AGENT_PHASE,
 )
 
 #: Elapsed time without integration progress that becomes a visible stall.
@@ -312,12 +330,15 @@ def attempt_catchup_fast_forward(
     clock: Clock | None = None,
     jitter: Callable[[], float] | None = None,
     ledger_failure_budget: CatchupLedgerFailureBudget | None = None,
+    agent_phases: AgentPhaseActivity | None = None,
 ) -> str:
     """One catch-up probe: fast-forward the checkout onto the target if free.
 
     ``ledger``, ``clock`` and ``ledger_failure_budget`` are injection
     seams for deterministic tests; the worker passes its own budget so
-    consecutive ledger failures escalate across ticks.
+    consecutive ledger failures escalate across ticks. ``agent_phases``
+    names the checkouts an agent is working in (the process-wide record
+    when omitted); none of them is ever moved by this probe.
     """
     if not _catchup_enabled(config):
         return CATCHUP_DISABLED
@@ -330,6 +351,7 @@ def attempt_catchup_fast_forward(
     if resolved_target is None:
         return CATCHUP_NO_TARGET
     effective_clock = clock if clock is not None else default_clock()
+    phases = agent_phases if agent_phases is not None else process_agent_phases()
     remote_outcome: str | None = None
     if remote_enabled:
         # The target follows the remote whatever this checkout is on: a
@@ -344,12 +366,17 @@ def attempt_catchup_fast_forward(
             clock=effective_clock,
             jitter=jitter,
             ledger_failure_budget=ledger_failure_budget,
+            agent_phases=phases,
         )
     remote_failed = remote_outcome not in (None, CATCHUP_FAST_FORWARDED)
     if remote_failed or current is None or current == resolved_target:
         # A remote refusal ends the tick; otherwise this checkout has nothing
         # of its own to catch up, so report whether the target moved.
         return remote_outcome or (CATCHUP_NOT_ON_BRANCH if current is None else CATCHUP_ON_TARGET)
+    if phases.is_active(root):
+        # This checkout is the agent's: its own catch-up waits for the phase
+        # to end (the target above still followed the remote).
+        return CATCHUP_DEFERRED_AGENT_PHASE
     # The owner seam observes against the CONFIGURED remote, exactly like
     # the remote-sync half of the tick: an explicit ``remote`` argument
     # wins, the configured name supplies the default.
@@ -363,6 +390,7 @@ def attempt_catchup_fast_forward(
         clock=effective_clock,
         jitter=jitter,
         ledger_failure_budget=ledger_failure_budget,
+        agent_phases=phases,
     )
 
 
@@ -539,6 +567,7 @@ def _synchronize_remote_target(
     clock: Clock | None = None,
     jitter: Callable[[], float] | None = None,
     ledger_failure_budget: CatchupLedgerFailureBudget | None = None,
+    agent_phases: AgentPhaseActivity | None = None,
 ) -> str | None:
     """Fetch (on cadence) and advance the target without mutating while an agent is active.
 
@@ -549,11 +578,18 @@ def _synchronize_remote_target(
     post-tick publication, post-commit, startup) refresh the tracking ref in
     between, and a refused advance (dirty owner) must be retried as soon as
     the owner is clean -- not one fetch window later.
+
+    The fetch cadence is the configured
+    ``auto_integrate_remote_interval_seconds`` (300 s when unset). An agent
+    phase in the checkout that owns the target defers only the advance:
+    the fetch still runs on cadence.
     """
 
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
     effective_clock = clock if clock is not None else default_clock()
-    with remote_sync_transaction(root, chosen_remote, target) as lease:
+    with remote_sync_transaction(
+        root, chosen_remote, target, interval_seconds=remote_sync_interval_seconds(config)
+    ) as lease:
         if lease is None:
             return CATCHUP_REMOTE_SKIPPED
         with _mutation_lease(root) as lease_verdict:
@@ -569,6 +605,7 @@ def _synchronize_remote_target(
                 clock=effective_clock,
                 jitter=jitter,
                 ledger_failure_budget=ledger_failure_budget,
+                agent_phases=agent_phases,
             )
 
 
@@ -583,6 +620,7 @@ def _refresh_remote_target(
     clock: Clock,
     jitter: Callable[[], float] | None,
     ledger_failure_budget: CatchupLedgerFailureBudget | None = None,
+    agent_phases: AgentPhaseActivity | None = None,
 ) -> str | None:
     """Refresh the remote target on cadence; advance it whenever it is strictly ahead."""
 
@@ -621,6 +659,7 @@ def _refresh_remote_target(
         clock=clock,
         jitter=jitter,
         ledger_failure_budget=ledger_failure_budget,
+        agent_phases=agent_phases,
     )
 
 
@@ -654,8 +693,13 @@ def _observe_remote_target(
     target: str,
     *,
     remote_client: RemoteClient | None,
+    agent_phases: AgentPhaseActivity,
 ) -> tuple[str | None, str]:
-    """Observe the remote tip and prove that its target worktree is safe."""
+    """Observe the remote tip and prove that its target worktree is safe.
+
+    A target checked out where an agent phase is running is never moved:
+    ``merge --ff-only`` there would change the files under the agent.
+    """
 
     if remote_client is not None and hasattr(remote_client, "observe_remote_sha"):
         remote_sha = remote_client.observe_remote_sha(root, target, remote=remote)
@@ -667,8 +711,11 @@ def _observe_remote_target(
     verdict, owner = worktree_lookup(primary_root, target)
     if verdict == WORKTREE_QUERY_FAILED:
         return None, f"{CATCHUP_UNKNOWN}; target={target}@{remote}"
-    if verdict == WORKTREE_FOUND and owner is not None and not _worktree_is_clean(owner):
-        return None, CATCHUP_REFUSED
+    if verdict == WORKTREE_FOUND and owner is not None:
+        if agent_phases.is_active(owner):
+            return None, CATCHUP_DEFERRED_AGENT_PHASE
+        if not _worktree_is_clean(owner):
+            return None, CATCHUP_REFUSED
     return remote_sha, ""
 
 
@@ -682,14 +729,49 @@ def _advance_target_to_remote(
     clock: Clock | None = None,
     jitter: Callable[[], float] | None = None,
     ledger_failure_budget: CatchupLedgerFailureBudget | None = None,
+    agent_phases: AgentPhaseActivity | None = None,
 ) -> str | None:
-    """Advance the target to the observed remote tip under the durable budget."""
+    """Advance the target to the observed remote tip under the durable budget.
 
+    The observation and the move run inside one agent-phase mutation
+    window, so no agent phase can start in the target's checkout between
+    "it is idle" and the ``merge --ff-only``.
+    """
+
+    phases = agent_phases if agent_phases is not None else process_agent_phases()
+    with phases.mutation_window():
+        return _advance_observed_target(
+            root,
+            remote,
+            target,
+            remote_client=remote_client,
+            ledger=ledger,
+            clock=clock,
+            jitter=jitter,
+            ledger_failure_budget=ledger_failure_budget,
+            agent_phases=phases,
+        )
+
+
+def _advance_observed_target(
+    root: Path,
+    remote: str,
+    target: str,
+    *,
+    remote_client: RemoteClient | None,
+    ledger: AttemptLedger | None,
+    clock: Clock | None,
+    jitter: Callable[[], float] | None,
+    ledger_failure_budget: CatchupLedgerFailureBudget | None,
+    agent_phases: AgentPhaseActivity,
+) -> str | None:
+    """Observe the remote tip and the target owner, then charge and move the target."""
     remote_sha, observe_reason = _observe_remote_target(
         root,
         remote,
         target,
         remote_client=remote_client,
+        agent_phases=agent_phases,
     )
     if remote_sha is None:
         return observe_reason
@@ -739,9 +821,13 @@ def observe_remote_target_sha(root: Path, remote: str, target: str) -> str | Non
         _close_repo(repo)
 
 
-def _mutation_refusal(root: Path, target: str, current: str, *, remote: str | None) -> str:
+def _mutation_refusal(
+    root: Path, target: str, current: str, *, remote: str | None, agent_active: bool
+) -> str:
     """Return why the checkout must not be mutated, or ``""`` when it is safe."""
 
+    if agent_active:
+        return CATCHUP_DEFERRED_AGENT_PHASE
     if not _worktree_is_clean(root):
         return CATCHUP_DIRTY
     if not _still_safe_to_merge(root, current):
@@ -750,10 +836,11 @@ def _mutation_refusal(root: Path, target: str, current: str, *, remote: str | No
         # The single owner decides against the SAME facts the other seams
         # hand it: the durable record loaded from disk (``None`` when none
         # or corrupt — the seam reconciles that too) and the CONFIGURED
-        # remote. The mutation lease is held here, so no agent phase is
-        # active in the worktree and the observation records that.
+        # remote. ``agent_active`` is the worker's own agent-phase record,
+        # read inside the mutation window (it cannot flip to active
+        # until the window closes), so the observation records the truth.
         action = decide_seam_action(
-            root, record=read_record(root), agent_active=False, target=target, remote=remote
+            root, record=read_record(root), agent_active=agent_active, target=target, remote=remote
         )
         if isinstance(action, RecordFactOutcome):
             # A fail-closed record fact escalates through the autonomous
@@ -775,14 +862,20 @@ def _fast_forward_if_strictly_behind(
     clock: Clock | None = None,
     jitter: Callable[[], float] | None = None,
     ledger_failure_budget: CatchupLedgerFailureBudget | None = None,
+    agent_phases: AgentPhaseActivity | None = None,
 ) -> str:
-    """SHA-level half of the tick: land only a genuine fast-forward."""
+    """SHA-level half of the tick: land only a genuine fast-forward.
 
+    A checkout an agent phase is working in is never observed or moved; the
+    tick defers and the first tick after the phase ends lands the move.
+    """
+
+    phases = agent_phases if agent_phases is not None else process_agent_phases()
     observation, skip_reason = _observe_strictly_behind(root, target, current)
     if observation is None:
         return skip_reason
     effective_clock = clock if clock is not None else default_clock()
-    with _mutation_lease(root) as lease_verdict:
+    with _mutation_lease(root) as lease_verdict, phases.mutation_window():
         if lease_verdict != "acquired":
             logger.warning(
                 "auto_integrate catch-up tick deferred: {}; {}",
@@ -790,7 +883,9 @@ def _fast_forward_if_strictly_behind(
                 observation.summary,
             )
             return _lease_failure(lease_verdict)
-        refusal = _mutation_refusal(root, target, current, remote=remote)
+        refusal = _mutation_refusal(
+            root, target, current, remote=remote, agent_active=phases.is_active(root)
+        )
         if refusal:
             return refusal
         lock_reason = _recover_stale_locks(root)
@@ -885,7 +980,12 @@ class _CatchupStallState:
 
 
 class AutoIntegrateCatchupWorker:
-    """Bounded daemon-threaded catch-up loop over the catch-up tick."""
+    """Bounded daemon-threaded catch-up loop over the catch-up tick.
+
+    ``agent_phases`` is the record of checkouts an agent phase is working in
+    (the process-wide one the runner marks, unless a test injects its own).
+    The worker never moves such a checkout; see :attr:`agent_phases`.
+    """
 
     def __init__(
         self,
@@ -901,6 +1001,7 @@ class AutoIntegrateCatchupWorker:
         clock: Clock | None = None,
         jitter: Callable[[], float] | None = None,
         stall_window_seconds: float = DEFAULT_CATCHUP_STALL_WINDOW_SECONDS,
+        agent_phases: AgentPhaseActivity | None = None,
     ) -> None:
         if interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
@@ -916,6 +1017,7 @@ class AutoIntegrateCatchupWorker:
         self._clock = clock
         self._effective_clock = clock if clock is not None else default_clock()
         self._jitter = jitter
+        self._agent_phases = agent_phases if agent_phases is not None else process_agent_phases()
         self._stall_window = float(stall_window_seconds)
         self._last_progress_at = self._effective_clock.now()
         self._stall_state: _CatchupStallState | None = None
@@ -933,7 +1035,17 @@ class AutoIntegrateCatchupWorker:
             clock=self._clock,
             jitter=self._jitter,
             ledger_failure_budget=self._ledger_failure_budget,
+            agent_phases=self._agent_phases,
         )
+
+    @property
+    def agent_phases(self) -> AgentPhaseActivity:
+        """The agent-phase record this worker honours.
+
+        Enter ``worker.agent_phases.agent_phase(root)`` around an agent
+        phase in ``root``: until it exits, no tick moves that checkout.
+        """
+        return self._agent_phases
 
     def start(self) -> None:
         """Spawn the daemon worker thread. Idempotent: a second call is a no-op."""
@@ -1025,34 +1137,7 @@ class AutoIntegrateCatchupWorker:
             }
             and not outcome.startswith(("failed:", "ladder:"))
         ):
-            with _mutation_lease(self._root) as lease_verdict:
-                if lease_verdict != "acquired":
-                    logger.warning(
-                        "auto_integrate catch-up publication deferred: {}",
-                        _lease_failure(lease_verdict),
-                    )
-                else:
-                    try:
-                        from ralph.pipeline.auto_integrate_remote_sync import (
-                            reconcile_remote_publication,
-                        )
-
-                        target = resolve_integration_target(self._config, self._root)
-                        if target is not None:
-                            reconcile_remote_publication(
-                                self._config,
-                                self._root,
-                                target,
-                                remote=remote_target_name(self._config),
-                                remote_client=self._remote_client,
-                                rebase_stop_resolver=self._rebase_stop_resolver,
-                            )
-                    except Exception as tick_exc:
-                        logger.warning(
-                            "auto_integrate catch-up publication tick failed: {}: {}",
-                            CATCHUP_UNKNOWN,
-                            tick_exc,
-                        )
+            self._publish_after_tick()
         # Ordinary skips stay quiet. A refusal, escalation, or failed
         # external call is NOT a quiet skip: it names the current reason.
         if outcome == CATCHUP_FAST_FORWARDED:
@@ -1061,6 +1146,71 @@ class AutoIntegrateCatchupWorker:
             logger.warning("auto_integrate catch-up tick deferred: {}", outcome)
         elif outcome.startswith(("failed:", "ladder:")) or outcome == CATCHUP_REFUSED:
             logger.warning("auto_integrate catch-up tick failed: {}", outcome)
+
+    def _publication_window(self, target: str) -> AbstractContextManager[None] | None:
+        """Return the window publication runs in, or ``None`` to defer it.
+
+        Publication may fast-forward or rebase the target's checkout. When
+        an agent phase is running there (trunk layout: the agent works on
+        the target), publication waits for the phase to end. When the
+        target lives in this run's own checkout, publication holds the
+        agent-phase window so no phase can start halfway through it. An
+        unknown owner may be this checkout, so it is treated as one.
+        """
+        try:
+            verdict, owner = worktree_lookup(find_main_worktree_root(self._root), target)
+        except Exception:
+            verdict, owner = WORKTREE_QUERY_FAILED, None
+        if verdict == WORKTREE_FOUND and owner is not None:
+            if self._agent_phases.is_active(owner):
+                return None
+            if same_checkout(owner, self._root):
+                return self._agent_phases.mutation_window()
+        elif verdict == WORKTREE_QUERY_FAILED:
+            if self._agent_phases.is_active(self._root):
+                return None
+            return self._agent_phases.mutation_window()
+        return nullcontext()
+
+    def _publish_after_tick(self) -> None:
+        """Run the publication reconciler under the mutation lease (never under an agent)."""
+        with _mutation_lease(self._root) as lease_verdict:
+            if lease_verdict != "acquired":
+                logger.warning(
+                    "auto_integrate catch-up publication deferred: {}",
+                    _lease_failure(lease_verdict),
+                )
+                return
+            try:
+                from ralph.pipeline.auto_integrate_remote_sync import (
+                    reconcile_remote_publication,
+                )
+
+                target = resolve_integration_target(self._config, self._root)
+                if target is None:
+                    return
+                window = self._publication_window(target)
+                if window is None:
+                    logger.debug(
+                        "auto_integrate catch-up publication deferred: {}",
+                        CATCHUP_DEFERRED_AGENT_PHASE,
+                    )
+                    return
+                with window:
+                    reconcile_remote_publication(
+                        self._config,
+                        self._root,
+                        target,
+                        remote=remote_target_name(self._config),
+                        remote_client=self._remote_client,
+                        rebase_stop_resolver=self._rebase_stop_resolver,
+                    )
+            except Exception as tick_exc:
+                logger.warning(
+                    "auto_integrate catch-up publication tick failed: {}: {}",
+                    CATCHUP_UNKNOWN,
+                    tick_exc,
+                )
 
 
 def start_catchup_worker_if_enabled(
@@ -1093,6 +1243,7 @@ def start_catchup_worker_if_enabled(
 
 __all__ = [
     "CATCHUP_DEFEDITELY_FAILED",
+    "CATCHUP_DEFERRED_AGENT_PHASE",
     "CATCHUP_DIRTY",
     "CATCHUP_DISABLED",
     "CATCHUP_DIVERGED",
@@ -1116,9 +1267,11 @@ __all__ = [
     "CATCHUP_UP_TO_DATE",
     "DEFAULT_CATCHUP_INTERVAL_SECONDS",
     "DEFAULT_CATCHUP_STALL_WINDOW_SECONDS",
+    "AgentPhaseActivity",
     "AutoIntegrateCatchupWorker",
     "CatchupLedgerFailureBudget",
     "attempt_catchup_fast_forward",
+    "process_agent_phases",
     "resolve_integration_target",
     "start_catchup_worker_if_enabled",
 ]

@@ -1,4 +1,14 @@
-"""Cross-worktree lock and throttle for remote catch-up synchronization."""
+"""Cross-worktree lock and throttle for remote catch-up synchronization.
+
+The catch-up ticker of every worktree of one repository shares one fetch
+cadence per (remote, target): :func:`remote_sync_transaction` hands out the
+lock and decides whether this tick may fetch. The cadence is
+``general.auto_integrate_remote_interval_seconds`` when it is a positive,
+finite number (:func:`remote_sync_interval_seconds`) and
+:data:`REMOTE_SYNC_INTERVAL_SECONDS` (300 s) otherwise. ``0.0``, the field's
+default, means "fetch at every seam" for the commit, phase and startup
+seams; the background ticker keeps the 300 s fleet cadence for it.
+"""
 
 from __future__ import annotations
 
@@ -25,9 +35,30 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from typing import TextIO
 
+    from ralph.config.models import UnifiedConfig
+
 
 _COORDINATION_DIRECTORY: Final = "ralph/auto-integrate-catchup"
 REMOTE_SYNC_INTERVAL_SECONDS: Final = 300.0
+
+
+def remote_sync_interval_seconds(config: UnifiedConfig | None) -> float:
+    """Return the ticker's fleet-wide fetch cadence for ``config``.
+
+    A positive, finite ``general.auto_integrate_remote_interval_seconds``
+    is honoured as configured. ``0.0`` (the default: the seams fetch every
+    time) and any unusable value fall back to
+    :data:`REMOTE_SYNC_INTERVAL_SECONDS`, so the background ticker never
+    fetches on every 30-second tick of every worktree.
+    """
+    general: object = getattr(config, "general", None)
+    configured: object = getattr(general, "auto_integrate_remote_interval_seconds", None)
+    if isinstance(configured, bool) or not isinstance(configured, (int, float)):
+        return REMOTE_SYNC_INTERVAL_SECONDS
+    interval = float(configured)
+    if not math.isfinite(interval) or interval <= 0.0:
+        return REMOTE_SYNC_INTERVAL_SECONDS
+    return interval
 
 
 @dataclass(slots=True)
@@ -118,8 +149,16 @@ def remote_sync_transaction(
     root: Path,
     remote: str,
     target: str,
+    *,
+    interval_seconds: float = REMOTE_SYNC_INTERVAL_SECONDS,
 ) -> Iterator[RemoteSyncLease | None]:
-    """Acquire the cross-worktree remote lock and yield its throttle lease."""
+    """Acquire the cross-worktree remote lock and yield its throttle lease.
+
+    ``interval_seconds`` is the fetch cadence (see
+    :func:`remote_sync_interval_seconds`). A persisted deadline further away
+    than one cadence is re-anchored to one cadence, so lowering the
+    configured interval takes effect at once.
+    """
 
     common_dir = _common_git_dir(root)
     if common_dir is None:
@@ -142,9 +181,9 @@ def remote_sync_transaction(
             yield None
             return
         yield RemoteSyncLease(
-            fetch_allowed=_fetch_allowed(state_path, REMOTE_SYNC_INTERVAL_SECONDS),
+            fetch_allowed=_fetch_allowed(state_path, interval_seconds),
             _state_path=state_path,
-            _interval_seconds=REMOTE_SYNC_INTERVAL_SECONDS,
+            _interval_seconds=interval_seconds,
         )
     finally:
         _unlock(handle)
@@ -152,4 +191,9 @@ def remote_sync_transaction(
             handle.close()
 
 
-__all__ = ["REMOTE_SYNC_INTERVAL_SECONDS", "RemoteSyncLease", "remote_sync_transaction"]
+__all__ = [
+    "REMOTE_SYNC_INTERVAL_SECONDS",
+    "RemoteSyncLease",
+    "remote_sync_interval_seconds",
+    "remote_sync_transaction",
+]

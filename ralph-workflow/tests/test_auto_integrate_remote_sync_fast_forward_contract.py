@@ -30,6 +30,11 @@ Unsafe states fail closed and are reported, never forced:
   reconciliation aborts cleanly and leaves both the local and the remote ref
   where they were.
 
+While an agent phase runs in a checkout, the ticker never moves THAT
+checkout (nor the target, when the agent works on it directly), but it keeps
+fetching and keeps advancing a target checked out elsewhere; the first tick
+after the phase lands what it deferred.
+
 With remote sync DISABLED, auto-integration stays local-only: no remote state
 ever moves a local ref.
 
@@ -70,6 +75,7 @@ import pytest
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.auto_integrate import auto_integrate_after_commit
 from ralph.pipeline.auto_integrate_catchup import (
+    AgentPhaseActivity,
     AutoIntegrateCatchupWorker,
     start_catchup_worker_if_enabled,
 )
@@ -219,10 +225,18 @@ def _post_commit(config: UnifiedConfig, root: Path) -> RebaseState | None:
     )
 
 
-def _run_ticks(config: UnifiedConfig, root: Path, ticks: int = 1) -> None:
+def _run_ticks(
+    config: UnifiedConfig,
+    root: Path,
+    ticks: int = 1,
+    *,
+    agent_phases: AgentPhaseActivity | None = None,
+) -> None:
     """Run ``ticks`` real catch-up ticks through the worker's public loop."""
     stops = iter([False] * ticks + [True])
-    worker = AutoIntegrateCatchupWorker(config, root, wait=lambda _interval: next(stops))
+    worker = AutoIntegrateCatchupWorker(
+        config, root, wait=lambda _interval: next(stops), agent_phases=agent_phases
+    )
     worker.run()
 
 
@@ -489,6 +503,75 @@ def test_ticker_syncs_target_even_when_run_checkout_is_detached(tmp_path: Path) 
     _run_ticks(_config(), topo.feature)
 
     assert topo.ref(_TARGET) == remote_sha
+
+
+def test_ticker_leaves_the_agent_checkout_alone_mid_phase_but_syncs_main(
+    tmp_path: Path,
+) -> None:
+    """An agent phase runs in the clean feature worktree; origin moves.
+
+    Scenario: the feature worktree has no commits of its own, so once
+    ``main`` follows origin it is clean and strictly behind -- exactly what
+    the ticker fast-forwards. An agent is working in it (planning or reading,
+    so nothing is dirty).
+
+    Expected git state: during the phase ``main`` (checked out in the clone)
+    equals the origin tip with its files on disk, while the feature worktree
+    keeps its old HEAD and has no ``remote.txt``. After the phase ends, the
+    next tick fast-forwards the feature onto the origin tip.
+
+    Why: before the fix only "the worktree is dirty" protected a running
+    agent, so the files of a clean checkout changed underneath it mid-phase.
+    Remote sync must not stop for the hours an agent phase can last, so the
+    target keeps following origin meanwhile.
+    """
+    topo = _build(tmp_path, feature_commit=False)
+    before = topo.ref(_FEATURE)
+    remote_sha = topo.push_remote_advance()
+    phases = AgentPhaseActivity()
+
+    with phases.agent_phase(topo.feature):
+        _run_ticks(_config(), topo.feature, agent_phases=phases)
+
+        assert topo.ref(_TARGET) == remote_sha
+        assert (topo.clone / "remote.txt").exists()
+        assert topo.ref(_FEATURE) == before
+        assert _git(topo.feature, "rev-parse", "HEAD") == before
+        assert not (topo.feature / "remote.txt").exists()
+
+    _run_ticks(_config(), topo.feature, agent_phases=phases)
+
+    assert topo.ref(_FEATURE) == remote_sha
+    assert (topo.feature / "remote.txt").exists()
+
+
+def test_trunk_agent_phase_defers_main_but_still_fetches(tmp_path: Path) -> None:
+    """An agent phase runs in the clone, which is ON ``main`` (trunk layout).
+
+    Expected git state: during the phase ``origin/main`` (the tracking ref)
+    already names the new origin tip -- the fetch kept its cadence -- but
+    local ``main`` and the clone's files are unchanged. After the phase, the
+    next tick fast-forwards ``main`` and its files.
+
+    Why: in the trunk layout the target's checkout IS the agent's checkout;
+    ``merge --ff-only`` there would rewrite files under the agent.
+    """
+    topo = _build(tmp_path, feature_commit=False)
+    before = topo.ref(_TARGET)
+    remote_sha = topo.push_remote_advance()
+    phases = AgentPhaseActivity()
+
+    with phases.agent_phase(topo.clone):
+        _run_ticks(_config(), topo.clone, agent_phases=phases)
+
+        assert _git(topo.clone, "rev-parse", f"refs/remotes/origin/{_TARGET}") == remote_sha
+        assert topo.ref(_TARGET) == before
+        assert not (topo.clone / "remote.txt").exists()
+
+    _run_ticks(_config(), topo.clone, agent_phases=phases)
+
+    assert topo.ref(_TARGET) == remote_sha
+    assert (topo.clone / "remote.txt").exists()
 
 
 # ---------------------------------------------------------------------------

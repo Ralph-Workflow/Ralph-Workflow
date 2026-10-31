@@ -203,7 +203,10 @@ class TestBusyRetryActionMapping:
     """The typed BUSY decision authority is identical at all three sites."""
 
     def test_unexpired_deadline_waits_for_bounded_retry(self, busy_refusal_outcome: object) -> None:
-        action = busy_refusal_outcome(10_000.0, clock=lambda: 1.0)
+        # 999 s ahead: unexpired and inside the one-hour horizon writers may
+        # arm. A deadline further ahead is a previous boot's monotonic reading
+        # and expires (tests/test_integration_retry_deadline_reboot.py).
+        action = busy_refusal_outcome(1_000.0, clock=lambda: 1.0)
         assert action is IntegrationAction.WAIT_FOR_BOUNDED_RETRY
 
     def test_missing_deadline_fails_closed_to_stale_intent(

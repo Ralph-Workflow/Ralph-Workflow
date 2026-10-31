@@ -98,6 +98,7 @@ import time
 from typing import TYPE_CHECKING, Final
 
 from ralph.pipeline._integration_action import IntegrationAction, RebaseOutcomeKind
+from ralph.pipeline.auto_integrate_backoff import retry_deadline_is_live
 from ralph.pipeline.integration_observation import (
     InProgressKind,
     IntegrationRecordState,
@@ -258,13 +259,17 @@ def busy_refusal_outcome(
     work to backup refs and re-enters the rebase-first path — never an
     operator hand-off). The architecture forbids an unbounded wait, so
     an unusable deadline is never treated as "wait forever".
+
+    The deadline is a persisted MONOTONIC instant: one further away than
+    any writer arms (``MAX_RETRY_DEADLINE_HORIZON_SECONDS``) was written
+    against a previous boot's clock and is expired too.
     """
     if not isinstance(retry_deadline, (int, float)) or isinstance(retry_deadline, bool):
         return RecordFactOutcome.STALE_INTENT
     now = _current_time(clock)
     if now is None:
         now = time.monotonic()
-    if now >= float(retry_deadline):
+    if not retry_deadline_is_live(float(retry_deadline), now):
         return RecordFactOutcome.STALE_INTENT
     return IntegrationAction.WAIT_FOR_BOUNDED_RETRY
 

@@ -241,7 +241,10 @@ class RebaseState(RalphBaseModel):
 
     # Typed persisted deadline (monotonic seconds since an unspecified
     # origin) the run loop uses to bound a ``WAIT_FOR_BOUNDED_RETRY``
-    # decision. ``None`` is the default for legacy checkpoints and for
+    # decision. The origin restarts at every boot, so readers accept a
+    # deadline only within ``MAX_RETRY_DEADLINE_HORIZON_SECONDS`` of now
+    # (``auto_integrate_backoff.retry_deadline_is_live``); one further
+    # out is a previous boot's reading and has expired. ``None`` is the default for legacy checkpoints and for
     # records that have not yet been armed with a deadline; the action
     # authority treats a missing or malformed ``retry_deadline`` as
     # proof that the wait cannot be bounded, which routes the

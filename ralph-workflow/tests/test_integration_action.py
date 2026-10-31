@@ -1,11 +1,14 @@
 """Tests for IntegrationAction enum, next_integration_action authority, and drift sites."""
 
+import pytest
+
 from ralph.pipeline._integration_action import (
     IntegrationAction,
     RebaseOutcomeKind,
     last_outcome_reason,
     next_integration_action,
 )
+from ralph.pipeline.auto_integrate_backoff import MAX_RETRY_DEADLINE_HORIZON_SECONDS
 from ralph.pipeline.auto_integrate_conflict_budget import (
     ConflictIdentity,
     apply_conflict_budget,
@@ -554,3 +557,42 @@ def test_transition_field_map_updates_for_reintegrate_pending_and_ownership() ->
     )
     assert promoted.phase == "integrated"
     assert promoted.reintegrate_pending is False
+
+
+def test_conflict_deadline_from_a_previous_boot_does_not_wait() -> None:
+    """A checkpoint written before a reboot no longer reads as a bounded wait.
+
+    ``retry_deadline`` is a persisted MONOTONIC instant. The checkpoint was
+    written after five days of uptime (deadline = 432 002 s); after the
+    reboot the monotonic clock reads 30 s. The JSON shape is unchanged, so
+    the old checkpoint still loads, but a deadline ~5 days ahead -- further
+    than any writer arms -- is a previous boot's reading and has expired.
+    Before the fix this projected ``WAIT_FOR_BOUNDED_RETRY`` for five days.
+    """
+    restored = RebaseState.model_validate(
+        {"last_outcome": "conflict", "retry_deadline": 5 * 24 * 3600.0 + 2.0}
+    )
+
+    assert restored.retry_deadline == 5 * 24 * 3600.0 + 2.0
+    assert (
+        next_integration_action(restored, clock=lambda: 30.0)
+        is IntegrationAction.REQUIRE_INTERVENTION
+    )
+
+
+@pytest.mark.parametrize(
+    ("remaining", "action"),
+    [
+        (2.0, IntegrationAction.WAIT_FOR_BOUNDED_RETRY),
+        (MAX_RETRY_DEADLINE_HORIZON_SECONDS, IntegrationAction.WAIT_FOR_BOUNDED_RETRY),
+        (MAX_RETRY_DEADLINE_HORIZON_SECONDS + 0.5, IntegrationAction.REQUIRE_INTERVENTION),
+        (0.0, IntegrationAction.REQUIRE_INTERVENTION),
+    ],
+)
+def test_conflict_deadline_waits_only_within_the_retry_horizon(
+    remaining: float, action: IntegrationAction
+) -> None:
+    """The bounded wait holds only for a deadline within the writers' horizon."""
+    state = RebaseState(last_outcome=RebaseOutcomeKind.CONFLICT, retry_deadline=1_000.0 + remaining)
+
+    assert next_integration_action(state, clock=lambda: 1_000.0) is action
