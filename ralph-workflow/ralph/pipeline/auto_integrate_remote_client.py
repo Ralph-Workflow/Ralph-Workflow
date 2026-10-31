@@ -9,6 +9,12 @@ dispatcher. Push-side and publication helpers live next door in
 (:mod:`ralph.pipeline.auto_integrate_remote_sync`) keeps the
 ref-comparison reconciler and the closed :class:`RemoteSyncStatus`
 vocabulary.
+
+:func:`fast_forward_target_to_remote` is the ONE routine every remote-sync
+entry point (post-commit pull, publication reconciler, startup seam,
+rejected-push recovery) uses to move the local target to the remote tip: a
+true fast-forward through the target's own worktree, or a CAS when it has no
+checkout -- never a forced move. See ``docs/agents/remote-sync.md``.
 """
 
 from __future__ import annotations
@@ -61,6 +67,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "_dispatch_pull_outcome",
+    "fast_forward_target_to_remote",
     "pull_and_reconcile_target",
     "refresh_target_from_remote",
 ]
@@ -417,35 +424,62 @@ def _fast_forward_local_target_to_remote(
 ) -> None:
     """Move ``refs/heads/<target>`` to ``refs/remotes/<remote>/<target>``.
 
-    Uses the existing Part-A fast-forward helpers so the same
-    worktree/CAS semantics apply: the target's owning worktree's
-    ``merge --ff-only`` runs first; the atomic CAS is the fallback
-    when the target has no live checkout. Never force-moves -- a
-    non-fast-forward raises and the caller records the failure.
+    The pull-side wrapper over :func:`fast_forward_target_to_remote`: a
+    refusal raises so the caller's ``except`` records ``pull failed``.
     """
-    from ralph.git.merge import branch_sha, is_ancestor
-    from ralph.pipeline.auto_integrate_ff import fast_forward_target
-
-    remote_sha = _remote_tracking_sha(repo_root, target, remote)
-    if remote_sha is None:
-        raise RuntimeError(f"{remote}/{target} missing for ff")
-    local_sha = branch_sha(repo_root, target)
-    if local_sha is None or remote_sha == local_sha:
-        return
-    if not is_ancestor(repo_root, local_sha, remote_sha):
-        # Diverged -- the pull side alone cannot reconcile; the
-        # caller handles divergence through the dedicated reconcile
-        # loop. Surface as a clean RuntimeError so the caller's
-        # except can record a no-op.
-        raise RuntimeError(f"local/{target} diverged from {remote}/{target}")
-    ok, reason = fast_forward_target(
+    ok, reason = fast_forward_target_to_remote(
         repo_root,
         target,
-        remote_sha,
+        remote,
         reclaim_target_worktree=reclaim_target_worktree_enabled(config),
     )
     if not ok:
         raise RuntimeError(reason)
+
+
+def fast_forward_target_to_remote(
+    repo_root: Path,
+    target: str,
+    remote: str,
+    *,
+    reclaim_target_worktree: bool,
+    remote_sha: str | None = None,
+) -> tuple[bool, str]:
+    """Fast-forward local ``target`` to the remote tip; never force-move it.
+
+    The ONE target-advance routine every remote-sync entry point shares
+    (pull side, publication reconciler, startup seam, rejected-push
+    recovery). ``remote_sha`` is the tip the caller already observed; when
+    omitted, ``refs/remotes/<remote>/<target>`` is read. Uses the Part-A
+    landing table, so a target checked out in a worktree advances through
+    that worktree's ``merge --ff-only`` (ref, index and files together) and
+    a target with no checkout advances by an atomic CAS.
+
+    Returns ``(True, "")`` when the local target now names the remote tip
+    (including "already there"), otherwise ``(False, reason)``: a missing
+    ref, a target that DIVERGED from the remote (left to the dedicated
+    reconcile path), or a refused landing (for example a dirty owner when
+    ``reclaim_target_worktree`` is false). See ``docs/agents/remote-sync.md``.
+    """
+    from ralph.git.merge import branch_sha, is_ancestor
+    from ralph.pipeline.auto_integrate_ff import fast_forward_target
+
+    observed = remote_sha or _remote_tracking_sha(repo_root, target, remote)
+    if observed is None:
+        return False, f"{remote}/{target} missing for ff"
+    local_sha = branch_sha(repo_root, target)
+    if local_sha is None:
+        return False, f"local {target} missing for ff"
+    if local_sha == observed:
+        return True, ""
+    if not is_ancestor(repo_root, local_sha, observed):
+        return False, f"local/{target} diverged from {remote}/{target}"
+    return fast_forward_target(
+        repo_root,
+        target,
+        observed,
+        reclaim_target_worktree=reclaim_target_worktree,
+    )
 
 
 def _remote_tracking_sha(repo_root: Path, target: str, remote: str) -> str | None:

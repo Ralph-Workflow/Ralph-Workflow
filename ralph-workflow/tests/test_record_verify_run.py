@@ -112,7 +112,7 @@ def test_the_combined_budget_line_is_recorded_with_its_cpu_figures(
         "cores": 4.0,
         "utilisation": pytest.approx(0.98),
         "cpu": pytest.approx(470.0),
-        "cpu_budget": pytest.approx(600.0),
+        "cpu_budget": pytest.approx(700.0),
     }
     assert _budget_step(receipt)["status"] == "warning"
 

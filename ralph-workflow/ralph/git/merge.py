@@ -6,8 +6,11 @@ non-interactive git env: ``GIT_TERMINAL_PROMPT=0``, ``GIT_EDITOR=:"``,
 ``GIT_PAGER=cat``) so a missing credential or hung pager can never
 block the integration step.
 
-The module never calls ``git push`` or ``repo.remote().push``; the
-auto-integrate contract is local-only (AC-10).
+The module never calls ``git push`` or ``repo.remote().push``: these are
+local primitives (AC-10). Remote publication lives in
+:mod:`ralph.git.remote_push` and runs only when remote sync
+(``auto_integrate_remote_enabled``) is enabled; with it disabled the
+auto-integrate contract is local-only. See ``docs/agents/remote-sync.md``.
 
 Public functions (every primitive has a docstring):
 

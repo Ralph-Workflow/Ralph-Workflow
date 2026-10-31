@@ -82,6 +82,7 @@ __all__ = [
     "REFRESH_UNREACHABLE",
     "observe_target_sha",
     "refresh_target_from_remote",
+    "remote_configured",
 ]
 
 
@@ -240,6 +241,15 @@ def _classify_remote_position(repo_root: Path, target: str, remote: str) -> str:
         target,
     )
     return REFRESH_DIVERGED
+
+
+def remote_configured(repo_root: Path, remote: str) -> bool:
+    """Whether ``remote`` is configured in ``repo_root``; no network, never raises."""
+    try:
+        return _has_remote(repo_root, remote)
+    except Exception as remote_exc:
+        logger.debug("auto_integrate: remote lookup for '{}' failed: {}", remote, remote_exc)
+        return False
 
 
 def _has_remote(repo_root: Path, remote: str) -> bool:

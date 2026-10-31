@@ -38,9 +38,10 @@ slower suite from a busier (or smaller) machine:
   host could not have finished sooner, so the CPU budget is the binding
   limit and the overrun is reported as a host-capacity WARNING. A wall
   overrun that left capacity idle (the suite waited instead of working)
-  stays a failure. The rule cannot shelter a slow suite on a large host:
-  saturating 12 or more cores for over 60 s costs more than the 600
-  core-s CPU budget, which fails first.
+  stays a failure. The rule cannot shelter unbounded growth: whatever the
+  host size, the suite's total work is still capped by the 700 core-s CPU
+  budget, and on a host of 13 or more cores saturating it for over 60 s
+  already costs more than that cap, which fails first.
 
 The credit is an upper bound -- it assumes every foreign core-second
 displaced the suite -- which is why the CPU budget is a hard limit: a

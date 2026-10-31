@@ -37,10 +37,12 @@ if TYPE_CHECKING:
 #: Refresh outcomes that leave the target pointer trustworthy: the
 #: authoritative LOCAL ref was just re-observed (the local fleet and
 #: fetch-disabled cases), or origin has no say over it (origin does not
-#: carry the branch), or origin was observed and the local pointer is
-#: deliberately kept -- remote state never affects local rebase
-#: operations, so an origin seen ahead does not make the local pointer
-#: any less current for the decisions it feeds. Every OTHER outcome --
+#: carry the branch), or origin was observed and the read-only probe kept
+#: the local pointer. With remote sync DISABLED remote state never affects
+#: local rebase operations, so an origin seen ahead does not make the local
+#: pointer any less current for the decisions it feeds; with remote sync
+#: ENABLED the sync seam applies an ahead remote before integrating
+#: (``docs/agents/remote-sync.md``). Every OTHER outcome --
 #: unreachable, diverged, a missing local branch, a throttle-suppressed
 #: probe -- means the pointer the skip decision used could not be
 #: confirmed current, so the skip must say so.

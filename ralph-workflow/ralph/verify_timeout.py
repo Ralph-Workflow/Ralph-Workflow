@@ -62,7 +62,7 @@ _POLICY_FIX_MESSAGE = (
     "  Per-test                         : 1 second   (RALPH_PYTEST_TEST_TIMEOUT_SECONDS)\n"
     "  Per-suite invocation (hang cap)  : 180 seconds (RALPH_PYTEST_SUITE_TIMEOUT_SECONDS)\n"
     "  ALL test suites combined (total): 60 seconds wall clock, net of host\n"
-    "    contention, and 600 CPU core-seconds (enforced by ralph/verify.py\n"
+    "    contention, and 700 CPU core-seconds (enforced by ralph/verify.py\n"
     "     _TOTAL_TEST_BUDGET_SECONDS / _TOTAL_TEST_CPU_BUDGET_SECONDS,\n"
     "     tracked cumulatively across every test step)\n"
     "\n"

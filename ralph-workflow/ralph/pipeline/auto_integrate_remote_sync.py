@@ -29,6 +29,13 @@ Helper modules:
 Every private/public symbol the broader pipeline imports by name
 from ``ralph.pipeline.auto_integrate_remote_sync`` is re-exported
 here so the seam stays stable.
+
+When the remote is strictly ahead, the reconciler advances the local target
+itself through
+:func:`~ralph.pipeline.auto_integrate_remote_client.fast_forward_target_to_remote`
+(never through the throttled catch-up tick, which judges the checkout rather
+than the target). The remote-sync contract and its regression tests are
+documented in ``docs/agents/remote-sync.md``.
 """
 
 from __future__ import annotations
@@ -56,6 +63,7 @@ from ralph.pipeline.auto_integrate_ff import RemoteClient
 from ralph.pipeline.auto_integrate_remote_client import (
     _dispatch_pull_outcome,
     _fast_forward_local_target_to_remote,
+    fast_forward_target_to_remote,
     pull_and_reconcile_target,
 )
 from ralph.pipeline.auto_integrate_remote_constants import (
@@ -148,6 +156,7 @@ __all__ = [
     "_remote_sync_status",
     "_throttle_allows_pull",
     "apply_conflict_budget",
+    "fast_forward_target_to_remote",
     "finish_conflict_attempt",
     "observe_conflict_identity",
     "pull_and_reconcile_target",
@@ -472,11 +481,13 @@ def _dispatch_ref_comparison(
             )
         return pushed
     if remote_ahead and not local_ahead:
-        # Remote is strictly ahead: catch up and recurse.
-        from ralph.pipeline.auto_integrate_catchup import (
-            attempt_catchup_fast_forward,
-        )
-
+        # Remote is strictly ahead: advance the TARGET to the observed tip,
+        # then recurse. This is deliberately the shared target-advance
+        # routine, not the catch-up tick: the tick is fetch-throttled,
+        # re-acquires the mutation lease the ticker already holds, and
+        # reports the CHECKOUT's catch-up rather than the target's
+        # (docs/agents/remote-sync.md, root cause 3). Reclamation stays off
+        # here: a dirty owner refuses and a later seam retries.
         if config is None:
             return _record_publication_failure(
                 base_state,
@@ -484,14 +495,14 @@ def _dispatch_ref_comparison(
                 last_refresh=REFRESH_UNREACHABLE,
                 publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
             )
-        catchup_outcome = attempt_catchup_fast_forward(
-            config,
+        advanced, refusal = fast_forward_target_to_remote(
             repo_root,
-            target=target,
-            remote=chosen_remote,
-            remote_client=remote_client,
+            target,
+            chosen_remote,
+            reclaim_target_worktree=False,
+            remote_sha=remote_sha,
         )
-        if catchup_outcome == "fast-forwarded":
+        if advanced:
             return reconcile_remote_publication(
                 config,
                 repo_root,
@@ -501,10 +512,13 @@ def _dispatch_ref_comparison(
                 rebase_stop_resolver=rebase_stop_resolver,
                 source_state=base_state,
             )
+        # The remote WAS reached and IS ahead: the refusal names the real
+        # cause (dirty owner, CAS race, ...) instead of a false "unreachable".
         return _record_publication_failure(
             base_state,
             last_remote_sync=REMOTE_PULL_FAILED,
-            last_refresh=REFRESH_UNREACHABLE,
+            last_reason=refusal,
+            last_refresh=REFRESH_ORIGIN_AHEAD,
             publication_decision=PublicationDecision.PUBLISH_DEFERRED_REMOTE,
         )
     # Diverged: reintegrate then push.

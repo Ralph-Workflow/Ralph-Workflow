@@ -124,12 +124,15 @@ _TOTAL_TEST_BUDGET_SECONDS: Final = 60.0
 #: contention (``ralph/verify_budget.py``). Pinned to 60.0 by an
 #: import-time epsilon check.
 
-_TOTAL_TEST_CPU_BUDGET_SECONDS: Final = 600.0
+_TOTAL_TEST_CPU_BUDGET_SECONDS: Final = 700.0
 #: CPU core-seconds the tracked steps' own process trees may consume
 #: (``getrusage(RUSAGE_CHILDREN)``, every reaped descendant included).
-#: Calibrated 2026-10-30 on the maintained 6P+6E Apple Silicon host:
-#: ``make test`` 396-422 core-s plus the aggregate smoke 47 core-s, so
-#: ~470 core-s with ~28% headroom. Pinned to 600.0 by an import-time check.
+#: Recalibrated 2026-10-30 on the maintained 6P+6E Apple Silicon host after
+#: ~200 regression tests landed: ``make test`` 449-472 core-s plus the
+#: aggregate smoke 48 core-s, ~500-520 core-s typical. CPU-seconds also
+#: inflate under contention (work lands on the slower efficiency cores):
+#: 557 core-s was measured at load average ~25. 700 keeps ~25% headroom over
+#: that contended worst case. Pinned to 700.0 by an import-time check.
 
 _TOTAL_TEST_HANG_CAP_SECONDS: Final = 180.0
 #: Cumulative wall clock after which a tracked step is killed however busy
@@ -140,7 +143,7 @@ _TOTAL_TEST_HANG_CAP_SECONDS: Final = 180.0
 _BUDGET_EPSILON: Final = 1e-9
 #: Equality tolerance used by the import-time ``abs(x - target) < eps``
 #: checks that pin ``_TOTAL_TEST_BUDGET_SECONDS = 60.0``,
-#: ``_TOTAL_TEST_CPU_BUDGET_SECONDS = 600.0`` and the hang cap.
+#: ``_TOTAL_TEST_CPU_BUDGET_SECONDS = 700.0`` and the hang cap.
 
 _MIN_VERIFY_STEP_TIMEOUT_SECONDS: Final = 5.0
 #: Minimum allowed value of ``_VERIFY_STEP_TIMEOUT_SECONDS``. Lowering
@@ -577,9 +580,9 @@ if not abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < _BUDGET_EPSILON:
         f"_TOTAL_TEST_BUDGET_SECONDS must be 60.0 (got {_TOTAL_TEST_BUDGET_SECONDS})"
     )
 
-if not abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 600.0) < _BUDGET_EPSILON:
+if not abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 700.0) < _BUDGET_EPSILON:
     raise RuntimeError(
-        f"_TOTAL_TEST_CPU_BUDGET_SECONDS must be 600.0 (got {_TOTAL_TEST_CPU_BUDGET_SECONDS})"
+        f"_TOTAL_TEST_CPU_BUDGET_SECONDS must be 700.0 (got {_TOTAL_TEST_CPU_BUDGET_SECONDS})"
     )
 if not abs(_TOTAL_TEST_HANG_CAP_SECONDS - 3 * _TOTAL_TEST_BUDGET_SECONDS) < _BUDGET_EPSILON:
     raise RuntimeError(

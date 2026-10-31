@@ -524,8 +524,9 @@ def _align_target_with_remote(
     * diverged -- call :func:`reconcile_target_onto_remote` from the
       remote-sync module so the target history lands on top of the
       fetched remote SHA.
-    * remote ahead -- call :func:`attempt_catchup_fast_forward` so the
-      local target ref catches up before the next push attempt.
+    * remote ahead -- fast-forward the local target ref to the remote tip
+      (:func:`~ralph.pipeline.auto_integrate_remote_client.fast_forward_target_to_remote`)
+      before the next push attempt.
     """
     rebase_ongoing = False
     try:
@@ -563,19 +564,26 @@ def _align_target_with_remote(
                 ),
             )
     elif refresh == REFRESH_ORIGIN_AHEAD:
-        from ralph.pipeline.auto_integrate_catchup import attempt_catchup_fast_forward
+        # Advance the TARGET itself through the shared routine; the throttled
+        # catch-up tick judged the checkout instead (docs/agents/remote-sync.md).
+        from ralph.pipeline.auto_integrate_remote_client import fast_forward_target_to_remote
 
-        catchup_res = attempt_catchup_fast_forward(
-            config,
-            repo_root,
-            target=target,
-            remote=remote,
-            remote_client=remote_client,
+        observed = (
+            remote_client.observe_remote_sha(repo_root, target, remote=remote)
+            if remote_client is not None
+            else None
         )
-        if catchup_res != "fast-forwarded":
+        advanced, refusal = fast_forward_target_to_remote(
+            repo_root,
+            target,
+            remote,
+            reclaim_target_worktree=False,
+            remote_sha=observed,
+        )
+        if not advanced:
             return _PushOutcome(
                 success=False,
-                summary="remote ahead but catch-up could not advance local target",
+                summary=f"remote ahead but the local target could not advance: {refusal}",
                 pushed=False,
                 status=_remote_push_module.PushStatus.NON_FAST_FORWARD,
             )

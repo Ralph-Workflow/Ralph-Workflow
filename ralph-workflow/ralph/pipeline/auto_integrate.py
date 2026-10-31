@@ -123,12 +123,14 @@ from ralph.pipeline.auto_integrate_remote_sync import (
     pull_and_reconcile_target,
     reconcile_remote_publication,
     remote_sync_enabled,
+    remote_target_name,
 )
 from ralph.pipeline.auto_integrate_resolution_state import (
     contained_land,
     containment_release,
     preserve_unresolved_resolution_state,
 )
+from ralph.pipeline.auto_integrate_sync import remote_configured
 from ralph.pipeline.auto_integrate_transaction import (
     integration_transaction,
 )
@@ -335,10 +337,11 @@ def auto_integrate_after_commit(
                 missing_target=_configured_target(config),
             )
             if early_skip is not None:
-                return carry_budget_through_skip(
-                    early_skip,
-                    prior=state,
+                handled, synced = _sync_remote_before_target_skip(
+                    config, ctx, state, rebase_stop_resolver=rebase_stop_resolver
                 )
+                if handled:
+                    return synced or carry_budget_through_skip(early_skip, prior=state)
 
         identity = observe_conflict_identity(root, target or "") if target else ConflictIdentity()
         effective_ledger = resolve_failure_ledger(ledger)
@@ -573,6 +576,47 @@ def _auto_integrate_after_commit_inner(
         ledger=ledger,
         candidates=candidates,
         seams=_attempt_loop_seams(),
+    )
+
+
+def _sync_remote_before_target_skip(
+    config: UnifiedConfig,
+    ctx: tuple[Path, str | None, str | None, str | None] | None,
+    state: RebaseState,
+    *,
+    rebase_stop_resolver: RebaseStopResolver | None,
+) -> tuple[bool, RebaseState | None]:
+    """Run the remote boundary before an ``on target`` / ``at target`` skip.
+
+    Both skips are decided from the LOCAL target pointer, which with remote
+    sync enabled may be stale: a run on the target branch (trunk layout)
+    or a feature branch sitting at the local target would otherwise never
+    pull or publish at the post-commit seam. This runs the same clean-tree
+    freshness/publication boundary the phase-transition seam runs, so the
+    target fast-forwards to (or reconciles with, then publishes to) the
+    configured remote. Returns ``(handled, outcome)`` like
+    :func:`phase_boundary_outcome`: ``handled`` is ``False`` when the skip
+    does not apply to remote sync, or when the pull moved the target past
+    HEAD -- the caller then integrates against the fresh target. Remote-
+    disabled configs and repositories without the configured remote keep
+    the local-only skip unchanged. See ``docs/agents/remote-sync.md``.
+    """
+    if ctx is None or not remote_sync_enabled(config):
+        return True, None
+    root, current_branch, target, _refresh = ctx
+    if current_branch is None or target is None:
+        return True, None
+    if not remote_configured(root, remote_target_name(config)):
+        return True, None
+    if current_branch != target:
+        try:
+            at_target = branch_sha(root, target) == get_head_sha(root)
+        except GitOperationError:
+            return True, None
+        if not at_target:
+            return True, None
+    return _phase_boundary_outcome(
+        config, root, target, state, rebase_stop_resolver=rebase_stop_resolver
     )
 
 

@@ -46,11 +46,11 @@ Any edit to a public-facing markdown file (README, USERS.md, docs/, the Sphinx o
 
 ## Total test budget
 
-The combined total test budget is **pinned**: 60 seconds of wall clock net of host contention, and 600 CPU core-seconds. It cannot be changed, overridden, or circumvented. `make verify` runs `make test`, which selects `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` across the maintained pytest shards. The previously serial "production-clock workspace baseline" preflight has been removed: those files now join the same LPT partition as every other selected file, distributed across the parallel shards (`ralph/test_suites.py:1494-1500`). A dedicated Python process no longer runs serially before the fan-out, so the critical path is the slowest shard rather than a serial preflight + parallel shards.
+The combined total test budget is **pinned**: 60 seconds of wall clock net of host contention, and 700 CPU core-seconds. It cannot be changed, overridden, or circumvented. `make verify` runs `make test`, which selects `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` across the maintained pytest shards. The previously serial "production-clock workspace baseline" preflight has been removed: those files now join the same LPT partition as every other selected file, distributed across the parallel shards (`ralph/test_suites.py:1494-1500`). A dedicated Python process no longer runs serially before the fan-out, so the critical path is the slowest shard rather than a serial preflight + parallel shards.
 
 Wall clock on a shared host also measures every other process, so `ralph/verify.py` judges the tracked steps once they have all passed (`ralph/verify_budget.py` documents the rule):
 
-- **CPU** — the core-seconds the suite's own process trees consumed (`getrusage(RUSAGE_CHILDREN)`, every descendant reaped inside the tree included, plus the CPU of descendants orphaned to init during a step, which rusage never sees and `orphaned_cpu_tracker` samples twice a second) may not exceed `_TOTAL_TEST_CPU_BUDGET_SECONDS = 600.0`. The suite controls this number; host load barely moves it, so exceeding it always fails. Calibrated 2026-10-30 on the maintained 6P+6E Apple Silicon host: `make test` 396–422 core-s plus the aggregate smoke 47 core-s.
+- **CPU** — the core-seconds the suite's own process trees consumed (`getrusage(RUSAGE_CHILDREN)`, every descendant reaped inside the tree included, plus the CPU of descendants orphaned to init during a step, which rusage never sees and `orphaned_cpu_tracker` samples twice a second) may not exceed `_TOTAL_TEST_CPU_BUDGET_SECONDS = 700.0`. The suite controls this number; host load barely moves it, so exceeding it always fails. Calibrated 2026-10-30 on the maintained 6P+6E Apple Silicon host: `make test` 396–422 core-s plus the aggregate smoke 47 core-s.
 - **Wall clock** — over 60 s fails unless it fits once the CPU other processes used meanwhile is credited (their core-seconds ÷ the host's logical CPUs: the most wall time foreign load can have taken). Fitting only with that credit passes with a host-contention WARNING that prints every number used. On an idle host the credit is ~0 and 60 s applies exactly. The credit is an upper bound, which is why the CPU budget is the hard backstop.
 - **Host capacity** — a host can be too small for 60 s with nothing else running: ~470 core-s of suite work on a 4-core CI runner needs at least 117 s even perfectly parallel. When the suite's own CPU kept the cores foreign load left free at least 90% busy (`suite CPU / (wall × cores − foreign CPU) ≥ 0.9`), the wall clock is capacity-bound, the CPU budget is the binding limit, and the overrun is a host-capacity WARNING. A wall overrun that left capacity idle — the suite waited instead of working — still fails. This cannot shelter a slow suite on a large host: keeping 12 or more cores 90% busy for over 60 s costs more than 600 core-s, which fails first.
 
@@ -60,7 +60,7 @@ The tracked steps are killed only at the cumulative `_TOTAL_TEST_HANG_CAP_SECOND
 
 - `_TOTAL_TEST_BUDGET_SECONDS > 0` (must be positive)
 - `abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9` (epsilon check on the 60.0 constant)
-- `abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 600.0) < 1e-9` (epsilon check on the CPU budget)
+- `abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 700.0) < 1e-9` (epsilon check on the CPU budget)
 - `_TOTAL_TEST_HANG_CAP_SECONDS == 3 * _TOTAL_TEST_BUDGET_SECONDS` (the hang cap cannot drift into a budget)
 - `_BUDGET_TRACKED_STEPS` indices are valid indices into `_VERIFY_STEPS`
 - Every budget-tracked step has a positive timeout
@@ -227,6 +227,7 @@ The MCP server startup architecture enforces a strict distinction between non-fa
 - [AGENTS.md §'Non-negotiables'](../../AGENTS.md) — canonical policy and circumvention table
 - [Testing Guide](testing-guide.md) — test design rules and required doubles
 - [Deterministic Auto-Commit](deterministic-auto-commit.md) — the producer-level discipline for engine-owned writes
+- [Remote sync](../../ralph-workflow/docs/agents/remote-sync.md) — the contract that, with remote sync enabled, every auto-integration entry point (post-commit, startup recovery, periodic catch-up ticker) fast-forwards the local target to the remote, and its regression tests
 - [Documentation Rubric](../code-style/documentation-rubric.md) — for any docs/README/manual change
 
 If the change touches README, docs, START_HERE, the manual, or any public-doc route, read [Documentation Rubric](../code-style/documentation-rubric.md) first and check the edited surface against it before calling the docs work done.

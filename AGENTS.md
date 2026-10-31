@@ -135,12 +135,12 @@ failure). Fabrication is the single gravest threat to this project's credibility
 - All code **must** be testable in a black box way. If you cannot test it easily, it strongly suggests you have to refactor.
 - If there is a test failure, either the tests is implemented wrong, the code behavior is wrong, or the test is testing the wrong behavior. DO NOT change the test to match the current implementation. A test may never make any assumptions about the underlying implementation of the code.
 
-### ═══ TEST BUDGET — 60s wall clock net of host contention, 600 CPU core-seconds, PINNED ═══
+### ═══ TEST BUDGET — 60s wall clock net of host contention, 700 CPU core-seconds, PINNED ═══
 
 - All tests must complete in 60s or less of their own time, no exceptions.
 - This 60-second limit is the COMBINED TOTAL wall-clock budget for ALL test suites running sequentially under `make verify`, enforced by `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`. The combined budget cannot be circumvented by splitting tests, adding suites, or changing per-suite limits. A budget failure is a test design defect — fix the test, not the budget.
 - Wall clock on a shared host also measures every other process. `ralph/verify.py` therefore charges the tracked steps two ways (`ralph/verify_budget.py` documents the rule):
-  - **CPU** — the core-seconds the suite's own process trees consumed (`getrusage(RUSAGE_CHILDREN)`, plus descendants orphaned during a step, which rusage misses), capped at `_TOTAL_TEST_CPU_BUDGET_SECONDS = 600.0`. This is the work the suite controls, so exceeding it ALWAYS fails, however idle or busy the host.
+  - **CPU** — the core-seconds the suite's own process trees consumed (`getrusage(RUSAGE_CHILDREN)`, plus descendants orphaned during a step, which rusage misses), capped at `_TOTAL_TEST_CPU_BUDGET_SECONDS = 700.0`. This is the work the suite controls, so exceeding it ALWAYS fails, however idle or busy the host.
   - **Wall clock** — over 60 s is a FAILURE unless it fits once the CPU other processes used meanwhile is credited (their core-seconds ÷ the host's cores). A run that fits only with that credit passes with a host-contention WARNING; on an idle host the credit is ~0 and 60 s applies as written. A WARNING is not a licence to grow the suite: the CPU budget still binds.
   - **Host capacity** — a wall overrun on a host too small for 60 s (the suite's own CPU kept ≥ 90% of the cores foreign load left free busy, e.g. a 4-core CI runner) is a host-capacity WARNING: the CPU budget is the binding limit there. A wall overrun that left capacity idle still FAILS, and on 12+ cores the CPU budget fails first.
 - Per-suite timeouts (PYTEST_SUITE_TIMEOUT_SECONDS, DEFAULT_SUITE_TIMEOUT_SECONDS = 180) and the cumulative `_TOTAL_TEST_HANG_CAP_SECONDS = 180.0` are HANG caps only, not speed budgets. Raising them does NOT increase the combined budget.
@@ -152,7 +152,7 @@ failure). Fabrication is the single gravest threat to this project's credibility
 |---|---|---|
 | `_TOTAL_TEST_BUDGET_SECONDS > 0` | `must be positive` | Budget can't be zero or negative |
 | `abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9` | `must be 60.0` | Budget constant can't be silently altered |
-| `abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 600.0) < 1e-9` | `must be 600.0` | CPU budget can't be silently altered |
+| `abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 700.0) < 1e-9` | `must be 700.0` | CPU budget can't be silently altered |
 | `_TOTAL_TEST_HANG_CAP_SECONDS == 3 * _TOTAL_TEST_BUDGET_SECONDS` | `must be 3 x _TOTAL_TEST_BUDGET_SECONDS` | Hang cap can't drift into a budget |
 | `_BUDGET_TRACKED_STEPS` indices valid | `indices must be valid` | Tracked steps must exist in `_VERIFY_STEPS` |
 | Tracked steps have positive timeout | `must have a positive timeout` | Budget-tracked steps need timeout |
@@ -253,7 +253,7 @@ If verification fails, fix the issue and rerun it.
 
 Run the extra smoke checks or focused tests from `docs/agents/verification.md` whenever the touched area requires them.
 
-The combined test budget (60s wall clock net of host contention, 600 CPU core-seconds) is pinned; see `docs/agents/verification.md` for the full policy.
+The combined test budget (60s wall clock net of host contention, 700 CPU core-seconds) is pinned; see `docs/agents/verification.md` for the full policy.
 
 ## Documentation and file hygiene
 

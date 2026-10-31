@@ -167,6 +167,12 @@ class _Watchdog:
         self._main_ident = threading.main_thread().ident
         # One bound-method object, so ``getsignal`` can be compared by identity.
         self._handler = self._on_signal
+        # When the watchdog thread will next wake on its own. Phases are armed
+        # and disarmed several times per test; waking the thread for each one
+        # makes it contend for the GIL and stalls the main thread (measured
+        # ~13 ms per test), so it is only nudged when a new phase's first check
+        # is due before this.
+        self._wake_at = math.inf
 
     def arm(self, label: str, budget: float, wall_cap: float | None = None) -> _Phase:
         now = _monotonic()
@@ -188,7 +194,8 @@ class _Watchdog:
                     target=self._run, name="ralph-per-test-budget", daemon=True
                 )
                 self._thread.start()
-            self._condition.notify()
+            elif phase.next_check < self._wake_at:
+                self._condition.notify()
         return phase
 
     def disarm(self, phase: _Phase) -> str | None:
@@ -196,7 +203,8 @@ class _Watchdog:
         with self._condition:
             phase.finished = True
             self._phases.remove(phase)
-            self._condition.notify()
+            # No wake-up: the thread re-reads the phase list when its own
+            # wait ends, and an early wake would only cost the main thread.
         tampered = self._repair_tampering()
         overrun = phase.check()
         return overrun if overrun is not None else tampered
@@ -232,10 +240,12 @@ class _Watchdog:
             while True:
                 phase = self._phases[-1] if self._phases else None
                 if phase is None:
+                    self._wake_at = _monotonic() + _IDLE_WAKE_SECONDS
                     self._condition.wait(_IDLE_WAKE_SECONDS)
                     continue
                 delay = phase.next_check - _monotonic()
                 if delay > 0:
+                    self._wake_at = phase.next_check
                     self._condition.wait(delay)
                     continue
                 # Signal under the lock: ``disarm`` cannot finish the phase

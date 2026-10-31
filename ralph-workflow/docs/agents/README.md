@@ -34,6 +34,7 @@ and registries to manage configurations and execution strategies.
 - `architecture.md` — subsystem shape and runtime responsibilities
 - `artifact-submission-contract.md` — required artifact content
 - `memory-lifecycle.md` — bounded-accumulator rules
+- `remote-sync.md` — auto-integration remote-sync contract: the local target follows the configured remote
 - Pro support: see
   [`docs/sphinx/pro-support.md#engine-internals-pro-contract`](../sphinx/pro-support.md#engine-internals-pro-contract)
 - `watchdog-spec.md` — watchdog design and invariants

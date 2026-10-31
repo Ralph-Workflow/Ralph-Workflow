@@ -303,6 +303,15 @@ default. Ralph Workflow refreshes the configured
 remote at every seam when it exists; set `auto_integrate_remote_enabled = false`
 for local-only operation, or set a positive interval to throttle probes.
 
+With remote sync on, the local target follows the remote. The commit seam
+(including a run on the target branch itself), startup recovery and the
+background catch-up ticker each fast-forward the local target to the remote tip
+when that is a true fast-forward. A checked-out target moves through its own
+worktree. The ticker fetches at most every five minutes and applies an
+already-fetched remote tip on every tick. A dirty checkout of the target, or a
+diverged target whose reconciliation conflicts, is left untouched and retried
+later.
+
 When Ralph Workflow must reclaim the target-owning worktree, it first writes a recoverable
 snapshot ref under `refs/ralph-reclaim/<target>/...`, then resets that worktree.
 Recover contents without replacing target history with

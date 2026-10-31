@@ -5,6 +5,15 @@ configured target. Every mutation is gated by the repository-wide agent
 lease, charged write-ahead to the durable attempt ledger, and classified
 into a named outcome. Repeated attempts against one unchanged ref state
 advance the durable ladder instead of issuing the same merge forever.
+
+With remote sync enabled (``auto_integrate_remote_enabled``) each tick first
+makes the local target follow the configured remote: it fetches at most once
+per shared five-minute cadence, but on EVERY tick fast-forwards the target to
+a remote-tracking tip that strictly descends it, whatever branch this
+checkout is on. A dirty target owner, a diverged target and an unreachable
+remote fail closed. With remote sync disabled the tick is local-only. The
+contract, scheduling, throttle, leases and regression tests are documented in
+``docs/agents/remote-sync.md``.
 """
 
 from __future__ import annotations
@@ -313,15 +322,18 @@ def attempt_catchup_fast_forward(
     if not _catchup_enabled(config):
         return CATCHUP_DISABLED
     assert config is not None
+    remote_enabled = remote_sync_enabled(config)
     current = _current_branch_name(root)
-    if current is None:
+    if current is None and not remote_enabled:
         return CATCHUP_NOT_ON_BRANCH
     resolved_target = target if target is not None else resolve_integration_target(config, root)
     if resolved_target is None:
         return CATCHUP_NO_TARGET
     effective_clock = clock if clock is not None else default_clock()
     remote_outcome: str | None = None
-    if remote_sync_enabled(config):
+    if remote_enabled:
+        # The target follows the remote whatever this checkout is on: a
+        # detached run checkout must not stall the fleet's target.
         remote_outcome = _synchronize_remote_target(
             config,
             root,
@@ -333,14 +345,11 @@ def attempt_catchup_fast_forward(
             jitter=jitter,
             ledger_failure_budget=ledger_failure_budget,
         )
-        if remote_outcome is not None and remote_outcome != CATCHUP_FAST_FORWARDED:
-            return remote_outcome
-    if current == resolved_target:
-        return (
-            CATCHUP_FAST_FORWARDED
-            if remote_outcome == CATCHUP_FAST_FORWARDED
-            else CATCHUP_ON_TARGET
-        )
+    remote_failed = remote_outcome not in (None, CATCHUP_FAST_FORWARDED)
+    if remote_failed or current is None or current == resolved_target:
+        # A remote refusal ends the tick; otherwise this checkout has nothing
+        # of its own to catch up, so report whether the target moved.
+        return remote_outcome or (CATCHUP_NOT_ON_BRANCH if current is None else CATCHUP_ON_TARGET)
     # The owner seam observes against the CONFIGURED remote, exactly like
     # the remote-sync half of the tick: an explicit ``remote`` argument
     # wins, the configured name supplies the default.
@@ -531,15 +540,22 @@ def _synchronize_remote_target(
     jitter: Callable[[], float] | None = None,
     ledger_failure_budget: CatchupLedgerFailureBudget | None = None,
 ) -> str | None:
-    """Fetch and advance the target without mutating while an agent is active."""
+    """Fetch (on cadence) and advance the target without mutating while an agent is active.
+
+    The fetch and the advance are decided separately. The shared lease
+    throttles only the NETWORK fetch to one per cadence for the whole fleet;
+    every tick still compares the local target with the remote-tracking ref
+    and fast-forwards it when that ref is strictly ahead. Other seams (the
+    post-tick publication, post-commit, startup) refresh the tracking ref in
+    between, and a refused advance (dirty owner) must be retried as soon as
+    the owner is clean -- not one fetch window later.
+    """
 
     chosen_remote = remote if isinstance(remote, str) and remote else remote_target_name(config)
     effective_clock = clock if clock is not None else default_clock()
     with remote_sync_transaction(root, chosen_remote, target) as lease:
         if lease is None:
             return CATCHUP_REMOTE_SKIPPED
-        if not lease.fetch_allowed:
-            return None
         with _mutation_lease(root) as lease_verdict:
             if lease_verdict != "acquired":
                 return _lease_failure(lease_verdict)
@@ -568,30 +584,34 @@ def _refresh_remote_target(
     jitter: Callable[[], float] | None,
     ledger_failure_budget: CatchupLedgerFailureBudget | None = None,
 ) -> str | None:
-    """Refresh the remote target and advance it when the fetch proves it ahead."""
+    """Refresh the remote target on cadence; advance it whenever it is strictly ahead."""
 
-    if remote_client is not None:
-        outcome = remote_client.refresh_target(
-            root,
-            target,
-            timeout_seconds=FETCH_TIMEOUT_SECONDS,
-            remote=remote,
-        )
+    if not lease.fetch_allowed:
+        if not _cached_remote_strictly_ahead(root, remote, target, remote_client=remote_client):
+            return None
     else:
-        outcome = refresh_target_from_remote(
-            root,
-            target,
-            timeout_seconds=FETCH_TIMEOUT_SECONDS,
-            remote=remote,
-        )
-    if outcome == REFRESH_UNREACHABLE:
-        return CATCHUP_REMOTE_SKIPPED
-    try:
-        lease.record_fetch()
-    except OSError:
-        return CATCHUP_REMOTE_SKIPPED
-    if outcome != REFRESH_ORIGIN_AHEAD:
-        return None
+        if remote_client is not None:
+            outcome = remote_client.refresh_target(
+                root,
+                target,
+                timeout_seconds=FETCH_TIMEOUT_SECONDS,
+                remote=remote,
+            )
+        else:
+            outcome = refresh_target_from_remote(
+                root,
+                target,
+                timeout_seconds=FETCH_TIMEOUT_SECONDS,
+                remote=remote,
+            )
+        if outcome == REFRESH_UNREACHABLE:
+            return CATCHUP_REMOTE_SKIPPED
+        try:
+            lease.record_fetch()
+        except OSError:
+            return CATCHUP_REMOTE_SKIPPED
+        if outcome != REFRESH_ORIGIN_AHEAD:
+            return None
     return _advance_target_to_remote(
         root,
         remote,
@@ -602,6 +622,30 @@ def _refresh_remote_target(
         jitter=jitter,
         ledger_failure_budget=ledger_failure_budget,
     )
+
+
+def _cached_remote_strictly_ahead(
+    root: Path,
+    remote: str,
+    target: str,
+    *,
+    remote_client: RemoteClient | None,
+) -> bool:
+    """Whether the last-fetched ``<remote>/<target>`` strictly descends the local target.
+
+    No network: reads only the remote-tracking ref some earlier fetch left.
+    Applying it is still a true fast-forward to a commit the remote really
+    published; equal, missing, behind and diverged readings all return
+    ``False`` so nothing but a strict fast-forward is ever attempted.
+    """
+    if remote_client is not None and hasattr(remote_client, "observe_remote_sha"):
+        remote_sha = remote_client.observe_remote_sha(root, target, remote=remote)
+    else:
+        remote_sha = observe_remote_target_sha(root, remote, target)
+    local_sha, local_ok = observe_branch_sha(root, target)
+    if remote_sha is None or not local_ok or local_sha is None or local_sha == remote_sha:
+        return False
+    return is_ancestor(root, local_sha, remote_sha)
 
 
 def _observe_remote_target(
