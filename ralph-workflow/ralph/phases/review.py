@@ -38,6 +38,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.phases import PhaseContext
+from ralph.phases.artifact_freshness import (
+    is_stale_since_invocation,
+    stale_artifact_detail,
+)
 from ralph.phases.artifacts import (
     PhaseArtifactError,
     artifact_validation_failure_event,
@@ -209,7 +213,11 @@ def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
         ctx.workspace.write(hint_path, hint)
 
 
-def _load_review_issues(ctx: PhaseContext) -> dict[str, object]:
+def _load_review_issues(ctx: PhaseContext, phase: str | None = None) -> dict[str, object]:
+    if phase is not None and is_stale_since_invocation(
+        ctx.workspace, phase, REVIEW_ISSUES_ARTIFACT_PATH
+    ):
+        raise PhaseArtifactError(stale_artifact_detail(REVIEW_ISSUES_ARTIFACT_PATH, "issues"))
     artifact_wrapper = load_phase_artifact(
         ctx.workspace,
         REVIEW_ISSUES_ARTIFACT_PATH,
@@ -257,7 +265,7 @@ def handle_review(
 
         logger.info("Review phase: processing review result after agent run")
         try:
-            content = _load_review_issues(ctx)
+            content = _load_review_issues(ctx, effect.phase)
         except (PhaseArtifactError, TypeError, ValueError) as exc:
             detail = str(exc)
             logger.warning("Review phase missing fresh issues artifact: {}", detail)

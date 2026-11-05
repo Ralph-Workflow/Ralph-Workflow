@@ -515,6 +515,23 @@ class _AttemptState:
     # attempt that never took one (a failure before the agent process was
     # launched) has nothing to measure and therefore no observation.
     attempt_observed: bool = False
+    # Fingerprint of the required artifact file taken right before the
+    # CURRENT attempt launched. A non-zero exit may only be salvaged as a
+    # success when the artifact differs from this baseline, i.e. when THIS
+    # attempt wrote it; a leftover artifact from an earlier iteration (for
+    # example the previous plan during a re-plan) must never count.
+    artifact_baseline: list[int] | None = None
+
+
+def _artifact_fingerprint(
+    ctx: _AgentInvocationCtx, artifact: RequiredArtifact | None
+) -> list[int] | None:
+    """Return [mtime_ns, size] of the required artifact file, or None if absent."""
+    if artifact is None:
+        return None
+    from ralph.phases.artifact_freshness import artifact_fingerprint
+
+    return artifact_fingerprint(ctx.workspace_scope.root / artifact.artifact_path)
 
 
 def _observation_sink(state: _AttemptState) -> Callable[[AgentFailureEvent], None]:
@@ -773,6 +790,8 @@ def _has_valid_terminal_artifact(
     ctx: _AgentInvocationCtx,
     resolved_required_artifact: RequiredArtifact | None,
     exc: Exception,
+    *,
+    baseline: list[int] | None = None,
 ) -> bool:
     returncode_obj: object = getattr(exc, "returncode", 0)
     if (
@@ -782,6 +801,10 @@ def _has_valid_terminal_artifact(
     ):
         return False
     if not (ctx.workspace_scope.root / resolved_required_artifact.artifact_path).exists():
+        return False
+    current = _artifact_fingerprint(ctx, resolved_required_artifact)
+    if current is None or current == baseline:
+        # Artifact untouched by this attempt: it is stale, not a result.
         return False
     try:
         from ralph.phases.artifacts import (
@@ -869,6 +892,17 @@ def _invoke_agent_with_recovery(
             else deque(maxlen=_AGENT_RENDERED_OUTPUT_TAIL_LINES)
         )
 
+        if resolved_required_artifact is not None and resolved_required_artifact.artifact_required:
+            # Once per invocation: lets the phase validators tell an artifact
+            # this run wrote from a leftover of an earlier iteration.
+            from ralph.phases.artifact_freshness import record_invocation_baseline
+
+            record_invocation_baseline(
+                FsWorkspace(ctx.workspace_scope.root),
+                str(ctx.effect.phase),
+                resolved_required_artifact.artifact_path,
+            )
+
         terminal_mcp_error = False
 
         def attempt_fn(
@@ -902,6 +936,7 @@ def _invoke_agent_with_recovery(
                 # check and before the agent process starts, so a failure
                 # that happened before the launch produces no observation
                 # at all (and therefore no inherited fact).
+                state.artifact_baseline = _artifact_fingerprint(ctx, resolved_required_artifact)
                 _observe_attempt_workspace(ctx, state, workspace_probe, attempt_workspace)
                 _consume_attempt_output(
                     ctx,
@@ -918,7 +953,9 @@ def _invoke_agent_with_recovery(
                 _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
                 return _AttemptResult(PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id)
             except ctx.deps.agent_invocation_error as exc:
-                if _has_valid_terminal_artifact(ctx, resolved_required_artifact, exc):
+                if _has_valid_terminal_artifact(
+                    ctx, resolved_required_artifact, exc, baseline=state.artifact_baseline
+                ):
                     _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
                     return _AttemptResult(
                         PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id

@@ -65,6 +65,10 @@ if TYPE_CHECKING:
     )
     from ralph.workspace import Workspace
 
+from ralph.phases.artifact_freshness import (
+    is_stale_since_invocation,
+    stale_artifact_detail,
+)
 from ralph.workspace.probe import WorkspaceChangeProbe, take_workspace_snapshot
 
 
@@ -319,6 +323,11 @@ def _validate_plan_output(
         logger.warning("Planning agent completed without producing {}", ra.artifact_path)
         _write_retry_hint(ctx, phase, detail)
         return [artifact_validation_failure_event(phase=phase, reason=detail)]
+    if is_stale_since_invocation(ctx.workspace, phase, ra.artifact_path):
+        detail = stale_artifact_detail(ra.artifact_path, ra.artifact_type)
+        logger.warning("Planning agent completed without updating {}", ra.artifact_path)
+        _write_retry_hint(ctx, phase, detail)
+        return [artifact_validation_failure_event(phase=phase, reason=detail)]
     artifact_path = Path(ctx.workspace.absolute_path(ra.artifact_path))
     divergence = unsubmitted_draft_divergence(
         artifact_path.parent,
@@ -435,6 +444,14 @@ def _validate_output_artifact(
             detail,
             hint_path_override=retry_hint_path_override,
         )
+        return [artifact_validation_failure_event(phase=phase, reason=detail)], None
+
+    if ra.artifact_required and is_stale_since_invocation(ctx.workspace, phase, ra.artifact_path):
+        detail = stale_artifact_detail(ra.artifact_path, ra.artifact_type)
+        logger.warning(
+            "Execution phase '{}' did not update required artifact at {}", phase, ra.artifact_path
+        )
+        _write_retry_hint(ctx, phase, detail, hint_path_override=retry_hint_path_override)
         return [artifact_validation_failure_event(phase=phase, reason=detail)], None
 
     try:

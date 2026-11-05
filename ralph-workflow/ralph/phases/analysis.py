@@ -22,6 +22,10 @@ from loguru import logger
 
 from ralph.mcp.artifacts.plan._section_registry import PLAN_ARTIFACT_PATH
 from ralph.mcp.artifacts.plan._validation import is_noop_plan
+from ralph.phases.artifact_freshness import (
+    is_stale_since_invocation,
+    stale_artifact_detail,
+)
 from ralph.phases.artifacts import (
     PhaseArtifactError,
     artifact_validation_failure_event,
@@ -42,6 +46,7 @@ from ralph.pipeline.events import AnalysisDecisionEvent, Event, PipelineEvent
 
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
+    from ralph.phases.required_artifacts import RequiredArtifact
 
 
 def parse_analysis_decision_status(
@@ -142,6 +147,43 @@ def _has_noop_plan(ctx: PhaseContext) -> bool:
     return False
 
 
+def _missing_or_stale_detail(
+    ctx: PhaseContext, phase_name: str, drain_name: str, artifact_path: str
+) -> str | None:
+    """Return why the decision artifact cannot be credited to this run, else None."""
+    if not ctx.workspace.exists(artifact_path):
+        logger.warning(
+            "Analysis phase '{}' completed without required artifact at {}",
+            phase_name,
+            artifact_path,
+        )
+        return legacy_json_rejection_detail(ctx.workspace, artifact_path) or (
+            f"Missing required analysis artifact at {artifact_path}; "
+            f"the agent must submit {drain_name}_decision before declaring completion"
+        )
+    if is_stale_since_invocation(ctx.workspace, phase_name, artifact_path):
+        logger.warning(
+            "Analysis phase '{}' did not update required artifact at {}",
+            phase_name,
+            artifact_path,
+        )
+        return stale_artifact_detail(artifact_path, f"{drain_name}_decision")
+    return None
+
+
+def _write_analysis_retry_hint(
+    ctx: PhaseContext, phase_name: str, detail: str, registry: dict[str, RequiredArtifact] | None
+) -> None:
+    with suppress(Exception):
+        hint_path = retry_hint_path(phase_name, pipeline_policy=ctx.pipeline_policy)
+        hint = build_retry_hint(phase_name, detail, registry=registry)
+        if ctx.workspace.exists(hint_path):
+            existing = ctx.workspace.read(hint_path).strip()
+            if existing:
+                hint = f"{existing}\n\n{hint}"
+        ctx.workspace.write(hint_path, hint)
+
+
 def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
     """Generic handler for analysis-role phases registered via register_role_handlers.
 
@@ -183,24 +225,9 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
             ra.artifact_path if ra is not None else f".agent/artifacts/{drain_name}_decision.md"
         )
 
-        if not ctx.workspace.exists(artifact_path):
-            detail = legacy_json_rejection_detail(ctx.workspace, artifact_path) or (
-                f"Missing required analysis artifact at {artifact_path}; "
-                f"the agent must submit {drain_name}_decision before declaring completion"
-            )
-            logger.warning(
-                "Analysis phase '{}' completed without required artifact at {}",
-                phase_name,
-                artifact_path,
-            )
-            with suppress(Exception):
-                hint_path = retry_hint_path(phase_name, pipeline_policy=ctx.pipeline_policy)
-                hint = build_retry_hint(phase_name, detail, registry=registry)
-                if ctx.workspace.exists(hint_path):
-                    existing = ctx.workspace.read(hint_path).strip()
-                    if existing:
-                        hint = f"{existing}\n\n{hint}"
-                ctx.workspace.write(hint_path, hint)
+        detail = _missing_or_stale_detail(ctx, phase_name, drain_name, artifact_path)
+        if detail is not None:
+            _write_analysis_retry_hint(ctx, phase_name, detail, registry)
             return [artifact_validation_failure_event(phase=phase_name, reason=detail)]
 
         status = parse_analysis_decision_status(ctx, drain_name, phase_name=phase_name)

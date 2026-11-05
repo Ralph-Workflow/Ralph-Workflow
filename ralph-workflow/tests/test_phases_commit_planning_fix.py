@@ -15,6 +15,7 @@ from ralph.phases import (
     register_handler,
 )
 from ralph.phases.analysis import handle_generic_analysis_phase
+from ralph.phases.artifact_freshness import record_invocation_baseline
 from ralph.phases.commit import handle_commit_phase
 from ralph.phases.execution import (
     _clear_stale_plan_draft_if_needed,
@@ -777,3 +778,81 @@ def test_handle_dev_analysis_non_noop_missing_decision_is_recoverable() -> None:
     assert event.phase == "development_analysis"
     assert event.recoverable is True
     assert "development_analysis_decision" in event.reason
+
+
+def _invoke(phase: str = "planning") -> InvokeAgentEffect:
+    return InvokeAgentEffect(agent_name="planner", phase=phase, prompt_file="p.txt")
+
+
+def test_replan_rejects_plan_the_agent_never_rewrote(tmp_path: Path) -> None:
+    """A re-plan whose agent exits without submitting must not reuse the old plan."""
+    workspace = FsWorkspace(tmp_path)
+    workspace.write(".agent/artifacts/plan.md", _PLAN_DOC)
+    ctx = _mk_policy_context(workspace)
+    record_invocation_baseline(workspace, "planning", ".agent/artifacts/plan.md")
+
+    result = handle_execution_phase(_invoke(), ctx)
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+
+
+def test_replan_accepts_plan_rewritten_by_the_agent(tmp_path: Path) -> None:
+    workspace = FsWorkspace(tmp_path)
+    workspace.write(".agent/artifacts/plan.md", _PLAN_DOC)
+    ctx = _mk_policy_context(workspace)
+    record_invocation_baseline(workspace, "planning", ".agent/artifacts/plan.md")
+    plan = tmp_path / ".agent/artifacts/plan.md"
+    plan.write_text(_PLAN_DOC)
+    os.utime(plan, ns=(1, 2_000_000_000_000_000_000))
+
+    assert handle_execution_phase(_invoke(), ctx) == [PipelineEvent.AGENT_SUCCESS]
+
+
+def test_stale_plan_rejections_put_the_planning_agent_into_cooldown(tmp_path: Path) -> None:
+    """End to end: a planner that never rewrites the plan is demoted, not credited.
+
+    The handler's rejection is a PhaseFailureEvent; fed to the reducer with the
+    real recovery controller it must charge the agent, fall over to the next
+    one, and wait once every agent is cooling down -- never advance the phase.
+    """
+    from ralph.pipeline.reducer import reduce as reducer_reduce
+    from ralph.pipeline.state import AgentChainState, PipelineState
+    from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
+    from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+
+    workspace = FsWorkspace(tmp_path)
+    workspace.write(".agent/artifacts/plan.md", _PLAN_DOC)
+    ctx = _mk_policy_context(workspace)
+    policy = PipelinePolicy(
+        phases={
+            "planning": PhaseDefinition(
+                drain="planning",
+                transitions=PhaseTransition(
+                    on_success="complete", on_failure=None, on_loopback="planning"
+                ),
+            )
+        },
+        entry_phase="planning",
+        terminal_phase="complete",
+    )
+    state = PipelineState(
+        phase="planning",
+        phase_chains={"planning": AgentChainState(agents=["a", "b"], current_index=0, retries=0)},
+    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=20))
+
+    seen_agents: list[int] = []
+    for _ in range(6):
+        record_invocation_baseline(workspace, "planning", ".agent/artifacts/plan.md")
+        events = handle_execution_phase(_invoke(), ctx)
+        assert isinstance(events[0], PhaseFailureEvent)
+        state, _ = reducer_reduce(state, events[0], policy, recovery=controller)
+        assert state.phase == "planning"
+        chain = state.chain_for_phase("planning")
+        assert chain is not None
+        seen_agents.append(chain.current_index)
+
+    assert 1 in seen_agents  # fell over from the first agent
+    assert state.is_waiting_state is True  # every agent cooling down -> wait
+    assert controller.ledger.status("planning", "a").is_cooldown

@@ -424,7 +424,9 @@ def _configure_repo_identity(repo: object) -> None:
 def _git_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create a reusable template git repository for fast per-test clones."""
     template_root = tmp_path_factory.mktemp("git-template")
-    repo = Repo.init(template_root)
+    # Pin the branch: the host's init.defaultBranch must not decide whether the
+    # fixture sits on the "main" the integration tests target.
+    repo = Repo.init(template_root, initial_branch="main")
     try:
         _configure_repo_identity(repo)
 

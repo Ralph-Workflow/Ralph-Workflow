@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 from rich.console import Console
 
 from ralph.phases import PhaseContext
+from ralph.phases.artifact_freshness import record_invocation_baseline
 from ralph.phases.execution import handle_execution_phase
 from ralph.phases.phase_timing_record import PhaseTimingRecord
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
@@ -20,6 +21,7 @@ from ralph.pipeline.events import ExecutionResultEvent, PhaseFailureEvent, Pipel
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
+from ralph.workspace.fs import FsWorkspace
 
 _VALID_PLAN_MARKDOWN = """---
 type: plan
@@ -175,6 +177,24 @@ class TestHandleDevelopment:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
         result = handle_execution_phase(effect, ctx)
         assert result == [ExecutionResultEvent(phase="development", status="completed")]
+
+    def test_development_result_left_over_from_earlier_iteration_is_rejected(
+        self, tmp_path: Path
+    ) -> None:
+        """A killed/silent agent must not be credited with the previous result."""
+        workspace = FsWorkspace(tmp_path)
+        workspace.write(".agent/artifacts/plan.md", _VALID_PLAN_MARKDOWN)
+        workspace.write(".agent/artifacts/development_result.md", _VALID_DEV_RESULT_MARKDOWN)
+        record_invocation_baseline(
+            workspace, "development", ".agent/artifacts/development_result.md"
+        )
+        ctx = self._make_context(workspace)
+
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
+        result = handle_execution_phase(effect, ctx)
+
+        assert len(result) == 1
+        assert isinstance(result[0], PhaseFailureEvent)
 
     def test_invoke_agent_effect_succeeds_even_when_console_is_present(self) -> None:
         workspace = MagicMock()

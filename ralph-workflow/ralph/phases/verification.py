@@ -20,6 +20,10 @@ from typing import TYPE_CHECKING, NoReturn
 
 from loguru import logger
 
+from ralph.phases.artifact_freshness import (
+    is_stale_since_invocation,
+    stale_artifact_detail,
+)
 from ralph.phases.artifacts import legacy_json_rejection_detail
 from ralph.phases.required_artifacts import build_required_artifacts, clear_validation_retry_hint
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
@@ -56,6 +60,8 @@ def _check_artifact_gate(
             f"the agent must submit {phase_def.drain}_verification "
             f"before declaring completion"
         )
+    if is_stale_since_invocation(ctx.workspace, phase_name, artifact_path):
+        return False, stale_artifact_detail(artifact_path, f"{phase_def.drain}_verification")
     try:
         content = ctx.workspace.read(artifact_path)
         if content and content.strip():
