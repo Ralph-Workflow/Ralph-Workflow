@@ -1796,6 +1796,13 @@ ralph.phases.analysis
    :members:
    :show-inheritance:
 
+ralph.phases.artifact_freshness
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.phases.artifact_freshness
+   :members:
+   :show-inheritance:
+
 ralph.phases.artifacts
 ~~~~~~~~~~~~~~~~~~~~~~
 

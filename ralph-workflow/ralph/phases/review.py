@@ -264,8 +264,9 @@ def handle_review(
             return [PipelineEvent.REVIEW_CLEAN]
 
         logger.info("Review phase: processing review result after agent run")
+        freshness_phase: str | None = effect.phase if hasattr(effect, "phase") else None
         try:
-            content = _load_review_issues(ctx, effect.phase)
+            content = _load_review_issues(ctx, freshness_phase)
         except (PhaseArtifactError, TypeError, ValueError) as exc:
             detail = str(exc)
             logger.warning("Review phase missing fresh issues artifact: {}", detail)

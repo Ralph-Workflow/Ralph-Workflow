@@ -786,13 +786,19 @@ def _handle_recovery_attempt_failure(
     raise exc
 
 
-def _has_valid_terminal_artifact(
+def has_valid_terminal_artifact(
     ctx: _AgentInvocationCtx,
     resolved_required_artifact: RequiredArtifact | None,
     exc: Exception,
     *,
     baseline: list[int] | None = None,
 ) -> bool:
+    """Return True when a failed exit may still be credited as a submitted artifact.
+
+    Only a non-zero exit with a valid required artifact that THIS attempt wrote
+    qualifies: an artifact identical to ``baseline`` (taken before the attempt
+    launched) is a leftover from an earlier iteration and never counts.
+    """
     returncode_obj: object = getattr(exc, "returncode", 0)
     if (
         not isinstance(returncode_obj, int)
@@ -953,7 +959,7 @@ def _invoke_agent_with_recovery(
                 _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
                 return _AttemptResult(PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id)
             except ctx.deps.agent_invocation_error as exc:
-                if _has_valid_terminal_artifact(
+                if has_valid_terminal_artifact(
                     ctx, resolved_required_artifact, exc, baseline=state.artifact_baseline
                 ):
                     _record_successful_attempt_session(ctx, tuple(raw_output), session_id)
