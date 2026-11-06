@@ -58,7 +58,11 @@ def test_terminal_exit_with_no_output_logs_gracefully() -> None:
 
 def _capture_levels(exc: AgentInvocationError) -> list[str]:
     levels: list[str] = []
-    sink_id = logger.add(lambda message: levels.append(message.record["level"].name), level="TRACE")
+
+    def _sink(message: str) -> None:
+        levels.append(message.strip())
+
+    sink_id = logger.add(_sink, level="TRACE", format="{level}")
     try:
         log_invocation_exit(exc)
     finally:
@@ -370,3 +374,34 @@ def test_stale_session_exit_with_no_session_id_marker_does_not_emit_session_id_f
         "stale-session WARNING line must omit session_id= when the failure has no "
         f"canonical SESSION_NOT_FOUND_SUBSTRINGS marker; got: {logged!r}"
     )
+
+
+def _transcript(lines: int) -> list[str]:
+    return [
+        f'{{"type":"item.completed","item":{{"id":"item_{i}","text":"{"x" * 400}"}}}}'
+        for i in range(lines)
+    ]
+
+
+def test_terminal_exit_bounds_a_huge_transcript() -> None:
+    """A whole raw transcript must never be dumped into the exit log line."""
+    parsed = [*_transcript(60), "Model returned an empty response with no tool calls"]
+    exc = AgentInvocationError("codex", 143, "", parsed_output=parsed)
+
+    logged = _capture_logs(exc)
+
+    assert "Model returned an empty response with no tool calls" in logged
+    assert "item_0" not in logged
+    assert "earlier lines omitted" in logged
+    assert len(logged) < 1500
+
+
+def test_terminal_exit_bounds_a_huge_stderr() -> None:
+    """Raw stderr is clipped to a single readable line."""
+    exc = AgentInvocationError("codex", 1, "boom\n" + "y" * 20_000, parsed_output=[])
+
+    logged = _capture_logs(exc)
+
+    assert "boom" in logged
+    assert "\n" not in logged.strip()
+    assert len(logged) < 1500

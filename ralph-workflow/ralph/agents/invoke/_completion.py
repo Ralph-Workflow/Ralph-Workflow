@@ -35,13 +35,20 @@ from ralph.agents.invoke._completion_exit_status import (
     read_bounded_stderr,
     terminal_returncode,
 )
-from ralph.agents.invoke._direct_mcp_recovery import summarize_retry_failure_evidence
+from ralph.agents.invoke._direct_mcp_recovery import (
+    condense_failure_text,
+    summarize_retry_failure_evidence,
+)
 from ralph.agents.invoke._errors import (
     AgentInvocationError,
     OpenCodeResumableExitError,
 )
 from ralph.agents.invoke._implicit_completion import is_implicit_development_exit
 from ralph.agents.invoke._pi_context_exhausted_exit_error import PiContextExhaustedExitError
+from ralph.agents.invoke._pi_exit_signals import (
+    has_pi_context_exhaustion_signal,
+    pi_provider_failure_reason,
+)
 from ralph.agents.invoke._pi_provider_failure_exit_error import PiProviderFailureExitError
 from ralph.agents.invoke._quota_detection import raise_if_quota_exhausted
 from ralph.agents.invoke._quota_exhausted_error import QuotaExhaustedError
@@ -62,10 +69,6 @@ from ralph.recovery.failure_classifier import (
 )
 from ralph.recovery.failure_details import contains_casefolded_marker
 from ralph.timeout_defaults import BROKEN_AGENT_OUTPUT_GRACE_SECONDS
-
-_PI_CONTEXT_EXHAUSTED_STOP_REASON = "length"
-_PI_PROVIDER_FAILURE_STOP_REASON = "error"
-_PI_PROVIDER_FAILURE_FALLBACK_REASON = "provider reported an unspecified failure"
 
 __all__ = (
     "_MAX_STDERR_CAPTURE_BYTES",
@@ -111,120 +114,15 @@ def _teardown_subtree_if_pid_available(
             teardown.teardown_subtree(pid, issuer=issuer)
 
 
-def _is_pi_agent(agent_name: str) -> bool:
-    normalized = agent_name.casefold()
-    return normalized == "pi" or normalized.startswith("pi/")
-
-
-def _message_has_length_stop_reason(message: object) -> bool:
-    if not isinstance(message, dict):
-        return False
-    stop_reason = message.get("stopReason")
-    return isinstance(stop_reason, str) and (
-        stop_reason.casefold() == _PI_CONTEXT_EXHAUSTED_STOP_REASON
-    )
-
-
-def _line_has_pi_context_exhaustion(line: str) -> bool:
-    try:
-        parsed = cast("object", json.loads(line))
-    except json.JSONDecodeError:
-        return False
-    if not isinstance(parsed, dict):
-        return False
-    obj = cast("dict[str, object]", parsed)
-    assistant_event = obj.get("assistantMessageEvent")
-    if isinstance(assistant_event, dict):
-        event_dict = cast("dict[str, object]", assistant_event)
-        event_type = event_dict.get("type")
-        stop_reason = event_dict.get("stopReason")
-        return (
-            event_type == "done"
-            and isinstance(stop_reason, str)
-            and stop_reason.casefold() == _PI_CONTEXT_EXHAUSTED_STOP_REASON
-        )
-    if _message_has_length_stop_reason(obj.get("message")):
-        return True
-    messages = obj.get("messages")
-    if isinstance(messages, list):
-        return any(_message_has_length_stop_reason(message) for message in messages)
-    return False
-
-
-def _has_pi_context_exhaustion_signal(agent_name: str, output: list[str]) -> bool:
-    if not _is_pi_agent(agent_name):
-        return False
-    return any(_line_has_pi_context_exhaustion(line) for line in output)
-
-
-def _message_provider_failure_reason(message: object) -> str | None:
-    if not isinstance(message, dict):
-        return None
-    message_dict = cast("dict[str, object]", message)
-    stop_reason = message_dict.get("stopReason")
-    if not isinstance(stop_reason, str):
-        return None
-    if stop_reason.casefold() != _PI_PROVIDER_FAILURE_STOP_REASON:
-        return None
-    error_message = message_dict.get("errorMessage")
-    if isinstance(error_message, str) and error_message.strip():
-        return error_message
-    return _PI_PROVIDER_FAILURE_FALLBACK_REASON
-
-
-def _exhausted_retry_ladder_reason(obj: dict[str, object]) -> str | None:
-    if obj.get("type") != "auto_retry_end" or obj.get("success") is not False:
-        return None
-    final_error = obj.get("finalError")
-    if isinstance(final_error, str) and final_error.strip():
-        return final_error
-    return _PI_PROVIDER_FAILURE_FALLBACK_REASON
-
-
-def _messages_provider_failure_reason(obj: dict[str, object]) -> str | None:
-    reason = _message_provider_failure_reason(obj.get("message"))
-    if reason is not None:
-        return reason
-    messages = obj.get("messages")
-    if not isinstance(messages, list):
-        return None
-    for message in cast("list[object]", messages):
-        reason = _message_provider_failure_reason(message)
-        if reason is not None:
-            return reason
-    return None
-
-
-def _line_provider_failure_reason(line: str) -> str | None:
-    try:
-        parsed = cast("object", json.loads(line))
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    obj = cast("dict[str, object]", parsed)
-    return _exhausted_retry_ladder_reason(obj) or _messages_provider_failure_reason(obj)
-
-
-def _pi_provider_failure_reason(agent_name: str, output: list[str]) -> str | None:
-    if not _is_pi_agent(agent_name):
-        return None
-    for line in output:
-        reason = _line_provider_failure_reason(line)
-        if reason is not None:
-            return reason
-    return None
-
-
 def _raise_if_pi_reported_failed_exit(
     handle: ManagedProcess | ManagedPtyProcess,
     agent_name: str,
     output: list[str],
     teardown: ProcessTeardown | None,
 ) -> None:
-    if _has_pi_context_exhaustion_signal(agent_name, output):
+    if has_pi_context_exhaustion_signal(agent_name, output):
         raise PiContextExhaustedExitError(agent_name)
-    provider_failure = _pi_provider_failure_reason(agent_name, output)
+    provider_failure = pi_provider_failure_reason(agent_name, output)
     if provider_failure is None:
         return
     _teardown_subtree_if_pid_available(
@@ -329,15 +227,15 @@ class CompletionCheckOptions:
     agy_cli_log_path: Path | None = None
 
 
-def _agy_has_terminal_completion_evidence(
-    output: list[str], opts: CompletionCheckOptions | None
-) -> bool:
-    if (
-        opts is None
-        or opts.workspace_path is None
-        or opts.execution_strategy is None
-        or not opts.execution_strategy.supports_incomplete_exit_reprompt()
-    ):
+def _has_verified_completion(output: list[str], opts: CompletionCheckOptions | None) -> bool:
+    """Return True when durable, run-scoped completion evidence holds.
+
+    The evidence is the verified ``declare_complete`` sentinel plus, when an
+    artifact is required, its submission receipt (see
+    :func:`completion_signals_terminal`). Transcript text never counts: it
+    can be echoed by the model.
+    """
+    if opts is None or opts.workspace_path is None:
         return False
     evaluate = opts.evaluate_completion_fn or evaluate_completion
     signals = evaluate(
@@ -351,6 +249,18 @@ def _agy_has_terminal_completion_evidence(
     return completion_signals_terminal(
         apply_sentinel_signal(signals, opts, sentinel_run_id=_completion_run_id(opts))
     )
+
+
+def _agy_has_terminal_completion_evidence(
+    output: list[str], opts: CompletionCheckOptions | None
+) -> bool:
+    if (
+        opts is None
+        or opts.execution_strategy is None
+        or not opts.execution_strategy.supports_incomplete_exit_reprompt()
+    ):
+        return False
+    return _has_verified_completion(output, opts)
 
 
 def _raise_quota_unless_agy_completed(
@@ -623,7 +533,20 @@ def _handle_non_zero_returncode(
         parsed_output or [],
         explicit_completion_seen=bool(check_options and check_options.explicit_completion_seen),
     )
-    if _agy_has_terminal_completion_evidence(bounded_output, check_options):
+    if _has_verified_completion(bounded_output, check_options):
+        # The agent finished and submitted; how its process then went away
+        # (Ralph's own SIGTERM, or a crash during shutdown) must not discard
+        # that work as a failure.
+        logger.info(
+            "Agent {} exited with code {} after verified completion; accepting as success",
+            agent_name,
+            returncode,
+        )
+        _teardown_subtree_if_pid_available(
+            handle,
+            issuer=f"invoke:completion:{agent_name}",
+            teardown=process_teardown,
+        )
         return
     raise_if_quota_exhausted(
         agent_name,
@@ -956,7 +879,7 @@ def log_invocation_exit(exc: AgentInvocationError) -> None:
             if stderr_has_session_marker
             else summarize_retry_failure_evidence(exc.parsed_output)
         )
-        stderr_field = exc.stderr if (exc.stderr and exc.stderr.strip()) else "(empty)"
+        stderr_field = condense_failure_text(exc.stderr) if exc.stderr.strip() else "(empty)"
         rejected_session_id = _extract_rejected_session_id_from_failure(exc)
         # Append-only invariant: new fields are added at the tail of the
         # WARNING line, never in the middle of the existing format string.
@@ -988,13 +911,13 @@ def log_invocation_exit(exc: AgentInvocationError) -> None:
         logger.warning(
             "Retryable agent exit with code {}: {} [{}]",
             exc.returncode,
-            exc.stderr,
+            condense_failure_text(exc.stderr),
             summarize_retry_failure_evidence(exc.parsed_output),
         )
         return
     logger.error(
         "Agent exited with code {}: {} [{}]",
         exc.returncode,
-        exc.stderr,
+        condense_failure_text(exc.stderr),
         summarize_retry_failure_evidence(exc.parsed_output),
     )

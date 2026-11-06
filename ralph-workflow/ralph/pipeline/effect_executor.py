@@ -28,7 +28,10 @@ from ralph.agents.invoke import (
     resolve_resume_session_id,
 )
 from ralph.agents.invoke._agy_incomplete_exit_error import AgyIncompleteExitError
-from ralph.agents.invoke._direct_mcp_recovery import run_with_direct_mcp_recovery
+from ralph.agents.invoke._direct_mcp_recovery import (
+    condense_failure_text,
+    run_with_direct_mcp_recovery,
+)
 from ralph.agents.invoke._open_code_resumable_exit_error import OpenCodeResumableExitError
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.timeout_clock import Clock, SystemClock
@@ -2258,7 +2261,12 @@ def _handle_terminal_agent_invocation_error(
         )
     origin = exc.failure_origin if isinstance(exc, AgentInvocationError) else "agent"
     issuer = exc.issuer if isinstance(exc, AgentInvocationError) else None
-    logger.error("Agent invocation failed: origin={} issuer={} error={}", origin, issuer, exc)
+    logger.error(
+        "Agent invocation failed: origin={} issuer={} error={}",
+        origin,
+        issuer,
+        condense_failure_text(str(exc)),
+    )
     agent_invocation_error_sink and agent_invocation_error_sink(exc)
     if observation is not None:
         return replace(observation, reason=str(exc))

@@ -78,6 +78,29 @@ def _style_role_for_message(message: str) -> str:
     return _LEVEL_STYLE_ROLES.get(level_name, "theme.log.info")
 
 
+#: Per-record terminal bounds. Callers interpolate exception text and agent
+#: output into log messages; the terminal boundary guarantees no record can
+#: become a wall of text. The file sinks still hold the full record.
+_MAX_RECORD_LINE_CHARS: Final = 1000
+_MAX_RECORD_LINES: Final = 40
+
+
+def _clip_line(line: str) -> str:
+    if len(line) <= _MAX_RECORD_LINE_CHARS:
+        return line
+    extra = len(line) - _MAX_RECORD_LINE_CHARS
+    return f"{line[:_MAX_RECORD_LINE_CHARS]} ... [+{extra} chars omitted]"
+
+
+def _bound_record(text: str) -> str:
+    """Clip over-long lines and cap the line count of one terminal record."""
+    lines = text.split("\n")
+    bounded = [_clip_line(line) for line in lines[:_MAX_RECORD_LINES]]
+    if len(lines) > _MAX_RECORD_LINES:
+        bounded.append(f"... [+{len(lines) - _MAX_RECORD_LINES} more lines omitted]")
+    return "\n".join(bounded)
+
+
 def _retiring_on_dead_surface(write: Callable[[str], None]) -> Callable[[str], None]:
     """Wrap ``write`` so it retires permanently once its surface dies.
 
@@ -152,7 +175,7 @@ def make_sanitizing_log_sink(ctx: DisplayContext) -> Callable[[str], None]:
     def _sink(message: str) -> None:
         cleaned = strip_terminal_control(message.rstrip("\n"))
         console.print(
-            cleaned,
+            _bound_record(cleaned),
             style=console.get_style(_style_role_for_message(message), default="none"),
             markup=False,
             highlight=False,
@@ -179,8 +202,9 @@ def make_stderr_log_sink(
 
     Returns:
         Callable accepting loguru's fully-formatted message string.
-        Strips escapes, strips the trailing newline, and writes the
-        sanitized text via ``writer`` (no rich markup interpretation).
+        Strips escapes, bounds the record, and writes the sanitized text
+        via ``writer`` terminated by exactly one newline so consecutive
+        records never run together (no rich markup interpretation).
     """
     # ``sys.stderr.write`` returns the number of bytes written (int); loguru
     # only requires a callable accepting a single string. Use a typed alias so
@@ -199,7 +223,7 @@ def make_stderr_log_sink(
 
     def _sink(message: str) -> None:
         cleaned = strip_terminal_control(message.rstrip("\n"))
-        sink_writer(cleaned)
+        sink_writer(_bound_record(cleaned) + "\n")
 
     return _sink
 

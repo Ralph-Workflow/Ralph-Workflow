@@ -462,14 +462,41 @@ def _invocation_error_with_output(
     return exc
 
 
+_EVIDENCE_MAX_LINES = 3
+_EVIDENCE_LINE_MAX_CHARS = 200
+
+
+def condense_failure_text(text: str, *, max_chars: int = _EVIDENCE_LINE_MAX_CHARS) -> str:
+    """Collapse ``text`` to one whitespace-normalised line of at most ``max_chars``.
+
+    Raw agent stderr and transcript lines are multi-line and unbounded; logging
+    them verbatim buries the one line that explains the failure. The full text
+    stays available on the exception for classifiers.
+    """
+    flat = " ".join(text.split())
+    if len(flat) <= max_chars:
+        return flat
+    return flat[: max_chars - 1] + "\u2026"
+
+
 def summarize_retry_failure_evidence(lines: list[str]) -> str:
-    meaningful = [line.strip() for line in lines if line.strip()]
+    """Return a bounded one-line digest of the tail of a failed agent's output.
+
+    The last lines carry the failure cause, so only the final
+    ``_EVIDENCE_MAX_LINES`` are kept, each condensed, with a count of the
+    omitted earlier lines.
+    """
+    meaningful = [line for line in lines if line.strip()]
     if not meaningful:
         return "(no output captured)"
-    return " | ".join(meaningful)
+    tail = meaningful[-_EVIDENCE_MAX_LINES:]
+    omitted = len(meaningful) - len(tail)
+    digest = " | ".join(condense_failure_text(line) for line in tail)
+    return f"({omitted} earlier lines omitted) {digest}" if omitted else digest
 
 
 __all__ = [
+    "condense_failure_text",
     "default_direct_mcp_retry_limit",
     "iter_with_direct_mcp_recovery",
     "run_with_direct_mcp_recovery",
