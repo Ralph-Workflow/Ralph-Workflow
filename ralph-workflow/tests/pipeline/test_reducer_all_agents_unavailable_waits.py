@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.agent_chain_state import AgentChainState
@@ -11,6 +13,7 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
+from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact, Cooldown
 from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import UnavailabilityReason
@@ -100,3 +103,37 @@ def test_agent_failure_falls_over_when_an_agent_is_available() -> None:
     assert chain is not None
     assert chain.current_index == 2
     assert reduced_state.is_waiting_state is False
+
+
+def test_failed_route_does_not_treat_agent_cooldown_as_terminal_intervention() -> None:
+    """A cooldown at the recovery route remains a wait, never a hard stop."""
+    from ralph.pipeline import run_loop
+
+    clock = FakeClock(start=0.0)
+    ledger = AgentFailureLedger(consecutive_limit=1, total_limit=10, clock=clock)
+    outcome = ledger.record(
+        AttemptFact(
+            phase="planning",
+            agent="claude",
+            artifact_valid=False,
+            workspace_changed=False,
+        )
+    )
+    assert isinstance(outcome.status, Cooldown)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, clock=clock, ledger=ledger)
+    )
+    state = PipelineState(
+        phase="failed_terminal",
+        previous_phase="planning",
+        recovery_epoch=3,
+        last_execution_result_status="failed",
+        phase_chains={"planning": AgentChainState(agents=["claude"])},
+    )
+
+    requires_intervention = run_loop.ledger_requires_intervention(
+        state,
+        cast("run_loop.LoopContext", SimpleNamespace(controller=controller)),
+    )
+
+    assert requires_intervention is False

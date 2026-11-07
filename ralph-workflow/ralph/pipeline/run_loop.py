@@ -3957,28 +3957,36 @@ handle_cooldown_delay = _handle_cooldown_delay
 _MAX_RECOVERY_EPOCHS: int = 3
 
 
-def _ledger_requires_intervention(state: PipelineState, ctx: LoopContext) -> bool:
+def ledger_requires_intervention(state: PipelineState, ctx: LoopContext) -> bool:
     """Whether the ledger or recovery state demands a hard stop at ``failed_route``."""
-    if (
-        state.recovery_epoch >= _MAX_RECOVERY_EPOCHS
-        or state.last_execution_result_status == "failed"
-    ):
-        return True
     target_phase = state.previous_phase or state.phase
     chain = state.chain_for_phase(target_phase)
     agents = chain.agents if chain is not None and chain.agents else ()
     ledger = ctx.controller.ledger
     if agents:
-        return all(not ledger.status(target_phase, agent).is_eligible for agent in agents)
-    snap = state.ledger_snapshot or ledger.snapshot()
-    raw_entries = snap.get("entries") if isinstance(snap, Mapping) else None
-    if isinstance(raw_entries, Mapping) and raw_entries:
-        for item in raw_entries.values():
-            if isinstance(item, Mapping) and (
-                item.get("is_spent") or item.get("cooldown_until_ms") is not None
-            ):
+        from ralph.recovery.agent_failure_ledger import Cooldown, Spent
+
+        statuses = tuple(ledger.status(target_phase, agent) for agent in agents)
+        # Cooldown is explicitly recoverable. It outranks generic failure and
+        # recovery-epoch bookkeeping so a temporary provider outage can never
+        # turn the failed-route recovery hop into a terminal pipeline exit.
+        if any(isinstance(status, Cooldown) for status in statuses):
+            return False
+        if all(isinstance(status, Spent) for status in statuses):
+            return True
+    else:
+        snap = state.ledger_snapshot or ledger.snapshot()
+        raw_entries = snap.get("entries") if isinstance(snap, Mapping) else None
+        if isinstance(raw_entries, Mapping) and raw_entries:
+            entries = tuple(item for item in raw_entries.values() if isinstance(item, Mapping))
+            if any(item.get("cooldown_until_ms") is not None for item in entries):
+                return False
+            if any(item.get("is_spent") for item in entries):
                 return True
-    return False
+    return (
+        state.recovery_epoch >= _MAX_RECOVERY_EPOCHS
+        or state.last_execution_result_status == "failed"
+    )
 
 
 def _cycle_cap_exhausted(state: PipelineState, ctx: LoopContext) -> bool:
@@ -4042,7 +4050,7 @@ def _run_inner_loop_after_startup(
         )
         or (
             state.phase == ctx.policy_bundle.pipeline.recovery.failed_route
-            and not _ledger_requires_intervention(state, ctx)
+            and not ledger_requires_intervention(state, ctx)
             and not _cycle_cap_exhausted(state, ctx)
         )
         or (
