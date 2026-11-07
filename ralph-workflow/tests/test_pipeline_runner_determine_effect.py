@@ -419,11 +419,17 @@ class TestDetermineEffect:
         assert isinstance(effect, FanOutEffect)
         assert effect.work_units[0].unit_id == "unit-a"
 
-    def test_commit_phase_with_requires_commit_uses_commit_effect(
+    def test_commit_phase_with_invoked_agent_and_durable_message_uses_commit_effect(
         self, monkeypatch: MonkeyPatch, tmp_path: Path
     ) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
+        artifact_path = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+        artifact_path.parent.mkdir(parents=True)
+        artifact_path.write_text(
+            "---\ntype: commit\nsubject: fix(commit): preserve durable message\n---\n",
+            encoding="utf-8",
+        )
         monkeypatch.setattr(
             "ralph.pipeline.effect_router.list_changed_paths", lambda _root: ["work.py"]
         )
@@ -435,6 +441,33 @@ class TestDetermineEffect:
             has_uncommitted_changes_fn=lambda _root: True,
         )
         assert isinstance(effect, CommitEffect)
+
+    @pytest.mark.parametrize("artifact_content", [None, "not a commit artifact"])
+    def test_commit_phase_regenerates_message_when_invoked_state_outlives_valid_artifact(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+        artifact_content: str | None,
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+        state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
+        if artifact_content is not None:
+            artifact_path = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+            artifact_path.parent.mkdir(parents=True)
+            artifact_path.write_text(artifact_content, encoding="utf-8")
+        monkeypatch.setattr(
+            "ralph.pipeline.effect_router.list_changed_paths", lambda _root: ["work.py"]
+        )
+
+        effect = runner_module.determine_effect_from_policy(
+            state,
+            bundle,
+            WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path]),
+            has_uncommitted_changes_fn=lambda _root: True,
+        )
+
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.phase == "development_commit"
 
     def test_empty_commit_phase_selects_no_agent_effect(self, tmp_path: Path) -> None:
         bundle = _load_default_policy_bundle()

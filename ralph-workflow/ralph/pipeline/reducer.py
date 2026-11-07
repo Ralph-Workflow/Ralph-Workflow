@@ -2169,8 +2169,9 @@ def _should_preserve_commit_retry(
     Preserves commit state across the cleanup->commit transition when:
     1. The source phase is a commit cleanup phase (role == "commit_cleanup").
     2. The target phase is a commit phase (role == "commit").
-    3. The cleanup followed a recoverable git failure / lock contention
-       (repairable last_error or recovery_epoch > 0).
+    3. The cleanup is handling a currently recorded recoverable git failure.
+       ``recovery_epoch`` is historical accounting and cannot prove that the
+       current cleanup is a retry.
     4. A validated commit message was already prepared (commit.agent_invoked is True).
     """
     source_phase_def = policy.phases.get(state.phase)
@@ -2181,7 +2182,7 @@ def _should_preserve_commit_retry(
         return False
     if not state.commit.agent_invoked:
         return False
-    return _is_repairable_git_failure(state.last_error) or state.recovery_epoch > 0
+    return _is_repairable_git_failure(state.last_error)
 
 
 def _advance_phase(

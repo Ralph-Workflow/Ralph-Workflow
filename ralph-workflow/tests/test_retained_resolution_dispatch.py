@@ -33,6 +33,14 @@ def _patch_lock_recovery_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("ralph.git._lock_recovery._probe_lsof_fuser", lambda _p, _t: "dead")
 
 
+def _write_commit_message_when_needed(workspace: FsWorkspace, *, empty: bool) -> None:
+    if not empty:
+        workspace.write(
+            ".agent/artifacts/commit_message.md",
+            "---\ntype: commit\nsubject: fix: complete retained resolution\n---\n",
+        )
+
+
 @pytest.mark.parametrize("empty", [False, True])
 def test_completed_commit_is_not_replayed_while_clean_landing_receipt_waits(
     tmp_git_repo: Path,
@@ -111,6 +119,7 @@ def test_completed_commit_is_not_replayed_while_clean_landing_receipt_waits(
         commit_effect_executor=commit,
         auto_integrate_resolver=held,
     )
+    _write_commit_message_when_needed(workspace, empty=empty)
     initial = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
     controller = RecoveryController()
     completed = runner.run_pipeline_step(

@@ -31,10 +31,16 @@ def _load_default_policy_bundle() -> PolicyBundle:
 
 def test_default_commit_phase_returns_commit_effect_after_message_agent(
     monkeypatch: MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Plan step 3 / AC-02: the real two-stage commit phase reaches CommitEffect."""
     bundle = _load_default_policy_bundle()
     state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
+    artifact = tmp_path / ".agent" / "artifacts" / "commit_message.md"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text(
+        "---\ntype: commit\nsubject: fix: integrate commit\n---\n", encoding="utf-8"
+    )
     monkeypatch.setattr(
         "ralph.pipeline.effect_router.list_changed_paths", lambda _root: ["work.py"]
     )
@@ -42,7 +48,7 @@ def test_default_commit_phase_returns_commit_effect_after_message_agent(
     effect = determine_effect_from_policy(
         state,
         bundle,
-        WorkspaceScope(Path("/workspace")),
+        WorkspaceScope(tmp_path),
         config=UnifiedConfig(),
         has_uncommitted_changes_fn=lambda _root: True,
     )

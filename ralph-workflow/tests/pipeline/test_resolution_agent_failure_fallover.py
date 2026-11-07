@@ -5,6 +5,8 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline import run_loop
 from ralph.pipeline.agent_chain_state import AgentChainState
@@ -32,13 +34,11 @@ def _entry(unavailable_until_ms: int) -> UnavailabilityEntry:
     )
 
 
-def _pending_conflict_state() -> PipelineState:
+def _pending_conflict_state(phase: str) -> PipelineState:
     return PipelineState(
-        phase="development",
+        phase=phase,
         phase_chains={
-            "development": AgentChainState(
-                agents=["claude", "opencode"], current_index=0, retries=3
-            )
+            phase: AgentChainState(agents=["claude", "opencode"], current_index=0, retries=3)
         },
     ).copy_with(
         rebase=run_loop.RebaseState(
@@ -51,7 +51,7 @@ def _pending_conflict_state() -> PipelineState:
     )
 
 
-def _reduce_with(entries: dict[str, UnavailabilityEntry]) -> PipelineState:
+def _reduce_with(entries: dict[str, UnavailabilityEntry], *, phase: str) -> PipelineState:
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -60,26 +60,38 @@ def _reduce_with(entries: dict[str, UnavailabilityEntry]) -> PipelineState:
         )
     )
     state, _effects = reduce(
-        _pending_conflict_state(), PipelineEvent.AGENT_FAILURE, _policy(), recovery=controller
+        _pending_conflict_state(phase),
+        PipelineEvent.AGENT_FAILURE,
+        _policy(),
+        recovery=controller,
     )
     return state
 
 
-def test_agent_failure_falls_over_without_spending_pending_conflict_budget() -> None:
-    state = _reduce_with({"claude": _entry(5000)})
+@pytest.mark.parametrize(
+    "phase", ["development", "development_commit_cleanup", "development_commit"]
+)
+def test_agent_failure_falls_over_without_spending_pending_conflict_budget(phase: str) -> None:
+    state = _reduce_with({"claude": _entry(5000)}, phase=phase)
 
-    chain = state.chain_for_phase("development")
+    chain = state.chain_for_phase(phase)
     assert chain is not None
     assert chain.current_index == 1
     assert chain.retries == 0
     assert state.metrics.total_fallbacks == 1
-    assert state.rebase == _pending_conflict_state().rebase
+    assert state.rebase == _pending_conflict_state(phase).rebase
 
 
-def test_agent_failure_waits_when_all_resolvers_are_cooling_down() -> None:
-    state = _reduce_with({"claude": _entry(5000), "opencode": _entry(8000)})
+@pytest.mark.parametrize(
+    "phase", ["development", "development_commit_cleanup", "development_commit"]
+)
+def test_agent_failure_waits_when_all_resolvers_are_cooling_down(phase: str) -> None:
+    state = _reduce_with(
+        {"claude": _entry(5000), "opencode": _entry(8000)},
+        phase=phase,
+    )
 
     assert state.is_waiting_state is True
     assert state.last_retry_delay_ms == 5000
     assert state.last_error == "all agents unavailable; waiting for cooldown expiry"
-    assert state.rebase == _pending_conflict_state().rebase
+    assert state.rebase == _pending_conflict_state(phase).rebase

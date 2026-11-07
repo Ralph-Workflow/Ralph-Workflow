@@ -570,10 +570,10 @@ def test_cleanup_without_validated_message_does_not_emit_commit_effect(
     assert isinstance(next_effect, InvokeAgentEffect)
 
 
-def test_absent_or_malformed_artifact_on_commit_retry_escalates_to_terminal_failure(
+def test_malformed_artifact_on_commit_retry_regenerates_the_message(
     tmp_path: Path,
 ) -> None:
-    """Missing or corrupted commit artifact on retry terminates instead of retrying."""
+    """Corrupted durable state cannot make a recoverable commit kill the pipeline."""
     repo_root = _make_fake_workspace(tmp_path)
     # Write a malformed commit message artifact (missing required fields / invalid yaml)
     agent_dir = repo_root / ".agent" / "artifacts"
@@ -583,8 +583,6 @@ def test_absent_or_malformed_artifact_on_commit_retry_escalates_to_terminal_fail
 
     scope = _make_workspace_scope(repo_root)
     policy_bundle = _load_policy_bundle()
-    pipeline_policy = policy_bundle.pipeline
-
     commit_state = CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True)
     state = PipelineState(
         phase="development_commit",
@@ -599,24 +597,8 @@ def test_absent_or_malformed_artifact_on_commit_retry_escalates_to_terminal_fail
         workspace_scope=scope,
         has_uncommitted_changes_fn=_has_uncommitted_changes,
     )
-    assert isinstance(next_effect, CommitEffect)
-
-    with (
-        patch("ralph.pipeline.commit_executor._is_git_worktree", return_value=False),
-        patch("ralph.pipeline.commit_executor.get_head_sha", return_value="deadbeef"),
-    ):
-        event = execute_commit_effect(
-            next_effect,
-            repo_root,
-            has_commit_work_fn=_has_uncommitted_changes,
-        )
-    assert event is PipelineEvent.COMMIT_FAILURE
-
-    # Now reduce COMMIT_FAILURE with the invalid artifact error
-    terminal_state, _ = reduce(state, event, pipeline_policy)
-    assert terminal_state.phase == pipeline_policy.recovery.failed_route, (
-        f"Non-repairable artifact failure must reach terminal failure, got {terminal_state.phase}"
-    )
+    assert isinstance(next_effect, InvokeAgentEffect)
+    assert next_effect.phase == "development_commit"
 
 
 def test_repeated_lock_contention_preserves_and_advances_recovery_epoch(
@@ -659,7 +641,6 @@ def test_repeated_lock_contention_preserves_and_advances_recovery_epoch(
     commit_2, _ = reduce(cleanup_2, PipelineEvent.PHASE_ADVANCE, pipeline_policy)
     assert commit_2.phase == "development_commit"
     assert commit_2.recovery_epoch == 2
-
     # Iteration 3: 3rd lock failure -> cleanup -> commit (epoch=3, cap reached)
     cleanup_3, _ = reduce(commit_2, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
     assert cleanup_3.phase == "development_commit_cleanup"
@@ -679,3 +660,19 @@ def test_repeated_lock_contention_preserves_and_advances_recovery_epoch(
     commit_success_state, _ = reduce(commit_3, PipelineEvent.COMMIT_SUCCESS, pipeline_policy)
     assert commit_success_state.phase == "development_analysis"
     assert commit_success_state.recovery_epoch == 0
+
+
+def test_stale_recovery_epoch_does_not_reuse_an_old_commit_invocation() -> None:
+    """Ordinary cleanup must not turn historical recovery into a commit retry."""
+    policy = _load_policy_bundle().pipeline
+    stale_state = PipelineState(
+        phase="development_commit_cleanup",
+        commit=CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True),
+        recovery_epoch=1,
+        last_error=None,
+    )
+
+    commit_state, _ = reduce(stale_state, PipelineEvent.PHASE_ADVANCE, policy)
+
+    assert commit_state.phase == "development_commit"
+    assert commit_state.commit.agent_invoked is False

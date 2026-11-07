@@ -12,6 +12,7 @@ from ralph.git.operations import has_staged_changes, has_uncommitted_changes, li
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     delete_commit_message_artifacts,
+    read_commit_message_artifact,
 )
 from ralph.mcp.artifacts.plan._section_registry import PLAN_ARTIFACT_PATH
 from ralph.mcp.artifacts.plan._validation import (
@@ -298,8 +299,12 @@ def _commit_phase_effect(
     )
     if completed_effect is not None:
         return completed_effect
-    if state.commit.agent_invoked:
+    if state.commit.agent_invoked and read_commit_message_artifact(workspace_scope.root):
         return CommitEffect(message_file=str(workspace_scope.root / COMMIT_MESSAGE_ARTIFACT))
+    if state.commit.agent_invoked:
+        logger.warning(
+            "Commit invocation state has no valid durable message artifact; regenerating it"
+        )
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, recovery=recovery)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for commit phase '{state.phase}'")
