@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from types import SimpleNamespace
-from typing import cast
+from typing import TYPE_CHECKING
 
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.agent_chain_state import AgentChainState
@@ -18,8 +17,11 @@ from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
+if TYPE_CHECKING:
+    from ralph.policy.models import PipelinePolicy
 
-def _minimal_policy() -> object:
+
+def _minimal_policy() -> PipelinePolicy:
     with tempfile.TemporaryDirectory() as directory:
         return load_policy(Path(directory) / ".agent").pipeline
 
@@ -133,7 +135,7 @@ def test_failed_route_does_not_treat_agent_cooldown_as_terminal_intervention() -
 
     requires_intervention = run_loop.ledger_requires_intervention(
         state,
-        cast("run_loop.LoopContext", SimpleNamespace(controller=controller)),
+        controller,
     )
 
     assert requires_intervention is False

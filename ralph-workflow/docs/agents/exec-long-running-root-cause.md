@@ -593,7 +593,7 @@ is the child MCP server's shutdown path, not `_session_wrapup.py`.
   ```
 
   (`ralph/mcp/server/lifecycle.py:3427-3437`; the `"ralph.mcp.server"` module name is at
-  `:3430`). The MCP server runs as a separate child
+  `:3434`). The MCP server runs as a separate child
   process; the parent owns the lifecycle via
   `StandaloneMcpProcess.shutdown` (`_standalone_mcp_process.py:46-72`),
   which calls `self.process.terminate(grace_period_s=SHUTDOWN_TERMINATE_GRACE_S)`

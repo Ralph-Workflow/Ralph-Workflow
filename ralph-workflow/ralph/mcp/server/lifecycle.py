@@ -3423,9 +3423,13 @@ def _spawn_mcp_process(
                 env[MCP_EFFECTIVE_CONFIG_FINGERPRINT] = effective_config_fingerprint
             pass_fds = (*pass_fds, child_fd)
         spawn_start = time.monotonic()
+        executable, package_root = resolve_mcp_runtime(
+            executable=Path(sys.executable), package_root=_PACKAGE_ROOT
+        )
+        env = _env_for_mcp_package_root(env, package_root)
         process = deps.spawn_process(
             [
-                sys.executable,
+                str(executable),
                 "-m",
                 "ralph.mcp.server",
                 "--host",
@@ -3476,6 +3480,64 @@ def _spawn_mcp_process(
         )
 
     return bridge
+
+
+def resolve_mcp_runtime(*, executable: Path, package_root: Path) -> tuple[Path, Path]:
+    """Return one coherent interpreter/package pair for an MCP child.
+
+    Checkout installs are immutable generations. Older installers could delete
+    a generation while a process from it was still alive; in that case only,
+    recover through the install's atomic ``current`` pointer. The candidate's
+    existing private readiness and tool-hash checks remain the compatibility
+    gate before it can replace the serving child.
+    """
+    original = (executable, package_root)
+    if executable.is_file() and (package_root / "ralph" / "__init__.py").is_file():
+        return original
+    try:
+        generation = executable.parents[2]
+        generations = generation.parent
+    except IndexError:
+        generation = package_root
+        generations = Path()
+    if generations.name != "generations" or package_root.resolve() != generation.resolve():
+        return original
+    current = generations.parent / "current"
+    try:
+        current_generation = current.resolve(strict=True)
+    except OSError:
+        return original
+    if (
+        current_generation.parent.resolve() != generations.resolve()
+        or not (current_generation / "ralph" / "__init__.py").is_file()
+    ):
+        return original
+    candidates = (
+        current_generation / ".venv" / "bin" / executable.name,
+        current_generation / ".venv" / "bin" / "python3",
+        current_generation / ".venv" / "bin" / "python",
+    )
+    current_executable = next((path for path in candidates if path.is_file()), None)
+    if current_executable is None:
+        return original
+    logger.warning(
+        "MCP parent runtime generation vanished; recovering candidate spawn through "
+        "current immutable generation {}",
+        current_generation,
+    )
+    return current_executable.resolve(), current_generation.resolve()
+
+
+def _env_for_mcp_package_root(env: dict[str, str], package_root: Path) -> dict[str, str]:
+    """Pin a child environment to the package tree paired with its interpreter."""
+    updated = dict(env)
+    entries = [
+        entry
+        for entry in updated.get("PYTHONPATH", "").split(os.pathsep)
+        if entry and Path(entry).resolve() != _PACKAGE_ROOT.resolve()
+    ]
+    updated["PYTHONPATH"] = os.pathsep.join((str(package_root), *entries))
+    return updated
 
 
 def _build_spawn_env(

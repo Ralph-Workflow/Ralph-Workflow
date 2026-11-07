@@ -44,7 +44,6 @@ from ralph.install_transaction import (
     create_candidate,
     install_lock,
     point_current,
-    prune_generations,
     publish_generation,
 )
 from ralph.process._spawn_env import sanitize_process_environment
@@ -114,10 +113,6 @@ def _same_directory(entry: str, directory: Path) -> bool:
         return False
 
 
-class _GenerationPruner(Protocol):
-    def __call__(self, generations: Path, *, current: Path, launcher: Path) -> tuple[Path, ...]: ...
-
-
 def _publish_launcher(
     generation: Path,
     launcher_path: Path,
@@ -148,7 +143,6 @@ def install_dev_checkout(
     candidate_factory: Callable[[Path], Path] = create_candidate,
     publish: GenerationPublisher = publish_generation,
     update_current: Callable[[Path, Path], None] = point_current,
-    prune: _GenerationPruner = prune_generations,
 ) -> None:
     """Build, validate, and transactionally publish a checkout snapshot."""
     if uv_executable is None:
@@ -159,9 +153,6 @@ def install_dev_checkout(
     preflight(uv_executable)
     with lock(root / ".install.lock"):
         cleanup_staging(staging)
-        # Before publishing, so the build being replaced (still referenced
-        # now) survives this install and only older snapshots are removed.
-        prune(generations, current=current, launcher=launcher_path)
         completed = False
         try:
             replaced = read_identity(current)

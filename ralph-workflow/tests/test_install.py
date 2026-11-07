@@ -139,8 +139,8 @@ def test_dev_launcher_quotes_absolute_uv_and_snapshot_paths(hostile_path: Path) 
     assert argv[-1] == "$@"
 
 
-def test_install_dev_checkout_prunes_old_generations_under_the_lock_before_publishing() -> None:
-    """Each install leaves a full snapshot; pruning must run locked, before the new publish."""
+def test_install_dev_checkout_never_deletes_published_generations() -> None:
+    """The installer cannot prove that an older generation has no live processes."""
     events: list[str] = []
 
     @contextmanager
@@ -148,10 +148,6 @@ def test_install_dev_checkout_prunes_old_generations_under_the_lock_before_publi
         events.append("lock")
         yield
         events.append("unlock")
-
-    def prune(generations: Path, *, current: Path, launcher: Path) -> tuple[Path, ...]:
-        events.append(f"prune {generations} {current} {launcher}")
-        return ()
 
     def publish(
         candidate: Path, _generations: Path, *, publish_launcher: Callable[[Path], None]
@@ -177,12 +173,10 @@ def test_install_dev_checkout_prunes_old_generations_under_the_lock_before_publi
         update_current=lambda _current, _generation: None,
         read_identity=lambda _snapshot: None,
         emit=lambda _line: None,
-        prune=prune,
     )
 
     assert events == [
         "lock",
-        "prune /install/generations /install/current /bin/rdev",
         "publish",
         "unlock",
     ]

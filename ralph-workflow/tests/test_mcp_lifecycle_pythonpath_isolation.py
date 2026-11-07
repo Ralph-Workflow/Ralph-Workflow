@@ -71,3 +71,25 @@ def test_subprocess_env_empty_pythonpath_yields_package_root_only(
     env = lifecycle._subprocess_env(tmp_path / "session.json")
 
     assert env["PYTHONPATH"] == str(lifecycle._PACKAGE_ROOT)
+
+
+def test_mcp_runtime_recovers_from_a_deleted_dev_generation(tmp_path: Path) -> None:
+    """A restart uses the current coherent snapshot after its launch generation vanished."""
+    install_root = tmp_path / "ralph-workflow-dev"
+    vanished = install_root / "generations" / "generation-old"
+    current_generation = install_root / "generations" / "generation-current"
+    current = install_root / "current"
+    interpreter = current_generation / ".venv" / "bin" / "python3"
+    package_root = current_generation
+    interpreter.parent.mkdir(parents=True)
+    interpreter.write_text("", encoding="utf-8")
+    (package_root / "ralph" / "mcp" / "server").mkdir(parents=True)
+    (package_root / "ralph" / "__init__.py").write_text("", encoding="utf-8")
+    current.symlink_to(current_generation, target_is_directory=True)
+
+    runtime = lifecycle.resolve_mcp_runtime(
+        executable=vanished / ".venv" / "bin" / "python3",
+        package_root=vanished,
+    )
+
+    assert runtime == (interpreter.resolve(), package_root.resolve())

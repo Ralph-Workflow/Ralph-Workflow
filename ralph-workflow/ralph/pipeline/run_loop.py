@@ -3957,12 +3957,12 @@ handle_cooldown_delay = _handle_cooldown_delay
 _MAX_RECOVERY_EPOCHS: int = 3
 
 
-def ledger_requires_intervention(state: PipelineState, ctx: LoopContext) -> bool:
+def ledger_requires_intervention(state: PipelineState, controller: RecoveryController) -> bool:
     """Whether the ledger or recovery state demands a hard stop at ``failed_route``."""
     target_phase = state.previous_phase or state.phase
     chain = state.chain_for_phase(target_phase)
     agents = chain.agents if chain is not None and chain.agents else ()
-    ledger = ctx.controller.ledger
+    ledger = controller.ledger
     if agents:
         from ralph.recovery.agent_failure_ledger import Cooldown, Spent
 
@@ -4050,7 +4050,7 @@ def _run_inner_loop_after_startup(
         )
         or (
             state.phase == ctx.policy_bundle.pipeline.recovery.failed_route
-            and not ledger_requires_intervention(state, ctx)
+            and not ledger_requires_intervention(state, ctx.controller)
             and not _cycle_cap_exhausted(state, ctx)
         )
         or (
