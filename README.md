@@ -1,26 +1,49 @@
 # Ralph Workflow
 
-## The end of pull requests.
+## Move beyond pull requests.
 
 **Multiple coding agents. Separate worktrees. One mainline.**
 
-Coding agents can write code in parallel. Getting their changes together
-should be just as autonomous.
+Ralph Workflow began as a simple orchestrator for the Ralph loop: give an
+agent a task, let it work, verify the result, and iterate. It has grown into a
+graph engineering framework for autonomous coding workflows.
 
 Ralph Workflow is the **operating system for autonomous coding**: a free,
-open-source AI agent orchestrator that plans, builds, verifies, and integrates
-work with the coding agents you already use. Its standout capability is Git
-synchronization across worktrees: agents work separately while Ralph Workflow
-brings their committed changes back to a shared mainline.
+open-source AI agent orchestrator that connects planning, development, review,
+repair, and integration in one configurable workflow. Its core remains the
+simple **Ralph loop: plan → build → verify → fix**. Around that core, Ralph
+Workflow adds agent review, retries, fallback agents, durable handoffs, recovery,
+and Git integration.
 
-**Our vision is the end of pull requests.** Verification, review, and
-integration belong inside the development loop, so work can flow from task to
-main without a human carrying every branch through a PR queue. You define the
-outcome and the checks. Ralph Workflow runs the workflow. You judge the software.
+The result is a different coordination model. Independent runs can work in
+separate Git worktrees without sharing agent context. Ralph Workflow coordinates
+their committed changes through the repository: it synchronizes feature work
+with the configured mainline, routes conflicts for resolution, checks the Git
+result, and integrates successful work so the next run builds on it.
+
+**Our vision is to move software development beyond pull requests as the
+primary handoff mechanism.** Review and integration move inside the execution
+graph, where they can be continuous, evidence-backed, and tied to the original
+task. You define the outcome and the checks. Ralph Workflow runs the workflow.
+You judge the software.
 
 [**Start your first run →**](START_HERE.md)
 
-## Build in parallel. Integrate continuously.
+## From a loop to a workflow graph
+
+A loop keeps one task moving. A workflow graph connects the decisions around
+it: which phase runs next, which agent handles it, what evidence must be
+produced, what happens when a check fails, and how work resumes after an
+interruption.
+
+Ralph Workflow ships a strong default graph for writing software. Use it as-is
+first. As your needs grow, configure the phases, routes, agent chains, tools,
+and artifact contracts instead of rebuilding the orchestration around every
+agent. Within a run, the executing agent can delegate independent work to its
+native subagents. Across separate worktrees, Ralph Workflow coordinates through
+Git integration and durable workflow state.
+
+## Independent work. A shared mainline.
 
 Separate worktrees give agents room to work. Ralph Workflow handles the Git coordination
 that makes their work converge.
@@ -38,8 +61,9 @@ that makes their work converge.
 - **Recover interrupted integration.** Durable recovery state lets Ralph Workflow
   continue an unfinished Git operation before ordinary development resumes.
 
-This is the foundation for a workflow without pull requests: agent worktrees
-converging on the same codebase as development happens. Your repository's
+This is the foundation for moving beyond pull requests: independent work
+converges on the same codebase at defined synchronization and integration
+points. Your repository's
 branch protections and required checks still determine what it permits;
 Ralph Workflow does not bypass them.
 
@@ -51,12 +75,13 @@ Keep active edits in feature worktrees. Read the
 for synchronization, recovery, snapshot restoration, and settings for local-only
 or manual Git operation.
 
-## Give it a task. Let the loop work.
+## Give it a task. Let the graph work.
 
-Ralph Workflow builds on the **Ralph loop**, the underlying iterative coding
-pattern: **plan → build → verify → fix**. The product adds a strong default
-workflow for writing software, with agent review, retries, fallback agents,
-checkpoint recovery, and Git integration around that simple core.
+The graph begins with the Ralph loop and expands only where the work demands
+it. A phase can select a different agent, revisit an earlier decision, request
+new evidence, recover from interruption, or route completed work into Git
+integration. The agents do not need a shared conversation: the workflow carries
+forward the task, artifacts, repository state, and proof.
 
 Start with a bounded feature, a refactor with tests, or a mechanical migration.
 Write what done means in `PROMPT.md`, include the checks you trust, and let

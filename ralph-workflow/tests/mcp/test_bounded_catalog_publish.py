@@ -254,13 +254,13 @@ def test_real_child_catalog_publish_fifo_fails_closed_with_typed_exit(
         assert client_sock is not None
 
         # Wait for the bounded publish to fire and the child to
-        # force-exit. The bound is generous (8s) — the
-        # ``_READY_TO_SERVE_BUDGET_S`` portion of the whole
-        # startup budget is 0.4s, plus small slack for the
-        # worker to time out, the helper to log/flush, and the
-        # kernel to reap the process. The preflight is 5s, so
-        # any "exits in 8s" is well below it.
-        rc = proc.wait(timeout=8.0)
+        # force-exit. The child enforces its own active startup
+        # deadline; this parent-side timeout is only a hang cap.
+        # Keep enough scheduling headroom for a freshly spawned
+        # interpreter on a contended verification host: wall time
+        # before the child gets CPU is not part of the production
+        # deadline contract.
+        rc = proc.wait(timeout=15.0)
 
         # The child must exit with the distinct catalog publish
         # overrun exit code (34). The pre-fix code has no
