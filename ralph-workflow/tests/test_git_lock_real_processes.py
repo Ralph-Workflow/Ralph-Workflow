@@ -113,8 +113,8 @@ def test_orphaned_worktree_lock_is_proven_dead_and_removed(worktree: Path) -> No
     lock.write_text("orphan")
     _age(lock, 5000)
     err = Exception(f"fatal: Unable to create '{lock}': File exists.")
-    assert lr._lock_has_no_live_holder(lock, lock.parent) == "dead"
-    assert lr._recover_stale_git_lock("stage_all", err) is True
+    assert lr.lock_has_no_live_holder(lock, lock.parent) == "dead"
+    assert lr.recover_stale_git_lock("stage_all", err) is True
     assert not lock.exists()
 
 
@@ -123,8 +123,8 @@ def test_lock_held_open_by_a_live_process_is_never_removed(worktree: Path, holde
     holder(lock)
     _age(lock, 5000)
     err = Exception(f"fatal: Unable to create '{lock}': File exists.")
-    assert lr._lock_has_no_live_holder(lock, lock.parent) == "live"
-    assert lr._recover_stale_git_lock("stage_all", err) is False
+    assert lr.lock_has_no_live_holder(lock, lock.parent) == "live"
+    assert lr.recover_stale_git_lock("stage_all", err) is False
     assert lock.exists()
 
 
@@ -133,7 +133,7 @@ def test_non_dumpable_live_holder_is_not_declared_dead(worktree: Path, holder: _
     lock = _private_lock(worktree)
     proc = holder(lock, "nodump")
     assert not os.access(f"/proc/{proc.pid}/fd", os.R_OK)
-    assert lr._lock_has_no_live_holder(lock, lock.parent) == "unknown"
+    assert lr.lock_has_no_live_holder(lock, lock.parent) == "unknown"
 
 
 def test_idle_read_only_git_helper_in_the_repo_does_not_pin_an_orphan(worktree: Path) -> None:
@@ -148,7 +148,7 @@ def test_idle_read_only_git_helper_in_the_repo_does_not_pin_an_orphan(worktree: 
         stdout=subprocess.PIPE,
     )
     try:
-        assert lr._lock_has_no_live_holder(lock, lock.parent) == "dead"
+        assert lr.lock_has_no_live_holder(lock, lock.parent) == "dead"
     finally:
         helper.kill()
         helper.wait()
@@ -166,7 +166,7 @@ def test_lock_replaced_during_the_probe_is_not_removed(worktree: Path, holder: _
         _age(path, 5000)
         return "dead"
 
-    assert lr._recover_stale_git_lock("stage_all", err, liveness_fn=probe_then_swap) is False
+    assert lr.recover_stale_git_lock("stage_all", err, liveness_fn=probe_then_swap) is False
     assert lock.exists()
 
 
@@ -211,8 +211,8 @@ def test_run_git_does_not_steal_a_lock_a_live_process_holds(
 ) -> None:
     from ralph.git.subprocess_runner import run_git
 
-    monkeypatch.setattr(lr, "_LIVE_HOLDER_PATIENCE_S", 1.0)
-    monkeypatch.setattr(lr, "_LIVE_HOLDER_POLL_S", 0.2)
+    monkeypatch.setattr("ralph.git._lock_recovery._LIVE_HOLDER_PATIENCE_S", 1.0)
+    monkeypatch.setattr("ralph.git._lock_recovery._LIVE_HOLDER_POLL_S", 0.2)
     lock = _private_lock(worktree)
     holder(lock)
     _age(lock, 5000)
@@ -263,7 +263,7 @@ def test_a_git_holding_a_ref_lock_without_an_open_fd_is_live(
             time.sleep(0.05)
         assert lock.exists(), "the hook window never opened"
         _age(lock, 60)
-        assert lr._lock_has_no_live_holder(lock, common) != "dead"
+        assert lr.lock_has_no_live_holder(lock, common) != "dead"
     finally:
         proc.kill()
         proc.wait()

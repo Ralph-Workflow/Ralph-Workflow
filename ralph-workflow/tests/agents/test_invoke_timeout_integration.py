@@ -695,6 +695,9 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness(
         # is the source of ``scoped_child_active`` for this legacy
         # test of the no-progress ceiling branch.
         process_monitor_enabled=False,
+        # The CPU-idle probe walks the real process table via psutil on every
+        # poll; irrelevant here and it blows the per-test CPU budget on busy hosts.
+        cpu_idle_seconds=None,
     )
     clock = FakeClock(start=0.0)
 

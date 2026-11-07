@@ -877,7 +877,7 @@ def _fast_forward_if_strictly_behind(
     effective_clock = clock if clock is not None else default_clock()
     with _mutation_lease(root) as lease_verdict, phases.mutation_window():
         if lease_verdict != "acquired":
-            logger.warning(
+            logger.debug(
                 "auto_integrate catch-up tick deferred: {}; {}",
                 _lease_failure(lease_verdict),
                 observation.summary,
@@ -1143,7 +1143,7 @@ class AutoIntegrateCatchupWorker:
         if outcome == CATCHUP_FAST_FORWARDED:
             logger.info("auto_integrate catch-up: fast-forwarded the checkout onto the target")
         elif outcome == CATCHUP_REFUSED_AGENT_ACTIVE:
-            logger.warning("auto_integrate catch-up tick deferred: {}", outcome)
+            logger.debug("auto_integrate catch-up tick deferred: {}", outcome)
         elif outcome.startswith(("failed:", "ladder:")) or outcome == CATCHUP_REFUSED:
             logger.warning("auto_integrate catch-up tick failed: {}", outcome)
 

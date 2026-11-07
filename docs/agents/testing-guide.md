@@ -1020,7 +1020,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_git_command_queue_lease_clock.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_git_commit_cleanup.py` | 3 | 0 | 6 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_git_lock_liveness_probe.py` | 2 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |
-| `tests/test_git_lock_real_processes.py` | 2 | 0 | 8 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
+| `tests/test_git_lock_real_processes.py` | 2 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |
 | `tests/test_git_lock_recovery.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_git_lock_recovery_regressions.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_git_operation_authority.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |

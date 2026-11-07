@@ -274,7 +274,7 @@ def test_liveness_probe_proc_less_logs_platform_specific_reason(
     monkeypatch.setattr("ralph.git._lock_recovery.subprocess.run", fake_run)
 
     warning_records: list[str] = []
-    sink_id = logger.add(warning_records.append, level="WARNING", format="{message}")
+    sink_id = logger.add(warning_records.append, level="DEBUG", format="{message}")
     try:
         result = _lock_has_no_live_holder(lock_path, gitdir, _proc_root=missing_proc)
     finally:

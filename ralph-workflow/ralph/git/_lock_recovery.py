@@ -227,7 +227,7 @@ def _lock_has_no_live_holder(
         except OSError as exc:
             if time.monotonic() - probe_start < probe_timeout_s:
                 with suppress(Exception):
-                    logger.warning(
+                    logger.debug(
                         "Lock liveness probe returning 'unknown' for {}: failed to resolve "
                         "repository identity ({}: {}); refusing to unlink without proven "
                         "negative liveness",
@@ -285,7 +285,7 @@ def _lock_has_no_live_holder(
                 else "no /proc scan succeeded"
             )
             with suppress(Exception):
-                logger.warning(
+                logger.debug(
                     "Lock liveness probe returning 'unknown' for {}: {}; refusing to "
                     "unlink without proven negative liveness",
                     lock_path,
@@ -298,7 +298,7 @@ def _lock_has_no_live_holder(
     try:
         return future.result(timeout=probe_timeout_s)
     except TimeoutError:
-        logger.warning(
+        logger.debug(
             "Lock liveness probe returning 'unknown' for {}: probe exceeded "
             "{}s budget; refusing to unlink without proven negative liveness",
             lock_path,

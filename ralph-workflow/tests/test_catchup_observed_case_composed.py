@@ -226,6 +226,8 @@ def _capture_warnings(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         messages.append(message.format(*args) if args else message)
 
     monkeypatch.setattr(logger, "warning", _record)
+    # Expected deferrals (agent active) log at debug, not warning.
+    monkeypatch.setattr(logger, "debug", _record)
     return messages
 
 

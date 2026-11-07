@@ -566,7 +566,7 @@ tests/test_git_command_queue.py|2,0,1
 tests/test_git_command_queue_lease_clock.py|0,1,0
 tests/test_git_commit_cleanup.py|3,0,6
 tests/test_git_lock_liveness_probe.py|2,0,0
-tests/test_git_lock_real_processes.py|2,0,8
+tests/test_git_lock_real_processes.py|2,0,0
 tests/test_git_lock_recovery.py|0,1,0
 tests/test_git_lock_recovery_regressions.py|0,4,0
 tests/test_git_operation_authority.py|0,1,0

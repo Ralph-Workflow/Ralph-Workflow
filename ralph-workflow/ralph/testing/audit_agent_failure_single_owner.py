@@ -42,8 +42,10 @@ point.
 from __future__ import annotations
 
 import ast
+import multiprocessing
 import os
 import sys
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 from ralph.testing._single_owner_retry_cap_rule import _check_production_retry_cap_rule
@@ -843,14 +845,32 @@ class Runner:
     )
 
 
-def audit_single_owner(repo_root: Path) -> list[SingleOwnerViolation]:
-    """Scan production and test subtrees for single-owner failure ledger violations."""
-    verify_counter_access_detection()
-    violations: list[SingleOwnerViolation] = []
+#: Below this many files the pool startup costs more than the parse work saved.
+_PARALLEL_MIN_FILES = 16
 
-    # 1. Scan production subtrees that can own or influence agent failure decisions.
-    for sub in PRODUCTION_SCAN_SUBTREES:
-        base_dir = repo_root / sub
+#: Upper bound on pool workers so a many-core host does not spawn a swarm.
+_POOL_WORKER_CAP = 8
+
+#: Spawned, never forked: the audit may run inside pytest/xdist workers that
+#: hold native state which is not fork-safe. The worker lives in this
+#: importable module, so a spawned child needs nothing from ``__main__``.
+_POOL_CONTEXT = multiprocessing.get_context("spawn")
+
+
+def _audit_file_payload(payload: tuple[str, str, str]) -> list[SingleOwnerViolation]:
+    """Audit one ``(kind, rel_path, source)`` file; a pool worker entry point."""
+    kind, rel_path, source = payload
+    if kind == "production":
+        return audit_production_source(rel_path, source)
+    return audit_test_source(rel_path, source)
+
+
+def _collect_payloads(repo_root: Path) -> list[tuple[str, str, str]]:
+    """Return every ``(kind, rel_path, source)`` file the audit scans, in scan order."""
+    payloads: list[tuple[str, str, str]] = []
+    scan_dirs = [("production", repo_root / sub) for sub in PRODUCTION_SCAN_SUBTREES]
+    scan_dirs.append(("test", repo_root / "tests"))
+    for kind, base_dir in scan_dirs:
         # filesystem-read-ok: audit scanner checks directory existence before tree traversal
         if not base_dir.is_dir():
             continue
@@ -864,24 +884,23 @@ def audit_single_owner(repo_root: Path) -> list[SingleOwnerViolation]:
                 rel_path = file_path.relative_to(repo_root).as_posix()
                 # filesystem-read-ok: audit scanner loads module source for static AST inspection
                 source = file_path.read_text(encoding="utf-8")
-                violations.extend(audit_production_source(rel_path, source))
+                payloads.append((kind, rel_path, source))
+    return payloads
 
-    # 2. Scan test subtree: tests
-    tests_dir = repo_root / "tests"
-    # filesystem-read-ok: audit scanner checks directory existence before tree traversal
-    if tests_dir.is_dir():
-        # filesystem-read-ok: audit scanner walks directory tree for static AST inspection
-        for parent, dirs, files in os.walk(tests_dir):
-            dirs[:] = [d for d in dirs if d != "__pycache__"]
-            for name in files:
-                if not name.endswith(".py"):
-                    continue
-                file_path = Path(parent) / name
-                rel_path = file_path.relative_to(repo_root).as_posix()
-                # filesystem-read-ok: audit scanner loads module source for static AST inspection
-                source = file_path.read_text(encoding="utf-8")
-                violations.extend(audit_test_source(rel_path, source))
 
+def audit_single_owner(repo_root: Path) -> list[SingleOwnerViolation]:
+    """Scan production and test subtrees for single-owner failure ledger violations."""
+    verify_counter_access_detection()
+    violations: list[SingleOwnerViolation] = []
+    payloads = _collect_payloads(repo_root)
+    workers = min(_POOL_WORKER_CAP, len(payloads), os.cpu_count() or 1)
+    if workers <= 1 or len(payloads) < _PARALLEL_MIN_FILES:
+        for payload in payloads:
+            violations.extend(_audit_file_payload(payload))
+    else:
+        with ProcessPoolExecutor(max_workers=workers, mp_context=_POOL_CONTEXT) as pool:
+            for result in pool.map(_audit_file_payload, payloads, chunksize=32):
+                violations.extend(result)
     return sorted(violations, key=_violation_sort_key)
 
 

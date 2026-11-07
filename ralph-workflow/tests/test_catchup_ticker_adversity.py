@@ -198,6 +198,12 @@ def test_agent_active_refuses_without_mutation_and_names_the_observation(
     state.agent_active = True
     merges = _install_seams(monkeypatch, state)
     warnings = _capture_warnings(monkeypatch)
+    debugs: list[str] = []
+    monkeypatch.setattr(
+        logger,
+        "debug",
+        lambda message, *args, **_kw: debugs.append(message.format(*args) if args else message),
+    )
     ledger = _ledger(tmp_path)
 
     outcome = _tick(state, ledger, tmp_path)
@@ -205,8 +211,9 @@ def test_agent_active_refuses_without_mutation_and_names_the_observation(
     assert outcome == catchup.CATCHUP_REFUSED_AGENT_ACTIVE
     assert merges == []
     assert ledger.read().repeat_counts == {}
-    deferred = [message for message in warnings if "deferred" in message]
-    assert deferred, warnings
+    assert not [message for message in warnings if "deferred" in message], warnings
+    deferred = [message for message in debugs if "deferred" in message]
+    assert deferred, debugs
     assert f"target={_TARGET}@{_TARGET_SHA}" in deferred[0]
     assert f"head={_HEAD}@{_HEAD_SHA}" in deferred[0]
 

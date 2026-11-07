@@ -73,6 +73,10 @@ def test_no_progress_ceiling_fires_with_opencode_strategy_os_descendants_only(
         # change in ``test_no_progress_ceiling_fires_on_stale_child_liveness``
         # for the full rationale.
         process_monitor_enabled=False,
+        # The CPU-idle probe walks the real process table via psutil on
+        # every poll; it is irrelevant to this ceiling test and its cost
+        # scales with the host's process count (blows the per-test CPU budget).
+        cpu_idle_seconds=None,
     )
     clock = FakeClock(start=0.0)
     _reader_release = threading.Event()
