@@ -9,28 +9,41 @@ Typical entry points:
 - ``AgentConfig`` and ``UnifiedConfig`` for validated configuration objects
 - ``Verbosity`` and related enums for CLI/config values
 - ``ensure_global_config`` and friends to bootstrap user configs on first run
+
+Public names resolve lazily, on first attribute access, from the module that
+defines them. Importing a leaf submodule such as ``ralph.config.models`` no
+longer pulls the bootstrap module (and through it the MCP stack) into the
+importing process, which keeps every interpreter that touches the config
+models cheap to start.
 """
 
-from ralph.config.bootstrap import (
-    BootstrapResult,
-    ensure_global_agents_config,
-    ensure_global_config,
-    ensure_global_mcp_config,
-    ensure_local_configs,
-    regenerate_all,
-    resolve_global_config_dir,
-)
-from ralph.config.enums import (
-    JsonParserType,
-    PauseOnExit,
-    RecoveryStrategy,
-    Verbosity,
-)
-from ralph.config.models import (
-    AgentConfig,
-    GeneralConfig,
-    UnifiedConfig,
-)
+from __future__ import annotations
+
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from ralph.config.bootstrap import (
+        BootstrapResult,
+        ensure_global_agents_config,
+        ensure_global_config,
+        ensure_global_mcp_config,
+        ensure_local_configs,
+        regenerate_all,
+        resolve_global_config_dir,
+    )
+    from ralph.config.enums import (
+        JsonParserType,
+        PauseOnExit,
+        RecoveryStrategy,
+        Verbosity,
+    )
+    from ralph.config.models import (
+        AgentConfig,
+        GeneralConfig,
+        UnifiedConfig,
+    )
+    from ralph.config.welcome import emit_first_run_welcome
 
 __all__ = [
     "AgentConfig",
@@ -50,20 +63,47 @@ __all__ = [
     "resolve_global_config_dir",
 ]
 
+#: Public name -> (defining module, attribute name in that module).
+_LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    "AgentConfig": ("ralph.config.models", "AgentConfig"),
+    "BootstrapResult": ("ralph.config.bootstrap", "BootstrapResult"),
+    "GeneralConfig": ("ralph.config.models", "GeneralConfig"),
+    "JsonParserType": ("ralph.config.enums", "JsonParserType"),
+    "PauseOnExit": ("ralph.config.enums", "PauseOnExit"),
+    "RecoveryStrategy": ("ralph.config.enums", "RecoveryStrategy"),
+    "UnifiedConfig": ("ralph.config.models", "UnifiedConfig"),
+    "Verbosity": ("ralph.config.enums", "Verbosity"),
+    "emit_first_run_welcome": ("ralph.config.welcome", "emit_first_run_welcome"),
+    "ensure_global_agents_config": (
+        "ralph.config.bootstrap",
+        "ensure_global_agents_config",
+    ),
+    "ensure_global_config": ("ralph.config.bootstrap", "ensure_global_config"),
+    "ensure_global_mcp_config": ("ralph.config.bootstrap", "ensure_global_mcp_config"),
+    "ensure_local_configs": ("ralph.config.bootstrap", "ensure_local_configs"),
+    "regenerate_all": ("ralph.config.bootstrap", "regenerate_all"),
+    "resolve_global_config_dir": (
+        "ralph.config.bootstrap",
+        "resolve_global_config_dir",
+    ),
+}
+
 
 def __getattr__(name: str) -> object:
-    """Lazily expose ``emit_first_run_welcome`` to break the import cycle.
+    """Resolve a public export from its defining module on first access.
 
-    Importing ``ralph.config.welcome`` at package import time would pull in
-    ``ralph.display.parallel_display`` and trigger a circular import through
-    ``ralph.display.snapshot`` -> ``ralph.pipeline`` -> ``ralph.config``.
-    Defer the resolution to attribute access so direct imports from
-    ``ralph.config.welcome`` and from ``ralph.cli.main`` continue to work
-    without re-entering the cycle.
+    The eager imports this replaces pulled ``ralph.config.bootstrap`` -- and
+    through it the MCP startup stack -- into every process that only needed
+    the configuration models.
     """
-    if name == "emit_first_run_welcome":
-        from ralph.config.welcome import emit_first_run_welcome
+    try:
+        module_name, attr_name = _LAZY_EXPORTS[name]
+    except KeyError as exc:
+        msg = f"module {__name__!r} has no attribute {name!r}"
+        raise AttributeError(msg) from exc
 
-        return emit_first_run_welcome
-    msg = f"module 'ralph.config' has no attribute {name!r}"
-    raise AttributeError(msg)
+    module = import_module(module_name)
+    namespace = cast("dict[str, object]", module.__dict__)
+    value = namespace[attr_name]
+    cast("dict[str, object]", globals())[name] = value
+    return value
