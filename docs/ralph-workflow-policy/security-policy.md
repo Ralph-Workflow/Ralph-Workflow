@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: security-policy.md -->
 
 # Security Policy
@@ -152,6 +152,7 @@ owner and MUST NOT be inferred from the repository alone.
 
 RALPH-FACT: data_sensitivity (owner-supplied): sensitive by default — Ralph Workflow runs as a developer-local CLI under the user's own credentials (the agent shells out to user-installed CLIs that authenticate in their own context), and the workspace it operates on inherits whatever data lives on disk. The default is sensitive code + secrets may be present in the tree; the agent SHOULD avoid echoing file contents in logs unless the user explicitly asks. Owner confirmation is pending for any deployment that handles PII or PHI.
 RALPH-FACT: deployment_exposure (owner-supplied): local developer machine by default; no public deployment. The MCP HTTP transport is local-loopback (`127.0.0.1`) and is the only socket the runtime binds; no inbound traffic crosses the trust boundary in the default configuration. Operator confirmation is pending for any deployment that exposes the embedded MCP server to a shared network.
+RALPH-FACT: secret_scan_command: uv run python -m ralph.testing.audit_secret_scan
 RALPH-FACT: secrets_management_mechanism: secrets are NEVER read from the source tree, committed config, or test fixtures. The CLI reads from the environment (`os.environ`) and from the user-installed agent CLIs' own credential stores (Claude Code / Codex / OpenCode / Cursor / etc. each manage their own secrets). Test fixtures MUST NOT contain realistic credentials — placeholders are required (`...`, `***`, environment-variable references).
 RALPH-FACT: fabrication_scan_command: `python3 scripts/fabrication_guard.py --level 1 <file>` for every public-facing markdown edit (the production pre-commit hook is level 1; level 2 / 3 are opt-in verification layers that also verify GitHub repo, npm package, and external URL existence). The same level-1 fabrication sweep is run across the repository's public-facing markdown tree by `python3 scripts/verify_social_proof.py` (a thin backward-compat wrapper around `fabrication_guard.py`) as a `make verify` step. This sweep is a fabrication / broken-link / stale-claim guard, NOT a credential secret scanner: it catches fabricated GitHub repos, fabricated npm packages, fabricated install counts, and banned wording. A blanket bypass of the pre-commit hook (`--no-verify`) is itself fabrication (per AGENTS.md § Non-negotiables). The repository has no dedicated Git-history credential scanner (e.g. `gitleaks`, `detect-secrets`, `truffleHog`) wired into `make verify`; reintroducing real secrets is prevented by the pre-commit hook's own regex and the public-facing fabrication guard, and a dedicated credential scanner is a documented gap (a dated deferral is recorded in the security policy Verification section when a scanner is chosen).
 RALPH-FACT: security_scanner_per_language: Python → Bandit (the language-scoped scanner called out in dependency-policy.md and Verification below). Bandit is NOT currently pinned in `ralph-workflow/pyproject.toml`, NOT installed by `make dev`, and NOT wired into `make -C ralph-workflow verify`; the Verification section below records the corresponding deferred gate. Other languages are recorded in the Verification section below as inapplicable.
@@ -159,14 +160,12 @@ RALPH-FACT: finding_waiver_convention: a security finding waiver carries the fin
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Retirement / review trigger |
-|---|---|---|---|
-| `audit_mcp_timeout` (ralph/testing/audit_mcp_timeout.py) | Security owner | Every subprocess call under MCP/agent/process/executor boundaries carries a bounded timeout | Change to the active_threat_surfaces fact or the subprocess/filesystem surface rules |
-| `fabrication_guard` (scripts/fabrication_guard.py) | Security owner | No fabricated GitHub repo links, npm package claims, install-count numbers, or banned wording in public-facing markdown | Change to the fabrication_scan_command fact; periodic review of the wordlist |
-| `audit_tool_exec` (ralph/testing/audit_tool_exec.py) | Security owner | No workspace writes or tool executions that bypass the workspace root normalization | Change to the filesystem surface rules |
-| `audit_di_seam` (ralph/testing/audit_di_seam.py) | Architecture owner | No ad-hoc `time.sleep()` loops or subprocess/filesystem calls bypassing the typed adapters in agent invocation code | New ADR that adds or removes a component boundary |
-| `audit_agent_module_state` (ralph/testing/audit_agent_module_state.py) | Architecture owner | No module-level mutable state shared across subpackage boundaries | Change to the forbidden_dependencies fact |
-| Bandit (RALPH-PENDING: not yet pinned) | Security owner | No hardcoded password strings, unsafe YAML loads, or SQLi-adjacent patterns in Python source | Once Bandit is pinned in pyproject.toml and wired into `make verify` |
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Authorization and tenant / scope boundaries | Security owner | every privileged action checks the caller's authorization and tenant / scope before execution | every privileged code path is covered by an authorization test; secret / scope change is logged with a real subject | every privileged code path is covered by an authorization test | advisory: authorization review; review: when authorization boundaries change | when the project stops using a multi-tenant boundary |
+| Destructive-operation safety | Security owner | destructive operations (delete / drop / reset / force-push / revoke) carry a named owner and an explicit human confirmation in production paths | destructive operation requires a recorded subject, a recorded actor, and a recorded confirmation; reviewer can name the production gate | destructive operation requires a recorded subject, a recorded actor, and a recorded confirmation | advisory: destructive operation review; review: when destructive operations are added | when the project has no destructive operations |
+| Security-scanner coverage | Security owner | every claimed security check is a real credential / vulnerability scanner, not a check that does not run a scanner | the security profile's `evidence` field names a real scanner (semgrep, gitleaks, detect-secrets, gosec, bandit, etc.); the scanner is runnable and reproducible | the security profile's `evidence` field names a real scanner (semgrep, gitleaks, detect-secrets, gosec, bandit, etc.) | deterministic: secret scan audit (audit_secret_scan) | when the scanner is no longer available and is replaced by a real equivalent |
+| Threat surface inventory | Security owner | every project's threat surfaces are enumerated in the security policy's Threat surfaces section | Threat surfaces section names each surface; the surface list is reviewed on every policy bump | Threat surfaces section names each surface | advisory: threat surface review; review: on every policy bump or surface change | when the project is single-purpose and the surfaces are constant |
 
 ## AI execution instructions
 
@@ -343,4 +342,4 @@ new commands, new structure). Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: security-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

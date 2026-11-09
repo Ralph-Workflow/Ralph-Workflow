@@ -536,3 +536,15 @@ def test_starter_names_set_equals_disk_listing() -> None:
     # policy-portfolio.toml is also bundled and must be present on disk.
     disk_all_names = {p.name for p in starters_dir.iterdir()}
     assert "policy-portfolio.toml" in disk_all_names
+
+
+def test_all_starters_are_v6_schema_with_seven_column_guard_inventories() -> None:
+    """Verifies that all starters bundled for scaffolding/preflight carry the
+    v6 schema marker and 7-column guard inventory header with Enforcement."""
+    for name in starters.iter_starter_names():
+        content = starters.read_starter(name)
+        assert content.splitlines()[0] == markers.POLICY_SCHEMA_MARKER
+        assert (
+            "| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |"
+            in content
+        )

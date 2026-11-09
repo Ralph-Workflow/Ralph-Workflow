@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: verification-policy.md -->
 
 # Verification Policy
@@ -79,6 +79,8 @@ applicability decisions, policy files, stack signals, and migration candidates,
 so changing an effective composition input invalidates READY.
 
 ## Default requirements
+
+The verification budget is a ratchet; the budget MUST NOT grow absent a reviewed change. <!-- ralph-control: verification-budget-ratchet -->
 
 A run is judged on **time to a correct, verified change**; speed never permits partial proof.
 
@@ -196,22 +198,13 @@ RALPH-FACT: gate_parallelism_mechanism: `ralph.verify.run_verify()` executes `_V
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Retirement / review trigger |
-|---|---|---|---|
-| Authoritative entry point (`make -C ralph-workflow verify`) | Verification owner | One canonical gate list; no shadow verify targets drift from `_VERIFY_STEPS` | When a new step is added/removed from `ralph/verify.py:_VERIFY_STEPS` |
-| Mandatory gate list (ruff, mypy strict, test, audits, social proof) | Verification owner | No critical category is silently omitted | New category added to verification discipline |
-| No documented impossibility | Verification owner | Every documented gate is runnable on a clean clone | Project stack changes |
-| No exemption for any red gate | Verification owner | Pre-existing failures are not deferred to a later PR | Whenever a red gate is observed |
-| 60 s combined test budget is immutable | Verification owner | Default-lane cost cannot grow without an offsetting decision | Budget breach attempt |
-| Fast-path <= 10 s | Verification owner | Inner-loop feedback stays bounded | New default-lane cost added |
-| Slow gate is a defect | Verification owner | Timeouts are diagnosed at the source | New default-lane cost or timeout observed |
-| Lane declared or deleted | Verification owner | A check cannot rot in an opt-in suite the default gate excludes | New check added; new named profile declared |
-| Named-profile declared with five fields | Verification owner | A non-default check is routed through a real runnable command with owner, trigger, fails-hard-when-run, and last-run date | Named profile added or removed |
-| Required auto-integration registry | Verification owner | Real-git tests stay in the default profile without inflating the subprocess-e2e suite | New real-git test added or removed |
-| Aggregate budget enforcement (`_TOTAL_TEST_BUDGET_SECONDS = 60.0`) | Verification owner | The 60 s ceiling cannot be circumvented by splitting, renaming, or env vars | Any change to budget tracking |
-| Bypass-detection audits (lint + typecheck) | Verification owner | `# noqa` and `# type: ignore` weakening cannot pass verify | Audit allowlist edited |
-| Repo-structure audit | Verification owner | File length, public-class, and import discipline are enforced | New structural rule added |
-| Social-proof gate | Verification owner | Public-facing markdown cannot carry fabricated claims | Wordlist or scope changed |
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Bounded run budget | Verification owner | bounded execution per kernel rule 3, with the combined-budget aggregate per ``policy-portfolio.toml`` | per-step and per-suite timeouts declared and enforced; combined 60 s budget holds | per-step and per-suite timeouts declared and enforced | deterministic: make -C ralph-workflow verify | when the combined budget is retired by the kernel |
+| `verification-budget-ratchet` Verification budget ratchet | Verification owner | the recorded ``verification_time_budget`` shrinks freely; growth is rejected absent a reviewed change | the recorded ``verification_time_budget`` is at or below its prior recorded value; growth is absent a reviewed change | the current ``verification_time_budget`` value per project | deterministic: make -C ralph-workflow verify | when the ratchet is retired by the kernel |
+| No high-churn evidence in review | Verification owner | volatile reports and large generated inventories do not land in human review | no high-churn evidence file is committed to a tracked location; review covers only compact, deterministic baselines | no high-churn evidence file is committed to a tracked location | deterministic: repo structure audit (audit_repo_structure) | when the project stops generating high-churn evidence |
+| Gate-lane coverage | Verification owner | every named profile and lane is recorded in the verification policy with all five fields (command, named owner, trigger, fails-hard-when-run, last-run date with staleness horizon) | Gate lanes section enumerates each named profile with all five fields present | Gate lanes section enumerates each named profile with all five fields present | advisory: review gate lanes on profile change; review: when a named verification profile changes | when every named profile is retired |
+| Public-behavior proof | Verification owner | material behavior claims are proven through public surfaces with an immutable subject, run, validated oracle, and independent verdict | test is a public-surface scenario; run id, captured output, and independent verdict are recorded on the change | test is a public-surface scenario | deterministic: make -C ralph-workflow verify | when every behavior claim is provable at a cheaper deterministic layer |
 
 ## AI execution instructions
 
@@ -371,4 +364,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: verification-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

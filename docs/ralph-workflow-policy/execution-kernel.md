@@ -31,7 +31,7 @@ non-blank lines:
 The current schema marker is `<!-- ralph-policy-schema: v6 -->`. Both
 markers MUST appear verbatim before any heading or content.
 
-## Precedence
+## Precedence and selective applicability
 
 * The kernel wins when a domain file's wording conflicts with it.
 * A domain file MAY add a stricter rule than the kernel (see
@@ -51,7 +51,10 @@ markers MUST appear verbatim before any heading or content.
 * A change that does not fire a domain file's trigger does not require
   that file to be loaded.
 
-## Shared execution rules
+## Kernel rules
+
+These rules previously appeared verbatim in every domain file's "AI
+execution instructions" section. They live here exactly once.
 
 These rules previously appeared verbatim in every domain file's "AI
 execution instructions" section. They live here exactly once.
@@ -228,11 +231,29 @@ cell verbatim.
 | 12 Human checkpoints | architecture | the runtime's confirmation boundary | advisory: the runtime cannot classify every irreversible action; review: when an agent blocks on a reversible step |
 | 13 Rule-to-enforcer ladder | docs-last | the guard-inventory review | advisory: the inventory review is a recurring human review; review: at the guard-inventory review cadence |
 
+## Claim-scope rule
+
+Every guard's Protected outcome MUST be a claim about what the
+detector actually observes, never about the world at large. A
+broad guarantee ("dependency direction enforced", "all inputs
+validated", "security guaranteed") is rejected by the deterministic
+substring predicate unless the same phrase ALSO appears in the
+Detected condition. The rule's purpose is to stop manufactured
+certainty: a check that reports "missing source-import-lint finding"
+does not, by itself, prove "dependency direction enforced".
+
+The substring predicate is the deterministic floor; a human-review
+rubric item covers the residual semantic gap.
+
+The same rule applies to portfolio controls: every control's
+`protected_outcome` is checked against the required `detects`
+field using the same predicate.
+
 ## Guard inventory
 
 The `Enforcement` column names the guard that decides each rule:
 `deterministic: <command-id>` when a declared command decides it, and
-`advisory: <reason>; review: <trigger>` while a reviewer decides it.
+`advisory: reason; review: trigger` while a reviewer decides it.
 The `Enforcement` ids resolve against the `RALPH-COMMAND:` values
 declared in this pack. The agent rules in `## Agent rules` are
 enforced through the rule-to-enforcer ladder above: a rule whose
@@ -262,6 +283,36 @@ because this pack names who decides it.
 | Human checkpoints | Session owner | a confirmation is asked only for an irreversible or outward-facing action | the session records the blocked question and the reversible assumption it proceeded with | the recorded question and the reversible assumption in the session | advisory: the runtime cannot classify every irreversible action; review: when an agent blocks on a reversible step | when the runtime classifies irreversible actions mechanically |
 | Rule-to-enforcer ladder | Policy owner | each rule names an enforcement level and an enforcer recorded in this inventory | this inventory carries a row for every rule the kernel states | the rule rows carried in this inventory | advisory: the inventory review is a recurring human review; review: at the guard-inventory review cadence | when the inventory review becomes a scheduled gate |
 
+
+## Project facts to resolve
+
+The `RALPH-FACT:` lines below record verified project facts. Agents rely
+on them when enforcing this policy and MUST keep them current as the
+project evolves.
+
+RALPH-FACT: kernel_loading_owner: verification owner
+RALPH-FACT: selective_loading_signal: docs/ralph-workflow-policy/
+RALPH-FACT: claim_scope_review_owner: project maintainers
+RALPH-FACT: guard_inventory_review_cadence: quarterly or when policy schema changes
+
+## AI execution instructions
+
+This kernel is loaded by every agent on every action. Follow its rules
+without re-deriving them.
+
+1. LOAD the kernel first. Read this file before every other domain
+   policy; the kernel rules are the floor.
+2. LOAD only the domain policies triggered by the change.
+3. ENFORCE the five kernel rules on every action: Truthful evidence,
+   fail-closed verification, bounded execution, no weakening of
+   checks, explicit unverified-claim reporting.
+4. LOAD only the rule slice your phase binds.
+5. ON CONFLICT, the kernel wins.
+6. RUN every `RALPH-COMMAND:` gate below and report the actual
+   outcome. Never report a command that was not run.
+7. UPDATE this kernel when a rule changes, a guard is added or
+   retired, or the selective-applicability contract changes.
+
 ## Verification
 
 Run the authoritative gate before claiming a change complies with this
@@ -287,6 +338,23 @@ tightening MUST record inline:
 
 An ownerless tightening, a tightening with no protected outcome, or a
 tightening with no trigger is a retirement candidate.
+
+
+## Maintenance triggers
+
+Review this kernel in the same workflow as any of:
+
+* A rule is added, retired, or rephrased.
+* A rule's evidence tag or its enforcement status changes.
+* A rule's enforcer is wired, so an advisory row can become
+  deterministic.
+* A guard-inventory row is added or retired.
+* The rule-to-phase table changes (a role is added, a phase is
+  renamed, or a role's slice changes).
+* The selective-applicability contract changes.
+* The claim-scope predicate is tightened or loosened.
+* A new audit is wired that protects one of the five rules.
+* The guard_inventory_review_cadence is reached.
 
 ## Research basis
 

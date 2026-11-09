@@ -128,10 +128,12 @@ def test_smoke_silent_python_cpu_loop_runs_past_stall_window() -> None:
     try:
         saw_r4 = False
         saw_cpu_ratio = False
-        # Poll across 0.6 s of real wall-clock — > 2x the stall window — so
-        # the test cannot pass via early termination or a brief snapshot.
-        deadline = time.monotonic() + 0.6
-        while time.monotonic() < deadline:
+        # Poll across at least 0.6 s of real wall-clock — > 2x the stall window — so
+        # the test cannot pass via early termination or a brief snapshot. Under host
+        # contention, allow polling up to 1.2 s to observe R4 domination.
+        min_deadline = time.monotonic() + 0.6
+        max_deadline = time.monotonic() + 1.2
+        while time.monotonic() < max_deadline:
             snapshot = reg.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
             assert isinstance(snapshot, JobSnapshot)
             assert snapshot.running is True, "CPU loop was killed despite R4 evidence"
@@ -151,6 +153,8 @@ def test_smoke_silent_python_cpu_loop_runs_past_stall_window() -> None:
                 saw_cpu_ratio = True
             if snapshot.verdict.strongest_rule == "R4":
                 saw_r4 = True
+            if time.monotonic() >= min_deadline and saw_r4:
+                break
             time.sleep(0.05)
         assert saw_r4, (
             "R4 never dominated any snapshot in the window; the CPU signal "

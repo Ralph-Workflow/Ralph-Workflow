@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: testing-policy.md -->
 
 # Testing Policy
@@ -57,7 +57,7 @@ treated as a distribution artefact, not a behaviour surface).
 
 Not every acceptance criterion belongs in the default suite. Forcing one
 in is how a suite grows large and slow while proving less, and the 60 s
-combined budget leaves no room for tests that carry no distinct failure.
+combined budget leaves no room for tests that carry no distinct failure. The suite budget is ratcheted at the recorded suite_time_budget; the budget MUST NOT grow absent a reviewed change. <!-- ralph-control: suite-budget-ratchet -->
 Route each criterion to exactly one lane before writing a test.
 
 Before adding a test, search for the nearest policy, scenario, assertion, and
@@ -135,6 +135,7 @@ RALPH-FACT: secondary_test_frameworks: pytest-xdist (available to raw Make targe
 RALPH-FACT: test_isolation_strategy: real-time I/O is forbidden in the default suite — injected clocks (Clock / FakeClock), MemoryWorkspace / FsWorkspace, MockProcessExecutor, tmp_path for filesystem, RecordedMcpServerFactory for MCP. subprocess_e2e tests are the only path that exercises real subprocesses / sockets and they are excluded from the default suite via `make test` EXCEPT for the registered real-git auto-integration files (`ralph/test_suites.py:REQUIRED_AUTO_INTEGRATE_E2E_FILES`), which are re-included by the `required_auto_integrate_e2e` marker that `ralph-workflow/tests/conftest.py` stamps at collection time. `tests/test_install_make_smoke.py` is the deliberate additional verify-step exception: it uses isolated HOME/PATH directories, a fail-closed fake `uv`, and bounded real processes to test public `make install` behavior offline. The combined wall-clock budget is 60 seconds (ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS, IMMUTABLE) across every budget-tracked step.
 RALPH-FACT: white_box_test_policy: tests MUST assert observable behaviour through public surfaces. `ralph-workflow/ralph/testing/audit_test_policy.py` enforces three white-box detectors (`setattr_private`, `private_import`, `private_attr`) against the frozen ceiling in `ralph-workflow/ralph/testing/test_whitebox_baseline.py`: counts may only decrease, a file with a non-zero count that is absent from the baseline fails closed (`whitebox-baseline-missing`), and a new test file MUST start at zero white-box usage. There is no per-line marker grammar; a finding is repaired with an injected clock, workspace or public seam. The complete retained-coupling ledger is in `docs/agents/testing-guide.md` section `White-box Backlog Ledger`.
 RALPH-FACT: io_mocking_approach: in-process fakes only — no real network, real subprocess (unless tagged `subprocess_e2e`), real filesystem outside tmp_path, real clock, or real MCP server. The default suite uses Clock / FakeClock for time, MemoryWorkspace / FsWorkspace / tmp_path for filesystem, MockProcessExecutor for subprocess, and RecordedMcpServerFactory for MCP. Reusable fixtures live in `ralph-workflow/tests/fixtures/`, `ralph-workflow/tests/_fixtures/`, and `ralph-workflow/tests/_support/`; narrowly scoped helpers may live in `tests/conftest.py`, root-level or feature-local `tests/**/*.py` helper modules, or the consuming test file. There is no `tests/_fakes/` directory.
+RALPH-FACT: browser_budget_seconds: 0.0 (Ralph Workflow ships no browser tests in the default suite)
 RALPH-FACT: suite_time_budget: 60 seconds combined (enforced by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS via cumulative time.monotonic() tracking across every step in ralph/verify.py:_BUDGET_TRACKED_STEPS) across `make test` and `make test-verification-smoke`. The combined smoke target runs all offline install, multimodal, and visual cases in one pytest invocation; their separate Make targets remain available for focused checks. The install smoke drives the public Make target and proves candidate validation, lock contention, and rollback without a network. The combined total is the IMMUTABLE contract; per-step timeouts sit at 30 s in ralph/verify.py:_VERIFY_STEP_TIMEOUT_SECONDS. The test labels are declared in ralph/verify.py:_KNOWN_TEST_STEP_LABELS.
 RALPH-FACT: per_test_timeout: 1.0 s per test (declared as DEFAULT_TEST_TIMEOUT_SECONDS in ralph-workflow/ralph/verify_timeout.py:20, propagated to the pytest subprocess via the RALPH_PYTEST_TEST_TIMEOUT_SECONDS env var, and enforced in-process by the per-test budget plugin ralph-workflow/tests/_per_test_budget.py (registered from tests/conftest.py), which charges the main thread's CPU seconds to each test phase -- setup, call and teardown separately -- with a 5x wall-clock hang cap, and raises the uncatchable TestExecutionTimeoutError (a BaseException); the per-test override is @pytest.mark.timeout_seconds(value) registered at ralph-workflow/pytest.ini:13). The default-suite mark expression is `(not subprocess_e2e and not smoke) or required_auto_integrate_e2e` (ralph/test_suites.py:_VERIFICATION_MARK_EXPRESSION): every `subprocess_e2e` test is deselected EXCEPT the registered real-git auto-integration files in `ralph/test_suites.py:REQUIRED_AUTO_INTEGRATE_E2E_FILES`, which ralph-workflow/tests/conftest.py marks `required_auto_integrate_e2e` at collection time so the expression selects them even though they also carry `subprocess_e2e`. The 1.0 s cap is a fail-closed ceiling; a test that hits it is a defect to repair, not a budget to raise.
 RALPH-FACT: timeout_enforcement_mechanism: three layers -- (1) per-test 1.0 CPU-second budget per phase plus a 5x wall-clock hang cap via ralph-workflow/tests/_per_test_budget.py, raising TestExecutionTimeoutError; (2) per-suite wall-clock via ralph/verify_timeout.py:run_command_with_timeout, invoked as `python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)` by the Makefile suite targets and via ralph/test_suites.py for `make test`, converting a breach to exit code 124; (3) the combined 60 s budget in ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS tracked over ralph/verify.py:_BUDGET_TRACKED_STEPS, including every install, multimodal, and visual smoke case through `make test-verification-smoke`. The combined budget tracker is enforced with `if` / `raise RuntimeError` (NOT `assert`) so it survives `python -O`; import-time invariants live in ralph/verify.py and are tested in ralph-workflow/tests/test_verify_invariants.py.
@@ -229,31 +230,14 @@ splitting or quarantining tests:
 
 ## Guard inventory
 
-Each guard (MUST / MUST NOT / required behaviour) is listed with its
-owner, the defect it prevents, and the event that re-evaluates it.
-
-| Guard | Owner | Protected outcome | Retirement / review trigger |
-|-------|-------|-------------------|----------------------------|
-| The test suite MUST be black-box by default | policy-authoring agent | Private-internal coupling breaking on refactor | Any white-box test that has no observable-surface alternative |
-| Tests MUST be deterministic | policy-authoring agent | Non-deterministic suites masking real regressions | Any flakiness attributed to real time, filesystem, network, or singleton state |
-| Every bug fix MUST add a regression test with a parseable name | policy-authoring agent | The same regression recurring without signal | Any regression test that outlives the bug it encodes |
-| Every new behaviour in the automated lane MUST add positive coverage | policy-authoring agent | Undetected behaviour loss on future changes | Any new behaviour routed to a non-default lane that has no owner or evidence |
-| Negative coverage is mandatory where rejection, failure, permission, boundary, or recovery behaviour exists | policy-authoring agent | Invalid inputs, permission gaps, and error paths silently breaking | Any negative test whose guarded path is subsequently protected by a lower-layer test |
-| Smoke tests MUST NOT run in any suite | policy-authoring agent | One-off debug harnesses polluting the regression gate | `@pytest.mark.smoke` being removed from `pytest.ini` `addopts` |
-| An addition to the default lane is admissible only when it has distinct fault sensitivity | policy-authoring agent | Test suite inflation without corresponding risk reduction | The 60-second combined budget being raised |
-| A criterion that could meet default constraints MUST NOT be routed elsewhere to dodge the work | policy-authoring agent | Routing difficult tests to lighter lanes to avoid building seams | Any lane-3 or lane-4 test that could run in-process with an injectable fake |
-| Automation MUST NOT supply the verdict for perceptual/ergonomic/editorial criteria | policy-authoring agent | Machine verdicts on human judgment producing false failures | Any automated assertion on terminal output, prose accuracy, or visual layout |
-| An agent MUST write the test before the production change | policy-authoring agent | Production code shipping before a regression is captured | Any bug fix committed without a corresponding test file |
-| An agent MUST NOT weaken the testing gate | policy-authoring agent | Tests skipped or thresholds lowered to pass a change | Any skip, xfail, `--continue-on-collection-errors`, or coverage-threshold reduction |
-| An agent MUST NOT introduce real `time.sleep()`, real filesystem I/O, or real network I/O in tests not marked `subprocess_e2e` or `live_agy` | policy-authoring agent | Non-deterministic or slow tests in the default suite | Any in-process test tagged `subprocess_e2e` or `live_agy` |
-| An agent MUST NOT mark a test `smoke` to dodge the budget | policy-authoring agent | Debug harnesses excluded from the suite to hide budget problems | `@pytest.mark.smoke` being added to the default mark expression |
-| An agent MUST NOT add `@pytest.mark.skip` / `xfail` without an issue link and documented rationale | policy-authoring agent | Silent test suppression obscuring unresolved defects | Any quarantine entry without a linked issue or resolution date |
-| An agent MUST NOT treat a slow or hanging suite as a cost to absorb | policy-authoring agent | Architectural coupling being normalised as a tooling problem | Any timeout raise, suite split, or skip of a slow/hanging test |
-| The 60-second combined budget is a HARD CAP | policy-authoring agent | Budget raises enabling continued architectural coupling | `_TOTAL_TEST_BUDGET_SECONDS` in `ralph/verify.py` being raised |
-| Exceptions expire at the next policy review | policy-authoring agent | Stale exceptions remaining in policy after their rationale disappears | Any exception without an updated rationale at the next policy review |
-| This policy MUST be reviewed when the test framework, runner, or command changes | policy-authoring agent | Policy diverging from project reality after tooling changes | Any change to `RALPH-FACT` lines in this file |
-| Conflicts between this policy and established project practice are resolved in favour of the project | policy-authoring agent | This policy overriding verified project reality | Any change to `RALPH-FACT` lines in this file |
-| An amendment MUST NOT subvert the intent of this policy | policy-authoring agent | Requirements being weakened to make a failing change pass | Any reduction in a MUST requirement without a documented exception |
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Cheapest-layer regression | Test owner | every bug fix to behavior carries a regression test that fails on the bug and passes on the fix | test name encodes the regression; test fails on the bug commit; test passes on the fix commit | test name encodes the regression | advisory: regression test review; review: on every bug fix PR | when a higher-layer test that pins the same observable contract covers the regression |
+| Real-boundary set | Test owner | browser / database / network-adapter / packaging / subprocess risks are covered at the real boundary | named profile covers each real-boundary risk; per-risk journey present in the profile manifest | named profile covers each real-boundary risk | advisory: named profile review for real-boundary coverage; review: on real-boundary risk change | when a deterministic, cheaper test covers the same risk class |
+| Deterministic seam | Test owner | tests run deterministic clock / network / DNS / filesystem / process seams without evasion | test injects the seam; no test depends on ambient clock, network, or filesystem properties | test injects the seam | advisory: test seam injection review; review: when new test seams are introduced | when the seam is no longer needed (the production code is pure) |
+| Browser budget, not cardinality | Test owner | the default-lane browser time budget is a measured value plus a distinct-risk inventory | RALPH-FACT browser_budget_seconds declared; new browser journey either fits the budget or carries a distinct-risk justification | RALPH-FACT browser_budget_seconds declared | advisory: browser budget review; review: when browser journeys change | when the project stops using a browser at all |
+| Narrowest observable boundary | Test owner | tests assert at the narrowest useful boundary; exposing a private method or adding a wrapper solely to satisfy a test is a violation | no test imports a private symbol solely to invoke it; no wrapper function exists only to make a test possible | no test imports a private symbol solely to invoke it | advisory: test seam boundary review; review: on test boundary change | when the rule is restated as a kernel-level constraint |
+| `suite-budget-ratchet` Suite budget ratchet | Test owner | the default suite time budget shrinks freely; growth is rejected absent a reviewed change | the recorded suite_time_budget is at or below its prior recorded value; growth is absent a reviewed change | the current suite_time_budget value per project | deterministic: make test | when the ratchet is retired by the kernel |
 
 ## Verification
 
@@ -351,7 +335,7 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: testing-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`
 
 ## Visual design evidence
 

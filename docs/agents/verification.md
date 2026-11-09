@@ -132,6 +132,10 @@ Use these focused commands when a smoke check is required for the area you are t
 # Policy loader smoke check (after changing policy defaults)
 python -c "from pathlib import Path; from ralph.policy.loader import load_policy; load_policy(Path('ralph/policy/defaults'))"
 
+# Project policy v6 starter smoke check (ralph --init / preflight bootstrap):
+# verifies all bundled starters carry the v6 schema marker and 7-column guard table.
+python -c "from ralph.project_policy import starters, markers; assert all(starters.read_starter(f).splitlines()[0] == markers.POLICY_SCHEMA_MARKER for f in starters.iter_starter_names())"
+
 # Parallel-mode regression tests (work-units / namespaced payloads)
 uv run pytest -q tests/test_parallel_mode_docs_banned_phrases_across_all_docs.py tests/test_parallel_mode_docs_namespaced_payload_docs.py
 

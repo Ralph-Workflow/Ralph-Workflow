@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: agent-policy.md -->
 
 # Agent Policy
@@ -67,15 +67,10 @@ RALPH-FACT: policy_applicability_index: maps every required policy file to the a
 
 ## Guard inventory
 
-- **read-prerequisites**: owner=policy-authoring agent; protected outcome=agent makes informed changes without violating project conventions; trigger=when AGENTS.md or a canonical policy file is renamed or removed.
-- **policy-applicability**: owner=policy-authoring agent; protected outcome=agent applies the correct policy set for each touched file; trigger=when a new policy file is added or when a new component is added under ralph/.
-- **gate-run-before-claim**: owner=policy-authoring agent; protected outcome=no false-positive compliance claims; trigger=when the verify command or its exit semantics change.
-- **accurate-failure-reporting**: owner=policy-authoring agent; protected outcome=failures are classified and reported accurately, not collapsed into generic errors; trigger=when the failure classifier or retry contract changes.
-- **documentation-update-in-same-workflow**: owner=policy-authoring agent; protected outcome=no stale docs outlasting behaviour changes; trigger=when the canonical doc surface or the documentation_update_obligation fact changes.
-- **fabrication-guard-adherence**: owner=policy-authoring agent; protected outcome=no fabricated capabilities, dependency claims, or adoption statements in public-facing markdown; trigger=when the fabrication_guard.py thresholds or scope changes.
-- **canonical-policy-directory-preserved**: owner=policy-authoring agent; protected outcome=single source of truth for quality policy is never fragmented; trigger=when a new policy-adjacent directory is created.
-- **multimodal-endpoint-assumption**: owner=policy-authoring agent; protected outcome=UI/UX changes do not work around harness limitations by disabling multimodal endpoints; trigger=when multimodal MCP endpoints are added or removed.
-- **native-subagent-spawn-preserved**: owner=policy-authoring agent; protected outcome=native subagent facilities are not broker-disabled; trigger=when a delegation or workspace-access restriction is proposed.
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Selective loading | Agent owner | agents load the kernel plus only the policies triggered by the changed surfaces | agents read the kernel first; agents do not load conditional starters whose trigger has not fired | agents read the kernel first | advisory: agent loads kernel and triggered slices; review: when agent dispatch or loading protocol changes | when every domain becomes a kernel-level concern |
+| Three-state reporting | Agent owner | AGENTS.md, status bar, CLI, and remediation prompts report every readiness dimension | each surface carries wording for structure_complete, implementation_verified, outcome_evidence_reviewed | each surface carries wording for structure_complete, implementation_verified, outcome_evidence_reviewed | deterministic: make -C ralph-workflow verify | when the kernel absorbs the three dimensions |
 
 ## AI execution instructions
 
@@ -162,4 +157,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: agent-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

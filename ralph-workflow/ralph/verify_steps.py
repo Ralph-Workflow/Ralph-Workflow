@@ -247,6 +247,15 @@ _VERIFY_STEPS: tuple[VerifyStep, ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        # Project-policy pack readiness audit: validates that the repository's
+        # root policy pack (docs/ralph-workflow-policy/) validates READY under
+        # the active policy schema version (v6) with zero findings.
+        "project policy pack readiness audit (audit_project_policy)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_project_policy"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         # wt-039 fsevents: AST-only drift audit that locks the
         # single-recursive-root-watch consolidation in
         # ``ralph/agents/invoke/_workspace.py`` so a future refactor cannot silently

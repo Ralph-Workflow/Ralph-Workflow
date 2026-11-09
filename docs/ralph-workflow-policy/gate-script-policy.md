@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: gate-script-policy.md -->
 
 # Gate Script Policy
@@ -148,27 +148,11 @@ RALPH-FACT: formula_check_gate: `make -C ralph-workflow formula-check` invokes `
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Retirement / review trigger |
-|---|---|---|---|
-| Exit-code contract | Gate script author | Gate reports accurate pass/fail; no false confidence from swallowed errors | Shell dialect change; new platform added to `supported_platforms` |
-| Strict mode | Gate script author | Unset variables and pipeline failures fail the gate, not silently | ShellCheck pinning in `ralph-workflow/pyproject.toml` |
-| Bounded | Gate script author | Gate cannot hang forever; 60 s combined budget is respected | New default-lane cost added |
-| Deterministic and offline | Gate script author | Gate result is stable and reproducible; no weather dependency | Network-backed check is declared as a named profile |
-| No phantom dependencies | Gate script author | Every tool, flag, package, and path the script calls actually exists | Script directory or task runner changes |
-| Reproducible by a human | Gate script author | A developer with a clean clone can run every gate | New gate added or existing gate moved |
-| Scripts are tested code | Gate script author | Gate failure path is exercised; untested gates are detected | Test coverage gap found; test file added or removed |
-| Wired in or deleted | Gate script author | Every gate is reachable from the authoritative entry point; no rot in opt-in suites | Named profile declared, wired in, or deleted |
-| No hollow gates | Gate script author | Gate verifies something real; no `echo ok` gates | Gate corpus review |
-| Gate script owns only its own correctness | Gate script author | Working gate is not "fixed" to make a failing project pass | Gate script edited to paper over project failures |
-| Failure output | Gate script author | Failing gate teaches the reader how to fix it and cites the governing policy | Gate failure message is unfollowable or missing citation |
-| Timeout output | Gate script author | Timeout cites time-budget policy; is not "fixed" by weakening the gate | Gate times out without citing policy |
-| Security — no embedded secrets | Gate script author | Secrets do not leak into process listings or CI logs | New gate added; CI log review |
-| Security — no piping remote code | Gate script author | Gate does not fetch and execute unverified remote code | New install command added |
-| Security — no unpinned remote code | Gate script author | Gate fetches only versioned, verified code with a bounded timeout | New network dependency added |
-| Security — temp file permissions | Gate script author | Temp files are not world-writable | New temp file creation added |
-| Security — no security weakening | Gate script author | Gate does not disable signature verification, skip hooks, or add bypass flags | Gate corpus review |
-| Cross-platform | Gate script author | Gate runs correctly on all `supported_platforms` without POSIX-only assumptions | `supported_platforms` changes |
-| Windows-specific bindings | Gate script author | Windows gate exercises CRLF handling, path quoting, no hardcoded `/`, and is tested in CI | Windows added to `supported_platforms` |
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Bounded gate execution | Gate-script owner | every gate script exits inside a runner-enforced timeout | gate script uses an approved tool first-token; the recipe wraps the command in a runner-enforced timeout | gate script uses an approved tool first-token | deterministic: make -C ralph-workflow verify | when the gate is no longer long-running |
+| No phantom dependencies | Gate-script owner | every gate script runs from a clean clone using only documented setup and secret mechanism | no gate script hard-codes a developer-local path; no gate script requires a hand-provisioned credential | no gate script hard-codes a developer-local path | deterministic: repo structure audit (audit_repo_structure) | when the gate is retired |
+| Meaning-preserving rewording | Gate-script owner | the gate-script policy protects meaning and failure sensitivity, not wording volume | the banner permits meaning-preserving rewording; the prohibited-actions list also permits meaning-preserving rewording; no other starter freezes gate-script prose | the banner permits meaning-preserving rewording | advisory: editorial review preserves meaning and sensitivity; review: when gate-script policy prose is amended | when the prohibited-actions list is retired by the kernel |
 
 ## AI execution instructions
 
@@ -251,4 +235,4 @@ may currently practice:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: gate-script-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

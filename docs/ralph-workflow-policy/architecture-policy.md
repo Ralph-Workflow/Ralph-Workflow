@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: architecture-policy.md -->
 
 # Architecture Policy
@@ -75,15 +75,10 @@ RALPH-FACT: conformance_method: `make -C ralph-workflow verify` is the authorita
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Retirement / review trigger |
-|---|---|---|---|
-| `audit_di_seam` (ralph/testing/audit_di_seam.py) | Architecture owner | No cross-component import edges beyond the documented seam; no ad-hoc subprocess/filesystem calls bypassing the typed adapters | New ADR that adds or removes a component boundary; change to the dependency_direction fact |
-| `audit_agent_module_state` (ralph/testing/audit_agent_module_state.py) | Architecture owner | No production module imports ralph.testing; no module-level mutable state shared across subpackage boundaries | Change to the forbidden_dependencies fact |
-| `audit_agent_internal_paths` (ralph/testing/audit_agent_internal_paths.py) | Architecture owner | No ralph.pro_support imports from open-source paths; no forbidden cross-component state-ownership violations | Change to the forbidden_dependencies or state_ownership fact |
-| `audit_mcp_timeout` (ralph/testing/audit_mcp_timeout.py) | Security owner | Every subprocess call under MCP/agent/process/executor boundaries carries a bounded timeout | Change to the active_threat_surfaces fact or the subprocess/filesystem surface rules |
-| `audit_resource_lifecycle` (ralph/testing/audit_resource_lifecycle.py) | Architecture owner | Long-lived accumulators (deques, dicts, lists) declare a bounded cap or carry a `# bounded-accumulator-ok` marker | Change to the external_io_boundaries fact or the state_ownership fact |
-| `fabrication_guard` (scripts/fabrication_guard.py) | Security owner | No fabricated GitHub repo links, npm package claims, install-count numbers, or banned wording in public-facing markdown | Change to the secret_scan_command / fabrication_scan_command fact; periodic review of the wordlist |
-| `audit_tool_exec` (ralph/testing/audit_tool_exec.py) | Security owner | No workspace writes or tool executions that bypass the workspace root normalization | Change to the filesystem surface rules |
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Process and resource ownership | Architecture owner | process / resource ownership is explicit: every long-lived process, file lock, socket, and signal handler is owned by a named module that closes it on every code path | code review requires every long-lived resource to be owned and closed; resource-lifecycle checks return zero findings | code review requires every long-lived resource to be owned and closed | deterministic: resource lifecycle audit (audit_resource_lifecycle) | when the project has no long-lived resources |
+| Conditional durable contracts | Architecture owner | durable contracts (registries, classifiers, name lists) are required only when the system that consumes them actually exists in the project | every required registry / classifier has a named consumer; no required registry / classifier is in place solely because a starter said so | every required registry / classifier has a named consumer | advisory: review consumers when contracts are added; review: on new registry or classifier addition | when the consumer system is removed |
 
 ## AI execution instructions
 
@@ -193,4 +188,4 @@ obligations win. Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: architecture-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

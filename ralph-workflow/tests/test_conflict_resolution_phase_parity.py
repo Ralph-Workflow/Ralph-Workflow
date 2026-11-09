@@ -428,6 +428,8 @@ def test_round_after_a_spent_chain_still_invokes_a_candidate(
     monkeypatch.setattr(driver_module, "resolution_chain_agents", lambda _bundle: ("one", "two"))
     monkeypatch.setattr(driver_module, "_sleep_seconds", lambda _seconds: None)
     _install_seams(monkeypatch, surviving_per_round=[_CONFLICTED, _CONFLICTED, _CONFLICTED])
+    clock = FakeClock()
+    session = ResolutionSession(ledger=AgentFailureLedger(clock=clock))
     called: list[tuple[int, str]] = []
 
     def _invoke(agent_name: str, prompt_path: Path, round_index: int) -> bool:
@@ -445,6 +447,8 @@ def test_round_after_a_spent_chain_still_invokes_a_candidate(
             display=None,
             display_context=None,
             invoke=_invoke,
+            clock=clock.monotonic,
+            session=session,
         )
         is False
     )

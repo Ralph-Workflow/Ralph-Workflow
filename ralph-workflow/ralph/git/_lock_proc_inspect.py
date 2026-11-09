@@ -88,8 +88,7 @@ def _is_git_process(proc_root: Path, pid_str: str) -> bool:
     return False
 
 
-@functools.lru_cache(maxsize=1)
-def _git_binary_identity() -> tuple[int, int] | None:
+def _git_binary_identity_uncached() -> tuple[int, int] | None:
     git_binary = shutil.which("git")
     if git_binary is None:
         return None
@@ -99,6 +98,11 @@ def _git_binary_identity() -> tuple[int, int] | None:
         return (st.st_dev, st.st_ino)
     except OSError:
         return None
+
+
+# Call form (rather than decorator form) keeps mypy's disallow_any_expr /
+# disallow_any_decorated settings clean without a type: ignore suppression.
+_git_binary_identity = functools.lru_cache(maxsize=1)(_git_binary_identity_uncached)
 
 
 def _can_rule_out_non_git_process(proc_root: Path, pid_str: str) -> bool:

@@ -48,7 +48,7 @@ Documented policy exception -- the frozen private run-loop API
 
 This file is ONE explicitly recorded exception to the project's
 black-box-by-default rule, quoted from
-``ralph-workflow/docs/ralph-workflow-policy/testing-policy.md``:
+``docs/ralph-workflow-policy/testing-policy.md``:
 
     "The test suite MUST be black-box by default: tests assert observable
     behaviour through the project's public surface (CLI entry points, MCP

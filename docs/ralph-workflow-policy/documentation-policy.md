@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: documentation-policy.md -->
 
 # Documentation Policy
@@ -51,13 +51,10 @@ RALPH-FACT: example_verification_command: `make -C ralph-workflow docs-linkcheck
 
 ## Guard inventory
 
-- **no-fabrication**: owner=policy-authoring agent; protected outcome=fabricated capabilities, dependencies, adoption claims, or unsupported technical statements in documentation; trigger=when fabrication_guard.py thresholds or public-facing markdown scope changes.
-- **behaviour-change-updates-docs**: owner=policy-authoring agent; protected outcome=stale documentation outlasting behaviour changes; trigger=when a documentation surface or the canonical location map changes.
-- **remove-duplicate-contravention**: owner=policy-authoring agent; protected outcome=contradictory or duplicated documentation silently retained; trigger=when documentation surfaces are reorganised.
-- **example-verified**: owner=policy-authoring agent; protected outcome=examples in docs that do not match actual behaviour; trigger=when example_verification_command changes.
-- **accurate-docstrings**: owner=policy-authoring agent; protected outcome=public APIs with missing or inaccurate docstrings; trigger=when audit_public_docstrings changes.
-- **config-options-documented**: owner=policy-authoring agent; protected outcome=configuration options listed without defaults, valid ranges, or effects; trigger=when a new config option is added.
-- **changelog-complete**: owner=policy-authoring agent; protected outcome=user-visible changes not enumerated in release notes; trigger=when CHANGELOG convention changes.
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Synchronized docs | Docs owner | documentation matches shipped behaviour across public CLI, API, MCP, and configuration surfaces | doc build runs clean with zero warnings; route-link checks return zero broken links | doc build runs clean with zero warnings; route-link checks return zero broken links | deterministic: make -C ralph-workflow docs | when documentation is generated entirely from code signatures |
+| Public docstrings | Docs owner | public modules, classes, and methods declare purposeful docstrings | public docstring audit returns zero missing docstring findings | public docstring audit returns zero missing docstring findings | deterministic: public docstring audit (audit_public_docstrings) | when docstrings are replaced by formal interface specs |
 
 ## AI execution instructions
 
@@ -147,4 +144,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: documentation-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

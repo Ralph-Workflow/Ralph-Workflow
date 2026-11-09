@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: linting-policy.md -->
 
 # Linting Policy
@@ -81,15 +81,10 @@ RALPH-FACT: live_entry_point_annotation_inventory: zero live-entry annotations i
 
 ## Guard inventory
 
-- **ecosystem-best-practice-linter**: owner=policy-authoring agent; protected outcome=linter chosen to pass existing code rather than enforce best practice; trigger=when a new language is added to the project.
-- **ralph-lang-declaration**: owner=policy-authoring agent; protected outcome=detected languages without declared lint gates; trigger=when a new language file is added.
-- **specific-error-code-suppression**: owner=policy-authoring agent; protected outcome=bare `# noqa` or blanket suppressions that hide violations; trigger=when audit_lint_bypass.py changes.
-- **per-file-ignore-listed**: owner=policy-authoring agent; protected outcome=global rule silencing without per-file rationale; trigger=when per-file-ignores change.
-- **no-dead-code**: owner=policy-authoring agent; protected outcome=obsolete code retained indefinitely instead of deleted; trigger=when a new language or dead-code tool is added.
-- **dead-code-fix-at-source**: owner=policy-authoring agent; protected outcome=dead-code findings hidden with ignores, tricks, or exclusions rather than fixed; trigger=when dead-code detection tooling changes.
-- **live-entry-evidence**: owner=policy-authoring agent; protected outcome=speculative live-entry annotations without verified consumers; trigger=when a new framework/plugin/FFI surface is added.
-- **no-speculative-compatibility-paths**: owner=policy-authoring agent; protected outcome=unowned compatibility shims retained indefinitely; trigger=when pro_support additions are proposed.
-- **no-lower-strictness**: owner=policy-authoring agent; protected outcome=lint strictness lowered to make a failing check pass; trigger=when ruff rule set or per-file-ignores change.
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| No lint bypass | Lint owner | no `# noqa`, `per-file-ignores`, or `extend-per-file-ignores` lands in the tree | audit_lint_bypass returns zero findings | audit_lint_bypass returns zero findings | deterministic: lint bypass audit (audit_lint_bypass) | when the rule is restated as a kernel-level constraint |
+| Public / wrapper syntax-proxy | Lint owner | making a method public or adding a wrapper solely to satisfy a rule is a violation, not a fix | no private method is renamed to public solely to satisfy a private-call ratchet; no wrapper exists only to make a structural rule pass | no private method is renamed to public solely to satisfy a private-call ratchet | advisory: code review verifies visibility; review: when private-call ratchet is reviewed | when every private-call ratchet is removed from the policy |
 
 ## AI execution instructions
 
@@ -185,4 +180,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: linting-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

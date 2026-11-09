@@ -242,7 +242,12 @@ def _spawn_mcp_child(
     while time.monotonic() < deadline and not port_file.exists():
         time.sleep(0.01)
     assert port_file.exists(), f"Child process {label} did not write port file within deadline"
-    port = int(port_file.read_text(encoding="utf-8").strip())
+    # RALPH-TEST-REASON: wait for child process to flush port digits to disk before int conversion
+    port_text = port_file.read_text(encoding="utf-8").strip()
+    while time.monotonic() < deadline and not port_text.isdigit():
+        time.sleep(0.01)
+        port_text = port_file.read_text(encoding="utf-8").strip()
+    port = int(port_text)
     endpoint = f"http://127.0.0.1:{port}/mcp"
 
     names = _http_tools_list_names(endpoint, timeout=2.0)

@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: dependency-policy.md -->
 
 # Dependency Policy
@@ -51,16 +51,10 @@ RALPH-FACT: transitive_dependency_policy: transitive dependencies are governed b
 
 ## Guard inventory
 
-- **typed-dependency-preferred**: owner=policy-authoring agent; protected outcome=added dependencies that lack type information and cause type-checking gaps; trigger=when a new Python dependency is added.
-- **small-local-over-large-dep**: owner=policy-authoring agent; protected outcome=disproportionate dependency bloat for trivial functionality; trigger=when a new top-level dependency is proposed.
-- **lockfile-reproducibility**: owner=policy-authoring agent; protected outcome=CI installs a different resolution than developer environments; trigger=when the lockfile format or CI install command changes.
-- **security-advisory-tracking**: owner=policy-authoring agent; protected outcome=known critical CVEs are not tracked and block releases; trigger=when a new runtime dependency is added.
-- **license-compatibility-verified**: owner=policy-authoring agent; protected outcome=incompatible licenses merged into the project; trigger=when license allowlist changes.
-- **verification-command-paired**: owner=policy-authoring agent; protected outcome=no dependency added without a declared verification gate; trigger=when the dependency manifest changes.
-- **no-unmaintained-license-add**: owner=policy-authoring agent; protected outcome=dependencies without maintainers, licenses, or recent releases added; trigger=when dependency_evaluation_record changes.
-- **lockfile-update-required**: owner=policy-authoring agent; protected outcome=manifest updated without lockfile causing resolution drift; trigger=when uv or lockfile tooling changes.
-- **security-audit-command-override-exception**: owner=policy-authoring agent; protected outcome=security audit bypassed without documented rationale; trigger=when Bandit is pinned or the verify step changes.
-- **non-osi-license-exception**: owner=policy-authoring agent; protected outcome=non-OSI/source-available licenses merged without documented exception; trigger=when license allowlist changes.
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Pinned dependencies | Dependency owner | every runtime dependency is pinned to an exact version with a lockfile | lockfile is present and recorded as a verification artifact | lockfile is present and recorded as a verification artifact | deterministic: dependency integrity audit (audit_dependency_integrity) | when the project ships only a single transitive closure (e.g. a vendored static binary) |
+| License compatibility | Dependency owner | every dependency is compatible with the project's declared license set | license audit returns zero incompatible findings | license audit returns zero incompatible findings | deterministic: make -C ralph-workflow verify | when the project ships no third-party code |
 
 ## AI execution instructions
 
@@ -159,4 +153,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: dependency-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

@@ -228,6 +228,12 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="repo structure audit ok\n",
         ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_project_policy")): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_project_policy"),
+            returncode=0,
+            stdout="project policy readiness audit ok\n",
+        ),
         (
             "uv",
             ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation"),
@@ -429,6 +435,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_public_docstrings")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_terminal_escape_containment")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_repo_structure")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_project_policy")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_fsevents_watch_consolidation")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_log_sink_buffering")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_filesystem_write_consolidation")),

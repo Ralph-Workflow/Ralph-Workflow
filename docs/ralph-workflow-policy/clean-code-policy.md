@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v4 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: clean-code-policy.md -->
 
 # Clean-Code Policy
@@ -68,14 +68,10 @@ RALPH-FACT: dead_code_audit_command: `make -C ralph-workflow dead-code` runs `uv
 
 ## Guard inventory
 
-- **naming-convention-follow**: owner=policy-authoring agent; protected outcome=inconsistent naming across the codebase; trigger=when PEP 8 / project convention changes.
-- **prefer-existing-patterns**: owner=policy-authoring agent; protected outcome=speculative abstractions with one caller; trigger=when a new shared utility is proposed.
-- **no-dead-code**: owner=policy-authoring agent; protected outcome=obsolete code retained indefinitely; trigger=when dead-code tool or confidence threshold changes.
-- **single-responsibility**: owner=policy-authoring agent; protected outcome=functions or modules with multiple responsibilities that are hard to test or reason about; trigger=when pylint.max-args threshold changes.
-- **actionable-error-context**: owner=policy-authoring agent; protected outcome=opaque errors that are hard to diagnose; trigger=when the logging convention or logging_models.py changes.
-- **black-box-testability**: owner=policy-authoring agent; protected outcome=white-box test patches that hide untestable code; trigger=when testing-policy.md changes.
-- **generated-vendored-migration-marker**: owner=policy-authoring agent; protected outcome=generated/vendored code treated as lint/typecheck subject; trigger=when a new generated/vendored category is added.
-- **bounded-mutable-accumulator**: owner=policy-authoring agent; protected outcome=memory leaks from unbounded collections in long-running processes; trigger=when resource-lifecycle audit changes.
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Syntax-proxy ban | Clean-code owner | private-call ratchets and blanket functional rules do not reward making a method public or adding a wrapper | no private method is renamed to public solely to satisfy a private-call ratchet; no wrapper exists only to satisfy a blanket functional rule | no private method is renamed to public solely to satisfy a private-call ratchet | advisory: code review verifies visibility; review: when private-call ratchet is reviewed | when every private-call ratchet is retired |
+| Bounded premature abstraction | Clean-code owner | new abstractions are justified by demonstrated boundary, volatility, testing, or reuse value rather than implementation count | abstraction is justified by demonstrated boundary, volatility, testing, or reuse value; implementation count alone neither requires nor forbids abstraction | abstraction is justified by demonstrated boundary, volatility, testing, or reuse value | advisory: code review verifies boundary value; review: on new abstraction introduction | when the project stops growing the abstraction target |
 
 ## AI execution instructions
 
@@ -158,4 +154,4 @@ Two guardrails bound every amendment:
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: clean-code-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v4 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

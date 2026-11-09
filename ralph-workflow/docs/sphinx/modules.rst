@@ -4753,6 +4753,13 @@ ralph.testing.audit_secret_scan
    :members:
    :show-inheritance:
 
+ralph.testing.audit_project_policy
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_project_policy
+   :members:
+   :show-inheritance:
+
 ralph.testing.audit_test_integrity
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

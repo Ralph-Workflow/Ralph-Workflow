@@ -1,31 +1,26 @@
-schema_version = "v1"
+schema_version = "v3"
 default_budget_seconds = 60.0
-kernel_controls = ["policy-structure", "public-behavior"]
+kernel_controls = [
+    "policy-structure",
+    "public-behavior",
+]
+lanes = [
+    { id = "default", owner = "project maintainers", trigger = "every change" },
+    { id = "triggered", owner = "domain owner", trigger = "declared risk or platform signal" },
+    { id = "human", owner = "reviewer", trigger = "judgment-dependent material change" },
+]
 
 [context]
 impact = "low"
 likelihood = "low"
 uncertainty = "low"
 recoverability = "high"
-architectures = ["library"]
+architectures = [
+    "library",
+]
 rate_of_change = "medium"
 expected_lifetime = "long"
 obligations = []
-
-[[lanes]]
-id = "default"
-owner = "project maintainers"
-trigger = "every change"
-
-[[lanes]]
-id = "triggered"
-owner = "domain owner"
-trigger = "declared risk or platform signal"
-
-[[lanes]]
-id = "human"
-owner = "reviewer"
-trigger = "judgment-dependent material change"
 
 [[controls]]
 id = "policy-structure"
@@ -40,6 +35,9 @@ cost_basis = "estimate"
 evidence = "validator finding list and composed portfolio record"
 lifecycle = "review on every portfolio schema change; replace only with equivalent deterministic coverage"
 disposition = "KEEP"
+detects = "validator finding list and composed portfolio record"
+retirement_trigger = "when the deterministic preflight is replaced by a published equivalent"
+enforcement = "deterministic: make -C ralph-workflow verify"
 
 [[controls]]
 id = "public-behavior"
@@ -54,10 +52,9 @@ cost_basis = "estimate"
 evidence = "preserved public-surface artifact with immutable subject, run, validated oracle, and independent verdict"
 lifecycle = "review when the public contract or cheapest sufficient proof layer changes"
 disposition = "KEEP"
-
-[local_tightening]
-controls = []
-
+detects = "preserved public-surface artifact with immutable subject, run, validated oracle, and independent verdict"
+retirement_trigger = "when every behavior claim is provable at a cheaper deterministic layer"
+enforcement = "deterministic: make -C ralph-workflow verify"
 
 [[controls]]
 id = "explore-linux-inotify-probe"
@@ -72,6 +69,9 @@ cost_basis = "estimate"
 evidence = "scripts/explore_inotify_probe.sh opens the ExploreStore, runs a five-query grep_files workload, and tallies the inotify watch count by counting lines beginning with 'inotify wd:' inside /proc/<pid>/fdinfo (the actual per-watch kernel record; the earlier 'watches:' prefix counted zero against any live inotify descriptor). The script aborts non-zero when the count is non-zero. Linux-host developers rerun the script on every watcher implementation change and attach the dated stdout to the change."
 lifecycle = "remove from the default suite; rerun the probe on every Linux implementation change and attach the dated receipt to the change"
 disposition = "REMOVE"
+detects = "scripts/explore_inotify_probe.sh non-zero watch count inside /proc/<pid>/fdinfo"
+retirement_trigger = "when the Linux inotify probe is retired or replaced by a portable cross-platform probe"
+enforcement = "advisory: platform probe run on Linux implementation changes; review: Linux watcher implementation change"
 
 [[controls]]
 id = "retired-root-operational-doc-guards"
@@ -86,7 +86,9 @@ cost_basis = "estimate"
 evidence = "canonical Sphinx routes and documented retirement decisions (wt-026 docs/dedup); surviving contract enforced by test_operational_guides_exist and test_no_stale_rust_workflow_references in ralph-workflow/tests/test_repo_root_operational_docs_sync.py; review note dated 2026-10-03 names the canonical Sphinx routes as the surviving evidence location"
 lifecycle = "remove absent-path guards; add an objective test only for a current canonical route"
 disposition = "REMOVE"
-
+detects = "canonical Sphinx routes and test_operational_guides_exist"
+retirement_trigger = "when operational doc structure changes"
+enforcement = "advisory: doc route retirement review; review: documentation-route change"
 
 [[controls]]
 id = "retired-root-performance-doc-guards"
@@ -101,7 +103,9 @@ cost_basis = "estimate"
 evidence = "archive restoration review and the documentation map's historical-route classification; the orphan constant tests/doc_roots.py:REPO_ROOT_DOCS_PERFORMANCE_DIR was removed in wt-01 since the imported test no longer exists; review note dated 2026-10-03 confirmed the archived-route classification"
 lifecycle = "remove absent-archive guards; review any restored archive as a documentation change"
 disposition = "REMOVE"
-
+detects = "archive restoration review and documentation map historical-route classification"
+retirement_trigger = "when historical archive is restored or retired"
+enforcement = "advisory: doc archive retirement review; review: historical archive restoration"
 
 [[controls]]
 id = "default-template-parallel-keys"
@@ -116,6 +120,9 @@ cost_basis = "estimate"
 evidence = "ralph-workflow/tests/test_no_global_parallelization_config.py::test_ralph_workflow_toml_has_no_global_parallel_keys asserts no top-level forbidden key exists in either tracked template; companion test_pipeline_toml_has_no_top_level_parallel_execution covers pipeline.toml and test_unified_config_has_no_forbidden_parallel_fields covers the UnifiedConfig model surface"
 lifecycle = "keep; rerun on every change to the tracked default templates or to UnifiedConfig"
 disposition = "KEEP"
+detects = "test_ralph_workflow_toml_has_no_global_parallel_keys asserts no forbidden key in template"
+retirement_trigger = "when configuration architecture is replaced"
+enforcement = "deterministic: make test"
 
 [[controls]]
 id = "retired-code-style-leaf-guards"
@@ -130,6 +137,9 @@ cost_basis = "estimate"
 evidence = "documentation map and archived-route review; re-introductions of any leaf must be guarded by an objective test that targets the re-introduced path; review note dated 2026-10-03 confirmed the historical code-style leaf classification"
 lifecycle = "remove absent-leaf guards; review restored historical documents as documentation changes"
 disposition = "REMOVE"
+detects = "documentation map and archived-route review"
+retirement_trigger = "when code-style documentation is restored"
+enforcement = "advisory: code-style leaf retirement review; review: historical documentation restoration"
 
 [[controls]]
 id = "retired-absent-agy-execution-strategy"
@@ -144,6 +154,9 @@ cost_basis = "estimate"
 evidence = "base class AgentExecutionState default and the three surviving parametrized cases in ralph-workflow/tests/test_no_anti_drift_recovery_invariants.py::TestClassifyQuietUnknownStateDefaultsToWaiting (opencode, claude_interactive, generic) plus the WAITING_ON_CHILD reference check; review note dated 2026-10-03 confirmed the AGY-strategy is intentionally absent from the default checkout"
 lifecycle = "remove absent-path parametrize case; re-add the AGY case when the file is reintroduced or a generic-strategy regression breaks the contract"
 disposition = "REMOVE"
+detects = "AgentExecutionState default and surviving parameterized cases in test_no_anti_drift_recovery_invariants.py"
+retirement_trigger = "when AGY strategy is reintroduced"
+enforcement = "advisory: strategy absence review; review: AGY strategy file reintroduction or generic-strategy change"
 
 [[controls]]
 id = "retired-default-lane-2-prose-guards"
@@ -158,6 +171,9 @@ cost_basis = "estimate"
 evidence = "docs-owner review note dated 2026-10-03 against f05524607 listed the stale phrases audited and the replacement PTY-injection copy in ralph-workflow/docs/sphinx/architecture/mcp-upstream-proxy.md and ralph-workflow/docs/sphinx/agent-compatibility.md"
 lifecycle = "remove prose-wording assertions; owner-driven docs review on every AGY/MCP copy change"
 disposition = "REMOVE"
+detects = "docs-owner review note and replacement PTY-injection copy in Sphinx architecture docs"
+retirement_trigger = "when setup documentation is revised"
+enforcement = "advisory: editorial prose review; review: AGY/MCP setup documentation change"
 
 [[controls]]
 id = "retired-code-style-index-states-python-status"
@@ -172,6 +188,9 @@ cost_basis = "estimate"
 evidence = "docs-owner review note dated 2026-10-03 against f05524607 confirmed the surviving test_index_exists in ralph-workflow/tests/test_repo_root_tooling_and_code_style_scope_code_style_index.py pins the objective file-existence contract for the family entrypoint"
 lifecycle = "remove prose-wording assertion; rerun test_index_exists on every docs/code-style/index.md touch"
 disposition = "REMOVE"
+detects = "test_index_exists pins the objective file-existence contract"
+retirement_trigger = "when code-style index changes"
+enforcement = "advisory: editorial prose review; review: docs/code-style/ index copy change"
 
 [[controls]]
 id = "retired-watchdog-text-call-site-count"
@@ -186,6 +205,9 @@ cost_basis = "estimate"
 evidence = "IdleWatchdog public-surface black-box tests under ralph-workflow/tests/agents/test_idle_watchdog*.py exercise the evaluate() contract end-to-end; the textual call-site count no longer carries independent coverage; review note dated 2026-10-03 confirmed the surviving IdleWatchdog contract tests are the authoritative coverage"
 lifecycle = "remove text-shape assertion; rerun the IdleWatchdog family tests on every change to the public evaluate surface"
 disposition = "REMOVE"
+detects = "IdleWatchdog public-surface black-box tests under tests/agents/test_idle_watchdog*.py cover all call sites"
+retirement_trigger = "when IdleWatchdog public seam changes"
+enforcement = "advisory: implementation-coupled text elimination review; review: watchdog.evaluate public-seam change"
 
 [[controls]]
 id = "retired-default-lane-2-parallel-worktree-phrases"
@@ -200,6 +222,9 @@ cost_basis = "estimate"
 evidence = "docs-owner review note dated 2026-10-03 against fb0abd772 confirmed the surviving ralph-workflow/README.md and ralph-workflow/CONTRIBUTING.md copy do not claim worktree-based parallel support; the parallel-execution design (ralph-workflow/docs/sphinx/architecture/parallel-execution.md and ralph-workflow/docs/sphinx/architecture/process-pool.md) is the canonical authoritative contract"
 lifecycle = "remove prose-wording assertion; owner-driven docs review on every parallel-execution copy change"
 disposition = "REMOVE"
+detects = "docs-owner review note and canonical architecture documentation"
+retirement_trigger = "when parallel execution documentation changes"
+enforcement = "advisory: editorial prose review; review: user-facing docs change"
 
 [[controls]]
 id = "retired-vacuous-observe-line-is-no-op"
@@ -214,6 +239,9 @@ cost_basis = "estimate"
 evidence = "replacement tests test_observe_line_does_not_invoke_sink_without_signal and test_observe_line_invokes_sink_on_child_signal in ralph-workflow/tests/agents/execution_state/test_base_execution_strategy.py observe the public set_subagent_sink / reset_subagent_sink seam and pin both the no-op path and the child-signal invocation path; companion coverage in test_generic_child_signal.py pins the classifier itself"
 lifecycle = "remove the vacuous oracle; rerun the replacement tests on every change to the public observe_line seam"
 disposition = "REMOVE"
+detects = "replacement tests test_observe_line_does_not_invoke_sink_without_signal and test_observe_line_invokes_sink_on_child_signal"
+retirement_trigger = "when BaseExecutionStrategy public seam changes"
+enforcement = "advisory: vacuity elimination review; review: BaseExecutionStrategy.observe_line public-seam change"
 
 [[controls]]
 id = "retired-private-manifest-sql-assertions"
@@ -228,6 +256,9 @@ cost_basis = "estimate"
 evidence = "the reindex pipeline test in ralph-workflow/tests/test_explore_pipeline.py::TestWarmRefreshBatchingExercisesBulkApis pins the observable outcome (call counts and warm no-op detection) end-to-end; test_upsert_manifest_many_rejects_mismatched_lengths pins the public ValueError contract"
 lifecycle = "remove private-storage assertions; rerun the reindex pipeline test on every change to upsert_manifest_many"
 disposition = "REMOVE"
+detects = "reindex pipeline test in tests/test_explore_pipeline.py and test_upsert_manifest_many_rejects_mismatched_lengths"
+retirement_trigger = "when ExploreStore public seam changes"
+enforcement = "advisory: implementation-coupled storage elimination review; review: ExploreStore.upsert_manifest_many public-seam change"
 
 [[controls]]
 id = "retired-websearch-live-credential-probes"
@@ -243,6 +274,9 @@ evidence = "Per-backend fake-backed coverage preserved: searxng keeps test_searc
 lifecycle = "remove vendor-liveness probes; rerun the fake-backed contract set on every websearch backend change"
 disposition = "REMOVE"
 removed-tests = "test_live_search_returns_results,test_live_search_returns_results_when_searxng_url_configured"
+detects = "per-backend fake-backed coverage for searxng, brave, tavily, and exa"
+retirement_trigger = "when websearch backends change"
+enforcement = "advisory: vendor liveness probe elimination review; review: websearch backend public-seam change"
 
 [[controls]]
 id = "retired-vacuous-brief-criteria-probe-injection"
@@ -258,6 +292,9 @@ evidence = "Surviving tests in ralph-workflow/tests/unit/display/test_brief_crit
 lifecycle = "remove unconditional-skip probe-injection stub; rerun the marker-presence and probe-completeness tests on every brief-criteria change"
 disposition = "REMOVE"
 removed-tests = "test_every_claimed_test_fails_under_its_regression_probe"
+detects = "surviving tests test_a_*_has_marker and test_every_brief_criterion_id_has_a_registered_probe"
+retirement_trigger = "when brief-criteria probe registry changes"
+enforcement = "advisory: vacuity elimination review; review: brief-criteria probe-registry public-seam change"
 
 [[controls]]
 id = "retired-source-shape-subagent-visibility-invariants"
@@ -273,6 +310,9 @@ evidence = "Behaviour-level coverage of the same outcomes: tests/test_display_ge
 lifecycle = "remove source-text shape oracles; rerun the public-seam behaviour tests on every change to effect_executor / parallel_display / supervising"
 disposition = "REMOVE"
 removed-tests = "test_invoke_start_uses_unit_scoped_display_path,test_parallel_display_emit_records_subscriber_activity_for_unit_scoped_lines,test_supervising_recent_activity_appends_waiting_without_hiding_output"
+detects = "behaviour-level coverage in test_display_generated_scenes.py and test_parallel_display_completion_panel.py"
+retirement_trigger = "when subagent visibility rendering changes"
+enforcement = "advisory: text-shape elimination review; review: subagent-visibility production refactor"
 
 [[controls]]
 id = "retired-vacuous-display-visual-floor-row-width-guard"
@@ -288,6 +328,9 @@ evidence = "ralph-workflow/ralph/display/edit_preview.py:_build_edit_preview `de
 lifecycle = "remove vacuous test-local oracle; if a row-width floor is reintroduced as a production seam, add a black-box test that drives render_scene or build_edit_preview through the public seam at a narrow declared width and asserts each emitted row's cell_len stays within the bound"
 disposition = "REMOVE"
 removed-tests = "test_visual_floor_over_width_unicode_row_fixture_is_rejected"
+detects = "sibling tests in tests/test_display_visual_floor.py and production code documentation"
+retirement_trigger = "when edit-preview row-width enforcement is reintroduced"
+enforcement = "advisory: vacuity elimination review; review: edit-preview row-width enforcement is reintroduced as a production seam"
 
 [[controls]]
 id = "retired-explore-resource-lifecycle-suite-duplicate"
@@ -303,3 +346,9 @@ evidence = "Surviving verify step `python -m ralph.testing.audit_resource_lifecy
 lifecycle = "remove the redundant public-audit duplicate; rerun the audit_resource_lifecycle verify step and the sibling static-source tests on every change to the audit's default roots"
 disposition = "REMOVE"
 removed-tests = "test_explore_handlers_use_bounded_accumulators"
+detects = "surviving verify step python -m ralph.testing.audit_resource_lifecycle and sibling static tests"
+retirement_trigger = "when explore accumulators change"
+enforcement = "deterministic: resource lifecycle audit (audit_resource_lifecycle)"
+
+[local_tightening]
+controls = []

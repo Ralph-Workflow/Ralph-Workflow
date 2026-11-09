@@ -256,19 +256,22 @@ def _extract_verify_step_labels(source: str) -> set[str]:
     except SyntaxError:
         return labels
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        for target in node.targets:
-            if (
-                isinstance(target, ast.Name)
-                and target.id == "_VERIFY_STEPS"
-                and isinstance(node.value, (ast.Tuple, ast.List))
-            ):
-                for elt in node.value.elts:
-                    if isinstance(elt, (ast.Tuple, ast.List)) and elt.elts:
-                        first = elt.elts[0]
-                        if isinstance(first, ast.Constant) and isinstance(first.value, str):
-                            labels.add(first.value)
+        target_names: list[str] = []
+        value_node: ast.expr | None = None
+        if isinstance(node, ast.Assign):
+            target_names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+            value_node = node.value
+        elif isinstance(node, ast.AnnAssign):
+            if isinstance(node.target, ast.Name):
+                target_names = [node.target.id]
+            value_node = node.value
+
+        if "_VERIFY_STEPS" in target_names and isinstance(value_node, (ast.Tuple, ast.List)):
+            for elt in value_node.elts:
+                if isinstance(elt, (ast.Tuple, ast.List)) and elt.elts:
+                    first = elt.elts[0]
+                    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                        labels.add(first.value)
     return labels
 
 
