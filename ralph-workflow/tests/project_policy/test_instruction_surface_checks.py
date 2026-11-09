@@ -1,0 +1,199 @@
+"""Tests for Unit-3 instruction-surface checks and policy freshness.
+
+Covers:
+- AGENTS.md line-budget warnings (managed block >40 lines, total >200 lines).
+- AGENTS.md path-citation existence check.
+- Zero-width and bidirectional Unicode character detection.
+- Research basis citation freshness (>365 days review date) with clock injection.
+"""
+
+from __future__ import annotations
+
+from datetime import date
+from pathlib import Path
+
+from ralph.project_policy import (
+    agents_md,
+    check_policy_citations,
+    get_research_freshness_clock,
+    instruction_surface,
+    markers,
+    set_research_freshness_clock,
+)
+from ralph.testing.audit_instruction_integrity import (
+    CATEGORY_HIDDEN_UNICODE,
+    RULE_HIDDEN_UNICODE,
+    audit_instruction_integrity,
+)
+from ralph.workspace.memory import MemoryWorkspace
+
+
+def test_managed_block_line_budget_passes_at_or_below_limit() -> None:
+    # 40 lines inside managed block is within budget
+    block_lines = ["Line inside block"] * 38
+    content = (
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        + "\n".join(block_lines)
+        + f"\n{markers.AGENTS_BLOCK_END}\n"
+    )
+    findings = agents_md.check_agents_md_line_budgets(content)
+    assert not any(
+        f.requirement_id == markers.MANAGED_BLOCK_LINE_BUDGET_FINDING_ID for f in findings
+    )
+
+
+def test_managed_block_line_budget_fires_above_limit() -> None:
+    # 41 lines inside managed block exceeds budget of 40
+    block_lines = ["Line inside block"] * 41
+    content = (
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        + "\n".join(block_lines)
+        + f"\n{markers.AGENTS_BLOCK_END}\n"
+    )
+    findings = agents_md.check_agents_md_line_budgets(content)
+    matched = [
+        f for f in findings if f.requirement_id == markers.MANAGED_BLOCK_LINE_BUDGET_FINDING_ID
+    ]
+    assert len(matched) == 1
+    assert (
+        "43 lines" in matched[0].missing_evidence
+        or "41 lines" in matched[0].missing_evidence
+        or "budget 40" in matched[0].missing_evidence
+    )
+
+
+def test_project_agents_md_line_budget_passes_at_or_below_limit() -> None:
+    lines = ["# Title", ""] + [f"Rule {i}" for i in range(195)]
+    content = "\n".join(lines) + "\n"
+    findings = agents_md.check_agents_md_line_budgets(content)
+    assert not any(
+        f.requirement_id == markers.PROJECT_AGENTS_MD_LINE_BUDGET_FINDING_ID for f in findings
+    )
+
+
+def test_project_agents_md_line_budget_fires_above_limit() -> None:
+    lines = ["# Title", ""] + [f"Rule {i}" for i in range(210)]
+    content = "\n".join(lines) + "\n"
+    findings = agents_md.check_agents_md_line_budgets(content)
+    matched = [
+        f for f in findings if f.requirement_id == markers.PROJECT_AGENTS_MD_LINE_BUDGET_FINDING_ID
+    ]
+    assert len(matched) == 1
+    assert "200-line budget" in matched[0].missing_evidence
+
+
+def test_agents_md_path_citations_passes_when_path_exists() -> None:
+    ws = MemoryWorkspace()
+    ws.write("docs/guide.md", "# Guide\n")
+    ws.write("scripts/run.sh", "#!/bin/sh\n")
+    content = "# Instructions\n\nSee [Guide](docs/guide.md) and run `scripts/run.sh`.\n"
+    findings = agents_md.check_agents_md_path_citations(ws, content)
+    assert findings == []
+
+
+def test_agents_md_path_citations_fires_on_missing_path() -> None:
+    ws = MemoryWorkspace()
+    content = "# Instructions\n\nSee [Missing](docs/nonexistent.md) and `tools/ghost.py`.\n"
+    findings = agents_md.check_agents_md_path_citations(ws, content)
+    assert len(findings) == 2
+    assert all(f.requirement_id == markers.AGENTS_MD_CITED_PATH_FINDING_ID for f in findings)
+    assert any("docs/nonexistent.md" in f.missing_evidence for f in findings)
+    assert any("tools/ghost.py" in f.missing_evidence for f in findings)
+
+
+def test_agents_md_path_citations_ignores_external_urls_and_git_refs() -> None:
+    ws = MemoryWorkspace()
+    content = (
+        "# References\n\n"
+        "Visit [Site](https://example.com/foo.py) or check `origin/main`.\n"
+        "Also git branch `main`.\n"
+    )
+    findings = agents_md.check_agents_md_path_citations(ws, content)
+    assert findings == []
+
+
+def test_find_hidden_unicode_detects_zero_width_and_bidi_characters() -> None:
+    # \u200b is zero-width space, \u202e is right-to-left override
+    dirty_text = "clean line\nsecret\u200bhidden\noverride\u202eRTL\n"
+    occurrences = instruction_surface.find_hidden_unicode(dirty_text)
+    assert len(occurrences) == 2
+    assert occurrences[0] == (2, 7, "U+200B")
+    assert occurrences[1] == (3, 9, "U+202E")
+
+
+def test_check_hidden_unicode_fires_policy_finding() -> None:
+    dirty = "Policy with \ufeff BOM"
+    findings = instruction_surface.check_hidden_unicode(dirty, "docs/test.md")
+    assert len(findings) == 1
+    assert "U+FEFF" in findings[0].missing_evidence
+    assert findings[0].path == "docs/test.md"
+
+
+def test_check_hidden_unicode_passes_on_clean_text() -> None:
+    clean = "# Normal markdown\n\nAll standard ASCII and UTF-8 printable: àéîö.\n"
+    assert instruction_surface.check_hidden_unicode(clean, "docs/test.md") == []
+
+
+def test_research_freshness_passes_within_365_days() -> None:
+    set_research_freshness_clock(lambda: date(2026, 11, 9))
+    try:
+        content = (
+            "## Research basis\n\n"
+            "- publisher: Official Org\n"
+            "  title: Valid Policy\n"
+            "  http: https://example.org/policy\n"
+            "  review date: 2026-08-01\n"
+        )
+        findings = check_policy_citations(content, "docs/policy.md")
+        assert not any(
+            f.requirement_id.startswith(markers.RESEARCH_FRESHNESS_FINDING_ID) for f in findings
+        )
+    finally:
+        set_research_freshness_clock(None)
+
+
+def test_research_freshness_fires_when_older_than_365_days() -> None:
+    # 2024-01-01 to 2026-11-09 is > 1000 days (> 365)
+    set_research_freshness_clock(lambda: date(2026, 11, 9))
+    try:
+        content = (
+            "## Research basis\n\n"
+            "- publisher: Ancient Org\n"
+            "  title: Old Policy\n"
+            "  http: https://example.org/old\n"
+            "  review date: 2024-01-01\n"
+        )
+        findings = check_policy_citations(content, "docs/policy.md")
+        freshness_findings = [
+            f
+            for f in findings
+            if f.requirement_id.startswith(markers.RESEARCH_FRESHNESS_FINDING_ID)
+        ]
+        assert len(freshness_findings) == 1
+        assert "freshness budget" in freshness_findings[0].missing_evidence
+    finally:
+        set_research_freshness_clock(None)
+
+
+def test_research_freshness_clock_injection_restores_default() -> None:
+    def custom_clock() -> date:
+        return date(2030, 1, 1)
+
+    set_research_freshness_clock(custom_clock)
+    assert get_research_freshness_clock() is custom_clock
+    set_research_freshness_clock(None)
+    assert get_research_freshness_clock() is not custom_clock
+
+
+def test_instruction_integrity_audit_finds_hidden_unicode(tmp_path: Path) -> None:
+    # Create an instruction file containing a zero-width space
+    prompts_dir = tmp_path / "ralph" / "prompts" / "templates"
+    prompts_dir.mkdir(parents=True)
+    dirty_template = prompts_dir / "test.jinja"
+    dirty_template.write_text("Hello \u200b World", encoding="utf-8")
+
+    findings = audit_instruction_integrity(tmp_path)
+    unicode_findings = [f for f in findings if f.rule == RULE_HIDDEN_UNICODE]
+    assert len(unicode_findings) == 1
+    assert unicode_findings[0].category == CATEGORY_HIDDEN_UNICODE
+    assert "U+200B" in unicode_findings[0].detail

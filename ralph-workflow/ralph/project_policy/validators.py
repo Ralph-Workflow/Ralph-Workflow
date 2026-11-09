@@ -22,7 +22,13 @@ import ast
 import re
 from typing import TYPE_CHECKING
 
-from ralph.project_policy import _content_checks, evidence, markers
+from ralph.project_policy import (
+    _content_checks,
+    agents_md,
+    evidence,
+    instruction_surface,
+    markers,
+)
 from ralph.project_policy._content_checks import (
     _check_capture_command_fact,
     _check_commands,
@@ -34,6 +40,8 @@ from ralph.project_policy._content_checks import (
     _check_research_basis,
     _check_template_banner,
     _frozen_schema_version,
+    get_research_freshness_clock,
+    set_research_freshness_clock,
 )
 from ralph.project_policy._guard_inventory import _check_guard_inventory
 from ralph.project_policy._scanners import (
@@ -45,6 +53,7 @@ from ralph.project_policy._scanners import (
 )
 from ralph.project_policy.models import PolicyFinding, PortfolioError
 from ralph.project_policy.portfolio import parse_portfolio_toml
+from ralph.workspace.memory import MemoryWorkspace
 
 if TYPE_CHECKING:
     from ralph.language_detector.models import ProjectStack
@@ -81,6 +90,9 @@ def _check_agents_md(workspace: Workspace) -> list[PolicyFinding]:
         # canonical-dir-ref finding on top of multiple marker findings would
         # bury the actionable defect.
         findings.extend(_check_managed_block_canonical_dir(content))
+    findings.extend(agents_md.check_agents_md_line_budgets(content))
+    findings.extend(agents_md.check_agents_md_path_citations(workspace, content))
+    findings.extend(instruction_surface.check_hidden_unicode(content, markers.AGENTS_MD))
     return findings
 
 
@@ -245,7 +257,7 @@ def _check_claude_md(workspace: Workspace) -> list[PolicyFinding]:
                 required_outcome=f"append a pointer from CLAUDE.md to {markers.AGENTS_MD}",
             )
         ]
-    return []
+    return instruction_surface.check_hidden_unicode(content, markers.CLAUDE_MD)
 
 
 def _extract_verify_step_labels(source: str) -> set[str]:
@@ -415,6 +427,7 @@ def _validate_existing_policy_file(
     findings.extend(_check_capture_command_fact(content, path, filename))
     findings.extend(_check_commands(content, path, filename))
     findings.extend(_check_template_banner(content, path, filename))
+    findings.extend(instruction_surface.check_hidden_unicode(content, path))
     # Guard-inventory check (B9). Every applicable starter (core and
     # conditional) MUST carry a `## Guard inventory` table when required
     # by its schema version. Frozen packs whose spec has no guard_inventory_header
@@ -899,4 +912,38 @@ def check_capture_command_fact(
     return _check_capture_command_fact(content, path, filename)
 
 
-__all__ = ["check_capture_command_fact", "validate_readiness"]
+def check_policy_citations(
+    content: str,
+    path: str = "docs/policy.md",
+    filename: str | None = None,
+    *,
+    workspace: Workspace | None = None,
+) -> list[PolicyFinding]:
+    """Check one document's Research basis section and citation review freshness.
+
+    Public seam over the content-check implementation so callers and black-box
+    tests can assert citation and freshness findings without importing private
+    content-check functions.
+
+    Args:
+        content: The document text to inspect.
+        path: The document path recorded on each finding.
+        filename: Optional document filename recorded on each finding.
+        workspace: Optional workspace providing path resolution.
+
+    Returns:
+        Every policy finding raised by citation and freshness checks.
+    """
+    if workspace is None:
+        workspace = MemoryWorkspace()
+    resolved_filename = filename if filename is not None else path.rsplit("/", 1)[-1]
+    return _check_research_basis_with_workspace(workspace, content, path, resolved_filename)
+
+
+__all__ = [
+    "check_capture_command_fact",
+    "check_policy_citations",
+    "get_research_freshness_clock",
+    "set_research_freshness_clock",
+    "validate_readiness",
+]

@@ -4353,6 +4353,13 @@ ralph.project_policy.validators
    :members:
    :show-inheritance:
 
+ralph.project_policy.instruction_surface
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_policy.instruction_surface
+   :members:
+   :show-inheritance:
+
 ralph.project_policy.cache
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

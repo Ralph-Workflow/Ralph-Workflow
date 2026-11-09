@@ -36,9 +36,11 @@ Behavior summary:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, Final
 
 from ralph.project_policy import markers
+from ralph.project_policy._findings import PolicyFinding
 
 if TYPE_CHECKING:
     from ralph.project_policy._readiness_assessment import ReadinessAssessment
@@ -359,6 +361,146 @@ def condense_placeholder_block(
     return [markers.AGENTS_MD]
 
 
+#: Decided-value ceiling for the managed Ralph Workflow instruction block in
+#: AGENTS.md. Advisory: the managed block carries only non-inferable pointers
+#: and readiness state (about 33 lines today); keeping it under 40 lines prevents
+#: instruction bloat that dilutes user-authored rules.
+MANAGED_BLOCK_LINE_BUDGET: Final[int] = markers.MANAGED_BLOCK_LINE_BUDGET
+
+#: Decided-value ceiling for the whole project AGENTS.md file. Advisory: Anthropic's
+#: stated 200-line ceiling keeps the primary instruction file lean so load-bearing
+#: rules stay salient; bulk summaries belong in docs rather than instructions.
+PROJECT_AGENTS_MD_LINE_BUDGET: Final[int] = markers.PROJECT_AGENTS_MD_LINE_BUDGET
+
+_GIT_REFS: Final[frozenset[str]] = frozenset(
+    {"main", "master", "origin/main", "origin/master", "HEAD"}
+)
+
+
+def check_agents_md_line_budgets(content: str) -> list[PolicyFinding]:
+    """Validate project AGENTS.md and managed block line counts against decided-value budgets.
+
+    Advisory / warning-only checks: emits a finding when the total file exceeds
+    :data:`PROJECT_AGENTS_MD_LINE_BUDGET` (200 lines) or the managed block exceeds
+    :data:`MANAGED_BLOCK_LINE_BUDGET` (40 lines).
+    """
+    findings: list[PolicyFinding] = []
+    lines = content.splitlines()
+    if len(lines) > PROJECT_AGENTS_MD_LINE_BUDGET:
+        findings.append(
+            PolicyFinding(
+                requirement_id=markers.PROJECT_AGENTS_MD_LINE_BUDGET_FINDING_ID,
+                path=markers.AGENTS_MD,
+                missing_evidence=(
+                    f"AGENTS.md has {len(lines)} lines, exceeding the "
+                    f"{PROJECT_AGENTS_MD_LINE_BUDGET}-line budget"
+                ),
+                required_outcome=(
+                    f"trim project AGENTS.md to <= {PROJECT_AGENTS_MD_LINE_BUDGET} lines "
+                    "by moving detail to dedicated policy files"
+                ),
+            )
+        )
+    if markers.AGENTS_BLOCK_BEGIN in content and markers.AGENTS_BLOCK_END in content:
+        begin_idx = content.find(markers.AGENTS_BLOCK_BEGIN)
+        end_idx = content.find(markers.AGENTS_BLOCK_END)
+        if begin_idx < end_idx:
+            block_content = content[begin_idx : end_idx + len(markers.AGENTS_BLOCK_END)]
+            block_lines = block_content.splitlines()
+            if len(block_lines) > MANAGED_BLOCK_LINE_BUDGET:
+                findings.append(
+                    PolicyFinding(
+                        requirement_id=markers.MANAGED_BLOCK_LINE_BUDGET_FINDING_ID,
+                        path=markers.AGENTS_MD,
+                        missing_evidence=(
+                            f"managed instruction block has {len(block_lines)} lines, exceeding "
+                            f"the {MANAGED_BLOCK_LINE_BUDGET}-line budget"
+                        ),
+                        required_outcome=(
+                            f"condense the managed AGENTS.md block to <= {MANAGED_BLOCK_LINE_BUDGET} lines"
+                        ),
+                    )
+                )
+    return findings
+
+
+def _check_one_candidate(
+    raw: str,
+    workspace: Workspace,
+    seen: set[str],
+    findings: list[PolicyFinding],
+) -> None:
+    if (
+        not raw
+        or " " in raw
+        or raw.startswith(("-", "#", "http://", "https://", "mailto:"))
+        or any(c in raw for c in "<>*|{}[]'\"")
+    ):
+        return
+    if raw.startswith("file://"):
+        raw = raw[len("file://") :]
+    candidate = raw.split("#")[0].split(":")[0].strip()
+    if not candidate or candidate in _GIT_REFS or candidate.startswith("origin/"):
+        return
+    has_slash = "/" in candidate
+    has_ext = any(
+        candidate.endswith(ext)
+        for ext in (
+            ".md",
+            ".py",
+            ".toml",
+            ".json",
+            ".yml",
+            ".yaml",
+            ".sh",
+            ".txt",
+            ".rst",
+            ".ini",
+            ".cfg",
+            ".lock",
+        )
+    )
+    if not (has_slash or has_ext) or (not has_slash and "." in candidate):
+        return
+    if candidate in seen:
+        return
+    seen.add(candidate)
+
+    clean = candidate.rstrip("/")
+    exists = (
+        workspace.exists(clean)
+        or workspace.exists(candidate)
+        or workspace.exists(f"ralph-workflow/{clean}")
+    )
+    if not exists:
+        findings.append(
+            PolicyFinding(
+                requirement_id=markers.AGENTS_MD_CITED_PATH_FINDING_ID,
+                path=markers.AGENTS_MD,
+                missing_evidence=f"AGENTS.md cites repository path {candidate!r} which does not exist",
+                required_outcome=(
+                    f"create the cited path {candidate} or remove the reference from AGENTS.md"
+                ),
+            )
+        )
+
+
+def check_agents_md_path_citations(workspace: Workspace, content: str) -> list[PolicyFinding]:
+    """Validate that paths cited in AGENTS.md exist in the workspace."""
+    findings: list[PolicyFinding] = []
+    seen: set[str] = set()
+    for line in content.splitlines():
+        for link_match in re.finditer(r"\[([^]]*)\]\(([^)]+)\)", line):
+            target = link_match.group(2)
+            if isinstance(target, str):
+                _check_one_candidate(target.strip(), workspace, seen, findings)
+        for bt_match in re.finditer(r"`([^`]+)`", line):
+            raw = bt_match.group(1)
+            if isinstance(raw, str):
+                _check_one_candidate(raw.strip(), workspace, seen, findings)
+    return findings
+
+
 def bootstrap(workspace: Workspace) -> list[str]:
     """Idempotently bootstrap AGENTS.md and CLAUDE.md.
 
@@ -372,7 +514,11 @@ def bootstrap(workspace: Workspace) -> list[str]:
 
 
 __all__ = [
+    "MANAGED_BLOCK_LINE_BUDGET",
+    "PROJECT_AGENTS_MD_LINE_BUDGET",
     "bootstrap",
+    "check_agents_md_line_budgets",
+    "check_agents_md_path_citations",
     "condense_placeholder_block",
     "has_significant_unmanaged_content",
     "is_opted_out",

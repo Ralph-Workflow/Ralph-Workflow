@@ -81,13 +81,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from ralph.project_policy.instruction_surface import find_hidden_unicode
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
 __all__ = [
+    "CATEGORY_HIDDEN_UNICODE",
     "CATEGORY_INSTRUCTION_PROMOTION",
     "CATEGORY_MISSING_PIN",
     "CATEGORY_MISSING_REVIEW_TRIGGER",
+    "RULE_HIDDEN_UNICODE",
     "RULE_INSTRUCTION_PROMOTION",
     "RULE_MCP_SERVER_PIN",
     "RULE_REVIEWED_COMMIT_ONLY",
@@ -105,6 +109,9 @@ RULE_MCP_SERVER_PIN: str = "mcp-server-pin"
 #: Instruction files must not promote tool/file/MCP output to instructions.
 RULE_INSTRUCTION_PROMOTION: str = "instruction-promotion"
 
+#: Instruction surface files must not contain hidden or bidirectional Unicode.
+RULE_HIDDEN_UNICODE: str = "instruction-hidden-unicode"
+
 #: ADVISORY: instruction and MCP-config files change only through reviewed commits.
 RULE_REVIEWED_COMMIT_ONLY: str = "instruction-change-reviewed-commit"
 
@@ -115,6 +122,7 @@ RULE_TOOL_DESCRIPTION_REREVIEW: str = "mcp-tool-description-re-review"
 CATEGORY_MISSING_PIN: str = "mcp-server-missing-pin"
 CATEGORY_MISSING_REVIEW_TRIGGER: str = "mcp-server-missing-review-trigger"
 CATEGORY_INSTRUCTION_PROMOTION: str = "instruction-promotion"
+CATEGORY_HIDDEN_UNICODE: str = "instruction-hidden-unicode"
 
 #: The server name Ralph reserves for its own MCP server. A declaration
 #: under this name is FIRST PARTY and is exempt from the pin rule: it is
@@ -628,6 +636,44 @@ def _audit_instruction_files(root: Path) -> list[InstructionIntegrityFinding]:
     return findings
 
 
+def _policy_files(root: Path) -> list[Path]:
+    """Return the policy documents of the scanned tree."""
+    files: list[Path] = []
+    for path in _iter_files(root, (".md",)):
+        parts = path.parts
+        if "ralph-workflow-policy" in parts or ("project_policy" in parts and "starters" in parts):
+            files.append(path)
+    return sorted(set(files))
+
+
+def _audit_hidden_unicode(root: Path) -> list[InstructionIntegrityFinding]:
+    """Audit instruction surface files for hidden or bidirectional Unicode."""
+    findings: list[InstructionIntegrityFinding] = []
+    all_files = sorted(
+        set(_mcp_config_files(root)) | set(_instruction_files(root)) | set(_policy_files(root))
+    )
+    for path in all_files:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        relative = str(path.relative_to(root))
+        for line_no, col, code_hex in find_hidden_unicode(text):
+            findings.append(
+                InstructionIntegrityFinding(
+                    file_path=relative,
+                    line=line_no,
+                    rule=RULE_HIDDEN_UNICODE,
+                    category=CATEGORY_HIDDEN_UNICODE,
+                    detail=(
+                        f"file contains hidden/bidi Unicode character {code_hex} "
+                        f"at column {col}; remove all zero-width and bidi characters"
+                    ),
+                )
+            )
+    return findings
+
+
 def audit_instruction_integrity(root: Path) -> list[InstructionIntegrityFinding]:
     """Audit the instruction / MCP-config integrity of the tree at *root*.
 
@@ -637,7 +683,9 @@ def audit_instruction_integrity(root: Path) -> list[InstructionIntegrityFinding]
     Returns:
         Every finding, ordered by file path then line.
     """
-    findings = _audit_mcp_declarations(root) + _audit_instruction_files(root)
+    findings = (
+        _audit_mcp_declarations(root) + _audit_instruction_files(root) + _audit_hidden_unicode(root)
+    )
     findings.sort(key=lambda finding: (finding.file_path, finding.line, finding.category))
     return findings
 

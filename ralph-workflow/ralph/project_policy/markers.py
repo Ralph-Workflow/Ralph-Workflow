@@ -133,7 +133,8 @@ SIGNIFICANT_NONEMPTY_LINE_THRESHOLD: Final[int] = 10
 
 # Managed instruction block in AGENTS.md, bracketed by these two markers
 # so repeated preflights can detect a pre-existing block without
-# re-appending it (idempotent bootstrap).
+# re-appending it (idempotent bootstrap). The managed block text is unchanged
+# in schema v6, so the marker version remains v1.
 AGENTS_BLOCK_BEGIN: Final[str] = "<!-- ralph-workflow-policy:begin v1 -->"
 AGENTS_BLOCK_END: Final[str] = "<!-- ralph-workflow-policy:end -->"
 
@@ -509,6 +510,22 @@ ENFORCEMENT_ADVISORY_NO_TRIGGER_FINDING_ID: Final[str] = (
     "RWP-INVENTORY:ENFORCEMENT-ADVISORY-NO-TRIGGER"
 )
 
+# Stable v6 finding ids for instruction-surface checks.
+ID_INSTRUCTION: Final[str] = "RWP-INSTRUCTION"
+MANAGED_BLOCK_LINE_BUDGET_FINDING_ID: Final[str] = "RWP-AGENTS-MD:MANAGED-BLOCK-LINE-BUDGET"
+PROJECT_AGENTS_MD_LINE_BUDGET_FINDING_ID: Final[str] = "RWP-AGENTS-MD:PROJECT-LINE-BUDGET"
+AGENTS_MD_CITED_PATH_FINDING_ID: Final[str] = "RWP-AGENTS-MD:CITED-PATH-MISSING"
+HIDDEN_UNICODE_FINDING_ID: Final[str] = "RWP-INSTRUCTION:HIDDEN-UNICODE"
+RESEARCH_FRESHNESS_FINDING_ID: Final[str] = "RWP-CITATION:RESEARCH-FRESHNESS"
+
+# Decided-value ceilings for instruction surfaces (judgment-based, tag none, advisory).
+# Managed block line ceiling (carries non-inferable pointers and readiness state; ~33 lines today).
+MANAGED_BLOCK_LINE_BUDGET: Final[int] = 40
+# Project AGENTS.md line ceiling (Anthropic's 200-line ceiling to keep load-bearing rules salient).
+PROJECT_AGENTS_MD_LINE_BUDGET: Final[int] = 200
+# Research freshness threshold (instructions written for older models rot; warn at >365 days).
+RESEARCH_FRESHNESS_MAX_DAYS: Final[int] = 365
+
 # Guard inventory grammar. Every applicable starter (core and conditional)
 # MUST carry a ``## Guard inventory`` section whose body is a markdown
 # table with the exact header below (case-insensitive match). The body is
@@ -675,6 +692,7 @@ __all__ = [
     "AGENTS_BLOCK_BEGIN",
     "AGENTS_BLOCK_END",
     "AGENTS_MD",
+    "AGENTS_MD_CITED_PATH_FINDING_ID",
     "APPLICABILITY_OVERRIDES_PATH",
     "APPROVED_GATE_TOOLS",
     "CACHE_REL_PATH",
@@ -698,6 +716,7 @@ __all__ = [
     "FACT_MARKER",
     "GUARD_INVENTORY_HEADER",
     "GUARD_INVENTORY_HEADING",
+    "HIDDEN_UNICODE_FINDING_ID",
     "ID_AGENTS_MD_MISSING",
     "ID_CITATION_MISSING",
     "ID_CLAUDE_MD_MISSING",
@@ -705,6 +724,7 @@ __all__ = [
     "ID_CORE_MISSING",
     "ID_DOMAIN",
     "ID_HEADING_MISSING",
+    "ID_INSTRUCTION",
     "ID_INVENTORY",
     "ID_LANG_COVERAGE",
     "ID_MARKER_MISSING",
@@ -714,6 +734,8 @@ __all__ = [
     "ID_PORTFOLIO",
     "INAPPLICABLE_MARKER",
     "LANG_MARKER",
+    "MANAGED_BLOCK_LINE_BUDGET",
+    "MANAGED_BLOCK_LINE_BUDGET_FINDING_ID",
     "MEMORY_DEP_SIGNALS",
     "MEMORY_SIGNAL_PATHS",
     "MIGRATED_MARKER_PREFIX",
@@ -732,9 +754,13 @@ __all__ = [
     "POLICY_SCHEMA_MARKER",
     "PORTFOLIO_PATH",
     "PORTFOLIO_SCHEMA_VERSION",
+    "PROJECT_AGENTS_MD_LINE_BUDGET",
+    "PROJECT_AGENTS_MD_LINE_BUDGET_FINDING_ID",
     "RATCHET_DECLARATION_PHRASES",
     "RATCHET_UNCOVERED_FINDING_ID",
     "REQUIRED_HEADINGS",
+    "RESEARCH_FRESHNESS_FINDING_ID",
+    "RESEARCH_FRESHNESS_MAX_DAYS",
     "REVIEW_MARKER",
     "SCHEMA_VERSION",
     "SIGNIFICANT_HEADING_PREFIX",

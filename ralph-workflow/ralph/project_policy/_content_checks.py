@@ -9,6 +9,7 @@ in what order) stays in ``validators``.
 from __future__ import annotations
 
 import re
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 from urllib.parse import urlparse
@@ -42,6 +43,8 @@ from ralph.project_policy.models import PolicyFinding
 from ralph.visual.policy_facts import DESIGN_SYSTEM_POLICY_RELPATH, capture_command_problem
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.language_detector.models import ProjectStack
     from ralph.workspace.protocol import Workspace
 
@@ -55,6 +58,57 @@ if TYPE_CHECKING:
 # a parameter through every internal helper while still keeping the
 # existence check honest.
 _CITATION_PATH_WORKSPACE: list[Workspace | None] = [None]
+
+
+def _default_freshness_clock() -> date:
+    return datetime.now(UTC).date()
+
+
+_FRESHNESS_CLOCK: list[Callable[[], date]] = [_default_freshness_clock]
+
+
+def set_research_freshness_clock(clock_fn: Callable[[], date] | None) -> None:
+    """Inject a custom clock function for research freshness checks."""
+    if clock_fn is None:
+        _FRESHNESS_CLOCK[0] = _default_freshness_clock
+    else:
+        _FRESHNESS_CLOCK[0] = clock_fn
+
+
+def get_research_freshness_clock() -> Callable[[], date]:
+    """Return the currently active research freshness clock function."""
+    return _FRESHNESS_CLOCK[0]
+
+
+def _check_citation_freshness(
+    fields: dict[str, str], index: int, *, path: str, filename: str
+) -> list[PolicyFinding]:
+    """Return a warning finding if citation review date exceeds RESEARCH_FRESHNESS_MAX_DAYS."""
+    raw = fields.get("review date")
+    if not raw:
+        return []
+    try:
+        review_date = date.fromisoformat(raw)
+    except ValueError:
+        return []
+    current_date = _FRESHNESS_CLOCK[0]()
+    age_days = (current_date - review_date).days
+    if age_days > markers.RESEARCH_FRESHNESS_MAX_DAYS:
+        return [
+            PolicyFinding(
+                requirement_id=f"{markers.RESEARCH_FRESHNESS_FINDING_ID}:{filename}:block-{index}",
+                path=path,
+                missing_evidence=(
+                    f"Research basis citation {index} review date {raw} is {age_days} "
+                    f"days old (exceeds {markers.RESEARCH_FRESHNESS_MAX_DAYS} days freshness budget)"
+                ),
+                required_outcome=(
+                    f"review and re-verify citation {index} and update its `review date` to within "
+                    f"{markers.RESEARCH_FRESHNESS_MAX_DAYS} days"
+                ),
+            )
+        ]
+    return []
 
 
 def _fact_key(line: str) -> str | None:
@@ -340,6 +394,7 @@ def _check_individual_citations(
             # adds its own finding without invalidating the citation
             # shape itself.
             findings.extend(_check_citation_path(fields, index, path=path, filename=filename))
+            findings.extend(_check_citation_freshness(fields, index, path=path, filename=filename))
             continue
         findings.append(
             PolicyFinding(

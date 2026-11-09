@@ -47,6 +47,7 @@ from ralph.project_policy import (
     _content_checks,
     agents_md,
     evidence,
+    instruction_surface,
     models,
     remediation,
     validators,
@@ -54,7 +55,12 @@ from ralph.project_policy import (
 from ralph.project_policy.models import PolicyFinding, PortfolioError
 from ralph.project_policy.portfolio import PolicyPortfolio, parse_portfolio_toml
 from ralph.project_policy.preflight import run_policy_readiness_preflight
-from ralph.project_policy.validators import validate_readiness
+from ralph.project_policy.validators import (
+    check_policy_citations,
+    get_research_freshness_clock,
+    set_research_freshness_clock,
+    validate_readiness,
+)
 
 __all__ = [
     "PolicyFinding",
@@ -62,11 +68,15 @@ __all__ = [
     "PortfolioError",
     "agents_md",
     "check_capture_command_fact",
+    "check_policy_citations",
     "evidence",
+    "get_research_freshness_clock",
+    "instruction_surface",
     "models",
     "parse_portfolio_toml",
     "remediation",
     "run_policy_readiness_preflight",
+    "set_research_freshness_clock",
     "validate_readiness",
     "validators",
 ]
