@@ -18,6 +18,7 @@ import errno
 import os
 import tarfile
 import tempfile
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -53,6 +54,7 @@ _SHARED_TOP_LEVEL_LOCKS: Final[tuple[str, ...]] = (
 )
 
 _LADDER_LOCK_OPERATION: Final[str] = "integration-ladder:remove-stale-locks"
+_STALE_LOCK_AGE_S: Final[float] = 10.0
 
 
 def _walk_lock_files(base: Path) -> list[Path]:
@@ -127,6 +129,8 @@ def reap_ladder_stale_locks(git_dir: Path, common_dir: Path) -> tuple[str, ...]:
         try:
             if not lock_path.exists() or not lock_path_is_reapable(lock_path):
                 continue
+            if (time.time() - lock_path.stat().st_mtime) < _STALE_LOCK_AGE_S:
+                continue  # young lock is never stale; refuse without expensive liveness probe
             owner = git_dir if lock_path.is_relative_to(git_dir) else common_dir
             if lock_has_no_live_holder(lock_path, owner, common_dir) != "dead":
                 continue  # a live or unprovable holder's lock is never removed

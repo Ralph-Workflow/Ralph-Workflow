@@ -1647,6 +1647,10 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
         drain=recovery_input.effect.drain,
         worker_namespace=recovery_input.worker_namespace,
         detail=watchdog_fire_detail(recovery_input.exc),
+        # The premise check fires only when the runtime has ALREADY retried
+        # this same failure (``attempt_index`` counts prior recovery attempts
+        # of the same failure, starting at 0 for the first retry).
+        same_failure_retry_count=recovery_input.attempt_index,
     )
     return AgentRecoveryPlan(
         prompt_file=prompt_file,
@@ -1902,6 +1906,7 @@ def _retry_prompt_file_for_context(
     drain: str | None = None,
     worker_namespace: Path | None = None,
     detail: str | None = None,
+    same_failure_retry_count: int = 0,
 ) -> str:
     return _write_agent_retry_prompt(
         workspace_root=workspace_root,
@@ -1918,6 +1923,7 @@ def _retry_prompt_file_for_context(
         drain=drain,
         worker_namespace=worker_namespace,
         detail=detail,
+        same_failure_retry_count=same_failure_retry_count,
     )
 
 
@@ -2031,6 +2037,7 @@ def _write_agent_retry_prompt(
     drain: str | None = None,
     worker_namespace: Path | None = None,
     detail: str | None = None,
+    same_failure_retry_count: int = 0,
 ) -> str:
     prompt_path = Path(prompt_file)
     prompt_dir = workspace_root / ".agent" / "tmp"
@@ -2052,6 +2059,7 @@ def _write_agent_retry_prompt(
         prompt_path=str(prompt_path),
         context_path=str(context_path),
         validation=validation_retry,
+        same_failure_retry_count=same_failure_retry_count,
     )
     validation_block = (
         "VALIDATION ERRORS (ACCUMULATED)\n"

@@ -357,6 +357,36 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="installer, multimodal, and visual smoke ok\n",
         ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_instruction_integrity")): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_instruction_integrity"),
+            returncode=0,
+            stdout="audit_instruction_integrity ok\n",
+        ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_dependency_integrity")): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_dependency_integrity"),
+            returncode=0,
+            stdout="audit_dependency_integrity ok\n",
+        ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_secret_scan")): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_secret_scan"),
+            returncode=0,
+            stdout="audit_secret_scan ok\n",
+        ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_comments")): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_comments"),
+            returncode=0,
+            stdout="audit_comments ok\n",
+        ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_test_integrity")): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_test_integrity"),
+            returncode=0,
+            stdout="audit_test_integrity ok\n",
+        ),
     }
 
 
@@ -418,6 +448,11 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_opts_key_drift")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_failure_single_owner")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_import_order")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_instruction_integrity")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_dependency_integrity")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_secret_scan")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_comments")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_test_integrity")),
         ("make", ("test-verification-smoke",)),
         ("uv", _MCP_AGENT_BOUNDARY_AUDIT_ARGS),
     ]

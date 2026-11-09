@@ -11,7 +11,7 @@ The Sphinx docs build (`make docs`) is wired in as a Make prerequisite of `make 
 
 ## Project-policy portfolio
 
-Policy schema v5 (current, see `markers.SCHEMA_VERSION`; currently v5) requires
+Policy schema v6 (current, see `markers.SCHEMA_VERSION`; currently v6) requires
 `docs/ralph-workflow-policy/policy-portfolio.toml`. Its schema, composition
 order, limits, control fields, exception rules, and evidence contract are
 defined once in
@@ -25,7 +25,7 @@ python -m pytest ralph-workflow/tests/project_policy/test_policy_docs_schema_con
 ```
 
 Then run the canonical completion command above. The focused tests prove the
-v5 markers and seeded manifest; `make verify` proves repository-wide
+v6 markers and seeded manifest; `make verify` proves repository-wide
 integration. A process exit by itself does not prove a material behavior claim:
 retain the public-surface artifact and its immutable subject/run IDs, validated
 oracle, and independent verdict.
@@ -58,16 +58,20 @@ The tracked steps are killed only at the cumulative `_TOTAL_TEST_HANG_CAP_SECOND
 
 `ralph/verify.py` enforces these import-time invariants (using `if`/`raise RuntimeError`, NOT `assert`, so they survive `python -O`):
 
-- `_TOTAL_TEST_BUDGET_SECONDS > 0` (must be positive)
-- `abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9` (epsilon check on the 60.0 constant)
-- `abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 700.0) < 1e-9` (epsilon check on the CPU budget)
-- `_TOTAL_TEST_HANG_CAP_SECONDS == 3 * _TOTAL_TEST_BUDGET_SECONDS` (the hang cap cannot drift into a budget)
-- `_BUDGET_TRACKED_STEPS` indices are valid indices into `_VERIFY_STEPS`
-- Every budget-tracked step has a positive timeout
-- `_VERIFY_STEP_TIMEOUT_SECONDS > 0` and `>= 5.0` (non-trivial per-step cap)
-- `_KNOWN_TEST_STEP_LABELS` and `_BUDGET_TRACKED_STEPS` are non-empty
-- `'make test'` is present in `_KNOWN_TEST_STEP_LABELS`
-- Every label in `_KNOWN_TEST_STEP_LABELS` is tracked; every tracked step has its label
+| Invariant | Error message | Purpose |
+|---|---|---|
+| `_TOTAL_TEST_BUDGET_SECONDS > 0` | `must be positive` | Budget can't be zero or negative |
+| `abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9` | `must be 60.0` | Budget constant can't be silently altered |
+| `abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 700.0) < 1e-9` | `must be 700.0` | CPU budget can't be silently altered |
+| `_TOTAL_TEST_HANG_CAP_SECONDS == 3 * _TOTAL_TEST_BUDGET_SECONDS` | `must be 3 x _TOTAL_TEST_BUDGET_SECONDS` | Hang cap can't drift into a budget |
+| `_BUDGET_TRACKED_STEPS` indices are valid indices into `_VERIFY_STEPS` | `indices must be valid` | Tracked steps must exist in `_VERIFY_STEPS` |
+| Every budget-tracked step has a positive timeout | `must have a positive timeout` | Budget-tracked steps need timeout |
+| `_VERIFY_STEP_TIMEOUT_SECONDS > 0` | `must be positive` | Per-step timeout can't be zero or negative |
+| `_VERIFY_STEP_TIMEOUT_SECONDS >= 5.0` | `must be at least 5.0` | Per-step timeout must be non-trivial (>= 5s) |
+| `_KNOWN_TEST_STEP_LABELS` non-empty | `must not be empty` | Can't empty label set to hide test steps |
+| `_BUDGET_TRACKED_STEPS` non-empty | `must not be empty` | Can't empty tracked set to disable budget |
+| `'make test'` present in `_KNOWN_TEST_STEP_LABELS` | `must contain 'make test'` | Primary test step label always present |
+| Labels/steps sync enforced | `must be` / `must NOT be` | Every label in `_KNOWN_TEST_STEP_LABELS` is tracked; no untracked test steps |
 
 All invariants are tested in `tests/test_verify_invariants.py` under both normal execution and `python -O`. A budget failure is a test design defect — fix the production coupling, never adjust the budget. A host-contention WARNING is not a licence to grow the suite: the CPU budget still binds. Per-suite caps (`PYTEST_SUITE_TIMEOUT_SECONDS`, `DEFAULT_SUITE_TIMEOUT_SECONDS`) are hang caps; raising them does NOT increase the combined budget. The cumulative tracker sums time across ALL budget-tracked steps via `time.monotonic()`. See [AGENTS.md §'TEST BUDGET'](../../AGENTS.md) for the canonical non-circumvention table.
 
@@ -81,20 +85,34 @@ The following do **NOT** circumvent the combined test budget or the lint/typeche
 |---|---|
 | Splitting tests into N suites | Cumulative tracker sums time across ALL tracked steps — not per-suite |
 | Moving slow tests to a different suite/target | All budget-tracked steps count toward the same combined budget |
-| Renaming test targets or adding new test-related `_VERIFY_STEPS` without updating `_KNOWN_TEST_STEP_LABELS` | `_BUDGET_TRACKED_STEPS` stays frozen — new targets do not get budget tracking |
+| Renaming test targets or adding new test-related `_VERIFY_STEPS` without updating `_KNOWN_TEST_STEP_LABELS` **and** `_BUDGET_TRACKED_STEPS` | `_BUDGET_TRACKED_STEPS` stays frozen — new targets do not get budget tracking; EVERY `_VERIFY_STEPS` entry that runs tests belongs in both sets |
 | Raising `PYTEST_SUITE_TIMEOUT_SECONDS` / `DEFAULT_SUITE_TIMEOUT_SECONDS` | Per-suite hang cap only; combined budget enforced separately by `_TOTAL_TEST_BUDGET_SECONDS` / `_TOTAL_TEST_CPU_BUDGET_SECONDS` |
 | Setting `RALPH_PYTEST_SUITE_TIMEOUT_SECONDS` / `RALPH_PYTEST_TEST_TIMEOUT_SECONDS` | `make verify` forces both to their defaults for every step; elsewhere they only adjust per-suite/per-test caps, never the combined budget, and zero or negative values are rejected |
-| `@pytest.mark.timeout_seconds(0)`, or arming and cancelling an own `ITIMER_REAL` / replacing the `SIGPROF` handler | Non-positive budgets are rejected; the per-test budget uses no interval timer a test can cancel, and a replaced or blocked `SIGPROF` fails the phase |
+| `@pytest.mark.timeout_seconds(0)`, or arming and cancelling an own `ITIMER_REAL` / replacing the `SIGPROF` handler | Non-positive budgets are rejected; the per-test budget uses no interval timer a test can cancel, and a replaced or blocked `SIGPROF` fails the phase. `tests/_per_test_budget.py` charges setup, call and teardown separately (main-thread CPU plus a 5x wall hang cap) and rejects non-positive budgets |
 | Modifying `_BUDGET_TRACKED_STEPS` / raising `_TOTAL_TEST_BUDGET_SECONDS`, `_TOTAL_TEST_CPU_BUDGET_SECONDS` or `_TOTAL_TEST_HANG_CAP_SECONDS` | Blocked by import-time `if`/`raise RuntimeError` checks — immune to `python -O` |
 | Emptying `_KNOWN_TEST_STEP_LABELS` / `_BUDGET_TRACKED_STEPS` | Blocked by import-time non-empty RuntimeError check — immune to `python -O` |
 | Removing `'make test'` from `_KNOWN_TEST_STEP_LABELS` | Blocked by import-time containment RuntimeError check — immune to `python -O` |
 | Adding `per-file-ignores` / `extend-per-file-ignores` / blanket `# noqa` | Detected by `ralph/testing/audit_lint_bypass.py` |
-| Adding `ignore_missing_imports`, `disable_error_code`, blanket `# type: ignore` | Detected by `ralph/testing/audit_typecheck_bypass.py` |
-| Using `time.sleep()`, real subprocess, real file I/O in non-`subprocess_e2e` tests | Detected by `ralph/testing/audit_test_policy.py` |
-| Unbounded `subprocess.run` / `httpx.*` / `urlopen` / `socket.create_connection` (no `timeout=`) in `ralph/mcp/`, `ralph/git/`, `ralph/process/manager/` | Detected by `ralph/testing/audit_mcp_timeout.py` |
-| Mutable collection literals (`list` / `dict` / `set` / `deque`) assigned to module-level names or `self.X` in `__init__` without `maxlen=` or a justified `# bounded-accumulator-ok:` marker | Detected by `ralph/testing/audit_resource_lifecycle.py` |
+| Using a bare `# noqa` with no specific error code, or `# noqa: CODE` where `CODE` is not in the allowlist | Detected by `ralph/testing/audit_lint_bypass.py` |
+| Adding `ignore_missing_imports`, `follow_imports = silent`, `exclude` patterns, `ignore_errors`, `disable_error_code`, `warn_unused_ignores = false`, or `disallow_untyped_defs = false` to mypy config | Detected by `ralph/testing/audit_typecheck_bypass.py` |
+| Using blanket `# type: ignore` without a specific mypy error code, or `# type: ignore[CODE]` without a policy-compliant reason marker | Detected by `ralph/testing/audit_typecheck_bypass.py` and enforced by `docs/agents/type-ignore-policy.md` (mandatory reading) |
+| Using `# type: ignore` in test files | Tests must be fully typed — no exceptions |
+| Using `time.sleep()`, real subprocess, or real file I/O in non-`subprocess_e2e` tests | Detected by `ralph/testing/audit_test_policy.py` |
+| Unbounded `subprocess.run` / `httpx.*` / `urlopen` / `socket.create_connection` (no `timeout=`) in `ralph/mcp/`, `ralph/git/`, `ralph/process/manager/` | Detected by `ralph/testing/audit_mcp_timeout.py` — including `subprocess.run`/`.communicate`/`.wait` without `timeout=`; the ONLY bypass is an inline `# mcp-timeout-ok: <reason>` marker for a genuinely unbounded-by-design call |
+| Mutable collection literals (`list` / `dict` / `set` / `deque`) assigned to module-level names or `self.X` in `__init__` without `maxlen=` or a justified `# bounded-accumulator-ok:` marker | Detected by `ralph/testing/audit_resource_lifecycle.py` — a `deque()` call without `maxlen=` counts as unbounded; the ONLY bypass is an inline `# bounded-accumulator-ok: <reason>` marker naming the cap or drain |
+| Any weakening of any check without a documented justification and an entry in the audit allowlist | There is NO other path to bypass — the allowlist entry plus the written justification is the only sanctioned route |
 
 Every circumvention above is detected by `make verify`. Any bypass requires a documented justification and an entry in the audit allowlist — there is no other path. See [AGENTS.md §'Non-negotiables'](../../AGENTS.md) for the full policy text.
+
+## How to fix a slow test
+
+Never work around the budget. Repair the test design:
+
+- Replace real I/O with fakes (`MemoryWorkspace`, `FsWorkspace`, `tmp_path`, `MockProcessExecutor`).
+- Eliminate `sleep()` and real wall-clock waits — inject a clock abstraction instead.
+- Refactor production code for testability — extract I/O behind an interface.
+- Assert on observable behavior, not implementation internals.
+- For cumulative volume bottlenecks (many fast tests, not individual slow tests): consolidate parameterized tests with overlapping coverage, optimize shared fixtures, or reduce redundant test coverage — see `docs/agents/testing-guide.md` and `docs/ralph-workflow-policy/testing-policy.md` §"Test optimization".
 
 ## Focused suite-routing feedback
 

@@ -12,6 +12,7 @@ line limits; the public surface is unchanged and re-exported from there.
 from __future__ import annotations
 
 import errno
+import functools
 import os
 import shutil
 import time
@@ -87,6 +88,19 @@ def _is_git_process(proc_root: Path, pid_str: str) -> bool:
     return False
 
 
+@functools.lru_cache(maxsize=1)
+def _git_binary_identity() -> tuple[int, int] | None:
+    git_binary = shutil.which("git")
+    if git_binary is None:
+        return None
+    try:
+        # filesystem-read-ok: stat git executable to resolve identity
+        st = Path(git_binary).stat()
+        return (st.st_dev, st.st_ino)
+    except OSError:
+        return None
+
+
 def _can_rule_out_non_git_process(proc_root: Path, pid_str: str) -> bool:
     """Return True if we can positively prove the process is NOT a git process.
 
@@ -113,14 +127,12 @@ def _can_rule_out_non_git_process(proc_root: Path, pid_str: str) -> bool:
     if any("git" in name for name in names):
         return False
     # A copy or link of the git binary under another name is still git.
-    git_binary = shutil.which("git")
-    if git_binary is not None:
+    git_ident = _git_binary_identity()
+    if git_ident is not None:
         with suppress(OSError):
-            # filesystem-read-ok: stat git executable to resolve identity
-            git_stat = Path(git_binary).stat()
             # filesystem-read-ok: stat procfs exe symlink to compare st_dev and st_ino
             exe_stat = (proc_root / pid_str / "exe").stat()
-            if (git_stat.st_dev, git_stat.st_ino) == (exe_stat.st_dev, exe_stat.st_ino):
+            if (exe_stat.st_dev, exe_stat.st_ino) == git_ident:
                 return False
     return bool(names)
 
@@ -138,6 +150,10 @@ def _cmdline_targets_repo(
     try:
         raw = (proc_root / pid_str / "cmdline").read_bytes()
     except OSError:
+        return False
+    gb = gitdir if isinstance(gitdir, bytes) else os.fsencode(gitdir)
+    gcb = gitdir_common if isinstance(gitdir_common, bytes) else os.fsencode(gitdir_common)
+    if b".git" not in raw and gb not in raw and gcb not in raw:
         return False
     targets = {Path(os.fsdecode(g)).resolve() for g in (gitdir, gitdir_common)}
     try:
@@ -177,11 +193,19 @@ def _fd_is_lock(fd_link: Path, lock_resolved: str, lock_ident: tuple[int, int] |
     carries a `` (deleted)`` suffix. ``stat`` follows the magic link to the
     open file itself, so ``(st_dev, st_ino)`` is the authoritative match.
     """
-    if str(fd_link.readlink()) == lock_resolved:
+    try:
+        # filesystem-read-ok: read procfs fd symlink
+        target = str(fd_link.readlink())
+    except OSError:
+        return False
+    if target == lock_resolved:
         return True
     if lock_ident is None:
         return False
+    if not (target.endswith(".lock") or ".lock" in target):
+        return False
     try:
+        # filesystem-read-ok: stat procfs magic link to compare open file identity
         st = fd_link.stat()
     except OSError:
         return False
@@ -503,10 +527,10 @@ def _check_pid_liveness(
     fd_status = _pid_holds_lock_fd(pid_dir, lock_resolved, lock_ident)
     if fd_status == "live":
         return "live"
-    is_non_git = _can_rule_out_non_git_process(proc_root, pid_str)
     if fd_status == "unknown":
         lock_age_s = time.time() - lock_mtime if lock_mtime is not None else None
         return _rule_out_unreadable(proc_root, pid_str, uids, lock_uid, lock_age_s)
+    is_non_git = _can_rule_out_non_git_process(proc_root, pid_str)
     if is_non_git and not _non_git_touches_repo(
         proc_root, pid_str, pid_dir, live_cwds, common_worktrees_dir, gitdir, gitdir_common
     ):

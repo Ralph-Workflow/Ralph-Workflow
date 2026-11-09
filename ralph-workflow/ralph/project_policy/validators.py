@@ -294,14 +294,14 @@ def _collect_known_enforcers(workspace: Workspace) -> frozenset[str]:
                 if val:
                     enforcers.add(val)
 
-    verify_path = (
-        "ralph-workflow/ralph/verify.py"
-        if workspace.exists("ralph-workflow/ralph/verify.py")
-        else "ralph/verify.py"
-        if workspace.exists("ralph/verify.py")
-        else None
-    )
-    if verify_path is not None:
+    for verify_path in (
+        "ralph-workflow/ralph/verify_steps.py",
+        "ralph/verify_steps.py",
+        "ralph-workflow/ralph/verify.py",
+        "ralph/verify.py",
+    ):
+        if not workspace.exists(verify_path):
+            continue
         enforcers.update(_extract_verify_step_labels(workspace.read(verify_path)))
     return frozenset(enforcers)
 
@@ -725,9 +725,6 @@ def _is_unfrozen_current_pack(workspace: Workspace, frozen_version: str | None) 
         if workspace.exists(path) and markers.POLICY_SCHEMA_MARKER in workspace.read(path):
             return True
     return False
-
-
-_is_unfrozen_v5_pack = _is_unfrozen_current_pack
 
 
 def _check_portfolio(

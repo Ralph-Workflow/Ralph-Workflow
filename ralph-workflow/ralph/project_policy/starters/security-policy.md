@@ -122,6 +122,59 @@ Then delete this comment. -->
 | Security-scanner coverage | Security owner | every claimed security check is a real credential / vulnerability scanner, not a check that does not run a scanner | the security profile's `evidence` field names a real scanner (semgrep, gitleaks, detect-secrets, gosec, bandit, etc.); the scanner is runnable and reproducible | the security profile's `evidence` field names a real scanner (semgrep, gitleaks, detect-secrets, gosec, bandit, etc.) | deterministic: PROJECT-FACT-UNRESOLVED | when the scanner is no longer available and is replaced by a real equivalent |
 | Threat surface inventory | Security owner | every project's threat surfaces are enumerated in the security policy's Threat surfaces section | Threat surfaces section names each surface; the surface list is reviewed on every policy bump | Threat surfaces section names each surface | deterministic: PROJECT-FACT-UNRESOLVED | when the project is single-purpose and the surfaces are constant |
 
+## Advisory rules
+
+Prompts are not controls. A prompt that asks an agent not to perform a
+destructive action is a request, not a boundary; only the tooling that
+runs the agent can block the action. Destructive operations in this
+project are therefore blocked by tooling, not by prompt prose:
+
+* workspace confinement — agent writes are normalized against the
+  declared workspace root before the side effect happens (the filesystem
+  surface rules above own the mechanism);
+* the scoped commit path — a commit stages the files the run produced, not
+  whatever else the working tree happens to contain;
+* the trunk-based branch rules in `AGENTS.md` — the agent does not open a
+  pull request or push to a branch it invented.
+
+This policy RECONCILES with those rules instead of restating them: it
+names them as the controls, adds no prompt-level ban that could be
+mistaken for a control, and defers to the rules that own them. Prompt
+prose about a destructive action stays advisory; the tooling that blocks
+the action is the control.
+
+* Rule: destructive operations are blocked by tooling, and prompt prose
+  about them is advisory. Evidence: advisory (anecdotal). Enforcement:
+  advisory: no gate measures prompt prose, and the tooling boundary is the
+  real control; review: when the workspace-confinement, scoped-commit, or
+  branch rules change.
+
+### Audit log of agent actions
+
+Ralph's audit sink is `RalphAuditSinkAdapter`
+(`ralph/mcp/artifacts/audit_adapter.py:125`). It buffers records in
+memory and writes nothing to disk: `emit` appends to a bounded
+`collections.deque` (`ralph/mcp/artifacts/audit_adapter.py:157`,
+`ralph/mcp/artifacts/audit_adapter.py:152`) whose default cap is 4096
+records, so the oldest record is evicted FIFO
+(`ralph/mcp/artifacts/audit_adapter.py:122`); `drain_records` returns the
+buffered records and clears it
+(`ralph/mcp/artifacts/audit_adapter.py:163`); `flush` clears the buffer
+and returns nothing (`ralph/mcp/artifacts/audit_adapter.py:171`).
+
+Each buffered record carries the session id, a whole-second timestamp,
+the mapped capability (workspace read when the MCP capability is absent
+or unmapped), the access outcome (approved, or denied with its reason),
+a description taken from the record metadata or a default naming the
+tool, the lowercased event type, and the correlation fields run id,
+generation, drain, and policy mode when at least one of them is set
+(`ralph/mcp/artifacts/audit_adapter.py:101`). It does NOT carry the tool
+arguments, the tool name as its own field, the path, the file contents,
+the diff, or the prompt text, and `duration_ms` and `result_status` keep
+their `None` defaults (`ralph/mcp/artifacts/_ralph_audit_record.py:24`).
+A record that is flushed or evicted is gone: the adapter persists
+nothing.
+
 ## Project facts to resolve
 
 The `RALPH-FACT:` lines below record verified project facts. Agents rely

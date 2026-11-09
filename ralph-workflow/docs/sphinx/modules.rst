@@ -240,6 +240,13 @@ ralph.verify
    :members:
    :show-inheritance:
 
+ralph.verify_steps
+~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.verify_steps
+   :members:
+   :show-inheritance:
+
 ralph.verify_budget
 ~~~~~~~~~~~~~~~~~~~
 
@@ -4715,6 +4722,41 @@ ralph.testing.audit_agent_failure_single_owner
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.testing.audit_agent_failure_single_owner
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_comments
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_comments
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_dependency_integrity
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_dependency_integrity
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_instruction_integrity
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_instruction_integrity
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_secret_scan
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_secret_scan
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_test_integrity
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_test_integrity
    :members:
    :show-inheritance:
 

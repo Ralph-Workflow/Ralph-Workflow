@@ -75,11 +75,16 @@ ALLOWLIST: list[tuple[str, str]] = [
         "git/_lock_recovery.py",
         "runs read-only lsof and fuser to probe git lock liveness with check=False and bounded timeout; no shell, no user input",
     ),
+    (
+        "testing/_audit_baseline.py",
+        "materialises committed git baseline trees for diff-based audit gates with bounded timeout",
+    ),
 ]
 
 # Files under TESTS_ROOT that are allowed to use subprocess directly.
 # Each entry should have a comment explaining why it's allowlisted.
 TESTS_ALLOWLIST: set[str] = {
+    "test_audit_secret_scan.py",  # subprocess.run literals as SAST audit fixture code strings
     "test_process_audit.py",  # defines pattern strings as literals
     "test_process_cross_platform.py",  # defines forbidden token strings as literals for inspection
     "test_process_manager.py",  # drives ProcessManager; subprocess.run is test infra

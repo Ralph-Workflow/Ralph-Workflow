@@ -42,30 +42,18 @@ the project.
 ### ═══ NO UNRELATED-FAILURE EXEMPTION — YOU FIND IT, YOU FIX IT ═══
 
 `make verify` MUST pass **in full**. There is NO exemption for a failure your
-change did not cause.
+change did not cause. A red gate is a red gate. **Whoever next observes it owns
+fixing it.**
 
-These are NOT acceptable outcomes, and NOT acceptable things to say:
+Do not investigate who caused it: stashing, bisecting, or re-running against a
+clean tree to prove a failure is "pre-existing" does not change what you must do
+next. Read the failure, find the root cause, repair it.
 
-- "It was already failing on `main`."
-- "That failure is unrelated to my change."
-- "That gate isn't run by `make test`, so it doesn't count."
-- "I didn't touch that code."
-
-A red gate is a red gate. **Whoever next observes it owns fixing it.**
-
-**Do not investigate WHO caused it.** Stashing your changes, bisecting, or
-re-running against a clean tree to prove a failure is "pre-existing" is almost
-NEVER useful work — the answer does not change what you must do next, which is
-fix it. Provenance is worth chasing ONLY when it is genuinely diagnostic (the
-triggering change tells you what the bug IS), never to decide whether the
-failure is yours to own. It is always yours to own. Read the failure, find the
-root cause, repair it.
-
-**Preventing regressions outranks completing the task in hand.** If a
-pre-existing failure blocks you, fix the failure FIRST and finish your original
-task afterwards. Never report your own work as verified while any gate is red.
-If a repair is genuinely out of scope, STOP and surface it as an active
-blocker — do not route around it, do not weaken the gate, do not proceed.
+**Preventing regressions outranks completing the task in hand.** If a failure
+blocks you, fix it FIRST and finish your original task afterwards. Never report
+your own work as verified while any gate is red. If a repair is genuinely out of
+scope, STOP and surface it as an active blocker — do not route around it, do not
+weaken the gate, do not proceed.
 
 **Corollary — every check MUST be wired into `make verify`.** A check that runs
 only in an opt-in suite the default gate excludes WILL rot unnoticed: either
@@ -74,56 +62,23 @@ exists because its rules previously lived only in a `subprocess_e2e`-marked test
 that `make verify` never ran — the repo-structure policy decayed silently while
 the gate stayed green.
 
+Detail: `docs/agents/verification.md` §'No unrelated-failure exemption'.
+
 ### ═══ FABRICATION GUARD (ABSOLUTE — 3 levels, zero bypass) ═══
 
-The D91 incident (commit 58a1d25e9, 2026-06-21) fabricated an entire entry
-(`john-ezra/open-ralph`) in USERS.md — a nonexistent repo, npm package, and user.
-This was the second fabrication in the project (after the 2026-06-11 SHOWCASE.md
-failure). Fabrication is the single gravest threat to this project's credibility.
+Fabrication is NEVER acceptable anywhere. No file is out of scope for truth.
+Every public-facing claim about adoption, credits, usage, or stats MUST be
+verifiable from a third-party source; bare star / download / install counts MUST
+be paired with a (source, date) pair.
 
-**The guard system:**
+Mandatory protocol for every public-facing markdown edit — run
+`./scripts/fabrication_guard.py --level 1 <file>` BEFORE and AFTER the edit, add
+`--level 2` when the edit introduces a NEW external reference (GitHub repo, npm
+package, external URL), and if any level fails, FIX THE CLAIMS: never weaken the
+guard, never commit, and never use `--no-verify` to bypass it. Bypassing the
+guard is fabrication.
 
-- **`scripts/fabrication_guard.py`** — multi-level fabrication defense:
-  - Level 1 (regex patterns, no network, <100ms): catches known bad patterns.
-    Runs as a **pre-commit hook** (`.githooks/pre-commit`, wired via
-    `git config core.hooksPath .githooks`; install by running
-    `make setup-hooks` from the repo root) — blocks bad commits.
-  - Level 2 (existence checks, network, cached): verifies every GitHub repo,
-    npm package, and external URL actually exists. Run with `--level 2`.
-  - Level 3 (quantitative verification, network, needs GITHUB_TOKEN):
-    cross-references star counts, fork counts, line counts against live API.
-    Run with `--level 3`.
-- **`scripts/verify_social_proof.py`** — thin backward-compat wrapper.
-
-**Mandatory protocol (DO NOT SKIP — no exceptions):**
-
-1. Before editing ANY public-facing markdown (README.md, ralph-workflow/README.md,
-   SHOWCASE.md, USERS.md, docs/), run:
-   ```bash
-   ./scripts/fabrication_guard.py --level 1 <file>
-   ```
-2. If adding NEW external references (GitHub repos, npm packages, URLs), run:
-   ```bash
-   ./scripts/fabrication_guard.py --level 2 <file>
-   ```
-3. After editing, run the same check again.
-4. If ANY level fails: FIX THE CLAIMS, do NOT weaken the guard, do NOT commit
-   until clean.
-5. The pre-commit hook will block you if you forget. Do NOT use `--no-verify`
-   to bypass it. Bypassing the guard is fabrication.
-
-**Non-negotiable rules:**
-
-- Every public-facing claim about adoption, credits, usage, or stats MUST be
-  verifiable from a third-party source.
-- GitHub repo links in claim files (USERS.md, SHOWCASE.md, README.md) MUST have
-  a `verify: repo-exists` annotation.
-- npm package claims MUST have a `verify: npm-@org/pkg-exists` annotation
-  verified against the npm registry.
-- Bare star/download/install counts MUST be paired with (source, date).
-- Banned forever: "Nightcrawler credits Ralph Workflow" (it credits
-  ghuntley.com/ralph); "~1,300 installs/month" (stale + fabricated).
-- Fabrication is NEVER acceptable anywhere. No file is out of scope for truth.
+Detail: `docs/agents/fabrication-guard.md`.
 
 ### Code and test rules
 
@@ -137,62 +92,26 @@ failure). Fabrication is the single gravest threat to this project's credibility
 
 ### ═══ TEST BUDGET — 60s wall clock net of host contention, 700 CPU core-seconds, PINNED ═══
 
-- All tests must complete in 60s or less of their own time, no exceptions.
-- This 60-second limit is the COMBINED TOTAL wall-clock budget for ALL test suites running sequentially under `make verify`, enforced by `ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`. The combined budget cannot be circumvented by splitting tests, adding suites, or changing per-suite limits. A budget failure is a test design defect — fix the test, not the budget.
-- Wall clock on a shared host also measures every other process. `ralph/verify.py` therefore charges the tracked steps two ways (`ralph/verify_budget.py` documents the rule):
-  - **CPU** — the core-seconds the suite's own process trees consumed (`getrusage(RUSAGE_CHILDREN)`, plus descendants orphaned during a step, which rusage misses), capped at `_TOTAL_TEST_CPU_BUDGET_SECONDS = 700.0`. This is the work the suite controls, so exceeding it ALWAYS fails, however idle or busy the host.
-  - **Wall clock** — over 60 s is a FAILURE unless it fits once the CPU other processes used meanwhile is credited (their core-seconds ÷ the host's cores). A run that fits only with that credit passes with a host-contention WARNING; on an idle host the credit is ~0 and 60 s applies as written. A WARNING is not a licence to grow the suite: the CPU budget still binds.
-  - **Host capacity** — a wall overrun on a host too small for 60 s (the suite's own CPU kept ≥ 90% of the cores foreign load left free busy, e.g. a 4-core CI runner) is a host-capacity WARNING: the CPU budget is the binding limit there. A wall overrun that left capacity idle still FAILS, and on 12+ cores the CPU budget fails first.
-- Per-suite timeouts (PYTEST_SUITE_TIMEOUT_SECONDS, DEFAULT_SUITE_TIMEOUT_SECONDS = 180) and the cumulative `_TOTAL_TEST_HANG_CAP_SECONDS = 180.0` are HANG caps only, not speed budgets. Raising them does NOT increase the combined budget.
-- The budget enforcement in `ralph/verify.py` uses `if`/`raise RuntimeError` (NOT `assert`) — this prevents `python -O` from stripping the invariant checks. All import-time invariants survive `-O`.
+All tests must complete in 60s or less of their own time, no exceptions. That
+60 s is the COMBINED TOTAL wall-clock budget for ALL test suites under
+`make verify` (`ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS`), together with a
+700 CPU core-second ceiling. The budget cannot be circumvented by splitting
+tests into more suites, moving slow tests to another suite / target / Makefile
+recipe, renaming test targets or adding test-related `_VERIFY_STEPS` entries
+without also registering them in `_KNOWN_TEST_STEP_LABELS` and
+`_BUDGET_TRACKED_STEPS`, raising `PYTEST_SUITE_TIMEOUT_SECONDS` /
+`DEFAULT_SUITE_TIMEOUT_SECONDS`, setting the `RALPH_PYTEST_*` env vars, or
+disarming the per-test budget. The import-time checks in `ralph/verify.py` use
+`if` / `raise RuntimeError` (NOT `assert`), so they survive `python -O`. A
+budget failure is a test design defect — fix the test, not the budget. The
+current `make test` profile includes the registered real-git auto-integration
+files through the `required_auto_integrate_e2e` marker even when they also
+carry `subprocess_e2e`; any future separate test step must be tracked too.
 
-**Every import-time invariant in `ralph/verify.py` that guards the budget:**
-
-| Invariant | Error message | Purpose |
-|---|---|---|
-| `_TOTAL_TEST_BUDGET_SECONDS > 0` | `must be positive` | Budget can't be zero or negative |
-| `abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9` | `must be 60.0` | Budget constant can't be silently altered |
-| `abs(_TOTAL_TEST_CPU_BUDGET_SECONDS - 700.0) < 1e-9` | `must be 700.0` | CPU budget can't be silently altered |
-| `_TOTAL_TEST_HANG_CAP_SECONDS == 3 * _TOTAL_TEST_BUDGET_SECONDS` | `must be 3 x _TOTAL_TEST_BUDGET_SECONDS` | Hang cap can't drift into a budget |
-| `_BUDGET_TRACKED_STEPS` indices valid | `indices must be valid` | Tracked steps must exist in `_VERIFY_STEPS` |
-| Tracked steps have positive timeout | `must have a positive timeout` | Budget-tracked steps need timeout |
-| `_KNOWN_TEST_STEP_LABELS` non-empty | `must not be empty` | Can't empty label set to hide test steps |
-| `_BUDGET_TRACKED_STEPS` non-empty | `must not be empty` | Can't empty tracked set to disable budget |
-| `'make test'` in `_KNOWN_TEST_STEP_LABELS` | `must contain 'make test'` | Primary test step label always present |
-| Labels/steps sync enforced | `must be`/`must NOT be` | Every label in `_KNOWN_TEST_STEP_LABELS` is tracked; no untracked test steps |
-| `_VERIFY_STEP_TIMEOUT_SECONDS > 0` | `must be positive` | Per-step timeout can't be zero or negative |
-| `_VERIFY_STEP_TIMEOUT_SECONDS >= 5.0` | `must be at least 5.0` | Per-step timeout must be non-trivial (>= 5s) |
-
-All invariants are tested in `tests/test_verify_invariants.py` under `python -O` to confirm immunity.
-
-**Non-circumvention rule — test budget** — the following do **NOT** circumvent the combined budget (see also `docs/agents/verification.md` §'Total test budget' for the full cross-reference table):
-  - Splitting tests into more suites (N suites does NOT give N × 60 s; cumulative tracker sums time across ALL budget-tracked steps)
-  - Moving slow tests to a different suite, target, or Makefile recipe
-  - Renaming test targets or adding new test-related `_VERIFY_STEPS` entries without also adding to `_KNOWN_TEST_STEP_LABELS` and `_BUDGET_TRACKED_STEPS`
-  - Raising `DEFAULT_SUITE_TIMEOUT_SECONDS` or `PYTEST_SUITE_TIMEOUT_SECONDS` in the Makefile
-  - Setting environment variables (`RALPH_PYTEST_SUITE_TIMEOUT_SECONDS`, `RALPH_PYTEST_TEST_TIMEOUT_SECONDS`) — `make verify` forces both to their defaults, and zero or negative values are rejected
-  - Disarming the per-test budget (`@pytest.mark.timeout_seconds(0)`, cancelling interval timers, replacing or blocking `SIGPROF`) — `tests/_per_test_budget.py` charges setup, call and teardown separately (main-thread CPU plus a 5x wall hang cap), rejects non-positive budgets and fails a phase that tampers with its signal
-  - Raising `_TOTAL_TEST_BUDGET_SECONDS`, `_TOTAL_TEST_CPU_BUDGET_SECONDS` or `_TOTAL_TEST_HANG_CAP_SECONDS`, or narrowing `_BUDGET_TRACKED_STEPS` / `_KNOWN_TEST_STEP_LABELS` so a step that runs a test suite stops being charged, in `ralph/verify.py` (blocked by import-time RuntimeError checks — immune to `python -O`). EVERY `_VERIFY_STEPS` entry that runs tests belongs in both sets. The current `make test` profile includes the registered real-git auto-integration files through the `required_auto_integrate_e2e` marker even when they also carry `subprocess_e2e`; any future separate test step must be tracked too.
-  - Emptying `_KNOWN_TEST_STEP_LABELS` to hide test steps from budget tracking (blocked by import-time non-empty RuntimeError check)
-  - Emptying `_BUDGET_TRACKED_STEPS` to disable budget enforcement (blocked by import-time non-empty RuntimeError check)
-  - Removing `'make test'` from `_KNOWN_TEST_STEP_LABELS` to silently exclude the primary test step (blocked by import-time containment RuntimeError check)
-
-- **Non-circumvention rule — lint and typecheck** — the following do **NOT** circumvent lint/typecheck enforcement:
-  - Adding `per-file-ignores`, `extend-per-file-ignores`, or any ruff config to weaken lint enforcement — detected by `ralph/testing/audit_lint_bypass.py`
-  - Adding `ignore_missing_imports`, `follow_imports = silent`, `exclude` patterns, `ignore_errors`, `disable_error_code`, `warn_unused_ignores = false`, or `disallow_untyped_defs = false` to mypy config — detected by `ralph/testing/audit_typecheck_bypass.py`
-  - Using bare `# noqa` without a specific error code, or `# noqa: CODE` where CODE is not in the allowlist — detected by `ralph/testing/audit_lint_bypass.py`
-  - Using blanket `# type: ignore` without a specific mypy error code, or `# type: ignore[CODE]` without a policy-compliant reason marker — detected by `ralph/testing/audit_typecheck_bypass.py` and enforced by `docs/agents/type-ignore-policy.md` (mandatory reading)
-  - Using `# type: ignore` in test files — tests must be fully typed (no exceptions)
-  - Using `time.sleep()`, real subprocess, or real file I/O in non-`subprocess_e2e` tests — detected by `ralph/testing/audit_test_policy.py`
-  - Any weakening of any check requires a documented justification and an entry in the audit allowlist — there is NO other path to bypass
-- **Non-circumvention rule — MCP timeout contract** — every operation under `ralph/mcp/` must perform blocking I/O with a bounded, fail-closed timeout. An unbounded blocking call hangs the MCP server thread and starves the agent of output (a real agent-hang vector). Detected by `ralph/testing/audit_mcp_timeout.py` (part of `make verify`): `subprocess.run`/`.communicate`/`.wait` without `timeout=`, and `httpx.*`/`requests.*`/`urlopen`/`socket.create_connection` without `timeout=`. The ONLY bypass is an inline `# mcp-timeout-ok: <reason>` marker for a genuinely unbounded-by-design call. See `docs/agents/verification.md` §'MCP timeout contract'.
-- **Non-circumvention rule — resource accumulators** — every long-lived mutable collection (list/dict/set/deque assigned module-level OR to `self.X` in `__init__`) MUST carry a FIFO/size cap (`deque(maxlen=...)` / `OrderedDict` + count cap) or a justified `# bounded-accumulator-ok: <reason>` marker. A `deque()` / `collections.deque()` call WITHOUT `maxlen=` is treated as unbounded (the same `bounded`/`capped` distinction as the daemon-Thread boolean rule). Unbounded accumulators retain heavyweight objects (exceptions, tracebacks, large payloads) and grow monotonically across a long unattended run — the exact leak class that produced `BudgetState.failures` (an unbounded `tuple[ClassifiedFailure, ...]` accumulator never read for any decision) and `RalphAuditSinkAdapter._records` (an unbounded `list` flushed only by `drain_records()`, never by `flush()`). Detected by `ralph/testing/audit_resource_lifecycle.py` (part of `make verify`): the 4th contract (resource accumulators) flags mutable collection literals and constructor calls without `maxlen=` assigned to module-level names or `self.X` in `__init__` bodies. The ONLY bypass is an inline `# bounded-accumulator-ok: <reason>` marker naming the cap or drain. Exclusions: `__all__`, single-element list literals `[X]` (Python's mutable-closure idiom), dict/set literals with all-static keys (dispatch tables), dataclass field defaults, local variables in non-`__init__` functions. See `ralph-workflow/docs/agents/memory-lifecycle.md`.
-- **How to fix a slow test** (do NOT work around the budget):
-  - Replace real I/O with fakes (MemoryWorkspace, tmp_path, MockProcessExecutor)
-  - Eliminate sleep() and real wall-clock waits — inject a clock abstraction instead
-  - Refactor production code for testability — extract I/O behind an interface
-  - Assert on observable behavior, not implementation internals
-  - For cumulative volume bottlenecks (many fast tests, not individual slow tests): consolidate parameterized tests with overlapping coverage, optimize shared fixtures, or reduce redundant test coverage — see `docs/agents/testing-guide.md` and `ralph-workflow/docs/ralph-workflow-policy/testing-policy.md` § "Test optimization"
+Detail — the full import-time invariant table, the lint / typecheck
+non-circumvention list, the MCP timeout contract, the resource-accumulator
+contract, and how to fix a slow test: `docs/agents/verification.md`
+§'Total test budget'.
 
 ## Required workflows
 

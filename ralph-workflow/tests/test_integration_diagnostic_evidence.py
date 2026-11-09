@@ -18,6 +18,8 @@ from pathlib import Path
 import pytest
 
 import ralph.pipeline._integration_diagnostic as diagnostic
+from ralph.git.git_run_result import GitRunResult
+from ralph.pipeline import IntegrationAction
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     record_path,
@@ -33,10 +35,90 @@ from tests._integration_ladder_fakes import _FakePlumbing
 from tests._resolver_controller import make_resolver_controller
 from tests.test_auto_integrate_record_idempotent import _RecordBackend
 
+#: The exit status ``git`` reports when it cannot answer at all because the
+#: directory it was pointed at is not a repository. The diagnostic's
+#: completion proof reads it as "HEAD is unreadable" / "marker status is
+#: UNKNOWN", so the proof refuses to verify and the attempt is charged.
+_GIT_NOT_A_REPOSITORY_RETURNCODE = 128
 
-def test_missing_evidence_rotates_inspection_without_clearing_ownership() -> None:
+
+def _not_a_git_repository(
+    args: tuple[str, ...] | list[str],
+    **_kwargs: object,
+) -> GitRunResult:
+    """Answer every git query the way a non-repository directory does.
+
+    The double replaces the real ``git`` subprocess so a unit that only
+    asserts what the diagnostic DOES with an unverifiable repository keeps
+    that premise without spawning a process.
+    """
+    return GitRunResult(
+        args=tuple(args),
+        returncode=_GIT_NOT_A_REPOSITORY_RETURNCODE,
+        stdout="",
+        stderr="fatal: not a git repository (or any of the parent directories): .git",
+    )
+
+
+def _in_memory_collector() -> InMemoryOperationEvidenceCollector:
+    """Return the evidence collector used instead of the subprocess one.
+
+    The marker object of the operation IS resolvable, so the fail-closed
+    pre-pass does not spend a repair attempt; the completion proof still
+    cannot verify, because HEAD cannot be read.
+    """
+    return InMemoryOperationEvidenceCollector(
+        facts=(OperationFact(kind="rebase_object_resolvable", value="True"),)
+    )
+
+
+def _wait_for_bounded_retry(
+    _root: Path,
+    *,
+    record: object = None,
+) -> IntegrationAction:
+    """Answer the seam decision the way the owner's own branch answers it.
+
+    The owner keeps the record and hands the integration back to the bounded
+    retry path; the test only needs that answer, so the seam is replaced
+    instead of driving the real decision.
+    """
+    return IntegrationAction.WAIT_FOR_BOUNDED_RETRY
+
+
+def test_missing_evidence_rotates_inspection_without_clearing_ownership(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing evidence rotates the inspection agent and keeps the ownership.
+
+    The diagnostic never releases a hold it cannot prove: a missing
+    completion receipt keeps the record's phase, its resolving flag and its
+    pre-integration SHAs, and the inspection agent rotates because the
+    owner charges every attempt that produced no verifiable completion.
+
+    The handoff consults live Git three times -- the evidence snapshot, the
+    owner's observation and the operation-completion proof. All three are
+    replaced here by deterministic doubles, so the unit spawns no process
+    and its cost does not scale with the host:
+
+    * the evidence collector is injected, so the default subprocess
+      collector never runs;
+    * the owner seam answers with the action it really returns for this
+      record (``WAIT_FOR_BOUNDED_RETRY``), so no branch is observed;
+    * every remaining git query is answered with the exit status a
+      directory that is not a repository produces -- the state the
+      inspected root always had here.
+    """
+    monkeypatch.setattr("ralph.git.subprocess_runner.run_git", _not_a_git_repository)
+    monkeypatch.setattr(
+        diagnostic,
+        "decide_seam_action",
+        _wait_for_bounded_retry,
+    )
+
     backend = _RecordBackend()
-    root = Path("/workspace")
+    root = tmp_path
     record = IntegrationRecord(
         phase="integrating",
         target="main",
@@ -60,6 +142,7 @@ def test_missing_evidence_rotates_inspection_without_clearing_ownership() -> Non
             agents=("first", "second"),
             invoke=inspect,
             backend=backend,
+            collector=_in_memory_collector(),
         )
         record = IntegrationRecord.model_validate_json(backend.read_bytes(record_path(root)))
         assert record.resolving_rebase and record.phase == "integrating"

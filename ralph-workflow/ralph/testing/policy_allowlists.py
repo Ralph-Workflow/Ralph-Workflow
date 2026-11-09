@@ -201,6 +201,15 @@ SOURCE_READ_ALLOWLIST: set[str] = {
     "test_run_loop_decision_delegation",
     "test_diagnostic_transition_helpers",
     "test_commit_completion_authority",
+    # Moved-rule preservation guard for the slimmed root ``AGENTS.md``. Reads
+    # the shipped ``AGENTS.md``, ``docs/agents/verification.md`` and
+    # ``docs/agents/fabrication-guard.md`` because their literal contents ARE
+    # the regression contract: the test proves the detail moved out of
+    # ``AGENTS.md`` into its owning document without dropping a rule. A
+    # tmp_path copy would assert against the fixture, not the shipped files,
+    # so the guard would stop detecting drift entirely. Reading those three
+    # documents is the ONLY thing the test needs exempted.
+    "test_agents_md_rule_preservation",
 }
 
 #: Files that may measure real wall-clock time in a test.
