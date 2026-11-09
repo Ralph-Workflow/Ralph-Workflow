@@ -144,8 +144,8 @@ def test_fast_profile_registry_is_a_fixed_nonempty_routing_contract() -> None:
     assert not set(EXPECTED_FAST_TEST_FILES) & set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
 
 
-def test_required_e2e_shard_xdist_workers_constant_is_pinned_to_twelve() -> None:
-    """Use twelve workers for the isolated real-git shard.
+def test_required_e2e_shard_xdist_workers_constant_is_pinned_to_ten() -> None:
+    """Use ten workers for the isolated real-git shard.
 
     wt-03-fix-bug pinned four to hold total concurrent processes at 12
     (8 general + 4 E2E) on the then-maintained 12-core host. On the current
@@ -155,8 +155,23 @@ def test_required_e2e_shard_xdist_workers_constant_is_pinned_to_twelve() -> None
     with ``make test-verification-smoke`` (13 s) that pair overflowed the
     immutable cumulative 60 s budget. The value stays a strict, pinned
     runner-architecture constant -- a change here must be deliberate.
+
+    wt-01-policy (WU-1) measured the fan-out directly on the maintained
+    40-core host with single-shard runs of the exact 83-file required-E2E
+    selection: twelve workers cost 394.66 CPU core-seconds at 36.26 s
+    wall, ten workers cost 337.19 core-seconds at 34.73 s wall, and eight
+    workers cost 334.31 core-seconds at 42.94 s wall. Twelve workers were
+    over-provisioned -- the extra workers bought no wall-clock headroom
+    (the shard is bounded by its slowest single test, not by the fan-out)
+    but cost ~57 CPU core-seconds of duplicated per-worker collection,
+    module import, and xdist report coordination. Ten workers keep the
+    shard's wall below the eight general shards' wall so the ``make
+    test`` wall clock is unchanged, while cutting the shard's CPU by
+    ~14.6 %. The value remains a strict, pinned runner-architecture
+    constant -- a change here must be deliberate.
     """
-    assert test_suites_module._REQUIRED_E2E_SHARD_XDIST_WORKERS == "12"  # policy: white-box-frozen
+    # comment-ok: the white-box-frozen tag is a prose policy marker, not code
+    assert test_suites_module._REQUIRED_E2E_SHARD_XDIST_WORKERS == "10"  # policy: white-box-frozen
 
 
 def test_required_auto_integrate_e2e_registry_matches_discovery_contract() -> None:

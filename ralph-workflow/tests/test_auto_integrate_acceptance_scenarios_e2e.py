@@ -13,6 +13,7 @@ they run inside the 60-second combined ``make verify`` budget.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -62,6 +63,47 @@ def _init_repo(path: Path, default_branch: str = _TARGET) -> None:
     assert _run(path, "branch", "-M", default_branch).returncode == 0
 
 
+#: Session-scoped pristine seed repository, populated by the
+#: ``_seed_repo_template`` session fixture. The container is empty only
+#: before the fixture has run (the fixture is autouse, so every test sees
+#: a populated template).
+_SEED_TEMPLATE: list[Path] = []
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _seed_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create the pristine seed repository once per session.
+
+    Every acceptance scenario needs a repository holding exactly one seed
+    commit on ``release``. Building it per scenario costs a real ``git init``
+    plus a real ``git commit`` (object write, index refresh, zlib
+    compression) on every call, and none of that work varies between
+    scenarios. The template is built once; each scenario copies the
+    directory, so every scenario still starts from its own pristine,
+    independently mutable repository.
+    """
+    template_root = tmp_path_factory.mktemp("acceptance-seed")
+    _init_repo(template_root)
+    _SEED_TEMPLATE.append(template_root)
+    return template_root
+
+
+def _seed_repo(path: Path, default_branch: str = _TARGET) -> None:
+    """Seed ``path`` from the session template when one is available.
+
+    Falls back to building the repository from scratch when no template
+    exists (before the session fixture has run), so the helper stays
+    usable outside a pytest session.
+    """
+    template = _SEED_TEMPLATE[0] if _SEED_TEMPLATE else None
+    if template is None:
+        _init_repo(path, default_branch)
+        return
+    shutil.copytree(template, path)
+    if default_branch != _TARGET:
+        assert _run(path, "branch", "-M", default_branch).returncode == 0
+
+
 def _head_sha(repo_root: Path, ref: str) -> str:
     return _run(repo_root, "rev-parse", ref).stdout.strip()
 
@@ -101,7 +143,7 @@ def test_concurrent_remote_advance_converges_to_ref_equality(tmp_path: Path) -> 
     bare = tmp_path / "tacos.git"
     writer = tmp_path / "writer"
 
-    _init_repo(repo)
+    _seed_repo(repo)
     assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
     assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
     assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
@@ -183,7 +225,7 @@ def test_throttle_deferred_probe_publishes_to_configured_release_tacos(tmp_path:
     repo = tmp_path / "repo"
     bare = tmp_path / "tacos.git"
 
-    _init_repo(repo)
+    _seed_repo(repo)
     assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
     assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
     assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
@@ -247,7 +289,7 @@ def test_throttle_deferred_probe_still_publishes_concrete_refs(tmp_path: Path) -
     repo = tmp_path / "repo"
     bare = tmp_path / "tacos.git"
 
-    _init_repo(repo)
+    _seed_repo(repo)
     assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
     assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
     assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
@@ -297,7 +339,7 @@ def test_killed_between_landing_and_push_publishes_on_recovery(tmp_path: Path) -
     repo = tmp_path / "repo"
     bare = tmp_path / "tacos.git"
 
-    _init_repo(repo)
+    _seed_repo(repo)
     assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
     assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
     assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
@@ -362,7 +404,7 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
     bare = tmp_path / "tacos.git"
     wt = tmp_path / "wt-sibling"
 
-    _init_repo(repo)
+    _seed_repo(repo)
     assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
     assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
     assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
@@ -488,7 +530,7 @@ def test_unreachable_then_reachable_auto_pushes_real_refs(tmp_path: Path) -> Non
     """
     repo = tmp_path / "repo"
 
-    _init_repo(repo)
+    _seed_repo(repo)
     assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
     assert _run(repo, "config", "user.name", "Test User").returncode == 0
 
@@ -701,7 +743,7 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
     unreachable_bare = tmp_path / "tacos_unreachable.git"
     bare = tmp_path / "tacos.git"
 
-    _init_repo(repo)
+    _seed_repo(repo)
     assert _run(repo, "remote", "add", _REMOTE, str(unreachable_bare)).returncode == 0
     local_sha = _commit(repo, "feature.txt", "feature advance\n", "feature advance")
     seed_sha = _head_sha(repo, "HEAD~1")

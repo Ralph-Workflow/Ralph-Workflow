@@ -66,6 +66,7 @@ and no coding agent is ever started.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -94,6 +95,12 @@ pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 _TARGET = "main"
 _FEATURE = "feature"
+
+#: Session-scoped pristine seed repository, populated by the
+#: ``_seed_repo_template`` session fixture. The container is empty only
+#: before the fixture has run (the fixture is autouse, so every test sees
+#: a populated template).
+_SEED_TEMPLATE: list[Path] = []
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -163,6 +170,25 @@ class _Topology:
         return sha
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _seed_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create the pristine seed repository once per session.
+
+    Every scenario needs a seed repository holding exactly one commit on
+    ``main``. Building it per test costs a real ``git init`` plus a real
+    ``git commit`` (object write, index refresh, zlib compression) on every
+    call, and none of that work varies between tests. The template is built
+    once; each test copies the directory, so every scenario still starts from
+    its own pristine, independently mutable repository.
+    """
+    template_root = tmp_path_factory.mktemp("remote-sync-seed")
+    _git(template_root, "init", "-q", "-b", _TARGET)
+    _identify(template_root)
+    _commit(template_root, "seed.txt", "seed\n", "seed")
+    _SEED_TEMPLATE.append(template_root)
+    return template_root
+
+
 def _build(
     tmp_path: Path,
     *,
@@ -177,10 +203,16 @@ def _build(
     checks ``feature`` out in the clone itself so ``main`` has no checkout.
     """
     seed = tmp_path / "seed"
-    seed.mkdir()
-    _git(seed, "init", "-q", "-b", _TARGET)
-    _identify(seed)
-    _commit(seed, "seed.txt", "seed\n", "seed")
+    template = _SEED_TEMPLATE[0] if _SEED_TEMPLATE else None
+    if template is not None:
+        # Copy the session template instead of paying a fresh
+        # ``git init`` + ``git commit`` per scenario.
+        shutil.copytree(template, seed)
+    else:
+        seed.mkdir()
+        _git(seed, "init", "-q", "-b", _TARGET)
+        _identify(seed)
+        _commit(seed, "seed.txt", "seed\n", "seed")
     bare = tmp_path / "origin.git"
     _git(tmp_path, "clone", "-q", "--bare", str(seed), str(bare))
     clone = tmp_path / "clone"

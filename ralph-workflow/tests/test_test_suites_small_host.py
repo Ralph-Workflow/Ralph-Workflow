@@ -1,11 +1,11 @@
 """The real-git shard's xdist fan-out never exceeds the host's cores.
 
-The required auto-integrate shard runs with up to twelve xdist workers
-alongside the general shards. On a 4-core CI runner twelve workers
-oversubscribed the host three times over, so the wall clock measured
-scheduler thrash rather than the suite. These tests drive
-``run_test_suites`` with a stub spawner and an injected core count and
-read the ``-n`` the dedicated shard was launched with.
+The required auto-integrate shard runs with up to ten xdist workers
+alongside the general shards. On a 4-core CI runner the twelve workers
+this cap used to allow oversubscribed the host three times over, so the
+wall clock measured scheduler thrash rather than the suite. These tests
+drive ``run_test_suites`` with a stub spawner and an injected core count
+and read the ``-n`` the dedicated shard was launched with.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def _dedicated_shard_xdist_workers(
 
 @pytest.mark.parametrize(
     ("cpu_count", "expected_workers"),
-    ((None, "1"), (1, "1"), (4, "4"), (8, "8"), (12, "12"), (40, "12")),
+    ((None, "1"), (1, "1"), (4, "4"), (8, "8"), (12, "10"), (40, "10")),
 )
 def test_real_git_shard_workers_are_capped_by_the_host_cores(
     tmp_path: Path,

@@ -679,11 +679,11 @@ def test_main_regression_rejects_unknown_profile_before_spawning(
         test_suites_module.main(("--profile", "unknown"))
 
 
-def test_default_profile_dedicated_required_e2e_shard_uses_twelve_xdist_workers(
+def test_default_profile_dedicated_required_e2e_shard_uses_ten_xdist_workers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The dedicated E2E shard uses twelve workers for isolated real-git tests.
+    """The dedicated E2E shard uses ten workers for isolated real-git tests.
 
     The value was pinned to 4 to hold total concurrent processes at 12
     (8 general + 4 E2E) on the then-maintained 12-core host. On the current
@@ -693,6 +693,18 @@ def test_default_profile_dedicated_required_e2e_shard_uses_twelve_xdist_workers(
     with ``make test-verification-smoke`` (13 s) that pair overflowed the
     immutable cumulative 60 s budget, so the tail shard is over-provisioned
     against the cores the general shards release.
+
+    wt-01-policy (WU-1) measured the fan-out directly on the maintained
+    40-core host with single-shard runs of the exact 83-file required-E2E
+    selection: twelve workers cost 394.66 CPU core-seconds at 36.26 s
+    wall, ten workers cost 337.19 core-seconds at 34.73 s wall, and eight
+    workers cost 334.31 core-seconds at 42.94 s wall. Twelve workers were
+    over-provisioned: the extra workers bought no wall-clock headroom
+    (the shard is bounded by its slowest single test, not by the fan-out)
+    but cost ~57 CPU core-seconds of duplicated per-worker collection,
+    module import, and xdist report coordination. Ten workers keep the
+    shard's wall below the eight general shards' wall, so the ``make
+    test`` wall clock is unchanged while the shard's CPU drops ~14.6 %.
     """
     # The worker count is capped by the host's cores; pin a 12-core host so
     # the assertion below does not depend on the machine running the test.
@@ -730,7 +742,7 @@ def test_default_profile_dedicated_required_e2e_shard_uses_twelve_xdist_workers(
     assert dedicated_command[3] == "tests"
     assert sorted(spawner.manifest_files[-1]) == sorted(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
     xdist_index = dedicated_command.index("-n")
-    assert dedicated_command[xdist_index + 1] == "12"
+    assert dedicated_command[xdist_index + 1] == "10"
     assert dedicated_command[dedicated_command.index("--dist") + 1] == "loadgroup"
 
 

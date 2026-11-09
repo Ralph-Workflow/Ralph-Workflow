@@ -6,7 +6,8 @@ import os
 import shutil
 import sys
 import tempfile
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -55,7 +56,48 @@ _AGY_DEFAULT_TEST_PATHS = frozenset(
 
 
 @pytest.fixture(autouse=True)
-def _placeholder_hosted_provider_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+def _isolate_test_environment_and_globals(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Generator[None, None, None]:
+    """Apply every per-test environment/global isolation in one fixture.
+
+    wt-03-test-budget: this fixture used to be seven separate autouse
+    fixtures. pytest charges a fixed price per fixture *setup* (closure
+    resolution, ``inspect``-based signature/coroutine checks, finalizer
+    registration), and that price is paid once per test: on the ~18.7k
+    test suite the seven fixtures cost more CPU than the isolation work
+    they perform. The isolation guarantees are unchanged -- the same
+    environment variables are set and unset, the same process-global
+    snapshot/restore happens, the same caches are cleared -- they are
+    simply applied by one fixture instead of seven.
+
+    The order below is the order the individual fixtures used to run in
+    (definition order), and the teardown order is the reverse of it, so
+    the observable sequence of isolation actions is preserved:
+
+    setup:   credentials -> recovery drain stub -> recovery queue
+             snapshot -> Claude CLI probe stub -> HOME/XDG sandbox ->
+             pipeline thread-local reset
+    teardown: Rich cache clear -> recovery queue restore
+
+    The recovery queue restore runs last so a test still observes the
+    queue it found, exactly as when the restore had its own fixture.
+    """
+    _apply_placeholder_hosted_provider_credentials(monkeypatch)
+    _apply_disable_explore_recovery_drain_thread(monkeypatch)
+    with _isolate_explore_recovery_globals():
+        _apply_fake_claude_cli_mcp_probe(monkeypatch)
+        _apply_isolate_process_home(request, monkeypatch, tmp_path_factory)
+        _apply_isolate_pipeline_thread_locals()
+        try:
+            yield
+        finally:
+            _reset_rich_style_color_caches()
+
+
+def _apply_placeholder_hosted_provider_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep fake agent-process tests independent of real provider credentials."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-placeholder")
     monkeypatch.setenv("OPENAI_API_KEY", "test-placeholder")
@@ -65,8 +107,7 @@ def _placeholder_hosted_provider_credentials(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.delenv("RALPH_MCP_RESPAWN", raising=False)
 
 
-@pytest.fixture(autouse=True)
-def _disable_explore_recovery_drain_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+def _apply_disable_explore_recovery_drain_thread(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep tests deterministic against the background recovery drain.
 
     ``enqueue_recovery`` starts a daemon drain thread in production;
@@ -78,8 +119,8 @@ def _disable_explore_recovery_drain_thread(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(recovery, "_ensure_drain_thread", lambda: None)
 
 
-@pytest.fixture(autouse=True)
-def _isolate_explore_recovery_globals() -> Generator[None, None, None]:
+@contextmanager
+def _isolate_explore_recovery_globals() -> Iterator[None]:
     """Snapshot and restore the process-global recovery queue per test.
 
     ``recovery._PENDING_RECOVERY`` is a module-level dict shared across
@@ -91,8 +132,8 @@ def _isolate_explore_recovery_globals() -> Generator[None, None, None]:
     observed 25). Snapshot the dict and event state before each test,
     clear them, then restore on teardown so each test observes an
     isolated queue. The drain thread itself is already stubbed by
-    ``_disable_explore_recovery_drain_thread`` above, so no background
-    work can race the snapshot/restore.
+    ``_apply_disable_explore_recovery_drain_thread`` above, so no
+    background work can race the snapshot/restore.
     """
     from ralph.mcp.explore import recovery
 
@@ -180,8 +221,7 @@ def _isolate_default_process_manager(
         reset_process_manager()
 
 
-@pytest.fixture(autouse=True)
-def _fake_claude_cli_mcp_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+def _apply_fake_claude_cli_mcp_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep default tests off the locally installed `claude` binary.
 
     ``report_claude_mcp_servers_ralph_cannot_proxy`` shells out to
@@ -267,8 +307,7 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
 
-@pytest.fixture(autouse=True)
-def _reset_rich_style_color_caches() -> Generator[None, None, None]:
+def _reset_rich_style_color_caches() -> None:
     """Clear Rich's process-global Style/Color LRU caches after each test.
 
     Rich memoizes ``Style.parse`` / ``Style._add`` (among others) as
@@ -292,7 +331,6 @@ def _reset_rich_style_color_caches() -> Generator[None, None, None]:
     assertions independent of execution order without touching any
     production code path.
     """
-    yield
     import rich.color
     import rich.style
 
@@ -303,8 +341,7 @@ def _reset_rich_style_color_caches() -> Generator[None, None, None]:
         cached_callable.cache_clear()
 
 
-@pytest.fixture(autouse=True)
-def _isolate_process_home(
+def _apply_isolate_process_home(
     request: pytest.FixtureRequest,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path_factory: pytest.TempPathFactory,
@@ -378,8 +415,7 @@ def _autouse_home_base(tmp_path_factory: pytest.TempPathFactory) -> str:
     return base
 
 
-@pytest.fixture(autouse=True)
-def _isolate_pipeline_thread_locals() -> None:
+def _apply_isolate_pipeline_thread_locals() -> None:
     """Reset the pipeline runner's thread-local session/retry-intent slots.
 
     ``ralph.pipeline._runner_session`` and ``ralph.pipeline.effect_executor``
@@ -391,18 +427,17 @@ def _isolate_pipeline_thread_locals() -> None:
     before every test keeps the per-test assertions isolated without
     forcing a process fork per test.
 
-    The fixture is intentionally cheap: two attribute writes, no I/O.
+    The reset is intentionally cheap: two attribute writes, no I/O.
 
     wt-05-test-opti: drop the post-yield teardown. The next test's
-    autouse setup runs the same two writes before its body executes,
+    reset runs the same two writes before its body executes,
     so the post-yield work is pure overhead across ~12.8k tests. The
-    contract that ``_isolate_pipeline_thread_locals`` guarantees \u2014 a
-    cleared slot at the start of every test \u2014 is preserved by the
-    pre-yield reset alone.
+    contract that ``_apply_isolate_pipeline_thread_locals`` guarantees
+    -- a cleared slot at the start of every test -- is preserved by the
+    reset alone.
     """
     set_last_captured_session_id(None)
     effect_executor._set_last_captured_retry_intent(effect_executor.cleared_agent_retry_intent())
-    yield
 
 
 def _configure_repo_identity(repo: object) -> None:

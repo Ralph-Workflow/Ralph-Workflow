@@ -456,7 +456,7 @@ _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
 _PYTEST_DURATIONS_REPORT: int = 10
 
 
-# Required real-git files use a dedicated shard with twelve xdist workers.
+# Required real-git files use a dedicated shard with ten xdist workers.
 # wt-03-fix-bug originally pinned this at 4 to hold the total concurrent
 # process count at 12 (8 general + 4 E2E) on the then-maintained 12-core
 # host. That host is gone: the suite now runs on a 40-core host where the
@@ -465,14 +465,35 @@ _PYTEST_DURATIONS_REPORT: int = 10
 # general shards -- sets the ``make test`` wall clock. Measured at four
 # workers: slowest shard 47.36 s, and because ``make test-verification-smoke``
 # is charged to the same cumulative tracker (``ralph/verify.py``
-# ``_BUDGET_TRACKED_STEPS``, 13 s wall), ``make test`` + smoke = 60.4 s
-# exceeds the immutable 60 s budget. Twelve workers keep the expanded real-git
-# suite and the verification smoke inside that budget on the 40-core host.
-# The cumulative budget itself is untouched. Twelve is a CAP: a host with
+# ``_BUDGET_TRACKED_SECONDS``, 13 s wall), ``make test`` + smoke = 60.4 s
+# exceeds the immutable 60 s budget.
+#
+# wt-01-policy (WU-1) measured the fan-out directly on the maintained
+# 40-core host (single-shard runs of the exact 83-file required-E2E
+# selection, ``getrusage(RUSAGE_CHILDREN)`` around the command):
+#
+#   workers | CPU core-s | wall s
+#   --------+------------+-------
+#      12   |   394.66   | 36.26
+#      10   |   337.19   | 34.73
+#       8   |   334.31   | 42.94
+#
+# Twelve workers were over-provisioned: the extra two workers bought no
+# wall-clock headroom (the shard is bounded by its slowest single test,
+# not by the fan-out) but cost ~57 CPU core-seconds of duplicated
+# per-worker collection, module import, and xdist report coordination --
+# CPU the immutable 700 core-second budget is charged for. Ten workers
+# keep the shard's wall BELOW the eight general shards' wall, so the
+# ``make test`` wall clock is unchanged, while cutting the shard's CPU
+# by ~14.6 %. Eight workers would save only ~3 more core-seconds but
+# push the shard's wall to 42.9 s, past the general shards' tail and
+# past the combined-budget headroom the verification smoke step needs.
+#
+# The cumulative budget itself is untouched. Ten is a CAP: a host with
 # fewer cores gets one worker per core (a 4-core CI runner given twelve
 # workers was oversubscribed three times over), while the 12-core and
-# 40-core hosts keep all twelve.
-_REQUIRED_E2E_SHARD_XDIST_WORKERS = "12"
+# 40-core hosts keep all ten.
+_REQUIRED_E2E_SHARD_XDIST_WORKERS = "10"
 
 
 def _required_e2e_xdist_workers() -> str:
