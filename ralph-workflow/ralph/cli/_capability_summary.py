@@ -20,7 +20,6 @@ from typing import TYPE_CHECKING
 
 from rich.text import Text
 
-from ralph.display.parallel_display import resolve_active_display
 from ralph.skills._agent_paths import (
     agent_skill_roots,
     project_sibling_skill_roots,
@@ -105,6 +104,12 @@ def print_capability_summary(
     """
     del console
     from ralph.cli.main import _get_cli_context
+
+    # The display stack is the heaviest import this module pulls (~0.8 CPU
+    # core-seconds). It is imported at call time so a process that only
+    # imports ``ralph.cli.main`` -- every real CLI child does -- does not pay
+    # for it.
+    from ralph.display.parallel_display import resolve_active_display
 
     ctx = display_context if display_context is not None else _get_cli_context()
     display = resolve_active_display(None, ctx)
