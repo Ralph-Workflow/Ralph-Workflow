@@ -3,20 +3,29 @@
 This package is the core of Ralph's orchestration loop. It exposes the public
 state/event types most callers need, plus the pure ``reduce`` function used to
 advance the state machine.
+
+Public names resolve lazily, on first attribute access, from the module that
+defines them. Importing a leaf submodule such as ``ralph.pipeline.state`` no
+longer pulls the reducer and the integration seam into the importing process,
+which keeps every interpreter that touches pipeline state cheap to start.
 """
 
-from ralph.config.enums import PipelinePhase
-from ralph.pipeline import _integration_action as integration_action
-from ralph.pipeline import _integration_owner_seam as integration_owner_seam
-from ralph.pipeline._integration_action import IntegrationAction
-from ralph.pipeline._integration_owner_seam import (
-    PlanningSyncVerdict,
-    decide_seam_action,
-)
-from ralph.pipeline._runner_session import apply_session_capture
-from ralph.pipeline.events import Event, PipelineEvent
-from ralph.pipeline.reducer import reduce
-from ralph.pipeline.state import PipelineState
+from __future__ import annotations
+
+from importlib import import_module
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from ralph.config.enums import PipelinePhase
+    from ralph.pipeline._integration_action import IntegrationAction
+    from ralph.pipeline._integration_owner_seam import (
+        PlanningSyncVerdict,
+        decide_seam_action,
+    )
+    from ralph.pipeline._runner_session import apply_session_capture
+    from ralph.pipeline.events import Event, PipelineEvent
+    from ralph.pipeline.reducer import reduce
+    from ralph.pipeline.state import PipelineState
 
 __all__ = [
     "Event",
@@ -31,3 +40,51 @@ __all__ = [
     "integration_owner_seam",
     "reduce",
 ]
+
+#: Public name -> (defining module, attribute name in that module).
+_LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    "Event": ("ralph.pipeline.events", "Event"),
+    "IntegrationAction": ("ralph.pipeline._integration_action", "IntegrationAction"),
+    "PipelineEvent": ("ralph.pipeline.events", "PipelineEvent"),
+    "PipelinePhase": ("ralph.config.enums", "PipelinePhase"),
+    "PipelineState": ("ralph.pipeline.state", "PipelineState"),
+    "PlanningSyncVerdict": (
+        "ralph.pipeline._integration_owner_seam",
+        "PlanningSyncVerdict",
+    ),
+    "apply_session_capture": ("ralph.pipeline._runner_session", "apply_session_capture"),
+    "decide_seam_action": ("ralph.pipeline._integration_owner_seam", "decide_seam_action"),
+    "reduce": ("ralph.pipeline.reducer", "reduce"),
+}
+
+#: Public name -> module re-exported under that name.
+_LAZY_MODULE_EXPORTS: dict[str, str] = {
+    "integration_action": "ralph.pipeline._integration_action",
+    "integration_owner_seam": "ralph.pipeline._integration_owner_seam",
+}
+
+
+def __getattr__(name: str) -> object:
+    """Resolve a public export from its defining module on first access.
+
+    The eager imports this replaced pulled the reducer, the integration seam
+    and the git stack into every process that only needed the pipeline state
+    types.
+    """
+    module_name = _LAZY_MODULE_EXPORTS.get(name)
+    if module_name is not None:
+        module = import_module(module_name)
+        cast("dict[str, object]", globals())[name] = module
+        return module
+
+    try:
+        defining_module, attr_name = _LAZY_EXPORTS[name]
+    except KeyError as exc:
+        msg = f"module {__name__!r} has no attribute {name!r}"
+        raise AttributeError(msg) from exc
+
+    module = import_module(defining_module)
+    namespace = cast("dict[str, object]", module.__dict__)
+    value = namespace[attr_name]
+    cast("dict[str, object]", globals())[name] = value
+    return value

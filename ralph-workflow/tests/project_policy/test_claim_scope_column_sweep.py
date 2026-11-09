@@ -3,7 +3,7 @@
 After WU-3 and WU-4 link the typechecking and verification ratchets
 to the new control id grammar, the remaining 19 starter files
 (CORE_POLICY_FILES minus typechecking-policy.md / verification-policy.md
-plus the conditional set) need only the v5 six-column table
+plus the conditional set) need only the v6 seven-column table
 migration: every Guard inventory row carries a non-empty
 ``Claim scope`` cell. The B7 substring predicate is applied to the
 new column too, so a row's ``Claim scope`` cannot drift into a broad
@@ -12,7 +12,7 @@ world-claim.
 This test iterates the shipped corpus and asserts:
 
 * every applicable starter (core + conditional) carries a
-  ``## Guard inventory`` table with the pinned six-column header;
+  ``## Guard inventory`` table with the pinned seven-column header;
 * every data row has a non-empty ``Claim scope`` cell;
 * no body ratchet declaration exists outside the three enumerated
   ratchets (R1, R2, R3); the other starters MUST NOT carry an

@@ -13,8 +13,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 from _pytest.unraisableexception import gc_collect_iterations_key
-from git import Repo
-from typer.testing import CliRunner
 
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -306,6 +304,8 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 if TYPE_CHECKING:
     from collections.abc import Generator
 
+    from git import Repo
+
 
 def _reset_rich_style_color_caches() -> None:
     """Clear Rich's process-global Style/Color LRU caches after each test.
@@ -440,7 +440,7 @@ def _apply_isolate_pipeline_thread_locals() -> None:
     effect_executor._set_last_captured_retry_intent(effect_executor.cleared_agent_retry_intent())
 
 
-def _configure_repo_identity(repo: object) -> None:
+def _configure_repo_identity(repo: Repo) -> None:
     writer = repo.config_writer()
     try:
         writer.set_value("user", "name", "Test User")
@@ -461,6 +461,8 @@ def _git_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
     template_root = tmp_path_factory.mktemp("git-template")
     # Pin the branch: the host's init.defaultBranch must not decide whether the
     # fixture sits on the "main" the integration tests target.
+    from git import Repo
+
     repo = Repo.init(template_root, initial_branch="main")
     try:
         _configure_repo_identity(repo)
@@ -753,6 +755,8 @@ def default_policy() -> tuple[AgentsPolicy, PipelinePolicy, ArtifactsPolicy]:
 @pytest.fixture
 def cli_runner() -> object:
     """Provide a Typer CLI test runner."""
+    from typer.testing import CliRunner
+
     return CliRunner()
 
 

@@ -25,8 +25,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
+from ralph.pipeline import handoffs
 from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
-from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.state import CommitState, PipelineState
 from ralph.policy.models import (
     LifecyclePhasePolicy,
@@ -192,7 +192,7 @@ def advance_phase(
     if is_commit_phase:
         updates["commit"] = CommitState()
 
-    updates["current_drain"] = resolve_phase_drain(target_phase, policy)
+    updates["current_drain"] = handoffs.resolve_phase_drain(target_phase, policy)
 
     return state.copy_with(**updates)
 

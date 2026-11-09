@@ -55,6 +55,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "bandit>=1.9.4",
   "hatch",
   "ruff",
   "mypy",
@@ -338,6 +339,7 @@ exclude_lines = [
 
 [dependency-groups]
 dev = [
+    "bandit>=1.9.4",
     "mypy>=1.20.1",
     "pathspec>=1.0.4",
     "types-psutil",
@@ -349,3 +351,12 @@ dev = [
     "ruff>=0.1",
     "types-tqdm>=4.67.3.20260518",
 ]
+
+# Dependency evidence for the packages this project added. The dependency
+# integrity audit (``ralph/testing/audit_dependency_integrity.py``) requires
+# every NEW package to name a resolvable source and a publisher, so the
+# registry and the publishing organisation are recorded here rather than
+# left implicit in the lockfile.
+[tool.ralph.dependency-evidence.bandit]
+publisher = "PyCQA"
+registry = "https://pypi.org/simple"

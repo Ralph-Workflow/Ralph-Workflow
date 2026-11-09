@@ -333,6 +333,12 @@ def _all_steps_success_responses() -> dict[tuple[str, tuple[str, ...]], ProcessR
             returncode=0,
             stdout="agent failure single owner audit ok\n",
         ),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_sast")): _result(
+            command="uv",
+            args=("run", "python", "-m", "ralph.testing.audit_sast"),
+            returncode=0,
+            stdout="No new static-analysis findings (0 pre-existing finding(s)).\n",
+        ),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_import_order")): _result(
             command="uv",
             args=("run", "python", "-m", "ralph.testing.audit_import_order"),
@@ -458,6 +464,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_instruction_integrity")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_dependency_integrity")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_secret_scan")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_sast")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_comments")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_test_integrity")),
         ("make", ("test-verification-smoke",)),

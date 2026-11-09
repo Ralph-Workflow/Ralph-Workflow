@@ -4760,6 +4760,13 @@ ralph.testing.audit_secret_scan
    :members:
    :show-inheritance:
 
+ralph.testing.audit_sast
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_sast
+   :members:
+   :show-inheritance:
+
 ralph.testing.audit_project_policy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

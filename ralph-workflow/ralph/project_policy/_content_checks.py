@@ -874,20 +874,21 @@ def _find_empty_per_language_inapplicable(content: str) -> set[str]:
     return out
 
 
-# Guard inventory parser. v5 requires every applicable starter (core
-# and conditional) to carry a ``## Guard inventory`` section with a
-# markdown table whose header matches the pinned
-# :data:`markers.GUARD_INVENTORY_HEADER` exactly (case-insensitive). One
-# row per guard, five non-empty cells, balanced pipes. A malformed or
-# missing table is a fail-closed RWP-INVENTORY:* finding. The substring
-# predicate from :data:`markers.CLAIM_SCOPE_PHRASES` is applied to each
-# row's ``Protected outcome`` against the same row's ``Detected
-# condition`` so the deterministic claim-scope rule is enforced at the
-# starter level too.
-# The v5 guard-inventory parser and validator live in
-# :mod:`ralph.project_policy._guard_inventory` to keep this module
-# under the 1000-line repo-structure cap. Re-exported at the top of
-# the module so callers can keep importing the same names.
+# Guard inventory parser. The current schema version requires every
+# applicable starter (core and conditional) to carry a ``## Guard
+# inventory`` section with a markdown table whose header matches the
+# pinned :data:`markers.GUARD_INVENTORY_HEADER` exactly
+# (case-insensitive). One row per guard, one non-empty cell per header
+# column -- seven for the current seven-column grammar, six for a frozen
+# v5 pack -- and balanced pipes. A malformed or missing table is a
+# fail-closed RWP-INVENTORY:* finding. The substring predicate from
+# :data:`markers.CLAIM_SCOPE_PHRASES` is applied to each row's
+# ``Protected outcome`` against the same row's ``Detected condition`` so
+# the deterministic claim-scope rule is enforced at the starter level too.
+# The version-aware guard-inventory parser and validator live in
+# :mod:`ralph.project_policy._guard_inventory` to keep this module under
+# the 1000-line repo-structure cap. Re-exported at the top of the module
+# so callers can keep importing the same names.
 
 __all__ = [
     "_check_commands",

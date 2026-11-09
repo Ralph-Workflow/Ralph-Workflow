@@ -459,6 +459,20 @@ _VERIFY_STEPS: tuple[VerifyStep, ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        # Bandit static analysis: the gate runs the real Bandit engine over
+        # the shipped runtime and fails on every finding the change
+        # introduces. Pre-existing findings are reported as a baseline count.
+        # The scan is scoped to the files that differ from the committed HEAD
+        # baseline, so the step costs what the change costs rather than what
+        # the repository costs -- a full sweep of the runtime outruns the
+        # per-step timeout. It is an audit, NOT a test suite: NOT added to
+        # ``_BUDGET_TRACKED_STEPS`` or ``_KNOWN_TEST_STEP_LABELS``.
+        "sast baseline-diff audit (audit_sast)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_sast"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         # Comment policy: a comment records only what the code cannot say. The
         # gate reports only new or changed lines against the committed HEAD
         # baseline, and honours an inline '# comment-ok: <reason>' marker.

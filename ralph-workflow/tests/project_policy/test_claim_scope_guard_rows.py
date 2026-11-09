@@ -45,11 +45,11 @@ def _starter(rows: str) -> str:
     )
 
 
-# --- Direct-helper unit cases (six-column grammar) ------------------------
+# --- Direct-helper unit cases (frozen-v5 six-column grammar) -------------
 
 
 def test_six_column_header_grammar_is_accepted() -> None:
-    """The pinned six-column grammar parses cleanly with one well-formed row.
+    """The pinned frozen-v5 six-column grammar parses cleanly with one well-formed row.
 
     A row with all six non-empty cells and a claim-scope-clean
     ``Protected outcome`` / ``Claim scope`` / ``Detected condition``

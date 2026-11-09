@@ -79,14 +79,14 @@ def complete_policy_body(filename: str) -> str:
             # UNDER this heading, not merely somewhere in the file.
             lines.extend(("Real content.", "RALPH-COMMAND: make bypass-audit", ""))
         elif heading == markers.GUARD_INVENTORY_HEADING.removeprefix("## "):
-            # v5: every applicable starter (core and conditional) carries
+            # v6: every applicable starter (core and conditional) carries
             # a Guard inventory table with the pinned header and at least
             # one data row. The Protected outcome cell names a real
             # detector observation so the claim-scope substring predicate
             # passes. The fifth cell is the ``Claim scope`` field
-            # required by B7 (per the v5 frozen column order: ``Guard |
+            # required by B7 (per the v6 frozen column order: ``Guard |
             # Owner | Protected outcome | Detected condition | Claim scope
-            # | Retirement trigger``).
+            # | Enforcement | Retirement trigger``).
             lines.extend(
                 (
                     "",

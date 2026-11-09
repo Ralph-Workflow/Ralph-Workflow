@@ -306,6 +306,7 @@ def test_spawn_capable_entry_points_sanitize_before_work() -> None:
         "ralph.install.main",
         "ralph.mcp.explore._bench_r6_metrics.main",
         "ralph.mcp.server.runtime.main",
+        "ralph.testing.audit_sast.main",
         "ralph.process.manager._supervisor.main",
         "ralph.test_suites.main",
         "ralph.verify.main",

@@ -179,7 +179,7 @@ def build_timeout_env(
         test_timeout_seconds: Value for ``RALPH_PYTEST_TEST_TIMEOUT_SECONDS``
             (default ``DEFAULT_TEST_TIMEOUT_SECONDS`` = 1.0).
         suite_timeout_seconds: Value for ``RALPH_PYTEST_SUITE_TIMEOUT_SECONDS``
-            (default ``DEFAULT_SUITE_TIMEOUT_SECONDS`` = 60.0).
+            (default ``DEFAULT_SUITE_TIMEOUT_SECONDS`` = 180.0).
 
     Returns:
         A fresh dict containing every base entry plus the two

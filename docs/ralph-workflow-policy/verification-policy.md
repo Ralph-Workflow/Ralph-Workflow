@@ -21,7 +21,7 @@ per-step timeouts (see `ralph/verify.py:_VERIFY_STEPS` /
 
 The shared execution rules, the loading direction, the local-tightening review
 rule, and the precedence that resolves cross-file conflicts live in
-`docs/ralph-workflow-policy/execution-kernel.md` (v1). Every reference in this
+`docs/ralph-workflow-policy/execution-kernel.md` (v6). Every reference in this
 file to those rules is to the kernel; the kernel is the source of truth, this
 file is the domain extension. The NAMED PROFILE lane (Suite admission) is the
 authoritative route for repeatable but non-default checks; undeclared named
@@ -208,7 +208,7 @@ RALPH-FACT: gate_parallelism_mechanism: `ralph.verify.run_verify()` executes `_V
 
 ## AI execution instructions
 
-Shared execution rules (truthful evidence, run every declared gate and report actual outcome, do not weaken gates, update facts in the same workflow, honest failure reporting) live in `docs/ralph-workflow-policy/execution-kernel.md` (v1). This file adds only its domain outcomes, facts, triggers, and exceptions. When a rule in this file conflicts with the kernel, the kernel wins and this file is amended.
+Shared execution rules (truthful evidence, run every declared gate and report actual outcome, do not weaken gates, update facts in the same workflow, honest failure reporting) live in `docs/ralph-workflow-policy/execution-kernel.md` (v6). This file adds only its domain outcomes, facts, triggers, and exceptions. When a rule in this file conflicts with the kernel, the kernel wins and this file is amended.
 * FIX every failure the gate reports, including failures the agent did
   not introduce and failures in code the agent never touched. On
   encountering a pre-existing red gate, the agent MUST repair it (or,
