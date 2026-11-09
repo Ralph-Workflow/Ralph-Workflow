@@ -602,7 +602,10 @@ def parse_portfolio_toml(
         schema_version = expected_schema_version
     else:
         if actual_version not in SUPPORTED_PORTFOLIO_SCHEMA_VERSIONS:
-            raise _error(f"schema_version must be {PORTFOLIO_SCHEMA_VERSION}")
+            raise _error(
+                "schema_version must be one of "
+                f"{', '.join(sorted(SUPPORTED_PORTFOLIO_SCHEMA_VERSIONS))}"
+            )
         schema_version = actual_version
     budget = root.get("default_budget_seconds")
     if isinstance(budget, bool) or not isinstance(budget, (int, float)) or budget <= 0:

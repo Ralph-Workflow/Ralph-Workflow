@@ -341,6 +341,26 @@ def test_relabeled_duplicate_cost_in_another_lane_fails_closed() -> None:
         )
 
 
+def test_unsupported_schema_version_reports_every_accepted_version() -> None:
+    """The rejection message MUST name every version the parser accepts.
+
+    The accepted set is the union of the portfolio schema versions across
+    the recognized policy versions (``v1``, ``v2``, ``v3``), so a message
+    that names only the current one tells the author that a frozen-v1 or
+    frozen-v2 portfolio is invalid when it is not.
+    """
+    with pytest.raises(PortfolioError, match="schema_version must be one of") as exc_info:
+        parse_portfolio_toml(
+            _manifest(controls=_control("kernel"), schema_version="v9"),
+            today=date(2026, 9, 11),
+        )
+
+    message = str(exc_info.value)
+    assert "v1" in message
+    assert "v2" in message
+    assert "v3" in message
+
+
 def test_input_and_diagnostics_are_bounded() -> None:
     too_many = "".join(_control(f"c-{number}") for number in range(65))
     with pytest.raises(PortfolioError, match="at most 64 controls") as exc_info:

@@ -93,7 +93,7 @@ def _split_table_row(line: str) -> list[str] | None:
     return cells
 
 
-def _is_table_separator(line: str, expected_columns: int = 5) -> bool:
+def _is_table_separator(line: str, *, expected_columns: int) -> bool:
     """Return True when ``line`` is a markdown table separator (a row of
     pipes, dashes, and optional colons) with exactly ``expected_columns`` cells."""
     stripped = line.strip()
@@ -167,7 +167,8 @@ def _parse_guard_inventory(
 
     Returns one dict per data row, with keys derived from the header columns
     (e.g. ``guard``, ``owner``, ``protected_outcome``, ``detected_condition``,
-    ``claim_scope``, ``retirement_trigger``) lowercased to canonical form.
+    ``claim_scope``, ``enforcement``, ``retirement_trigger``) lowercased to
+    canonical form.
     The header row is matched case-insensitively against ``expected_header``
     (defaulting to :data:`markers.GUARD_INVENTORY_HEADER`); leading and trailing
     pipes are required, and pipes must be balanced.
@@ -180,13 +181,6 @@ def _parse_guard_inventory(
     table_lines = _extract_table_lines(content)
     if table_lines is None:
         return []
-
-    if expected_header is None:
-        m = re.search(r"<!-- ralph-policy-schema:\s*(?:freeze\s+)?(v\d+)\s*-->", content)
-        if m:
-            detected_h = markers.guard_inventory_header_for_version(m.group(1))
-            if detected_h is not None:
-                expected_header = detected_h
 
     if expected_header is None:
         m = re.search(r"<!-- ralph-policy-schema:\s*(?:freeze\s+)?(v\d+)\s*-->", content)
@@ -453,18 +447,19 @@ def _check_guard_inventory(
     expected_header: Sequence[str] | None = None,
     known_enforcers: frozenset[str] | None = None,
 ) -> list[PolicyFinding]:
-    """Validate the ``## Guard inventory`` table per v5 contract (B9).
+    """Validate the ``## Guard inventory`` table per the v5/v6 contract (B9).
 
-    Findings emitted (stable v5 contract):
+    Findings emitted (the v5 finding ids stay stable across versions; the v6
+    ids add the ``Enforcement`` column checks):
 
     * ``RWP-INVENTORY:<file>:missing`` when the section is missing
       entirely.
     * ``RWP-INVENTORY:<file>:malformed`` when the header row does not
       match :data:`markers.GUARD_INVENTORY_HEADER`.
     * ``RWP-INVENTORY:<file>:row-<n>:empty-<column>`` per row with an
-      empty cell in any of the five base columns (the ``Claim scope``
-      column uses the stable :data:`CLAIM_SCOPE_MISSING_FINDING_ID`
-      instead, see below).
+      empty cell in any of the base columns (every column except
+      ``Claim scope`` and ``Enforcement``, which use their own stable
+      finding ids instead, see below).
     * ``RWP-INVENTORY:CLAIM-SCOPE-MISSING`` per row with an empty
       ``Claim scope`` cell. The plan freezes the v5 contract id;
       filename/row suffixes would break black-box tests that pin
@@ -488,6 +483,15 @@ def _check_guard_inventory(
       Guard cell.
     * ``RWP-INVENTORY:CONTROL-ORPHAN:<id>`` per Guard cell control
       id that no body declaration names.
+    * ``RWP-INVENTORY:ENFORCEMENT-MISSING`` per row whose
+      ``Enforcement`` cell is empty, holds ``deterministic:`` without an
+      id, or holds a value outside the closed value set.
+    * ``RWP-INVENTORY:ENFORCEMENT-UNKNOWN-ID`` per row whose
+      ``deterministic: <id>`` does not resolve by exact string match
+      against the collected enforcer id set.
+    * ``RWP-INVENTORY:ENFORCEMENT-ADVISORY-NO-TRIGGER`` per row whose
+      ``advisory:`` entry lacks a ``; review: <trigger>`` clause or
+      carries an empty trigger.
 
     The check returns an empty list when the table is well-formed:
     no findings means the starter is B9-compliant.

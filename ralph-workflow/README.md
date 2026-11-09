@@ -143,7 +143,7 @@ The deterministic chore commit is restricted to the byte-exact
 set of paths the writer touched; agent or user edits to those
 paths (or to any other file) are never swept in. The full contract
 lives in
-[`docs/agents/deterministic-auto-commit.md`](docs/agents/deterministic-auto-commit.md)
+[`../docs/agents/deterministic-auto-commit.md`](../docs/agents/deterministic-auto-commit.md)
 and is pinned by the `audit_skill_auto_commit` gate step.
 
 ## Shipped policy pack and readiness (v6)
