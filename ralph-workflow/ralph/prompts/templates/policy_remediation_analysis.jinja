@@ -24,7 +24,7 @@ changes. Treat a green gate only as absence of a counterexample.
 
 {% include 'shared/_criterion_verification_procedure.j2' %}
 
-For every declared fact, command, marker, and script, use one stable `PR-###` item in `## Criterion Verdicts` with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. Verdicts are exactly `met`, `not met`, or `not evaluable`; cite command output or named file location. `completed` requires every criterion to be `met` with evidence and no counterexample found. For `request_changes` or `failed`, mirror each attributable localized non-met verdict in `## What Came Up Short`; `not evaluable` requires `failed`.
+For every declared fact, command, marker, and script, use one stable `PR-###` item in `## Criterion Verdicts` with `Criterion:`, `Expected observation:`, `Verdict:`, `Evidence:`, and `Location:`. Verdicts are exactly `met`, `not met`, or `not evaluable`; cite command output or named file location. `completed` requires every criterion to be `met` with evidence and no counterexample found. For each `deterministic` Enforcement entry in the guard inventory: add one `PR-###` verdict. Run the enforcer, and where feasible demonstrate it fails on a minimal violating input (the gate-script policy requires demonstrated pass and fail behavior). An enforcer that cannot fail is reported as `not met`. For `request_changes` or `failed`, mirror each attributable localized non-met verdict in `## What Came Up Short`; `not evaluable` requires `failed`.
 
 ## Execution evidence
 
@@ -44,7 +44,7 @@ The `policy_content_hash` MUST be the readiness-evidence signature computed
 from the tree you validated; a hash recorded against a different tree fails
 closed. Omitting the section leaves the run's readiness dimensions all-false.
 
-## Three-state readiness (v5)
+## Three-state readiness (v6)
 
 Current readiness: structure_complete={{ readiness_structure_complete | default('unknown') }}, implementation_verified={{ readiness_implementation_verified | default('unknown') }}, outcome_evidence_reviewed={{ readiness_outcome_evidence_reviewed | default('unknown') }}.
 The runtime reports THREE dimensions, not two: structure complete (the validator passes), implementation verified (declared gates ran exit 0 with the current policy-content hash), and outcome evidence reviewed (every declared gate recorded in the execution evidence ledger). A structural READY is the caching gate; structural READY is NOT semantic correctness. The execution evidence you collect certifies implementation verification and outcome review, which are surfaced in the CLI emit and status bar footer as `Policy: S*/I*/O*`.

@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: gate-script-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file ships COMPLETE. Unlike every other
 policy starter, its requirements are NORMATIVE STANDARD TEXT, not a template
@@ -146,11 +146,15 @@ artifact or adds a Windows CI job.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Bounded gate execution | Gate-script owner | every gate script exits inside a runner-enforced timeout | gate script uses an approved tool first-token; the recipe wraps the command in a runner-enforced timeout | gate script uses an approved tool first-token | when the gate is no longer long-running |
-| No phantom dependencies | Gate-script owner | every gate script runs from a clean clone using only documented setup and secret mechanism | no gate script hard-codes a developer-local path; no gate script requires a hand-provisioned credential | no gate script hard-codes a developer-local path | when the gate is retired |
-| Meaning-preserving rewording | Gate-script owner | the gate-script policy protects meaning and failure sensitivity, not wording volume | the banner permits meaning-preserving rewording; the prohibited-actions list also permits meaning-preserving rewording; no other starter freezes gate-script prose | the banner permits meaning-preserving rewording | when the prohibited-actions list is retired by the kernel |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Bounded gate execution | Gate-script owner | every gate script exits inside a runner-enforced timeout | gate script uses an approved tool first-token; the recipe wraps the command in a runner-enforced timeout | gate script uses an approved tool first-token | deterministic: PROJECT-FACT-UNRESOLVED | when the gate is no longer long-running |
+| No phantom dependencies | Gate-script owner | every gate script runs from a clean clone using only documented setup and secret mechanism | no gate script hard-codes a developer-local path; no gate script requires a hand-provisioned credential | no gate script hard-codes a developer-local path | deterministic: PROJECT-FACT-UNRESOLVED | when the gate is retired |
+| Meaning-preserving rewording | Gate-script owner | the gate-script policy protects meaning and failure sensitivity, not wording volume | the banner permits meaning-preserving rewording; the prohibited-actions list also permits meaning-preserving rewording; no other starter freezes gate-script prose | the banner permits meaning-preserving rewording | deterministic: PROJECT-FACT-UNRESOLVED | when the prohibited-actions list is retired by the kernel |
 
 ## Project facts to resolve
 
@@ -293,4 +297,4 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: gate-script-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

@@ -20,10 +20,11 @@ from ralph.project_policy.markers import (
     CLAIM_SCOPE_PHRASES,
     PORTFOLIO_PATH,
     PORTFOLIO_SCHEMA_VERSION,
+    supported_portfolio_schema_versions,
 )
 from ralph.project_policy.models import PortfolioError
 
-SUPPORTED_PORTFOLIO_SCHEMA_VERSIONS: Final[frozenset[str]] = frozenset({"v1", "v2"})
+SUPPORTED_PORTFOLIO_SCHEMA_VERSIONS: Final[frozenset[str]] = supported_portfolio_schema_versions()
 
 MAX_PORTFOLIO_BYTES: Final[int] = 65_536
 MAX_CONTROLS: Final[int] = 64
@@ -87,6 +88,9 @@ _ALLOWED_CONTROL = frozenset(
         # review surface can quote back.
         "detects",
         "retirement_trigger",
+        # v3 additions: required enforcement mode (deterministic: <id> or
+        # advisory: <reason>; review: <trigger>).
+        "enforcement",
     }
 )
 _OPTIONAL_CONTROL = frozenset({"evidence_path", "removed-tests"})
@@ -129,6 +133,7 @@ class _Control:
     cost_basis: str
     detects: str
     retirement_trigger: str
+    enforcement: str = ""
     removed_tests: str | None = None
 
 
@@ -311,6 +316,63 @@ def _parse_lanes(root: Mapping[str, object]) -> tuple[_Lane, ...]:
     return tuple(sorted(lanes, key=_lane_id))
 
 
+def _validate_control_enforcement(control_id: str, enforcement: str) -> None:
+    if enforcement.startswith("deterministic:"):
+        enforcer_id = enforcement[len("deterministic:") :].strip()
+        if not enforcer_id:
+            raise _error(f"control {control_id} enforcement deterministic requires an enforcer id")
+    elif enforcement.startswith("advisory:"):
+        if "; review:" not in enforcement:
+            raise _error(
+                f"control {control_id} enforcement advisory requires '; review: <trigger>'"
+            )
+        _, review_part = enforcement.split("; review:", 1)
+        if not review_part.strip():
+            raise _error(
+                f"control {control_id} enforcement advisory requires a non-empty review trigger"
+            )
+    else:
+        raise _error(
+            f"control {control_id} enforcement must be 'deterministic: <id>' or 'advisory: <reason>; review: <trigger>'"
+        )
+
+
+def _parse_control_version_fields(
+    table: Mapping[str, object],
+    control_id: str,
+    outcome: str,
+    schema_version: str,
+) -> tuple[str, str, str]:
+    if schema_version == "v1":
+        detects_val = table.get("detects")
+        detects = str(detects_val).strip() if isinstance(detects_val, str) else ""
+        retire_val = table.get("retirement_trigger")
+        retirement_trigger = str(retire_val).strip() if isinstance(retire_val, str) else ""
+        enforcement_val = table.get("enforcement")
+        enforcement = str(enforcement_val).strip() if isinstance(enforcement_val, str) else ""
+        return detects, retirement_trigger, enforcement
+
+    detects = _text(table, "detects", f"control {control_id}")
+    retirement_trigger = _text(table, "retirement_trigger", f"control {control_id}")
+    _check_claim_scope(control_id, outcome, detects)
+
+    if schema_version == "v2":
+        enforcement_val = table.get("enforcement")
+        enforcement = str(enforcement_val).strip() if isinstance(enforcement_val, str) else ""
+        return detects, retirement_trigger, enforcement
+
+    enforcement = _text(table, "enforcement", f"control {control_id}")
+    _validate_control_enforcement(control_id, enforcement)
+    return detects, retirement_trigger, enforcement
+
+
+def _parse_removed_tests(table: Mapping[str, object], control_id: str) -> str | None:
+    val = table.get("removed-tests")
+    if val is None or isinstance(val, str):
+        return val
+    raise _error(f"control {control_id} removed-tests must be a string")
+
+
 def _parse_controls(
     root: Mapping[str, object],
     lane_ids: frozenset[str],
@@ -320,11 +382,12 @@ def _parse_controls(
 ) -> dict[str, _Control]:
     controls: dict[str, _Control] = {}
     outcomes: dict[str, str] = {}
-    required_fields = (
-        _REQUIRED_CONTROL - {"detects", "retirement_trigger"}
-        if schema_version == "v1"
-        else _REQUIRED_CONTROL
-    )
+    if schema_version == "v1":
+        required_fields = _REQUIRED_CONTROL - {"detects", "retirement_trigger", "enforcement"}
+    elif schema_version == "v2":
+        required_fields = _REQUIRED_CONTROL - {"enforcement"}
+    else:
+        required_fields = _REQUIRED_CONTROL
     for table in _table_list(root, "controls", MAX_CONTROLS):
         _reject_unknown(table, _ALLOWED_CONTROL, "control")
         missing = sorted(required_fields - set(table))
@@ -355,28 +418,13 @@ def _parse_controls(
                 "relabel the same protected outcome"
             )
         outcomes[outcome] = control_id
-        removed_tests_raw = table.get("removed-tests")
-        removed_tests_value: str | None
-        if removed_tests_raw is None:
-            removed_tests_value = None
-        elif isinstance(removed_tests_raw, str):
-            removed_tests_value = removed_tests_raw
-        else:
-            raise _error(f"control {control_id} removed-tests must be a string")
+        removed_tests_value = _parse_removed_tests(table, control_id)
         cost_basis_raw = table.get("cost_basis")
         if not isinstance(cost_basis_raw, str) or cost_basis_raw not in _ALLOWED_COST_BASIS:
             raise _error(f"control {control_id} requires cost_basis = 'measured' or 'estimate'")
-        if schema_version == "v1":
-            detects_val = table.get("detects")
-            detects = str(detects_val).strip() if isinstance(detects_val, str) else ""
-            retire_val = table.get("retirement_trigger")
-            retirement_trigger = str(retire_val).strip() if isinstance(retire_val, str) else ""
-        else:
-            detects = _text(table, "detects", f"control {control_id}")
-            retirement_trigger = _text(table, "retirement_trigger", f"control {control_id}")
-            # Claim-scope rule (B7). Apply the deterministic substring
-            # predicate against the new required fields.
-            _check_claim_scope(control_id, outcome, detects)
+        detects, retirement_trigger, enforcement = _parse_control_version_fields(
+            table, control_id, outcome, schema_version
+        )
         controls[control_id] = _Control(
             id=control_id,
             protected_outcome=outcome,
@@ -393,6 +441,7 @@ def _parse_controls(
             removed_tests=removed_tests_value,
             detects=detects,
             retirement_trigger=retirement_trigger,
+            enforcement=enforcement,
         )
     return controls
 

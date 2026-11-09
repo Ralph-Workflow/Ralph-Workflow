@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: accessibility-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: starter template; replace verified facts and
 commands, then delete this banner. -->
@@ -31,9 +31,13 @@ reactivation trigger, or remove it through reviewed policy cleanup.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Published-standard contrast and semantics | Accessibility owner | every contrast, focus, and semantic claim is measured against a published external standard | test asserts a published standard (WCAG, ARIA, etc.); the standard is named in the test | test asserts a published standard (WCAG, ARIA, etc.) | when the project ships a non-interactive surface |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Published-standard contrast and semantics | Accessibility owner | every contrast, focus, and semantic claim is measured against a published external standard | test asserts a published standard (WCAG, ARIA, etc.); the standard is named in the test | test asserts a published standard (WCAG, ARIA, etc.) | deterministic: PROJECT-FACT-UNRESOLVED | when the project ships a non-interactive surface |
 
 ## Project facts to resolve
 
@@ -115,7 +119,7 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: accessibility-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`
 
 ## Adjacent visual audits
 

@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: release-deployment-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: starter template; replace verified facts and
 commands, then delete this banner. -->
@@ -38,9 +38,13 @@ the policy through reviewed cleanup.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Reversible deployment | Release owner | every release is reversible through a recorded rollback command and a recorded last-known-good version | rollback command is recorded in the release profile; last-known-good version is recorded with the release | rollback command is recorded in the release profile | when the project ships only forward-only releases (the rollback is the kernel) |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Reversible deployment | Release owner | every release is reversible through a recorded rollback command and a recorded last-known-good version | rollback command is recorded in the release profile; last-known-good version is recorded with the release | rollback command is recorded in the release profile | deterministic: PROJECT-FACT-UNRESOLVED | when the project ships only forward-only releases (the rollback is the kernel) |
 
 ## Project facts to resolve
 
@@ -130,4 +134,4 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: release-deployment-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

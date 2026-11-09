@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: privacy-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: starter template; replace verified facts and
 commands, then delete this banner. -->
@@ -31,9 +31,13 @@ trigger, or remove the policy through reviewed cleanup.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Data classification | Privacy owner | every field with personal data is classified in the project's data-classification doc | data-classification doc enumerates every personal-data field; the doc is reviewed on every schema change | data-classification doc enumerates every personal-data field | when the project stops holding personal data |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Data classification | Privacy owner | every field with personal data is classified in the project's data-classification doc | data-classification doc enumerates every personal-data field; the doc is reviewed on every schema change | data-classification doc enumerates every personal-data field | deterministic: PROJECT-FACT-UNRESOLVED | when the project stops holding personal data |
 
 ## Project facts to resolve
 
@@ -119,4 +123,4 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: privacy-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: verification-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -187,13 +187,17 @@ person or team, not a role the author occupies by default.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Bounded run budget | Verification owner | bounded execution per kernel rule 3, with the combined-budget aggregate per ``policy-portfolio.toml`` | per-step and per-suite timeouts declared and enforced; combined 60 s budget holds | per-step and per-suite timeouts declared and enforced | when the combined budget is retired by the kernel |
-| `verification-budget-ratchet` Verification budget ratchet | Verification owner | the recorded ``verification_time_budget`` shrinks freely; growth is rejected absent a reviewed change | the recorded ``verification_time_budget`` is at or below its prior recorded value; growth is absent a reviewed change | the current ``verification_time_budget`` value per project | when the ratchet is retired by the kernel |
-| No high-churn evidence in review | Verification owner | volatile reports and large generated inventories do not land in human review | no high-churn evidence file is committed to a tracked location; review covers only compact, deterministic baselines | no high-churn evidence file is committed to a tracked location | when the project stops generating high-churn evidence |
-| Gate-lane coverage | Verification owner | every named profile and lane is recorded in the verification policy with all five fields (command, named owner, trigger, fails-hard-when-run, last-run date with staleness horizon) | Gate lanes section enumerates each named profile with all five fields present | Gate lanes section enumerates each named profile with all five fields present | when every named profile is retired |
-| Public-behavior proof | Verification owner | material behavior claims are proven through public surfaces with an immutable subject, run, validated oracle, and independent verdict | test is a public-surface scenario; run id, captured output, and independent verdict are recorded on the change | test is a public-surface scenario | when every behavior claim is provable at a cheaper deterministic layer |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Bounded run budget | Verification owner | bounded execution per kernel rule 3, with the combined-budget aggregate per ``policy-portfolio.toml`` | per-step and per-suite timeouts declared and enforced; combined 60 s budget holds | per-step and per-suite timeouts declared and enforced | deterministic: PROJECT-FACT-UNRESOLVED | when the combined budget is retired by the kernel |
+| `verification-budget-ratchet` Verification budget ratchet | Verification owner | the recorded ``verification_time_budget`` shrinks freely; growth is rejected absent a reviewed change | the recorded ``verification_time_budget`` is at or below its prior recorded value; growth is absent a reviewed change | the current ``verification_time_budget`` value per project | deterministic: PROJECT-FACT-UNRESOLVED | when the ratchet is retired by the kernel |
+| No high-churn evidence in review | Verification owner | volatile reports and large generated inventories do not land in human review | no high-churn evidence file is committed to a tracked location; review covers only compact, deterministic baselines | no high-churn evidence file is committed to a tracked location | deterministic: PROJECT-FACT-UNRESOLVED | when the project stops generating high-churn evidence |
+| Gate-lane coverage | Verification owner | every named profile and lane is recorded in the verification policy with all five fields (command, named owner, trigger, fails-hard-when-run, last-run date with staleness horizon) | Gate lanes section enumerates each named profile with all five fields present | Gate lanes section enumerates each named profile with all five fields present | deterministic: PROJECT-FACT-UNRESOLVED | when every named profile is retired |
+| Public-behavior proof | Verification owner | material behavior claims are proven through public surfaces with an immutable subject, run, validated oracle, and independent verdict | test is a public-surface scenario; run id, captured output, and independent verdict are recorded on the change | test is a public-surface scenario | deterministic: PROJECT-FACT-UNRESOLVED | when every behavior claim is provable at a cheaper deterministic layer |
 
 ## Project facts to resolve
 
@@ -430,4 +434,4 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: verification-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

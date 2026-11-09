@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: api-compatibility-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: starter template; replace verified facts and
 commands, then delete this banner. -->
@@ -29,9 +29,13 @@ or remove the policy through reviewed cleanup.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Public API contract test | API owner | every claimed public API has a contract test that fails on a documented breaking change | public API surface is enumerated; contract test covers each surface; reviewer can name the breaking change the test catches | public API surface is enumerated | when the public API is removed or absorbed by the kernel |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Public API contract test | API owner | every claimed public API has a contract test that fails on a documented breaking change | public API surface is enumerated; contract test covers each surface; reviewer can name the breaking change the test catches | public API surface is enumerated | deterministic: PROJECT-FACT-UNRESOLVED | when the public API is removed or absorbed by the kernel |
 
 ## Project facts to resolve
 
@@ -113,4 +117,4 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: api-compatibility-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

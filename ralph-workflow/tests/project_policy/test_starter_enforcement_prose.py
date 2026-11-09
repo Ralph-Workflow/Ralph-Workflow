@@ -167,6 +167,7 @@ def test_filled_in_starter_validates_clean(name: str) -> None:
     # Resolve every command placeholder with an allowlisted tool, then every
     # remaining fact placeholder with a plain verified value.
     content = content.replace("RALPH-COMMAND: PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test")
+    content = content.replace("deterministic: PROJECT-FACT-UNRESOLVED", "deterministic: make test")
     content = content.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
     # The capture-command fact must be a bare, runnable command (the visual
     # pipeline rejects anything else), so it is resolved like a RALPH-COMMAND.

@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: documentation-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -39,9 +39,13 @@ of documentation belongs.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Single source of truth | Documentation owner | every policy statement lives in exactly one canonical file | no parallel policy rulebook outside the canonical directory; the migrated marker points from old location to new | no parallel policy rulebook outside the canonical directory | when the canonical directory is removed (the kernel absorbs the contract) |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Single source of truth | Documentation owner | every policy statement lives in exactly one canonical file | no parallel policy rulebook outside the canonical directory; the migrated marker points from old location to new | no parallel policy rulebook outside the canonical directory | deterministic: PROJECT-FACT-UNRESOLVED | when the canonical directory is removed (the kernel absorbs the contract) |
 
 ## Project facts to resolve
 
@@ -179,4 +183,4 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: documentation-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

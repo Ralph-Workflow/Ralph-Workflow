@@ -32,6 +32,7 @@ def _filled_in_body(name: str) -> str:
             end = content.find("-->", start) + len("-->")
             content = content[:start] + content[end:].lstrip("\n")
     content = content.replace("RALPH-COMMAND: PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test")
+    content = content.replace("deterministic: PROJECT-FACT-UNRESOLVED", "deterministic: make test")
     content = content.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
     return content
 

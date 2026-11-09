@@ -1,0 +1,424 @@
+"""Body ratchet declarations and control id linkage helpers.
+
+Extracted from :mod: to keep both modules
+under the 1000-line repository structure cap.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Final
+
+from ralph.project_policy import markers
+
+# excluded — a future edit that adds a ratchet to one of them MUST be
+# caught by the linkage scan.
+_EXCLUDED_SECTION_HEADINGS: Final[tuple[str, ...]] = (
+    "## Guard inventory",
+    "## Maintenance triggers",
+    "## Research basis",
+)
+
+
+#: HTML-comment prefix pattern. The ratchet scan ignores any line whose
+#: first non-whitespace is ``<!--`` because REPLACE-ME instructions
+#: and remediation prompts use the bare ``ratchet`` token when
+#: describing the rule (e.g. "the ratchet then holds that tighter
+#: number") — those are template instructions, not policy
+#: declarations.
+_HTML_COMMENT_PREFIX: Final[str] = "<!--"
+
+
+def _is_html_comment_line(line: str) -> bool:
+    """Return True if ``line`` is an HTML comment (template instruction)."""
+    return line.lstrip().startswith(_HTML_COMMENT_PREFIX)
+
+
+#: Maximum number of trailing non-blank, non-heading, non-comment
+#: lines the ratchet scan examines for a trailing
+#: ``<!-- ralph-control: <id> -->`` token after a ratchet phrase.
+#: The shipped corpus wraps the verification-policy ratchet across
+#: four lines (ratchet phrase on line 1, sentence body on lines
+#: 2-4, control token on line 5); 6 lines of look-ahead covers
+#: that wrap with one-line headroom. Look-ahead is bounded on the
+#: OTHER end by the sentence boundary: the scan STOPS as soon as
+#: it crosses a sentence-ending line, a blank line, or a heading,
+#: so a control token on a different sentence cannot be borrowed
+#: (wt-15-policy analysis feedback).
+_RATCHET_CONTROL_TOKEN_LOOKAHEAD_LINES: Final[int] = 6
+
+#: Regex matching a sentence-ending punctuation character. The
+#: ratchet scan refuses to look ahead beyond a sentence boundary,
+#: so a control token on a different sentence cannot be borrowed
+#: by a ratchet phrase (wt-15-policy analysis feedback).
+_SENTENCE_ENDING_PUNCT_RE: Final[str] = r"[.!?]"
+_SENTENCE_ENDING_PUNCT_PATTERN: Final[re.Pattern[str]] = re.compile(_SENTENCE_ENDING_PUNCT_RE)
+
+#: Regex matching a real sentence boundary on a single visible
+#: line: one or more ``.!?`` then whitespace then a capital
+#: letter. The earlier punctuation-counting heuristic wrongly
+#: counted a filename dot (``items.py the file``) or a bare
+#: period at the end of a sentence as a new sentence; the
+#: capital-letter lookahead is the standard "new sentence" cue
+#: and is also why a tagged ratchet followed by an unrelated
+#: next sentence is no longer treated as two declarations.
+_SENTENCE_BOUNDARY_RE: Final[re.Pattern[str]] = re.compile(r"[.!?]+\s+(?=[A-Z])")
+
+
+def _count_ratchet_phrases(line: str, phrase_re: re.Pattern[str]) -> int:
+    """Return the number of distinct ratchet phrase occurrences on ``line``.
+
+    Used to detect two-ratchets-on-one-line shapes that a single
+    control token cannot legitimately cover. A line whose ratchet
+    phrase count exceeds the number of distinct control tokens
+    emitted on or before it is rejected; this is the wt-15-policy
+    analysis-feedback fix that tightens the prior 6-line
+    look-ahead.
+    """
+    return sum(1 for _ in phrase_re.finditer(line))
+
+
+def _line_ends_sentence(line: str) -> bool:
+    """Return True when ``line`` ends a sentence (trailing ``.``/``!``/``?``).
+
+    The ratchet scan uses this to refuse look-ahead past the end
+    of the ratchet sentence, so a control token on a different
+    next sentence cannot be borrowed (wt-15-policy analysis
+    feedback).
+    """
+    stripped = line.rstrip()
+    if not stripped:
+        return False
+    # Strip a trailing HTML comment so the ratchet sentence
+    # ``Sentence. <!-- ralph-control: id -->`` is treated as
+    # ending a sentence, not as ``open``.
+    while True:
+        end = stripped.rfind("-->")
+        if end == -1 or end != len(stripped) - 3:
+            break
+        start = stripped.rfind("<!--", 0, end)
+        if start == -1:
+            break
+        stripped = stripped[:start].rstrip()
+    if not stripped:
+        return False
+    return bool(re.search(_SENTENCE_ENDING_PUNCT_RE, stripped[-1]))
+
+
+def _split_visible_into_sentences(visible_text: str) -> list[str]:
+    """Split a visible (HTML-comment-stripped) line into sentence strings.
+
+    The split is bounded by :data:`_SENTENCE_BOUNDARY_RE`: one or
+    more ``.!?`` then whitespace then a capital letter. The result
+    preserves the original whitespace inside each segment; the
+    caller is responsible for stripping leading/trailing whitespace
+    when it compares ratchet-phrase presence. Filename dots
+    (``items.py the file``) and a bare trailing period without a
+    following capital are NOT boundaries, so a single-sentence
+    ``the audit's foo.bar.txt count`` stays a single segment.
+    """
+    if not visible_text.strip():
+        return [""]
+    pieces: list[str] = []
+    last_end = 0
+    for match in _SENTENCE_BOUNDARY_RE.finditer(visible_text):
+        pieces.append(visible_text[last_end : match.end()])
+        last_end = match.end()
+    pieces.append(visible_text[last_end:])
+    return pieces
+
+
+def _ratchet_declarations(content: str) -> list[tuple[str, str]]:
+    """Return ``(declaration_text, control_id_or_empty)`` per body ratchet.
+
+    A body ratchet declaration is a sentence in the starter body
+    (excluding the Guard inventory table, the three
+    :data:`_EXCLUDED_SECTION_HEADINGS` sections, and HTML comments
+    which carry template instructions, not policy declarations) that
+    contains any phrase from :data:`markers.RATCHET_DECLARATION_PHRASES`
+    (case-insensitive). The v5 plan's per-sentence granularity
+    forbids paragraph-level grouping: a tagged sentence and an
+    adjacent untagged ``MUST NOT increase`` sentence cannot share
+    one row, so the scan is sentence-aware.
+
+    A "sentence" here is the run of body text from one sentence
+    boundary to the next: the run starts at the first line of a
+    paragraph (after a blank line or heading) OR after a
+    sentence-ending punctuation mark (``.``/``!``/``?``), and
+    ends at the next sentence-ending punctuation, the next blank
+    line, the next heading, or end-of-file. A sentence may
+    wrap across multiple body lines (a numbered list item that
+    has the ratchet phrase on line 1, the rationale on lines
+    2-3, the control token on line 4); the per-line scan looks
+    ahead up to :data:`_RATCHET_CONTROL_TOKEN_LOOKAHEAD_LINES`
+    non-blank, non-heading, non-comment lines for the trailing
+    control token so a wrapped declaration is still linked to
+    its row (wt-15-policy analysis feedback: the look-ahead is
+    bounded by sentence boundaries so an unrelated next
+    sentence's token cannot be borrowed).
+
+    The function emits ONE declaration per ratchet sentence:
+    multiple ratchet phrases in the same sentence share one
+    control token. The empty-string ``control_id_or_empty``
+    value flags an uncovered ratchet (rejected with stable id
+    ``RWP-INVENTORY:RATCHET-UNCOVERED``).
+
+    When a single line carries ratchet phrases in two distinct
+    sentences (the line contains two sentence-ending
+    punctuation marks), the scan records each sentence as its
+    own declaration; the same line MUST carry one control token
+    per ratchet sentence, otherwise the second/third
+    declarations are uncovered.
+
+    The grammar is regex-deterministic and excludes the inventory
+    table plus the three plan-frozen excluded sections plus HTML
+    comments.
+    """
+    out: list[tuple[str, str]] = []
+    in_excluded = False
+    in_table = False
+    in_comment = False
+    control_re: re.Pattern[str] = re.compile(
+        markers.CONTROL_TOKEN_RE
+    )  # cast-policy: seam: compiled pattern, findall returns list[str] per typeshed
+    phrase_alts = "|".join(re.escape(p) for p in markers.RATCHET_DECLARATION_PHRASES)
+    # The phrases are not all word-shaped so we use a plain
+    # case-insensitive substring match rather than the usual
+    # ``\b...\b`` word-boundary form. Word boundaries on the
+    # bare ``ratchet`` token would over-match against ``ratchets``
+    # (legitimate plural usage in shipped starters); the substring
+    # form fires on both the singular and the plural because both
+    # refer to the same constraint.
+    phrase_re = re.compile(rf"(?i)(?:{phrase_alts})")
+    lines = content.splitlines()
+    total = len(lines)
+    # The current ratchet sentence under construction. Each
+    # sentence contributes at most one declaration; the
+    # declaration is recorded when the sentence closes (a
+    # sentence-ending punctuation, a blank line, a heading, or
+    # end-of-file).
+    sentence_has_phrase = False
+    sentence_token_id = ""
+
+    def flush() -> None:
+        """Emit a ratchet declaration for the current sentence, if any."""
+        nonlocal sentence_has_phrase, sentence_token_id
+        if sentence_has_phrase:
+            out.append(("", sentence_token_id))
+        sentence_has_phrase = False
+        sentence_token_id = ""
+
+    for index, raw_line in enumerate(lines):
+        stripped = raw_line.strip()
+        if stripped.startswith("#"):
+            flush()
+            in_excluded = stripped in _EXCLUDED_SECTION_HEADINGS
+            in_table = stripped == markers.GUARD_INVENTORY_HEADING
+            in_comment = False
+            continue
+        # Multi-line HTML comment: track state across lines so
+        # the body lines of a ``<!-- ... -->`` block are skipped
+        # even when they do not start with ``<!--``.
+        if in_comment:
+            if stripped.endswith("-->") and not stripped.startswith(_HTML_COMMENT_PREFIX):
+                in_comment = False
+            continue
+        if _is_html_comment_line(stripped):
+            in_comment = not stripped.endswith("-->")
+            continue
+        if in_excluded or in_table:
+            continue
+        if not stripped:
+            flush()
+            continue
+        sentence_has_phrase, sentence_token_id, out = _scan_body_line(
+            stripped,
+            lines,
+            index,
+            total,
+            in_comment,
+            control_re,
+            phrase_re,
+            sentence_has_phrase,
+            sentence_token_id,
+            out,
+        )
+    flush()
+    return out
+
+
+def _scan_body_line(
+    stripped: str,
+    lines: list[str],
+    index: int,
+    total: int,
+    in_comment: bool,
+    control_re: re.Pattern[str],
+    phrase_re: re.Pattern[str],
+    sentence_has_phrase: bool,
+    sentence_token_id: str,
+    out: list[tuple[str, str]],
+) -> tuple[bool, str, list[tuple[str, str]]]:
+    """Update the ratchet-declaration state for one body line.
+
+    The body-line scan is the inner loop of
+    :func:`_ratchet_declarations`; extracted into its own
+    function so the orchestrator stays under the ruff
+    PLR0912 / PLR0915 branch / statement caps. The function
+    applies the same per-line rules described in
+    :func:`_ratchet_declarations` and returns the updated
+    ``(sentence_has_phrase, sentence_token_id, out)`` triple.
+    """
+    line_has_phrase = bool(phrase_re.search(stripped))
+    line_tokens: list[str] = control_re.findall(
+        stripped
+    )  # cast-policy: seam: typed local ensures list[str] without cast()
+    visible_text = re.sub(r"<!--.*?-->", "", stripped, flags=re.DOTALL)
+    ends_sentence = _line_ends_sentence(stripped)
+    # Real sentence boundaries: punctuation + whitespace + capital
+    # letter. The earlier punctuation-counting heuristic wrongly
+    # counted a filename dot (``items.py the file``) or a bare
+    # period at the end of a sentence as a new sentence; the
+    # capital-letter lookahead is the standard "new sentence" cue
+    # and is also why a tagged ratchet followed by an unrelated
+    # next sentence is no longer treated as two declarations.
+    sentence_texts = _split_visible_into_sentences(visible_text)
+    ratchet_sentence_indices = [
+        i for i, text in enumerate(sentence_texts) if phrase_re.search(text)
+    ]
+    if ratchet_sentence_indices:
+        sentence_has_phrase = True
+        if not sentence_token_id and line_tokens:
+            sentence_token_id = line_tokens[0]
+            extra_tokens = line_tokens[1:]
+        else:
+            extra_tokens = line_tokens
+        for offset, _ratchet_index in enumerate(ratchet_sentence_indices[1:]):
+            if offset < len(extra_tokens):
+                out.append(("", extra_tokens[offset]))
+            else:
+                out.append(("", ""))
+    elif line_tokens and sentence_has_phrase and not sentence_token_id:
+        sentence_token_id = line_tokens[0]
+    # ``ends_sentence`` is True when the line's visible text ends
+    # in ``.``/``!``/``?``. A bare filename dot at end of line
+    # (e.g. ``audit.py``) does NOT count because the dot is not
+    # the visible line's last char after ``_line_ends_sentence``
+    # strips the trailing period only if it is a real sentence
+    # terminator; the function does the right thing for both
+    # ``audit.py`` and ``reviewed change.``.
+    if ends_sentence:
+        if sentence_has_phrase:
+            out.append(("", sentence_token_id))
+        sentence_has_phrase = False
+        sentence_token_id = ""
+        return sentence_has_phrase, sentence_token_id, out
+    if line_has_phrase and not sentence_token_id:
+        token = _find_ratchet_control_token(lines, index, total, control_re, in_comment, stripped)
+        if token:
+            sentence_token_id = token
+    return sentence_has_phrase, sentence_token_id, out
+
+
+def _find_ratchet_control_token(
+    lines: list[str],
+    index: int,
+    total: int,
+    control_re: re.Pattern[str],
+    initial_in_comment: bool,
+    ratchet_line: str,
+) -> str:
+    """Look ahead up to N lines for a ``<!-- ralph-control: <id> -->`` token.
+
+    Returns the captured id when the token appears on the ratchet
+    line or on one of the next non-blank, non-heading lines, OR
+    when the same line is itself a control-token comment. Returns
+    the empty string when no such token is found in the window.
+
+    Look-ahead is strictly sentence-local: the scan refuses to
+    step onto a different sentence. If the ratchet line itself
+    ends a sentence (``.``/``!``/``?``), the look-ahead is
+    disabled entirely because the next line, no matter what it
+    carries, belongs to a different sentence (wt-15-policy
+    analysis feedback). If the ratchet line does NOT end a
+    sentence (the ratchet phrase is mid-sentence), the look-ahead
+    may pass over continuation lines that themselves end a
+    sentence, so a control token at the end of a multi-line
+    ratchet sentence is still captured. The scan STOPS at blank
+    lines, headings, and the maximum line count
+    :data:`_RATCHET_CONTROL_TOKEN_LOOKAHEAD_LINES`.
+    """
+    lookahead_comment = initial_in_comment
+    ratchet_ends_sentence = _line_ends_sentence(ratchet_line)
+    # Track whether the ratchet sentence has ended. Once it has,
+    # the look-ahead will only accept a tag-only line (an HTML
+    # comment with no visible text) as a token source, because a
+    # lone tag is the conventional way to declare the row's
+    # control id at the end of a list item in shipped starters.
+    ratchet_sentence_over = ratchet_ends_sentence
+    for offset in range(1, _RATCHET_CONTROL_TOKEN_LOOKAHEAD_LINES + 1):
+        next_index = index + offset
+        next_stripped = lines[next_index].strip() if next_index < total else ""
+        if not next_stripped or next_stripped.startswith("#"):
+            return ""
+        # A ``<!-- ralph-control: <id> -->`` line IS the control
+        # token (its grammar is a single-line HTML comment), so
+        # it always counts as a match even when other comments
+        # would be skipped. A tag-only line is treated as part
+        # of the ratchet declaration's tag, even when the ratchet
+        # sentence has already ended (shipped pattern: a wrapped
+        # ratchet sentence ending with a period, followed by a
+        # lone tag line as the next non-blank, non-heading line).
+        next_visible = re.sub(r"<!--.*?-->", "", next_stripped, flags=re.DOTALL).strip()
+        is_tag_only_line = not next_visible
+        if is_tag_only_line:
+            token_match = control_re.search(next_stripped)
+            return token_match.group(1) if token_match else ""
+        # If the ratchet line itself ended a sentence, the next
+        # line is a different sentence by definition. The
+        # look-ahead is disabled to prevent token borrowing.
+        # Same for any continuation line after the ratchet
+        # sentence has ended (wt-15-policy analysis feedback:
+        # a wrapped untagged ratchet must not borrow a token
+        # from a later sentence on a non-period intermediate
+        # line).
+        if ratchet_ends_sentence or ratchet_sentence_over:
+            return ""
+        # Update the sentence-over state. A continuation line
+        # that ends a sentence marks the ratchet sentence as
+        # over; the next non-blank, non-heading line is either a
+        # tag-only line (the ratchet's control id, found at the
+        # top of the next iteration) or a new sentence (the
+        # ``ratchet_sentence_over`` check above stops the
+        # look-ahead).
+        if _line_ends_sentence(next_stripped):
+            ratchet_sentence_over = True
+        if lookahead_comment:
+            # A multi-line comment ends on a line whose only
+            # end-of-comment marker is the trailing ``-->``; if
+            # that marker is absent we stay inside the comment.
+            lookahead_comment = not next_stripped.endswith("-->")
+            continue
+        if _is_html_comment_line(next_stripped):
+            lookahead_comment = not next_stripped.endswith("-->")
+    return ""
+
+
+def _control_id_for_guard_row(guard_cell: str) -> str | None:
+    """Return the leading control id from a Guard cell, or ``None``.
+
+    The grammar allows a row's Guard cell to begin with a backticked
+    id `` `<id>` `` (any text may follow). The function captures the
+    first such id using :data:`markers.CONTROL_ID_RE`. Returns
+    ``None`` when the cell does not begin with a backticked id so
+    callers can distinguish a row with no linkage from a row whose
+    control id is the empty string.
+    """
+    match = re.match(markers.CONTROL_ID_RE, guard_cell.strip())
+    return match.group(1) if match else None
+
+
+__all__ = [
+    "_control_id_for_guard_row",
+    "_ratchet_declarations",
+]

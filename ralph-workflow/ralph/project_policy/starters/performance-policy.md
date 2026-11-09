@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: performance-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -39,9 +39,13 @@ and preservation of correctness, readability, and maintainability.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Named performance profile | Performance owner | performance claims (latency, throughput, memory) are recorded in a named profile with the five declared fields | profile has command, named owner, trigger, fails-hard-when-run, last-run date with staleness horizon | profile has command, named owner, trigger, fails-hard-when-run, last-run date with staleness horizon | when the project stops doing performance-sensitive work |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Named performance profile | Performance owner | performance claims (latency, throughput, memory) are recorded in a named profile with the five declared fields | profile has command, named owner, trigger, fails-hard-when-run, last-run date with staleness horizon | profile has command, named owner, trigger, fails-hard-when-run, last-run date with staleness horizon | deterministic: PROJECT-FACT-UNRESOLVED | when the project stops doing performance-sensitive work |
 
 ## Project facts to resolve
 
@@ -168,4 +172,4 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: performance-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

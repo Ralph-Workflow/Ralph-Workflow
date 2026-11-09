@@ -21,7 +21,10 @@ Design notes:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Final
+
+from ralph.project_policy._required_headings import REQUIRED_HEADINGS
 
 # Schema versioning
 #
@@ -106,9 +109,16 @@ from typing import Final
 # (the original eleven core files) - only files introduced AFTER v4
 # are exempt, never the existing core files, so a frozen v4 pack
 # missing ``security-policy.md`` stays NOT READY.
-SCHEMA_VERSION: Final[str] = "v5"
-POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v5 -->"
-POLICY_CONTRACT_VERSION: Final[str] = "2026-10-12.1"
+#
+# v6 (current) adds an explicit Enforcement column to the Guard
+# inventory table (closed value set: deterministic: <id> or
+# advisory: <reason>; review: <trigger>), with exact-string resolution
+# against declared RALPH-COMMAND values and verify.py step labels.
+# Starters ship with deterministic: PROJECT-FACT-UNRESOLVED.
+# Portfolio schema bumped v2 -> v3 with required per-control enforcement.
+SCHEMA_VERSION: Final[str] = "v6"
+POLICY_SCHEMA_MARKER: Final[str] = "<!-- ralph-policy-schema: v6 -->"
+POLICY_CONTRACT_VERSION: Final[str] = "2026-11-09.1"
 
 # Opt-out: byte-exact. The opt-out only fires on this exact substring;
 # near-miss prose, additional words, or any whitespace/case change
@@ -131,7 +141,7 @@ AGENTS_BLOCK_END: Final[str] = "<!-- ralph-workflow-policy:end -->"
 CANONICAL_DIR: Final[str] = "docs/ralph-workflow-policy/"
 APPLICABILITY_OVERRIDES_PATH: Final[str] = "docs/ralph-workflow-policy/applicability.toml"
 PORTFOLIO_PATH: Final[str] = "docs/ralph-workflow-policy/policy-portfolio.toml"
-PORTFOLIO_SCHEMA_VERSION: Final[str] = "v2"
+PORTFOLIO_SCHEMA_VERSION: Final[str] = "v3"
 
 # Required agent instruction files in the project.
 AGENTS_MD: Final[str] = "AGENTS.md"
@@ -154,26 +164,6 @@ CORE_POLICY_FILES: Final[tuple[str, ...]] = (
     "security-policy.md",
     "architecture-policy.md",
 )
-
-
-# Version-specific core-file manifest. v4 requires the original
-# eleven; v5 adds ``execution-kernel.md`` to reach twelve. Files
-#   ... (3 more lines)
-def core_files_for_version(v: str) -> tuple[str, ...]:
-    """Return the core-file manifest for schema version ``v``.
-
-    Args:
-        v: The schema version string (``"v4"``, ``"v5"``; unknown values
-            fall back to the current ``CORE_POLICY_FILES`` tuple).
-
-    Returns:
-        The required core-file tuple for that version. Used by the
-        validators and the upgrade seed path to install the right pack
-        and reject frozen packs missing a preserved core file.
-    """
-    if v == "v4":
-        return _V4_CORE_FILES
-    return CORE_POLICY_FILES
 
 
 # v4 manifest: the original eleven required core files. Used by the
@@ -239,311 +229,6 @@ CONDITIONAL_SIGNAL_PATHS: Final[dict[str, tuple[str, ...]]] = {
         ".github/workflows/release.yaml",
         "RELEASING.md",
         "docs/releasing.md",
-    ),
-}
-
-# Required headings per policy file. Every starter AND every
-# project-customized policy must include the listed headings
-#   ... (6 more lines)
-REQUIRED_HEADINGS: Final[dict[str, tuple[str, ...]]] = {
-    # The execution kernel (v5+) carries the five generic rules once
-    # (truthful evidence, fail-closed verification, bounded execution,
-    # no weakening of checks, explicit unverified-claim reporting), the
-    # precedence over domain policies, the selective-applicability rule,
-    # the claim-scope rule, and the guard inventory for kernel rules.
-    "execution-kernel.md": (
-        "Purpose and scope",
-        "Kernel rules",
-        "Precedence and selective applicability",
-        "Claim-scope rule",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    # The testing policy additionally requires "Suite admission": the section
-    # that decides which acceptance criteria become automated tests at all.
-    # Without it the policy is a one-way ratchet — every rule obliges MORE
-    # coverage and none routes a perceptual, third-party, or unrepeatable
-    # criterion to the lane that actually owns it.
-    "testing-policy.md": (
-        "Purpose and scope",
-        "Default requirements",
-        "Suite admission",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "typechecking-policy.md": (
-        "Purpose and scope",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "linting-policy.md": (
-        "Purpose and scope",
-        "Default requirements",
-        "Dead code — zero tolerance",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "dependency-policy.md": (
-        "Purpose and scope",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    # The verification policy additionally requires "Gate lanes": the declared
-    # home for a check that cannot meet the default gate's constraints (live
-    # third-party service, device matrix, long soak). Without a lane that
-    # demands an owner and a trigger, "wire it in or delete it" leaves such a
-    # check nowhere legitimate to live, so it lands in the default gate.
-    "verification-policy.md": (
-        "Purpose and scope",
-        "Default requirements",
-        "Gate lanes",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Bypass detection",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    # The gate-script policy additionally requires "Security" and
-    # "Cross-platform" headings: a gate script is an execution surface
-    # (secrets, remote code, temp files) and a portability surface
-    # (a bash-only gate on a Windows-supporting project is a broken
-    # gate). Both sections must survive every amendment.
-    "gate-script-policy.md": (
-        "Purpose and scope",
-        "Default requirements",
-        "Failure output",
-        "Security",
-        "Cross-platform",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "agent-policy.md": (
-        "Purpose and scope",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "clean-code-policy.md": (
-        "Purpose and scope",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "documentation-policy.md": (
-        "Purpose and scope",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "security-policy.md": (
-        "Purpose and scope",
-        "Default requirements",
-        "Threat surfaces",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "architecture-policy.md": (
-        "Purpose and scope",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "design-system-policy.md": (
-        "Purpose and scope",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "ux-policy.md": (
-        "Purpose and scope",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "performance-policy.md": (
-        "Purpose and scope",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "memory-usage-policy.md": (
-        "Purpose and scope",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "accessibility-policy.md": (
-        "Purpose and scope",
-        "Applicability",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "api-compatibility-policy.md": (
-        "Purpose and scope",
-        "Applicability",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "data-storage-policy.md": (
-        "Purpose and scope",
-        "Applicability",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "reliability-observability-policy.md": (
-        "Purpose and scope",
-        "Applicability",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "privacy-policy.md": (
-        "Purpose and scope",
-        "Applicability",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
-    ),
-    "release-deployment-policy.md": (
-        "Purpose and scope",
-        "Applicability",
-        "Default requirements",
-        "Guard inventory",
-        "Project facts to resolve",
-        "AI execution instructions",
-        "Verification",
-        "Exceptions",
-        "Maintenance triggers",
-        "Research basis",
-        "Ralph markers",
     ),
 }
 
@@ -812,30 +497,40 @@ ID_INVENTORY: Final[str] = "RWP-INVENTORY"
 
 # Stable v5 finding ids for the guard-inventory validator. The plan
 # freezes these identifiers so black-box tests can pin the v5 contract
-#   ... (4 more lines)
 CLAIM_SCOPE_MISSING_FINDING_ID: Final[str] = "RWP-INVENTORY:CLAIM-SCOPE-MISSING"
 CLAIM_SCOPE_MULTI_SENTENCE_FINDING_ID: Final[str] = "RWP-INVENTORY:CLAIM-SCOPE-MULTI-SENTENCE"
 RATCHET_UNCOVERED_FINDING_ID: Final[str] = "RWP-INVENTORY:RATCHET-UNCOVERED"
 CONTROL_ORPHAN_FINDING_ID: Final[str] = "RWP-INVENTORY:CONTROL-ORPHAN"
 
+# Stable v6 finding ids for the guard-inventory enforcement validator.
+ENFORCEMENT_MISSING_FINDING_ID: Final[str] = "RWP-INVENTORY:ENFORCEMENT-MISSING"
+ENFORCEMENT_UNKNOWN_ID_FINDING_ID: Final[str] = "RWP-INVENTORY:ENFORCEMENT-UNKNOWN-ID"
+ENFORCEMENT_ADVISORY_NO_TRIGGER_FINDING_ID: Final[str] = (
+    "RWP-INVENTORY:ENFORCEMENT-ADVISORY-NO-TRIGGER"
+)
+
 # Guard inventory grammar. Every applicable starter (core and conditional)
 # MUST carry a ``## Guard inventory`` section whose body is a markdown
 # table with the exact header below (case-insensitive match). The body is
-# a row-per-guard table with six non-empty cells. The validator parses
-# the table via :func:`ralph.project_policy._guard_inventory._parse_guard_inventory`
-# and emits a stable RWP-INVENTORY:* finding on a missing or malformed
-# table. The grammar is pinned here so the parser and the starters share
-# one source of truth. The sixth column ``Claim scope`` is the v5
-# outcome-oriented kernel's B7 requirement: every guard row MUST name
-# the narrow claim its detector actually supports, so a row's
-# ``Protected outcome`` cannot drift into a broad world-claim.
+# a row-per-guard table with seven non-empty cells (six in v5). The validator
+# parses the table via :func:`ralph.project_policy._guard_inventory._parse_guard_inventory`
+# and emits a stable RWP-INVENTORY:* finding on a missing or malformed table.
 GUARD_INVENTORY_HEADING: Final[str] = "## Guard inventory"
+_V5_GUARD_INVENTORY_HEADER: Final[tuple[str, ...]] = (
+    "Guard",
+    "Owner",
+    "Protected outcome",
+    "Detected condition",
+    "Claim scope",
+    "Retirement trigger",
+)
 GUARD_INVENTORY_HEADER: Final[tuple[str, ...]] = (
     "Guard",
     "Owner",
     "Protected outcome",
     "Detected condition",
     "Claim scope",
+    "Enforcement",
     "Retirement trigger",
 )
 
@@ -847,6 +542,104 @@ GUARD_INVENTORY_HEADER: Final[tuple[str, ...]] = (
 #: validator and the project-policy test fixtures share one source of
 #: truth.
 _GUARD_INVENTORY_CLAIM_SCOPE_MAX_SENTENCES: Final[int] = 1
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyVersionSpec:
+    """Specification of a policy schema version.
+
+    Captures the required core-file manifest, the expected guard-inventory
+    header grammar (or ``None`` for versions prior to the table's
+    introduction in v5), the matching portfolio schema version, and
+    whether the version is permitted as a freeze target.
+    """
+
+    version: str
+    core_manifest: tuple[str, ...]
+    guard_inventory_header: tuple[str, ...] | None
+    portfolio_schema_version: str
+    allowed_frozen: bool = True
+
+    @property
+    def guard_inventory_columns(self) -> int:
+        """Return the number of columns in the guard inventory table, or 0 if exempt."""
+        return len(self.guard_inventory_header) if self.guard_inventory_header is not None else 0
+
+
+#: Version-keyed specifications for supported active and frozen policy schemas.
+VERSION_SPECS: Final[dict[str, PolicyVersionSpec]] = {
+    "v4": PolicyVersionSpec(
+        version="v4",
+        core_manifest=_V4_CORE_FILES,
+        guard_inventory_header=None,
+        portfolio_schema_version="v1",
+        allowed_frozen=True,
+    ),
+    "v5": PolicyVersionSpec(
+        version="v5",
+        core_manifest=CORE_POLICY_FILES,
+        guard_inventory_header=_V5_GUARD_INVENTORY_HEADER,
+        portfolio_schema_version="v2",
+        allowed_frozen=True,
+    ),
+    "v6": PolicyVersionSpec(
+        version="v6",
+        core_manifest=CORE_POLICY_FILES,
+        guard_inventory_header=GUARD_INVENTORY_HEADER,
+        portfolio_schema_version="v3",
+        allowed_frozen=True,
+    ),
+}
+
+
+def core_files_for_version(v: str | None) -> tuple[str, ...]:
+    """Return the core-file manifest for schema version ``v``.
+
+    Args:
+        v: The schema version string (``"v4"``, ``"v5"``; unknown values
+            fall back to the current ``CORE_POLICY_FILES`` tuple).
+
+    Returns:
+        The required core-file tuple for that version. Used by the
+        validators and the upgrade seed path to install the right pack
+        and reject frozen packs missing a preserved core file.
+    """
+    if v is not None and v in VERSION_SPECS:
+        return VERSION_SPECS[v].core_manifest
+    return CORE_POLICY_FILES
+
+
+def spec_for_version(v: str | None) -> PolicyVersionSpec:
+    """Return the PolicyVersionSpec for schema version ``v``, defaulting to current."""
+    if v is not None and v in VERSION_SPECS:
+        return VERSION_SPECS[v]
+    return VERSION_SPECS[SCHEMA_VERSION]
+
+
+def is_allowed_frozen_version(v: str) -> bool:
+    """Return True if ``v`` is a recognized schema version permitted to be frozen."""
+    spec = VERSION_SPECS.get(v)
+    return spec is not None and spec.allowed_frozen
+
+
+def guard_inventory_header_for_version(v: str | None) -> tuple[str, ...] | None:
+    """Return the guard inventory header for schema version ``v``, or None if exempt."""
+    if v is not None and v in VERSION_SPECS:
+        return VERSION_SPECS[v].guard_inventory_header
+    return VERSION_SPECS[SCHEMA_VERSION].guard_inventory_header
+
+
+def portfolio_schema_version_for_version(v: str | None) -> str:
+    """Return expected portfolio schema version for policy version ``v``."""
+    if v is not None and v in VERSION_SPECS:
+        return VERSION_SPECS[v].portfolio_schema_version
+    return VERSION_SPECS[SCHEMA_VERSION].portfolio_schema_version
+
+
+def supported_portfolio_schema_versions() -> frozenset[str]:
+    """Return all supported portfolio schema versions across recognized policy versions."""
+    return frozenset(spec.portfolio_schema_version for spec in VERSION_SPECS.values())
+
 
 # Body ratchet declaration (B9): a sentence in a starter body that
 # names a project constraint whose value MUST NOT grow / MUST NOT
@@ -899,6 +692,9 @@ __all__ = [
     "CONTROL_TOKEN_RE",
     "CORE_POLICY_FILES",
     "CSS_LANGUAGE_SIGNALS",
+    "ENFORCEMENT_ADVISORY_NO_TRIGGER_FINDING_ID",
+    "ENFORCEMENT_MISSING_FINDING_ID",
+    "ENFORCEMENT_UNKNOWN_ID_FINDING_ID",
     "FACT_MARKER",
     "GUARD_INVENTORY_HEADER",
     "GUARD_INVENTORY_HEADING",
@@ -947,5 +743,12 @@ __all__ = [
     "UI_FRAMEWORK_SIGNALS",
     "UX_APP_FRAMEWORKS",
     "UX_ROUTER_DEP_SIGNALS",
+    "VERSION_SPECS",
+    "PolicyVersionSpec",
     "core_files_for_version",
+    "guard_inventory_header_for_version",
+    "is_allowed_frozen_version",
+    "portfolio_schema_version_for_version",
+    "spec_for_version",
+    "supported_portfolio_schema_versions",
 ]

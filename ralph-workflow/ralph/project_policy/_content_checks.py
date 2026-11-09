@@ -148,7 +148,9 @@ def _check_markers(content: str, path: str, filename: str) -> list[PolicyFinding
     first_line = next((line for line in lines if line.strip()), "")
     frozen_version = _frozen_schema_version(content)
     current_version = int(markers.SCHEMA_VERSION.removeprefix("v"))
-    frozen_schema = frozen_version is not None and frozen_version < current_version
+    frozen_schema = frozen_version is not None and (
+        frozen_version < current_version or markers.is_allowed_frozen_version(f"v{frozen_version}")
+    )
     if first_line != markers.POLICY_SCHEMA_MARKER and not frozen_schema:
         findings.append(
             PolicyFinding(
@@ -191,7 +193,9 @@ def _check_required_headings(content: str, path: str, filename: str) -> list[Pol
     """Validate every required heading is present (case-insensitive)."""
     required = markers.REQUIRED_HEADINGS.get(filename, ())
     frozen_v = _frozen_schema_version(content)
-    if frozen_v is not None and frozen_v <= _PRE_V5_SCHEMA_VERSION_MAX:
+    file_version = f"v{frozen_v}" if frozen_v is not None else markers.SCHEMA_VERSION
+    spec = markers.spec_for_version(file_version)
+    if spec.guard_inventory_header is None:
         required = tuple(h for h in required if h.lower() != "guard inventory")
     headings_present = _headings(content)
     return [

@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: security-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -111,12 +111,16 @@ re-opens the question instead of silently missing it.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Authorization and tenant / scope boundaries | Security owner | every privileged action checks the caller's authorization and tenant / scope before execution | every privileged code path is covered by an authorization test; secret / scope change is logged with a real subject | every privileged code path is covered by an authorization test | when the project stops using a multi-tenant boundary |
-| Destructive-operation safety | Security owner | destructive operations (delete / drop / reset / force-push / revoke) carry a named owner and an explicit human confirmation in production paths | destructive operation requires a recorded subject, a recorded actor, and a recorded confirmation; reviewer can name the production gate | destructive operation requires a recorded subject, a recorded actor, and a recorded confirmation | when the project has no destructive operations |
-| Security-scanner coverage | Security owner | every claimed security check is a real credential / vulnerability scanner, not a check that does not run a scanner | the security profile's `evidence` field names a real scanner (semgrep, gitleaks, detect-secrets, gosec, bandit, etc.); the scanner is runnable and reproducible | the security profile's `evidence` field names a real scanner (semgrep, gitleaks, detect-secrets, gosec, bandit, etc.) | when the scanner is no longer available and is replaced by a real equivalent |
-| Threat surface inventory | Security owner | every project's threat surfaces are enumerated in the security policy's Threat surfaces section | Threat surfaces section names each surface; the surface list is reviewed on every policy bump | Threat surfaces section names each surface | when the project is single-purpose and the surfaces are constant |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Authorization and tenant / scope boundaries | Security owner | every privileged action checks the caller's authorization and tenant / scope before execution | every privileged code path is covered by an authorization test; secret / scope change is logged with a real subject | every privileged code path is covered by an authorization test | deterministic: PROJECT-FACT-UNRESOLVED | when the project stops using a multi-tenant boundary |
+| Destructive-operation safety | Security owner | destructive operations (delete / drop / reset / force-push / revoke) carry a named owner and an explicit human confirmation in production paths | destructive operation requires a recorded subject, a recorded actor, and a recorded confirmation; reviewer can name the production gate | destructive operation requires a recorded subject, a recorded actor, and a recorded confirmation | deterministic: PROJECT-FACT-UNRESOLVED | when the project has no destructive operations |
+| Security-scanner coverage | Security owner | every claimed security check is a real credential / vulnerability scanner, not a check that does not run a scanner | the security profile's `evidence` field names a real scanner (semgrep, gitleaks, detect-secrets, gosec, bandit, etc.); the scanner is runnable and reproducible | the security profile's `evidence` field names a real scanner (semgrep, gitleaks, detect-secrets, gosec, bandit, etc.) | deterministic: PROJECT-FACT-UNRESOLVED | when the scanner is no longer available and is replaced by a real equivalent |
+| Threat surface inventory | Security owner | every project's threat surfaces are enumerated in the security policy's Threat surfaces section | Threat surfaces section names each surface; the surface list is reviewed on every policy bump | Threat surfaces section names each surface | deterministic: PROJECT-FACT-UNRESOLVED | when the project is single-purpose and the surfaces are constant |
 
 ## Project facts to resolve
 
@@ -326,4 +330,4 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: security-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

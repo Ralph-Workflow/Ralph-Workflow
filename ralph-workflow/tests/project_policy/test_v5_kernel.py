@@ -18,7 +18,7 @@ def test_kernel_starter_is_registered_in_v5_manifest() -> None:
     """The execution-kernel starter is the v5 required core file."""
     assert "execution-kernel.md" in markers.CORE_POLICY_FILES
     assert "execution-kernel.md" in starters.STARTER_NAMES
-    assert markers.SCHEMA_VERSION == "v5"
+    assert markers.SCHEMA_VERSION == "v6"
 
 
 def test_kernel_starter_carries_v5_marker_and_id() -> None:
@@ -40,6 +40,8 @@ def test_kernel_starter_has_guard_inventory_section() -> None:
             "owner",
             "protected_outcome",
             "detected_condition",
+            "claim_scope",
+            "enforcement",
             "retirement_trigger",
         ):
             assert row[column], f"row missing {column!r}: {row}"
@@ -118,9 +120,9 @@ def test_guard_inventory_parser_rejects_broad_claim() -> None:
     body = (
         "## Guard inventory\n"
         "\n"
-        "| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |\n"
-        "|---|---|---|---|---|---|\n"
-        "| g | o | dependency direction enforced | missing import-lint | retired | the lint report per file |"
+        "| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |\n"
+        "|---|---|---|---|---|---|---|\n"
+        "| g | o | dependency direction enforced | missing import-lint | the lint report per file | deterministic: make test | retired |"
     )
     findings = _guard_inventory._check_guard_inventory(
         body,
@@ -135,9 +137,9 @@ def test_guard_inventory_parser_accepts_mirrored_claim() -> None:
     body = (
         "## Guard inventory\n"
         "\n"
-        "| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |\n"
-        "|---|---|---|---|---|---|\n"
-        "| g | o | dependency direction enforced | enforced by import-lint on src/ | retired | enforced per import-lint on src/ |"
+        "| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |\n"
+        "|---|---|---|---|---|---|---|\n"
+        "| g | o | dependency direction enforced | enforced by import-lint on src/ | enforced per import-lint on src/ | deterministic: make test | retired |"
     )
     findings = _guard_inventory._check_guard_inventory(
         body,
@@ -152,9 +154,9 @@ def test_guard_inventory_parser_rejects_empty_cells() -> None:
     body = (
         "## Guard inventory\n"
         "\n"
-        "| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |\n"
-        "|---|---|---|---|---|---|\n"
-        "| g |  | some outcome | some detected | some retirement | the report per file |"
+        "| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |\n"
+        "|---|---|---|---|---|---|---|\n"
+        "| g |  | some outcome | some detected | the report per file | deterministic: make test | some retirement |"
     )
     findings = _guard_inventory._check_guard_inventory(
         body,
@@ -440,11 +442,12 @@ def test_claim_scope_phrases_constant_is_pinned() -> None:
     assert expected == markers.CLAIM_SCOPE_PHRASES
 
 
-def test_shipped_portfolio_uses_v2_schema() -> None:
-    """The shipped policy-portfolio.toml starter uses schema v2 with the new
-    required fields. Frozen-v1 packs are accepted by ``core_files_for_version``
-    but a fresh v5 pack ships the v2 manifest."""
+def test_shipped_portfolio_uses_v3_schema() -> None:
+    """The shipped policy-portfolio.toml starter uses schema v3 with the new
+    enforcement field. Frozen-v1 and frozen-v2 packs are accepted by
+    version specs but a fresh pack ships the v3 manifest."""
     content = starters.read_starter(starters.PORTFOLIO_STARTER_NAME)
-    assert 'schema_version = "v2"' in content
+    assert 'schema_version = "v3"' in content
     assert "detects =" in content
+    assert "enforcement =" in content
     assert "retirement_trigger =" in content

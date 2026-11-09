@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: reliability-observability-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: starter template; replace verified facts and
 commands, then delete this banner. -->
@@ -29,9 +29,13 @@ or remove the policy through reviewed cleanup.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Bounded observability budget | Reliability owner | every log / trace / metric carries a bounded cardinality and a retention policy | log / trace / metric cardinality is bounded; retention policy is recorded in the operational doc | log / trace / metric cardinality is bounded | when the project is replaced by a kernel-level observability framework |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Bounded observability budget | Reliability owner | every log / trace / metric carries a bounded cardinality and a retention policy | log / trace / metric cardinality is bounded; retention policy is recorded in the operational doc | log / trace / metric cardinality is bounded | deterministic: PROJECT-FACT-UNRESOLVED | when the project is replaced by a kernel-level observability framework |
 
 ## Project facts to resolve
 
@@ -121,4 +125,4 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: reliability-observability-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

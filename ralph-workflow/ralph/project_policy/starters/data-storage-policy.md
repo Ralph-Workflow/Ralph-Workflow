@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: data-storage-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: starter template; replace verified facts and
 commands, then delete this banner. -->
@@ -38,9 +38,13 @@ trigger, or remove the policy through reviewed cleanup.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Schema and data integrity | Data-storage owner | every schema change, migration, and data-validation rule has a named owner, a reversible change path, and a recorded evidence of the integrity check | schema change is reviewed by the data-storage owner; migration has a recorded up / down; data-validation test is on the change | schema change is reviewed by the data-storage owner | when the project stops using a structured store |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Schema and data integrity | Data-storage owner | every schema change, migration, and data-validation rule has a named owner, a reversible change path, and a recorded evidence of the integrity check | schema change is reviewed by the data-storage owner; migration has a recorded up / down; data-validation test is on the change | schema change is reviewed by the data-storage owner | deterministic: PROJECT-FACT-UNRESOLVED | when the project stops using a structured store |
 
 ## Project facts to resolve
 
@@ -124,4 +128,4 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: data-storage-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

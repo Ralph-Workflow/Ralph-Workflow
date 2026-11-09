@@ -33,6 +33,7 @@ def _control(
     cost_basis: str = "estimate",
     detects: str | None = None,
     retirement_trigger: str | None = None,
+    enforcement: str = "deterministic: make test",
 ) -> str:
     detected = detects or f"distinct black-box failure for {control_id}"
     retirement = retirement_trigger or f"when the {control_id} control is retired"
@@ -49,6 +50,7 @@ marginal_cost_seconds = {cost}
 cost_basis = "{cost_basis}"
 evidence = "{evidence}"
 detects = "{detected}"
+enforcement = "{enforcement}"
 retirement_trigger = "{retirement}"
 lifecycle = "review when risk or contract changes"
 disposition = "{disposition}"
@@ -63,7 +65,7 @@ def _manifest(
     extra_lanes: str = "",
     kernel: str = '["public-contract"]',
     extra: str = "",
-    schema_version: str = "v2",
+    schema_version: str = markers.PORTFOLIO_SCHEMA_VERSION,
 ) -> str:
     return f"""
 schema_version = "{schema_version}"

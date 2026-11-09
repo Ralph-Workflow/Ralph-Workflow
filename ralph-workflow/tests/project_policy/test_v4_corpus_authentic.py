@@ -30,10 +30,12 @@ def _clean_policy_prose(body: str) -> str:
     verification commands. This helper applies those standard resolutions.
     """
     body = re.sub(r"<!--\s*RALPH-STARTER-TEMPLATE:.*?-->\s*", "", body, flags=re.DOTALL)
+    body = re.sub(r"<!--\s*REPLACE-ME:.*?-->\s*", "", body, flags=re.DOTALL)
     body = re.sub(r"RALPH-COMMAND:\s*PROJECT-FACT-UNRESOLVED", "RALPH-COMMAND: make test", body)
     body = body.replace("<date>", "2026-07-13")
     body = body.replace("<trigger>", "policy-change")
     body = body.replace("REPLACE-ME", "verified-token")
+    body = body.replace("deterministic: PROJECT-FACT-UNRESOLVED", "deterministic: make test")
     body = body.replace("PROJECT-FACT-UNRESOLVED", "verified-value")
     return body
 
@@ -53,7 +55,7 @@ _CLEAN_V4_STARTERS: dict[str, str] = {
 }
 
 
-def _build_v4_pack(
+def build_v4_pack(
     stack: ProjectStack | None = None,
     *,
     exclude_files: tuple[str, ...] = (),
@@ -84,6 +86,9 @@ def _build_v4_pack(
     if portfolio_content is not None:
         ws.write(markers.PORTFOLIO_PATH, portfolio_content)
     return ws
+
+
+_build_v4_pack = build_v4_pack
 
 
 def test_v4_starter_source_present_in_authentic_snapshot() -> None:
@@ -197,11 +202,11 @@ def test_v4_pack_does_not_require_v2_portfolio() -> None:
     )
 
 
-def test_fresh_v5_pack_validates_against_v5_manifest() -> None:
-    """The current (v5) shipped starters MUST validate against the v5 manifest.
+def test_fresh_v6_pack_validates_against_v6_manifest() -> None:
+    """The current (v6) shipped starters MUST validate against the v6 manifest.
 
-    A fresh v5 pack populated with shipped starters (with resolved facts/headings/banner)
-    and shipped v2 portfolio calls validate_readiness and asserts READY (no findings).
+    A fresh v6 pack populated with shipped starters (with resolved facts/headings/banner)
+    and shipped v3 portfolio calls validate_readiness and asserts READY (no findings).
     """
     ws = MemoryWorkspace()
     for name in markers.CORE_POLICY_FILES:
@@ -221,10 +226,10 @@ def test_fresh_v5_pack_validates_against_v5_manifest() -> None:
     ws.write(markers.PORTFOLIO_PATH, shipped_portfolio)
 
     findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
-    assert findings == [], f"fresh v5 pack must evaluate to READY; got: {findings}"
+    assert findings == [], f"fresh v6 pack must evaluate to READY; got: {findings}"
 
     parsed = portfolio.parse_portfolio_toml(shipped_portfolio)
-    assert parsed.schema_version == "v2"
+    assert parsed.schema_version == "v3"
 
 
 def test_frozen_v4_pack_missing_required_heading_fails() -> None:

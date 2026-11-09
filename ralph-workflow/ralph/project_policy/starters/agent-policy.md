@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: agent-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -47,10 +47,14 @@ the truthfulness obligations, and the documentation update obligations.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Selective loading | Agent owner | agents load the kernel plus only the policies triggered by the changed surfaces | agents read the kernel first; agents do not load conditional starters whose trigger has not fired | agents read the kernel first | when every domain becomes a kernel-level concern |
-| Three-state reporting | Agent owner | AGENTS.md, status bar, CLI, and remediation prompts report every readiness dimension | each surface carries wording for structure_complete, implementation_verified, outcome_evidence_reviewed | each surface carries wording for structure_complete, implementation_verified, outcome_evidence_reviewed | when the kernel absorbs the three dimensions |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Selective loading | Agent owner | agents load the kernel plus only the policies triggered by the changed surfaces | agents read the kernel first; agents do not load conditional starters whose trigger has not fired | agents read the kernel first | deterministic: PROJECT-FACT-UNRESOLVED | when every domain becomes a kernel-level concern |
+| Three-state reporting | Agent owner | AGENTS.md, status bar, CLI, and remediation prompts report every readiness dimension | each surface carries wording for structure_complete, implementation_verified, outcome_evidence_reviewed | each surface carries wording for structure_complete, implementation_verified, outcome_evidence_reviewed | deterministic: PROJECT-FACT-UNRESOLVED | when the kernel absorbs the three dimensions |
 
 ## Project facts to resolve
 
@@ -169,4 +173,4 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: agent-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: execution-kernel.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -113,13 +113,17 @@ on portfolio parse.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Truthful evidence | Verification owner | every claim is backed by a record the agent can show | RALPH-COMMAND: present and exit-code recorded; no narration-only claim in the result body | RALPH-COMMAND: present and exit-code recorded | when a claim-presentation proof replaces the recorded evidence with a published artifact |
-| Fail-closed verification | Gate-script owner | a check that cannot run blocks the run | gate script returns non-zero on collection error, missing tool, or timeout | gate script returns non-zero on collection error, missing tool, or timeout | when the same defect cannot recur (e.g. the tool is no longer wired) |
-| Bounded execution | Gate-script owner | every long-running action carries a runner-enforced cap | per-step / per-suite / per-attempt timeout declared and enforced | per-step / per-suite / per-attempt timeout declared and enforced | when the action is no longer long-running or is retired |
-| No weakening of checks | Verification owner | no global silencer, blanket ignore, or removed time limit lands in the tree; the rule bans BYPASS MECHANISMS (per-file ignore, blanket `# noqa`, raised budgets, removed limits, lowered thresholds), NOT the narrow, owned, tool-supported suppressions that the typechecking ratchet governs | project linters, typecheckers, test-policy guards, and verification audits return zero bypass-mechanism findings | project linters, typecheckers, test-policy guards, and verification audits return zero bypass-mechanism findings | when the same defect cannot recur (e.g. the rule is removed from policy) |
-| Explicit unverified-claim reporting | Verification owner | every unverified claim is marked as such in the result body | result body contains an explicit "unverified" annotation for every claim without backing | result body contains an explicit "unverified" annotation for every claim without backing | when every claim is automatically backed (the kernel achieves this) |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Truthful evidence | Verification owner | every claim is backed by a record the agent can show | RALPH-COMMAND: present and exit-code recorded; no narration-only claim in the result body | RALPH-COMMAND: present and exit-code recorded | deterministic: PROJECT-FACT-UNRESOLVED | when a claim-presentation proof replaces the recorded evidence with a published artifact |
+| Fail-closed verification | Gate-script owner | a check that cannot run blocks the run | gate script returns non-zero on collection error, missing tool, or timeout | gate script returns non-zero on collection error, missing tool, or timeout | deterministic: PROJECT-FACT-UNRESOLVED | when the same defect cannot recur (e.g. the tool is no longer wired) |
+| Bounded execution | Gate-script owner | every long-running action carries a runner-enforced cap | per-step / per-suite / per-attempt timeout declared and enforced | per-step / per-suite / per-attempt timeout declared and enforced | deterministic: PROJECT-FACT-UNRESOLVED | when the action is no longer long-running or is retired |
+| No weakening of checks | Verification owner | no global silencer, blanket ignore, or removed time limit lands in the tree; the rule bans BYPASS MECHANISMS (per-file ignore, blanket `# noqa`, raised budgets, removed limits, lowered thresholds), NOT the narrow, owned, tool-supported suppressions that the typechecking ratchet governs | project linters, typecheckers, test-policy guards, and verification audits return zero bypass-mechanism findings | project linters, typecheckers, test-policy guards, and verification audits return zero bypass-mechanism findings | deterministic: PROJECT-FACT-UNRESOLVED | when the same defect cannot recur (e.g. the rule is removed from policy) |
+| Explicit unverified-claim reporting | Verification owner | every unverified claim is marked as such in the result body | result body contains an explicit "unverified" annotation for every claim without backing | result body contains an explicit "unverified" annotation for every claim without backing | deterministic: PROJECT-FACT-UNRESOLVED | when every claim is automatically backed (the kernel achieves this) |
 
 ## Project facts to resolve
 
@@ -218,7 +222,7 @@ be weakened to obtain a passing result.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: execution-kernel.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`
 
 ## Research basis
 

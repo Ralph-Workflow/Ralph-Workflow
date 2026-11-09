@@ -291,7 +291,7 @@ tests/pipeline/test_terminal_mcp_error_supervisor_ordering.py|0,3,0
 tests/process/monitor/test_dispatch_all_transports.py|0,2,0
 tests/process/test_spawn_env_sanitizer.py|4,0,0
 tests/project_policy/test_analysis.py|0,0,1
-tests/project_policy/test_authentic_v4_consent_flow.py|0,2,7
+tests/project_policy/test_authentic_v4_consent_flow.py|0,2,4
 tests/project_policy/test_citation_workspace_restore.py|0,0,2
 tests/project_policy/test_claim_scope_column_sweep.py|0,5,0
 tests/project_policy/test_claim_scope_guard_rows.py|0,3,0

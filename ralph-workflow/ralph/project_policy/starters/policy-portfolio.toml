@@ -1,4 +1,4 @@
-schema_version = "v2"
+schema_version = "v3"
 default_budget_seconds = 60.0
 kernel_controls = ["policy-structure", "public-behavior"]
 
@@ -42,6 +42,7 @@ detects = "validator finding list and composed portfolio record"
 retirement_trigger = "when the deterministic preflight is replaced by a published equivalent"
 lifecycle = "review on every portfolio schema change; replace only with equivalent deterministic coverage"
 disposition = "KEEP"
+enforcement = "deterministic: PROJECT-FACT-UNRESOLVED"
 
 [[controls]]
 id = "public-behavior"
@@ -58,6 +59,7 @@ detects = "preserved public-surface artifact with immutable subject, run, valida
 retirement_trigger = "when every behavior claim is provable at a cheaper deterministic layer"
 lifecycle = "review when the public contract or cheapest sufficient proof layer changes"
 disposition = "KEEP"
+enforcement = "deterministic: PROJECT-FACT-UNRESOLVED"
 
 [local_tightening]
 controls = []

@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: testing-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -372,14 +372,18 @@ reinstated to raise a count or percentage.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Cheapest-layer regression | Test owner | every bug fix to behavior carries a regression test that fails on the bug and passes on the fix | test name encodes the regression; test fails on the bug commit; test passes on the fix commit | test name encodes the regression | when a higher-layer test that pins the same observable contract covers the regression |
-| Real-boundary set | Test owner | browser / database / network-adapter / packaging / subprocess risks are covered at the real boundary | named profile covers each real-boundary risk; per-risk journey present in the profile manifest | named profile covers each real-boundary risk | when a deterministic, cheaper test covers the same risk class |
-| Deterministic seam | Test owner | tests run deterministic clock / network / DNS / filesystem / process seams without evasion | test injects the seam; no test depends on ambient clock, network, or filesystem properties | test injects the seam | when the seam is no longer needed (the production code is pure) |
-| Browser budget, not cardinality | Test owner | the default-lane browser time budget is a measured value plus a distinct-risk inventory | RALPH-FACT browser_budget_seconds declared; new browser journey either fits the budget or carries a distinct-risk justification | RALPH-FACT browser_budget_seconds declared | when the project stops using a browser at all |
-| Narrowest observable boundary | Test owner | tests assert at the narrowest useful boundary; exposing a private method or adding a wrapper solely to satisfy a test is a violation | no test imports a private symbol solely to invoke it; no wrapper function exists only to make a test possible | no test imports a private symbol solely to invoke it | when the rule is restated as a kernel-level constraint |
-| `suite-budget-ratchet` Suite budget ratchet | Test owner | the default suite time budget shrinks freely; growth is rejected absent a reviewed change | the recorded suite_time_budget is at or below its prior recorded value; growth is absent a reviewed change | the current suite_time_budget value per project | when the ratchet is retired by the kernel |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Cheapest-layer regression | Test owner | every bug fix to behavior carries a regression test that fails on the bug and passes on the fix | test name encodes the regression; test fails on the bug commit; test passes on the fix commit | test name encodes the regression | deterministic: PROJECT-FACT-UNRESOLVED | when a higher-layer test that pins the same observable contract covers the regression |
+| Real-boundary set | Test owner | browser / database / network-adapter / packaging / subprocess risks are covered at the real boundary | named profile covers each real-boundary risk; per-risk journey present in the profile manifest | named profile covers each real-boundary risk | deterministic: PROJECT-FACT-UNRESOLVED | when a deterministic, cheaper test covers the same risk class |
+| Deterministic seam | Test owner | tests run deterministic clock / network / DNS / filesystem / process seams without evasion | test injects the seam; no test depends on ambient clock, network, or filesystem properties | test injects the seam | deterministic: PROJECT-FACT-UNRESOLVED | when the seam is no longer needed (the production code is pure) |
+| Browser budget, not cardinality | Test owner | the default-lane browser time budget is a measured value plus a distinct-risk inventory | RALPH-FACT browser_budget_seconds declared; new browser journey either fits the budget or carries a distinct-risk justification | RALPH-FACT browser_budget_seconds declared | deterministic: PROJECT-FACT-UNRESOLVED | when the project stops using a browser at all |
+| Narrowest observable boundary | Test owner | tests assert at the narrowest useful boundary; exposing a private method or adding a wrapper solely to satisfy a test is a violation | no test imports a private symbol solely to invoke it; no wrapper function exists only to make a test possible | no test imports a private symbol solely to invoke it | deterministic: PROJECT-FACT-UNRESOLVED | when the rule is restated as a kernel-level constraint |
+| `suite-budget-ratchet` Suite budget ratchet | Test owner | the default suite time budget shrinks freely; growth is rejected absent a reviewed change | the recorded suite_time_budget is at or below its prior recorded value; growth is absent a reviewed change | the current suite_time_budget value per project | deterministic: PROJECT-FACT-UNRESOLVED | when the ratchet is retired by the kernel |
 
 ## Project facts to resolve
 
@@ -641,7 +645,7 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: testing-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`
 
 ## Visual design evidence
 

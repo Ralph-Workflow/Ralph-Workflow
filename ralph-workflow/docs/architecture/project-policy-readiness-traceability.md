@@ -63,28 +63,32 @@ Every applicable starter (core and conditional) carries a
 rule survives a kernel bump: a rule in body prose without an
 inventory row is not enforceable. The grammar is pinned:
 
-| Guard | Owner | Protected outcome | Detected condition | Retirement trigger |
-|---|---|---|---|---|
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
 
-Five cells per row; pipes balanced; the `Detected condition` cell
+Seven cells per row; pipes balanced; the `Detected condition` cell
 must mirror any broad-guarantee phrase in `Protected outcome` (the
-deterministic claim-scope rule, B7). The validator emits a stable
-`RWP-INVENTORY:*` finding on a missing or malformed table.
+deterministic claim-scope rule, B7). The `Enforcement` column
+declares `deterministic: <id>` or `advisory: <reason>; review: <trigger>`.
+The validator emits a stable `RWP-INVENTORY:*` finding on a missing or
+malformed table.
 
-## Portfolio schema v2
+## Portfolio schema v3
 
-The shipped `policy-portfolio.toml` carries schema version `v2`.
-v2 adds two required control fields:
+The shipped `policy-portfolio.toml` carries schema version `v3`.
+v3 adds a required control field:
 
-* `detects` — the observable condition the detector actually reports.
-* `retirement_trigger` — when to retire the control.
+* `enforcement` — `deterministic: <id>` or `advisory: <reason>; review: <trigger>`.
+
+Earlier schema versions:
+* v2 required `detects` (the observable condition) and `retirement_trigger`.
+* v1 was the legacy unbounded/implicit schema.
 
 A control whose `protected_outcome` carries a broad-guarantee phrase
 that does NOT also appear in `detects` is rejected on parse. Frozen
-v1 packs keep v1 validation (the `core_files_for_version` helper
-selects the manifest a frozen pack is validated against, so a
-frozen v1 portfolio and a v4-frozen policy pack are both
-acceptable).
+packs keep their schema validation (the `spec_for_version` helper
+selects the manifest and grammar a frozen pack is validated against, so
+frozen v1/v2 portfolios and v4/v5 frozen policy packs remain supported).
 
 ## Frozen-pack manifest (B2)
 

@@ -60,7 +60,7 @@ Start each `RALPH-COMMAND` with an approved tool. A truthful `RALPH-PENDING` ent
 
 ## Complete the corpus
 
-Replace every `RALPH-FACT:` placeholder with verified policy. Remove applied `RALPH-STARTER-TEMPLATE` and `REPLACE-ME` instructions. Finish with no unresolved or completion marker. Add a `## Research basis` citation block; give inactive conditional domains dated reactivation triggers; retain `{{ migrated_marker }}` in conventional locations; and keep each policy in its canonical file.
+Replace every `RALPH-FACT:` placeholder with verified policy. Remove applied `RALPH-STARTER-TEMPLATE` and `REPLACE-ME` instructions. Finish with no unresolved or completion marker. Resolve Guard inventory Enforcement cells using the enforcement ladder: prefer `deterministic: <id>` where `<id>` resolves to a declared `RALPH-COMMAND:` value or an approved gate command; justify `advisory: <reason>; review: <trigger>` when no deterministic enforcer exists or is feasible. Keep instruction surfaces lean: state qualitative findings rather than unverified numbers or bloat; do not repeat kernel rules in domain policies. Add a `## Research basis` citation block; give inactive conditional domains dated reactivation triggers; retain `{{ migrated_marker }}` in conventional locations; and keep each policy in its canonical file.
 
 Integrate one concise, short managed block between `{{ agents_block_begin }}` and `{{ agents_block_end }}` in AGENTS.md so agents discover {{ canonical_dir }}; do not leave it as an invisible appended section. If CLAUDE.md exists, point it to AGENTS.md. Preserve standard SECURITY.md and CONTRIBUTING.md headings with the migrated marker.
 
@@ -68,7 +68,7 @@ Integrate one concise, short managed block between `{{ agents_block_begin }}` an
 
 Finish after resolving every listed finding. Report changed files, migrations, evidence sources, probes, and residual blockers. The runtime then reruns the readiness validator; do not claim completion when a listed finding remains unresolved.
 
-## Three-state readiness (v5)
+## Three-state readiness (v6)
 
 Current readiness: structure_complete={{ readiness_structure_complete | default('unknown') }}, implementation_verified={{ readiness_implementation_verified | default('unknown') }}, outcome_evidence_reviewed={{ readiness_outcome_evidence_reviewed | default('unknown') }}.
 The runtime reports THREE dimensions, not two: structure complete (the validator passes), implementation verified (declared gates ran exit 0 with the current policy-content hash), and outcome evidence reviewed (every declared gate recorded). A structural READY is the caching gate; structural READY is NOT semantic correctness. Your job closes the structural dimension; the runtime and the analysis phase own the other two and surface them in the CLI emit and the status bar footer as `Policy: S*/I*/O*`. Do not present a structural-READY remediation as semantic correctness.

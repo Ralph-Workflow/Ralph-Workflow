@@ -153,9 +153,16 @@ def test_pending_fact_near_miss_sentinel_is_flagged() -> None:
 
 
 def test_full_testing_policy_with_pending_gate_validates_clean() -> None:
-    body = _complete_policy_body(filename="testing-policy.md").replace(
-        "RALPH-COMMAND: make test",
-        "RALPH-PENDING: pytest (assumed 2026-07-12); review trigger: once test deps are installed",
+    body = (
+        _complete_policy_body(filename="testing-policy.md")
+        .replace(
+            "RALPH-COMMAND: make test",
+            "RALPH-PENDING: pytest (assumed 2026-07-12); review trigger: once test deps are installed",
+        )
+        .replace(
+            "deterministic: make test",
+            "advisory: pending test deps; review: once test deps are installed",
+        )
     )
     ws = MemoryWorkspace()
     ws.write(_TEST_PATH, body)

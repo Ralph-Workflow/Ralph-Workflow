@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: ux-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -45,9 +45,13 @@ interaction behaviour, or usability.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Perceptual judgment routed to human review | UX owner | perceptual / aesthetic / editorial judgments are routed to the RALPH-REVIEW: lane, not encoded as a constant | no UX constant encodes a subjective judgment; the RALPH-REVIEW: line carries the verdict | no UX constant encodes a subjective judgment | when the project stops doing UX-sensitive work |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Perceptual judgment routed to human review | UX owner | perceptual / aesthetic / editorial judgments are routed to the RALPH-REVIEW: lane, not encoded as a constant | no UX constant encodes a subjective judgment; the RALPH-REVIEW: line carries the verdict | no UX constant encodes a subjective judgment | deterministic: PROJECT-FACT-UNRESOLVED | when the project stops doing UX-sensitive work |
 
 ## Project facts to resolve
 
@@ -175,7 +179,7 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: ux-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`
 
 ## Visual review authority
 

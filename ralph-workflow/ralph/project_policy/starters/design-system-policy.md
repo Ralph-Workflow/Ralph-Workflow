@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: design-system-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -41,9 +41,13 @@ surface.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Distinct-risk inventory | Design-system owner | every retained UI journey covers a distinct browser-only risk that no other check covers | per-journey justification is recorded; reviewer can name the distinct risk each journey covers | per-journey justification is recorded | when the journey's risk class is covered by a cheaper test |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Distinct-risk inventory | Design-system owner | every retained UI journey covers a distinct browser-only risk that no other check covers | per-journey justification is recorded; reviewer can name the distinct risk each journey covers | per-journey justification is recorded | deterministic: PROJECT-FACT-UNRESOLVED | when the journey's risk class is covered by a cheaper test |
 
 ## Project facts to resolve
 
@@ -174,7 +178,7 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: design-system-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`
 
 ## Review authority
 

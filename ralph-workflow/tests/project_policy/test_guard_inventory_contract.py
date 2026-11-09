@@ -35,18 +35,29 @@ from ralph.workspace.memory import MemoryWorkspace
 
 _HEADER = (
     "| Guard | Owner | Protected outcome | Detected condition | "
-    "Claim scope | Retirement trigger |\n"
-    "|---|---|---|---|---|---|\n"
+    "Claim scope | Enforcement | Retirement trigger |\n"
+    "|---|---|---|---|---|---|---|\n"
 )
 
 
-def _row(guard: str, owner: str, protected: str, detected: str, scope: str, retirement: str) -> str:
-    return f"| {guard} | {owner} | {protected} | {detected} | {scope} | {retirement} |\n"
+def _row(
+    guard: str,
+    owner: str,
+    protected: str,
+    detected: str,
+    scope: str,
+    retirement: str,
+    enforcement: str = "deterministic: make test",
+) -> str:
+    return (
+        f"| {guard} | {owner} | {protected} | {detected} | {scope} | "
+        f"{enforcement} | {retirement} |\n"
+    )
 
 
 def _starter(body_before: str, rows: str, body_after: str = "") -> str:
     return (
-        "<!-- ralph-policy-schema: v5 -->\n"
+        f"{markers.POLICY_SCHEMA_MARKER}\n"
         "<!-- ralph-policy-id: synthetic.md -->\n" + body_before + "## Guard inventory\n"
         "\n" + _HEADER + rows + body_after
     )

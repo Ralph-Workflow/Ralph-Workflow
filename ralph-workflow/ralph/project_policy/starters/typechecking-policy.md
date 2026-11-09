@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: typechecking-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -123,13 +123,17 @@ the project maintains and can statically check them.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Unknown at untrusted boundaries | Type owner | TypeScript `unknown` is allowed at untrusted boundaries with immediate narrowing | static type check accepts `unknown`; linter permits `unknown`; reviewer can name the boundary type and the narrowing call | static type check accepts `unknown` | when the type system gains first-class refinement types |
-| Typed tests | Type owner | tests are fully typed within the declared checker scope | static type check over the test files returns zero errors | static type check over the test files returns zero errors | when the test framework is removed from the project |
-| No typecheck bypass | Type owner | no global silencer (`ignore_missing_imports`, `follow_imports = silent`, `disallow_untyped_defs = false`, blanket per-file-ignores) lands in the tree; the no-bypass rule bans the bypass mechanisms, NOT the narrow suppressions governed by the suppression ratchet | audit_typecheck_bypass returns zero global-silencer findings | audit_typecheck_bypass returns zero global-silencer findings | when the rule is restated as a kernel-level constraint |
-| `sanctioned-dynamic-boundaries` Sanctioned dynamic boundary set | Type owner | the set of sanctioned dynamic boundaries is ratcheted; new entries require a documented justification | `sanctioned_dynamic_boundaries` list length is at or below the recorded baseline; new entries are absent absent a documented justification | the current `sanctioned_dynamic_boundaries` list length per project | when the ratcheted set is retired by the kernel |
-| `suppression-count-baseline` Suppression count baseline | Type owner | the suppression count is ratcheted; new suppressions require a documented exception | the project's recorded suppression count holds or shrinks | the current suppression count per project | when the suppression ratchet is retired by the kernel |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Unknown at untrusted boundaries | Type owner | TypeScript `unknown` is allowed at untrusted boundaries with immediate narrowing | static type check accepts `unknown`; linter permits `unknown`; reviewer can name the boundary type and the narrowing call | static type check accepts `unknown` | deterministic: PROJECT-FACT-UNRESOLVED | when the type system gains first-class refinement types |
+| Typed tests | Type owner | tests are fully typed within the declared checker scope | static type check over the test files returns zero errors | static type check over the test files returns zero errors | deterministic: PROJECT-FACT-UNRESOLVED | when the test framework is removed from the project |
+| No typecheck bypass | Type owner | no global silencer (`ignore_missing_imports`, `follow_imports = silent`, `disallow_untyped_defs = false`, blanket per-file-ignores) lands in the tree; the no-bypass rule bans the bypass mechanisms, NOT the narrow suppressions governed by the suppression ratchet | audit_typecheck_bypass returns zero global-silencer findings | audit_typecheck_bypass returns zero global-silencer findings | deterministic: PROJECT-FACT-UNRESOLVED | when the rule is restated as a kernel-level constraint |
+| `sanctioned-dynamic-boundaries` Sanctioned dynamic boundary set | Type owner | the set of sanctioned dynamic boundaries is ratcheted; new entries require a documented justification | `sanctioned_dynamic_boundaries` list length is at or below the recorded baseline; new entries are absent absent a documented justification | the current `sanctioned_dynamic_boundaries` list length per project | deterministic: PROJECT-FACT-UNRESOLVED | when the ratcheted set is retired by the kernel |
+| `suppression-count-baseline` Suppression count baseline | Type owner | the suppression count is ratcheted; new suppressions require a documented exception | the project's recorded suppression count holds or shrinks | the current suppression count per project | deterministic: PROJECT-FACT-UNRESOLVED | when the suppression ratchet is retired by the kernel |
 
 ## Project facts to resolve
 
@@ -313,4 +317,4 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: typechecking-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

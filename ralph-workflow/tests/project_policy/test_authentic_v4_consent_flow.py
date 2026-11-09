@@ -17,6 +17,8 @@ from ralph.project_policy import _prompt_ui, _schema_upgrade, markers, validator
 from ralph.workspace.memory import MemoryWorkspace
 from tests.project_policy.authentic_v4_data import V4_PORTFOLIO, V4_STARTERS
 
+V4_CORE_FILES = markers.core_files_for_version("v4")
+
 
 class _Selector:
     """Scripted select seam: returns each queued answer in order."""
@@ -61,7 +63,7 @@ def _build_unmodified_v4_pack() -> MemoryWorkspace:
     the upgrade-or-freeze consent gate.
     """
     ws = MemoryWorkspace()
-    for name in markers._V4_CORE_FILES:
+    for name in V4_CORE_FILES:
         raw_body = V4_STARTERS[name]
         cleaned_body = _clean_policy_prose(raw_body)
         ws.write(f"{markers.CANONICAL_DIR}{name}", cleaned_body)
@@ -102,7 +104,7 @@ def test_unmodified_v4_refuses_unattended_continuation() -> None:
     )
 
     # Verify no marker was rewritten
-    for name in markers._V4_CORE_FILES:
+    for name in V4_CORE_FILES:
         path = f"{markers.CANONICAL_DIR}{name}"
         first_line = ws.read(path).splitlines()[0]
         assert first_line == "<!-- ralph-policy-schema: v4 -->", (
@@ -129,7 +131,7 @@ def test_interactive_v4_freeze_rewrite_pins_first_line() -> None:
 
     assert resolved is True, "Interactive freeze must return True"
 
-    for name in markers._V4_CORE_FILES:
+    for name in V4_CORE_FILES:
         path = f"{markers.CANONICAL_DIR}{name}"
         content = ws.read(path)
         lines = content.splitlines()
@@ -171,9 +173,35 @@ def test_interactive_v4_upgrade_consent_returns_true_no_marker_rewrite() -> None
     assert resolved is True, "Interactive upgrade consent must return True"
 
     # No marker should be rewritten on upgrade consent
-    for name in markers._V4_CORE_FILES:
+    for name in V4_CORE_FILES:
         path = f"{markers.CANONICAL_DIR}{name}"
         first_line = ws.read(path).splitlines()[0]
         assert first_line == "<!-- ralph-policy-schema: v4 -->", (
             f"Upgrade mode must not rewrite markers; {path}: {first_line!r}"
         )
+
+
+def test_upgrade_matrix_v4_and_v5_to_v6() -> None:
+    """Freeze choice freezes both v4 and v5 policy files with appropriate markers."""
+    ws = MemoryWorkspace()
+    ws.write(
+        f"{markers.CANONICAL_DIR}testing-policy.md", "<!-- ralph-policy-schema: v4 -->\n# Test\n"
+    )
+    ws.write(
+        f"{markers.CANONICAL_DIR}linting-policy.md", "<!-- ralph-policy-schema: v5 -->\n# Lint\n"
+    )
+
+    emitted: list[str] = []
+    resolved = _schema_upgrade._maybe_resolve_schema_upgrade(
+        ws,
+        emit=emitted.append,
+        select=_Selector("freeze"),
+        is_tty=lambda: True,
+    )
+    assert resolved is True
+    assert ws.read(f"{markers.CANONICAL_DIR}testing-policy.md").startswith(
+        "<!-- ralph-policy-schema: freeze v4 -->"
+    )
+    assert ws.read(f"{markers.CANONICAL_DIR}linting-policy.md").startswith(
+        "<!-- ralph-policy-schema: freeze v5 -->"
+    )

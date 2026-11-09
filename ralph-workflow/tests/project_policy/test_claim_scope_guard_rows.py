@@ -38,7 +38,7 @@ def _starter_row(
 
 def _starter(rows: str) -> str:
     return (
-        "<!-- ralph-policy-schema: v5 -->\n"
+        "<!-- ralph-policy-schema: freeze v5 -->\n"
         "<!-- ralph-policy-id: synthetic.md -->\n"
         "## Guard inventory\n"
         "\n" + _HEADER + rows

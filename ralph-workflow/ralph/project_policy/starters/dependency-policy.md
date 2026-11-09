@@ -1,4 +1,4 @@
-<!-- ralph-policy-schema: v5 -->
+<!-- ralph-policy-schema: v6 -->
 <!-- ralph-policy-id: dependency-policy.md -->
 <!-- RALPH-STARTER-TEMPLATE: this file is a starter template, not yet this
 project's policy. A remediation agent rewrites it with verified project
@@ -39,10 +39,14 @@ lockfile.
 
 ## Guard inventory
 
-| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |
-|---|---|---|---|---|---|
-| Pinned dependencies | Dependency owner | every runtime dependency is pinned to an exact version with a lockfile | lockfile is present and recorded as a verification artifact | lockfile is present and recorded as a verification artifact | when the project ships only a single transitive closure (e.g. a vendored static binary) |
-| License compatibility | Dependency owner | every dependency is compatible with the project's declared license set | license audit returns zero incompatible findings | license audit returns zero incompatible findings | when the project ships no third-party code |
+<!-- REPLACE-ME: resolve each row's Enforcement column to 'deterministic: <command-id>'
+matching a declared RALPH-COMMAND or 'advisory: <reason>; review: <trigger>'.
+Then delete this comment. -->
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Pinned dependencies | Dependency owner | every runtime dependency is pinned to an exact version with a lockfile | lockfile is present and recorded as a verification artifact | lockfile is present and recorded as a verification artifact | deterministic: PROJECT-FACT-UNRESOLVED | when the project ships only a single transitive closure (e.g. a vendored static binary) |
+| License compatibility | Dependency owner | every dependency is compatible with the project's declared license set | license audit returns zero incompatible findings | license audit returns zero incompatible findings | deterministic: PROJECT-FACT-UNRESOLVED | when the project ships no third-party code |
 
 ## Project facts to resolve
 
@@ -185,4 +189,4 @@ governed by `execution-kernel.md §Kernel rules`.
 ## Ralph markers
 
 * Policy id: `<!-- ralph-policy-id: dependency-policy.md -->`
-* Schema version: `<!-- ralph-policy-schema: v5 -->`
+* Schema version: `<!-- ralph-policy-schema: v6 -->`

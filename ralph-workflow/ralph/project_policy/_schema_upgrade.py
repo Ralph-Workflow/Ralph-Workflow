@@ -101,7 +101,11 @@ def _maybe_resolve_schema_upgrade(
         freeze_match = re.fullmatch(r"<!-- ralph-policy-schema: freeze v([0-9]+) -->", first_line)
         if freeze_match is not None:
             frozen_version = int(freeze_match.group(1))
-            if frozen_version < current_version:
+            frozen_key = f"v{frozen_version}"
+            if frozen_version < current_version or (
+                policy_markers.is_allowed_frozen_version(frozen_key)
+                and frozen_version == current_version
+            ):
                 continue
             emit(
                 f"Policy {path} has invalid freeze schema v{frozen_version}; "

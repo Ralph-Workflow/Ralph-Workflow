@@ -18,6 +18,7 @@ A project is ready iff ``validate_readiness`` returns an empty list.
 
 from __future__ import annotations
 
+import ast
 import re
 from typing import TYPE_CHECKING
 
@@ -247,13 +248,82 @@ def _check_claude_md(workspace: Workspace) -> list[PolicyFinding]:
     return []
 
 
-def _check_core_policy_file(workspace: Workspace, filename: str) -> list[PolicyFinding]:
+def _extract_verify_step_labels(source: str) -> set[str]:
+    """Parse verify.py AST to extract step labels from _VERIFY_STEPS."""
+    labels: set[str] = set()
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return labels
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if (
+                isinstance(target, ast.Name)
+                and target.id == "_VERIFY_STEPS"
+                and isinstance(node.value, (ast.Tuple, ast.List))
+            ):
+                for elt in node.value.elts:
+                    if isinstance(elt, (ast.Tuple, ast.List)) and elt.elts:
+                        first = elt.elts[0]
+                        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                            labels.add(first.value)
+    return labels
+
+
+def _collect_known_enforcers(workspace: Workspace) -> frozenset[str]:
+    """Collect known enforcer ids across policy files and verify.py steps.
+
+    Deterministic exact-string resolution for the guard inventory
+    ``Enforcement`` column:
+    1. Every ``RALPH-COMMAND:`` value declared in any policy file in the
+       canonical directory.
+    2. In Ralph's own repository (detected by ``ralph-workflow/ralph/verify.py``
+       or ``ralph/verify.py``), every step label in ``_VERIFY_STEPS``.
+    """
+    enforcers: set[str] = set()
+    all_files = (*markers.CORE_POLICY_FILES, *markers.CONDITIONAL_POLICY_FILES.values())
+    for filename in all_files:
+        path = f"{markers.CANONICAL_DIR}{filename}"
+        if not workspace.exists(path):
+            continue
+        for line in workspace.read(path).splitlines():
+            if line.startswith(markers.COMMAND_MARKER):
+                val = line[len(markers.COMMAND_MARKER) :].strip()
+                if val:
+                    enforcers.add(val)
+
+    verify_path = (
+        "ralph-workflow/ralph/verify.py"
+        if workspace.exists("ralph-workflow/ralph/verify.py")
+        else "ralph/verify.py"
+        if workspace.exists("ralph/verify.py")
+        else None
+    )
+    if verify_path is not None:
+        enforcers.update(_extract_verify_step_labels(workspace.read(verify_path)))
+    return frozenset(enforcers)
+
+
+def _check_core_policy_file(
+    workspace: Workspace,
+    filename: str,
+    *,
+    known_enforcers: frozenset[str] | None = None,
+) -> list[PolicyFinding]:
     """Validate one canonical core policy file."""
     path = f"{markers.CANONICAL_DIR}{filename}"
-    return _check_policy_file(workspace, path, filename)
+    return _check_policy_file(workspace, path, filename, known_enforcers=known_enforcers)
 
 
-def _check_policy_file(workspace: Workspace, path: str, filename: str) -> list[PolicyFinding]:
+def _check_policy_file(
+    workspace: Workspace,
+    path: str,
+    filename: str,
+    *,
+    known_enforcers: frozenset[str] | None = None,
+) -> list[PolicyFinding]:
     """Validate one canonical policy file (presence, structure, fields, markers).
 
     Composed from small focused helpers to keep the branch count low.
@@ -268,7 +338,13 @@ def _check_policy_file(workspace: Workspace, path: str, filename: str) -> list[P
             )
         ]
     content = workspace.read(path)
-    return _validate_existing_policy_file_with_workspace(workspace, content, path, filename)
+    return _validate_existing_policy_file_with_workspace(
+        workspace,
+        content,
+        path,
+        filename,
+        known_enforcers=known_enforcers,
+    )
 
 
 def get_citation_workspace_slot() -> Workspace | None:
@@ -289,7 +365,12 @@ def set_citation_workspace_slot(workspace: Workspace | None) -> None:
 
 
 def _validate_existing_policy_file_with_workspace(
-    workspace: Workspace, content: str, path: str, filename: str
+    workspace: Workspace,
+    content: str,
+    path: str,
+    filename: str,
+    *,
+    known_enforcers: frozenset[str] | None = None,
 ) -> list[PolicyFinding]:
     """Like :func:`_validate_existing_policy_file` but also publishes the workspace seam.
 
@@ -301,12 +382,25 @@ def _validate_existing_policy_file_with_workspace(
     previous = _content_checks._CITATION_PATH_WORKSPACE[0]
     _content_checks._CITATION_PATH_WORKSPACE[0] = workspace
     try:
-        return _validate_existing_policy_file(content, path, filename)
+        return _validate_existing_policy_file(
+            content,
+            path,
+            filename,
+            known_enforcers=known_enforcers
+            if known_enforcers is not None
+            else _collect_known_enforcers(workspace),
+        )
     finally:
         _content_checks._CITATION_PATH_WORKSPACE[0] = previous
 
 
-def _validate_existing_policy_file(content: str, path: str, filename: str) -> list[PolicyFinding]:
+def _validate_existing_policy_file(
+    content: str,
+    path: str,
+    filename: str,
+    *,
+    known_enforcers: frozenset[str] | None = None,
+) -> list[PolicyFinding]:
     """Validate every check that operates on an existing policy file's content."""
     findings: list[PolicyFinding] = []
     findings.extend(_check_markers(content, path, filename))
@@ -318,13 +412,48 @@ def _validate_existing_policy_file(content: str, path: str, filename: str) -> li
     findings.extend(_check_capture_command_fact(content, path, filename))
     findings.extend(_check_commands(content, path, filename))
     findings.extend(_check_template_banner(content, path, filename))
-    # v5 guard-inventory check (B9). Every applicable starter (core and
-    # conditional) MUST carry a `## Guard inventory` table. Frozen packs
-    # at v4 are exempt: the table was introduced in v5 and a frozen
-    # v4 pack is validated against its own version's manifest, not
-    # the v5 contract.
-    if _frozen_schema_version(content) is None:
-        findings.extend(_check_guard_inventory(content, path, filename))
+    # Guard-inventory check (B9). Every applicable starter (core and
+    # conditional) MUST carry a `## Guard inventory` table when required
+    # by its schema version. Frozen packs whose spec has no guard_inventory_header
+    # (such as v4) are exempt.
+    frozen_v = _frozen_schema_version(content)
+    file_version = f"v{frozen_v}" if frozen_v is not None else markers.SCHEMA_VERSION
+    expected_header = markers.guard_inventory_header_for_version(file_version)
+    if expected_header is not None:
+        file_commands = {
+            line[len(markers.COMMAND_MARKER) :].strip()
+            for line in content.splitlines()
+            if line.startswith(markers.COMMAND_MARKER)
+            and line[len(markers.COMMAND_MARKER) :].strip()
+        }
+        enforcers_pool: set[str] = set(file_commands)
+        if known_enforcers is not None:
+            enforcers_pool.update(known_enforcers)
+        elif (
+            _content_checks._CITATION_PATH_WORKSPACE
+            and _content_checks._CITATION_PATH_WORKSPACE[0] is not None
+        ):
+            enforcers_pool.update(
+                _collect_known_enforcers(_content_checks._CITATION_PATH_WORKSPACE[0])
+            )
+        resolved_enforcers = (
+            frozenset(enforcers_pool)
+            if (
+                known_enforcers is not None
+                or _content_checks._CITATION_PATH_WORKSPACE[0] is not None
+                or file_commands
+            )
+            else None
+        )
+        findings.extend(
+            _check_guard_inventory(
+                content,
+                path,
+                filename,
+                expected_header=expected_header,
+                known_enforcers=resolved_enforcers,
+            )
+        )
     return findings
 
 
@@ -489,12 +618,14 @@ def _check_conditional_domain(
     domain: str,
     filename: str,
     required: bool,
+    *,
+    known_enforcers: frozenset[str] | None = None,
 ) -> list[PolicyFinding]:
     """Validate a required or already-present conditional policy file."""
     path = f"{markers.CANONICAL_DIR}{filename}"
     if not required and not workspace.exists(path):
         return []
-    return _check_policy_file(workspace, path, filename)
+    return _check_policy_file(workspace, path, filename, known_enforcers=known_enforcers)
 
 
 def _check_migration(workspace: Workspace) -> list[PolicyFinding]:
@@ -583,8 +714,8 @@ def _check_applicability_overrides(workspace: Workspace) -> list[PolicyFinding]:
     return findings
 
 
-def _is_unfrozen_v5_pack(workspace: Workspace, frozen_version: str | None) -> bool:
-    """Return True if workspace represents an active, unfrozen v5 policy pack."""
+def _is_unfrozen_current_pack(workspace: Workspace, frozen_version: str | None) -> bool:
+    """Return True if workspace represents an active, unfrozen current-schema policy pack."""
     if frozen_version is not None:
         return False
     if workspace.exists(f"{markers.CANONICAL_DIR}execution-kernel.md"):
@@ -594,6 +725,9 @@ def _is_unfrozen_v5_pack(workspace: Workspace, frozen_version: str | None) -> bo
         if workspace.exists(path) and markers.POLICY_SCHEMA_MARKER in workspace.read(path):
             return True
     return False
+
+
+_is_unfrozen_v5_pack = _is_unfrozen_current_pack
 
 
 def _check_portfolio(
@@ -619,18 +753,22 @@ def _check_portfolio(
     if frozen_version is None:
         frozen_version = _detect_frozen_version(workspace)
 
-    is_frozen_v4 = frozen_version == "v4"
     has_v1_marker = bool(re.search(r'schema_version\s*=\s*["\']v1["\']', content))
-    unfrozen_v5 = _is_unfrozen_v5_pack(workspace, frozen_version)
+    unfrozen_current = _is_unfrozen_current_pack(workspace, frozen_version)
 
-    if unfrozen_v5:
-        expected_version = "v2"
-    elif is_frozen_v4 or has_v1_marker:
-        expected_version = (
-            "v2" if re.search(r'schema_version\s*=\s*["\']v2["\']', content) else "v1"
-        )
+    if unfrozen_current:
+        expected_version = markers.PORTFOLIO_SCHEMA_VERSION
+    elif frozen_version is not None and frozen_version in markers.VERSION_SPECS:
+        if frozen_version == "v4":
+            expected_version = (
+                "v2" if re.search(r'schema_version\s*=\s*["\']v2["\']', content) else "v1"
+            )
+        else:
+            expected_version = markers.VERSION_SPECS[frozen_version].portfolio_schema_version
+    elif has_v1_marker:
+        expected_version = "v1"
     else:
-        expected_version = "v2"
+        expected_version = markers.PORTFOLIO_SCHEMA_VERSION
 
     try:
         parse_portfolio_toml(
@@ -708,8 +846,15 @@ def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[Policy
         if frozen_version is not None
         else markers.CORE_POLICY_FILES
     )
+    known_enforcers = _collect_known_enforcers(workspace)
     for filename in core_manifest:
-        findings.extend(_check_core_policy_file(workspace, filename))
+        findings.extend(
+            _check_core_policy_file(
+                workspace,
+                filename,
+                known_enforcers=known_enforcers,
+            )
+        )
 
     findings.extend(_check_per_language_coverage(workspace, stack))
     findings.extend(_check_verification_bypass(workspace))
@@ -718,7 +863,15 @@ def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[Policy
     requirements = evidence.conditional_domain_requirements(workspace, stack)
     for domain, filename in markers.CONDITIONAL_POLICY_FILES.items():
         required, _ = requirements[domain]
-        findings.extend(_check_conditional_domain(workspace, domain, filename, required))
+        findings.extend(
+            _check_conditional_domain(
+                workspace,
+                domain,
+                filename,
+                required,
+                known_enforcers=known_enforcers,
+            )
+        )
 
     findings.extend(_check_migration(workspace))
     return findings

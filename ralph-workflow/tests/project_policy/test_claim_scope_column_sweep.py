@@ -54,8 +54,8 @@ def _starter_guard_rows(starter_name: str) -> list[dict[str, str]]:
 
 
 @pytest.mark.parametrize("starter_name", sorted(iter_starter_names()))
-def test_every_shipped_starter_carries_six_column_grammar(starter_name: str) -> None:
-    """Every shipped starter's Guard inventory table has the pinned six-column header.
+def test_every_shipped_starter_carries_seven_column_grammar(starter_name: str) -> None:
+    """Every shipped starter's Guard inventory table has the pinned seven-column header.
 
     A starter whose table is missing or malformed is REJECTED here
     (no skip): the public validator emits a stable
@@ -85,12 +85,15 @@ def test_every_shipped_starter_carries_six_column_grammar(starter_name: str) -> 
         assert row.get("claim_scope"), (
             f"{starter_name} row {index} has an empty Claim scope cell: {row}"
         )
+        assert row.get("enforcement"), (
+            f"{starter_name} row {index} has an empty Enforcement cell: {row}"
+        )
         assert row.get("retirement_trigger"), (
             f"{starter_name} row {index} has an empty Retirement trigger cell: {row}"
         )
 
 
-def test_six_column_grammar_keeps_shipped_corpus_clean() -> None:
+def test_seven_column_grammar_keeps_shipped_corpus_clean() -> None:
     """The shipped corpus passes the public check with no inventory findings.
 
     The findings filter uses CASE-SENSITIVE exact-prefix matches
@@ -108,6 +111,9 @@ def test_six_column_grammar_keeps_shipped_corpus_clean() -> None:
         bad_prefixes = {
             _markers.CLAIM_SCOPE_MISSING_FINDING_ID,
             _markers.CLAIM_SCOPE_MULTI_SENTENCE_FINDING_ID,
+            _markers.ENFORCEMENT_MISSING_FINDING_ID,
+            _markers.ENFORCEMENT_UNKNOWN_ID_FINDING_ID,
+            _markers.ENFORCEMENT_ADVISORY_NO_TRIGGER_FINDING_ID,
             _markers.RATCHET_UNCOVERED_FINDING_ID,
             _markers.CONTROL_ORPHAN_FINDING_ID,
         }

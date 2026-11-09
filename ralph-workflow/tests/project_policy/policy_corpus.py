@@ -90,9 +90,9 @@ def complete_policy_body(filename: str) -> str:
             lines.extend(
                 (
                     "",
-                    "| Guard | Owner | Protected outcome | Detected condition | Claim scope | Retirement trigger |",
-                    "|---|---|---|---|---|---|",
-                    f"| test-guard-{filename} | test owner | flags missing test evidence | missing RALPH-FACT line is recorded as a finding | the count of missing RALPH-FACT lines per file | when the test policy is removed |",
+                    "| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |",
+                    "|---|---|---|---|---|---|---|",
+                    f"| test-guard-{filename} | test owner | flags missing test evidence | missing RALPH-FACT line is recorded as a finding | the count of missing RALPH-FACT lines per file | deterministic: make test | when the test policy is removed |",
                     "",
                 )
             )

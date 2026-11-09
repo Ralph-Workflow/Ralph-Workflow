@@ -54,6 +54,10 @@ def _complete_gate_script_policy() -> str:
         "RALPH-COMMAND: PROJECT-FACT-UNRESOLVED",
         "RALPH-COMMAND: shellcheck scripts/",
     )
+    content = content.replace(
+        "deterministic: PROJECT-FACT-UNRESOLVED",
+        "deterministic: shellcheck scripts/",
+    )
     # Strip the starter banner and every REPLACE-ME guidance comment.
     return re.sub(
         r"<!--\s*(RALPH-STARTER-TEMPLATE|REPLACE-ME):.*?-->", "", content, flags=re.DOTALL
