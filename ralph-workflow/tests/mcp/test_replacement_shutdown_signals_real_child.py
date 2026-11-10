@@ -494,6 +494,11 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
     alarm could fire before the handover started, or the handover's
     ack-wait could complete before the alarm landed. Observing the
     in-flight state removes the race without weakening any assertion.
+    The SIGINT disposition is pinned for the duration of the test (and
+    restored afterwards): a pytest-xdist worker does not raise
+    ``KeyboardInterrupt`` from a delivered SIGINT, so the test installs its
+    own handler that raises it. The trigger stays a genuine SIGINT, so the
+    assertion still fails when the signal is never delivered.
     The ack window is constructor-injected at 30s so the pause stage
     cannot expire before the fallback watchdog's ≤5s deadline under host
     load (the sleeper children never write the ack sentinel, so with the
@@ -588,12 +593,35 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
             if pause_sentinel.exists():
                 if not trigger_fired.is_set():
                     trigger_fired.set()
-                    signal.raise_signal(signal.SIGINT)
+                    # ``os.kill`` targets the PROCESS, so CPython delivers the
+                    # signal to the MAIN thread. A non-main-thread
+                    # ``signal.raise_signal(SIGINT)`` only marks the calling
+                    # thread's own interrupt flag, which the main thread never
+                    # observes, so the fallback could not reach it.
+                    os.kill(os.getpid(), signal.SIGINT)
                 return
             time.sleep(0.001)
 
     watchdog = threading.Thread(target=_sigint_watchdog, name="e45-sigint-watchdog", daemon=True)
     watchdog.start()
+
+    # Deterministic SIGINT disposition for this test.
+    #
+    # pytest-xdist replaces the worker process's SIGINT disposition (the
+    # controller tears the worker down on an interrupt), so a delivered
+    # SIGINT does not surface as a ``KeyboardInterrupt`` inside an xdist
+    # worker: the trigger fired, the handover burned its full 30 s ack
+    # window, and the assertion below failed with "KeyboardInterrupt did not
+    # fire mid-handover" (observed in the shard-8 profile; the same test
+    # passes standalone in ~1 s). A test-local handler that raises
+    # ``KeyboardInterrupt`` makes the delivery deterministic while keeping
+    # the trigger a genuine SIGINT: if the signal is never delivered, the
+    # assertion still fails.
+    def _raise_keyboard_interrupt(_signum: int, _frame: object) -> None:
+        raise KeyboardInterrupt
+
+    previous_sigint_handler = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGINT, _raise_keyboard_interrupt)
 
     interrupted = False
     try:
@@ -601,6 +629,7 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
     except KeyboardInterrupt:
         interrupted = True
     finally:
+        signal.signal(signal.SIGINT, previous_sigint_handler)
         watchdog.join(timeout=1.0)
         # Cleanup: bridge shutdown reaps whatever is in _inner / _draining_inners.
         bridge.shutdown()

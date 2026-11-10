@@ -56,9 +56,6 @@ markers MUST appear verbatim before any heading or content.
 These rules previously appeared verbatim in every domain file's "AI
 execution instructions" section. They live here exactly once.
 
-These rules previously appeared verbatim in every domain file's "AI
-execution instructions" section. They live here exactly once.
-
 * **Truthful evidence**: a claim of compliance, a recorded finding,
   a test result, or a gate outcome MUST be reproducible from the inputs
   the change actually executed.

@@ -30,6 +30,7 @@ from ralph.cli._cli_override_input import CLIOverrideInput
 from ralph.cli.commands._commit_plumbing_options import CommitPlumbingOptions
 from ralph.cli.commands.cleanup import cleanup
 from ralph.cli.commands.contribute import contribute
+from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
 from ralph.cli.commands.star import star
 from ralph.cli.commands.workspace_health import workspace_health
 from ralph.config.bootstrap import (
@@ -1970,8 +1971,6 @@ def _run_pipeline(
 
     display = resolve_active_display(None, display_context)
     try:
-        from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
-
         request = RunPipelineRequest(
             config_path=_config_path(config),
             cli_overrides=opts.cli_overrides,
