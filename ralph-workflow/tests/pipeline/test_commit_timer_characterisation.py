@@ -7,6 +7,7 @@ pipeline phases, without relying on phase-name string literals.
 
 from __future__ import annotations
 
+import functools
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
 _DEFAULTS_DIR = Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults"
 
 
+@functools.cache
 def _policy() -> PipelinePolicy:
     return load_policy(_DEFAULTS_DIR).pipeline
 
@@ -76,6 +78,19 @@ def _sample_timing(phase: str, iteration: int = 0) -> PhaseTimingRecord:
         elapsed=timedelta(seconds=10),
         elapsed_seconds=10,
     )
+
+
+def _outer_budget_counter(policy: PipelinePolicy) -> str:
+    """Return the tracked budget counter charged by the commit phases.
+
+    The name is read from the policy so this characterisation stays
+    name-neutral.
+    """
+    for name, counter in policy.budget_counters.items():
+        if counter.tracks_budget:
+            return name
+    msg = "policy declares no tracked budget counter"
+    raise AssertionError(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -644,3 +659,146 @@ def test_commit_review_rejection_after_cycle_timebox_expired_transitions_to_fail
     assert next_state.commit_review_rejections == 1
     assert next_state.rollback_pending is False
     assert "expired" in (next_state.last_error or "")
+
+
+def _per_iteration_review_and_commit_phases(policy: PipelinePolicy) -> tuple[str, str]:
+    """Return the per-iteration review phase and the commit phase it feeds.
+
+    The per-iteration review path is the one whose commit phase is not a
+    lifecycle phase and declares its own ``commit_policy``. It is resolved
+    from the policy so this characterisation stays name-neutral.
+    """
+    for name, phase in policy.phases.items():
+        if phase.role != "commit_review":
+            continue
+        target = phase.transitions.on_success
+        target_def = policy.phases.get(target)
+        if target_def is None or policy.lifecycle_phases.get(target) is not None:
+            continue
+        if target_def.commit_policy is not None:
+            return name, target
+    msg = "no per-iteration commit review phase with a commit_policy target found"
+    raise AssertionError(msg)
+
+
+def test_cycle_timebox_remains_active_entering_per_iteration_commit_phase() -> None:
+    """Entering the per-iteration commit phase concludes only the development timer.
+
+    The cycle timer is concluded at its own ``end_entry`` (the final commit
+    phase), so the per-iteration commit boundary leaves it running with its
+    consumed seconds intact.
+    """
+    policy = _policy()
+    pre_commit = _phase_before_dev_commit(policy)
+    commit_phase = _dev_commit_entry(policy)
+
+    state = PipelineState(
+        phase=pre_commit,
+        dev_timebox_active=True,
+        dev_timebox_consumed_seconds=1500.0,
+        dev_timebox_started_at_epoch=4000.0,
+        cycle_timebox_active=True,
+        cycle_timebox_consumed_seconds=2100.0,
+        cycle_timebox_started_at_epoch=1000.0,
+    )
+
+    next_state, _ = reduce(
+        state,
+        PipelineEvent.AGENT_SUCCESS,
+        policy,
+        routing_timing=RoutingTiming(total_elapsed_seconds=2100.0),
+    )
+
+    assert next_state.phase == commit_phase
+    # The development timer concludes at this boundary ...
+    assert next_state.dev_timebox_active is False
+    assert next_state.dev_timebox_consumed_seconds == 0.0
+    assert next_state.dev_timebox_started_at_epoch is None
+    # ... while the cycle timer keeps running until its own end_entry.
+    assert next_state.cycle_timebox_active is True
+    assert next_state.cycle_timebox_consumed_seconds == 2100.0
+
+
+def test_rollback_on_per_iteration_review_path_resets_only_the_review_loop_counter() -> None:
+    """A rejection on the per-iteration review path resets the review loop counter only.
+
+    The per-iteration commit phase is not a lifecycle phase and declares no
+    ``increments_counter``, so the rollback charges no budget counter and does
+    not move ``cycle_timing_start_index`` — the very accounting a successful
+    commit on that path performs. ``commit_review_rejections`` still survives
+    the reset and is incremented.
+    """
+    policy = _policy()
+    review_phase, commit_phase = _per_iteration_review_and_commit_phases(policy)
+    commit_def = policy.phases[commit_phase]
+    commit_policy = commit_def.commit_policy
+    assert commit_policy is not None
+    assert policy.lifecycle_phases.get(commit_phase) is None
+    assert commit_policy.increments_counter is None
+
+    outer_counter = _outer_budget_counter(policy)
+    timings = (_sample_timing("development", iteration=0),)
+    state = PipelineState(
+        phase=review_phase,
+        phase_timings=timings,
+        cycle_timing_start_index=0,
+        commit_review_rejections=0,
+    )
+    for reset_field in commit_policy.loop_resets:
+        state = state.with_loop_iteration(reset_field, 2)
+    state = state.with_outer_progress(outer_counter, 1)
+
+    event = CommitReviewRejected(
+        reason="Mass deletion detected",
+        ref="refs/ralph/proposals/test-run/0",
+    )
+
+    next_state, _ = reduce(
+        state,
+        event,
+        policy,
+        routing_timing=RoutingTiming(total_elapsed_seconds=100.0),
+    )
+
+    # The loop counter declared by the fed commit phase is reset.
+    for reset_field in commit_policy.loop_resets:
+        assert next_state.get_loop_iteration(reset_field) == 0
+    # No budget counter is charged on this path.
+    assert next_state.get_outer_progress(outer_counter) == 1
+    # The cumulative-elapsed window is not restarted on this path.
+    assert next_state.cycle_timing_start_index == 0
+    # The rejection counter survives the reset and is incremented.
+    assert next_state.commit_review_rejections == 1
+    assert next_state.rollback_pending is True
+    assert next_state.rollback_ref == "refs/ralph/proposals/test-run/0"
+
+
+def test_successful_commit_on_per_iteration_review_path_charges_the_same_accounting() -> None:
+    """A successful commit on the per-iteration path charges exactly the same accounting.
+
+    The rollback and the commit are the same accounting path, so the rejection
+    characterisation above is identical to the commit characterisation.
+    """
+    policy = _policy()
+    review_phase, commit_phase = _per_iteration_review_and_commit_phases(policy)
+    commit_def = policy.phases[commit_phase]
+    commit_policy = commit_def.commit_policy
+    assert commit_policy is not None
+
+    outer_counter = _outer_budget_counter(policy)
+    timings = (_sample_timing("development", iteration=0),)
+    state = PipelineState(
+        phase=review_phase,
+        phase_timings=timings,
+        cycle_timing_start_index=0,
+    )
+    for reset_field in commit_policy.loop_resets:
+        state = state.with_loop_iteration(reset_field, 2)
+    state = state.with_outer_progress(outer_counter, 1)
+
+    result = apply_commit_outcome(state, state, skipped=False, policy=policy)
+
+    for reset_field in commit_policy.loop_resets:
+        assert result.get_loop_iteration(reset_field) == 0
+    assert result.get_outer_progress(outer_counter) == 1
+    assert result.cycle_timing_start_index == 0

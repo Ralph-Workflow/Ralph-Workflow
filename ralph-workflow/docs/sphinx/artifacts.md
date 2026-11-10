@@ -95,7 +95,7 @@ specific section or field is required.
 
 ## Commit review contract
 
-The `commit_review` artifact acts as the second stage of the pre-commit damage gate and cleanup phase.
+The `commit_review` artifact acts as the second stage of the pre-commit damage gate and edit phase. Commit review is a **damage gate**, not a code review: it answers only *"does this pending diff look like accidental damage?"*. Code quality and plan adherence belong to `development_analysis`.
 
 ### Frontmatter
 
@@ -113,19 +113,19 @@ tree_sha: 0123456789abcdef0123456789abcdef01234567
 
 ### Sections
 
-- **`## Actions`**: Optional section listing pre-commit repository cleanup actions:
-  - `- delete_file: <path>`: Deletes a transient or untracked file within permitted boundaries.
-  - `- add_to_gitignore: <pattern>`: Appends pattern to `.gitignore`.
-  - `- add_to_git_exclude: <pattern>`: Appends pattern to `.git/info/exclude`.
-  Every path is checked for printable ASCII characters and validated against security rules (protected system files, `.git` internals, and out-of-scope paths are blocked).
+- **`## Actions`**: **Required** section (it may be empty) listing pre-commit repository cleanup actions. Every item is `<action> | <value>` — the separator is a space-pipe-space. The colon form (`delete_file: <path>`) is rejected as a hard error, not a warning:
+  - `- delete_file | <path>`: Deletes a transient or untracked file within permitted boundaries.
+  - `- add_to_gitignore | <pattern>`: Appends the pattern to `.gitignore`.
+  - `- add_to_git_exclude | <pattern>`: Appends the pattern to `.git/info/exclude`.
+  Every `path`/`pattern` value must be printable ASCII (no whitespace, control characters, or non-ASCII characters) and must not start with `#`, which `.gitignore` and `.git/info/exclude` would read as a comment line. `delete_file` targets are additionally filtered by the runtime's delete-safety boundary, which declines protected basenames (`Dockerfile`, `Makefile`, `LICENSE`, `README`), lockfiles, paths whose lowercased form contains `tests/`, `test_`, `_test.`, `docs/`, or `doc/`, absolute paths, and paths that escape the repository root.
 - **`## Reason`**: Mandatory when `verdict: reject`; optional when `verdict: approve`. When rejecting, the reviewer must cite concrete paths or counts present in the proposal diff against `HEAD`. The engine mechanically verifies that every cited path exists in the diff and cited counts match; unverifiable citations fail closed as reviewer malfunctions rather than triggering rollbacks.
 
 ### Proposal sealing and rollback
 
 1. Before review, changes are sealed into `refs/ralph/proposals/<run>/<iteration>` using a temporary index.
-2. If Stage 1 deterministic tripwires trigger (mass deletion, protected file removal, oversized binaries), the engine rejects immediately without an agent.
+2. If Stage 1 **hard** tripwires trigger — mass deletion beyond `max_deleted_files` or `max_deleted_fraction`, or a protected path deleted or overwritten — the engine rejects immediately without an agent. **Soft** findings (out-of-scope paths, staged secrets, and oversized binaries above `binary_size_limit`) never reject on their own; they are handed to the review agent as evidence, and the agent can then offer a flagged binary for cleanup through the `## Actions` edit step (`delete_file` or `add_to_gitignore`).
 3. If Stage 2 approves, actions are applied, the tree is resealed, and the commit executor verifies that staging matches the approved `tree_sha`.
-4. If Stage 2 rejects, the engine checkpoints `rollback_pending` and cleanly restores the working tree to `HEAD` (or dirty baseline), forwarding the rejection reason and proposal ref to the next developer prompt.
+4. If Stage 2 rejects, the engine checkpoints `rollback_pending` and restores the working tree from the sealed proposal ref: `git read-tree --reset -u HEAD` (or the dirty run-start baseline) resets tracked files, and the proposal diff removes the files the proposal added. The rollback uses neither `git stash` nor a saved patch file. The rejection reason and proposal ref are forwarded to the next developer prompt.
 5. Preserved proposal refs can be recovered manually with `git checkout refs/ralph/proposals/<run>/<iteration> -- .`.
 
 ## Validation

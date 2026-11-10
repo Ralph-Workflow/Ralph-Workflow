@@ -6,19 +6,11 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from loguru import logger
 
-from ralph.phases._commit_review_events import CommitReviewLoopback
-from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
-from ralph.recovery.classifier import FailureCategory
+from ralph.phases._commit_review_events import CommitReviewEvent, CommitReviewLoopback
+from ralph.pipeline.events import Event, PipelineEvent
 
 if TYPE_CHECKING:
     from ralph.phases._commit_review_actions import CleanupApplyReport
-
-
-@runtime_checkable
-class _HasAnalysisComplete(Protocol):
-    """Protocol for artifacts reporting analysis_complete."""
-
-    analysis_complete: bool
 
 
 @runtime_checkable
@@ -84,14 +76,28 @@ def decide_commit_review_outcome(
     phase_name: str,
     report: CleanupApplyReport,
 ) -> CommitReviewLoopback | None:
-    """Evaluate whether action application requires a loopback retry hint."""
-    if report.declined_delete_paths:
-        hint = build_cleanup_retry_hint(report.declined_delete_paths, report.applied_count)
-        return CommitReviewLoopback(hint=hint)
+    """Return the loopback event when the applied batch needs another attempt.
+
+    An apply-time failure and a safety-classifier rejection are different
+    problems, so they get different hints: a rejected delete names the paths
+    the classifier refused, while an apply-time failure names the paths that
+    were accepted but could not be applied.
+    """
     if all_applications_failed(report):
-        tokens = [*report.failed_delete_paths, *report.failed_pattern_tokens]
-        hint = build_cleanup_retry_hint(tokens, 0)
-        return CommitReviewLoopback(hint=hint)
+        logger.warning(
+            "{}: every requested cleanup action failed at apply time; looping back",
+            phase_name,
+        )
+        return CommitReviewLoopback(hint=build_unapplied_retry_hint(report))
+    if report.declined_delete_paths:
+        logger.warning(
+            "{}: unsafe delete actions declined: {}",
+            phase_name,
+            report.declined_delete_paths,
+        )
+        return CommitReviewLoopback(
+            hint=build_cleanup_retry_hint(report.declined_delete_paths, report.applied_count)
+        )
     return None
 
 
@@ -99,16 +105,16 @@ def decide_cleanup_outcome(
     phase_name: str,
     cleanup: object,
     report: CleanupApplyReport,
-) -> list[Event]:
-    """Return the final phase event after action application for backward compatibility."""
-    if all_applications_failed(report):
-        tokens = [*report.failed_delete_paths, *report.failed_pattern_tokens]
-        return _recoverable_housekeeping_failure(
-            phase_name,
-            "all cleanup applications failed at apply time",
-            tokens,
-        )
-    return _analysis_complete_outcome(cleanup)
+) -> list[Event | CommitReviewEvent]:
+    """Return the phase events for one applied cleanup batch.
+
+    The batch decision comes first: when the agent has to try again the
+    batch wins, otherwise the artifact's verdict decides the outcome.
+    """
+    loopback = decide_commit_review_outcome(phase_name, report)
+    if loopback is not None:
+        return [loopback]
+    return _verdict_outcome(cleanup)
 
 
 def all_applications_failed(report: CleanupApplyReport) -> bool:
@@ -119,35 +125,10 @@ def all_applications_failed(report: CleanupApplyReport) -> bool:
     return report.applied_count == 0 and attempted > 0
 
 
-def _recoverable_housekeeping_failure(
-    phase_name: str,
-    label: str,
-    tokens: list[str],
-) -> list[Event]:
-    """Return a recoverable failure that must not terminate the run by itself."""
-    retry_hint = build_cleanup_retry_hint(tokens, 0)
-    logger.warning("{}: {}. Returning PhaseFailureEvent with retry hint.", phase_name, label)
-    return [
-        PhaseFailureEvent(
-            phase=phase_name,
-            reason=retry_hint,
-            recoverable=True,
-            retry_in_session=True,
-            failure_category=FailureCategory.ARTIFACT_VALIDATION,
-        )
-    ]
-
-
-def _analysis_complete_outcome(cleanup: object) -> list[Event]:
-    """Return success for complete analysis, otherwise loop back."""
-    if isinstance(cleanup, _HasAnalysisComplete):
-        if cleanup.analysis_complete:
-            return [PipelineEvent.AGENT_SUCCESS]
-        return [PipelineEvent.PHASE_LOOPBACK]
-    if isinstance(cleanup, _HasVerdict):
-        if cleanup.verdict == "approve":
-            return [PipelineEvent.AGENT_SUCCESS]
-        return [PipelineEvent.PHASE_LOOPBACK]
+def _verdict_outcome(cleanup: object) -> list[Event | CommitReviewEvent]:
+    """Return success for an approving verdict, otherwise loop back."""
+    if isinstance(cleanup, _HasVerdict) and cleanup.verdict == "approve":
+        return [PipelineEvent.AGENT_SUCCESS]
     return [PipelineEvent.PHASE_LOOPBACK]
 
 

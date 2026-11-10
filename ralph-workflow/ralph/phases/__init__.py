@@ -39,7 +39,7 @@ top-of-file declarations cycle-free without changing observable behavior.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TypeGuard
 
 from loguru import logger
 
@@ -69,6 +69,18 @@ class PhaseHandlerNotFoundError(Exception):
 
 # Phase handler signature: takes Effect and PhaseContext, returns list of Events
 PhaseHandler = Callable[["Effect", "PhaseContext"], list["Event"]]
+
+
+def _is_phase_handler(value: object) -> TypeGuard[PhaseHandler]:
+    """Return whether ``value`` can be used as a phase handler.
+
+    The registry's contract is the handler signature -- the same contract
+    every phase module carries. The runtime check proves that a callable
+    was supplied, which is what the registry needs before it publishes the
+    handler; the parameter and return types are the phase module's
+    obligation.
+    """
+    return callable(value)
 
 
 # Registry of built-in phase handlers
@@ -143,7 +155,9 @@ def register_role_handlers(policy: PipelinePolicy) -> None:
         elif phase_def.role == "verification" and phase_name not in HANDLERS:
             HANDLERS[phase_name] = _verification.handle_verification_phase
         elif phase_def.role == "commit_review" and phase_name not in HANDLERS:
-            HANDLERS[phase_name] = cast("PhaseHandler", _commit_review.handle_commit_review_phase)
+            commit_review_handler = _commit_review.handle_commit_review_phase
+            if _is_phase_handler(commit_review_handler):
+                HANDLERS[phase_name] = commit_review_handler
 
 
 def get_handler(phase_name: str) -> PhaseHandler:

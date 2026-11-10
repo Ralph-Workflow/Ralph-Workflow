@@ -155,6 +155,28 @@ analysis_complete: true
     assert "SPEC002" in error_ids
 
 
+def test_legacy_analysis_complete_never_reaches_the_parsed_content() -> None:
+    """The retired field is never surfaced as verdict content.
+
+    ``analysis_complete`` may sit in the frontmatter as an unknown key, but
+    the closed grammar maps only ``verdict``/``tree_sha``/``actions``/
+    ``reason`` into the artifact payload, so it can never stand in for the
+    verdict.
+    """
+    doc = f"""---
+type: commit_review
+verdict: approve
+tree_sha: {_VALID_TREE_SHA}
+analysis_complete: true
+---
+## Actions
+"""
+    content, diagnostics = parse_and_validate(doc, get_spec("commit_review"))
+    assert diagnostics == []
+    assert content["verdict"] == "approve"
+    assert "analysis_complete" not in content
+
+
 def test_commit_review_comment_injection_guard_rejects_hash_prefix() -> None:
     assert "SPEC010" in _error_ids(
         f"""---

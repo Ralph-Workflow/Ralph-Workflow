@@ -2077,9 +2077,8 @@ def _execute_pending_rollback_if_needed(
         f"Proposal ref: {next_state.rollback_ref}\n"
         f"Working tree rolled back to HEAD. To inspect rejected changes: git checkout {next_state.rollback_ref} -- .\n"
     )
-    dev_hint_path.write_text(
-        rejection_text, encoding="utf-8"
-    )  # filesystem-write-ok: record rollback retry context for next dev prompt
+    # filesystem-write-ok: record rollback retry context for the next dev prompt
+    dev_hint_path.write_text(rejection_text, encoding="utf-8")
     return next_state.copy_with(rollback_pending=False, rollback_ref=None)
 
 

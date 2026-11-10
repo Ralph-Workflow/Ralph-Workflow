@@ -21,6 +21,7 @@ from ralph.git.diff_entry import DiffEntry
 from ralph.git.git_command_queue import route_git_method
 from ralph.git.proposal_preflight_error import ProposalPreflightError
 from ralph.git.proposal_seal_error import ProposalSealError
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -85,12 +86,9 @@ def seal_pending(repo_root: Path | str, run_id: str, iteration: int | str) -> Se
             real_index_path = Path(
                 repo.index.path
             )  # filesystem-read-ok: inspect real index path to seed temporary index
-            if (
-                real_index_path.is_file()
-            ):  # filesystem-read-ok: probe real index existence before copying
-                shutil.copy2(
-                    real_index_path, tmp_index_path
-                )  # filesystem-write-ok: seed temporary index from real index to avoid full rehash
+            if DEFAULT_FILE_BACKEND.exists(real_index_path):
+                # filesystem-write-ok: seed the temporary index from the real index to avoid a full rehash
+                shutil.copy2(real_index_path, tmp_index_path)
 
             try:
                 with repo.git.custom_environment(GIT_INDEX_FILE=str(tmp_index_path)):
@@ -163,12 +161,9 @@ def seal_baseline(repo_root: Path | str, run_id: str, force: bool = False) -> Se
             real_index_path = Path(
                 repo.index.path
             )  # filesystem-read-ok: inspect real index path to seed temporary index
-            if (
-                real_index_path.is_file()
-            ):  # filesystem-read-ok: probe real index existence before copying
-                shutil.copy2(
-                    real_index_path, tmp_index_path
-                )  # filesystem-write-ok: seed temporary index from real index to avoid full rehash
+            if DEFAULT_FILE_BACKEND.exists(real_index_path):
+                # filesystem-write-ok: seed the temporary index from the real index to avoid a full rehash
+                shutil.copy2(real_index_path, tmp_index_path)
 
             try:
                 with repo.git.custom_environment(GIT_INDEX_FILE=str(tmp_index_path)):

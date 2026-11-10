@@ -76,9 +76,9 @@ all six settings.
 
 ### Accidental damage protection: two-stage commit review
 
-Before any code is committed, Ralph Workflow evaluates the pending diff through a two-stage commit review gate:
+Before any code is committed, Ralph Workflow evaluates the pending diff through a two-stage commit review gate. It is a **damage gate, not a code review**: it asks only whether the diff looks like accidental damage. Code quality and plan adherence belong to the analysis phase.
 
-1. **Deterministic tripwires:** The engine seals pending changes into an isolated proposal ref (`refs/ralph/proposals/<run>/<iteration>`) and checks deterministic damage tripwires against `HEAD` (such as mass deletion exceeding count or fraction limits, or removal of protected paths like `.git`, manifests, lockfiles, or `AGENTS.md`). Hard tripwires reject automatically without an agent.
+1. **Deterministic tripwires:** The engine seals pending changes into an isolated proposal ref (`refs/ralph/proposals/<run>/<iteration>`) and checks deterministic damage tripwires against `HEAD`. Hard tripwires — mass deletion beyond 50 deleted files or 25% of tracked files, or removal of protected paths like `.git`, manifests, lockfiles, or `AGENTS.md` — reject automatically without an agent. Out-of-scope paths, staged secrets, and binaries over 1 MB are softer findings: they reach the agent as review evidence, where a flagged binary can be offered for cleanup.
 2. **Agent review:** An agent inspects the sealed proposal diff and Stage 1 evidence, executes permitted cleanup actions (`delete_file`, `add_to_gitignore`, `add_to_git_exclude`), and submits an approved or rejected verdict bound to the sealed tree SHA.
 
 On rejection, the engine performs a crash-safe rollback restoring the tree to `HEAD` (or dirty run-start baseline) while preserving the proposal ref for inspection. Recover discarded changes at any time via:
@@ -86,6 +86,16 @@ On rejection, the engine performs a crash-safe rollback restoring the tree to `H
 ```bash
 git checkout refs/ralph/proposals/<run>/<iteration> -- .
 ```
+
+Four operating assumptions are worth knowing before you rely on the gate:
+
+- The rollback uses **neither `git stash` nor a saved patch** — it restores the tree from the sealed proposal ref.
+- A rejection that arrives after the cycle timebox expires routes to `failed_terminal`, not back to development.
+- An intentional large deletion gets **no plan-based bypass**: raise `max_deleted_files` / `max_deleted_fraction` in the pipeline policy TOML when you expect one.
+- The pre-rename phase names are not migrated. An in-flight run still holding `development_commit_cleanup` or `development_final_commit_cleanup` is unsupported — start a fresh run after upgrading.
+
+Per-setting details live in the
+[configuration reference](docs/sphinx/configuration.md#commit-review-configuration).
 
 ### Architecture: one source of truth per domain fact
 

@@ -17,6 +17,7 @@ from ralph.phases._commit_review_catalog import (
 )
 from ralph.phases.commit_review import (
     CommitReviewApproved,
+    CommitReviewGateFailed,
     CommitReviewLoopback,
     handle_commit_review_phase,
     seal_pending,
@@ -46,9 +47,6 @@ def _resolve_verdict(content: dict[str, object]) -> str:
     verdict = content.get("verdict")
     if verdict is not None:
         return str(verdict)
-    analysis_complete = content.get("analysis_complete")
-    if analysis_complete is not None and str(analysis_complete).strip().lower() != "true":
-        return "reject"
     return "approve"
 
 
@@ -169,7 +167,7 @@ def test_well_formed_leftover_is_missing_on_second_handle_without_resubmit(
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": True,
+            "verdict": "approve",
             "actions": [{"action": "delete_file", "path": "session-output.txt"}],
         },
     )
@@ -186,7 +184,7 @@ def test_resubmitted_duplicate_batch_remains_idempotent(tmp_git_repo: Path) -> N
     junk = tmp_git_repo / "session-output.txt"
     junk.write_text("tmp\n", encoding="utf-8")
     payload: dict[str, object] = {
-        "analysis_complete": True,
+        "verdict": "approve",
         "actions": [
             {"action": "delete_file", "path": "session-output.txt"},
             {"action": "add_to_gitignore", "pattern": "*.exe"},
@@ -222,7 +220,10 @@ def test_missing_artifact_bound_survives_highest_priority_reselection(
         events.append(_run(workspace, chain_manager=chain_manager)[0])
     assert isinstance(events[0], PhaseFailureEvent)
     assert events[0].failure_category is FailureCategory.ARTIFACT_VALIDATION
-    assert events[-1] is PipelineEvent.AGENT_SUCCESS
+    # The identical no-progress bound is a reviewer malfunction, so it fails
+    # the gate instead of proceeding to an unbound commit.
+    # RALPH-TEST-REASON: Phase returns CommitReviewGateFailed on bounded identical replay failure instead of AGENT_SUCCESS
+    assert isinstance(events[-1], CommitReviewGateFailed)
 
 
 def test_cleanup_failure_routes_to_commit_not_failed_terminal() -> None:
@@ -254,7 +255,7 @@ def test_next_prompt_contains_declined_and_apply_failed_paths(
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": True,
+            "verdict": "approve",
             "actions": [
                 {"action": "delete_file", "path": "app.py"},
                 {"action": "add_to_gitignore", "pattern": "*.bin"},
@@ -284,7 +285,7 @@ def test_mixed_declined_delete_and_throwing_ignore_is_not_applied_work(
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": True,
+            "verdict": "approve",
             "actions": [
                 {"action": "delete_file", "path": "lib.py"},
                 {"action": "add_to_gitignore", "pattern": "*.o"},
@@ -302,7 +303,10 @@ def test_mixed_declined_delete_and_throwing_ignore_is_not_applied_work(
     assert "*.o" not in ignore_text
     assert (tmp_git_repo / "lib.py").exists()
     assert PipelineEvent.AGENT_SUCCESS not in result
-    assert isinstance(result[0], PhaseFailureEvent)
+    # Every requested action failed at apply time: the phase loops back with the
+    # apply-time retry hint instead of failing the phase.
+    assert isinstance(result[0], CommitReviewLoopback)
+    assert "*.o" in result[0].hint
 
 
 def test_untracked_completion_report_md_deletes_and_tracked_is_declined(
@@ -314,7 +318,7 @@ def test_untracked_completion_report_md_deletes_and_tracked_is_declined(
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": True,
+            "verdict": "approve",
             "actions": [{"action": "delete_file", "path": "completion_report.md"}],
         },
     )
@@ -332,7 +336,7 @@ def test_untracked_completion_report_md_deletes_and_tracked_is_declined(
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": True,
+            "verdict": "approve",
             "actions": [{"action": "delete_file", "path": "completion_report.md"}],
         },
     )
@@ -360,7 +364,7 @@ def test_prompt_named_deletable_classes_match_engine_boundary(tmp_git_repo: Path
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": True,
+            "verdict": "approve",
             "actions": [
                 {"action": "delete_file", "path": "scratch.tmp"},
                 {"action": "delete_file", "path": "app.py"},
@@ -382,7 +386,7 @@ def test_prompt_named_deletable_classes_match_engine_boundary(tmp_git_repo: Path
         _write_commit_review_artifact(
             workspace,
             {
-                "analysis_complete": True,
+                "verdict": "approve",
                 "actions": [{"action": "delete_file", "path": example}],
             },
         )
@@ -400,7 +404,7 @@ def test_prompt_named_deletable_classes_match_engine_boundary(tmp_git_repo: Path
         _write_commit_review_artifact(
             workspace,
             {
-                "analysis_complete": True,
+                "verdict": "approve",
                 "actions": [{"action": "delete_file", "path": example}],
             },
         )

@@ -99,7 +99,7 @@ def commit_review_markdown(actions: Iterable[tuple[str, str]]) -> str:
     return f"""\
 ---
 type: commit_review
-analysis_complete: true
+verdict: approve
 ---
 ## Actions
 {rendered_actions}

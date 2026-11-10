@@ -186,6 +186,24 @@ def test_legacy_analysis_complete_rejected() -> None:
         normalize_commit_review_content({"analysis_complete": True, "actions": []})
 
 
+def test_legacy_analysis_complete_is_not_an_accepted_extra_field() -> None:
+    """The retired ``analysis_complete`` field is rejected even beside a valid verdict.
+
+    The contract has a single verdict field. ``analysis_complete`` is not a
+    second spelling of it, so the closed schema must refuse the payload
+    instead of quietly ignoring the legacy key.
+    """
+    with pytest.raises(TypedArtifactValidationError):
+        normalize_commit_review_content(
+            {
+                "verdict": "approve",
+                "tree_sha": _VALID_TREE_SHA,
+                "actions": [],
+                "analysis_complete": True,
+            }
+        )
+
+
 def test_git_exclude_action_requires_pattern() -> None:
     """Test that add_to_git_exclude action requires a pattern field."""
     with pytest.raises(TypedArtifactValidationError):

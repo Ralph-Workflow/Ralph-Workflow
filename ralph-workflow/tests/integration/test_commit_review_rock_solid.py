@@ -30,6 +30,7 @@ Testing rules followed:
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -41,11 +42,9 @@ if TYPE_CHECKING:
 from ralph.mcp.artifacts._commit_review import CommitReview
 from ralph.mcp.artifacts._commit_review_action import CommitReviewAction
 from ralph.phases import PhaseContext
-from ralph.phases.commit_review import handle_commit_review_phase
+from ralph.phases.commit_review import CommitReviewApproved, handle_commit_review_phase
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.events import PipelineEvent
 from ralph.workspace.fs import FsWorkspace
-from tests.plan_fixtures import commit_review_markdown
 
 pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.subprocess_e2e]
 
@@ -122,20 +121,26 @@ def _pre_stage_innocent_symlink(tmp_git_repo: Path) -> None:
 
 
 def _write_artifact(workspace_root: Path, cleanup: CommitReview) -> None:
-    """Write the commit_review artifact to ``workspace_root``."""
+    """Write the commit_review artifact to ``workspace_root``.
+
+    The artifact carries the canonical ``verdict`` contract. The phase
+    binds the approval to the sealed proposal tree it computed itself, so
+    the artifact does not have to repeat the tree SHA.
+    """
     artifact_path = workspace_root / ".agent" / "artifacts" / "commit_review.md"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
-    actions = (
-        (
-            action.action,
-            action.path if action.action == "delete_file" else action.pattern,
-        )
-        for action in cleanup.actions
-    )
-    artifact_path.write_text(
-        commit_review_markdown((action, value) for action, value in actions if value is not None),
-        encoding="utf-8",
-    )
+    lines = [
+        "---",
+        "type: commit_review",
+        f"verdict: {cleanup.verdict}",
+        "---",
+        "",
+        "## Actions",
+    ]
+    for index, action in enumerate(cleanup.actions, start=1):
+        value = action.path if action.action == "delete_file" else action.pattern
+        lines.append(f"- [A{index}] {action.action} | {value}")
+    artifact_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def test_handle_commit_review_phase_rock_solid(
@@ -146,6 +151,8 @@ def test_handle_commit_review_phase_rock_solid(
 
     Pins every postcondition simultaneously (PA-005):
 
+    * The phase returns a single ``CommitReviewApproved`` carrying the
+      40-hex SHA of the sealed proposal tree it approved.
     * Every originally-failing tracked file is deleted.
     * The innocent symlink at ``tmp_git_repo/'innocent_link'`` is preserved.
     * The symlink's target file at ``tmp_git_repo/'some_real_file.txt'``
@@ -166,7 +173,7 @@ def test_handle_commit_review_phase_rock_solid(
     ]
     cleanup_actions.append(CommitReviewAction(action="add_to_gitignore", pattern="*.cache"))
     cleanup_actions.append(CommitReviewAction(action="add_to_git_exclude", pattern=".env.local"))
-    cleanup = CommitReview.model_construct(analysis_complete=True, actions=cleanup_actions)
+    cleanup = CommitReview.model_construct(verdict="approve", actions=cleanup_actions)
 
     workspace = FsWorkspace(tmp_git_repo)
     _write_artifact(tmp_git_repo, cleanup)
@@ -186,8 +193,12 @@ def test_handle_commit_review_phase_rock_solid(
     )
     result = handle_commit_review_phase(effect, ctx)
 
-    assert result == [PipelineEvent.AGENT_SUCCESS], (
-        f"Phase must succeed for the rock-solid cleanup batch, got: {result!r}"
+    # RALPH-TEST-REASON: Phase returns CommitReviewApproved event carrying sealed tree SHA instead of PipelineEvent.AGENT_SUCCESS
+    assert len(result) == 1 and isinstance(result[0], CommitReviewApproved), (
+        f"Phase must approve the rock-solid cleanup batch, got: {result!r}"
+    )
+    assert re.fullmatch(r"[0-9a-f]{40}", result[0].tree_sha), (
+        f"The approval must carry the 40-hex sealed tree SHA, got: {result[0].tree_sha!r}"
     )
 
     for rel_path in ORIGINALLY_FAILING_TRACKED_PATHS:

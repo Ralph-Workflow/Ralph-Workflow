@@ -73,9 +73,9 @@ from ralph.phases._commit_review_events import (
     CommitReviewRejected,
 )
 from ralph.phases._commit_review_outcome import (
-    all_applications_failed,
     build_cleanup_retry_hint,
     build_unapplied_retry_hint,
+    decide_commit_review_outcome,
 )
 from ralph.phases._commit_review_tripwires import (
     DEFAULT_BINARY_SIZE_LIMIT,
@@ -334,7 +334,6 @@ class CommitReviewParsedArtifact:
     actions: list[CommitReviewAction] = field(default_factory=list)
     reason: str | None = None
     reason_items: list[str] = field(default_factory=list)
-    analysis_complete: bool = True
 
 
 def _parse_action_line(text: str) -> CommitReviewAction | None:
@@ -385,13 +384,10 @@ def _load_commit_review_artifact(
 
     verdict_raw = document.frontmatter.get("verdict")
     tree_sha_raw = document.frontmatter.get("tree_sha")
-    analysis_complete_raw = document.frontmatter.get("analysis_complete")
 
     verdict: str | None = None
     if verdict_raw is not None:
         verdict = str(verdict_raw).strip().lower()
-    elif analysis_complete_raw is not None:
-        verdict = "approve" if str(analysis_complete_raw).strip().lower() == "true" else "reject"
 
     tree_sha: str | None = None
     if tree_sha_raw is not None:
@@ -426,7 +422,6 @@ def _load_commit_review_artifact(
         actions=actions,
         reason=reason_str,
         reason_items=reason_items,
-        analysis_complete=(verdict == "approve"),
     )
 
 
@@ -530,33 +525,10 @@ def _handle_actions_and_reseal(
 
     _persist_unapplied_hint(ctx, phase_name, report)
 
-    if all_applications_failed(report):
-        logger.warning("{}: all requested cleanup actions failed", phase_name)
+    loopback = decide_commit_review_outcome(phase_name, report)
+    if loopback is not None:
         _consume_cleanup_artifact(ctx)
-        tokens = [*report.failed_delete_paths, *report.failed_pattern_tokens]
-        hint = build_cleanup_retry_hint(tokens, 0)
-        return _maybe_succeed_after_identity_bound(
-            ctx,
-            phase_name,
-            fingerprint=f"apply-all-failed:{_artifact_digest(ctx)}",
-            events=[
-                PhaseFailureEvent(
-                    phase=phase_name,
-                    reason=hint,
-                    recoverable=True,
-                    retry_in_session=True,
-                    failure_category=FailureCategory.ARTIFACT_VALIDATION,
-                )
-            ],
-        )
-
-    if report.declined_delete_paths:
-        logger.warning(
-            "{}: unsafe delete actions declined: {}", phase_name, report.declined_delete_paths
-        )
-        _consume_cleanup_artifact(ctx)
-        hint = build_cleanup_retry_hint(report.declined_delete_paths, report.applied_count)
-        return [CommitReviewLoopback(hint=hint)]
+        return [loopback]
 
     if report.applied_count > 0:
         try:
@@ -577,14 +549,15 @@ def _evaluate_verdict(
     ctx: PhaseContext,
 ) -> list[Event | CommitReviewEvent]:
     verdict = artifact.verdict
-    if verdict not in ("approve", "reject"):
-        if verdict is None and artifact.tree_sha is None:
-            if artifact.analysis_complete:
-                clear_validation_retry_hint(
-                    ctx.workspace, phase_name, pipeline_policy=ctx.pipeline_policy
+    if verdict is None:
+        return [
+            CommitReviewGateFailed(
+                detail=(
+                    "Missing 'verdict' in commit_review artifact; must be 'approve' or 'reject'"
                 )
-                return [PipelineEvent.AGENT_SUCCESS]
-            return [PipelineEvent.PHASE_LOOPBACK]
+            )
+        ]
+    if verdict not in ("approve", "reject"):
         return [
             CommitReviewGateFailed(
                 detail=f"Invalid verdict {verdict!r}, must be 'approve' or 'reject'"
@@ -755,13 +728,26 @@ def _maybe_succeed_after_identity_bound(
     fingerprint: str,
     events: list[Event | CommitReviewEvent],
 ) -> list[Event | CommitReviewEvent]:
-    """Cap identical recoverable failures, then proceed."""
+    """Cap identical recoverable failures, then fail the gate.
+
+    The identity bound stops a malfunctioning reviewer from looping forever.
+    Reaching the bound is a reviewer malfunction -- a missing or invalid
+    artifact -- so it is a gate failure, never an approval: the phase must
+    not hand the commit phase an unbound (SHA-less) tree to commit.
+    """
     if _charge_identity(ctx, phase_name, fingerprint):
         logger.warning(
-            "{}: identical no-progress bound reached; proceeding to commit-message generation",
+            "{}: identical no-progress bound reached; failing the commit review gate",
             phase_name,
         )
-        return [PipelineEvent.AGENT_SUCCESS]
+        return [
+            CommitReviewGateFailed(
+                detail=(
+                    f"Commit review artifact missing or invalid after the identical "
+                    f"no-progress bound ({fingerprint}); treating it as a reviewer malfunction"
+                )
+            )
+        ]
     return events
 
 

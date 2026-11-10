@@ -228,6 +228,8 @@ EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/test_commit_review_diff.py",
     "tests/test_commit_detached_head_recovery.py",
     "tests/test_commit_executor.py",
+    "tests/test_git_proposal_seal.py",
+    "tests/integration/test_commit_review_gate_e2e.py",
     "tests/test_cycle_baseline_diff_cycle_baseline_diff.py",
     "tests/test_cycle_baseline_diff_runner_cycle_start_uses_force_true.py",
     "tests/test_cycle_baseline_diff_write_cycle_baseline_force_param.py",

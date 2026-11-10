@@ -301,7 +301,7 @@ def test_pipeline_regression_scoped_commit_residue_reinvokes_commit_end_to_end(
     _write_commit_review_artifact(
         engine_internal_workspace_with_symlink,
         {
-            "analysis_complete": True,
+            "verdict": "approve",
             "actions": [
                 {"action": "delete_file", "path": path} for path in ORIGINALLY_FAILING_PATHS
             ],
@@ -514,7 +514,7 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
     _write_commit_review_artifact(
         engine_internal_workspace_with_symlink,
         {
-            "analysis_complete": True,
+            "verdict": "approve",
             "actions": [
                 {"action": "delete_file", "path": path} for path in ORIGINALLY_FAILING_PATHS
             ]

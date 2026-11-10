@@ -8,18 +8,24 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
 from git import Actor, Repo
 
 from ralph.git.commit_result import CommitCreationResult
+from ralph.git.proposal_seal import rollback, seal_pending
 from ralph.pipeline.commit_executor import (
     execute_commit_effect,
     get_last_commit_error,
 )
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.policy.loader import load_policy
+
+if TYPE_CHECKING:
+    from ralph.policy.models import PolicyBundle
 
 pytestmark = pytest.mark.timeout_seconds(5)
 
@@ -56,6 +62,24 @@ def _create_commit_message_artifact(repo_root: Path, message: str = "fix: update
         encoding="utf-8",
     )
     return artifact
+
+
+def _proposal_refs(repo_root: Path) -> list[str]:
+    """Return the proposal refs that exist in ``repo_root``."""
+    repo = Repo(repo_root)
+    raw = str(repo.git.for_each_ref("refs/ralph/proposals", "--format=%(refname)"))
+    return [line.strip() for line in raw.splitlines() if line.strip()]
+
+
+def _policy_bundle_with_retention(retention: int) -> PolicyBundle:
+    """Return the bundled default policy with ``proposal_retention`` overridden."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    bundle = load_policy(defaults_dir)
+    commit_review = bundle.pipeline.commit_review.model_copy(
+        update={"proposal_retention": retention}
+    )
+    pipeline = bundle.pipeline.model_copy(update={"commit_review": commit_review})
+    return bundle.model_copy(update={"pipeline": pipeline})
 
 
 def test_detached_head_reattaches_to_branch_before_commit(tmp_path: Path) -> None:
@@ -340,10 +364,13 @@ def test_execute_commit_effect_prunes_proposals_on_success(tmp_path: Path) -> No
     work_file.write_text("updated content for prune test", encoding="utf-8")
 
     pruned = False
+    captured: dict[str, object] = {}
 
-    def _mock_prune(root: Path) -> list[str]:
+    def _mock_prune(root: Path, **kwargs: object) -> list[str]:
         nonlocal pruned
         pruned = True
+        captured["root"] = root
+        captured.update(kwargs)
         return ["refs/ralph/proposals/test/1"]
 
     message_file = _create_commit_message_artifact(tmp_path, "feat: prune test")
@@ -355,3 +382,119 @@ def test_execute_commit_effect_prunes_proposals_on_success(tmp_path: Path) -> No
     )
     assert event == PipelineEvent.COMMIT_SUCCESS
     assert pruned is True
+    # The sweep receives the retention limit from
+    # ``commit_review.proposal_retention`` and the run scope it covers.
+    assert captured["root"] == tmp_path
+    assert captured["max_retained"] == 10
+    assert captured["run_id"] is None
+    assert captured["keep_refs"] == ()
+
+
+def test_rejected_proposal_ref_survives_a_later_successful_commit(tmp_path: Path) -> None:
+    """A rejected iteration's proposal ref must survive the next successful commit.
+
+    The documented recovery for a wrongly rejected iteration is
+    ``git checkout <ref> -- .``. The post-commit proposal sweep must
+    therefore never delete the ref that recovery depends on.
+    """
+    repo = _init_test_git_repo(tmp_path, "main")
+    # ``.agent/`` is gitignored in every Ralph workspace: the pipeline's
+    # runtime state enters neither the sealed tree nor the commit, so the
+    # sealed tree and the committed tree stay comparable.
+    (tmp_path / ".gitignore").write_text(".agent/\n", encoding="utf-8")
+    repo.index.add([".gitignore"])
+    repo.index.commit("chore: ignore agent runtime state")
+
+    tracked = tmp_path / "initial.txt"
+    rejected_extra = tmp_path / "rejected_extra.bin"
+
+    # --- iteration 1: the commit review rejects the work ------------------
+    tracked.write_text("rejected content\n", encoding="utf-8")
+    rejected_extra.write_bytes(b"rejected\x00bytes\x01")
+    rejected_seal = seal_pending(tmp_path, "run-reject", 1)
+    assert rejected_seal.ref == "refs/ralph/proposals/run-reject/1"
+    rollback(tmp_path, rejected_seal.ref)
+    assert tracked.read_text(encoding="utf-8") == "initial content"
+    assert not rejected_extra.exists()
+
+    # --- iteration 2: a later iteration commits successfully ---------------
+    tracked.write_text("approved content\n", encoding="utf-8")
+    approved_seal = seal_pending(tmp_path, "run-reject", 2)
+    message_file = _create_commit_message_artifact(tmp_path, "feat: approved work")
+    event = execute_commit_effect(
+        CommitEffect(
+            message_file=str(message_file),
+            expected_tree_sha=approved_seal.tree_sha,
+        ),
+        tmp_path,
+        branch="main",
+    )
+    assert event == PipelineEvent.COMMIT_SUCCESS
+
+    # The rejected iteration's ref survived the successful commit.
+    assert "refs/ralph/proposals/run-reject/1" in _proposal_refs(tmp_path)
+
+    # The documented recovery still restores the rejected tree byte-for-byte.
+    repo = Repo(tmp_path)
+    repo.git.checkout(rejected_seal.ref, "--", ".")
+    assert tracked.read_text(encoding="utf-8") == "rejected content\n"
+    assert rejected_extra.read_bytes() == b"rejected\x00bytes\x01"
+
+
+def test_commit_prune_honours_the_policy_proposal_retention_limit(tmp_path: Path) -> None:
+    """``commit_review.proposal_retention`` bounds the refs the sweep keeps."""
+    repo_root = tmp_path / "repo"
+    _init_test_git_repo(repo_root, "main")
+
+    repo = Repo(repo_root)
+    (repo_root / ".gitignore").write_text(".agent/\n", encoding="utf-8")
+    repo.index.add([".gitignore"])
+    repo.index.commit("chore: ignore agent runtime state")
+
+    head_sha = repo.head.commit.hexsha
+    rejection_ref = "refs/ralph/proposals/run-x/4"
+
+    def _setup_proposals() -> None:
+        for iteration in (1, 2, 3):
+            repo.git.update_ref(f"refs/ralph/proposals/run-x/{iteration}", head_sha)
+        if rejection_ref not in _proposal_refs(repo_root):
+            tracked = repo_root / "initial.txt"
+            tracked.write_text("rejected content\n", encoding="utf-8")
+            rejected_seal = seal_pending(repo_root, "run-x", 4)
+            rollback(repo_root, rejected_seal.ref)
+
+    content_index = 0
+
+    def _commit_with_policy(policy_bundle: PolicyBundle | None) -> list[str]:
+        nonlocal content_index
+        content_index += 1
+        tracked = repo_root / "initial.txt"
+        tracked.write_text(f"approved content {content_index}\n", encoding="utf-8")
+        message_file = _create_commit_message_artifact(repo_root, "feat: retention sweep")
+        event = execute_commit_effect(
+            CommitEffect(message_file=str(message_file)),
+            repo_root,
+            branch="main",
+            policy_bundle=policy_bundle,
+        )
+        assert event == PipelineEvent.COMMIT_SUCCESS
+        return _proposal_refs(repo_root)
+
+    _setup_proposals()
+    tight_refs = _commit_with_policy(_policy_bundle_with_retention(1))
+
+    _setup_proposals()
+    wide_refs = _commit_with_policy(_policy_bundle_with_retention(10))
+
+    policy_file = repo_root / ".agent" / "pipeline.toml"
+    policy_file.parent.mkdir(parents=True, exist_ok=True)
+    policy_file.write_text("[commit_review]\nproposal_retention = 1\n", encoding="utf-8")
+    _setup_proposals()
+    workspace_refs = _commit_with_policy(None)
+
+    assert rejection_ref in tight_refs
+    assert rejection_ref in wide_refs
+    assert rejection_ref in workspace_refs
+    assert [ref for ref in tight_refs if ref != rejection_ref] == []
+    assert [ref for ref in workspace_refs if ref != rejection_ref] == []
+    assert "refs/ralph/proposals/run-x/1" in wide_refs

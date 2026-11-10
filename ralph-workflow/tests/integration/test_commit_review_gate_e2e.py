@@ -1,4 +1,15 @@
-"""End-to-end integration tests for commit review safety gate, rollback, and resume."""
+"""End-to-end integration tests for commit review safety gate, rollback, and resume.
+
+The proofs drive the REAL git boundary (proposal seals, SHA-bound commit
+effects, reducer-driven rollback and resume), so the file is registered in
+``ralph.test_suites.REQUIRED_AUTO_INTEGRATE_E2E_FILES``: the registry
+stamps every item with ``required_auto_integrate_e2e`` (the DEFAULT
+marker expression selects it) and sanctions the real-Git crossings for
+the test-policy audit. A module-level ``subprocess_e2e`` marker would
+instead drop the file from static discovery and deselect it from the
+default ``make test`` profile, so the coverage would rot unnoticed in the
+opt-in lane.
+"""
 
 from __future__ import annotations
 
@@ -27,7 +38,7 @@ from ralph.policy.loader import load_policy
 if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy, PolicyBundle
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
+pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.required_auto_integrate_e2e]
 
 _DEFAULTS_DIR = Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults"
 
@@ -63,10 +74,20 @@ def _create_commit_message_artifact(repo_root: Path, message: str = "feat: good 
     return artifact
 
 
-def test_commit_review_gate_approve_creates_sha_bound_commit_and_prunes_proposals(
+def _bundle_with_retention(retention: int) -> PolicyBundle:
+    """Return the bundled default policy with ``proposal_retention`` overridden."""
+    bundle = _bundle()
+    commit_review = bundle.pipeline.commit_review.model_copy(
+        update={"proposal_retention": retention}
+    )
+    pipeline = bundle.pipeline.model_copy(update={"commit_review": commit_review})
+    return bundle.model_copy(update={"pipeline": pipeline})
+
+
+def test_commit_review_gate_approve_creates_sha_bound_commit_and_retains_the_proposal(
     tmp_path: Path,
 ) -> None:
-    """Approval routes to commit with SHA-bound staging, creates commit, and prunes proposals."""
+    """Approval routes to commit with SHA-bound staging and creates the commit."""
     policy = _policy()
     repo = _init_repo(tmp_path)
 
@@ -107,9 +128,53 @@ def test_commit_review_gate_approve_creates_sha_bound_commit_and_prunes_proposal
     repo = Repo(tmp_path)
     assert repo.head.commit.message.splitlines()[0] == "feat: approved work"
 
-    # Verify proposals are pruned on commit success
+    # The post-commit proposal sweep KEEPS the most recent sealed proposals:
+    # ``commit_review.proposal_retention`` bounds how many refs the sweep
+    # retains and the sweep never deletes a rejected iteration's ref (the
+    # documented recovery is ``git checkout <ref> -- .``). This proposal's
+    # tree became the commit, so it is not a rejected ref, and the bundled
+    # retention budget is not exhausted: the sweep retains the ref and it
+    # still resolves.
+    preflight(tmp_path, seal.ref)
+
+
+def test_commit_review_gate_prunes_the_proposals_outside_the_retention_bound(
+    tmp_path: Path,
+) -> None:
+    """A successful commit prunes the proposal refs the retention bound excludes."""
+    repo = _init_repo(tmp_path)
+    initial_sha = repo.head.commit.hexsha
+
+    # The developer changes the tracked file; the sealed proposal points at
+    # the tree the approved commit is about to create.
+    code_file = tmp_path / "app.py"
+    code_file.write_text("print('hello, retained world!')", encoding="utf-8")
+    seal = seal_pending(tmp_path, run_id="run-200", iteration="1")
+    assert seal.tree_sha is not None
+
+    # An older approved iteration's proposal ref points at a tree that DID
+    # become a commit, so the sweep does not protect it as a rejected ref.
+    older_ref = "refs/ralph/proposals/run-200/0"
+    repo.git.update_ref(older_ref, initial_sha)
+
+    msg_path = _create_commit_message_artifact(tmp_path, "feat: bounded sweep")
+    commit_effect = CommitEffect(
+        message_file=str(msg_path),
+        expected_tree_sha=seal.tree_sha,
+    )
+    commit_event = execute_commit_effect(
+        commit_effect,
+        tmp_path,
+        branch=repo.active_branch.name,
+        policy_bundle=_bundle_with_retention(1),
+    )
+    assert commit_event == PipelineEvent.COMMIT_SUCCESS
+
+    # The newest proposal ref is inside the retention bound and survives.
+    preflight(tmp_path, seal.ref)
+    # The older one is outside it and the sweep deletes it.
     with pytest.raises(ProposalPreflightError):
-        preflight(tmp_path, seal.ref)
+        preflight(tmp_path, older_ref)
 
 
 def test_commit_review_gate_sha_mismatch_fails_commit(tmp_path: Path) -> None:

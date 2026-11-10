@@ -234,7 +234,7 @@ def _validate_commit_review_phase(
     if phase_def.loop_policy is None:
         errors.append(
             f"phases.{phase_name}: role='commit_review' requires loop_policy "
-            f"(iteration_state_field for the cleanup iteration counter)"
+            f"(iteration_state_field for the commit_review_iteration counter)"
         )
     else:
         field = phase_def.loop_policy.iteration_state_field

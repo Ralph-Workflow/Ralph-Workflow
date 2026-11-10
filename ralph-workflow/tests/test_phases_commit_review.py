@@ -81,8 +81,6 @@ def _write_commit_review_artifact(
     ]
     if tree_sha is not None:
         lines.append(f"tree_sha: {tree_sha}")
-    if "analysis_complete" in content:
-        lines.append(f"analysis_complete: {str(content['analysis_complete']).lower()}")
     lines.append("---")
 
     actions = content.get("actions", [])
@@ -143,10 +141,10 @@ def test_non_agent_effect_returns_empty() -> None:
     assert result == []
 
 
-def test_agent_success_when_analysis_complete(tmp_git_repo: Path) -> None:
-    """Test that AGENT_SUCCESS is returned when analysis_complete=True."""
+def test_agent_success_when_verdict_approves(tmp_git_repo: Path) -> None:
+    """Test that the phase approves when the artifact carries ``verdict: approve``."""
     workspace = FsWorkspace(tmp_git_repo)
-    _write_commit_review_artifact(workspace, {"analysis_complete": True, "actions": []})
+    _write_commit_review_artifact(workspace, {"actions": []})
     ctx = PhaseContext.construct(
         workspace=workspace,
         registry=object(),
@@ -162,6 +160,65 @@ def test_agent_success_when_analysis_complete(tmp_git_repo: Path) -> None:
     )
     result = handle_commit_review_phase(effect, ctx)
     assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
+
+
+def _write_raw_commit_review_artifact(workspace: FsWorkspace, frontmatter: list[str]) -> None:
+    """Write a commit_review artifact with verbatim frontmatter lines."""
+    path = Path(workspace.root) / COMMIT_REVIEW_ARTIFACT_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["---", "type: commit_review", *frontmatter, "---", "", "## Actions", ""]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _run_commit_review_phase(workspace: FsWorkspace) -> list[object]:
+    """Drive the commit-review phase with a default agent invocation."""
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev",
+        phase="development_commit_review",
+        prompt_file="cleanup.txt",
+    )
+    return handle_commit_review_phase(effect, ctx)
+
+
+def test_artifact_without_verdict_is_never_an_approval(tmp_git_repo: Path) -> None:
+    """A commit-review artifact without a verdict can never be approved.
+
+    Pins the fail-closed contract of the frozen artifact contract: the
+    verdict is the ONLY way to approve a proposal, so an artifact that
+    omits it (or only carries the retired analysis_complete field) must
+    fail the gate instead of being read as an approval.
+    """
+    workspace = FsWorkspace(tmp_git_repo)
+    _write_raw_commit_review_artifact(workspace, [])
+
+    result = _run_commit_review_phase(workspace)
+
+    assert len(result) == 1, f"Expected exactly one event, got {len(result)}: {result!r}"
+    assert isinstance(result[0], CommitReviewGateFailed), (
+        f"An artifact without a verdict must fail the gate, got "
+        f"{type(result[0]).__name__}: {result[0]!r}"
+    )
+    assert not isinstance(result[0], CommitReviewApproved), (
+        "An artifact without a verdict must never be approved"
+    )
+    assert result[0] is not PipelineEvent.AGENT_SUCCESS, (
+        "An artifact without a verdict must never succeed the phase"
+    )
+
+    # The retired ``analysis_complete`` field is not a verdict substitute.
+    _write_raw_commit_review_artifact(workspace, ["analysis_complete: true"])
+    result2 = _run_commit_review_phase(workspace)
+    assert len(result2) == 1
+    assert isinstance(result2[0], CommitReviewGateFailed)
+    assert not isinstance(result2[0], CommitReviewApproved)
 
 
 def test_missing_markdown_artifact_fails_closed(tmp_git_repo: Path) -> None:
@@ -193,7 +250,6 @@ def test_phase_loopback_when_has_actions(tmp_git_repo: Path) -> None:
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": False,
             "actions": [{"action": "add_to_gitignore", "pattern": "*.exe"}],
         },
     )
@@ -227,7 +283,7 @@ def test_delete_file_action_removes_file(tmp_git_repo: Path) -> None:
 
     _write_commit_review_artifact(
         workspace,
-        {"analysis_complete": False, "actions": [{"action": "delete_file", "path": "binary.exe"}]},
+        {"actions": [{"action": "delete_file", "path": "binary.exe"}]},
     )
     ctx = PhaseContext.construct(
         workspace=workspace,
@@ -257,7 +313,6 @@ def test_delete_checkpoint_json_removes_file(tmp_git_repo: Path) -> None:
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": True,
             "actions": [{"action": "delete_file", "path": "checkpoint.json"}],
         },
     )
@@ -291,7 +346,6 @@ def test_delete_verify_output_text_file_removes_file(tmp_git_repo: Path) -> None
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": False,
             "actions": [{"action": "delete_file", "path": "verify-output.txt"}],
         },
     )
@@ -410,7 +464,6 @@ def test_delete_source_code_extensions_rejected(tmp_git_repo: Path) -> None:
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": False,
             "actions": [{"action": "delete_file", "path": f"App{ext}"} for ext in extensions],
         },
     )
@@ -465,7 +518,6 @@ def test_delete_lock_files_rejected(tmp_git_repo: Path) -> None:
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": False,
             "actions": [{"action": "delete_file", "path": lock_file} for lock_file in lockfiles],
         },
     )
@@ -494,7 +546,6 @@ def test_git_exclude_action_adds_pattern(tmp_git_repo: Path) -> None:
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": False,
             "actions": [{"action": "add_to_git_exclude", "pattern": ".env.local"}],
         },
     )
@@ -543,13 +594,12 @@ def test_missing_artifact_returns_failure_event(tmp_git_repo: Path) -> None:
     assert event.recoverable is True
 
 
-def test_cleanup_actions_applied_when_analysis_complete_true(tmp_git_repo: Path) -> None:
-    """Cleanup actions are applied even when analysis_complete=True."""
+def test_cleanup_actions_applied_when_verdict_approves(tmp_git_repo: Path) -> None:
+    """Cleanup actions are applied even when the verdict is ``approve``."""
     workspace = FsWorkspace(tmp_git_repo)
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": True,
             "actions": [{"action": "add_to_gitignore", "pattern": "*.exe"}],
         },
     )
@@ -596,7 +646,6 @@ def test_repo_root_resolution_failure_returns_phase_failure_event(
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": False,
             "actions": [{"action": "delete_file", "path": "checkpoint.json"}],
         },
     )
@@ -662,7 +711,6 @@ def test_repo_root_resolution_failure_does_not_use_path_cwd(
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": False,
             "actions": [{"action": "delete_file", "path": "checkpoint.json"}],
         },
     )
@@ -700,7 +748,7 @@ def test_non_repo_directory_inits_git(tmp_path: Path) -> None:
     non_repo = tmp_path / "non_repo"
     non_repo.mkdir()
     workspace = FsWorkspace(non_repo)
-    _write_commit_review_artifact(workspace, {"analysis_complete": True, "actions": []})
+    _write_commit_review_artifact(workspace, {"actions": []})
     ctx = PhaseContext.construct(
         workspace=workspace,
         registry=object(),
@@ -760,7 +808,6 @@ def test_delete_untracked_repository_content_rejected(tmp_git_repo: Path) -> Non
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
         {
-            "analysis_complete": False,
             "actions": [{"action": "delete_file", "path": rel_path} for rel_path in paths],
         },
     )
@@ -781,7 +828,6 @@ def test_delete_file_with_parent_traversal_returns_failure_event(
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": False,
             "actions": [{"action": "delete_file", "path": "../outside.bin"}],
         },
     )
@@ -814,7 +860,6 @@ def test_delete_file_with_absolute_path_returns_failure_event(
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": False,
             "actions": [{"action": "delete_file", "path": str(outside)}],
         },
     )
@@ -846,7 +891,6 @@ def test_delete_backup_bak_file(tmp_git_repo: Path) -> None:
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": True,
             "actions": [{"action": "delete_file", "path": "important.py.bak"}],
         },
     )
@@ -874,7 +918,7 @@ def test_delete_tmp_file(tmp_git_repo: Path) -> None:
 
     _write_commit_review_artifact(
         workspace,
-        {"analysis_complete": True, "actions": [{"action": "delete_file", "path": "scratch.tmp"}]},
+        {"actions": [{"action": "delete_file", "path": "scratch.tmp"}]},
     )
     ctx = PhaseContext.construct(
         workspace=workspace,
@@ -900,7 +944,7 @@ def test_delete_log_file(tmp_git_repo: Path) -> None:
 
     _write_commit_review_artifact(
         workspace,
-        {"analysis_complete": True, "actions": [{"action": "delete_file", "path": "debug.log"}]},
+        {"actions": [{"action": "delete_file", "path": "debug.log"}]},
     )
     ctx = PhaseContext.construct(
         workspace=workspace,
@@ -927,7 +971,6 @@ def test_delete_rej_file(tmp_git_repo: Path) -> None:
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": True,
             "actions": [{"action": "delete_file", "path": "fix.patch.rej"}],
         },
     )
@@ -956,7 +999,6 @@ def test_delete_session_txt_file(tmp_git_repo: Path) -> None:
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": True,
             "actions": [{"action": "delete_file", "path": "session-transcript.txt"}],
         },
     )
@@ -987,7 +1029,6 @@ def test_delete_in_tmp_directory(tmp_git_repo: Path) -> None:
     _write_commit_review_artifact(
         workspace,
         {
-            "analysis_complete": True,
             "actions": [{"action": "delete_file", "path": "tmp/scratch.txt"}],
         },
     )
@@ -1065,7 +1106,6 @@ def test_untracked_temporary_source_code_is_deleted(
     result = _invoke_cleanup(
         workspace,
         {
-            "analysis_complete": True,
             "actions": [{"action": "delete_file", "path": file_path}],
         },
     )
@@ -1084,7 +1124,6 @@ def test_delete_coverage_untracked_succeeds(tmp_git_repo: Path) -> None:
     result = _invoke_cleanup(
         workspace,
         {
-            "analysis_complete": True,
             "actions": [{"action": "delete_file", "path": ".coverage"}],
         },
     )
@@ -1103,7 +1142,6 @@ def test_delete_coverage_xml_untracked_succeeds(tmp_git_repo: Path) -> None:
     result = _invoke_cleanup(
         workspace,
         {
-            "analysis_complete": True,
             "actions": [{"action": "delete_file", "path": "coverage.xml"}],
         },
     )
@@ -1122,7 +1160,6 @@ def test_delete_untracked_checkpoint_json(tmp_git_repo: Path) -> None:
     result = _invoke_cleanup(
         workspace,
         {
-            "analysis_complete": True,
             "actions": [{"action": "delete_file", "path": "checkpoint.json"}],
         },
     )
@@ -1141,7 +1178,6 @@ def test_delete_untracked_log_file(tmp_git_repo: Path) -> None:
     result = _invoke_cleanup(
         workspace,
         {
-            "analysis_complete": True,
             "actions": [{"action": "delete_file", "path": "debug.log"}],
         },
     )
@@ -1160,7 +1196,6 @@ def test_delete_untracked_binary_file(tmp_git_repo: Path) -> None:
     result = _invoke_cleanup(
         workspace,
         {
-            "analysis_complete": True,
             "actions": [{"action": "delete_file", "path": "accidental_binary.exe"}],
         },
     )
@@ -1181,7 +1216,6 @@ def test_delete_untracked_in_artifacts_directory(tmp_git_repo: Path) -> None:
     result = _invoke_cleanup(
         workspace,
         {
-            "analysis_complete": True,
             "actions": [{"action": "delete_file", "path": "artifacts/scratch.txt"}],
         },
     )
@@ -1202,7 +1236,6 @@ def test_delete_untracked_file_in_generated_directory(tmp_git_repo: Path) -> Non
     result = _invoke_cleanup(
         workspace,
         {
-            "analysis_complete": True,
             "actions": [{"action": "delete_file", "path": ".output/bundle.js"}],
         },
     )
@@ -1261,7 +1294,6 @@ def test_delete_tracked_agent_internal_files_succeeds(tmp_git_repo: Path) -> Non
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
         {
-            "analysis_complete": True,
             "actions": [
                 {"action": "delete_file", "path": rel_path}
                 for rel_path, _content in tracked_artifacts
@@ -1339,7 +1371,6 @@ def test_delete_tracked_non_engine_files_rejected(tmp_git_repo: Path) -> None:
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
         {
-            "analysis_complete": False,
             "actions": [{"action": "delete_file", "path": rel_path} for rel_path in paths],
         },
     )
@@ -1379,7 +1410,6 @@ def test_delete_tracked_agent_internal_files_best_effort_no_phase_failure(
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
         {
-            "analysis_complete": True,
             "actions": [
                 {"action": "delete_file", "path": ".agent/raw/opencode.log"},
                 {"action": "add_to_gitignore", "pattern": "*.scratch"},
@@ -1403,7 +1433,6 @@ def test_mixed_safe_and_unsafe_delete_actions_are_best_effort(tmp_git_repo: Path
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
         {
-            "analysis_complete": True,
             "actions": [
                 {"action": "delete_file", "path": "binary.exe"},
                 {"action": "delete_file", "path": "helper.py"},
@@ -1427,7 +1456,6 @@ def test_unsafe_delete_does_not_abort_phase_when_safe_delete_present(
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
         {
-            "analysis_complete": True,
             "actions": [
                 {"action": "add_to_gitignore", "pattern": "*.tmp"},
                 {"action": "delete_file", "path": "module.py"},
@@ -1447,7 +1475,7 @@ def test_cleanup_phase_auto_seeds_gitignore_canonical_patterns_on_entry(
     """AC-04: handle_commit_review_phase seeds canonical .gitignore on every entry."""
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
-        {"analysis_complete": True, "actions": []},
+        {"actions": []},
     )
 
     assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
@@ -1466,7 +1494,7 @@ def test_cleanup_phase_auto_seeds_git_exclude_canonical_patterns_on_entry(
     """AC-04: handle_commit_review_phase seeds canonical .git/info/exclude on every entry."""
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
-        {"analysis_complete": True, "actions": []},
+        {"actions": []},
     )
 
     assert len(result) == 1 and isinstance(result[0], CommitReviewApproved)
@@ -1486,7 +1514,6 @@ def test_duplicate_delete_file_actions_idempotent(tmp_git_repo: Path) -> None:
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
         {
-            "analysis_complete": True,
             "actions": [
                 {"action": "delete_file", "path": "duplicate.exe"},
                 {"action": "delete_file", "path": "duplicate.exe"},
@@ -1519,7 +1546,7 @@ def test_empty_path_in_delete_action_is_skipped_with_debug_log(tmp_git_repo: Pat
     whitespace_action = CommitReviewAction.model_construct(action="delete_file", path="   ")
     real_action = CommitReviewAction.model_construct(action="delete_file", path="binary.exe")
     cleanup = CommitReview.model_construct(
-        analysis_complete=True,
+        verdict="approve",
         actions=[whitespace_action, real_action],
     )
 
@@ -1541,7 +1568,7 @@ def test_empty_pattern_in_gitignore_action_is_skipped(tmp_git_repo: Path) -> Non
     whitespace_action = CommitReviewAction.model_construct(action="add_to_gitignore", pattern="   ")
     real_action = CommitReviewAction.model_construct(action="add_to_gitignore", pattern="*.real")
     cleanup = CommitReview.model_construct(
-        analysis_complete=True,
+        verdict="approve",
         actions=[whitespace_action, real_action],
     )
 
@@ -1555,7 +1582,6 @@ def test_all_safe_actions_with_no_delete_succeeds(tmp_git_repo: Path) -> None:
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
         {
-            "analysis_complete": True,
             "actions": [
                 {"action": "add_to_gitignore", "pattern": "*.binary"},
                 {"action": "add_to_git_exclude", "pattern": ".my-local-cache"},
@@ -1580,7 +1606,6 @@ def test_all_unsafe_deletes_with_no_safe_work_returns_failure_event(
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
         {
-            "analysis_complete": False,
             "actions": [{"action": "delete_file", "path": "module.py"}],
         },
     )
@@ -1593,17 +1618,17 @@ def test_all_unsafe_deletes_with_no_safe_work_returns_failure_event(
     assert source.exists()
 
 
-def test_unsafe_delete_with_whitespace_only_gitignore_returns_failure_event(
+def test_unsafe_delete_with_whitespace_only_gitignore_loops_back(
     tmp_git_repo: Path,
 ) -> None:
     """Regression (analysis feedback): unsafe delete + whitespace-only gitignore pattern.
 
     Pins the contract that an unsafe ``delete_file`` plus a whitespace-only
     ``add_to_gitignore`` pattern (which is silently dropped by ``_classify_action``)
-    must NOT bypass the ``_all_deletes_rejected_failure`` branch. The outcome
-    decision must be based on actually-applied classified actions, not raw
-    truthiness of the artifact fields -- otherwise the structured retry hint
-    is suppressed and the agent cannot self-correct on retry.
+    must NOT bypass the declined-delete branch. The outcome decision must be
+    based on actually-applied classified actions, not raw truthiness of the
+    artifact fields -- otherwise the structured retry hint is suppressed and
+    the agent cannot self-correct on retry.
     """
     source = tmp_git_repo / "module.py"
     source.write_text("source code")
@@ -1611,7 +1636,7 @@ def test_unsafe_delete_with_whitespace_only_gitignore_returns_failure_event(
     whitespace_action = CommitReviewAction.model_construct(action="add_to_gitignore", pattern="   ")
     unsafe_action = CommitReviewAction.model_construct(action="delete_file", path="module.py")
     cleanup = CommitReview.model_construct(
-        analysis_complete=False,
+        verdict="reject",
         actions=[unsafe_action, whitespace_action],
     )
 
@@ -1626,20 +1651,26 @@ def test_unsafe_delete_with_whitespace_only_gitignore_returns_failure_event(
     )
 
     outcome = decide_cleanup_outcome("development_commit_review", cleanup, report)
-    assert outcome == [PipelineEvent.PHASE_LOOPBACK]
+    # RALPH-TEST-REASON: Outcome returns CommitReviewLoopback on declined deletes instead of legacy PHASE_LOOPBACK
+    assert len(outcome) == 1 and isinstance(outcome[0], CommitReviewLoopback), (
+        f"A declined delete must loop the agent back, got: {outcome!r}"
+    )
+    assert "module.py" in outcome[0].hint, (
+        f"The loopback hint must name the rejected path, got: {outcome[0].hint!r}"
+    )
     assert source.exists()
 
 
-def test_unsafe_delete_with_whitespace_only_git_exclude_returns_failure_event(
+def test_unsafe_delete_with_whitespace_only_git_exclude_loops_back(
     tmp_git_repo: Path,
 ) -> None:
     """Regression (analysis feedback): unsafe delete + whitespace-only git_exclude pattern.
 
-    Mirrors ``test_unsafe_delete_with_whitespace_only_gitignore_returns_failure_event``
+    Mirrors ``test_unsafe_delete_with_whitespace_only_gitignore_loops_back``
     but with the ``add_to_git_exclude`` action. The whitespace-only pattern is
     silently dropped by ``_classify_action``, so the outcome decision must
-    still escalate to ``PhaseFailureEvent`` (the unsafe delete was the only
-    meaningful work, and it was rejected).
+    still loop the agent back (the unsafe delete was the only meaningful
+    work, and it was rejected).
     """
     source = tmp_git_repo / "module.py"
     source.write_text("source code")
@@ -1649,7 +1680,7 @@ def test_unsafe_delete_with_whitespace_only_git_exclude_returns_failure_event(
     )
     unsafe_action = CommitReviewAction.model_construct(action="delete_file", path="module.py")
     cleanup = CommitReview.model_construct(
-        analysis_complete=False,
+        verdict="reject",
         actions=[unsafe_action, whitespace_action],
     )
 
@@ -1664,7 +1695,13 @@ def test_unsafe_delete_with_whitespace_only_git_exclude_returns_failure_event(
     )
 
     outcome = decide_cleanup_outcome("development_commit_review", cleanup, report)
-    assert outcome == [PipelineEvent.PHASE_LOOPBACK]
+    # RALPH-TEST-REASON: Outcome returns CommitReviewLoopback on declined deletes instead of legacy PHASE_LOOPBACK
+    assert len(outcome) == 1 and isinstance(outcome[0], CommitReviewLoopback), (
+        f"A declined delete must loop the agent back, got: {outcome!r}"
+    )
+    assert "module.py" in outcome[0].hint, (
+        f"The loopback hint must name the rejected path, got: {outcome[0].hint!r}"
+    )
     assert source.exists()
 
 
@@ -1684,7 +1721,7 @@ def test_whitespace_only_delete_path_with_safe_gitignore_succeeds(
     whitespace_action = CommitReviewAction.model_construct(action="delete_file", path="   ")
     real_action = CommitReviewAction.model_construct(action="add_to_gitignore", pattern="*.scratch")
     cleanup = CommitReview.model_construct(
-        analysis_complete=True,
+        verdict="approve",
         actions=[whitespace_action, real_action],
     )
 
@@ -1698,7 +1735,10 @@ def test_whitespace_only_delete_path_with_safe_gitignore_succeeds(
     )
 
     outcome = decide_cleanup_outcome("development_commit_review", cleanup, report)
-    assert outcome == [PipelineEvent.AGENT_SUCCESS] or len(outcome) == 1
+    # RALPH-TEST-REASON: Outcome returns exactly [AGENT_SUCCESS] on approved verdict with safe work
+    assert outcome == [PipelineEvent.AGENT_SUCCESS], (
+        f"An approving verdict with applied safe work must succeed; got: {outcome!r}"
+    )
 
 
 def test_retry_hint_named_for_each_rejected_path(tmp_git_repo: Path) -> None:
@@ -1711,7 +1751,6 @@ def test_retry_hint_named_for_each_rejected_path(tmp_git_repo: Path) -> None:
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
         {
-            "analysis_complete": False,
             "actions": [
                 {"action": "delete_file", "path": "a.py"},
                 {"action": "delete_file", "path": "b.py"},
@@ -1795,11 +1834,11 @@ def test_build_cleanup_retry_hint_with_skipped_paths_and_zero_safe_count() -> No
 
 
 @pytest.mark.timeout_seconds(5)
-def test_apply_time_delete_failure_triggers_phase_failure_event(
+def test_apply_time_delete_failure_triggers_commit_review_loopback(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression: apply-time ``delete_file_from_repo`` failure escalates to ``PhaseFailureEvent``.
+    """Regression: apply-time ``delete_file_from_repo`` failure loops the agent back.
 
     Pins the fix for the bug where a delete that PASSED the safety
     classifier but FAILED at apply time (permission denied, stale git
@@ -1810,16 +1849,19 @@ def test_apply_time_delete_failure_triggers_phase_failure_event(
     The test patches ``delete_file_from_repo`` to raise for an
     otherwise-safe binary artifact, drives ``handle_commit_review_phase``
     through the full ``InvokeAgentEffect`` flow, and asserts the phase
-    returns a single ``PhaseFailureEvent`` carrying the structured
-    retry hint that names the failed path. The binary artifact MUST
-    still exist on disk (the delete was attempted and failed).
+    returns a single ``CommitReviewLoopback`` carrying the structured
+    retry hint that names the failed path. The hint is the apply-time
+    one (``build_unapplied_retry_hint``), so it names the path that was
+    accepted by the classifier but could not be applied -- it must NOT
+    claim the path "looks like source code", which is the classifier
+    rejection wording. The binary artifact MUST still exist on disk (the
+    delete was attempted and failed).
     """
     workspace = FsWorkspace(tmp_git_repo)
     binary = tmp_git_repo / "binary.exe"
     binary.write_bytes(b"\x00MZ")
 
     cleanup_artifact = {
-        "analysis_complete": False,
         "actions": [
             {"action": "delete_file", "path": "binary.exe"},
         ],
@@ -1855,6 +1897,13 @@ def test_apply_time_delete_failure_triggers_phase_failure_event(
         f"apply time, got {type(events[0]).__name__}: {events[0]!r}"
     )
     assert "binary.exe" in events[0].hint
+    assert "failed while applying" in events[0].hint, (
+        f"The hint must name the apply-time failure, got: {events[0].hint!r}"
+    )
+    assert "look like source code" not in events[0].hint, (
+        f"An apply-time failure must NOT reuse the safety-classifier wording, "
+        f"got: {events[0].hint!r}"
+    )
     assert binary.exists(), (
         "Binary artifact must still exist -- the delete was attempted and "
         "failed; the phase must NOT silently report success."
@@ -1882,7 +1931,6 @@ def test_apply_time_delete_failure_with_safe_gitignore_succeeds(
     binary.write_bytes(b"\x00MZ")
 
     cleanup_artifact = {
-        "analysis_complete": True,
         "actions": [
             {"action": "delete_file", "path": "binary.exe"},
             {"action": "add_to_gitignore", "pattern": "*.scratch"},
@@ -1948,7 +1996,7 @@ def test_apply_cleanup_actions_returns_separate_skipped_and_failed_lists(
     unsafe_source.write_text("source code")
 
     cleanup = CommitReview.model_construct(
-        analysis_complete=True,
+        verdict="approve",
         actions=[
             CommitReviewAction.model_construct(action="delete_file", path="binary.exe"),
             CommitReviewAction.model_construct(action="delete_file", path="module.py"),
@@ -2011,7 +2059,7 @@ def test_pre_emptive_untrack_only_unindexes_engine_files_with_empty_artifact(
 
     result = _invoke_cleanup(
         FsWorkspace(tmp_git_repo),
-        {"analysis_complete": True, "actions": []},
+        {"actions": []},
     )
 
     assert len(result) == 1 and isinstance(result[0], CommitReviewApproved), (
@@ -2356,7 +2404,6 @@ def test_handle_commit_review_phase_silent_on_tracked_skill_symlinks(
         result = _invoke_cleanup(
             FsWorkspace(tmp_git_repo),
             {
-                "analysis_complete": True,
                 "actions": [],
             },
         )

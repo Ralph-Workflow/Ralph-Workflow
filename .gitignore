@@ -36,7 +36,7 @@ wt-*/
 
 # Temporary files
 .tmp/
-/tmp/
+/tmp/*
 *PLAN.md
 # Bundled artifact format doc and sample — not user plan files; must stay tracked.
 !ralph-workflow/ralph/mcp/artifacts/format_docs/plan.md
@@ -281,8 +281,12 @@ __marimo__/
 .streamlit/secrets.toml
 .playwright-mcp/
 # Temporary handoffs and scratch files are local-only; never force-add them.
-tmp/
-**/tmp/
+# The directory contents are ignored, but the directory itself ships with a
+# tracked placeholder so the scratch path cited in AGENTS.md exists in every
+# clone (the project-policy readiness audit validates cited paths).
+tmp/*
+**/tmp/*
+!/tmp/.gitkeep
 
 ralph-workflow/skills-package/content/
 ralph-workflow/skills-package/*.tgz
@@ -385,3 +389,4 @@ ralph-workflow/.opencode/
 ralph-workflow/pytest-of-*/
 .omo/*
 ralph-workflow/ralph/project_policy/agents_md.py
+tmp/

@@ -487,7 +487,7 @@ Each phase can declare a `display_style` override to control its banner colour. 
 
 ### Commit review configuration
 
-The commit review phases (`development_commit_review` and `development_final_commit_review`) run immediately before their corresponding commit phases. They act as both a deterministic safety gate and an edit phase.
+The commit review phases (`development_commit_review` and `development_final_commit_review`) run immediately before their corresponding commit phases. They act as both a deterministic safety gate and an edit phase. Commit review is a **damage gate**, not a code review: it decides whether the pending diff looks like accidental damage. Code quality and plan adherence stay with `development_analysis`.
 
 #### Loop counters
 
@@ -497,14 +497,15 @@ The commit review phases (`development_commit_review` and `development_final_com
 
 #### Deterministic tripwire thresholds
 
-Configured under the commit review policy settings:
+Configured under the commit review policy settings (`[commit_review]` in `pipeline.toml`):
 
 | Setting | Default | Description |
 |---|---|---|
 | `max_deleted_files` | `50` | Maximum count of deleted tracked files allowed before triggering a hard mass-deletion tripwire. |
 | `max_deleted_fraction` | `0.25` (25%) | Maximum ratio of deleted tracked files to total tracked files. Exceeding this triggers a hard tripwire. |
-| `binary_size_limit` | `1000000` (1 MB) | Maximum size in bytes for binary files before flagging them for cleanup review. |
+| `binary_size_limit` | `1000000` (1 MB) | Maximum size in bytes for binary files before flagging them for cleanup review. This is a **soft** finding: it is review evidence, not an automatic rejection. |
 | `proposal_retention` | `10` | Number of proposal refs to retain before pruning historical proposals. |
+| `max_rejections` | `2` | Maximum consecutive commit-review rejections before the run fails to `failed_terminal`. The `[loop_counters.commit_review_rejections]` counter takes precedence when it is declared, and it carries the same default of `2`. |
 
 #### Transitions and recovery
 
@@ -515,6 +516,15 @@ Configured under the commit review policy settings:
   ```bash
   git checkout refs/ralph/proposals/<run>/<iteration> -- .
   ```
+
+#### Operational assumptions
+
+These four behaviours are part of the contract and are not configurable:
+
+- **The rollback uses neither `git stash` nor a saved patch.** The rollback is driven by the sealed proposal ref: the proposal diff identifies the files the proposal added, and `git read-tree --reset -u` restores the tracked files to `HEAD` (or the dirty run-start baseline). Nothing is stashed, and no patch file is written.
+- **A rejection after the cycle timebox expires routes to `failed_terminal`, not back to `development`.** Timebox exhaustion and the consecutive-rejection ceiling both take the phase's `on_failure` target (the recovery `failed_route` when `on_failure` is unset) and perform no rollback.
+- **Intentional large deletions get no plan-based bypass.** The mass-deletion tripwires compare the diff against `HEAD` and never consult the plan or the task text, so a deliberate large deletion trips the same hard rejection as an accidental one. Raise `max_deleted_files` and/or `max_deleted_fraction` in `[commit_review]` when a large intentional deletion is expected.
+- **Old phase names are not migrated.** The pre-rename phase names (`development_commit_cleanup`, `development_final_commit_cleanup`) and the removed `commit_cleanup` role, artifact, counter, template, and skill identifiers are gone, and Ralph Workflow performs no checkpoint migration for them. A checkpoint that still names a pre-rename phase is not rewritten: the run cannot route that phase and fails. Start a fresh run after upgrading.
 
 ## `artifacts.toml` in plain language
 

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
+from ralph.checked_accessors import as_mapping
 from ralph.config.enums import Verbosity
 from ralph.display.parallel_display import (
     ParallelDisplay,
@@ -51,7 +52,9 @@ from ralph.pipeline._auto_integrate_recovery_git_state import (
 )
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import CommitResidualEvent, Event, PipelineEvent
+from ralph.policy.models import PolicyBundle
 from ralph.prompts.commit_evidence import build_commit_evidence_bundle
+from ralph.workspace.scope import CONFIG_DIR_NAME
 
 
 def phase_output_artifact_paths(
@@ -82,9 +85,10 @@ def default_mcp_capabilities_for_phase(
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
+    from typing import TypeGuard
 
     from ralph.display.context import DisplayContext
-    from ralph.policy.models import AgentsPolicy, PolicyBundle
+    from ralph.policy.models import AgentsPolicy
     from ralph.workspace import FsWorkspace
 
 # The commit-scope resolution helpers (path normalization, the symlink /
@@ -108,6 +112,95 @@ _SECRET_EXCLUDE_PATTERNS: tuple[str, ...] = (
 
 type _EnvGetter = Callable[[str], str | None]
 _DEFAULT_ENV_GETTER: _EnvGetter = os.environ.get
+
+#: Namespace the commit-review phase seals a proposal under (``<run_id>/<iteration>``).
+_PROPOSAL_REF_PREFIX = "refs/ralph/proposals/"
+_PROPOSAL_TREE_ARGS = ("for-each-ref", "--format=%(refname) %(tree)", _PROPOSAL_REF_PREFIX)
+_COMMITTED_TREE_ARGS = ("log", "--format=%T", "HEAD", "--branches", "--tags", "--remotes")
+
+
+def _git_stdout(repo_root: Path, args: tuple[str, ...], label: str) -> str:
+    """Return the stdout of a read-only git command, or an empty string on failure."""
+    try:
+        result = run_git(args, cwd=repo_root, label=label)
+    except Exception:
+        return ""
+    return result.stdout if result.returncode == 0 else ""
+
+
+def _proposal_sweep(
+    repo_root: Path, opts: dict[str, object]
+) -> tuple[str | None, tuple[str, ...], int]:
+    """Return the run scope, the protected refs and the retention bound.
+
+    A rejected iteration is sealed and then rolled back, so its tree never
+    becomes a commit. The documented recovery for a wrongly rejected
+    iteration is ``git checkout <ref> -- .``, so those refs must survive
+    every later commit: the sweep protects every proposal ref whose tree
+    is absent from the commit history, and bounds the rest by the policy's
+    ``commit_review.proposal_retention``.
+    """
+    raw_refs = _git_stdout(repo_root, _PROPOSAL_TREE_ARGS, "commit:proposal-refs")
+    raw_committed = _git_stdout(repo_root, _COMMITTED_TREE_ARGS, "commit:committed-trees")
+    # ``partition(" ")`` splits a ref line into the ref name and the sealed tree SHA.
+    trees: dict[str, str] = {}
+    for line in raw_refs.splitlines():
+        parts = line.strip().partition(" ")
+        if parts[0] and parts[2]:
+            trees[parts[0]] = parts[2]
+    committed = set(raw_committed.splitlines())
+    keep_refs = [ref for ref, tree in sorted(trees.items()) if tree not in committed]
+    rollback_ref = opts.get("rollback_ref")
+    if isinstance(rollback_ref, str) and rollback_ref.strip() not in keep_refs:
+        keep_refs.insert(0, rollback_ref.strip())
+    raw_run_id = opts.get("run_id")
+    run_ids = {ref.split("/")[3] for ref in keep_refs if ref.startswith(_PROPOSAL_REF_PREFIX)} - {
+        ""
+    }
+    run_id = raw_run_id.strip() if isinstance(raw_run_id, str) and raw_run_id.strip() else None
+    if run_id is None and len(run_ids) == 1:
+        run_id = run_ids.pop()
+    limit = _proposal_retention_limit(repo_root, opts)
+    prefix = _PROPOSAL_REF_PREFIX if run_id is None else f"{_PROPOSAL_REF_PREFIX}{run_id}"
+    protected = sum(1 for ref in keep_refs if ref == prefix or ref.startswith(f"{prefix}/"))
+    return run_id, tuple(keep_refs), max(0, limit - protected)
+
+
+def _proposal_retention_limit(repo_root: Path, opts: dict[str, object]) -> int:
+    """Return the effective retention limit: the injected policy bundle, else
+    the workspace's policy file, else the bundled default.
+    """
+    bundle = opts.get("policy_bundle")
+    if isinstance(bundle, PolicyBundle):
+        limit = bundle.pipeline.commit_review.proposal_retention
+        if isinstance(limit, int) and not isinstance(limit, bool) and limit >= 1:
+            return limit
+    try:
+        from ralph.policy.loader import load_toml
+
+        data = load_toml(repo_root / CONFIG_DIR_NAME / "pipeline.toml", kind="pipeline")
+        commit_review = as_mapping(data.get("commit_review"), field="commit_review")
+        value = commit_review.get("proposal_retention")
+    except Exception:
+        value = None
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 1:
+        return value
+    from ralph.policy.loader import cached_default_pipeline_policy
+
+    return cached_default_pipeline_policy().commit_review.proposal_retention
+
+
+def _prune_proposals(repo_root: Path, opts: dict[str, object]) -> None:
+    """Prune proposal refs, keeping every rejected iteration's ref."""
+    run_id, keep_refs, max_retained = _proposal_sweep(repo_root, opts)
+    _prune_fn = opts.get("prune_fn")
+    with suppress(Exception):
+        if callable(_prune_fn):
+            _prune_fn(repo_root, run_id=run_id, keep_refs=keep_refs, max_retained=max_retained)
+        else:
+            from ralph.git.proposal_seal import prune
+
+            prune(repo_root, run_id=run_id, keep_refs=keep_refs, max_retained=max_retained)
 
 
 def _render_commit_message_via_display(repo_root: Path, display_context: object) -> None:
@@ -152,6 +245,18 @@ def _record_display_outcome(display: object | None, outcome: str, **opts: object
             cast("ParallelDisplay", target).record_artifact_outcome(
                 outcome
             )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+
+
+def _is_write_tree_fn(value: object) -> TypeGuard[Callable[[Path | str], str]]:
+    """Return whether ``value`` can be used as the write-tree seam.
+
+    The seam's signature is the injecting caller's contract -- the same
+    contract the other injectable seams in this module carry. The runtime
+    check proves that a callable was supplied, which is what the
+    executor needs before it calls it; the parameter and return types
+    are the caller's obligation.
+    """
+    return callable(value)
 
 
 if TYPE_CHECKING:
@@ -665,15 +770,7 @@ def _handle_post_commit_actions(
     opts: dict[str, object],
 ) -> None:
     """Run post-commit side effects: proposal pruning, message rendering, display, artifact cleanup."""
-    _prune_fn = opts.get("prune_fn")
-    if callable(_prune_fn):
-        with suppress(Exception):
-            _prune_fn(repo_root)
-    else:
-        with suppress(Exception):
-            from ralph.git.proposal_seal import prune
-
-            prune(repo_root)
+    _prune_proposals(repo_root, opts)
 
     with suppress(Exception):
         _render_commit_fn = cast(
@@ -719,7 +816,7 @@ def execute_commit_effect(
     )
     _raw_write_tree = opts.get("write_tree_fn")
     _write_tree_fn: Callable[[Path | str], str] | None = (
-        cast("Callable[[Path | str], str]", _raw_write_tree) if callable(_raw_write_tree) else None
+        _raw_write_tree if _is_write_tree_fn(_raw_write_tree) else None
     )
     try:
         payload = _read_commit_effect_payload(effect)

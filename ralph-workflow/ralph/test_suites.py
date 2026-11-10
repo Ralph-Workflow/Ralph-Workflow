@@ -121,6 +121,27 @@ EXCLUSIVE_SUBPROCESS_E2E_FILES: tuple[str, ...] = (
     "tests/agents/test_terminal_state_restored_on_exit.py",
 )
 
+#: The real-git acceptance files the default ``make test`` profile MUST
+#: charge. Every entry has three coupled roles, and a file must satisfy
+#: all three to stay on the default gate:
+#:
+#: 1. **Selection** -- static discovery force-includes a registered file
+#:    even when it carries a module-level ``subprocess_e2e`` marker
+#:    (``_inspect_test_file``), and the registry entry is what
+#:    ``tests/conftest.py`` matches to stamp every item with
+#:    ``required_auto_integrate_e2e`` so the DEFAULT marker expression
+#:    selects it.
+#: 2. **Audit sanction** -- ``ralph.testing.audit_test_policy`` exempts a
+#:    registered file's real-Git crossings, so the proof may drive the
+#:    real git binary without an opt-in marker.
+#: 3. **Budget charge** -- a registered file runs in the dedicated
+#:    real-git shard, whose in-shard xdist fan-out absorbs its wall clock
+#:    inside the pinned 60 s combined budget.
+#:
+#: A file that is NOT registered and carries a module-level
+#: ``subprocess_e2e`` marker is dropped by discovery and deselected by
+#: the default marker expression: its coverage rots in the opt-in lane
+#: while ``make verify`` stays green. Register it here instead.
 REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # One real-git landing journey retains the external Git boundary proof;
     # decision and recovery variants run in the opt-in subprocess profile.
@@ -381,6 +402,8 @@ SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/test_commit_review_diff.py",
     "tests/test_commit_detached_head_recovery.py",
     "tests/test_commit_executor.py",
+    "tests/test_git_proposal_seal.py",
+    "tests/integration/test_commit_review_gate_e2e.py",
     "tests/test_cycle_baseline_diff_cycle_baseline_diff.py",
     "tests/test_cycle_baseline_diff_runner_cycle_start_uses_force_true.py",
     "tests/test_cycle_baseline_diff_write_cycle_baseline_force_param.py",

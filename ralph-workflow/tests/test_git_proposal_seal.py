@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from git import Repo
+from git import Actor, Repo
 
 from ralph.git.git_command_queue import route_git_method
 from ralph.git.proposal_seal import (
@@ -21,8 +21,6 @@ from ralph.git.proposal_seal import (
     seal_pending,
 )
 
-pytestmark = pytest.mark.subprocess_e2e
-
 
 def _setup_repo(path: Path) -> Repo:
     """Initialize a git repo with identity and an initial commit."""
@@ -31,8 +29,9 @@ def _setup_repo(path: Path) -> Repo:
     repo.config_writer().set_value("user", "email", "test@ralph.internal").release()
     init_file = path / "init.txt"
     init_file.write_text("initial commit payload\n", encoding="utf-8")
-    route_git_method(repo, "add", ("init.txt",))
-    route_git_method(repo, "commit", ("-m", "initial commit"))
+    actor = Actor("Ralph Test", "test@ralph.internal")
+    repo.index.add(["init.txt"])
+    repo.index.commit("initial commit", author=actor, committer=actor)
     return repo
 
 
@@ -337,3 +336,46 @@ def test_prune_removes_proposals_honoring_keep_and_retention(tmp_path: Path) -> 
     assert ref_a3 in remaining
     assert ref_b1 in remaining
     assert ref_a2 not in remaining
+
+
+def test_prune_keeps_the_rejection_ref_and_bounds_the_retained_refs(tmp_path: Path) -> None:
+    """A kept rejection ref is never pruned; the retention limit bounds the rest.
+
+    The documented recovery for a wrongly rejected iteration is
+    ``git checkout <ref> -- .``, so the ref of a rejected iteration must
+    survive every sweep. The retention limit bounds how many other
+    proposal refs the sweep keeps.
+    """
+    repo = _setup_repo(tmp_path)
+    head_sha = str(route_git_method(repo, "rev_parse", ("HEAD",))).strip()
+
+    rejection_ref = "refs/ralph/proposals/run-a/1"
+    older_ref = "refs/ralph/proposals/run-a/2"
+    newest_ref = "refs/ralph/proposals/run-a/3"
+    other_run_ref = "refs/ralph/proposals/run-b/1"
+
+    for ref in (rejection_ref, older_ref, newest_ref, other_run_ref):
+        route_git_method(repo, "update_ref", (ref, head_sha))
+
+    pruned = prune(
+        tmp_path,
+        run_id="run-a",
+        keep_refs=[rejection_ref],
+        max_retained=1,
+    )
+
+    # The kept ref is never pruned, the retention limit keeps exactly one
+    # other ref of the run, and a ref of another run is out of scope.
+    assert rejection_ref not in pruned
+    assert newest_ref not in pruned
+    assert older_ref in pruned
+    assert other_run_ref not in pruned
+
+    raw_refs = str(
+        route_git_method(repo, "for_each_ref", ("refs/ralph/proposals", "--format=%(refname)"))
+    )
+    remaining = raw_refs.splitlines()
+    assert rejection_ref in remaining
+    assert newest_ref in remaining
+    assert older_ref not in remaining
+    assert other_run_ref in remaining

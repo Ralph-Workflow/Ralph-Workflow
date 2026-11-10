@@ -256,7 +256,7 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
     _write_commit_review_artifact(
         engine_internal_workspace,
         {
-            "analysis_complete": True,
+            "verdict": "approve",
             "actions": [
                 {"action": "delete_file", "path": path} for path in ORIGINALLY_FAILING_PATHS
             ],

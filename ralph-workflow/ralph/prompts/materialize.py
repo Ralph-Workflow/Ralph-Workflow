@@ -9,6 +9,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from ralph.checked_accessors import optional_str
 from ralph.config.enums import AgentTransport
 from ralph.executor.process import ProcessRunOptions, run_process
 from ralph.mcp.artifacts.development_result import DEVELOPMENT_RESULT_ARTIFACT_TYPE
@@ -212,16 +213,14 @@ def materialize_prompt_for_phase(
             work_unit=cast(
                 "WorkUnit | None", kwargs.get("work_unit")
             ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-            proposal_ref=cast("str | None", kwargs.get("proposal_ref")),
-            tree_sha=cast("str | None", kwargs.get("tree_sha")),
+            proposal_ref=optional_str(kwargs.get("proposal_ref")),
+            tree_sha=optional_str(kwargs.get("tree_sha")),
             soft_tripwires=cast(
                 "list[dict[str, object]] | str | None", kwargs.get("soft_tripwires")
             ),
-            last_review_rejection_reason=cast(
-                "str | None", kwargs.get("last_review_rejection_reason")
-            ),
-            rollback_ref=cast("str | None", kwargs.get("rollback_ref")),
-            last_proposal_ref=cast("str | None", kwargs.get("last_proposal_ref")),
+            last_review_rejection_reason=optional_str(kwargs.get("last_review_rejection_reason")),
+            rollback_ref=optional_str(kwargs.get("rollback_ref")),
+            last_proposal_ref=optional_str(kwargs.get("last_proposal_ref")),
         )
     else:
         opts = PromptPhaseOptions(
@@ -231,15 +230,15 @@ def materialize_prompt_for_phase(
             resume_existing_phase=options.resume_existing_phase,
             multimodal_entries=options.multimodal_entries,
             work_unit=options.work_unit,
-            proposal_ref=options.proposal_ref or cast("str | None", kwargs.get("proposal_ref")),
-            tree_sha=options.tree_sha or cast("str | None", kwargs.get("tree_sha")),
+            proposal_ref=options.proposal_ref or optional_str(kwargs.get("proposal_ref")),
+            tree_sha=options.tree_sha or optional_str(kwargs.get("tree_sha")),
             soft_tripwires=options.soft_tripwires
             or cast("list[dict[str, object]] | str | None", kwargs.get("soft_tripwires")),
             last_review_rejection_reason=options.last_review_rejection_reason
-            or cast("str | None", kwargs.get("last_review_rejection_reason")),
-            rollback_ref=options.rollback_ref or cast("str | None", kwargs.get("rollback_ref")),
+            or optional_str(kwargs.get("last_review_rejection_reason")),
+            rollback_ref=options.rollback_ref or optional_str(kwargs.get("rollback_ref")),
             last_proposal_ref=options.last_proposal_ref
-            or cast("str | None", kwargs.get("last_proposal_ref")),
+            or optional_str(kwargs.get("last_proposal_ref")),
         )
     if opts.work_unit is not None or opts.worker_namespace is not None:
         raise ValueError(
@@ -405,7 +404,7 @@ def _render_prompt_for_phase(
             optional_context_paths=optional_context_paths,
             allow_empty_diff=True,
         )
-    # Commit-cleanup prompt: commit_review role
+    # Commit-review prompt: commit_review role
     if phase_role == "commit_review":
         _snapshot_partial_execution_result(
             workspace,
