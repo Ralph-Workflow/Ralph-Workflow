@@ -26,16 +26,38 @@ see ``ralph.prompts.materialize`` and ``ralph.prompts.template_engine``.
 
 from __future__ import annotations
 
-from .template_variables import (
-    CapabilitySet,
-    PolicyFlag,
-    PolicyFlagSet,
-    SessionCapabilities,
-    capability_template_variables,
-    capability_template_variables_from_session,
-    default_caps_and_flags_for_drain,
-    visible_mcp_tool_names,
+from typing import cast
+
+#: Names exported from :mod:`ralph.prompts.template_variables`. That module
+#: pulls the MCP capability-mapping and session-plan chains, so importing it
+#: eagerly charged every process that touched the prompts package for that
+#: import cost. The names resolve on first attribute access instead.
+_TEMPLATE_VARIABLE_EXPORTS = frozenset(
+    {
+        "CapabilitySet",
+        "PolicyFlag",
+        "PolicyFlagSet",
+        "SessionCapabilities",
+        "capability_template_variables",
+        "capability_template_variables_from_session",
+        "default_caps_and_flags_for_drain",
+        "visible_mcp_tool_names",
+    }
 )
+
+
+def __getattr__(name: str) -> object:
+    """Resolve a lazily-exported :mod:`ralph.prompts.template_variables` name."""
+    if name not in _TEMPLATE_VARIABLE_EXPORTS:
+        msg = f"module {__name__!r} has no attribute {name!r}"
+        raise AttributeError(msg)
+    from . import template_variables
+
+    namespace = cast("dict[str, object]", template_variables.__dict__)
+    value = namespace[name]
+    cast("dict[str, object]", globals())[name] = value
+    return value
+
 
 __all__ = [
     "CapabilitySet",

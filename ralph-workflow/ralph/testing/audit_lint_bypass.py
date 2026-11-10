@@ -507,6 +507,8 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/agents/support.py",
             "ralph/agents/completion_signals.py",
             "ralph/project_policy/remediation.py",
+            "ralph/prompts/__init__.py",
+            "ralph/agents/execution_state/_helpers.py",
             "ralph/pipeline/plumbing/smoke_multimodal.py",
             "ralph/pipeline/plumbing/smoke_plumbing.py",
             "ralph/mcp/tools/_validation_retry_hints.py",

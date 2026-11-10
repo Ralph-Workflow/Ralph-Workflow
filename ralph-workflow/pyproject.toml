@@ -201,6 +201,12 @@ select = [
 "ralph/project_policy/remediation.py" = [
     "PLC0415"
 ]
+"ralph/prompts/__init__.py" = [
+    "PLC0415"
+]
+"ralph/agents/execution_state/_helpers.py" = [
+    "PLC0415"
+]
 "ralph/pipeline/plumbing/smoke_multimodal.py" = [
     "PLR0911",
     "PLR0912",

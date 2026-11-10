@@ -6,7 +6,6 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
-from ralph.agents.completion_signals import completion_signals_terminal
 from ralph.mcp.tools.coordination import PROGRESS_PIPELINE_MARKER
 from ralph.process.child_liveness import classify_child_snapshot
 
@@ -861,6 +860,12 @@ def _evidence_precedence(
       5. OS descendants (only when no scoped Ralph evidence exists at all) -> WAITING_ON_CHILD
       6. else -> RESUMABLE_CONTINUE
     """
+    # ``ralph.agents.completion_signals`` reaches the MCP artifact and
+    # recovery chains, so it is imported here rather than at module scope:
+    # every process that imports the agent registry would otherwise pay
+    # that import cost.
+    from ralph.agents.completion_signals import completion_signals_terminal
+
     if completion_signals_terminal(completion_signals):
         return AgentExecutionState.TERMINAL_COMPLETE
 

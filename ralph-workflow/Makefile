@@ -22,7 +22,7 @@ MULTIMODAL_SMOKE_WORKERS ?= 8
 # the raw-target paths. Keep conditional assignment so operators can
 # override (examples above).
 #
-# The combined test budget (60s wall clock net of host contention, 600 CPU
+# The combined test budget (60s wall clock net of host contention, 700 CPU
 # core-seconds) is pinned and enforced by ralph/verify.py. This per-suite
 # timeout is a SECONDARY cap only. PYTEST_WORKERS is parallelism, not a budget
 # extension — increasing parallelism keeps wall-clock under the budget,
@@ -53,7 +53,7 @@ export PYTHONPATH := $(shell realpath .)
 export VIRTUAL_ENV := $(abspath .venv)
 # NOTE: PYTEST_SUITE_TIMEOUT_SECONDS is a PER-SUITE timeout only.
 # The combined total test budget (60 s wall clock net of host contention,
-# 600 CPU core-seconds) for `make verify` is enforced in ralph/verify.py,
+# 700 CPU core-seconds) for `make verify` is enforced in ralph/verify.py,
 # not here. Do NOT raise this to work around slow tests — fix the test
 # design instead.
 PYTEST_SUITE_TIMEOUT_SECONDS ?= 60
