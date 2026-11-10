@@ -52,6 +52,50 @@ practice and adapt to other detected languages (see Verification).
   (`ralph.testing.audit_resource_lifecycle`) detects — see
   `ralph-workflow/docs/agents/memory-lifecycle.md` for the contract.
 
+## Commenting policy
+
+A comment records ONLY what the code cannot say: intent, a non-obvious
+constraint, an invariant, a workaround with its removal trigger, or an
+external contract. A comment that restates the code is noise, and a
+comment that contradicts the code misleads the next maintainer.
+
+Banned comment content:
+
+* Restating the code the comment sits on.
+* Change narration ("added for X", "fixed", "now", "previously").
+* Commented-out code.
+* Section banners.
+* Notes addressed to the reviewer instead of to the next maintainer.
+* A deferred-work marker (a `todo`, `fixme`, or `hack` prefix) that
+  carries neither an owner nor a removal trigger.
+
+Editing code means re-reading the adjacent comments: they may have gone
+stale. Public-API docstrings stay mandatory
+(`ralph.testing.audit_public_docstrings`); this rule does not weaken
+that requirement.
+
+Evidence tags differ by claim. The comment/code-inconsistency link to
+defects is tagged moderate (the source is listed under Research basis)
+and is the basis for the blocking check. The over-commenting claim —
+that agents comment too much, and that removing such comments changes
+outcomes — is tagged anecdotal and its effect size is unconfirmed, so a
+comment that restates the code is reported for review and does not fail
+the gate; it is reviewed whenever the comment audit reports it. No
+percentage, multiplier, or benchmark figure from either claim belongs in
+this policy until it is confirmed against the primary source.
+
+The inline bypass form is `# comment-ok: <reason>`; the reason is
+mandatory, and an empty reason is not a bypass. The marker waives its
+own line and the line immediately below it.
+
+The comment audit (`ralph.testing.audit_comments`) runs in BASELINE MODE:
+it fails only on comments on new or changed lines relative to the
+committed baseline, and it honours the bypass above. It scans Python
+source (`.py` and `.pyi`); comments in other languages are covered by
+the review gate. Burn-down of the existing baseline is a separate,
+optional follow-up outside this gate; the remaining count comes from a
+one-off scan of the committed tree, not from the gate.
+
 ## Project facts to resolve
 
 The `RALPH-FACT:` lines below record verified project facts. Agents
@@ -72,6 +116,7 @@ RALPH-FACT: dead_code_audit_command: `make -C ralph-workflow dead-code` runs `uv
 |---|---|---|---|---|---|---|
 | Syntax-proxy ban | Clean-code owner | private-call ratchets and blanket functional rules do not reward making a method public or adding a wrapper | no private method is renamed to public solely to satisfy a private-call ratchet; no wrapper exists only to satisfy a blanket functional rule | no private method is renamed to public solely to satisfy a private-call ratchet | advisory: code review verifies visibility; review: when private-call ratchet is reviewed | when every private-call ratchet is retired |
 | Bounded premature abstraction | Clean-code owner | new abstractions are justified by demonstrated boundary, volatility, testing, or reuse value rather than implementation count | abstraction is justified by demonstrated boundary, volatility, testing, or reuse value; implementation count alone neither requires nor forbids abstraction | abstraction is justified by demonstrated boundary, volatility, testing, or reuse value | advisory: code review verifies boundary value; review: on new abstraction introduction | when the project stops growing the abstraction target |
+| Comment content | Clean-code owner | the comments on a new or changed line carry what the code cannot say | a comment on a new or changed line matches a blocking banned comment shape listed under Commenting policy | a comment on a new or changed line matches a blocking banned comment shape | deterministic: comment policy audit (audit_comments) | when the comment gate is retired |
 
 ## AI execution instructions
 
@@ -92,6 +137,17 @@ The expected successful result is a clean Vulture run (exit 0). Any
 finding is reported with file:line and the confidence score; the
 remediation is to remove the symbol, not to annotate it.
 
+RALPH-COMMAND: uv run python -m ralph.testing.audit_comments
+
+The comment audit is the binding check for the commenting rule above. It
+runs from the Python project root (`ralph-workflow/`), the same
+invocation the verify gate uses. The expected successful result is a
+clean audit over the new and changed lines (exit 0), honouring the
+inline `# comment-ok: <reason>` bypass. A blocking finding is reported
+with file:line and rule id; the remediation is to delete the comment or
+rewrite it, never to weaken the gate. An advisory finding is reported
+for review and does not fail the gate.
+
 The drift audit
 (`ralph/testing/audit_resource_lifecycle`) is part of `make verify`
 and is the binding check for the resource-accumulator rule above.
@@ -111,6 +167,8 @@ This policy MUST be reviewed in the same workflow as any of:
 * A new module boundary rule is introduced.
 * The error-handling or logging convention changes.
 * A new generated/vendored code category is added.
+* The commenting rule changes: a new banned comment shape, a change to
+  the bypass form, or a change to the baseline-mode scope.
 
 ## Research basis
 
@@ -133,6 +191,16 @@ This policy MUST be reviewed in the same workflow as any of:
   title: "Practical Object-Oriented Design in Ruby"
   http: https://www.poodr.com/
   review date: 2026-08-09
+
+* publisher: arXiv (Radmanesh, Imani, Ahmed, Moshirpour)
+  title: "Investigating the Impact of Code Comment Inconsistency on Bug Introducing"
+  http: https://arxiv.org/abs/2409.10781
+  review date: 2026-11-09
+
+* publisher: Google Style Guides
+  title: "Documentation Best Practices"
+  http: https://google.github.io/styleguide/docguide/best_practices.html
+  review date: 2026-11-09
 
 ## Living document contract
 

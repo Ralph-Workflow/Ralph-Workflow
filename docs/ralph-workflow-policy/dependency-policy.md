@@ -33,6 +33,14 @@ the mirrored Superpowers skills content and is pinned in source control.
   distribution license. Incompatible licenses block the merge.
 * Every dependency addition MUST be paired with a verification command
   declared in this policy.
+* A newly added dependency MUST be confirmed to exist in the registry,
+  and MUST carry a resolvable source and a publisher, so that its
+  provenance is verifiable offline. A package that introduces an
+  install script is rejected, and a new lockfile entry MUST carry an
+  artifact hash that pins the bytes to install. The dependency
+  integrity gate checks the source, the publisher, the install-script
+  ban, and the lockfile hash; confirming the package in the registry is
+  the agent's own check.
 
 ## Project facts to resolve
 
@@ -53,7 +61,7 @@ RALPH-FACT: transitive_dependency_policy: transitive dependencies are governed b
 
 | Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
 |---|---|---|---|---|---|---|
-| Pinned dependencies | Dependency owner | every runtime dependency is pinned to an exact version with a lockfile | lockfile is present and recorded as a verification artifact | lockfile is present and recorded as a verification artifact | deterministic: dependency integrity audit (audit_dependency_integrity) | when the project ships only a single transitive closure (e.g. a vendored static binary) |
+| Pinned dependencies | Dependency owner | a newly added dependency names a resolvable source and a publisher, carries no install script, and is locked with an artifact hash | the change diff adds a package without a resolvable source or without a publisher, adds an install script, adds a lockfile entry without an artifact hash, or adds a package with no lockfile entry | the new dependency finding the dependency-integrity audit reports | deterministic: dependency integrity audit (audit_dependency_integrity) | when the project ships only a single transitive closure (e.g. a vendored static binary) |
 | License compatibility | Dependency owner | every dependency is compatible with the project's declared license set | license audit returns zero incompatible findings | license audit returns zero incompatible findings | deterministic: make -C ralph-workflow verify | when the project ships no third-party code |
 
 ## AI execution instructions

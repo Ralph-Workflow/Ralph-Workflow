@@ -34,9 +34,13 @@ def _session_process_manager() -> ProcessManager:
 
 
 def test_per_test_cleanup_runs_before_monkeypatch_restores_fake_backend(
+    request: pytest.FixtureRequest,
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path_factory: pytest.TempPathFactory,
 ) -> None:
-    lifecycle = conftest_module._isolate_default_process_manager.__wrapped__(monkeypatch)
+    lifecycle = conftest_module._isolate_test_environment_and_globals.__wrapped__(
+        request, monkeypatch, tmp_path_factory
+    )
     assert isinstance(lifecycle, Generator)
     next(lifecycle)
 
@@ -66,7 +70,7 @@ def test_per_test_cleanup_regression_runs_inside_real_pytest_lifecycle(
 ) -> None:
     sentinel = pytester.path / "teardown-proof.txt"
     pytester.makeconftest(
-        "from tests.conftest import _isolate_default_process_manager, pytest_unconfigure\n"
+        "from tests.conftest import _isolate_test_environment_and_globals, pytest_unconfigure\n"
     )
     pytester.makepyfile(
         test_lifecycle=textwrap.dedent(

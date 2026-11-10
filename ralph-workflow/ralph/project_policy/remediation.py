@@ -34,7 +34,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from ralph.phases.required_artifacts import retry_hint_path
 from ralph.project_policy import markers, preflight, validators
 from ralph.project_policy.pipeline_graph import PHASE_REMEDIATION
 from ralph.prompts.template_engine import render_template
@@ -155,6 +154,12 @@ def _render_prompt(
 
 def _read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
     """Read policy-remediation retry context without consuming it."""
+    # ``ralph.phases.required_artifacts`` pulls the MCP artifact and
+    # recovery chains, so it is imported here rather than at module scope:
+    # every process that imports the policy package would otherwise pay
+    # that import cost.
+    from ralph.phases.required_artifacts import retry_hint_path
+
     path = retry_hint_path(phase)
     if not workspace.exists(path):
         return ""

@@ -198,6 +198,9 @@ select = [
 "ralph/agents/completion_signals.py" = [
     "PLC0415"
 ]
+"ralph/project_policy/remediation.py" = [
+    "PLC0415"
+]
 "ralph/pipeline/plumbing/smoke_multimodal.py" = [
     "PLR0911",
     "PLR0912",

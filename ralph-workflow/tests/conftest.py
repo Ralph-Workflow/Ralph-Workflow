@@ -71,14 +71,21 @@ def _isolate_test_environment_and_globals(
     snapshot/restore happens, the same caches are cleared -- they are
     simply applied by one fixture instead of seven.
 
-    The order below is the order the individual fixtures used to run in
+    The host-contention-signal isolation and the default-process-manager
+    isolation are applied from this fixture, in the position their own
+    fixtures held, so the observable sequence of isolation actions is
+    preserved.
+
+    The order below is the order the individual fixtures ran in
     (definition order), and the teardown order is the reverse of it, so
     the observable sequence of isolation actions is preserved:
 
     setup:   credentials -> recovery drain stub -> recovery queue
              snapshot -> Claude CLI probe stub -> HOME/XDG sandbox ->
-             pipeline thread-local reset
-    teardown: Rich cache clear -> recovery queue restore
+             pipeline thread-local reset -> host contention signal
+             clear -> default process manager reset
+    teardown: default process manager reset -> host contention signal
+             clear -> Rich cache clear -> recovery queue restore
 
     The recovery queue restore runs last so a test still observes the
     queue it found, exactly as when the restore had its own fixture.
@@ -89,9 +96,13 @@ def _isolate_test_environment_and_globals(
         _apply_fake_claude_cli_mcp_probe(monkeypatch)
         _apply_isolate_process_home(request, monkeypatch, tmp_path_factory)
         _apply_isolate_pipeline_thread_locals()
+        _apply_clear_host_contention_signals()
+        _apply_reset_default_process_manager()
         try:
             yield
         finally:
+            _apply_reset_default_process_manager()
+            _apply_clear_host_contention_signals()
             _reset_rich_style_color_caches()
 
 
@@ -153,16 +164,19 @@ def _isolate_explore_recovery_globals() -> Iterator[None]:
             recovery._DRAIN_WAKEUP.clear()
 
 
-@pytest.fixture(autouse=True)
-def _isolate_host_contention_signals() -> Generator[None, None, None]:
-    """Isolate the module-level host contention signal deque per test."""
+# RALPH-TEST-REASON: the host-contention-signal isolation is merged into the
+# shared autouse isolation fixture, so the same isolation action runs in the
+# same position of the isolation sequence while pytest charges the per-test
+# fixture setup once instead of three times.
+def _apply_clear_host_contention_signals() -> None:
+    """Clear the module-level host contention signal deque.
+
+    The clear brackets the test body, so the deque a test observes is
+    the one it found.
+    """
     from ralph.mcp.server._mcp_health_event import clear_host_contention_signals
 
     clear_host_contention_signals()
-    try:
-        yield
-    finally:
-        clear_host_contention_signals()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -205,18 +219,19 @@ def pytest_unconfigure(config: pytest.Config) -> None:
     shutdown_runtime_executors()
 
 
-@pytest.fixture(autouse=True)
-def _isolate_default_process_manager(
-    monkeypatch: pytest.MonkeyPatch,
-) -> Generator[None, None, None]:
-    """Clean the default manager while each test's fake process backend is active."""
+# RALPH-TEST-REASON: the default-process-manager isolation is merged into the
+# shared autouse isolation fixture, so the same isolation action runs in the
+# same position of the isolation sequence while pytest charges the per-test
+# fixture setup once instead of three times.
+def _apply_reset_default_process_manager() -> None:
+    """Clean the default manager while each test's fake process backend is active.
+
+    The reset brackets the test body, so a test that swaps the process
+    backend starts and ends from the default manager.
+    """
     from ralph.process import reset_process_manager
 
     reset_process_manager()
-    try:
-        yield
-    finally:
-        reset_process_manager()
 
 
 def _apply_fake_claude_cli_mcp_probe(monkeypatch: pytest.MonkeyPatch) -> None:

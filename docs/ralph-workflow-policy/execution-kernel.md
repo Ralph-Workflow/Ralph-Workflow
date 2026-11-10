@@ -219,7 +219,7 @@ cell verbatim.
 |---|---|---|---|
 | 1 Check first | tests | the focused check named for the change | advisory: no gate reads the named check; review: when a change reaches the gate without one |
 | 2 Real-artifact evidence | tests | the authoritative verification gate | deterministic: make -C ralph-workflow verify |
-| 3 Test integrity | tests | the test-policy audit | advisory: no audit detects a rewritten expectation; review: when a change edits a test expectation or adds a test-only branch |
+| 3 Test integrity | tests | the test-integrity audit (audit_test_integrity) | deterministic: test integrity audit (audit_test_integrity) |
 | 4 Regression tests from the spec | tests | the regression test inside the test gate | advisory: the gate proves the test passes now, not that it failed before the fix; review: when a bug-fix change ships without a pre-fix failure record |
 | 5 Independent review | architecture | the analysis phase, with the deterministic gate deciding the outcome | advisory: an analysis verdict is a review, not a gate; review: on every analysis phase that returns a verdict |
 | 6 Handoff by artifact | docs-last | the artifact contract | advisory: the body is prose and only the frontmatter is validated; review: when the artifact contract changes |
@@ -254,13 +254,15 @@ field using the same predicate.
 The `Enforcement` column names the guard that decides each rule:
 `deterministic: <command-id>` when a declared command decides it, and
 `advisory: reason; review: trigger` while a reviewer decides it.
-The `Enforcement` ids resolve against the `RALPH-COMMAND:` values
-declared in this pack. The agent rules in `## Agent rules` are
-enforced through the rule-to-enforcer ladder above: a rule whose
-ladder status is deterministic owns a row here, and its Enforcement
-cell names the enforcer id; a rule whose ladder status is advisory
-carries its reason and its review trigger here, and owns a row
-because this pack names who decides it.
+The `Enforcement` ids resolve by exact string match against the
+union of the `RALPH-COMMAND:` values declared in this pack and, in
+this repository, the step labels the verification gate declares. The
+agent rules in `## Agent rules` are enforced through the
+rule-to-enforcer ladder above: a rule whose ladder status is
+deterministic owns a row here, and its Enforcement cell names the
+enforcer id; a rule whose ladder status is advisory carries its
+reason and its review trigger here, and owns a row because this pack
+names who decides it.
 
 | Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
 |---|---|---|---|---|---|---|
@@ -271,7 +273,7 @@ because this pack names who decides it.
 | Report failures honestly | Verification owner | a red gate is reported as a red gate | the result body reports the gate outcome instead of hiding it behind narration | the gate outcome reported in the result body | advisory: the result body is prose and no gate parses it; review: when an analysis phase finds a claim without backing | when the result body gains a validated field |
 | Check first | Planning owner | the change names a runnable check before the implementation starts | the plan or the result body names the command that decides the change | the named check recorded in the plan or the result body | advisory: no gate reads the named check; review: when a change reaches the gate without one | when every change carries a check that a gate runs |
 | Real-artifact evidence | Verification owner | the claim cites the command, its exit code, and the output that matters | the result body records the command and its exit code | the exit code and output recorded for the claim | deterministic: make -C ralph-workflow verify | when the recorded evidence is produced by the gate without an agent step |
-| Test integrity | Test owner | no existing assertion, fixture, or expected value is rewritten beside the production code it covers | the change diff shows an edited expectation without a recorded reason | the edited expectation found in the change diff | advisory: no audit detects a rewritten expectation; review: when a change edits a test expectation or adds a test-only branch | when an audit detects a rewritten expectation |
+| Test integrity | Test owner | no existing assertion, fixture, or expected value is removed or weakened beside the production code it covers, and shipped code does not read the test runner's environment | the change diff removes or weakens a test expectation beside a production edit without a recorded reason, or shipped code reads the test runner's environment | the weakened expectation or the test-runner read the test-integrity audit reports | deterministic: test integrity audit (audit_test_integrity) | when the test-integrity gate is retired |
 | Regression tests from the spec | Test owner | the bug-fix test states the spec's expected value instead of the implementation's output | the test's expected value matches the value the code under test returns | the expected value written in the bug-fix test | advisory: the gate proves the test passes now, not that it failed before the fix; review: when a bug-fix change ships without a pre-fix failure record | when the pre-fix failure is recorded and checked mechanically |
 | Independent review | Analysis owner | the review reproduces each finding it treats as actionable | the decision body cites a reproduced command or a re-read location | the reproduced finding cited in the decision body | advisory: an analysis verdict is a review, not a gate; review: on every analysis phase that returns a verdict | when the analysis phase's findings are checked mechanically |
 | Handoff by artifact | Artifact owner | the result body carries the command, the exit code, the output, and the unverified items | the result body contains a verification command and an unverified list | the verification command and the unverified list in the result body | advisory: the body is prose and only the frontmatter is validated; review: when the artifact contract changes | when the artifact body gains a validated field |
