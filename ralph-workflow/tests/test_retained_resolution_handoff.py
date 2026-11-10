@@ -386,7 +386,6 @@ def test_commit_dispatch_race_returns_integration_blocker_not_traceback(tmp_git_
 
 
 def _interrupted(root: Path, operation: str) -> tuple[str, str, str]:
-    assert _git(root, "config", "--replace-all", "core.logAllRefUpdates", "true").returncode == 0
     target = _git(root, "branch", "--show-current").stdout.strip()
     _commit(root, "shared.txt", "base\n")
     assert _git(root, "switch", "-c", "feature").returncode == 0
@@ -448,6 +447,8 @@ def test_foreign_reconciliation_completion_retains_initiating_feature_landing(
             WorkspaceScope(feature),
             RebaseState(),
             rebase_stop_resolver=lambda *_args: False,
+            sleep=lambda _s: None,
+            jitter=lambda: 0.0,
         )
         assert initial is not None and read_record(feature) is not None
 
@@ -681,28 +682,27 @@ def test_completed_retained_rebase_lands_or_replays_stale_intent(
     assert read_record(root) is None
 
 
+@pytest.mark.parametrize("operation", ["merge", "rebase"])
 def test_aborted_operation_reset_to_target_cannot_be_misreported_as_completed(
-    tmp_path: Path, _git_repo_template: Path
+    tmp_path: Path, _git_repo_template: Path, operation: str
 ) -> None:
-
-    for operation in ["merge", "rebase"]:
-        root = _fresh_git_repo(tmp_path, _git_repo_template, operation)
-        target, feature, main = _interrupted(root, operation)
-        assert read_record(root) is not None
-        assert _git(root, operation, "--abort").returncode == 0
-        aborted = recover_incomplete_integration(WorkspaceScope(root))
-        assert aborted is not None and aborted.recovery_record_retained
-        assert read_record(root) is not None
-        assert _git(root, "reset", "--hard", main).returncode == 0
-        outcome = integrate_before_planning(
-            _make_config(target),
-            WorkspaceScope(root),
-            RebaseState(),
-        )
-        assert outcome is not None and not outcome.fast_forwarded
-        assert outcome.recovery_record_retained
-        assert _git(root, "rev-parse", target).stdout.strip() == main
-        assert _git(root, "cat-file", "-e", feature).returncode == 0
+    root = _fresh_git_repo(tmp_path, _git_repo_template, operation)
+    target, feature, main = _interrupted(root, operation)
+    assert read_record(root) is not None
+    assert _git(root, operation, "--abort").returncode == 0
+    aborted = recover_incomplete_integration(WorkspaceScope(root))
+    assert aborted is not None and aborted.recovery_record_retained
+    assert read_record(root) is not None
+    assert _git(root, "reset", "--hard", main).returncode == 0
+    outcome = integrate_before_planning(
+        _make_config(target),
+        WorkspaceScope(root),
+        RebaseState(),
+    )
+    assert outcome is not None and not outcome.fast_forwarded
+    assert outcome.recovery_record_retained
+    assert _git(root, "rev-parse", target).stdout.strip() == main
+    assert _git(root, "cat-file", "-e", feature).returncode == 0
 
 
 @pytest.mark.parametrize(

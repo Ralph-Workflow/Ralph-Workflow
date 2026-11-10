@@ -217,7 +217,7 @@ def test_black_box_real_child_slowed_past_budget_fails_preflight(tmp_path: Path)
     # loaded host trip it during startup instead, and the child then dies
     # at ``session_ready`` rather than at the serving boundary this test
     # asserts on.
-    child_env[MCP_PREFLIGHT_TIMEOUT_MS_ENV] = "8100"
+    child_env[MCP_PREFLIGHT_TIMEOUT_MS_ENV] = "4300"
     real_deadline_s = mcp_preflight_timeout_from_env(child_env).total_seconds() - _PROBE_SAFETY_S
 
     proc = get_process_manager().spawn(

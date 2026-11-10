@@ -76,12 +76,19 @@ class _FakeProcess:
         for line in self._lines:
             self._gate.wait(timeout=5.0)
             yield line
-        # After the seeded lines, suspend forever so the reader thread does
-        # not treat EOF as "done" before the watchdog fires. The test calls
-        # ``proc._gate.clear()`` after the first line is observed, and the
-        # ``finally`` block calls ``proc._gate.set()`` to release the thread.
+        # After the seeded lines, suspend until the watchdog fires and terminates
+        # the process. Checking the process manager record unblocks the reader
+        # thread promptly on termination rather than stalling in reader.join(0.5).
         self._gate.clear()
-        self._gate.wait(timeout=5.0)
+        from ralph.process.manager import get_process_manager
+
+        pm = get_process_manager()
+        while not self._gate.wait(timeout=0.005):
+            rec = pm.get_record(self.pid)
+            if rec is not None and rec.status.name in ("TERMINATED", "KILLED", "EXITED"):
+                break
+            if self.terminated or self.returncode is not None:
+                break
         yield from ()
 
     @staticmethod

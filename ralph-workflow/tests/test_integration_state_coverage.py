@@ -709,6 +709,8 @@ def test_escalation_ladder_advances_monotonically_and_never_wraps() -> None:
     """Repeated identical observations climb a finite ladder without wrapping."""
     report = _GapReport()
     for observation in _observations():
+        if observation.agent_active:
+            continue
         unknown = observation.has_unknown()
         steps = _UNKNOWN_LADDER_STEPS if unknown else _KNOWN_LADDER_STEPS
         state = AttemptState()

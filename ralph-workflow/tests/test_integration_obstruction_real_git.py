@@ -429,6 +429,8 @@ def test_rebase_continuation_rejection_retains_resolved_stop(
         WorkspaceScope(root),
         RebaseState(),
         rebase_stop_resolver=resolve,
+        sleep=lambda _seconds: None,
+        jitter=lambda: 0.0,
     )
     assert outcome is not None and outcome.recovery_record_retained
     assert "hook denied continuation" in (outcome.last_reason or "")

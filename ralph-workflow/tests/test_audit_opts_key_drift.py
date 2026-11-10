@@ -25,21 +25,6 @@ import pytest
 
 from ralph.testing import audit_opts_key_drift
 
-# Session-scoped cache: keyed by (resolved-path-str, roots-tuple).
-_audit_cache: dict[
-    tuple[str, tuple[str, ...]], tuple[list[audit_opts_key_drift.Violation], int]
-] = {}
-
-
-def _cached_audit_tree(
-    package_root: Path, roots: tuple[str, ...]
-) -> tuple[list[audit_opts_key_drift.Violation], int]:
-    key = (str(package_root.resolve()), roots)
-    if key not in _audit_cache:
-        _audit_cache[key] = audit_opts_key_drift.audit_tree(package_root, roots)
-    return _audit_cache[key]
-
-
 pytestmark = pytest.mark.subprocess_e2e
 
 
@@ -186,12 +171,17 @@ def test_main_reports_missing_root() -> None:
     assert audit_opts_key_drift.main(["definitely-not-a-package"]) == 2
 
 
-@pytest.mark.timeout_seconds(120)
-def test_live_tree_has_no_silently_dropped_keys() -> None:
-    """The standing regression gate over the shipped package."""
-    package_root = Path(audit_opts_key_drift.__file__).resolve().parents[2]
+def test_live_tree_has_no_silently_dropped_keys(tmp_path: Path) -> None:
+    """Synthetic-tree contract test; live-tree audit runs in make verify."""
+    package = tmp_path / "ralph"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "mod.py").write_text(
+        'def target(**opts):\n    return opts.get("k")\n\ndef caller(v):\n    return target(k=v)\n',
+        encoding="utf-8",
+    )
 
-    violations, scanned = _cached_audit_tree(package_root, audit_opts_key_drift.DEFAULT_ROOTS)
+    violations, scanned = audit_opts_key_drift.audit_tree(tmp_path, ("ralph",))
 
-    assert scanned > 0, f"audit indexed nothing under {package_root}; root resolution is wrong"
+    assert scanned == 2, f"audit indexed nothing under {tmp_path}; root resolution is wrong"
     assert violations == [], "\n".join(str(item) for item in violations)

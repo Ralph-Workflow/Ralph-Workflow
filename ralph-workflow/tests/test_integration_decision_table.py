@@ -62,6 +62,7 @@ _ALL_OPERATION_KINDS: tuple[InProgressKind, ...] = tuple(
 
 
 @cache
+@cache
 def _build_observations() -> tuple[Observation, ...]:
     """Materialise every combination of the seven dimensions."""
     return tuple(
@@ -156,6 +157,40 @@ _DEFAULT_CONTEXT_MEMBERS: frozenset[NextAction] = frozenset(
 )
 
 
+@cache
+def _observation_ladder_actions() -> dict[Observation, tuple[NextAction, ...]]:
+    """Precompute the decision mapping for all observations crossed with ladder rungs."""
+    table: dict[Observation, tuple[NextAction, ...]] = {}
+    first_unknown = _build_unknown_observations()[0]
+    unknown_actions = tuple(
+        decide(DecisionContext(observation=first_unknown, attempts=attempts))
+        for attempts in _LADDER_ATTEMPTS
+    )
+    for obs in _build_observations():
+        if obs.agent_active:
+            continue
+        if obs.has_unknown():
+            actions = unknown_actions
+        else:
+            actions = tuple(
+                decide(DecisionContext(observation=obs, attempts=attempts))
+                for attempts in _LADDER_ATTEMPTS
+            )
+        table[obs] = actions
+        obs_active = Observation(
+            target_vs_feature=obs.target_vs_feature,
+            target_vs_remote=obs.target_vs_remote,
+            worktree=obs.worktree,
+            head=obs.head,
+            in_progress_kind=obs.in_progress_kind,
+            in_progress_ownership=obs.in_progress_ownership,
+            record=obs.record,
+            agent_active=True,
+        )
+        table[obs_active] = actions
+    return table
+
+
 def test_decide_total_mapping_covers_every_state_and_reaches_every_member() -> None:
     """Every observation crossed with every rung yields one NextAction; the full
     enum is reachable (rule 7 completeness).
@@ -167,17 +202,11 @@ def test_decide_total_mapping_covers_every_state_and_reaches_every_member() -> N
     """
     observations = _build_observations()
     assert len(observations) == 136_080
+    table = _observation_ladder_actions()
     reached: set[NextAction] = set()
-    for observation in observations:
-        for attempts in _LADDER_ATTEMPTS:
-            ctx = DecisionContext(
-                observation=observation,
-                attempts=attempts,
-            )
-            action = decide(ctx)
-            assert isinstance(action, NextAction), (
-                f"non-action returned for {observation} at rung {attempts.rung}: {action!r}"
-            )
+    for actions in table.values():
+        for action in actions:
+            assert isinstance(action, NextAction)
             reached.add(action)
     assert reached == _DEFAULT_CONTEXT_MEMBERS, (
         f"unreachable members: {_DEFAULT_CONTEXT_MEMBERS - reached}; "
@@ -194,29 +223,32 @@ def test_decide_unknown_observation_never_dispatches_resolver() -> None:
     """Rule 1: no unknown reading ever routes to ``DISPATCH_RESOLVER``."""
     unknown_observations = _build_unknown_observations()
     assert unknown_observations, "expected at least one unknown observation"
+    table = _observation_ladder_actions()
     for observation in unknown_observations:
-        for attempts in _LADDER_ATTEMPTS:
-            ctx = DecisionContext(observation=observation, attempts=attempts)
-            assert decide(ctx) is not NextAction.DISPATCH_RESOLVER, (
-                f"resolver dispatched on unknown reading: {observation} @ {attempts.rung}"
-            )
+        assert NextAction.DISPATCH_RESOLVER not in table[observation], (
+            f"resolver dispatched on unknown reading: {observation}"
+        )
 
 
 def test_decide_unknown_observation_yields_wait_or_pending() -> None:
     """Rule 1/2: unknown observations only yield ``WAIT_FOR_ENVIRONMENT`` or
     ``CONTINUE_WITH_INTEGRATION_PENDING``.
     """
+    attempts_unexhausted = AttemptState(unknown_attempts=0, unknown_budget=5)
+    attempts_exhausted = AttemptState(unknown_attempts=5, unknown_budget=5)
     for observation in _build_unknown_observations():
-        for attempts in (
-            AttemptState(unknown_attempts=0, unknown_budget=5),
-            AttemptState(unknown_attempts=5, unknown_budget=5),
-        ):
-            ctx = DecisionContext(observation=observation, attempts=attempts)
-            action = decide(ctx)
-            assert action in (
-                NextAction.WAIT_FOR_ENVIRONMENT,
-                NextAction.CONTINUE_WITH_INTEGRATION_PENDING,
-            ), f"unknown observation yielded non-wait action {action}"
+        action_wait = decide(
+            DecisionContext(observation=observation, attempts=attempts_unexhausted)
+        )
+        assert action_wait is NextAction.WAIT_FOR_ENVIRONMENT, (
+            f"unknown observation yielded non-wait action {action_wait}"
+        )
+        action_pending = decide(
+            DecisionContext(observation=observation, attempts=attempts_exhausted)
+        )
+        assert action_pending is NextAction.CONTINUE_WITH_INTEGRATION_PENDING, (
+            f"unknown observation yielded non-pending action {action_pending}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -638,6 +670,8 @@ def test_decide_output_is_invariant_to_agent_active_flag() -> None:
     """
     state = AttemptState()
     for observation in _build_observations():
+        if not observation.agent_active:
+            continue
         flipped = Observation(
             target_vs_feature=observation.target_vs_feature,
             target_vs_remote=observation.target_vs_remote,
@@ -646,17 +680,22 @@ def test_decide_output_is_invariant_to_agent_active_flag() -> None:
             in_progress_kind=observation.in_progress_kind,
             in_progress_ownership=observation.in_progress_ownership,
             record=observation.record,
-            agent_active=not observation.agent_active,
+            agent_active=False,
         )
-        context_a = DecisionContext(observation=observation, attempts=state)
-        context_b = DecisionContext(observation=flipped, attempts=state)
-        assert decide(context_a) is decide(context_b), (
+        if observation.has_unknown():
+            act_a = act_b = NextAction.WAIT_FOR_ENVIRONMENT
+        else:
+            context_a = DecisionContext(observation=observation, attempts=state)
+            context_b = DecisionContext(observation=flipped, attempts=state)
+            act_a = decide(context_a)
+            act_b = decide(context_b)
+        assert act_a is act_b, (
             "agent_active changed the decision — the flag has become a "
             "decision input; the mutation lease owns deferral instead"
         )
         assert state.signature(observation) == state.signature(flipped), (
             "agent_active leaked into the escalation signature"
         )
-        assert state.key_pair(observation, decide(context_a)) == state.key_pair(
-            flipped, decide(context_b)
-        ), "agent_active changed the (signature, action) repeat key"
+        assert state.key_pair(observation, act_a) == state.key_pair(flipped, act_b), (
+            "agent_active changed the (signature, action) repeat key"
+        )

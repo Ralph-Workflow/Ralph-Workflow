@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from functools import cache
 from io import StringIO
 from pathlib import Path
 
@@ -41,6 +42,13 @@ def _write_commit_message_when_needed(workspace: FsWorkspace, *, empty: bool) ->
         )
 
 
+@cache
+def _get_default_policy():
+    from ralph.policy.loader import load_policy
+
+    return load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
+
+
 @pytest.mark.parametrize("empty", [False, True])
 def test_completed_commit_is_not_replayed_while_clean_landing_receipt_waits(
     tmp_git_repo: Path,
@@ -55,7 +63,6 @@ def test_completed_commit_is_not_replayed_while_clean_landing_receipt_waits(
     from ralph.pipeline.commit_state import CommitState
     from ralph.pipeline.events import PipelineEvent
     from ralph.pipeline.state import PipelineState
-    from ralph.policy.loader import load_policy
     from ralph.recovery.controller import RecoveryController
     from ralph.recovery.testing import FakeConnectivityMonitor
 
@@ -69,7 +76,7 @@ def test_completed_commit_is_not_replayed_while_clean_landing_receipt_waits(
         workspace.write("shared.txt", "new committed work\n")
     context = make_display_context(console=Console(file=StringIO(), width=120))
     display = ParallelDisplay(context)
-    policy = load_policy(Path(__file__).parents[1] / "ralph" / "policy" / "defaults")
+    policy = _get_default_policy()
     config = UnifiedConfig.model_validate(
         {
             "general": {

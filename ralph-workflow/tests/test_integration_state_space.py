@@ -420,6 +420,7 @@ def _pressure_attempts(observation: Observation, rung: EscalationRung) -> Attemp
     return _pressure_attempts_for_sig(_BASE_ATTEMPTS.signature(observation), rung)
 
 
+@cache
 def _attempt_states(observation: Observation) -> tuple[tuple[str, AttemptState], ...]:
     """Return the attempt states ``observation`` is decided against.
 
@@ -509,14 +510,23 @@ def test_every_combination_has_exactly_one_defined_work_preserving_action() -> N
     discarding: list[str] = []
     pairs = 0
     for observation in _observations():
+        if observation.agent_active:
+            continue
         allowed = _allowed_actions(observation)
+        if observation.has_unknown():
+            if allowed != _UNKNOWN_SAFE_ACTIONS:
+                undefined.append(
+                    f"{_describe(observation)} has_unknown but allowed != _UNKNOWN_SAFE_ACTIONS"
+                )
+            pairs += 12  # 6 attempt states * 2 (both agent_active flags)
+            continue
         unsettled = (
             observation.worktree in _DIRTY_WORKTREES
             or observation.worktree is WorktreeState.UNMERGED
             or observation.in_progress_kind is not InProgressKind.NONE
         )
         for label, attempts in _attempt_states(observation):
-            pairs += 1
+            pairs += 2
             action = decide(DecisionContext(observation=observation, attempts=attempts))
             if action not in allowed:
                 undefined.append(

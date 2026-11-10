@@ -184,27 +184,28 @@ def test_e64_import_guard_fires_under_both_pythons_with_same_marker(tmp_path: Pa
     script = tmp_path / "driver_combined.py"
     script.write_text(_driver_script_text(), encoding="utf-8")
 
-    procs = {
-        "normal": subprocess.run(
-            [sys.executable, str(script)],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=False,
-        ),
-        "optimized": subprocess.run(
-            [sys.executable, "-O", str(script)],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=False,
-        ),
+    p_normal = subprocess.Popen(
+        [sys.executable, str(script)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    p_opt = subprocess.Popen(
+        [sys.executable, "-O", str(script)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    stdout_n, stderr_n = p_normal.communicate(timeout=15)
+    stdout_o, stderr_o = p_opt.communicate(timeout=15)
+    results = {
+        "normal": (p_normal.returncode, stdout_n, stderr_n),
+        "optimized": (p_opt.returncode, stdout_o, stderr_o),
     }
-    for label, proc in procs.items():
-        assert proc.returncode != 0, (
-            f"{label} interpreter exited 0; the guard did not fire. "
-            f"stdout={proc.stdout!r} stderr={proc.stderr!r}"
+    for label, (rc, out, err) in results.items():
+        assert rc != 0, (
+            f"{label} interpreter exited 0; the guard did not fire. stdout={out!r} stderr={err!r}"
         )
-        assert _GUARD_FIRED_MARKER in proc.stderr, (
-            f"{label} interpreter did not produce the guard marker; stderr={proc.stderr!r}"
+        assert _GUARD_FIRED_MARKER in err, (
+            f"{label} interpreter did not produce the guard marker; stderr={err!r}"
         )

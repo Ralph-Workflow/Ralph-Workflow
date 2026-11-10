@@ -862,6 +862,8 @@ def _get_gates_template() -> Path:
     writer.set_value("user", "email", "test@example.com")
     writer.set_value("gc", "auto", "0")
     writer.set_value("core", "fsync", "none")
+    writer.set_value("core", "logAllRefUpdates", "false")
+    writer.set_value("commit", "gpgSign", "false")
     writer.release()
     actor = Actor("Test Committer", "test@example.com")
     tracked_file = base / "tracked.txt"

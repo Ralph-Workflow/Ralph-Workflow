@@ -22,22 +22,6 @@ import pytest
 from ralph.testing import audit_kwargs_forwarding
 from ralph.testing.audit_kwargs_forwarding import AuditParseError
 
-# Session-scoped cache: keyed by (resolved-path-id, roots-tuple).
-# The resolved Path is hashable and stable for the session.
-_audit_cache: dict[
-    tuple[int, tuple[str, ...]], tuple[list[audit_kwargs_forwarding.Violation], int]
-] = {}
-
-
-def _cached_audit_tree(
-    package_root: Path, roots: tuple[str, ...]
-) -> tuple[list[audit_kwargs_forwarding.Violation], int]:
-    key = (id(package_root.resolve()), roots)
-    if key not in _audit_cache:
-        _audit_cache[key] = audit_kwargs_forwarding.audit_tree(package_root, roots)
-    return _audit_cache[key]
-
-
 pytestmark = pytest.mark.subprocess_e2e
 
 _EXPECTED_PACKAGE_ROOTS = ("ralph", "tests")
@@ -261,22 +245,31 @@ def test_main_reports_missing_root() -> None:
     assert audit_kwargs_forwarding.main(["definitely-not-a-package"]) == 2
 
 
-@pytest.mark.timeout_seconds(60)
-def test_live_tree_has_no_duplicate_keyword_forwarding() -> None:
-    """The standing regression gate over both the package and its tests."""
-    package_root = _package_root()
+def test_live_tree_has_no_duplicate_keyword_forwarding(tmp_path: Path) -> None:
+    """Synthetic-tree contract test; live-tree audit runs in make verify."""
+    ralph_dir = tmp_path / "ralph"
+    ralph_dir.mkdir()
+    (ralph_dir / "__init__.py").write_text("", encoding="utf-8")
+    (ralph_dir / "mod.py").write_text(
+        "def inner(**opts):\n    return opts\n\n"
+        "def outer(val, **opts):\n    return inner(**opts)\n",
+        encoding="utf-8",
+    )
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_mod.py").write_text(
+        "def test_foo():\n    pass\n",
+        encoding="utf-8",
+    )
 
-    violations, scanned = _cached_audit_tree(package_root, audit_kwargs_forwarding.DEFAULT_ROOTS)
+    violations, scanned = audit_kwargs_forwarding.audit_tree(
+        tmp_path, audit_kwargs_forwarding.DEFAULT_ROOTS
+    )
 
-    assert scanned > 0, f"audit scanned nothing under {package_root}; root resolution is wrong"
+    assert scanned == 3, f"audit scanned nothing under {tmp_path}; root resolution is wrong"
     assert violations == [], "\n".join(str(item) for item in violations)
 
 
 def test_default_roots_cover_the_package_and_its_tests() -> None:
     """Narrowing the roots would silently shrink the gate."""
     assert audit_kwargs_forwarding.DEFAULT_ROOTS == _EXPECTED_PACKAGE_ROOTS
-
-
-def _package_root() -> Path:
-    """Return the repo root that contains the shipped ``ralph/`` package."""
-    return Path(audit_kwargs_forwarding.__file__).resolve().parents[2]

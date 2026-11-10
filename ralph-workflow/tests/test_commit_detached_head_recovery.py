@@ -48,6 +48,8 @@ def _init_repo_template(tmp_path_factory: pytest.TempPathFactory) -> None:
     writer = repo.config_writer()
     writer.set_value("gc", "auto", "0")
     writer.set_value("core", "fsync", "none")
+    writer.set_value("core", "logAllRefUpdates", "false")
+    writer.set_value("commit", "gpgSign", "false")
     writer.release()
     actor = Actor("Test Committer", "test@example.com")
 
@@ -446,7 +448,7 @@ def test_collision_handling_at_divergent_sha_uses_collision_safe_name(
     repo.index.add(["divergent.txt"])
     repo.index.commit("divergent commit", author=actor, committer=actor)
     divergent_sha = repo.head.commit.hexsha
-    repo.git.checkout(divergent_sha)
+    _detach_head_at(repo, divergent_sha)
     assert repo.head.is_detached
 
     # Preferred candidate is 'feature/work', which exists at existing_sha

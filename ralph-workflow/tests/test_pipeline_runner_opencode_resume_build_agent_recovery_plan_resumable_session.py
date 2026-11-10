@@ -403,7 +403,15 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
             def _stdout_iter(self) -> Iterator[str]:
                 yield '{"type":"session","session_id":"sess-from-subprocess"}\n'
                 self._gate.clear()
-                self._gate.wait(timeout=5.0)
+                from ralph.process.manager import get_process_manager
+
+                pm = get_process_manager()
+                while not self._gate.wait(timeout=0.005):
+                    rec = pm.get_record(self.pid)
+                    if rec is not None and rec.status.name in ("TERMINATED", "KILLED", "EXITED"):
+                        break
+                    if self.terminated:
+                        break
                 yield from ()
 
             @staticmethod

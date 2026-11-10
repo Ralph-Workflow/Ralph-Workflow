@@ -623,6 +623,7 @@ def _configure_repo_identity(repo: Repo) -> None:
     try:
         writer.set_value("user", "name", "Test User")
         writer.set_value("user", "email", "test@example.com")
+        writer.set_value("commit", "gpgSign", "false")
         writer.set_value("core", "logAllRefUpdates", "false")
         writer.set_value("core", "fsync", "none")
         writer.set_value("gc", "auto", "0")

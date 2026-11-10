@@ -59,6 +59,10 @@ def _init_repo(path: Path, default_branch: str = _TARGET) -> None:
     assert _run(path, "init").returncode == 0
     assert _run(path, "config", "user.email", "test@example.com").returncode == 0
     assert _run(path, "config", "user.name", "Test User").returncode == 0
+    assert _run(path, "config", "core.logAllRefUpdates", "false").returncode == 0
+    assert _run(path, "config", "commit.gpgSign", "false").returncode == 0
+    assert _run(path, "config", "gc.auto", "0").returncode == 0
+    assert _run(path, "config", "core.fsync", "none").returncode == 0
     _commit(path, "seed.txt", "seed\n", "seed")
     assert _run(path, "branch", "-M", default_branch).returncode == 0
 
