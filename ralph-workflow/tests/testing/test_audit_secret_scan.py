@@ -1,9 +1,10 @@
 """Tests for :mod:`ralph.testing.audit_secret_scan`.
 
-The secret-scan / SAST gate reports credential shapes on NEW or CHANGED
-lines only, honours an inline bypass marker, and covers a small SAST slice
-(``eval``/``exec`` on non-literal input, ``subprocess`` with
-``shell=True``).
+The secret-scan gate reports credential shapes on NEW or CHANGED lines
+only, honours an inline bypass marker, and fails closed when no
+committed baseline is available. Static analysis belongs to the Bandit
+gate (:mod:`ralph.testing.audit_sast`), so this module must not carry a
+SAST slice of its own.
 
 The planted credentials below are assembled from split literals on
 purpose: the gate scans this repository too, and a fixture that carried a
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.testing import audit_secret_scan as secret_scan_gate
 from ralph.testing.audit_secret_scan import (
     AWS_ACCESS_KEY_ID_PATTERN,
     GITHUB_FINE_GRAINED_TOKEN_PATTERN,
@@ -24,12 +26,13 @@ from ralph.testing.audit_secret_scan import (
     SecretFinding,
     audit_secret_scan,
     main,
-    scan_python_sast,
     scan_secret_lines,
 )
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    import pytest
 
 #: Split literals: no contiguous credential shape appears in this file.
 _AWS_ACCESS_KEY_ID = "AKIA" + "Z7XY3QWERTY12345"
@@ -40,6 +43,14 @@ _PEM_HEADER = "-----BEGIN RSA " + "PRIVATE KEY-----"
 _HIGH_ENTROPY_VALUE = "sk_live_" + "4eC39HqLyjWDarjtT1zdp7dc"
 _ASSIGNMENT_KEY = "api" + "_key"
 _SECOND_ASSIGNMENT_KEY = "to" + "ken"
+
+#: A source file whose findings belong to the Bandit gate, not to this one.
+_BANDIT_OWNED_SOURCE = (
+    "import subprocess\n"
+    "subprocess.run('ls', shell=True)\n"
+    "def run(value):\n"
+    "    return eval(value)\n"
+)
 
 
 def _categories(findings: list[SecretFinding]) -> set[str]:
@@ -221,54 +232,56 @@ def test_a_low_entropy_credential_literal_is_not_a_finding() -> None:
     assert scan_secret_lines("a.py", line, {1}) == []
 
 
-# --- the SAST slice ---------------------------------------------------------
+# --- static analysis belongs to the Bandit gate -----------------------------
 
 
-def test_eval_on_non_literal_input_is_flagged() -> None:
-    """``eval`` of a runtime value executes attacker-controlled code."""
-    findings = scan_python_sast("ralph/mod.py", "def f(value):\n    return eval(value)\n")
-
-    assert "sast-eval" in _categories(findings)
-
-
-def test_exec_on_non_literal_input_is_flagged() -> None:
-    """``exec`` of a runtime value executes attacker-controlled code."""
-    findings = scan_python_sast("ralph/mod.py", "def f(value):\n    exec(value)\n")
-
-    assert "sast-eval" in _categories(findings)
+def test_the_module_carries_no_sast_slice() -> None:
+    """A second SAST implementation is dead code; Bandit owns static analysis."""
+    assert not hasattr(secret_scan_gate, "scan_python_sast")
+    assert "scan_python_sast" not in secret_scan_gate.__all__
 
 
-def test_eval_on_a_literal_is_allowed() -> None:
-    """A literal argument carries no dynamic input."""
-    assert scan_python_sast("ralph/mod.py", "def f():\n    return eval('1 + 1')\n") == []
+def test_a_bandit_finding_does_not_fire_from_the_secret_gate() -> None:
+    """``shell=True`` and a dynamic ``eval`` are Bandit findings, not this gate's."""
+    findings = audit_secret_scan({}, {"ralph/mod.py": _BANDIT_OWNED_SOURCE})
+
+    assert findings == []
 
 
-def test_subprocess_with_shell_true_is_flagged() -> None:
-    """``shell=True`` hands the command string to a shell."""
-    source = "import subprocess\nsubprocess.run('ls', shell=True)\n"
+def test_the_cli_ignores_a_tree_that_only_carries_bandit_findings(tmp_path: Path) -> None:
+    """The CLI reports no finding for a file the Bandit gate owns."""
+    baseline = tmp_path / "baseline"
+    current = tmp_path / "current"
+    baseline.mkdir()
+    current.mkdir()
+    (current / "mod.py").write_text(_BANDIT_OWNED_SOURCE, encoding="utf-8")
 
-    assert "sast-shell-true" in _categories(scan_python_sast("ralph/mod.py", source))
-
-
-def test_subprocess_with_an_aliased_import_is_flagged() -> None:
-    """An aliased import does not evade the slice."""
-    source = "import subprocess as sp\nsp.check_output('ls', shell=True)\n"
-
-    assert "sast-shell-true" in _categories(scan_python_sast("ralph/mod.py", source))
+    assert main([str(baseline), str(current)]) == 0
 
 
-def test_subprocess_without_shell_is_allowed() -> None:
-    """An argument vector without a shell is the safe form."""
-    source = "import subprocess\nsubprocess.run(['ls'], shell=False)\n"
-
-    assert scan_python_sast("ralph/mod.py", source) == []
+# --- the gate fails closed without a committed baseline ----------------------
 
 
-def test_the_sast_slice_ignores_test_modules() -> None:
-    """Test fixtures that execute generated snippets are out of the slice."""
-    source = "def f(value):\n    return eval(value)\n"
+def test_main_returns_two_when_no_committed_baseline_exists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tree with no committed baseline is an error, not a whole-tree scan."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    (root / "config.py").write_text(_planted_secret_file(), encoding="utf-8")
+    monkeypatch.setattr("ralph.testing.audit_secret_scan.head_tree", lambda _root: None)
 
-    assert scan_python_sast("tests/test_recipe.py", source) == []
+    assert main([str(root)]) == 2
+
+
+def test_main_returns_two_when_the_default_tree_has_no_baseline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The default invocation fails closed when the package has no committed copy."""
+    monkeypatch.setattr("ralph.testing.audit_secret_scan.head_tree", lambda _root: None)
+
+    assert main([]) == 2
 
 
 # --- CLI contract -----------------------------------------------------------
@@ -276,20 +289,24 @@ def test_the_sast_slice_ignores_test_modules() -> None:
 
 def test_main_returns_one_when_a_secret_is_planted(tmp_path: Path) -> None:
     """The CLI fails on a planted credential."""
-    root = tmp_path / "tree"
-    root.mkdir()
-    (root / "config.py").write_text(_planted_secret_file(), encoding="utf-8")
+    baseline = tmp_path / "baseline"
+    current = tmp_path / "current"
+    baseline.mkdir()
+    current.mkdir()
+    (current / "config.py").write_text(_planted_secret_file(), encoding="utf-8")
 
-    assert main([str(root)]) == 1
+    assert main([str(baseline), str(current)]) == 1
 
 
 def test_main_returns_zero_when_clean(tmp_path: Path) -> None:
     """The CLI passes on a clean tree."""
-    root = tmp_path / "tree"
-    root.mkdir()
-    (root / "config.py").write_text(_clean_file(), encoding="utf-8")
+    baseline = tmp_path / "baseline"
+    current = tmp_path / "current"
+    baseline.mkdir()
+    current.mkdir()
+    (current / "config.py").write_text(_clean_file(), encoding="utf-8")
 
-    assert main([str(root)]) == 0
+    assert main([str(baseline), str(current)]) == 0
 
 
 def test_main_returns_zero_when_only_the_baseline_carries_the_secret(tmp_path: Path) -> None:

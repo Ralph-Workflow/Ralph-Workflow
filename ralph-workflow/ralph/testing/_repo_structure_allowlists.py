@@ -1977,6 +1977,11 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/testing/audit_lint_bypass.py", 498),
         ("ralph/testing/audit_typecheck_bypass.py", 286),
         ("ralph/testing/audit_typecheck_bypass.py", 301),
+        # The comment audit documents the suppression directive forms it
+        # recognises, so its own docstring carries the literal markers the
+        # bypass-comment detector scans for. Same shape as the two
+        # audit_typecheck_bypass entries above.
+        ("ralph/testing/audit_comments.py", 318),
         # wt-034 (mcp optimization) extracted carrier files; grandfathered.
         ("ralph/agents/catalog.py", 275),
         ("ralph/agents/catalog.py", 316),

@@ -630,6 +630,10 @@ _TEST_NOQA_EXEMPT_STEMS: frozenset[str] = frozenset(
     {
         "test_audit_lint_bypass",
         "audit_lint_bypass",
+        # The comment audit's own tests feed documented suppression directives
+        # in as fixtures, so the directives appear as literals in the test
+        # source rather than as real suppressions.
+        "test_audit_comments",
     }
 )
 

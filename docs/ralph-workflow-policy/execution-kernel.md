@@ -42,10 +42,10 @@ markers MUST appear verbatim before any heading or content.
 ## Loading direction
 
 * Agents MUST NOT load every policy file by default.
-* Load order: kernel → domain file(s) whose change actually fires the
-  rule → stop.
-* A cold agent loads the kernel plus only the rule slice its phase
-  binds, named in the rule-to-phase table below.
+* Load order: kernel → role slice → triggered domain file → stop.
+  A cold agent reads the kernel, then only the rule slice its phase
+  binds, named in the rule-to-phase table below, then the domain
+  file(s) whose trigger the change actually fires.
 * The verification entry point (`make -C ralph-workflow verify`) is the
   authoritative loader, not which files an agent has read.
 * A change that does not fire a domain file's trigger does not require
@@ -56,27 +56,36 @@ markers MUST appear verbatim before any heading or content.
 These rules previously appeared verbatim in every domain file's "AI
 execution instructions" section. They live here exactly once.
 
-* **Truthful evidence**: a claim of compliance, a recorded finding,
-  a test result, or a gate outcome MUST be reproducible from the inputs
-  the change actually executed.
-  (evidence: strong)
-* **Run every gate**: run every `RALPH-COMMAND:` gate declared under
-  the affected policy's Verification section before claiming
-  compliance; report the actual outcome (exit code, error, real
-  timing).
-  (evidence: strong)
-* **No weakening**: do NOT weaken a gate to obtain a passing result.
-  Weakening moves include `# noqa`, inline allowlist entries,
-  per-file ignores, raised timeouts, removed assertions, and
-  refactored-out failure paths.
-  (evidence: strong)
-* **Policy follows reality**: update policy facts/commands/requirements
-  in the same workflow that changes the underlying tool, gate,
-  exclusion, or behaviour.
-  (evidence: none)
-* **Report failures honestly**: a red gate hidden behind "this is
-  unrelated" is itself a failure.
-  (evidence: none)
+1. **Truthful evidence.** Every claim about behavior, status, or outcome
+   must be backed by a record the agent can show: a command and its
+   actual output, a test and its result, a file read and its content.
+   Claims that are NOT backed by an inspectable record are not
+   evidence. A claim of compliance, a recorded finding, a test result,
+   or a gate outcome must be reproducible from the inputs the change
+   actually executed. A claim without backing is a violation, not a
+   stretch. (evidence: strong)
+2. **Run every gate.** Run every `RALPH-COMMAND:` gate declared under the
+   affected policy's Verification section before claiming compliance;
+   report the actual outcome (exit code, error, real timing). A check
+   that cannot run is a red gate; the run does not proceed past the
+   check by default. A guard that times out, a test that errors on
+   collection, a scanner that crashes is a HARD failure. Repairing the
+   gate is the only lawful move; weakening the gate is a violation.
+   (evidence: strong)
+3. **No weakening.** Adding `# noqa`, `# type: ignore`, a per-file lint
+   ignore, a `follow_imports = silent`, a lowered coverage threshold, a
+   deselected test, a raised budget, a removed time limit, a `disabled`
+   audit, or any other relaxation that hides a real defect is a violation.
+   The only lawful way past a red gate is fixing the production code or
+   fixing the test — never the gate. (evidence: strong)
+4. **Policy follows reality.** Update policy facts, commands, and
+   requirements in the same workflow that changes the underlying tool,
+   gate, exclusion, or behaviour. (evidence: none)
+5. **Report failures honestly.** When a gate fails or a claim cannot be
+   backed, the agent MUST report the failure honestly and surface the gap
+   in the result body. Hiding a failure behind narration, agent summary, or
+   "this is unrelated" is a violation. A red gate hidden behind narration
+   is itself a failure. (evidence: none)
 
 ## Agent rules
 
@@ -92,6 +101,9 @@ secondary data. A rule tagged `anecdotal` or `none` rests on judgment
 or on practitioner experience rather than on a recorded source, so it
 stays advisory with a review trigger; a rule whose enforcer does not
 exist yet is advisory too, and is never marked `deterministic`.
+Only a rule tagged `strong` or `moderate` may carry a `deterministic`
+enforcement status: an `anecdotal` or a `none` rule always keeps its
+advisory status and its review trigger.
 
 Every rule below is an agent rule or a runtime rule. No rule asks an
 agent to count its own retries, to keep state across sessions, to
@@ -129,7 +141,7 @@ those.
    fix, and its expected value is written down from the spec rather
    than computed by calling the code under test. A test whose expected
    value comes from the implementation proves only that the
-   implementation agrees with itself. (evidence: strong)
+   implementation agrees with itself. (evidence: moderate)
 5. **Independent review.** Review belongs to the analysis phases
    (`planning_analysis`, `development_analysis`), which are already
    separate cold invocations. The reviewer judges the work against the
@@ -157,13 +169,13 @@ those.
    narrowing, or simplifying over introducing new machinery. A change
    that replaces an API migrates its callers and deletes the replaced
    API in the same change; a legacy path that survives its replacement
-   is dead weight, not a migration. (evidence: moderate)
+   is dead weight, not a migration. (evidence: anecdotal)
 9. **Context hygiene.** Bulk reads, broad searches, and log analysis
    are delegated to sub-agents, and what comes back is the conclusion
    — the answer, the citation, the count — not the raw payload. Native
    sub-agent tools are never disabled: a missing orchestration facility
    is setup to repair, not a reason to work in the parent session.
-   (evidence: moderate)
+   (evidence: strong)
 10. **Plan scaling.** A trivial, single-file change goes straight to
     implementation. Multi-file or ambiguous work requires a written
     plan with acceptance criteria before the first edit, so that "done"
@@ -306,11 +318,12 @@ without re-deriving them.
 
 1. LOAD the kernel first. Read this file before every other domain
    policy; the kernel rules are the floor.
-2. LOAD only the domain policies triggered by the change.
+2. LOAD only the rule slice your phase binds, named in the
+   rule-to-phase table.
 3. ENFORCE the five kernel rules on every action: Truthful evidence,
    Run every gate, No weakening, Policy follows reality,
    Report failures honestly.
-4. LOAD only the rule slice your phase binds.
+4. LOAD only the domain policies triggered by the change.
 5. ON CONFLICT, the kernel wins.
 6. RUN every `RALPH-COMMAND:` gate below and report the actual
    outcome. Never report a command that was not run.
@@ -359,32 +372,99 @@ Review this kernel in the same workflow as any of:
 * The claim-scope predicate is tightened or loosened.
 * A new audit is wired that protects one of the five rules.
 * The guard_inventory_review_cadence is reached.
+* A model or harness generation change: re-audit this policy for
+  stale, dead-path, or contradictory rules, and update the affected
+  text in the same change.
 
 ## Research basis
+
+* publisher: Anthropic
+  title: "Best practices for Claude Code"
+  http: https://code.claude.com/docs/en/best-practices
+  review date: 2026-11-09
+  supports: Check first (1), Real-artifact evidence (2) and Context
+  hygiene (9) — the guidance hands the agent a runnable pass/fail
+  check, asks for the evidence behind a completion claim, and delegates
+  bulk reads to sub-agents that return conclusions rather than raw
+  payloads. A primary engineering source, so the rules it supports stay
+  `strong`.
+
+* publisher: Gloaguen et al. (arXiv preprint)
+  title: "Evaluating AGENTS.md: Are Repository-Level Context Files Helpful for Coding Agents?"
+  http: https://arxiv.org/pdf/2602.11988
+  review date: 2026-11-09
+  supports: Independent review (5) and Handoff by artifact (6) — a
+  written agent instruction helps the next reader only when it states
+  what was actually checked, so the review is judged against the spec
+  and the handoff carries the record behind the claim. The preprint is
+  directional evidence, so the rules it supports stay `moderate`.
+
+* publisher: Zhong et al. (arXiv preprint)
+  title: "ImpossibleBench: Measuring LLMs' Propensity of Exploiting Test Cases"
+  http: https://arxiv.org/abs/2510.20270
+  review date: 2026-11-09
+  supports: Test integrity (3) — the benchmark measures how often a
+  model exploits a test case to pass, which is the behaviour the rule
+  forbids beside the production code the test covers. Only the abstract
+  was read.
+
+* publisher: Spracklen et al. (arXiv preprint)
+  title: "We Have a Package for You! A Comprehensive Analysis of Package Hallucinations by Code Generating LLMs"
+  http: https://arxiv.org/html/2406.10279v3
+  review date: 2026-11-09
+  supports: Real-artifact evidence (2) — a package name that does not
+  exist is a claim with no record behind it, so the evidence for a
+  completion claim has to come from the artifact the change actually
+  touched. Only the abstract was read.
 
 * publisher: Google Engineering Practices
   title: "Code Review at Google"
   http: https://google.github.io/eng-practices/review/
-  review date: 2026-09-30
-  supports: Real-artifact evidence and Test integrity — a reviewer reads
-  the change against the plan, and an expectation edited beside the code
-  it covers is a finding rather than a detail.
+  review date: 2026-11-09
+  supports: Real-artifact evidence (2) and Test integrity (3) — a
+  reviewer reads the change against the plan, and an expectation edited
+  beside the code it covers is a finding rather than a detail.
 
 * publisher: Kent Beck
   title: "Test-Driven Development: By Example"
   http: https://www.pearson.com/en-us/subject-catalog/p/test-driven-development-by-example/P200000009421/9780321146533
-  review date: 2026-09-30
-  supports: Check first and Regression tests from the spec — the failing
-  case is written before the implementation, so the check that decides
-  the change exists before the change does.
+  review date: 2026-11-09
+  supports: Check first (1) and Regression tests from the spec (4) —
+  the failing case is written before the implementation, so the check
+  that decides the change exists before the change does, and the
+  expected value comes from the spec rather than from a run of the code
+  under test.
+
+* publisher: Martin Fowler
+  title: "TestDesiderata"
+  http: https://testdesiderata.com/
+  review date: 2026-11-09
+  supports: Regression tests from the spec (4) — a test earns its keep
+  from the behaviour it pins down, so the expected value is written
+  down from the spec rather than captured from a run. A secondary
+  source, so the rule stays `moderate`.
+
+* publisher: Cursor (pstack plugins)
+  title: "pstack"
+  http: https://github.com/cursor/plugins/tree/main/pstack
+  review date: 2026-11-09
+  supports: Premise check (7), Smallest change (8) and Rule-to-enforcer
+  ladder (13) — the practitioner notes propose testing the premise
+  before another patch, subtracting before adding, and a
+  rule-to-enforcer table that fixes a repeated mistake at the highest
+  level that can hold it. Practitioner experience is not a measurement,
+  so the rules it supports stay advisory.
 
 * publisher: Ralph Workflow project
   title: "Project policy: outcome-oriented execution kernel"
   http: https://github.com/Ralph-Workflow/Ralph-Workflow
   review date: 2026-11-09
-  supports: Check first, Real-artifact evidence and Smallest change — the
-  shipped kernel of this project states the same evidence-first
-  discipline for its own agents.
+  supports: Plan scaling (10), Commit-level hygiene (11) and Human
+  checkpoints (12) — this project has a planning phase, a commit phase,
+  and human checkpoints for irreversible actions; the thresholds that
+  separate a trivial change from a planned one, and an irreversible
+  action from a reversible one, are project judgment rather than a
+  measurement, so these rules stay `none` and advisory.
 
 ## Explicit non-adoptions
 

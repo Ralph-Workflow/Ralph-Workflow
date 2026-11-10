@@ -27,6 +27,7 @@ from ralph.testing.audit_comments import (
     SEVERITY_ADVISORY,
     SEVERITY_BLOCKING,
     CommentFinding,
+    audit_comment_roots,
     audit_comments,
     main,
     scan_comment_lines,
@@ -170,6 +171,33 @@ def test_a_hash_inside_a_string_is_not_a_comment() -> None:
     assert _scan(text) == []
 
 
+# --- the suppression forms the typechecking and linting policies mandate -----
+
+
+def test_a_type_ignore_with_a_reason_is_not_commented_out_code() -> None:
+    """The mandated type-ignore form is a suppression, not commented-out code."""
+    text = "x = 1  # type: ignore[arg-type]  # reason: external library has no type support\n"
+
+    assert RULE_COMMENTED_OUT_CODE not in _rules(_scan(text))
+
+
+def test_a_noqa_with_a_reason_is_not_commented_out_code() -> None:
+    """The mandated noqa form is a suppression, not commented-out code."""
+    text = "x = 1  # noqa: RUF022  # reason: intentional per-file order\n"
+
+    assert RULE_COMMENTED_OUT_CODE not in _rules(_scan(text))
+
+
+def test_a_suppression_with_a_reason_is_not_reported_at_all() -> None:
+    """A documented suppression passes every comment rule."""
+    text = (
+        "x = 1  # type: ignore[arg-type]  # reason: external library has no type support\n"
+        "y = 2  # noqa: RUF022  # reason: intentional per-file order\n"
+    )
+
+    assert _scan(text) == []
+
+
 # --- baseline-diff mode ----------------------------------------------------
 
 
@@ -222,6 +250,34 @@ def test_a_new_file_is_fully_scanned() -> None:
 def test_a_non_python_file_is_not_scanned() -> None:
     """The gate reads Python source only."""
     findings = audit_comments({}, {"notes.md": "# TODO: refactor the parser\n"})
+
+    assert findings == []
+
+
+def test_an_unchanged_empty_bypass_reason_is_not_reported() -> None:
+    """An unchanged empty-reason marker is pre-existing debt, not a regression."""
+    text = f"# {COMMENT_BYPASS_MARKER}:\n"
+
+    findings = audit_comments({"fixture.py": text}, {"fixture.py": text})
+
+    assert findings == []
+
+
+def test_a_new_empty_bypass_reason_is_reported() -> None:
+    """An empty-reason marker on a NEW line is a regression and is reported."""
+    baseline = {"fixture.py": "x = 1\n"}
+    current = {"fixture.py": "x = 1\n# comment-ok:\n"}
+
+    findings = audit_comments(baseline, current)
+
+    assert RULE_EMPTY_BYPASS_REASON in _rules(findings)
+
+
+def test_identical_baseline_and_current_sets_report_nothing() -> None:
+    """Identical baseline and current content sets produce no finding at all."""
+    text = f"# {COMMENT_BYPASS_MARKER}:\n# TODO: refactor the parser\n"
+
+    findings = audit_comments({"fixture.py": text}, {"fixture.py": text})
 
     assert findings == []
 
@@ -322,3 +378,35 @@ def test_main_returns_two_when_baseline_unavailable(monkeypatch: pytest.MonkeyPa
     """A missing baseline when invoked with no arguments fails closed with exit code 2."""
     monkeypatch.setattr("ralph.testing.audit_comments.head_tree", lambda _root: None)
     assert main([]) == 2
+
+
+def test_audit_comment_roots_reports_the_baseline_count(tmp_path: Path) -> None:
+    """The roots seam reports how many findings the committed baseline carries."""
+    baseline = tmp_path / "baseline"
+    current = tmp_path / "current"
+    baseline.mkdir()
+    current.mkdir()
+    (baseline / "mod.py").write_text("# TODO: refactor the parser\n", encoding="utf-8")
+    (current / "mod.py").write_text("# TODO: refactor the parser\n", encoding="utf-8")
+
+    findings, baseline_count = audit_comment_roots(baseline, current)
+
+    assert findings == []
+    assert baseline_count == 1
+
+
+def test_main_prints_the_baseline_count(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The CLI reports the burn-down count the clean-code policy promises."""
+    baseline = tmp_path / "baseline"
+    current = tmp_path / "current"
+    baseline.mkdir()
+    current.mkdir()
+    (baseline / "mod.py").write_text("# TODO: refactor the parser\n", encoding="utf-8")
+    (current / "mod.py").write_text("# TODO: refactor the parser\n", encoding="utf-8")
+
+    assert main([str(baseline), str(current)]) == 0
+
+    output = capsys.readouterr().out
+    assert "1 pre-existing finding(s) in the baseline" in output

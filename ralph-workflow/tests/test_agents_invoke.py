@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import tomllib
 from collections.abc import Iterator
 from pathlib import Path
@@ -24,6 +25,7 @@ from typing import (
     Literal,
 )
 
+import psutil
 import pytest
 from loguru import logger
 
@@ -482,51 +484,85 @@ def test_invoke_agent_without_session_scope_ignores_unrelated_agent_labels(
 
 
 # === consolidated from test_agents_invoke_1.py ===
-def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
+def _dead_pid() -> int:
+    """Return a pid that no live process owns.
+
+    Production answers "does this pid have live descendants?" with
+    ``psutil.Process.children(recursive=True)``, which enumerates EVERY
+    process on the host to build a parent map. A fake that names a pid a
+    live host process owns therefore pays for a full process-table scan on
+    every probe, and the idle watchdog probes on every poll -- with the
+    fake clock those polls spin at CPU speed. One such scenario ran 28
+    scans and burned 1.9 CPU seconds on a 2000-process host: over the 1.0
+    CPU-second per-test budget, and worse on a loaded host.
+
+    A pid this process forked and reaped is provably dead: the kernel holds
+    no entry for it, so psutil answers ``NoSuchProcess`` without
+    enumerating anything.
+    """
+    pid = os.fork()
+    if pid == 0:
+        os._exit(0)
+    os.waitpid(pid, 0)
+    return pid
+
+
+# === consolidated from test_agents_invoke_1.py ===
+class _IdleTimeoutProcess:
+    """Fake agent process for the idle-stream-timeout scenario.
+
+    Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
+    positional message), so a process fake must satisfy the
+    ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
+    """
+
+    stdin = None
+
+    def __init__(self) -> None:
+        # A pid this session forked and reaped: no live host process owns
+        # it, so the production descendant probe short-circuits instead of
+        # enumerating the host's whole process table (see ``_dead_pid``).
+        self.pid = _dead_pid()
+        self.stdout = iter(())
+        self.stderr = SimpleNamespace(read=lambda _size: "")
+        self.returncode = 0
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def __enter__(self) -> _IdleTimeoutProcess:
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: object,
+        _exc: object,
+        _tb: object,
+    ) -> Literal[False]:
+        return False
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode
+
+    def terminate(self) -> None:
+        pass
+
+    def kill(self) -> None:
+        pass
+
+
+# === consolidated from test_agents_invoke_1.py ===
+def _run_idle_stream_timeout_scenario(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Run the idle-stream timeout and assert it surfaces as an inactivity error."""
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
 
-    class FakeProcess:
-        # Ralph delivers OpenCode's prompt on stdin (the CLI re-quotes a
-        # positional message), so a process fake must satisfy the
-        # ``_SyncProcessLike`` protocol's ``stdin`` member like the real one.
-        stdin = None
-        pid: int = 12345
-
-        def poll(self) -> int | None:
-            return self.returncode
-
-        def __init__(self) -> None:
-            self.stdout = iter(())
-            self.stderr = SimpleNamespace(read=lambda _size: "")
-            self.returncode = 0
-
-        def __enter__(self) -> FakeProcess:
-            return self
-
-        def __exit__(
-            self,
-            _exc_type: object,
-            _exc: object,
-            _tb: object,
-        ) -> Literal[False]:
-            return False
-
-        def wait(self, timeout: float | None = None) -> int:
-            return self.returncode
-
-        def terminate(self) -> None:
-            pass
-
-        def kill(self) -> None:
-            pass
-
     monkeypatch.setattr(
         "ralph.agents.invoke.subprocess.Popen",
-        lambda *args, **kwargs: FakeProcess(),
+        lambda *args, **kwargs: _IdleTimeoutProcess(),
     )
 
     with pytest.raises(AgentInactivityTimeoutError, match="no output for 0s"):
@@ -542,6 +578,52 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
                 _clock=FakeClock(),
             )
         )
+
+
+# === consolidated from test_agents_invoke_1.py ===
+def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _run_idle_stream_timeout_scenario(monkeypatch, tmp_path)
+
+
+# === consolidated from test_agents_invoke_1.py ===
+def test_idle_stream_timeout_fake_process_owns_no_live_pid() -> None:
+    """The fake agent process must never name a pid a live host process owns.
+
+    A live pid turns every production descendant probe into a full scan of
+    the host's process table, and the scan cost grows with the number of
+    processes the host runs -- the reason this scenario used to exceed the
+    per-test CPU budget on a loaded host.
+    """
+    assert not psutil.pid_exists(_IdleTimeoutProcess().pid)
+
+
+# === consolidated from test_agents_invoke_1.py ===
+def test_idle_stream_timeout_scenario_never_scans_the_host_process_table(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The idle-stream timeout scenario must not scan the host's processes.
+
+    ``psutil`` answers a descendant probe by reading ``/proc/<pid>/stat`` for
+    every process on the machine. The scan is stubbed out here so the
+    assertion is about the scenario's behaviour, not about the host's
+    process count.
+    """
+    scans = 0
+
+    def counting_children(
+        self: psutil.Process, recursive: bool = False
+    ) -> list[psutil.Process]:
+        nonlocal scans
+        scans += 1
+        return []
+
+    monkeypatch.setattr(psutil.Process, "children", counting_children)
+
+    _run_idle_stream_timeout_scenario(monkeypatch, tmp_path)
+
+    assert scans == 0, f"the scenario scanned the host process table {scans} time(s)"
 
 
 # === consolidated from test_agents_invoke_1.py ===

@@ -164,12 +164,13 @@ owner and MUST NOT be inferred from the repository alone.
 
 RALPH-FACT: data_sensitivity (owner-supplied): sensitive by default — Ralph Workflow runs as a developer-local CLI under the user's own credentials (the agent shells out to user-installed CLIs that authenticate in their own context), and the workspace it operates on inherits whatever data lives on disk. The default is sensitive code + secrets may be present in the tree; the agent SHOULD avoid echoing file contents in logs unless the user explicitly asks. Owner confirmation is pending for any deployment that handles PII or PHI.
 RALPH-FACT: deployment_exposure (owner-supplied): local developer machine by default; no public deployment. The MCP HTTP transport is local-loopback (`127.0.0.1`) and is the only socket the runtime binds; no inbound traffic crosses the trust boundary in the default configuration. Operator confirmation is pending for any deployment that exposes the embedded MCP server to a shared network.
-RALPH-FACT: secret_scan_command: uv run python -m ralph.testing.audit_secret_scan
+RALPH-FACT: secret_scan_command: uv run python -m ralph.testing.audit_secret_scan (the credential sweep, wired into `make -C ralph-workflow verify` as the `secret scan audit (audit_secret_scan)` step). It runs in baseline-diff mode: named detectors for AWS access key ids, GitHub tokens, private-key PEM headers, Slack tokens, and high-entropy `api_key` / `secret` / `password` assignments, reported only on lines that are new or changed against the committed HEAD baseline. It is NOT a git-history scanner — a credential that is already in the committed history is outside what this gate reports — and it is a working-tree pattern/entropy detector rather than a history-scanning tool such as gitleaks or trufflehog.
 RALPH-FACT: secrets_management_mechanism: secrets are NEVER read from the source tree, committed config, or test fixtures. The CLI reads from the environment (`os.environ`) and from the user-installed agent CLIs' own credential stores (Claude Code / Codex / OpenCode / Cursor / etc. each manage their own secrets). Test fixtures MUST NOT contain realistic credentials — placeholders are required (`...`, `***`, environment-variable references).
-RALPH-FACT: fabrication_scan_command: `python3 scripts/fabrication_guard.py --level 1 <file>` for every public-facing markdown edit (the production pre-commit hook is level 1; level 2 / 3 are opt-in verification layers that also verify GitHub repo, npm package, and external URL existence). The same level-1 fabrication sweep is run across the repository's public-facing markdown tree by `python3 scripts/verify_social_proof.py` (a thin backward-compat wrapper around `fabrication_guard.py`) as a `make verify` step. This sweep is a fabrication / broken-link / stale-claim guard, NOT a credential secret scanner: it catches fabricated GitHub repos, fabricated npm packages, fabricated install counts, and banned wording. A blanket bypass of the pre-commit hook (`--no-verify`) is itself fabrication (per AGENTS.md § Non-negotiables). The repository has no dedicated Git-history credential scanner (e.g. `gitleaks`, `detect-secrets`, `truffleHog`) wired into `make verify`; reintroducing real secrets is prevented by the pre-commit hook's own regex and the public-facing fabrication guard, and a dedicated credential scanner is a documented gap (a dated deferral is recorded in the security policy Verification section when a scanner is chosen).
+RALPH-FACT: fabrication_scan_command: `python3 scripts/fabrication_guard.py --level 1 <file>` for every public-facing markdown edit (the production pre-commit hook is level 1; level 2 / 3 are opt-in verification layers that also verify GitHub repo, npm package, and external URL existence). The same level-1 fabrication sweep is run across the repository's public-facing markdown tree by `python3 scripts/verify_social_proof.py` (a thin backward-compat wrapper around `fabrication_guard.py`) as a `make verify` step. This sweep is a fabrication / broken-link / stale-claim guard, NOT a credential secret scanner: it catches fabricated GitHub repos, fabricated npm packages, fabricated install counts, and banned wording. The credential sweep is a different tool — `uv run python -m ralph.testing.audit_secret_scan`, wired into `make verify` as the `secret scan audit (audit_secret_scan)` step — and it does NOT scan git history: it reports findings on lines that are new or changed against the committed HEAD baseline, so a credential that was already committed is not reported by it. A blanket bypass of the pre-commit hook (`--no-verify`) is itself fabrication (per AGENTS.md § Non-negotiables).
 RALPH-FACT: security_scanner_per_language: Python → Bandit (the language-scoped scanner called out in dependency-policy.md and Verification below). Bandit IS pinned as a dev dependency in `ralph-workflow/pyproject.toml` (`bandit>=1.9.4`), IS installed by `make dev`, and IS wired into `make -C ralph-workflow verify` as the `sast baseline-diff audit (audit_sast)` step, which runs `uv run python -m ralph.testing.audit_sast` and fails on every finding the change introduces. Other languages are recorded in the Verification section below as inapplicable.
 RALPH-FACT: finding_waiver_convention: a security finding waiver carries the finding identifier (e.g. `[B105:hardcoded_password_string]` for Bandit), a per-file scope, a rationale, an owner, and a removal or review date. Waivers are recorded inline (via `# nosec: <id>` next to the suppressed line for Bandit) and again under "Exceptions" below with the same fields; the inline comment is not a substitute for the section entry. There is currently no Bandit `nosec` blanket allowlist in this project; introducing one requires an audit-style allowlist entry.
 RALPH-FACT: instruction_integrity_command: uv run python -m ralph.testing.audit_instruction_integrity (the instruction / MCP-config integrity gate, wired into `make -C ralph-workflow verify` as the `instruction integrity audit (audit_instruction_integrity)` step). It decides the data/instruction boundary, the third-party MCP server pin and its review trigger, and the hidden-Unicode scan over the instruction surfaces; it reports the reviewed-commit provenance and the tool-description re-review as advisory rules, because neither is observable from the working tree offline.
+RALPH-FACT: test_integrity_command: uv run python -m ralph.testing.audit_test_integrity (the test-integrity gate, wired into `make -C ralph-workflow verify` as the `test integrity audit (audit_test_integrity)` step). It reads the working-tree diff against HEAD and reports a test expectation that is removed or weakened beside the production code it covers, and a shipped module that reads the test runner's environment; the security policy declares it because a weakened test is a weakened control.
 
 ## Guard inventory
 
@@ -181,6 +182,41 @@ RALPH-FACT: instruction_integrity_command: uv run python -m ralph.testing.audit_
 | Static analysis coverage | Security owner | the shipped runtime carries no static-analysis finding that the change introduces | the Bandit baseline-diff scan of the shipped runtime names every finding the change introduces | the Bandit baseline-diff scan of the shipped runtime names every finding the change introduces | deterministic: sast baseline-diff audit (audit_sast) | when a real static analyzer replaces Bandit as the shipped Python scanner |
 | Threat surface inventory | Security owner | every project's threat surfaces are enumerated in the security policy's Threat surfaces section | Threat surfaces section names each surface; the surface list is reviewed on every policy bump | Threat surfaces section names each surface | advisory: threat surface review; review: on every policy bump or surface change | when the project is single-purpose and the surfaces are constant |
 | Instruction and MCP-config integrity | Security owner | instruction files do not promote file, tool-output, or MCP-response content to instruction status and carry no hidden or bidirectional characters, and every third-party MCP server declaration carries a pin and a review trigger | a third-party MCP server declaration has no pinned version or revision reference or no review trigger, an instruction file promotes file, tool-output, or MCP-response content to instruction status, or an instruction surface file carries a hidden or bidirectional character | the unpinned third-party MCP declaration, the promotion imperative, or the hidden character the instruction integrity audit reports | deterministic: instruction integrity audit (audit_instruction_integrity) | when the instruction-integrity gate is retired |
+
+## Advisory rules
+
+Two rules are advisory: no offline gate measures them, so each one
+carries the reason it cannot be gated and the trigger that reopens its
+review. The rows use the same seven-column grammar as the Guard
+inventory above.
+
+Prompts are not controls. A prompt that asks an agent not to perform a
+destructive action is a request, not a boundary; only the tooling that
+runs the agent can block the action. This policy RECONCILES with the
+rules that own those controls — the workspace-confinement rule, the
+scoped-commit rule, and the trunk-based branch rule in `AGENTS.md` —
+instead of restating them: it names them as the controls, adds no
+prompt-level ban that could be mistaken for a control, and defers to the
+rules that own them.
+
+| Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
+|---|---|---|---|---|---|---|
+| Destructive actions are blocked by tooling | Security owner | a destructive operation is blocked by the tooling that runs the agent, not by prompt prose | the reviewer names the tooling boundary that blocks the operation — workspace confinement, the scoped commit path, or the trunk-based branch rule in `AGENTS.md` | the tooling boundary the reviewer names | advisory: no gate measures prompt prose, so the tooling boundary is the control; review: when the workspace-confinement, scoped-commit, or branch rules change | when the project has no destructive operation left to block |
+| Audit log of agent actions | Security owner | the agent's actions leave a record that names the session, the capability, and the outcome | the reviewer reads the audit sink and finds the session id, the mapped capability, and the access outcome | the session id, the capability, and the outcome the audit sink records | advisory: the audit sink buffers records in memory and persists nothing, so no offline check can decide it; review: when the audit sink gains a durable sink, or when its record fields change | when the project stops recording agent actions |
+
+Ralph's audit sink is `RalphAuditSinkAdapter`
+(`ralph/mcp/artifacts/audit_adapter.py:125`). It buffers records in
+memory and writes nothing to disk: `emit` appends to a bounded
+`collections.deque` whose default cap is 4096 records, so the oldest
+record is evicted FIFO; `drain_records` returns the buffered records and
+clears the buffer; `flush` clears the buffer and returns nothing. Each
+record carries the session id, a whole-second timestamp, the mapped
+capability, the access outcome, a description, the lowercased event
+type, and the correlation fields run id, generation, drain, and policy
+mode when at least one of them is set. It does NOT carry the tool
+arguments, the path, the file contents, the diff, or the prompt text,
+and a record that is flushed or evicted is gone: the adapter persists
+nothing.
 
 ## AI execution instructions
 
@@ -224,12 +260,57 @@ Run every gate below before claiming a change complies with this policy.
 
 Secret scanning applies to every project:
 
+RALPH-COMMAND: uv run python -m ralph.testing.audit_secret_scan
+
+This is the credential sweep: named detectors for AWS access key ids,
+GitHub tokens, private-key PEM headers, Slack tokens, and high-entropy
+`api_key` / `secret` / `password` assignments. It runs in
+baseline-diff mode against the committed HEAD baseline, so it reports
+only findings on lines that are new or changed; a credential that is
+already in the committed history is outside what this gate reports.
+The gate is wired into `make -C ralph-workflow verify` as the
+`secret scan audit (audit_secret_scan)` step. Failures name the file,
+the line, and the detector.
+
+Public-facing claim fabrication is a different gate, and that gate is
+not a credential scanner:
+
 RALPH-COMMAND: python3 scripts/fabrication_guard.py --level 1 README.md ralph-workflow/README.md ralph-workflow/docs/sphinx/index.rst
 
-This is the per-file level-1 sweep the pre-commit hook runs as
-default; the level-2/3 existence checks are opt-in and require
-network/GITHUB_TOKEN. Failures list the affected claim, the file,
+This is the per-file level-1 fabrication sweep the pre-commit hook runs
+as default; the level-2/3 existence checks are opt-in and require
+network/GITHUB_TOKEN. It catches fabricated GitHub repos, fabricated
+npm packages, fabricated install counts, and banned wording — it does
+not look for credentials. Failures list the affected claim, the file,
 and the verification target.
+
+The data/instruction boundary is decided by its own gate:
+
+RALPH-COMMAND: uv run python -m ralph.testing.audit_instruction_integrity
+
+Every third-party MCP server declaration needs a pinned version or
+revision reference and a review trigger; an instruction file may not
+promote file, tool-output, or MCP-response content to instruction
+status; an instruction surface file may not carry hidden or bidirectional
+characters. The gate reports the reviewed-commit provenance and the
+tool-description re-review as advisory rules, because neither is
+observable from the working tree offline. The gate is wired into
+`make -C ralph-workflow verify` as the
+`instruction integrity audit (audit_instruction_integrity)` step.
+
+A test may not be weakened to let a change pass, and shipped code may
+not detect the test runner:
+
+RALPH-COMMAND: uv run python -m ralph.testing.audit_test_integrity
+
+The gate reads the working-tree diff against HEAD: a test expectation
+that is removed or weakened beside the production code it covers is a
+finding unless the change records why, and a shipped module that reads
+the test runner's environment is a finding. The gate is wired into
+`make -C ralph-workflow verify` as the
+`test integrity audit (audit_test_integrity)` step. The testing policy
+owns the test-level gates; this declaration makes the control that
+protects them binding under the kernel's "run every declared gate" rule.
 
 Per-language static security analysis follows this template (one block
 per project language, or an explicit inapplicability record with a

@@ -16,7 +16,11 @@ ADVISORY rule is reported for review but does not fail the gate.
 ``commented-out-code`` (blocking)
     A comment line that parses as Python (assignment, call, import,
     ``return``, ``if``/``for``/``while``/``def``/``class``) or matches a
-    code-shaped pattern.
+    code-shaped pattern. A suppression directive that the typechecking or
+    linting policy mandates — ``# type: ignore[<code>]`` or
+    ``# noqa[:<code>]`` together with its ``# reason: <text>`` suffix — is
+    a documented suppression, not commented-out code, so this rule never
+    claims it.
 ``section-banner`` (blocking)
     A comment-only line made of a repeated banner character, or an
     ``==== Section ====`` style line.
@@ -47,7 +51,15 @@ baseline is pre-existing debt, not a regression, and it stays visible in
 the baseline until somebody fixes it — but it does not turn every commit
 red. The baseline is supplied by the caller (the coordinator wires a
 git-diff based baseline); the gate itself never shells out and never reads
-version control.
+version control. EVERY rule honours that filter: an unchanged line can
+never fail the gate.
+
+BURN-DOWN COUNT
+
+The gate also reports how many findings the committed baseline tree still
+carries, so the burn-down the clean-code policy promises is a number
+rather than a guess. The count is the debt of the committed baseline tree
+itself: it is measured by scanning that tree on its own, not by the diff.
 
 BYPASS
 
@@ -66,10 +78,12 @@ reading every text file in the tree would be work the gate does not need.
 INPUT SEAM
 
     audit_comments(baseline, current) -> list[CommentFinding]
+    audit_comment_roots(baseline_root, current_root) -> tuple[list[CommentFinding], int]
 
 ``baseline`` and ``current`` are mappings of repository-relative path to
 file text. The gate is a pure function over them: no network, no
-subprocess, no clock.
+subprocess, no clock. The roots seam adds the burn-down count: the number
+of findings the committed baseline tree still carries.
 
 Usage:
     python -m ralph.testing.audit_comments [baseline_root] [current_root]
@@ -297,6 +311,22 @@ CODE_SHAPE_PATTERN = re.compile(
     r"|^(?:if|elif|else|for|while|def|class|with|try|except|finally|async)\b.*:\s*$"
 )
 
+#: The error codes a suppression directive may carry.
+_SUPPRESSION_CODES = r"[A-Za-z0-9_]+(?:\s*,\s*[A-Za-z0-9_]+)*"
+
+#: A suppression directive the typechecking and linting policies mandate:
+#: ``# type: ignore[<code>]`` or ``# noqa[:<code>]``, each together with
+#: the ``# reason: <text>`` suffix those policies require. The reason is
+#: what makes the directive a documented suppression rather than an
+#: unexplained marker, so the suffix is part of the recognised form. The
+#: reason text itself is not constrained: the typechecking and linting
+#: gates own that rule, and this gate only decides what the comment IS.
+SUPPRESSION_DIRECTIVE_RE = re.compile(
+    r"(?:\Atype:\s*ignore\[[^\]\s]+\]|\Anoqa(?::\s*" + _SUPPRESSION_CODES + r")?)"
+    r"\s*#\s*reason:\s*\S",
+    re.IGNORECASE,
+)
+
 #: The shortest comment text that can be a restatement of the code.
 MIN_RESTATED_LENGTH = 3
 
@@ -322,6 +352,12 @@ _TRIPLE_QUOTES: tuple[str, ...] = ('"""', "'''")
 #: The quote pairs that open an empty string.
 _EMPTY_QUOTES: tuple[str, ...] = ('""', "''")
 
+#: The characters that make a segment worth the full pattern scan: a "#"
+#: can open a comment, a quote can open a string, and a backslash can
+#: escape the character that follows it. A segment with none of them
+#: carries neither a comment nor an opened quote.
+_NEEDS_QUOTE_SCAN_RE = re.compile(r"[#'\"\\]")
+
 
 @dataclass(frozen=True)
 class CommentFinding:
@@ -346,6 +382,13 @@ def _split_line(segment: str) -> tuple[str, str | None, str | None]:
     ``segment`` is the part of a physical line that is code (the text
     before a comment, or the text after a closing triple quote).
     """
+    if not _NEEDS_QUOTE_SCAN_RE.search(segment):
+        # A segment with no "#", no quote and no backslash carries neither
+        # a comment nor an opened quote, and the pattern below consumes it
+        # whole. The gate scans the whole tree twice (the current tree and
+        # the committed baseline), so this fast path keeps the burn-down
+        # count inside the verify step's timeout.
+        return segment.strip(), None, None
     while True:
         match = _CODE_PREFIX_RE.match(segment)
         end = len(segment) if match is None else match.end()
@@ -407,10 +450,17 @@ def _normalize_code(text: str) -> str:
 # The individual rules
 
 
+def _is_suppression_directive(body: str) -> bool:
+    """Return True when the comment body is a mandated suppression directive."""
+    return SUPPRESSION_DIRECTIVE_RE.match(body) is not None
+
+
 def _is_commented_out_code(body: str) -> bool:
     """Return True when the comment body is code, not prose."""
     candidate = body.strip()
     if not candidate:
+        return False
+    if _is_suppression_directive(candidate):
         return False
     try:
         tree = ast.parse(candidate)
@@ -503,7 +553,11 @@ def scan_comment_lines(
     text: str,
     line_numbers: set[int],
 ) -> list[CommentFinding]:
-    """Scan the given line numbers of *text* for banned comment shapes."""
+    """Scan the given line numbers of *text* for banned comment shapes.
+
+    Every rule honours *line_numbers*: a line outside the set is never
+    reported, so an unchanged line can never fail the gate.
+    """
     findings: list[CommentFinding] = []
     records = _scan_source(text)
     waived, empty_rows = _bypass_state(records)
@@ -522,6 +576,7 @@ def scan_comment_lines(
             ),
         )
         for row in empty_rows
+        if row in line_numbers
     )
 
     for row, code_text, comment_text in records:
@@ -702,11 +757,25 @@ def _read_python_sources(root: Path) -> dict[str, str]:
     return contents
 
 
-def audit_comment_roots(baseline_root: Path | None, current_root: Path) -> list[CommentFinding]:
-    """Audit the change between two repository roots (or one root, no baseline)."""
+def audit_comment_roots(
+    baseline_root: Path | None,
+    current_root: Path,
+) -> tuple[list[CommentFinding], int]:
+    """Audit the change between two repository roots (or one root, no baseline).
+
+    Args:
+        baseline_root: The committed baseline tree, or None for an empty baseline.
+        current_root: The current working tree.
+
+    Returns:
+        The findings the change introduced and the number of findings the
+        committed baseline tree still carries — the burn-down count.
+    """
     baseline = _read_python_sources(baseline_root) if baseline_root is not None else {}
     current = _read_python_sources(current_root)
-    return audit_comments(baseline, current)
+    findings = audit_comments(baseline, current)
+    baseline_count = len(audit_comments({}, baseline))
+    return findings, baseline_count
 
 
 def _default_root() -> Path:
@@ -716,6 +785,9 @@ def _default_root() -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     """Run the comment-policy gate and return an exit code.
+
+    The run reports the burn-down count: how many findings the committed
+    baseline tree still carries.
 
     Exit code 0: no blocking finding. Exit code 1: blocking findings.
     Exit code 2: a root was not found, or the arguments were wrong.
@@ -752,14 +824,15 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Auditing comments (baseline diff): baseline={baseline_label} current={current_root}")
     print()
 
-    findings = audit_comment_roots(baseline_root, current_root)
+    findings, baseline_count = audit_comment_roots(baseline_root, current_root)
     blocking = [finding for finding in findings if finding.severity == SEVERITY_BLOCKING]
     advisory = [finding for finding in findings if finding.severity == SEVERITY_ADVISORY]
 
     if blocking:
         print(
             f"COMMENT-POLICY FINDINGS: {len(blocking)} blocking finding(s), "
-            f"{len(advisory)} advisory"
+            f"{len(advisory)} advisory; {baseline_count} pre-existing finding(s) "
+            "in the baseline"
         )
         print("=" * 72)
         for finding in blocking:
@@ -787,7 +860,10 @@ def main(argv: list[str] | None = None) -> int:
     if blocking:
         return 1
 
-    print(f"No blocking comment-policy findings ({len(advisory)} advisory).")
+    print(
+        f"No blocking comment-policy findings ({len(advisory)} advisory; "
+        f"{baseline_count} pre-existing finding(s) in the baseline)."
+    )
     return 0
 
 

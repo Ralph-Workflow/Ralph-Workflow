@@ -9,6 +9,19 @@ make verify
 
 The Sphinx docs build (`make docs`) is wired in as a Make prerequisite of `make verify` with `-W --keep-going` so any Sphinx warning fails the gate; it runs before the Python verify step and stays outside the immutable 60-second combined test budget.
 
+## Verify steps and gates
+
+`make verify` runs the ordered step registry `ralph/verify_steps.py::_VERIFY_STEPS` (re-exported as `ralph.verify._VERIFY_STEPS`); `ralph/verify.py` owns the budget policy that charges those steps. The tuple is the source of truth — the position of an entry IS its execution order — and it currently holds **48 steps**. The four gates that protect the supply chain and the test surface are:
+
+| Gate | Verify step label | Enforcing command |
+|---|---|---|
+| Instruction / MCP-config integrity | `instruction integrity audit (audit_instruction_integrity)` | `uv run python -m ralph.testing.audit_instruction_integrity` |
+| Dependency integrity | `dependency integrity audit (audit_dependency_integrity)` | `uv run python -m ralph.testing.audit_dependency_integrity` |
+| Secret scan | `secret scan audit (audit_secret_scan)` | `uv run python -m ralph.testing.audit_secret_scan` |
+| Test integrity | `test integrity audit (audit_test_integrity)` | `uv run python -m ralph.testing.audit_test_integrity` |
+
+Each of the four is an audit, not a test suite: none is listed in `_KNOWN_TEST_STEP_LABELS` or `_BUDGET_TRACKED_STEPS`, so each runs on every `make verify` without being charged to the combined 60-second test budget. The instruction-integrity gate checks the whole tree; the other three report only what the working-tree diff against the committed `HEAD` baseline changes. A gate that is not registered in `_VERIFY_STEPS` does not run at all — see §'No unrelated-failure exemption'.
+
 ## Project-policy portfolio
 
 Policy schema v6 (current, see `markers.SCHEMA_VERSION`; currently v6) requires
@@ -73,7 +86,7 @@ The tracked steps are killed only at the cumulative `_TOTAL_TEST_HANG_CAP_SECOND
 | `'make test'` present in `_KNOWN_TEST_STEP_LABELS` | `must contain 'make test'` | Primary test step label always present |
 | Labels/steps sync enforced | `must be` / `must NOT be` | Every label in `_KNOWN_TEST_STEP_LABELS` is tracked; no untracked test steps |
 
-All invariants are tested in `tests/test_verify_invariants.py` under both normal execution and `python -O`. A budget failure is a test design defect — fix the production coupling, never adjust the budget. A host-contention WARNING is not a licence to grow the suite: the CPU budget still binds. Per-suite caps (`PYTEST_SUITE_TIMEOUT_SECONDS`, `DEFAULT_SUITE_TIMEOUT_SECONDS`) are hang caps; raising them does NOT increase the combined budget. The cumulative tracker sums time across ALL budget-tracked steps via `time.monotonic()`. See [AGENTS.md §'TEST BUDGET'](../../AGENTS.md) for the canonical non-circumvention table.
+All invariants are tested in `tests/test_verify_invariants.py` under both normal execution and `python -O`. A budget failure is a test design defect — fix the production coupling, never adjust the budget. A host-contention WARNING is not a licence to grow the suite: the CPU budget still binds. Per-suite caps (`PYTEST_SUITE_TIMEOUT_SECONDS`, `DEFAULT_SUITE_TIMEOUT_SECONDS`) are hang caps; raising them does NOT increase the combined budget. The cumulative tracker sums time across ALL budget-tracked steps via `time.monotonic()`. The canonical non-circumvention table is [§'Non-circumvention table'](#non-circumvention-table) below; `AGENTS.md` §'TEST BUDGET' names this file as its owner.
 
 Each phase of each test — fixture setup, the test call and fixture teardown, each with its own budget (the `timeout_seconds` marker, else `RALPH_PYTEST_TEST_TIMEOUT_SECONDS`, else 1 s) — is charged the CPU seconds its *main thread* spends, so a thread an earlier test leaked cannot bill the next one. A wall-clock hang cap of 5x the budget (at most +60 s) catches phases that wait instead of work. Both raise `TestExecutionTimeoutError`, a `BaseException` so code under test cannot swallow it; an overrun that is swallowed anyway is re-raised and fails the phase when it ends. The mechanism lives in `tests/_per_test_budget.py`: a watchdog thread signals the main thread (`SIGPROF`) only when the budget could first have run out, and the handler measures `time.thread_time()`. Budgets of zero, below zero or infinite are rejected, a test that replaces the `SIGPROF` handler or leaves `SIGPROF` blocked fails, and `make verify` forces both `RALPH_PYTEST_*_TIMEOUT_SECONDS` variables to their defaults for every step. A test must not assert on wall clock it does not own. A deadline that only bounds how long a real child process takes to start is sized for a saturated host (with a comment saying so); synchronization uses an observable condition (a marker file, an event), never a fixed sleep; a latency gate re-times an over-limit sample before counting it, so only a slowdown that reproduces fails.
 
@@ -102,7 +115,7 @@ The following do **NOT** circumvent the combined test budget or the lint/typeche
 | Mutable collection literals (`list` / `dict` / `set` / `deque`) assigned to module-level names or `self.X` in `__init__` without `maxlen=` or a justified `# bounded-accumulator-ok:` marker | Detected by `ralph/testing/audit_resource_lifecycle.py` — a `deque()` call without `maxlen=` counts as unbounded; the ONLY bypass is an inline `# bounded-accumulator-ok: <reason>` marker naming the cap or drain |
 | Any weakening of any check without a documented justification and an entry in the audit allowlist | There is NO other path to bypass — the allowlist entry plus the written justification is the only sanctioned route |
 
-Every circumvention above is detected by `make verify`. Any bypass requires a documented justification and an entry in the audit allowlist — there is no other path. See [AGENTS.md §'Non-negotiables'](../../AGENTS.md) for the full policy text.
+Every circumvention above is detected by `make verify`. Any bypass requires a documented justification and an entry in the audit allowlist — there is no other path. See [AGENTS.md §'Non-negotiables'](../../AGENTS.md) for the absolute rules this contract implements; the table above is the canonical one.
 
 ## How to fix a slow test
 
@@ -206,7 +219,7 @@ Enforcing command:
 uv run python -m ralph.testing.audit_terminal_escape_containment
 ```
 
-This audit is the LAST entry in `ralph/verify.py::_VERIFY_STEPS`; it is not budget-tracked (exempt from the 60-second combined test budget) and it runs on every `make verify`. The audit's invariant count is pinned by `tests/test_audit_terminal_escape_containment.py::test_audit_invariant_count_matches_table` — adding an invariant requires bumping that count in the same change.
+This audit is one of the 48 steps in the `ralph/verify_steps.py::_VERIFY_STEPS` registry (re-exported as `ralph.verify._VERIFY_STEPS`) — it is not the last entry; the last one is `audit_mcp_agent_boundary`. It is not budget-tracked (exempt from the 60-second combined test budget) and it runs on every `make verify`. The audit's invariant count is pinned by `tests/test_audit_terminal_escape_containment.py::test_audit_invariant_count_matches_table` — adding an invariant requires bumping that count in the same change.
 
 ## Terminal state restoration contract
 
@@ -244,7 +257,8 @@ The MCP server startup architecture enforces a strict distinction between non-fa
 
 ## Cross-links
 
-- `ralph/verify.py` — budget tracker, `_VERIFY_STEPS`, invariant checks
+- `ralph/verify_steps.py` — the `_VERIFY_STEPS` registry (the step definitions and their execution order)
+- `ralph/verify.py` — budget tracker, the re-exported `_VERIFY_STEPS`, invariant checks
 - `ralph/testing/audit_*.py` — per-audit machinery (see each docstring for the per-audit invariant list)
 - [AGENTS.md §'Non-negotiables'](../../AGENTS.md) — canonical policy and circumvention table
 - [Testing Guide](testing-guide.md) — test design rules and required doubles
@@ -261,3 +275,11 @@ If the change touches README, docs, START_HERE, the manual, or any public-doc ro
 - *What was left alone.* The core diagnostic-vs-deadline architecture, probe-safety margin (`_PROBE_SAFETY_S`), and fail-safe overrun diagnostic exit paths were preserved. The terminal-escape containment, test budget, and installer contracts above remain authoritative.
 - *How duplication was contained.* Code-level helper details remain in docstrings (`_startup_timeouts.py`, `reducer.py`); this verification guide records the architectural contracts and invariant guarantees.
 - *Why the route is clearer.* Agents and operators now understand the exact boundary between non-fatal stage diagnostics and fatal deadline enforcement without relying on misleading environment knobs, and understand how git lock recovery seamlessly coordinates with the reducer.
+
+## Documentation Review Note — single canonical verification contract
+
+- *What changed.* This file is now the repository's single verification contract. A `## Verify steps and gates` section names the step registry (`ralph/verify_steps.py::_VERIFY_STEPS`, 48 steps) and lists the four supply-chain and test-surface gates with their real labels and enforcing commands; the stale pointer to `AGENTS.md` for the non-circumvention table now points at §'Non-circumvention table' in this file; and the "LAST entry in `_VERIFY_STEPS`" claim about the terminal-escape audit was corrected against the registry (the last entry is `audit_mcp_agent_boundary`).
+- *Why this surface owns it.* Root `AGENTS.md` names `docs/agents/verification.md` as the owner of the test budget, the import-time invariant table and the non-circumvention list, so the contract, the table it points at, and the gate inventory belong on one page.
+- *What was left alone.* The invariant table, the budget numbers, the MCP timeout contract, and the terminal contracts were not reworded. The policy layer above this contract stays in the root policy pack (`docs/ralph-workflow-policy/verification-policy.md`); the two layers answer different questions and are not merged.
+- *How duplication was contained.* `ralph-workflow/docs/agents/verification.md` was a divergent second copy (an older bullet form of the invariants plus a link into a deleted policy pack); it is now a pointer to this file, so the contract has one home.
+- *Why the route is clearer.* An agent reading the budget rule lands on the table that implements it, and an agent listing the gates sees the four new ones with the exact command that runs each.

@@ -1,8 +1,9 @@
-"""Secret-scan / SAST gate — a real scanner in BASELINE-DIFF mode.
+"""Secret-scan gate — a real credential scanner in BASELINE-DIFF mode.
 
-The gate replaces the deferred (``RALPH-PENDING``) Bandit entry with a
-scanner that actually runs, is deterministic, and never touches the
-network. It has two halves.
+The gate scans the tree for committed credentials. It is deterministic
+and never touches the network. Credentials are its ONLY subject: static
+analysis is owned by the Bandit gate (:mod:`ralph.testing.audit_sast`),
+so this module carries no second SAST implementation.
 
 SECRET SCAN
 
@@ -29,17 +30,13 @@ red. The baseline is supplied by the caller (the coordinator wires a
 git-diff based baseline); the gate itself never shells out and never
 reads version control.
 
-SAST SLICE
+FAIL-CLOSED
 
-A deliberately small static-analysis slice covers the two patterns that
-matter most in an agent-driven codebase: ``eval()`` / ``exec()`` on
-non-literal input, and ``subprocess`` calls with ``shell=True``. It is
-AST-based (not regex), resolves ``import subprocess as sp`` aliases, and
-is documented as a slice — it is not a replacement for a full SAST. The
-slice targets SHIPPED code: a test fixture that executes a generated
-snippet exercises the feature under test, so test modules are out of its
-scope. The SECRET half of the gate has no such exclusion — that is where
-a committed credential usually hides.
+A gate that cannot establish a baseline cannot tell a regression from
+pre-existing debt, so it fails instead of reporting a clean tree: the
+CLI exits 2 when no committed baseline is available. An empty baseline
+would mark every line of the tree as new and drown the real findings in
+the pre-existing ones.
 
 BYPASS
 
@@ -59,16 +56,16 @@ subprocess, no clock.
 Usage:
     python -m ralph.testing.audit_secret_scan [baseline_root] [current_root]
 
-With no arguments the gate scans the repository root against an EMPTY
-baseline (every line counts as new). With two roots it reports only NEW
-or CHANGED lines.
+With no arguments the gate compares the committed ``HEAD`` copy of the
+package with the working tree. With one root it compares that tree with
+its committed ``HEAD`` copy. With two roots it compares them. Every
+invocation needs a baseline: without one the gate exits 2.
 
-Exit 0 = clean, 1 = findings, 2 = a root was not found.
+Exit 0 = clean, 1 = findings, 2 = the gate could not run.
 """
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import math
 import re
@@ -97,7 +94,6 @@ __all__ = [
     "audit_secret_roots",
     "audit_secret_scan",
     "main",
-    "scan_python_sast",
     "scan_secret_lines",
 ]
 
@@ -179,29 +175,9 @@ MIN_GENERIC_SECRET_LENGTH = 20
 #: Minimum Shannon entropy (bits per character) of a generic-secret literal.
 MIN_GENERIC_SECRET_ENTROPY = 3.2
 
-#: The SAST slice: builtin calls that execute their argument as code.
-SAST_EVAL_CALLS: frozenset[str] = frozenset({"eval", "exec"})
-
-#: The SAST slice: ``subprocess`` entry points that accept ``shell=``.
-SAST_SHELL_FUNCTIONS: frozenset[str] = frozenset(
-    {"Popen", "call", "check_call", "check_output", "run"}
-)
-
-#: Accepted root-argument counts for the CLI: baseline-only, or
+#: Accepted root-argument counts for the CLI: current-only, or
 #: baseline plus current.
 MAX_CLI_ROOT_ARGUMENTS = 2
-
-#: Directory names that mark a TEST tree. The SAST slice targets shipped
-#: code: a test fixture that executes a generated snippet is exercising the
-#: feature under test, not shipping dynamic code execution to users. The
-#: SECRET half of the gate still scans test files in full — that is where a
-#: committed credential usually hides.
-TEST_TREE_DIRECTORIES: frozenset[str] = frozenset({"test", "tests"})
-
-#: File names that mark a test module.
-TEST_FILE_PREFIXES: tuple[str, ...] = ("test_",)
-TEST_FILE_SUFFIXES: tuple[str, ...] = ("_test.py",)
-TEST_FILE_NAMES: frozenset[str] = frozenset({"conftest.py"})
 
 
 @dataclass(frozen=True)
@@ -359,145 +335,6 @@ def scan_secret_lines(file_path: str, text: str, line_numbers: set[int]) -> list
     return findings
 
 
-def _dotted_name(node: ast.expr) -> str | None:
-    """Return the dotted name of a call target when it is a plain name chain."""
-    func: ast.expr = node
-    parts: list[str] = []
-    while isinstance(func, ast.Attribute):
-        parts.append(func.attr)
-        func = func.value
-    if not isinstance(func, ast.Name):
-        return None
-    parts.append(func.id)
-    return ".".join(reversed(parts))
-
-
-def _collect_import_aliases(tree: ast.AST) -> tuple[dict[str, str], dict[str, str]]:
-    """Resolve ``import x as y`` / ``from x import y [as z]`` bindings.
-
-    Returns ``(module_aliases, from_imports)``:
-      - module_aliases: local module alias -> canonical module
-      - from_imports: local name -> canonical dotted path
-    """
-    module_aliases: dict[str, str] = {}
-    from_imports: dict[str, str] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.asname is not None:
-                    module_aliases[alias.asname] = alias.name
-        elif isinstance(node, ast.ImportFrom) and node.module is not None:
-            for alias in node.names:
-                local = alias.asname or alias.name
-                from_imports[local] = f"{node.module}.{alias.name}"
-    return module_aliases, from_imports
-
-
-def _canonical_name(
-    name: str | None,
-    module_aliases: Mapping[str, str],
-    from_imports: Mapping[str, str],
-) -> str | None:
-    """Resolve a dotted call name through the module's import aliases."""
-    if name is None:
-        return None
-    parts = name.split(".")
-    if len(parts) == 1:
-        return from_imports.get(parts[0], parts[0])
-    head = module_aliases.get(parts[0], parts[0])
-    return ".".join([head, *parts[1:]])
-
-
-def _is_literal_string(node: ast.expr) -> bool:
-    """Return True when *node* is a plain string literal."""
-    return isinstance(node, ast.Constant) and isinstance(node.value, str)
-
-
-def _is_test_path(file_path: str) -> bool:
-    """Return True when *file_path* belongs to a test tree.
-
-    The SAST slice is scoped to shipped code. A test fixture that executes
-    a generated snippet exercises the feature under test; flagging it would
-    make the gate red on day one and get the gate switched off. The SECRET
-    half of the gate is NOT scoped this way.
-    """
-    parts = file_path.split("/")
-    if any(part in TEST_TREE_DIRECTORIES for part in parts[:-1]):
-        return True
-    name = parts[-1]
-    if name in TEST_FILE_NAMES:
-        return True
-    return name.startswith(TEST_FILE_PREFIXES) or name.endswith(TEST_FILE_SUFFIXES)
-
-
-def scan_python_sast(file_path: str, source: str) -> list[SecretFinding]:
-    """Run the SAST slice over one Python source file.
-
-    The slice covers exactly two rules:
-
-    1. ``eval()`` / ``exec()`` whose argument is not a string literal.
-    2. ``subprocess`` calls that pass ``shell=True``.
-
-    It is name-based AST analysis: it resolves ``import subprocess as sp``
-    and ``from subprocess import run`` aliases, but deliberately obfuscated
-    indirection is out of scope.
-
-    Test modules are out of scope for the slice (see :func:`_is_test_path`).
-    """
-    if _is_test_path(file_path):
-        return []
-    try:
-        tree = ast.parse(source, filename=file_path)
-    except SyntaxError:
-        return []
-    module_aliases, from_imports = _collect_import_aliases(tree)
-    source_lines = source.splitlines()
-    findings: list[SecretFinding] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        name = _canonical_name(_dotted_name(node.func), module_aliases, from_imports)
-        if name is None:
-            continue
-        lineno = node.lineno
-        line = source_lines[lineno - 1] if 1 <= lineno <= len(source_lines) else ""
-        if _bypassed(line):
-            continue
-        bare = name.rsplit(".", 1)[-1]
-        if bare in SAST_EVAL_CALLS and name in {bare, f"builtins.{bare}"}:
-            if node.args and not _is_literal_string(node.args[0]):
-                findings.append(
-                    SecretFinding(
-                        file_path=file_path,
-                        line=lineno,
-                        category="sast-eval",
-                        detail=(
-                            f"{bare}() runs non-literal input as code; pass a literal or "
-                            "remove the dynamic evaluation"
-                        ),
-                    )
-                )
-            continue
-        if name.startswith("subprocess.") and bare in SAST_SHELL_FUNCTIONS:
-            for keyword in node.keywords:
-                value = keyword.value
-                if keyword.arg != "shell":
-                    continue
-                if isinstance(value, ast.Constant) and value.value is True:
-                    findings.append(
-                        SecretFinding(
-                            file_path=file_path,
-                            line=lineno,
-                            category="sast-shell-true",
-                            detail=(
-                                f"{name}() runs through a shell; pass an argument vector "
-                                "instead of a shell string"
-                            ),
-                        )
-                    )
-    return findings
-
-
 def audit_secret_scan(
     baseline: Mapping[str, str],
     current: Mapping[str, str],
@@ -518,15 +355,22 @@ def audit_secret_scan(
         baseline_text = baseline.get(path)
         line_numbers = _new_line_numbers(baseline_text, current_text)
         findings.extend(scan_secret_lines(path, current_text, line_numbers))
-        if path.endswith(".py"):
-            findings.extend(scan_python_sast(path, current_text))
     findings.sort(key=lambda finding: (finding.file_path, finding.line, finding.category))
     return findings
 
 
-def audit_secret_roots(baseline_root: Path | None, current_root: Path) -> list[SecretFinding]:
-    """Audit the change between two repository roots (or one root, no baseline)."""
-    baseline = read_tree(baseline_root) if baseline_root is not None else {}
+def audit_secret_roots(baseline_root: Path, current_root: Path) -> list[SecretFinding]:
+    """Audit the change between two repository roots.
+
+    Args:
+        baseline_root: The committed baseline tree.
+        current_root: The current working tree.
+
+    Returns:
+        The findings on NEW or CHANGED lines, ordered by path then line
+        then category.
+    """
+    baseline = read_tree(baseline_root)
     current = read_tree(current_root)
     return audit_secret_scan(baseline, current)
 
@@ -537,10 +381,11 @@ def _default_root() -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the secret-scan / SAST gate and return an exit code.
+    """Run the secret-scan gate and return an exit code.
 
-    Exit code 0: no findings. Exit code 1: findings. Exit code 2: a root
-    was not found.
+    Exit code 0: no findings. Exit code 1: findings. Exit code 2: the gate
+    could not run (bad arguments, a missing root, or no committed
+    baseline).
     """
     args = argv if argv is not None else sys.argv[1:]
     if len(args) > MAX_CLI_ROOT_ARGUMENTS:
@@ -549,28 +394,40 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    baseline_root: Path | None
     if len(args) == MAX_CLI_ROOT_ARGUMENTS:
-        baseline_root: Path | None = Path(args[0])
+        baseline_root = Path(args[0])
         current_root = Path(args[1])
     elif len(args) == 1:
         baseline_root = None
         current_root = Path(args[0])
     else:
+        baseline_root = None
         current_root = _default_root()
-        baseline_root = head_tree(current_root)
-    for root in (baseline_root, current_root):
-        if root is not None and not root.is_dir():
-            print(f"Error: audit root not found: {root}", file=sys.stderr)
+    if not current_root.is_dir():
+        print(f"Error: audit root not found: {current_root}", file=sys.stderr)
+        return 2
+    if baseline_root is None:
+        resolved_baseline = head_tree(current_root)
+        if resolved_baseline is None:
+            print(
+                "Error: no committed baseline is available for this tree; "
+                "pass <baseline_root> <current_root> explicitly.",
+                file=sys.stderr,
+            )
             return 2
+        baseline_root = resolved_baseline
+    if not baseline_root.is_dir():
+        print(f"Error: audit root not found: {baseline_root}", file=sys.stderr)
+        return 2
 
-    baseline_label = str(baseline_root) if baseline_root is not None else "(empty baseline)"
-    print(f"Auditing secret scan (baseline diff): baseline={baseline_label} current={current_root}")
+    print(f"Auditing secret scan (baseline diff): baseline={baseline_root} current={current_root}")
     print()
 
     findings = audit_secret_roots(baseline_root, current_root)
 
     if findings:
-        print(f"SECRET-SCAN / SAST FINDINGS: {len(findings)} finding(s)")
+        print(f"SECRET-SCAN FINDINGS: {len(findings)} finding(s)")
         print("=" * 72)
         for finding in findings:
             print(f"  {finding}")
@@ -582,7 +439,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    print("No secret-scan or SAST findings.")
+    print("No secret-scan findings.")
     return 0
 
 

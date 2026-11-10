@@ -65,6 +65,63 @@ KERNEL_RULE_RETIREMENT_PHRASES: tuple[str, ...] = (
     "optional",
 )
 
+# The canonical load-order statement. The brief's loading direction is
+# "kernel, then role slice, then triggered domain file"; the root pack
+# and the starter state it once, in the same words.
+LOAD_ORDER_STATEMENT = "Load order: kernel → role slice → triggered domain file → stop."
+
+# The two load steps the '## AI execution instructions' sections name.
+# The role slice is read before the domain file the change triggers.
+LOAD_STEP_SLICE_MARKER = "LOAD only the rule slice"
+LOAD_STEP_DOMAIN_MARKER = "LOAD only the domain polic"
+
+# The evidence tags the brief assigns to the rules whose shipped tag
+# contradicted it: rule 4 (Regression tests from the spec) is `moderate`,
+# rule 8 (Smallest change) is practitioner experience (`anecdotal`), and
+# rule 9 (Context hygiene) is `strong`.
+BRIEF_EVIDENCE_TAGS: dict[str, str] = {
+    "Regression tests from the spec": "moderate",
+    "Smallest change": "anecdotal",
+    "Context hygiene": "strong",
+}
+
+# Only a `strong` or a `moderate` rule may carry a `deterministic`
+# enforcement status. The shipped text must anchor that rule, because
+# the tags decide which enforcements are allowed.
+DETERMINISTIC_TAG_ANCHOR = "Only a rule tagged `strong` or `moderate` may carry a `deterministic`"
+
+# The thirteen agent rules, in shipped order, with the number the
+# rule-to-phase table and the rule-to-enforcer ladder use.
+AGENT_RULES: tuple[tuple[int, str], ...] = (
+    (1, "Check first"),
+    (2, "Real-artifact evidence"),
+    (3, "Test integrity"),
+    (4, "Regression tests from the spec"),
+    (5, "Independent review"),
+    (6, "Handoff by artifact"),
+    (7, "Premise check"),
+    (8, "Smallest change"),
+    (9, "Context hygiene"),
+    (10, "Plan scaling"),
+    (11, "Commit-level hygiene"),
+    (12, "Human checkpoints"),
+    (13, "Rule-to-enforcer ladder"),
+)
+
+# The instruction-audit requirement: on a model or harness generation
+# change, the policy is re-audited for stale, dead-path, or contradictory
+# rules.
+INSTRUCTION_AUDIT_TRIGGER = "A model or harness generation change"
+INSTRUCTION_AUDIT_REQUIREMENTS: tuple[str, ...] = (
+    "re-audit",
+    "stale",
+    "dead-path",
+    "contradictory",
+)
+
+# The evidence tag a rule statement carries.
+EVIDENCE_TAG_PATTERN = re.compile(r"\(evidence:\s*(strong|moderate|anecdotal|none)\)")
+
 
 def _starter(name: str) -> str:
     return starters.read_starter(name)
@@ -558,3 +615,211 @@ def test_kernel_starter_and_root_rule_to_phase_table_covers_all_numbered_rules()
         assert not missing, (
             f"{source_name} rule-to-phase table is missing numbered rule(s): {sorted(missing)}"
         )
+
+
+# ---------------------------------------------------------------------------
+# v6 kernel contract: the canonical pack and the starter agree, and the
+# shipped text matches the brief's evidence assignment.
+# ---------------------------------------------------------------------------
+
+
+def _normalized(text: str) -> str:
+    """Collapse whitespace so a wrapped sentence compares as one line."""
+    return " ".join(text.split())
+
+
+def _section(content: str, heading: str) -> str:
+    """Return the body of the section whose heading line is *heading*.
+
+    The heading is matched on a line boundary: a starter names another
+    file's section inline (`` `## AI execution instructions` ``), and an
+    inline mention must not be mistaken for the section itself.
+    """
+    marker = f"\n{heading}\n"
+    assert marker in content, f"missing {heading!r} section"
+    start = content.index(marker) + len(marker)
+    rest = content[start:]
+    next_heading = rest.find("\n## ")
+    return rest[:next_heading] if next_heading != -1 else rest
+
+
+def _rule_body(statement: str, rule: str) -> str:
+    """Return a rule statement without its enumerator and bold title."""
+    index = statement.lower().find(f"**{rule.lower()}")
+    assert index != -1, f"rule {rule!r} has no bold title in its statement"
+    body = statement[index + len(rule) + 2 :]
+    return _normalized(body.lstrip(".:").lstrip("*").strip())
+
+
+def _agent_rule_statements(content: str) -> dict[str, str]:
+    """Extract the numbered agent rules of the '## Agent rules' section."""
+    return _extract_rule_statements(_section(content, "## Agent rules"))
+
+
+def _evidence_tag(statement: str) -> str:
+    """Return the evidence tag a rule statement carries."""
+    match = EVIDENCE_TAG_PATTERN.search(statement)
+    assert match is not None, "rule statement carries no evidence tag"
+    return match.group(1)
+
+
+def _research_basis_blocks(content: str) -> list[str]:
+    """Split the Research basis section into its citation blocks."""
+    section = _section(content, "## Research basis")
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in section.splitlines():
+        if line.lstrip().startswith("* publisher:"):
+            if current:
+                blocks.append("\n".join(current))
+            current = [line]
+            continue
+        if current:
+            current.append(line)
+    if current:
+        blocks.append("\n".join(current))
+    return blocks
+
+
+def _supports_text(block: str) -> str:
+    """Return the normalized `supports:` text of one citation block."""
+    collected: list[str] = []
+    collecting = False
+    for raw_line in block.splitlines():
+        stripped = raw_line.strip()
+        if stripped.startswith("supports:"):
+            collecting = True
+            collected.append(stripped[len("supports:") :])
+            continue
+        if not collecting:
+            continue
+        if stripped.startswith(("publisher:", "title:", "http:", "review date:", "path:")):
+            break
+        collected.append(stripped)
+    return _normalized(" ".join(collected))
+
+
+def test_kernel_root_and_starter_carry_the_same_five_rule_bodies() -> None:
+    """The five kernel rules read the same in the root pack and the starter.
+
+    A project bootstrapped from the starter inherits the kernel rules;
+    when the two copies drift, the project enforces a different contract
+    than the canonical pack states.
+    """
+    root_rules = _extract_rule_statements(_extract_kernel_rules_section(_root_kernel()))
+    starter_rules = _extract_rule_statements(_extract_kernel_rules_section(_kernel()))
+
+    assert set(root_rules.keys()) == set(KERNEL_RULES), (
+        f"root rules {sorted(root_rules.keys())} do not match expected {sorted(KERNEL_RULES)}"
+    )
+    assert set(starter_rules.keys()) == set(KERNEL_RULES), (
+        f"starter rules {sorted(starter_rules.keys())} do not match expected {sorted(KERNEL_RULES)}"
+    )
+
+    for rule in KERNEL_RULES:
+        root_body = _rule_body(root_rules[rule], rule)
+        starter_body = _rule_body(starter_rules[rule], rule)
+        assert root_body == starter_body, (
+            f"kernel rule {rule!r} differs between the root pack and the starter:\n"
+            f"root:    {root_body!r}\nstarter: {starter_body!r}"
+        )
+
+
+def test_kernel_root_and_starter_state_the_same_load_order() -> None:
+    """Both kernel files state the brief's loading direction exactly once.
+
+    The direction is kernel, then role slice, then triggered domain file.
+    Stating it in two different orders in two files is how a cold agent
+    ends up loading a domain file it never needed.
+    """
+    for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
+        assert content.count(LOAD_ORDER_STATEMENT) == 1, (
+            f"{source_name} kernel must state the load order exactly once "
+            f"({LOAD_ORDER_STATEMENT!r}); found {content.count(LOAD_ORDER_STATEMENT)}"
+        )
+        assert "kernel → domain file" not in _normalized(content), (
+            f"{source_name} kernel still states a load order that skips the role slice"
+        )
+
+
+def test_kernel_load_steps_read_the_role_slice_before_the_domain_file() -> None:
+    """The AI execution instructions load the role slice before the domain file."""
+    for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
+        section = _section(content, "## AI execution instructions")
+        slice_at = section.find(LOAD_STEP_SLICE_MARKER)
+        domain_at = section.find(LOAD_STEP_DOMAIN_MARKER)
+        assert slice_at != -1, (
+            f"{source_name} AI execution instructions name no role-slice load step"
+        )
+        assert domain_at != -1, (
+            f"{source_name} AI execution instructions name no triggered-domain load step"
+        )
+        assert slice_at < domain_at, (
+            f"{source_name} AI execution instructions load the triggered domain "
+            f"file before the role slice; the loading direction is kernel, role "
+            f"slice, triggered domain file"
+        )
+
+
+def test_kernel_evidence_tags_match_the_brief() -> None:
+    """The shipped evidence tags match the brief's assignment."""
+    for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
+        statements = _agent_rule_statements(content)
+        for rule, tag in BRIEF_EVIDENCE_TAGS.items():
+            statement = statements.get(rule.lower())
+            assert statement is not None, f"{source_name} kernel missing agent rule {rule!r}"
+            actual = _evidence_tag(statement)
+            assert actual == tag, (
+                f"{source_name} kernel rule {rule!r} carries evidence tag {actual!r}; "
+                f"the brief assigns {tag!r}"
+            )
+
+
+def test_kernel_anchors_the_deterministic_evidence_rule() -> None:
+    """Both kernel files anchor the rule that only strong/moderate rules may be deterministic."""
+    for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
+        assert DETERMINISTIC_TAG_ANCHOR in content, (
+            f"{source_name} kernel does not anchor the rule that only a `strong` "
+            f"or `moderate` rule may carry a `deterministic` enforcement status"
+        )
+
+
+def test_every_agent_rule_has_a_research_basis_supports_line() -> None:
+    """Every one of the thirteen agent rules is named by a research-basis supports line.
+
+    A rule with no source behind it cannot carry an evidence tag that means
+    anything, so the research basis must name every rule.
+    """
+    for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
+        blocks = _research_basis_blocks(content)
+        assert blocks, f"{source_name} kernel research basis has no citation blocks"
+        for number, rule in AGENT_RULES:
+            matching = [block for block in blocks if rule.lower() in _supports_text(block).lower()]
+            assert matching, (
+                f"{source_name} kernel research basis has no supports line naming "
+                f"rule {number} ({rule!r})"
+            )
+            assert any(f"({number})" in _supports_text(block) for block in matching), (
+                f"{source_name} kernel research basis supports line for rule "
+                f"{number} ({rule!r}) does not name its number"
+            )
+
+
+def test_instruction_audit_requirement_is_stated_once_in_both_kernels() -> None:
+    """Both kernel files state the instruction-audit requirement once.
+
+    On a model or harness generation change the policy is re-audited for
+    stale, dead-path, or contradictory rules; the requirement has to live
+    in the kernel, because the kernel is what every cold agent loads.
+    """
+    for source_name, content in (("root", _root_kernel()), ("starter", _kernel())):
+        assert content.count(INSTRUCTION_AUDIT_TRIGGER) == 1, (
+            f"{source_name} kernel must state the instruction-audit requirement exactly "
+            f"once; found {content.count(INSTRUCTION_AUDIT_TRIGGER)}"
+        )
+        normalized = _normalized(content).lower()
+        for requirement in INSTRUCTION_AUDIT_REQUIREMENTS:
+            assert requirement in normalized, (
+                f"{source_name} kernel instruction-audit requirement is missing "
+                f"{requirement!r}"
+            )

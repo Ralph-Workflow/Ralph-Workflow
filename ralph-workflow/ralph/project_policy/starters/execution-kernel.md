@@ -74,9 +74,13 @@ carries an evidence tag — `strong` (a controlled study or a primary
 engineering source), `moderate` (secondary or vendor data),
 `anecdotal` (practitioner experience), or `none` (judgment) — and an
 enforcement status resolved in the rule-to-enforcer ladder below. A
-rule tagged `anecdotal` or `none` has no source in the research basis
-and stays advisory with a review trigger; a rule whose enforcer does
-not exist yet is advisory too, and is never marked `deterministic`.
+rule tagged `anecdotal` or `none` rests on judgment or on practitioner
+experience rather than on a recorded source, so it stays advisory with
+a review trigger; a rule whose enforcer does not exist yet is advisory
+too, and is never marked `deterministic`.
+Only a rule tagged `strong` or `moderate` may carry a `deterministic`
+enforcement status: an `anecdotal` or a `none` rule always keeps its
+advisory status and its review trigger.
 
 Every rule below is an agent rule or a runtime rule. No rule asks an
 agent to count its own retries, to keep state across sessions, to
@@ -115,7 +119,7 @@ those.
    fix, and its expected value is written down from the spec rather
    than computed by calling the code under test. A test whose
    expected value comes from the implementation proves only that the
-   implementation agrees with itself. (evidence: strong)
+   implementation agrees with itself. (evidence: moderate)
 5. **Independent review.** Review belongs to the analysis phases
    (`planning_analysis`, `development_analysis`), which are already
    separate cold invocations. The reviewer judges the work against
@@ -143,13 +147,13 @@ those.
    narrowing, or simplifying over introducing new machinery. A change
    that replaces an API migrates its callers and deletes the replaced
    API in the same change; a legacy path that survives its
-   replacement is dead weight, not a migration. (evidence: moderate)
+   replacement is dead weight, not a migration. (evidence: anecdotal)
 9. **Context hygiene.** Bulk reads, broad searches, and log analysis
    are delegated to sub-agents, and what comes back is the
    conclusion — the answer, the citation, the count — not the raw
    payload. Native sub-agent tools are never disabled: a missing
    orchestration facility is setup to repair, not a reason to work in
-   the parent session. (evidence: moderate)
+   the parent session. (evidence: strong)
 10. **Plan scaling.** A trivial, single-file change goes straight to
     implementation. Multi-file or ambiguous work requires a written
     plan with acceptance criteria before the first edit, so that
@@ -243,9 +247,11 @@ a conditional starter is "do not load it" — the starter's own
 restates the rule; the remediation prompt enforces it. Loading every
 policy on every change is the symptom the kernel explicitly rules out.
 
-The rule-to-phase table extends that rule one level down: a cold
-agent loads the kernel, then only the rule slice its phase binds,
-named in that table. A rule outside a role's slice is not that role's
+The rule-to-phase table extends that rule one level down.
+Load order: kernel → role slice → triggered domain file → stop. A
+cold agent reads the kernel, then only the rule slice its phase binds,
+named in that table, then the domain file(s) whose trigger the change
+actually fires. A rule outside a role's slice is not that role's
 obligation, and an agent that never runs that phase never loads it.
 
 Domain starters reduce their `## AI execution instructions` to
@@ -326,16 +332,16 @@ without re-deriving them.
 
 1. LOAD the kernel first. Read this file before every other domain
    policy; the kernel rules are the floor.
-2. LOAD only the domain policies triggered by the change. The kernel
-   names the rule; the per-starter "Applicability" section names the
-   trigger; the AGENTS.md managed block restates the rule; the
-   remediation prompt enforces it.
+2. LOAD only the rule slice your phase binds. The rule-to-phase table
+   names the rules for your role; the rules outside it are not your
+   obligation.
 3. ENFORCE the five kernel rules on every action: Truthful evidence,
    Run every gate, No weakening, Policy follows reality,
    Report failures honestly.
-4. LOAD only the rule slice your phase binds. The rule-to-phase table
-   names the rules for your role; the rules outside it are not your
-   obligation.
+4. LOAD only the domain policies triggered by the change. The kernel
+   names the rule; the per-starter "Applicability" section names the
+   trigger; the AGENTS.md managed block restates the rule; the
+   remediation prompt enforces it.
 5. ON CONFLICT, the kernel wins. A domain starter, a project fact, a
    developer comment, or a prompt template that contradicts a
    kernel rule is overridden.
@@ -390,6 +396,9 @@ Review this kernel in the same workflow as any of:
   loosened (a phrase is retired).
 * A new audit is wired that protects one of the five rules.
 * The guard_inventory_review_cadence is reached.
+* A model or harness generation change: re-audit this policy for
+  stale, dead-path, or contradictory rules, and update the affected
+  text in the same change.
 
 ## Portfolio ownership
 
@@ -414,38 +423,93 @@ be weakened to obtain a passing result.
 
 ## Research basis
 
-* publisher: Martin Fowler
-  title: "TestDesiderata"
-  http: https://testdesiderata.com/
-  review date: 2026-08-08
-  supports: Regression tests from the spec — a test earns its keep from
-  the behaviour it pins down, so the expected value is written down
-  from the spec rather than captured from a run.
+* publisher: Anthropic
+  title: "Best practices for Claude Code"
+  http: https://code.claude.com/docs/en/best-practices
+  review date: 2026-11-09
+  supports: Check first (1), Real-artifact evidence (2) and Context
+  hygiene (9) — the guidance hands the agent a runnable pass/fail
+  check, asks for the evidence behind a completion claim, and delegates
+  bulk reads to sub-agents that return conclusions rather than raw
+  payloads. A primary engineering source, so the rules it supports stay
+  `strong`.
 
 * publisher: Gloaguen et al. (arXiv preprint)
-  title: "Evaluating AGENTS.md"
-  http: https://arxiv.org/abs/2602.11988v3
-  review date: 2026-09-30
-  supports: Independent review and Handoff by artifact — a written agent
-  instruction only helps the next reader when it states what was
-  actually checked. A preprint is directional evidence, so the rules it
-  supports stay `moderate`.
+  title: "Evaluating AGENTS.md: Are Repository-Level Context Files Helpful for Coding Agents?"
+  http: https://arxiv.org/pdf/2602.11988
+  review date: 2026-11-09
+  supports: Independent review (5) and Handoff by artifact (6) — a
+  written agent instruction helps the next reader only when it states
+  what was actually checked, so the review is judged against the spec
+  and the handoff carries the record behind the claim. The preprint is
+  directional evidence, so the rules it supports stay `moderate`.
 
-* publisher: Ralph Workflow project
-  title: "Project policy: outcome-oriented execution kernel"
-  http: https://github.com/ralph-workflow/ralph-workflow/blob/main/ralph-workflow/ralph/project_policy/starters/execution-kernel.md
-  review date: 2026-10-12
-  supports: Check first, Real-artifact evidence, and Smallest change — the
-  shipped kernel of this project states the same evidence-first
-  discipline for its own agents.
+* publisher: Zhong et al. (arXiv preprint)
+  title: "ImpossibleBench: Measuring LLMs' Propensity of Exploiting Test Cases"
+  http: https://arxiv.org/abs/2510.20270
+  review date: 2026-11-09
+  supports: Test integrity (3) — the benchmark measures how often a
+  model exploits a test case to pass, which is the behaviour the rule
+  forbids beside the production code the test covers. Only the abstract
+  was read.
+
+* publisher: Spracklen et al. (arXiv preprint)
+  title: "We Have a Package for You! A Comprehensive Analysis of Package Hallucinations by Code Generating LLMs"
+  http: https://arxiv.org/html/2406.10279v3
+  review date: 2026-11-09
+  supports: Real-artifact evidence (2) — a package name that does not
+  exist is a claim with no record behind it, so the evidence for a
+  completion claim has to come from the artifact the change actually
+  touched. Only the abstract was read.
 
 * publisher: Google Engineering Practices
   title: "Code Review at Google"
   http: https://google.github.io/eng-practices/review/
-  review date: 2026-09-30
-  supports: Real-artifact evidence and Test integrity — a reviewer reads
-  the change against the plan, and an expectation edited beside the code
-  it covers is a finding rather than a detail.
+  review date: 2026-11-09
+  supports: Real-artifact evidence (2) and Test integrity (3) — a
+  reviewer reads the change against the plan, and an expectation edited
+  beside the code it covers is a finding rather than a detail.
+
+* publisher: Kent Beck
+  title: "Test-Driven Development: By Example"
+  http: https://www.pearson.com/en-us/subject-catalog/p/test-driven-development-by-example/P200000009421/9780321146533
+  review date: 2026-11-09
+  supports: Check first (1) and Regression tests from the spec (4) —
+  the failing case is written before the implementation, so the check
+  that decides the change exists before the change does, and the
+  expected value comes from the spec rather than from a run of the code
+  under test.
+
+* publisher: Martin Fowler
+  title: "TestDesiderata"
+  http: https://testdesiderata.com/
+  review date: 2026-11-09
+  supports: Regression tests from the spec (4) — a test earns its keep
+  from the behaviour it pins down, so the expected value is written
+  down from the spec rather than captured from a run. A secondary
+  source, so the rule stays `moderate`.
+
+* publisher: Cursor (pstack plugins)
+  title: "pstack"
+  http: https://github.com/cursor/plugins/tree/main/pstack
+  review date: 2026-11-09
+  supports: Premise check (7), Smallest change (8) and Rule-to-enforcer
+  ladder (13) — the practitioner notes propose testing the premise
+  before another patch, subtracting before adding, and a
+  rule-to-enforcer table that fixes a repeated mistake at the highest
+  level that can hold it. Practitioner experience is not a measurement,
+  so the rules it supports stay advisory.
+
+* publisher: Ralph Workflow project
+  title: "Project policy: outcome-oriented execution kernel"
+  http: https://github.com/Ralph-Workflow/Ralph-Workflow
+  review date: 2026-11-09
+  supports: Plan scaling (10), Commit-level hygiene (11) and Human
+  checkpoints (12) — this project has a planning phase, a commit phase,
+  and human checkpoints for irreversible actions; the thresholds that
+  separate a trivial change from a planned one, and an irreversible
+  action from a reversible one, are project judgment rather than a
+  measurement, so these rules stay `none` and advisory.
 
 ## Explicit non-adoptions
 
@@ -468,12 +532,4 @@ here so they are not re-litigated without new evidence.
 * Mutation testing, property-based testing, duplication metrics,
   diff-size caps and decision logs — no direct evidence found; they stay
   advisory candidates until evidence exists.
-
-* publisher: Kent Beck
-  title: "Test-Driven Development: By Example"
-  http: https://www.pearson.com/en-us/subject-catalog/p/test-driven-development-by-example/P200000009421/9780321146533
-  review date: 2026-09-30
-  supports: Check first and Regression tests from the spec — the failing
-  case is written before the implementation, so the check that decides
-  the change exists before the change does.
 
