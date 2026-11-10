@@ -487,16 +487,21 @@ def _is_real_conflict(observation: Observation) -> bool:
     )
 
 
+_LADDER_ACTION_MAP: dict[
+    EscalationRung, NextAction
+] = {  # bounded-accumulator-ok: static enum mapping
+    EscalationRung.REPAIR: NextAction.REPAIR,
+    EscalationRung.DISPATCH_RESOLVER: NextAction.DISPATCH_RESOLVER,
+    EscalationRung.REBUILD_ON_TARGET: NextAction.REBUILD_ON_TARGET,
+    EscalationRung.CONTINUE_WITH_INTEGRATION_PENDING: (
+        NextAction.CONTINUE_WITH_INTEGRATION_PENDING
+    ),
+}
+
+
 def _ladder_action(rung: EscalationRung) -> NextAction:
     """Map ``rung`` to the action that rung represents."""
-    return {
-        EscalationRung.REPAIR: NextAction.REPAIR,
-        EscalationRung.DISPATCH_RESOLVER: NextAction.DISPATCH_RESOLVER,
-        EscalationRung.REBUILD_ON_TARGET: NextAction.REBUILD_ON_TARGET,
-        EscalationRung.CONTINUE_WITH_INTEGRATION_PENDING: (
-            NextAction.CONTINUE_WITH_INTEGRATION_PENDING
-        ),
-    }[rung]
+    return _LADDER_ACTION_MAP[rung]
 
 
 _REPAIRABLE_RECORD_STATES: frozenset[IntegrationRecordState] = frozenset(
@@ -614,6 +619,14 @@ def _ladder_action_skipping_resolver(rung: EscalationRung, observation: Observat
     return action
 
 
+_ESCALATED_RUNG_MAP: dict[  # bounded-accumulator-ok: static enum mapping
+    EscalationRung, EscalationRung
+] = {
+    rung: LADDER_ORDER[min(LADDER_ORDER.index(rung) + ESCALATED_RUNG_STRIDE, len(LADDER_ORDER) - 1)]
+    for rung in EscalationRung
+}
+
+
 def _escalated_rung(rung: EscalationRung) -> EscalationRung:
     """Return the rung the table answers with when ``rung`` is under repeat pressure.
 
@@ -624,8 +637,7 @@ def _escalated_rung(rung: EscalationRung) -> EscalationRung:
     progress. Falling past both is what stops a resolver agent being
     dispatched again for a condition it has already failed to change.
     """
-    index = LADDER_ORDER.index(rung) + ESCALATED_RUNG_STRIDE
-    return LADDER_ORDER[min(index, len(LADDER_ORDER) - 1)]
+    return _ESCALATED_RUNG_MAP[rung]
 
 
 def _ladder_dispatch_or_direct(
@@ -653,7 +665,7 @@ def _ladder_dispatch_or_direct(
     The function is total over ``attempts`` and ``observation``: every
     pair maps to one of the direct action or a rung action.
     """
-    if attempts.repeat_pressure(
+    if attempts.repeat_counts and attempts.repeat_pressure(
         repeat_count=attempts.repeat_count_for(observation, direct),
         signature_attempts=attempts.signature_attempts(observation) + 1,
     ):
@@ -721,7 +733,7 @@ def _cleanup_escalation_action(
     threshold AND the signature must have been attempted at least
     :data:`MIN_SIGNATURE_ATTEMPTS_FOR_ESCALATION` times.
     """
-    if not attempts.repeat_pressure(
+    if not attempts.repeat_counts or not attempts.repeat_pressure(
         repeat_count=attempts.repeat_count_for(observation, direct),
         signature_attempts=attempts.signature_attempts(observation) + 1,
     ):

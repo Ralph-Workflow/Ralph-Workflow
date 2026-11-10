@@ -56,6 +56,7 @@ from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
     AgentsPolicy,
+    ArtifactsPolicy,
     PipelinePolicy,
     PolicyBundle,
 )
@@ -76,6 +77,11 @@ __all__ = [
     "ValidationErrorDetails",
     "build_agents_policy_from_config",
     "cached_default_agents_policy",
+    "cached_default_artifacts_data",
+    "cached_default_artifacts_policy",
+    "cached_default_pipeline_data",
+    "cached_default_pipeline_policy",
+    "cached_default_policy_bundle",
     "default_dir",
     "disable_incompatible_inherited_cycle_timebox",
     "format_validation_error_detail",
@@ -217,9 +223,7 @@ def _resolve_pipeline_data(
     override supplies either timebox block; otherwise inherited defaults are
     disabled when they do not fit a custom graph.
     """
-    default_pipeline_data = load_toml(
-        default_policy_dir / "pipeline.toml", kind="pipeline", strict=True
-    )
+    default_pipeline_data = cached_default_pipeline_data()
     local_pipeline_data = load_toml(pipeline_path, kind="pipeline", strict=strict_optional_files)
     if global_pipeline_path is None:
         return local_pipeline_data or default_pipeline_data, _declares_timebox(local_pipeline_data)
@@ -385,6 +389,26 @@ _DEFAULT_AGENTS_POLICY_CACHE: list[
     AgentsPolicy
 ] = []  # bounded-accumulator-ok: at most one cached default AgentsPolicy
 
+_DEFAULT_PIPELINE_DATA_CACHE: list[
+    dict[str, object]
+] = []  # bounded-accumulator-ok: at most one cached default pipeline toml dict
+
+_DEFAULT_PIPELINE_POLICY_CACHE: list[
+    PipelinePolicy
+] = []  # bounded-accumulator-ok: at most one cached default PipelinePolicy
+
+_DEFAULT_ARTIFACTS_DATA_CACHE: list[
+    dict[str, object]
+] = []  # bounded-accumulator-ok: at most one cached default artifacts toml dict
+
+_DEFAULT_ARTIFACTS_POLICY_CACHE: list[
+    ArtifactsPolicy
+] = []  # bounded-accumulator-ok: at most one cached default ArtifactsPolicy
+
+_DEFAULT_POLICY_BUNDLE_CACHE: list[
+    PolicyBundle
+] = []  # bounded-accumulator-ok: at most one cached default PolicyBundle
+
 
 def cached_default_agents_policy() -> AgentsPolicy:
     """Return the bundled default agents policy, parsed once per process.
@@ -397,6 +421,57 @@ def cached_default_agents_policy() -> AgentsPolicy:
             validate_agents(load_toml(default_dir() / "agents.toml", kind="agents", strict=True))
         )
     return _DEFAULT_AGENTS_POLICY_CACHE[0]
+
+
+def cached_default_pipeline_data() -> dict[str, object]:
+    """Return the bundled default pipeline TOML mapping, parsed once per process."""
+    if not _DEFAULT_PIPELINE_DATA_CACHE:
+        _DEFAULT_PIPELINE_DATA_CACHE.append(
+            load_toml(default_dir() / "pipeline.toml", kind="pipeline", strict=True)
+        )
+    return _DEFAULT_PIPELINE_DATA_CACHE[0]
+
+
+def cached_default_pipeline_policy() -> PipelinePolicy:
+    """Return the bundled default pipeline policy, validated once per process."""
+    if not _DEFAULT_PIPELINE_POLICY_CACHE:
+        _DEFAULT_PIPELINE_POLICY_CACHE.append(
+            validate_pipeline(cached_default_pipeline_data(), timeboxes_explicit=False)
+        )
+    return _DEFAULT_PIPELINE_POLICY_CACHE[0]
+
+
+def cached_default_artifacts_data() -> dict[str, object]:
+    """Return the bundled default artifacts TOML mapping, parsed once per process."""
+    if not _DEFAULT_ARTIFACTS_DATA_CACHE:
+        _DEFAULT_ARTIFACTS_DATA_CACHE.append(
+            load_toml(default_dir() / "artifacts.toml", kind="artifacts", strict=True)
+        )
+    return _DEFAULT_ARTIFACTS_DATA_CACHE[0]
+
+
+def cached_default_artifacts_policy() -> ArtifactsPolicy:
+    """Return the bundled default artifacts policy, validated once per process."""
+    if not _DEFAULT_ARTIFACTS_POLICY_CACHE:
+        _DEFAULT_ARTIFACTS_POLICY_CACHE.append(validate_artifacts(cached_default_artifacts_data()))
+    return _DEFAULT_ARTIFACTS_POLICY_CACHE[0]
+
+
+def cached_default_policy_bundle() -> PolicyBundle:
+    """Return the bundled default policy bundle, loaded once per process."""
+    if not _DEFAULT_POLICY_BUNDLE_CACHE:
+        default_policy_dir = default_dir()
+        bundle = _load_policy_from_paths(
+            agents_path=default_policy_dir / "agents.toml",
+            pipeline_path=default_policy_dir / "pipeline.toml",
+            artifacts_path=default_policy_dir / "artifacts.toml",
+            config=None,
+            global_policy_paths=None,
+            strict_optional_files=False,
+            _bypass_bundle_cache=True,
+        )
+        _DEFAULT_POLICY_BUNDLE_CACHE.append(bundle)
+    return _DEFAULT_POLICY_BUNDLE_CACHE[0]
 
 
 def _alias_out_of_graph_drain(
@@ -547,12 +622,29 @@ def _load_policy_from_paths(
     config: UnifiedConfig | None = None,
     global_policy_paths: tuple[Path | None, Path | None] | None = None,
     strict_optional_files: bool = False,
+    _bypass_bundle_cache: bool = False,
 ) -> PolicyBundle:
     """Load a policy bundle from explicit file paths."""
+    default_policy_dir = default_dir()
+    if (
+        not _bypass_bundle_cache
+        and config is None
+        and not strict_optional_files
+        and global_policy_paths is None
+        and (
+            (
+                agents_path == default_policy_dir / "agents.toml"
+                and pipeline_path == default_policy_dir / "pipeline.toml"
+                and artifacts_path == default_policy_dir / "artifacts.toml"
+            )
+            or not (agents_path.exists() or pipeline_path.exists() or artifacts_path.exists())
+        )
+    ):
+        return cached_default_policy_bundle()
+
     global_pipeline_path, global_artifacts_path = (
         global_policy_paths if global_policy_paths is not None else (None, None)
     )
-    default_policy_dir = default_dir()
     pipeline_data, timeboxes_explicit = _resolve_pipeline_data(
         default_policy_dir=default_policy_dir,
         pipeline_path=pipeline_path,
@@ -560,15 +652,10 @@ def _load_policy_from_paths(
         strict_optional_files=strict_optional_files,
     )
 
-    default_pipeline_data = load_toml(
-        default_policy_dir / "pipeline.toml", kind="pipeline", strict=True
-    )
-    default_pipeline_policy = validate_pipeline(default_pipeline_data, timeboxes_explicit=False)
+    default_pipeline_policy = cached_default_pipeline_policy()
 
-    default_artifacts_data = load_toml(
-        default_policy_dir / "artifacts.toml", kind="artifacts", strict=True
-    )
-    default_artifacts_policy = validate_artifacts(default_artifacts_data)
+    default_artifacts_data = cached_default_artifacts_data()
+    default_artifacts_policy = cached_default_artifacts_policy()
 
     local_artifacts_data = load_toml(artifacts_path, kind="artifacts", strict=strict_optional_files)
     if global_artifacts_path is None:

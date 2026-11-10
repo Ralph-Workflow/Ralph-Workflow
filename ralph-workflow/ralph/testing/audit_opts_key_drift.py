@@ -64,7 +64,7 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
-_POOL_WORKER_CAP = 4
+_POOL_WORKER_CAP = 1
 #: Spawned, never forked: a forked child of a pytest/xdist worker inherits its
 #: sqlite handles, and finalizing one calls os_log, which is not fork-safe on
 #: macOS -- the pool worker dies with SIGSEGV (``BrokenProcessPool``).

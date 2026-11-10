@@ -109,12 +109,14 @@ def _isolate_test_environment_and_globals(
 
 def _apply_placeholder_hosted_provider_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep fake agent-process tests independent of real provider credentials."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-placeholder")
-    monkeypatch.setenv("OPENAI_API_KEY", "test-placeholder")
-    monkeypatch.delenv("RALPH_MCP_ENDPOINT", raising=False)
-    monkeypatch.delenv("RALPH_MCP_RUN_ID", raising=False)
-    monkeypatch.delenv("RALPH_MCP_INHERITED_FD", raising=False)
-    monkeypatch.delenv("RALPH_MCP_RESPAWN", raising=False)
+    for var in (
+        "RALPH_MCP_ENDPOINT",
+        "RALPH_MCP_RUN_ID",
+        "RALPH_MCP_INHERITED_FD",
+        "RALPH_MCP_RESPAWN",
+    ):
+        if var in os.environ:
+            del os.environ[var]
 
 
 def _apply_disable_explore_recovery_drain_thread(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -502,14 +504,10 @@ def _reset_rich_style_color_caches() -> None:
     assertions independent of execution order without touching any
     production code path.
     """
-    import rich.color
-    import rich.style
-
-    for cached_callable in (
-        rich.style.Style.parse,
-        rich.style.Style._add,
-    ):
-        cached_callable.cache_clear()
+    if "rich.style" in sys.modules:
+        rich_style = sys.modules["rich.style"]
+        rich_style.Style.parse.cache_clear()
+        rich_style.Style._add.cache_clear()
 
 
 def _apply_isolate_process_home(
@@ -543,49 +541,37 @@ def _apply_isolate_process_home(
     # ``$HOME/.config`` in the production code path yields the same value
     # without paying an extra Path construction + str() per test.
     fake_home = worker_root + "/" + unique_suffix + "/home"
-    monkeypatch.setenv("HOME", fake_home)
-    monkeypatch.setenv("XDG_CONFIG_HOME", fake_home + "/.config")
-    monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
+    os.environ["HOME"] = fake_home
+    os.environ["XDG_CONFIG_HOME"] = fake_home + "/.config"
+    for var in (
+        "RALPH_UPSTREAM_MCP_CONFIG",
+        "RALPH_CYCLE_WARN_EPOCH",
+        "RALPH_CYCLE_DEADLINE_EPOCH",
+        "RALPH_DEV_WARN_EPOCH",
+        "RALPH_DEV_DEADLINE_EPOCH",
+    ):
+        if var in os.environ:
+            del os.environ[var]
     # Dummy provider keys so the credential preflight does not abort
     # agent-invoking tests that fake the process layer. Dedicated preflight
     # tests inject their own ``env_getter`` and are unaffected by these
     # ``os.environ`` defaults.
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-dummy-key")
-    monkeypatch.setenv("OPENAI_API_KEY", "test-dummy-key")
-    monkeypatch.setenv("CURSOR_API_KEY", "test-dummy-key")
-    # Cycle-deadline epochs are published per-invocation by the pipeline
-    # runner and withdrawn when the invocation ends. A leaked value (a
-    # crashed harness, an outer live run driving this test suite as its
-    # verification step) would silently turn every artifact-validation
-    # test into a warned-cycle test, rejecting honest partial results
-    # with a deadline requirement the test never configured. Strip both
-    # names so each test starts with "no deadline published" and only
-    # fixtures that deliberately publish one (e.g.
-    # tests/mcp/test_warned_gate_reads_runtime_state.py) see a cycle.
-    monkeypatch.delenv("RALPH_CYCLE_WARN_EPOCH", raising=False)
-    monkeypatch.delenv("RALPH_CYCLE_DEADLINE_EPOCH", raising=False)
-    monkeypatch.delenv("RALPH_DEV_WARN_EPOCH", raising=False)
-    monkeypatch.delenv("RALPH_DEV_DEADLINE_EPOCH", raising=False)
+    if os.environ.get("ANTHROPIC_API_KEY") != "test-dummy-key":
+        os.environ["ANTHROPIC_API_KEY"] = "test-dummy-key"
+    if os.environ.get("OPENAI_API_KEY") != "test-dummy-key":
+        os.environ["OPENAI_API_KEY"] = "test-dummy-key"
+    if os.environ.get("CURSOR_API_KEY") != "test-dummy-key":
+        os.environ["CURSOR_API_KEY"] = "test-dummy-key"
     fake_config_dir = Path(fake_home) / ".config"
     if "ralph.config.loader" in sys.modules:
         loader_mod = sys.modules["ralph.config.loader"]
-        monkeypatch.setattr(
-            loader_mod, "GLOBAL_CONFIG_PATH", fake_config_dir / "ralph-workflow.toml"
-        )
-        monkeypatch.setattr(
-            loader_mod, "GLOBAL_AGENTS_CONFIG_PATH", fake_config_dir / "ralph-workflow-agents.toml"
-        )
+        loader_mod.GLOBAL_CONFIG_PATH = fake_config_dir / "ralph-workflow.toml"
+        loader_mod.GLOBAL_AGENTS_CONFIG_PATH = fake_config_dir / "ralph-workflow-agents.toml"
     if "ralph.skills._state_store" in sys.modules:
         state_store_mod = sys.modules["ralph.skills._state_store"]
-        monkeypatch.setattr(
-            state_store_mod,
-            "DEFAULT_STATE_PATH",
-            fake_config_dir / "ralph-workflow-capabilities.json",
-        )
-        monkeypatch.setattr(
-            state_store_mod,
-            "default_state_path",
-            lambda: fake_config_dir / "ralph-workflow-capabilities.json",
+        state_store_mod.DEFAULT_STATE_PATH = fake_config_dir / "ralph-workflow-capabilities.json"
+        state_store_mod.default_state_path = lambda: (
+            fake_config_dir / "ralph-workflow-capabilities.json"
         )
 
 
@@ -638,6 +624,7 @@ def _configure_repo_identity(repo: Repo) -> None:
         writer.set_value("user", "name", "Test User")
         writer.set_value("user", "email", "test@example.com")
         writer.set_value("core", "logAllRefUpdates", "false")
+        writer.set_value("core", "fsync", "none")
         writer.set_value("gc", "auto", "0")
     finally:
         writer.release()

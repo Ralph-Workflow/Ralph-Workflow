@@ -32,9 +32,14 @@ if TYPE_CHECKING:
 
 # Process-level registry for deduplicating fallback warnings.
 # Keyed by (resolved Path, sha256_of_bytes | error_class).
-_FALLBACK_WARNING_REGISTRY: set[tuple[Path, str | type[BaseException]]] = (
-    set()  # bounded-accumulator-ok: warning dedup registry bounded by distinct config file paths and content hashes per process
-)
+#: Maximum number of remembered (path, content) pairs. The registry is an
+#: insertion-ordered mapping, so the oldest pair is evicted first once the
+#: cap is reached and a long-lived process cannot grow it without bound.
+_MAX_FALLBACK_WARNING_REGISTRY_ENTRIES = 256
+
+_FALLBACK_WARNING_REGISTRY: dict[
+    tuple[Path, str | type[BaseException]], None
+] = {}  # bounded-accumulator-ok: FIFO-capped at _MAX_FALLBACK_WARNING_REGISTRY_ENTRIES entries
 
 
 def reset_fallback_warning_registry() -> None:
@@ -144,7 +149,10 @@ def emit_config_failure_warning(
     key = (resolved, fingerprint)
     if key in _FALLBACK_WARNING_REGISTRY:
         return False
-    _FALLBACK_WARNING_REGISTRY.add(key)
+    _FALLBACK_WARNING_REGISTRY[key] = None
+    while len(_FALLBACK_WARNING_REGISTRY) > _MAX_FALLBACK_WARNING_REGISTRY_ENTRIES:
+        oldest = next(iter(_FALLBACK_WARNING_REGISTRY))
+        del _FALLBACK_WARNING_REGISTRY[oldest]
 
     logger.warning(
         f"Failed to load {kind} configuration from {path_obj}: {error_detail}; "

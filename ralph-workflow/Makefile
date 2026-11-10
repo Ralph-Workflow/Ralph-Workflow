@@ -15,6 +15,7 @@
 # worker pool so their parallelism remains configurable without changing the
 # primary suite policy.
 MULTIMODAL_SMOKE_WORKERS ?= 8
+VERIFICATION_SMOKE_WORKERS ?= 2
 #
 # The raw targets (test-unit / test-integration / test-subprocess-e2e /
 # test-cov / test-auto-integrate-e2e) interpolate ``-n $(PYTEST_WORKERS)``
@@ -175,7 +176,7 @@ test-live-agy:
 # while sharing pytest imports and workers. The entire invocation is charged
 # to the same immutable combined verification budget.
 test-verification-smoke:
-	$(RUN_PYTHON) -m pytest tests/test_install_make_smoke.py tests/test_smoke_multimodal_end_to_end.py tests/test_visual_smoke.py tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py -q -n $(MULTIMODAL_SMOKE_WORKERS) --dist worksteal -m "smoke and subprocess_e2e"
+	$(RUN_PYTHON) -m pytest tests/test_install_make_smoke.py tests/test_smoke_multimodal_end_to_end.py tests/test_visual_smoke.py tests/agents/invoke/test_real_pty_completion_no_terminal_lost.py -q -n $(VERIFICATION_SMOKE_WORKERS) --dist worksteal -m "smoke and subprocess_e2e"
 
 # Offline installer smoke. The checked-in fake ``uv`` accepts only the locked
 # installer argv forms and exits before any network path; this target drives
