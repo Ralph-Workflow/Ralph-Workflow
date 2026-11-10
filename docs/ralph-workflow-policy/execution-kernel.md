@@ -59,19 +59,24 @@ execution instructions" section. They live here exactly once.
 * **Truthful evidence**: a claim of compliance, a recorded finding,
   a test result, or a gate outcome MUST be reproducible from the inputs
   the change actually executed.
+  (evidence: strong)
 * **Run every gate**: run every `RALPH-COMMAND:` gate declared under
   the affected policy's Verification section before claiming
   compliance; report the actual outcome (exit code, error, real
   timing).
+  (evidence: strong)
 * **No weakening**: do NOT weaken a gate to obtain a passing result.
   Weakening moves include `# noqa`, inline allowlist entries,
   per-file ignores, raised timeouts, removed assertions, and
   refactored-out failure paths.
+  (evidence: strong)
 * **Policy follows reality**: update policy facts/commands/requirements
   in the same workflow that changes the underlying tool, gate,
   exclusion, or behaviour.
+  (evidence: none)
 * **Report failures honestly**: a red gate hidden behind "this is
   unrelated" is itself a failure.
+  (evidence: none)
 
 ## Agent rules
 
@@ -192,7 +197,7 @@ slice is not that role's obligation.
 | Role | Phase | Rule slice | What the role hands on |
 |---|---|---|---|
 | Planner | `planning` | Plan scaling (10), acceptance criteria, Check first (1) | a plan whose items name the check that decides each one |
-| Developer | `development` | Check first (1), Real-artifact evidence (2), Test integrity (3), Smallest change (8), Context hygiene (9), comment hygiene (owned by `clean-code-policy.md`) | a `development_result` body carrying the command, the exit code, the output, and the unverified items |
+| Developer | `development` | Check first (1), Real-artifact evidence (2), Test integrity (3), Regression tests from the spec (4), Handoff by artifact (6), Premise check (7), Smallest change (8), Context hygiene (9), Human checkpoints (12), comment hygiene (owned by `clean-code-policy.md`) | a `development_result` body carrying the command, the exit code, the output, and the unverified items |
 | Analysis agents | `planning_analysis`, `development_analysis` | Independent review (5), evidence reproduction, the `Expected` / `Observed` / `Evidence` / `Location` finding shape | a decision artifact whose actionable findings were reproduced and whose unreproduced ones are marked unverified |
 | Commit agent | `development_commit` | Commit-level hygiene (11) | one commit per logical change, its message listing the verification evidence and the unverified items |
 | Policy remediation and policy analysis agents | `policy_remediation`, `policy_remediation_analysis` | the fill model (every `RALPH-FACT:` and `RALPH-COMMAND:` placeholder resolved against a verified project signal), Enforcement ladder (13) | a policy pack whose facts, commands, and guard-inventory enforcement resolve against real project signals |
@@ -303,8 +308,8 @@ without re-deriving them.
    policy; the kernel rules are the floor.
 2. LOAD only the domain policies triggered by the change.
 3. ENFORCE the five kernel rules on every action: Truthful evidence,
-   fail-closed verification, bounded execution, no weakening of
-   checks, explicit unverified-claim reporting.
+   Run every gate, No weakening, Policy follows reality,
+   Report failures honestly.
 4. LOAD only the rule slice your phase binds.
 5. ON CONFLICT, the kernel wins.
 6. RUN every `RALPH-COMMAND:` gate below and report the actual

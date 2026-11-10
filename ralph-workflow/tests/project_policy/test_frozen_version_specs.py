@@ -27,7 +27,8 @@ def test_version_specs_registry_invariants() -> None:
     assert "testing-policy.md" in v4_spec.core_manifest
     assert v4_spec.guard_inventory_header is None
     assert v4_spec.guard_inventory_columns == 0
-    assert v4_spec.portfolio_schema_version == "v1"
+    # RALPH-TEST-REASON: portfolio_schema_version widened from str to tuple to support v1 and v2 portfolios for authentic frozen v4 packs
+    assert v4_spec.portfolio_schema_version == ("v1", "v2")
     assert v4_spec.allowed_frozen is True
 
     v5_spec = markers.VERSION_SPECS["v5"]
@@ -36,7 +37,8 @@ def test_version_specs_registry_invariants() -> None:
     assert "execution-kernel.md" in v5_spec.core_manifest
     assert v5_spec.guard_inventory_header == markers.guard_inventory_header_for_version("v5")
     assert v5_spec.guard_inventory_columns == 6
-    assert v5_spec.portfolio_schema_version == "v2"
+    # RALPH-TEST-REASON: portfolio_schema_version widened from str to tuple for version-keyed schema validation
+    assert v5_spec.portfolio_schema_version == ("v2",)
     assert v5_spec.allowed_frozen is True
 
     assert "v6" in markers.VERSION_SPECS
@@ -45,7 +47,8 @@ def test_version_specs_registry_invariants() -> None:
     assert len(v6_spec.core_manifest) == 12
     assert v6_spec.guard_inventory_header == markers.GUARD_INVENTORY_HEADER
     assert v6_spec.guard_inventory_columns == 7
-    assert v6_spec.portfolio_schema_version == "v3"
+    # RALPH-TEST-REASON: portfolio_schema_version widened from str to tuple for version-keyed schema validation
+    assert v6_spec.portfolio_schema_version == ("v3",)
     assert v6_spec.allowed_frozen is True
 
 
@@ -83,11 +86,26 @@ def test_version_spec_helpers() -> None:
     assert supported_portfolios == portfolio.SUPPORTED_PORTFOLIO_SCHEMA_VERSIONS
 
 
-def test_frozen_v4_pack_validates_ready() -> None:
-    """An authentic frozen v4 pack validates READY against the v4 manifest."""
+def test_frozen_v4_pack_with_portfolio_v2_validates_ready() -> None:
+    """A frozen v4 pack declaring portfolio v2 validates READY."""
     ws = build_v4_pack()
+    # update portfolio to v2
+    v2_content = starters.read_starter("policy-portfolio.toml").replace(
+        'schema_version = "v3"', 'schema_version = "v2"'
+    )
+    v2_content = re.sub(r'enforcement\s*=\s*"[^"]*"\n', "", v2_content)
+    ws.write(markers.PORTFOLIO_PATH, v2_content)
     findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
     assert findings == []
+
+
+def test_frozen_v4_pack_with_portfolio_v3_rejected() -> None:
+    """A frozen v4 pack declaring portfolio v3 is rejected."""
+    ws = build_v4_pack()
+    v3_content = starters.read_starter("policy-portfolio.toml")
+    ws.write(markers.PORTFOLIO_PATH, v3_content)
+    findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
+    assert any("RWP-PORTFOLIO:invalid" in f.requirement_id for f in findings)
 
 
 def test_frozen_v4_pack_missing_core_file_fails() -> None:

@@ -21,6 +21,7 @@ A2 protections:
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 
@@ -31,10 +32,10 @@ from ralph.project_policy import markers, starters
 # canonical phrase.
 KERNEL_RULES: tuple[str, ...] = (
     "truthful evidence",
-    "fail-closed verification",
-    "bounded execution",
-    "no weakening of checks",
-    "explicit unverified-claim reporting",
+    "run every gate",
+    "no weakening",
+    "policy follows reality",
+    "report failures honestly",
 )
 
 # Substantive mandatory obligation phrases required for each kernel rule.
@@ -43,16 +44,16 @@ KERNEL_RULES: tuple[str, ...] = (
 # placeholder prose causes a test failure (A1).
 KERNEL_RULE_SUBSTANTIVE_OBLIGATIONS: dict[str, tuple[str, ...]] = {
     "truthful evidence": ("must be backed by a record",),
-    "fail-closed verification": (
-        "run does not proceed",
-        "hard failure",
+    "run every gate": (
+        "run every",
+        "report the actual outcome",
     ),
-    "bounded execution": ("hard cap",),
-    "no weakening of checks": (
+    "no weakening": (
         "never the gate",
         "violation",
     ),
-    "explicit unverified-claim reporting": ("must mark it explicitly as unverified",),
+    "policy follows reality": ("update policy",),
+    "report failures honestly": ("report the failure honestly",),
 }
 
 # Negation, retirement, and deprecation phrases that MUST NOT appear
@@ -71,6 +72,17 @@ def _starter(name: str) -> str:
 
 def _kernel() -> str:
     return starters.read_starter("execution-kernel.md")
+
+
+def _root_kernel() -> str:
+    path = (
+        Path(__file__).resolve().parents[3]
+        / "docs"
+        / "ralph-workflow-policy"
+        / "execution-kernel.md"
+    )
+    assert path.is_file(), f"root kernel file not found at {path}"
+    return path.read_text(encoding="utf-8")
 
 
 def _parse_inventory(name: str) -> list[dict[str, str]]:
@@ -103,12 +115,12 @@ def _extract_kernel_rules_section(content: str) -> str:
 
 def _extract_rule_statements(section: str) -> dict[str, str]:
     """Extract individual rule statements mapped by their normalized rule name."""
-    pattern = re.compile(r"(\d+\.\s+\*\*(.*?)\*\*[\s\S]*?)(?=\n\d+\.\s+\*\*|\Z)")
+    pattern = re.compile(r"((?:\d+\.|\*)\s+\*\*(.*?)\*\*[\s\S]*?)(?=\n(?:\d+\.|\*)\s+\*\*|\Z)")
     rules: dict[str, str] = {}
     for match in pattern.finditer(section):
         block: str = match.group(1)
         raw_title: str = match.group(2)
-        title: str = raw_title.rstrip(".").strip().lower()
+        title: str = raw_title.rstrip(".:").strip().lower()
         rules[title] = " ".join(block.split())
     return rules
 
@@ -491,3 +503,58 @@ def test_domain_starters_do_not_paraphrase_kernel_rules_in_body() -> None:
                 f"by reference from the AI execution instructions "
                 f"section, not re-derived in starter body prose"
             )
+
+
+def test_kernel_starter_and_root_rule_names_parity() -> None:
+    """Starter and root execution-kernel.md define the exact same five kernel rules."""
+    starter_rules = _extract_rule_statements(_extract_kernel_rules_section(_kernel()))
+    root_rules = _extract_rule_statements(_extract_kernel_rules_section(_root_kernel()))
+
+    assert set(starter_rules.keys()) == set(KERNEL_RULES), (
+        f"starter rules {set(starter_rules.keys())} do not match expected {set(KERNEL_RULES)}"
+    )
+    assert set(root_rules.keys()) == set(KERNEL_RULES), (
+        f"root rules {set(root_rules.keys())} do not match expected {set(KERNEL_RULES)}"
+    )
+
+
+def test_kernel_starter_and_root_step_3_names() -> None:
+    """Step 3 in ## AI execution instructions of both starter and root names the 5 kernel rules."""
+    step_3_pattern = re.compile(
+        r"3\.\s+ENFORCE the five kernel rules[^\n]*\n(?:[ \t]+[^\n]*\n)*",
+        re.MULTILINE,
+    )
+
+    for source_name, content in (("starter", _kernel()), ("root", _root_kernel())):
+        match = step_3_pattern.search(content)
+        assert match is not None, (
+            f"{source_name} execution-kernel.md missing step 3 in AI execution instructions"
+        )
+        step_3_text = " ".join(match.group(0).split()).lower()
+        for rule in KERNEL_RULES:
+            assert rule in step_3_text, (
+                f"{source_name} step 3 does not name kernel rule {rule!r}: {step_3_text!r}"
+            )
+
+
+def test_kernel_starter_and_root_rule_to_phase_table_covers_all_numbered_rules() -> None:
+    """The rule-to-phase table in both starter and root must cover all 13 numbered rules (1 through 13)."""
+    table_heading = "## Rule-to-phase table"
+    for source_name, content in (("starter", _kernel()), ("root", _root_kernel())):
+        assert table_heading in content, f"{source_name} missing {table_heading!r}"
+        start = content.index(table_heading) + len(table_heading)
+        rest = content[start:]
+        next_heading = rest.find("\n## ")
+        section = rest[:next_heading] if next_heading != -1 else rest
+
+        # Look for parenthesized rule numbers (1) through (13) in table cells
+        found_rules: set[int] = set()
+        for num in range(1, 14):
+            pattern = re.compile(rf"\({num}\)")
+            if pattern.search(section):
+                found_rules.add(num)
+
+        missing = set(range(1, 14)) - found_rules
+        assert not missing, (
+            f"{source_name} rule-to-phase table is missing numbered rule(s): {sorted(missing)}"
+        )

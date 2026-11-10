@@ -736,6 +736,13 @@ def main(argv: list[str] | None = None) -> int:
     else:
         current_root = _default_root()
         baseline_root = head_tree(current_root)
+        if baseline_root is None:
+            print(
+                "Error: no committed baseline is available for this package; "
+                "pass <baseline_root> <current_root> explicitly.",
+                file=sys.stderr,
+            )
+            return 2
     for root in (baseline_root, current_root):
         if root is not None and not root.is_dir():
             print(f"Error: audit root not found: {root}", file=sys.stderr)

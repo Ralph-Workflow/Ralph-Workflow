@@ -567,14 +567,14 @@ class PolicyVersionSpec:
 
     Captures the required core-file manifest, the expected guard-inventory
     header grammar (or ``None`` for versions prior to the table's
-    introduction in v5), the matching portfolio schema version, and
+    introduction in v5), the matching portfolio schema version(s), and
     whether the version is permitted as a freeze target.
     """
 
     version: str
     core_manifest: tuple[str, ...]
     guard_inventory_header: tuple[str, ...] | None
-    portfolio_schema_version: str
+    portfolio_schema_version: tuple[str, ...]
     allowed_frozen: bool = True
 
     @property
@@ -589,21 +589,21 @@ VERSION_SPECS: Final[dict[str, PolicyVersionSpec]] = {
         version="v4",
         core_manifest=_V4_CORE_FILES,
         guard_inventory_header=None,
-        portfolio_schema_version="v1",
+        portfolio_schema_version=("v1", "v2"),
         allowed_frozen=True,
     ),
     "v5": PolicyVersionSpec(
         version="v5",
         core_manifest=CORE_POLICY_FILES,
         guard_inventory_header=_V5_GUARD_INVENTORY_HEADER,
-        portfolio_schema_version="v2",
+        portfolio_schema_version=("v2",),
         allowed_frozen=True,
     ),
     "v6": PolicyVersionSpec(
         version="v6",
         core_manifest=CORE_POLICY_FILES,
         guard_inventory_header=GUARD_INVENTORY_HEADER,
-        portfolio_schema_version="v3",
+        portfolio_schema_version=("v3",),
         allowed_frozen=True,
     ),
 }
@@ -649,13 +649,15 @@ def guard_inventory_header_for_version(v: str | None) -> tuple[str, ...] | None:
 def portfolio_schema_version_for_version(v: str | None) -> str:
     """Return expected portfolio schema version for policy version ``v``."""
     if v is not None and v in VERSION_SPECS:
-        return VERSION_SPECS[v].portfolio_schema_version
-    return VERSION_SPECS[SCHEMA_VERSION].portfolio_schema_version
+        return VERSION_SPECS[v].portfolio_schema_version[0]
+    return VERSION_SPECS[SCHEMA_VERSION].portfolio_schema_version[0]
 
 
 def supported_portfolio_schema_versions() -> frozenset[str]:
     """Return all supported portfolio schema versions across recognized policy versions."""
-    return frozenset(spec.portfolio_schema_version for spec in VERSION_SPECS.values())
+    return frozenset(
+        ver for spec in VERSION_SPECS.values() for ver in spec.portfolio_schema_version
+    )
 
 
 # Body ratchet declaration (B9): a sentence in a starter body that

@@ -36,33 +36,35 @@ aspirational, not optional, not negotiable.
    must be backed by a record the agent can show: a command and its
    actual output, a test and its result, a file read and its content.
    Claims that are NOT backed by an inspectable record are not
-   evidence. The validator may ask "show me" on any claim; the answer
-   must be a path, a command, a hash, or a run id. A claim without
-   backing is a violation, not a stretch.
-2. **Fail-closed verification.** A check that cannot run is a red gate;
-   the run does not proceed past the check by default. A guard that
-   times out, a test that errors on collection, a scanner that crashes
+   evidence. A claim of compliance, a recorded finding, a test result,
+   or a gate outcome must be reproducible from the inputs the change
+   actually executed. A claim without backing is a violation, not a stretch.
+   (evidence: strong)
+2. **Run every gate.** Run every `RALPH-COMMAND:` gate declared under the
+   affected policy's Verification section before claiming compliance; report
+   the actual outcome (exit code, error, real timing). A check that cannot run
+   is a red gate; the run does not proceed past the check by default. A guard
+   that times out, a test that errors on collection, a scanner that crashes
    is a HARD failure. Repairing the gate is the only lawful move;
-   weakening the gate (skipping, xfailing, lowering thresholds,
-   raising timeouts) is a violation of the no-weakening rule (rule 4)
-   as well as this one.
-3. **Bounded execution.** Every long-running action carries a cap the
-   runner can enforce, and the cap is recorded. Per-step timeouts,
-   per-suite timeouts, per-attempt timeouts, per-command timeouts — every
-   one of them is a HARD cap, not a guide. A run that hangs is a defect,
-   not a delay.
-4. **No weakening of checks.** Adding `# noqa`, `# type: ignore`, a
-   per-file lint ignore, a `follow_imports = silent`, a lowered
-   coverage threshold, a deselected test, a raised budget, a removed
-   time limit, a `disabled` audit, or any other relaxation that hides
-   a real defect is a violation. The only lawful way past a red gate
-   is fixing the production code or fixing the test — never the gate.
-5. **Explicit unverified-claim reporting.** When a claim cannot be
-   backed (rule 1), the agent MUST mark it explicitly as unverified
-   and surface the gap in the result body. Hiding an unverified claim
-   behind narration, agent summary, or a green gate is a violation. A
-   report that says "verified" for an unverified claim is worse than
-   a report that says "unverified: reason".
+   weakening the gate is a violation.
+   (evidence: strong)
+3. **No weakening.** Adding `# noqa`, `# type: ignore`, a per-file lint
+   ignore, a `follow_imports = silent`, a lowered coverage threshold, a
+   deselected test, a raised budget, a removed time limit, a `disabled`
+   audit, or any other relaxation that hides a real defect is a violation.
+   The only lawful way past a red gate is fixing the production code or
+   fixing the test — never the gate.
+   (evidence: strong)
+4. **Policy follows reality.** Update policy facts, commands, and
+   requirements in the same workflow that changes the underlying tool,
+   gate, exclusion, or behaviour.
+   (evidence: none)
+5. **Report failures honestly.** When a gate fails or a claim cannot be
+   backed, the agent MUST report the failure honestly and surface the gap
+   in the result body. Hiding a failure behind narration, agent summary, or
+   "this is unrelated" is a violation. A red gate hidden behind narration
+   is itself a failure.
+   (evidence: none)
 
 ## Agent rules
 
@@ -183,7 +185,7 @@ slice is what a phase reads.
 | Role | Phase | Rule slice | What the role hands on |
 |---|---|---|---|
 | Planner | `planning` | Plan scaling (10), acceptance criteria, Check first (1) | a plan whose items name the check that decides each one |
-| Developer | `development` | Check first (1), Real-artifact evidence (2), Test integrity (3), Smallest change (8), Context hygiene (9), comment hygiene (owned by `clean-code-policy.md`) | a `development_result` body carrying the command, the exit code, the output, and the unverified items |
+| Developer | `development` | Check first (1), Real-artifact evidence (2), Test integrity (3), Regression tests from the spec (4), Handoff by artifact (6), Premise check (7), Smallest change (8), Context hygiene (9), Human checkpoints (12), comment hygiene (owned by `clean-code-policy.md`) | a `development_result` body carrying the command, the exit code, the output, and the unverified items |
 | Analysis agents | `planning_analysis`, `development_analysis` | Independent review (5), evidence reproduction, the `Expected` / `Observed` / `Evidence` / `Location` finding shape | a decision artifact whose actionable findings were reproduced and whose unreproduced ones are marked unverified |
 | Commit agent | `development_commit` | Commit-level hygiene (11) | one commit per logical change, its message listing the verification evidence and the unverified items |
 | Policy remediation and policy analysis agents | `policy_remediation`, `policy_remediation_analysis` | the fill model (every `RALPH-FACT:` and `RALPH-COMMAND:` placeholder resolved against a verified project signal), Enforcement ladder (13) | a policy pack whose facts, commands, and guard-inventory enforcement resolve against real project signals |
@@ -287,10 +289,10 @@ Then delete this comment. -->
 | Guard | Owner | Protected outcome | Detected condition | Claim scope | Enforcement | Retirement trigger |
 |---|---|---|---|---|---|---|
 | Truthful evidence | Verification owner | every claim is backed by a record the agent can show | RALPH-COMMAND: present and exit-code recorded; no narration-only claim in the result body | RALPH-COMMAND: present and exit-code recorded | deterministic: PROJECT-FACT-UNRESOLVED | when a claim-presentation proof replaces the recorded evidence with a published artifact |
-| Fail-closed verification | Gate-script owner | a check that cannot run blocks the run | gate script returns non-zero on collection error, missing tool, or timeout | gate script returns non-zero on collection error, missing tool, or timeout | deterministic: PROJECT-FACT-UNRESOLVED | when the same defect cannot recur (e.g. the tool is no longer wired) |
-| Bounded execution | Gate-script owner | every long-running action carries a runner-enforced cap | per-step / per-suite / per-attempt timeout declared and enforced | per-step / per-suite / per-attempt timeout declared and enforced | deterministic: PROJECT-FACT-UNRESOLVED | when the action is no longer long-running or is retired |
-| No weakening of checks | Verification owner | no global silencer, blanket ignore, or removed time limit lands in the tree; the rule bans BYPASS MECHANISMS (per-file ignore, blanket `# noqa`, raised budgets, removed limits, lowered thresholds), NOT the narrow, owned, tool-supported suppressions that the typechecking ratchet governs | project linters, typecheckers, test-policy guards, and verification audits return zero bypass-mechanism findings | project linters, typecheckers, test-policy guards, and verification audits return zero bypass-mechanism findings | deterministic: PROJECT-FACT-UNRESOLVED | when the same defect cannot recur (e.g. the rule is removed from policy) |
-| Explicit unverified-claim reporting | Verification owner | every unverified claim is marked as such in the result body | result body contains an explicit "unverified" annotation for every claim without backing | result body contains an explicit "unverified" annotation for every claim without backing | deterministic: PROJECT-FACT-UNRESOLVED | when every claim is automatically backed (the kernel achieves this) |
+| Run every gate | Gate-script owner | a check that cannot run blocks the run | gate script returns non-zero on collection error, missing tool, or timeout | gate script returns non-zero on collection error, missing tool, or timeout | deterministic: PROJECT-FACT-UNRESOLVED | when the same defect cannot recur (e.g. the tool is no longer wired) |
+| No weakening | Verification owner | no global silencer, blanket ignore, or removed time limit lands in the tree; the rule bans BYPASS MECHANISMS (per-file ignore, blanket `# noqa`, raised budgets, removed limits, lowered thresholds), NOT the narrow, owned, tool-supported suppressions that the typechecking ratchet governs | project linters, typecheckers, test-policy guards, and verification audits return zero bypass-mechanism findings | project linters, typecheckers, test-policy guards, and verification audits return zero bypass-mechanism findings | deterministic: PROJECT-FACT-UNRESOLVED | when the same defect cannot recur (e.g. the rule is removed from policy) |
+| Policy follows reality | Policy owner | the policy facts and commands match the tool they describe | the policy file names the command the repository actually runs | the command named in the policy file | deterministic: PROJECT-FACT-UNRESOLVED | when a gate checks the policy files against the repository |
+| Report failures honestly | Verification owner | a red gate is reported as a red gate | the result body reports the gate outcome instead of hiding it behind narration | the gate outcome reported in the result body | deterministic: PROJECT-FACT-UNRESOLVED | when the result body gains a validated field |
 | Real-artifact evidence | Verification owner | the claim cites the command, its exit code, and the output that matters | the result body records the command and its exit code | the exit code and output recorded for the claim | deterministic: PROJECT-FACT-UNRESOLVED | when the recorded evidence is produced by the gate without an agent step |
 
 The agent rules in `## Agent rules` are enforced through the
@@ -328,9 +330,9 @@ without re-deriving them.
    names the rule; the per-starter "Applicability" section names the
    trigger; the AGENTS.md managed block restates the rule; the
    remediation prompt enforces it.
-3. ENFORCE the five kernel rules on every action. Truthful evidence,
-   fail-closed verification, bounded execution, no weakening of
-   checks, explicit unverified-claim reporting.
+3. ENFORCE the five kernel rules on every action: Truthful evidence,
+   Run every gate, No weakening, Policy follows reality,
+   Report failures honestly.
 4. LOAD only the rule slice your phase binds. The rule-to-phase table
    names the rules for your role; the rules outside it are not your
    obligation.

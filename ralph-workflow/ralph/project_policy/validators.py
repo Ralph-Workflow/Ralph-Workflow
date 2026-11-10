@@ -793,12 +793,10 @@ def _check_portfolio(
     if unfrozen_current:
         expected_version = markers.PORTFOLIO_SCHEMA_VERSION
     elif frozen_version is not None and frozen_version in markers.VERSION_SPECS:
-        if frozen_version == "v4":
-            expected_version = (
-                "v2" if re.search(r'schema_version\s*=\s*["\']v2["\']', content) else "v1"
-            )
-        else:
-            expected_version = markers.VERSION_SPECS[frozen_version].portfolio_schema_version
+        allowed = markers.VERSION_SPECS[frozen_version].portfolio_schema_version
+        match = re.search(r'schema_version\s*=\s*["\'](v\d+)["\']', content)
+        actual = match.group(1) if match else None
+        expected_version = actual if actual in allowed else allowed[0]
     elif has_v1_marker:
         expected_version = "v1"
     else:

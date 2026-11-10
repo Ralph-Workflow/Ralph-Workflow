@@ -35,6 +35,8 @@ from ralph.testing.audit_comments import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
+
 #: A comment that records what the code cannot say.
 _CLEAN_COMMENT = "# The upstream contract caps the payload at 64 KiB."
 
@@ -314,3 +316,9 @@ def test_main_returns_two_when_a_root_is_missing(tmp_path: Path) -> None:
     root.mkdir()
 
     assert main([str(root), str(tmp_path / "absent")]) == 2
+
+
+def test_main_returns_two_when_baseline_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing baseline when invoked with no arguments fails closed with exit code 2."""
+    monkeypatch.setattr("ralph.testing.audit_comments.head_tree", lambda _root: None)
+    assert main([]) == 2
