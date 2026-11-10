@@ -328,6 +328,11 @@ def _read_worktree_path(root: Path) -> str:
 def _read_head(root: Path) -> str:
     if not DEFAULT_FILE_BACKEND.exists(root):
         return _UNREADABLE
+    from ralph.git.operations import _read_head_sha_direct
+
+    direct_sha = _read_head_sha_direct(root)
+    if direct_sha is not None:
+        return direct_sha
     from ralph.git.subprocess_runner import run_git
 
     try:
@@ -363,10 +368,15 @@ def _read_index_scope(root: Path, resolving_paths: tuple[str, ...]) -> str:
     return _hash_text(result.stdout)
 
 
-def _read_rebase_state_files(root: Path) -> tuple[OperationFact, ...]:
-    """Read the per-worktree ``rebase-merge/`` and ``rebase-apply/`` files."""
-    if not DEFAULT_FILE_BACKEND.exists(root):
-        return (OperationFact(kind=_KIND_REBASE_STATE, value=_UNREADABLE),)
+def _resolve_evidence_gitdir(root: Path) -> Path | None:
+    try:
+        from ralph.git.operations import _resolve_gitdir_paths
+
+        gitdir, _ = _resolve_gitdir_paths(root)
+        if gitdir is not None and DEFAULT_FILE_BACKEND.exists(gitdir):
+            return gitdir
+    except (OSError, ValueError):
+        gitdir = None
     from ralph.git.subprocess_runner import run_git
 
     try:
@@ -376,10 +386,20 @@ def _read_rebase_state_files(root: Path) -> tuple[OperationFact, ...]:
             label="operation_evidence:gitdir",
         )
     except (OSError, RuntimeError):
-        return (OperationFact(kind=_KIND_REBASE_STATE, value=_UNREADABLE),)
+        return None
     if metadata.returncode:
+        return None
+    raw = metadata.stdout.strip()
+    return Path(raw) if raw else None
+
+
+def _read_rebase_state_files(root: Path) -> tuple[OperationFact, ...]:
+    """Read the per-worktree ``rebase-merge/`` and ``rebase-apply/`` files."""
+    if not DEFAULT_FILE_BACKEND.exists(root):
         return (OperationFact(kind=_KIND_REBASE_STATE, value=_UNREADABLE),)
-    gitdir = Path(metadata.stdout.strip())
+    gitdir = _resolve_evidence_gitdir(root)
+    if gitdir is None:
+        return (OperationFact(kind=_KIND_REBASE_STATE, value=_UNREADABLE),)
     try:
         paths = set(DEFAULT_FILE_BACKEND.glob(gitdir, "rebase-merge/*"))
         paths.update(DEFAULT_FILE_BACKEND.glob(gitdir, "rebase-apply/*"))
@@ -400,19 +420,9 @@ def _read_merge_state_files(root: Path) -> tuple[OperationFact, ...]:
     """Read the per-worktree ``MERGE_HEAD`` / ``MERGE_MSG`` / etc. files."""
     if not DEFAULT_FILE_BACKEND.exists(root):
         return (OperationFact(kind=_KIND_MERGE_STATE, value=_UNREADABLE),)
-    from ralph.git.subprocess_runner import run_git
-
-    try:
-        metadata = run_git(
-            ("rev-parse", "--absolute-git-dir"),
-            cwd=root,
-            label="operation_evidence:gitdir",
-        )
-    except (OSError, RuntimeError):
+    gitdir = _resolve_evidence_gitdir(root)
+    if gitdir is None:
         return (OperationFact(kind=_KIND_MERGE_STATE, value=_UNREADABLE),)
-    if metadata.returncode:
-        return (OperationFact(kind=_KIND_MERGE_STATE, value=_UNREADABLE),)
-    gitdir = Path(metadata.stdout.strip())
     facts: list[OperationFact] = [
         OperationFact(
             kind=_KIND_MERGE_STATE,
@@ -467,21 +477,11 @@ def _read_reachability_facts(
     record: IntegrationRecord,
     observed: tuple[OperationFact, ...] | None = None,
 ) -> tuple[OperationFact, ...]:
-    from ralph.git.subprocess_runner import run_git
-
     if not DEFAULT_FILE_BACKEND.exists(root):
         return ()
-    try:
-        metadata = run_git(
-            ("rev-parse", "--absolute-git-dir"),
-            cwd=root,
-            label="operation_evidence:gitdir:reachability",
-        )
-    except (OSError, RuntimeError):
+    gitdir = _resolve_evidence_gitdir(root)
+    if gitdir is None:
         return ()
-    if metadata.returncode:
-        return ()
-    gitdir = Path(metadata.stdout.strip())
 
     facts: list[OperationFact] = []
     should_check_merge = (
@@ -508,21 +508,12 @@ def _read_reachability_facts(
 
 
 def _read_marker_sha(root: Path, file_name: str) -> str | None:
-    from ralph.git.subprocess_runner import run_git
-
     if not DEFAULT_FILE_BACKEND.exists(root):
         return None
-    try:
-        metadata = run_git(
-            ("rev-parse", "--absolute-git-dir"),
-            cwd=root,
-            label=f"operation_evidence:gitdir:{file_name}",
-        )
-    except (OSError, RuntimeError):
+    gitdir = _resolve_evidence_gitdir(root)
+    if gitdir is None:
         return None
-    if metadata.returncode:
-        return None
-    marker = Path(metadata.stdout.strip()) / file_name
+    marker = gitdir / file_name
     if not DEFAULT_FILE_BACKEND.exists(marker):
         return None
     try:

@@ -525,13 +525,29 @@ def _read_rebase_state_sha(root: Path, relatives: tuple[str, ...], *, label: str
     first, so a repository rebasing with ``--apply`` answers as well as
     the default ``merge`` backend.
     """
+    gitdir: Path | None = None
+    try:
+        from ralph.git.operations import _resolve_gitdir_paths
+
+        gitdir, _ = _resolve_gitdir_paths(root)
+    except (OSError, ValueError) as exc:
+        logger.debug("direct rebase state gitdir lookup failed: {}", exc)
+        gitdir = None
     for relative in relatives:
-        result = run_git(("rev-parse", "--git-path", relative), cwd=root, label=label)
-        if result.returncode != 0:
-            return None
-        state_file = Path(result.stdout.strip())
-        if not state_file.is_absolute():
-            state_file = root / state_file
+        state_file: Path | None = None
+        if gitdir is not None:
+            candidate = gitdir / relative
+            if candidate.is_file():
+                state_file = candidate
+            else:
+                continue
+        if state_file is None:
+            result = run_git(("rev-parse", "--git-path", relative), cwd=root, label=label)
+            if result.returncode != 0:
+                return None
+            state_file = Path(result.stdout.strip())
+            if not state_file.is_absolute():
+                state_file = root / state_file
         try:
             # filesystem-read-ok: git reports one rebase metadata path per explicit conflict resolution attempt
             sha = state_file.read_text(encoding="utf-8").strip()
@@ -587,16 +603,27 @@ def _read_rebase_state_int(
     Unreadable, absent, half-written and non-numeric all collapse to
     ``None``: the caller has a working fallback for every one of them.
     """
-    result = run_git(
-        ("rev-parse", "--git-path", relative),
-        cwd=root,
-        label="git-rebase-progress-path",
-    )
-    if result.returncode != 0:
-        return None
-    state_path = Path(result.stdout.strip())
-    if not state_path.is_absolute():
-        state_path = root / state_path
+    state_path: Path | None = None
+    try:
+        from ralph.git.operations import _resolve_gitdir_paths
+
+        gitdir, _ = _resolve_gitdir_paths(root)
+        if gitdir is not None:
+            candidate = gitdir / relative
+            if candidate.is_file():
+                state_path = candidate
+    except (OSError, ValueError) as exc:
+        logger.debug("direct rebase state int lookup failed: {}", exc)
+    if state_path is None:
+        result = run_git(
+            ("rev-parse", "--git-path", relative),
+            cwd=root,
+            label="git-rebase-progress-path",
+        )
+        if result.returncode != 0:
+            return None
+        parsed = Path(result.stdout.strip())
+        state_path = parsed if parsed.is_absolute() else root / parsed
     try:
         return int(read_text(state_path).strip())
     except (OSError, ValueError):

@@ -158,6 +158,7 @@ def _all_string_literals(source: str) -> set[str]:
 _WIRE_FORM_RE = re.compile(r"^mcp__[A-Za-z0-9_]+__[A-Za-z0-9_]+$")
 
 
+@pytest.mark.timeout_seconds(10)
 def test_wire_form_literal_scan_keeps_adjacent_literals() -> None:
     """Regression: token filtering retains a wire literal split across strings."""
     source = 'name = "mcp__server" "__tool"\n'

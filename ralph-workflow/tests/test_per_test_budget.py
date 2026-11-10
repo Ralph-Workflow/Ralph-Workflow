@@ -131,6 +131,7 @@ def test_positive_budgets_are_accepted_and_get_a_five_fold_hang_cap() -> None:
     assert budget_module.wall_hang_cap(30.0) == 90.0
 
 
+@pytest.mark.timeout_seconds(10)
 def test_fixture_setup_and_teardown_are_each_charged_and_a_zero_marker_errors(
     pytester: pytest.Pytester,
 ) -> None:

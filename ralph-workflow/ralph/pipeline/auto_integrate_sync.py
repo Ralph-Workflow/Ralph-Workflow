@@ -101,6 +101,20 @@ def observe_target_sha(repo_root: Path, target: str) -> str | None:
     fail-open refresh contract is preserved.
     """
     try:
+        from ralph.git.operations import _read_ref_from_disk, _resolve_gitdir_paths
+
+        gitdir, commondir = _resolve_gitdir_paths(repo_root)
+        if gitdir is not None:
+            ref = f"refs/heads/{target}"
+            search_dirs = [gitdir]
+            if commondir is not None and commondir != gitdir:
+                search_dirs.append(commondir)
+            direct_sha = _read_ref_from_disk(ref, search_dirs)
+            if direct_sha is not None:
+                return direct_sha
+    except (OSError, ValueError) as exc:
+        logger.debug("direct target ref read failed for '{}': {}", target, exc)
+    try:
         result = run_git(
             ("rev-parse", "--verify", "--quiet", f"refs/heads/{target}"),
             cwd=repo_root,
@@ -303,6 +317,20 @@ def _fetch_target(
 
 def _remote_tracking_sha(repo_root: Path, target: str, remote: str) -> str | None:
     """SHA of ``refs/remotes/<remote>/<target>``, or None when absent."""
+    try:
+        from ralph.git.operations import _read_ref_from_disk, _resolve_gitdir_paths
+
+        gitdir, commondir = _resolve_gitdir_paths(repo_root)
+        if gitdir is not None:
+            ref = f"refs/remotes/{remote}/{target}"
+            search_dirs = [gitdir]
+            if commondir is not None and commondir != gitdir:
+                search_dirs.append(commondir)
+            direct_sha = _read_ref_from_disk(ref, search_dirs)
+            if direct_sha is not None:
+                return direct_sha
+    except (OSError, ValueError) as exc:
+        logger.debug("direct remote ref read failed for '{}/{}': {}", remote, target, exc)
     result = run_git(
         ("rev-parse", "--verify", "--quiet", f"refs/remotes/{remote}/{target}"),
         cwd=repo_root,

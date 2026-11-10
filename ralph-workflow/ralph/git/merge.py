@@ -76,6 +76,7 @@ from loguru import logger
 from ralph.git.errors import GitOperationError
 from ralph.git.hardening import COMMIT_PIN_CONFIG_ARGS
 from ralph.git.merge_obstructions import clear_untracked_merge_obstructions, merge_refusal
+from ralph.git.operations import _read_ref_from_disk, _resolve_gitdir_paths
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.git.subprocess_runner import run_git
 
@@ -393,6 +394,17 @@ def observe_branch_sha(repo_root: Path | str, name: str) -> tuple[str | None, bo
     """
     repo_root_path = Path(repo_root)
     ref_spec = name if name.startswith("refs/") else f"refs/heads/{name}"
+    try:
+        gitdir, commondir = _resolve_gitdir_paths(repo_root_path)
+        if gitdir is not None:
+            search_dirs = [gitdir]
+            if commondir is not None and commondir != gitdir:
+                search_dirs.append(commondir)
+            direct_sha = _read_ref_from_disk(ref_spec, search_dirs)
+            if direct_sha is not None:
+                return direct_sha, True
+    except (OSError, ValueError) as exc:
+        logger.debug("direct branch sha lookup failed: {}", exc)
     result = run_git(
         ("rev-parse", "--verify", "--quiet", ref_spec),
         cwd=repo_root_path,
@@ -451,6 +463,14 @@ def merge_state(repo_root: Path | str) -> str:
     later integration.
     """
     repo_root_path = Path(repo_root)
+    try:
+        gitdir, _commondir = _resolve_gitdir_paths(repo_root_path)
+        if gitdir is not None and gitdir.is_dir():
+            if (gitdir / "MERGE_HEAD").exists():
+                return MERGE_STATE_IN_PROGRESS
+            return MERGE_STATE_NONE
+    except (OSError, ValueError) as exc:
+        logger.debug("direct merge state lookup failed: {}", exc)
     result = run_git(
         ("rev-parse", "--git-dir"),
         cwd=repo_root_path,

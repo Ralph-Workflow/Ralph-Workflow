@@ -765,6 +765,14 @@ def read_in_progress_kind(root: Path) -> Reading[InProgressKind]:
     operation exists.
     """
     try:
+        from ralph.git.operations import _resolve_gitdir_paths
+
+        gitdir, _commondir = _resolve_gitdir_paths(root)
+        if gitdir is not None and gitdir.is_dir():
+            return _read_operation_markers(gitdir)
+    except (OSError, ValueError):
+        gitdir = None
+    try:
         result = run_git(
             (*COMMIT_PIN_CONFIG_ARGS, "rev-parse", "--absolute-git-dir"),
             cwd=root,

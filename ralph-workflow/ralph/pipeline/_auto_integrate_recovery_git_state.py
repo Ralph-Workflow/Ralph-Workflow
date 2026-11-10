@@ -49,6 +49,14 @@ def rebase_bookkeeping_dir(root: Path) -> Path | None:
     the caller treats that as "nothing observable to reclaim".
     """
     try:
+        from ralph.git.operations import _resolve_gitdir_paths
+
+        gitdir, _commondir = _resolve_gitdir_paths(root)
+        if gitdir is not None and gitdir.is_dir():
+            return gitdir
+    except (OSError, ValueError) as exc:
+        logger.debug("direct rebase bookkeeping dir lookup failed: {}", exc)
+    try:
         result = run_git(("rev-parse", "--git-dir"), cwd=root, label="recovery-git-dir")
     except OSError:
         return None
@@ -63,6 +71,15 @@ def rebase_bookkeeping_dir(root: Path) -> Path | None:
 def common_git_dir(root: Path) -> Path | None:
     """Return the shared git dir (``git rev-parse --git-common-dir``), or None."""
     try:
+        from ralph.git.operations import _resolve_gitdir_paths
+
+        gitdir, commondir = _resolve_gitdir_paths(root)
+        target = commondir or gitdir
+        if target is not None and target.is_dir():
+            return target
+    except (OSError, ValueError) as exc:
+        logger.debug("direct common git dir lookup failed: {}", exc)
+    try:
         result = run_git(("rev-parse", "--git-common-dir"), cwd=root, label="git-common-dir")
     except OSError:
         return None
@@ -74,17 +91,9 @@ def common_git_dir(root: Path) -> Path | None:
 
 def common_dir_lock_paths(root: Path) -> tuple[Path, ...]:
     """Return shared ref-lock paths without guessing linked-worktree layout."""
-    try:
-        result = run_git(
-            ("rev-parse", "--git-common-dir"), cwd=root, label="recovery-git-common-dir"
-        )
-    except OSError:
+    common_dir = common_git_dir(root)
+    if common_dir is None:
         return ()
-    if result.returncode != 0 or not result.stdout.strip():
-        return ()
-    common_dir = Path(result.stdout.strip())
-    if not common_dir.is_absolute():
-        common_dir = (root / common_dir).resolve()
     ref_dir = common_dir / "refs"
     try:
         ref_locks = tuple(ref_dir.rglob("*.lock")) if ref_dir.is_dir() else ()
