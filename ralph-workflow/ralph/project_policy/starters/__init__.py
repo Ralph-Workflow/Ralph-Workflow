@@ -10,16 +10,24 @@ the wheel installed.
 Public API:
 
 * :func:`iter_starter_names` — return every bundled starter name.
-  The count is derived from :data:`STARTER_NAMES`; v5 ships
+  The count is derived from :data:`STARTER_NAMES`; v6 ships
   ``len(STARTER_NAMES)`` entries (12 core files including the
   ``execution-kernel`` introduced by the v5 outcome-oriented kernel,
   plus 10 conditional files keyed on domain signals); the 12-core
   count is anchored by :data:`ralph.project_policy.markers.CORE_POLICY_FILES`
-  so the docstring cannot drift from the v5 marker module.
+  so the docstring cannot drift from the v6 marker module.
 * :func:`read_starter` — return the content of one bundled starter.
 * :func:`seed_starter_into` — copy a bundled starter into the canonical
   policy directory via the workspace seam, but ONLY when the target is
   absent (never overwrite an existing project-customized file).
+
+Shipped content contract (schema v6): every starter opens with the
+:data:`ralph.project_policy.markers.POLICY_SCHEMA_MARKER` marker and
+carries a ``## Guard inventory`` section whose header is the seven-column
+v6 grammar: ``Guard``, ``Owner``, ``Protected outcome``,
+``Detected condition``, ``Claim scope``, ``Enforcement``,
+``Retirement trigger``. The ``Enforcement`` column states whether a guard
+is enforced deterministically or held advisory pending review.
 
 Every starter ships with a template banner, REPLACE-ME guidance comments,
 and placeholder tokens, so a freshly-seeded starter fails the validator
@@ -73,11 +81,16 @@ STARTER_NAMES: Final[tuple[str, ...]] = (
 def iter_starter_names() -> Iterator[str]:
     """Yield every bundled starter name.
 
-    The v5 ship set is ``len(STARTER_NAMES)`` entries: 12 core
-    files (including the v5-introduced ``execution-kernel.md``)
-    plus 10 conditional files. Counts are derived from
-    :data:`STARTER_NAMES` and :data:`ralph.project_policy.markers.CORE_POLICY_FILES`
-    so the docstring cannot drift from the loader truth.
+    The v6 ship set is ``len(STARTER_NAMES)`` entries: 12 core
+    files (including the ``execution-kernel.md`` introduced with the
+    v5 outcome-oriented kernel) plus 10 conditional files. Counts
+    are derived from :data:`STARTER_NAMES` and
+    :data:`ralph.project_policy.markers.CORE_POLICY_FILES`
+    so the docstring cannot drift from the loader truth. Each name
+    resolves to a starter carrying the v6 schema marker and the
+    seven-column guard inventory whose ``Enforcement`` column states
+    whether the guard is enforced deterministically or held advisory
+    pending review.
     """
     yield from STARTER_NAMES
 

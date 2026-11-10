@@ -8,17 +8,16 @@ import sys
 import tempfile
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
+from types import ModuleType
 from typing import TYPE_CHECKING
 
 import pytest
 from _pytest.unraisableexception import gc_collect_iterations_key
-from git import Repo
-from typer.testing import CliRunner
 
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, UnifiedConfig
-from ralph.pipeline import effect_executor
 from ralph.pipeline._runner_session import set_last_captured_session_id
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
@@ -306,6 +305,22 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 if TYPE_CHECKING:
     from collections.abc import Generator
 
+    from git import Repo
+
+
+@lru_cache(maxsize=1)
+def _effect_executor() -> ModuleType:
+    """Return the pipeline effect-executor module, imported once per process.
+
+    Importing ``ralph.pipeline.effect_executor`` costs about 0.7 CPU
+    core-seconds, and this conftest is imported by every pytest process the
+    suite spawns. The import is deferred to the first test that needs the
+    module and cached, so the cost is paid at most once per process.
+    """
+    from ralph.pipeline import effect_executor
+
+    return effect_executor
+
 
 def _reset_rich_style_color_caches() -> None:
     """Clear Rich's process-global Style/Color LRU caches after each test.
@@ -437,10 +452,11 @@ def _apply_isolate_pipeline_thread_locals() -> None:
     reset alone.
     """
     set_last_captured_session_id(None)
-    effect_executor._set_last_captured_retry_intent(effect_executor.cleared_agent_retry_intent())
+    executor = _effect_executor()
+    executor._set_last_captured_retry_intent(executor.cleared_agent_retry_intent())
 
 
-def _configure_repo_identity(repo: object) -> None:
+def _configure_repo_identity(repo: Repo) -> None:
     writer = repo.config_writer()
     try:
         writer.set_value("user", "name", "Test User")
@@ -461,6 +477,8 @@ def _git_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
     template_root = tmp_path_factory.mktemp("git-template")
     # Pin the branch: the host's init.defaultBranch must not decide whether the
     # fixture sits on the "main" the integration tests target.
+    from git import Repo
+
     repo = Repo.init(template_root, initial_branch="main")
     try:
         _configure_repo_identity(repo)
@@ -753,6 +771,8 @@ def default_policy() -> tuple[AgentsPolicy, PipelinePolicy, ArtifactsPolicy]:
 @pytest.fixture
 def cli_runner() -> object:
     """Provide a Typer CLI test runner."""
+    from typer.testing import CliRunner
+
     return CliRunner()
 
 
