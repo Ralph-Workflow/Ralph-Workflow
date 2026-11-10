@@ -209,7 +209,7 @@ def run_command_with_timeout(
             the parent process environment.
         suite_timeout_seconds: Wall-clock cap (seconds) passed to
             ``run_process``. Default is ``DEFAULT_SUITE_TIMEOUT_SECONDS``
-            (60 s). Note this is the per-invocation cap; the combined
+            (180 s). Note this is the per-invocation cap; the combined
             test budget is enforced upstream in ``ralph.verify``.
         capture_output: When ``True`` (default), capture stdout/stderr
             into the returned ``ProcessResult``; when ``False``, the

@@ -8,9 +8,7 @@ import sys
 import tempfile
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
-from functools import lru_cache
 from pathlib import Path
-from types import ModuleType
 from typing import TYPE_CHECKING
 
 import pytest
@@ -18,6 +16,7 @@ from _pytest.unraisableexception import gc_collect_iterations_key
 
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.pipeline import effect_executor
 from ralph.pipeline._runner_session import set_last_captured_session_id
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
@@ -308,20 +307,6 @@ if TYPE_CHECKING:
     from git import Repo
 
 
-@lru_cache(maxsize=1)
-def _effect_executor() -> ModuleType:
-    """Return the pipeline effect-executor module, imported once per process.
-
-    Importing ``ralph.pipeline.effect_executor`` costs about 0.7 CPU
-    core-seconds, and this conftest is imported by every pytest process the
-    suite spawns. The import is deferred to the first test that needs the
-    module and cached, so the cost is paid at most once per process.
-    """
-    from ralph.pipeline import effect_executor
-
-    return effect_executor
-
-
 def _reset_rich_style_color_caches() -> None:
     """Clear Rich's process-global Style/Color LRU caches after each test.
 
@@ -452,8 +437,7 @@ def _apply_isolate_pipeline_thread_locals() -> None:
     reset alone.
     """
     set_last_captured_session_id(None)
-    executor = _effect_executor()
-    executor._set_last_captured_retry_intent(executor.cleared_agent_retry_intent())
+    effect_executor._set_last_captured_retry_intent(effect_executor.cleared_agent_retry_intent())
 
 
 def _configure_repo_identity(repo: Repo) -> None:
