@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ast
 import re
+from collections import OrderedDict
 from typing import TYPE_CHECKING
 
 from ralph.project_policy import (
@@ -409,6 +410,17 @@ def _validate_existing_policy_file_with_workspace(
         _content_checks._CITATION_PATH_WORKSPACE[0] = previous
 
 
+_MAX_POLICY_VALIDATION_CACHE_ENTRIES = 256
+_POLICY_VALIDATION_CACHE: OrderedDict[
+    tuple[str, str, str, frozenset[str] | None], list[PolicyFinding]
+] = OrderedDict()  # bounded-accumulator-ok: FIFO cap 256
+
+
+def clear_policy_validation_cache() -> None:
+    """Clear the policy validation result cache."""
+    _POLICY_VALIDATION_CACHE.clear()
+
+
 def _validate_existing_policy_file(
     content: str,
     path: str,
@@ -417,6 +429,11 @@ def _validate_existing_policy_file(
     known_enforcers: frozenset[str] | None = None,
 ) -> list[PolicyFinding]:
     """Validate every check that operates on an existing policy file's content."""
+    can_cache = "path:" not in content
+    cache_key = (content, path, filename, known_enforcers) if can_cache else None
+    if cache_key is not None and cache_key in _POLICY_VALIDATION_CACHE:
+        return list(_POLICY_VALIDATION_CACHE[cache_key])
+
     findings: list[PolicyFinding] = []
     findings.extend(_check_markers(content, path, filename))
     findings.extend(_check_required_headings(content, path, filename))
@@ -470,6 +487,10 @@ def _validate_existing_policy_file(
                 known_enforcers=resolved_enforcers,
             )
         )
+    if cache_key is not None:
+        while len(_POLICY_VALIDATION_CACHE) >= _MAX_POLICY_VALIDATION_CACHE_ENTRIES:
+            _POLICY_VALIDATION_CACHE.popitem(last=False)
+        _POLICY_VALIDATION_CACHE[cache_key] = list(findings)
     return findings
 
 

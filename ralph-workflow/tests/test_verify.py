@@ -840,7 +840,7 @@ def test_run_verify_cumulative_equals_budget_boundary(
     # make test appears to take exactly 60.0s — equals budget boundary.
     # With the >= check, this should be flagged as cumulative_exhausted.
     times = [0.0, 0.0, 0.0, 0.0, 0.0, 60.0]
-    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
+    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 60.0)
 
     exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
 
@@ -880,7 +880,7 @@ def test_run_verify_policy_message_correctness(
 
     # make test appears to take 70s → cumulative exhausted.
     times = [0.0, 0.0, 0.0, 0.0, 0.0, 70.0]
-    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
+    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 70.0)
 
     exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
 

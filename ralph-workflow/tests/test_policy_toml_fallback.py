@@ -370,6 +370,31 @@ def test_user_portfolio_toml_strict_mode_raises(tmp_path: Path) -> None:
         load_portfolio_toml(portfolio_file, strict_optional_files=True)
 
 
+def test_user_portfolio_toml_second_read_error_warns_and_falls_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the second read raises OSError, load_portfolio_toml emits a warning and returns default."""
+    portfolio_file = tmp_path / "policy-portfolio.toml"
+    portfolio_file.write_text("schema_version = 'v3'\n", encoding="utf-8")
+
+    orig_read_text = Path.read_text
+
+    def _failing_read_text(self: Path, *args: object, **kwargs: object) -> str:
+        if self == portfolio_file:
+            raise OSError("simulated second-read failure")
+        return orig_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", _failing_read_text)
+
+    with _capture_warnings() as warnings:
+        portfolio = load_portfolio_toml(portfolio_file)
+
+    expected_default = default_portfolio()
+    assert portfolio.schema_version == expected_default.schema_version
+    assert len(warnings) == 1
+    _assert_fallback_warning(warnings[0], portfolio_file, expected_kind="portfolio")
+
+
 def test_parse_portfolio_toml_fallback_mode() -> None:
     """parse_portfolio_toml with strict_optional_files=False falls back and warns."""
     with _capture_warnings() as warnings:

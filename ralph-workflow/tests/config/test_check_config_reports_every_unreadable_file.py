@@ -289,6 +289,7 @@ def test_check_config_and_diagnose_global_layers_corrupt(
         assert any(str(f) in w or f.name in w for w in captured1)
 
     # Test --diagnose
+    reset_fallback_warning_registry()
     console_buf2 = io.StringIO()
     console2 = Console(file=console_buf2, force_terminal=False)
     ctx2 = make_display_context(console=console2)
@@ -349,3 +350,54 @@ def test_check_config_reports_permission_denied_file(
         assert any(str(unreadable_mcp) in w or unreadable_mcp.name in w for w in captured)
     finally:
         unreadable_mcp.chmod(0o644)
+
+
+def test_check_config_reports_schema_invalid_agents_and_mcp_files(
+    tmp_path: Path, tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """handle_check_config exits non-zero and names schema-invalid agents and MCP files."""
+    repo_root = tmp_git_repo
+    monkeypatch.chdir(repo_root)
+
+    global_dir = tmp_path / "schema_invalid_global"
+    global_dir.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+
+    agent_dir = repo_root / ".agent"
+    agent_dir.mkdir()
+    (agent_dir / "ralph-workflow.toml").write_text(
+        '[general]\ndeveloper_iters = 5\n\n[agent_chains]\nanalysis = "mock"\ncommit = "mock"\n',
+        encoding="utf-8",
+    )
+
+    # 1. Schema-invalid agents TOML (cmd is integer instead of string)
+    agents_file = global_dir / "ralph-workflow-agents.toml"
+    agents_file.write_text("[agents.broken]\ncmd = 12345\n", encoding="utf-8")
+
+    # 2. Schema-invalid MCP TOML (max_inline_bytes must be > 0)
+    mcp_file = global_dir / "ralph-workflow-mcp.toml"
+    mcp_file.write_text("[media]\nenabled = true\nmax_inline_bytes = 0\n", encoding="utf-8")
+
+    console_buf = io.StringIO()
+    console = Console(file=console_buf, force_terminal=False)
+    ctx = make_display_context(console=console)
+    captured, sink = _capture_loguru_warnings()
+    try:
+        rc = handle_check_config(
+            config=None,
+            cli_overrides={},
+            check_config=True,
+            console=console,
+            display_context=ctx,
+        )
+    finally:
+        logger.remove(sink)
+
+    assert rc == 1
+    combined = console_buf.getvalue() + "\n" + "\n".join(captured)
+
+    assert str(agents_file) in combined or agents_file.name in combined
+    assert any(str(agents_file) in w or agents_file.name in w for w in captured)
+
+    assert str(mcp_file) in combined or mcp_file.name in combined
+    assert any(str(mcp_file) in w or mcp_file.name in w for w in captured)

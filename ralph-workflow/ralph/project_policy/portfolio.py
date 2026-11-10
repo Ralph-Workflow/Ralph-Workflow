@@ -17,7 +17,12 @@ from typing import TYPE_CHECKING, Final, cast
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-from ralph.config._toml_fallback import load_optional_toml, validate_or_default
+from ralph.config._toml_fallback import (
+    _format_error_detail,
+    emit_config_failure_warning,
+    load_optional_toml,
+    validate_or_default,
+)
 from ralph.project_policy.markers import (
     CLAIM_SCOPE_PHRASES,
     PORTFOLIO_PATH,
@@ -739,6 +744,14 @@ def load_portfolio_toml(
     except (OSError, UnicodeDecodeError) as exc:
         if strict_optional_files:
             raise _error(f"could not read portfolio TOML: {exc}") from exc
+        emit_config_failure_warning(
+            path_obj,
+            kind="portfolio",
+            error_detail=_format_error_detail(exc),
+            behaviour="using built-in default",
+            fix_hint="Fix: run `ralph --check-config`.",
+            exc=exc,
+        )
         return default_portfolio()
 
     return parse_portfolio_toml(

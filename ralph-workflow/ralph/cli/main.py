@@ -2190,9 +2190,22 @@ def handle_check_config(
     except Exception as e:
         validation_errors.append(str(e))
 
+    try:
+        from ralph.config.mcp_loader import load_mcp_config
+
+        load_mcp_config(
+            workspace_scope=workspace_scope,
+            config_path=config_path,
+            strict_optional_files=True,
+        )
+    except (Exception, SystemExit) as e:
+        validation_errors.append(str(e))
+
     if unreadable_files or validation_errors:
         messages: list[str] = [f"{u.path}: {u.error}" for u in unreadable_files]
-        messages.extend(validation_errors)
+        for v in validation_errors:
+            if not any(v in m for m in messages):
+                messages.append(v)
         err_msg = "Configuration is invalid:\n" + "\n".join(f"  - {m}" for m in messages)
         logger.error("{}", err_msg)
         display.emit_warning(err_msg)

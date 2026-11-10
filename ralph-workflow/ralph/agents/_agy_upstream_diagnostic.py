@@ -8,7 +8,12 @@ from pathlib import Path
 
 from ralph.recovery.failure_classifier import _is_subscription_limit_message
 
-_AGY_CLI_LOG_PATH = Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
+
+def _default_agy_cli_log_path() -> Path:
+    return Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
+
+
+_AGY_CLI_LOG_PATH = _default_agy_cli_log_path()
 _AGY_CLI_LOG_TAIL_BYTES = 4096
 _AUTH_PATTERN = re.compile(
     r"(?:not logged in|authentication failed|failed to get OAuth token|OAuth failure|auth timed out)",

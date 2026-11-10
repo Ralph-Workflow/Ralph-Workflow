@@ -229,3 +229,41 @@ def test_apply_completed_attempt_budget_branches_on_enum_only() -> None:
         attempts=2,
     )
     assert res_conflict.consecutive_conflicts == 2
+
+    # 3. CONFIG_FAILURE: neither increments consecutive_conflicts nor stamps identity
+    config_record = RebaseState(
+        last_outcome=RebaseOutcomeKind.CONFLICT,
+        last_reason="fix config then run ralph --check-config",
+        last_failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
+    )
+    new_identity = ConflictIdentity(
+        feature_sha="3333333333333333333333333333333333333333",
+        target_sha="4444444444444444444444444444444444444444",
+    )
+    res_config = apply_completed_attempt_budget(
+        config_record,
+        prior=prior,
+        target="main",
+        identity=new_identity,
+        resolver_suppressed=False,
+        attempts=2,
+    )
+    assert res_config.consecutive_conflicts == 1
+    assert res_config.last_conflict_feature_sha == prior.last_conflict_feature_sha
+
+    # 4. CONTEXT_FAILURE: neither increments consecutive_conflicts nor stamps identity
+    context_record = RebaseState(
+        last_outcome=RebaseOutcomeKind.CONFLICT,
+        last_reason="context failure",
+        last_failure_cause=ResolutionFailureCause.CONTEXT_FAILURE,
+    )
+    res_context = apply_completed_attempt_budget(
+        context_record,
+        prior=prior,
+        target="main",
+        identity=new_identity,
+        resolver_suppressed=False,
+        attempts=2,
+    )
+    assert res_context.consecutive_conflicts == 1
+    assert res_context.last_conflict_feature_sha == prior.last_conflict_feature_sha

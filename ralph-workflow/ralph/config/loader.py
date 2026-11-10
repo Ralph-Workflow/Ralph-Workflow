@@ -489,6 +489,8 @@ def _load_agents_data(agents_path: Path, *, strict: bool) -> dict[str, object]:
             source = agents_path.read_text(encoding="utf-8")
             migrated_source = remove_retired_agent_can_commit_assignments(source)
             if migrated_source != source:
+                migrated_data: dict[str, object] = tomllib.loads(migrated_source)
+                _validate_agents_layer(migrated_data)
                 from ralph.config.agent_detection import (
                     _commit_deterministic_config_write,
                 )
@@ -505,8 +507,8 @@ def _load_agents_data(agents_path: Path, *, strict: bool) -> dict[str, object]:
                         sync_directory=True,
                     ),
                 )
-                agents_raw = tomllib.loads(migrated_source)
-        except (OSError, UnicodeDecodeError):
+                agents_raw = migrated_data
+        except (OSError, UnicodeDecodeError, ValidationError, ValueError):
             pass
     return validate_or_default(
         agents_path,

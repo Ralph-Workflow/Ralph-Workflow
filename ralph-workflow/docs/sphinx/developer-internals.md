@@ -392,7 +392,10 @@ Target worktree activation is isolated via `workspace_context(target_root)` in `
 Configuration defects are environment and setup errors, not failed LLM resolution attempts. To ensure that an operator repairing a syntax error does not return to an exhausted conflict budget:
 
 - **Resolver not spent**: `ResolutionTerminationReason.CONFIG_FAILURE` is registered in `RESOLVER_NOT_SPENT_TERMINATION_REASONS`. Because `session.charge_conflict_budget = False`, the resolver chain is not recorded as exhausted.
-- **Counter protection**: In `ralph.pipeline.run_loop` (`_handle_pending_retry`), rebases with `last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE` transition to `OperationDisplayState.WAITING` without incrementing the `consecutive_conflicts` counter.
+- **Counter protection across both seams**:
+  - In `ralph.pipeline.run_loop` (`_handle_pending_retry`), rebases with `last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE` or `ResolutionFailureCause.CONTEXT_FAILURE` transition to `OperationDisplayState.WAITING` without incrementing the `consecutive_conflicts` counter.
+  - In `ralph.pipeline.auto_integrate_budget_seam` (`apply_completed_attempt_budget`), both `ResolutionFailureCause.CONFIG_FAILURE` and `ResolutionFailureCause.CONTEXT_FAILURE` are handled as non-repository failures via `charge_non_repository_failure`, keeping `consecutive_conflicts` unchanged and preserving repository conflict identity unassigned.
+  - Optional user portfolio configuration at `docs/ralph-workflow-policy/policy-portfolio.toml` gracefully falls back to built-in defaults with deduplicated warnings on syntax or schema errors, while `ralph --check-config` strictly reports any malformed or schema-invalid portfolio file as an error.
 - **Repair attempts uncharged**: In `ralph.pipeline._integration_diagnostic`, diagnostic counters and `record.merge_commit_repair_attempts` are not charged for configuration failures, preserving the agent's resolution budget for genuine Git merge conflicts.
 - **Operator visibility**: The Status Bar and activity feed display the specific failure cause and required fix:
   `integration conflict (CONFIG_FAILURE: fix <path> then run ralph --check-config) — resolution required`.
@@ -411,6 +414,31 @@ When a rebase pauses on a configuration failure, Ralph Workflow enters a waiting
    - While the file remains unchanged on disk (`current_hash == last_hash`), `should_retry()` returns `False`. The run loop sleeps and preserves the `WAITING` state, generating zero CPU churn or repeated resolver invocations.
    - When the operator edits and repairs the file, the file's content hash changes. `should_retry()` detects the distinct fingerprint, marks it as attempted, and allows exactly one paused rebase continuation attempt.
    - If the repair succeeds, rebase continuation proceeds. If the file is still invalid (or introduces a new error), a new distinct fingerprint is recorded, awaiting the next file modification.
+
+### Real-configuration isolation guard and audit trail
+
+To guarantee that the test suite never mutates or leaks state from real user configuration files in `~/.config` or `$XDG_CONFIG_HOME`:
+
+1. **Snapshot and Diff Guard**: `tests/conftest.py` implements session-scoped snapshotting (`_scan_guarded_config_files`) of any paths matching `ralph-workflow*` or `.ralph-workflow*` in guarded configuration directories (`_resolve_guarded_config_dirs`). `_diff_config_snapshots` detects file creation, deletion, content changes (SHA-256 hash), modification time changes (`mtime_ns`), and permission changes (`st_mode`).
+2. **Audit Hook for Read Interception**: A Python audit hook registered with `sys.addaudithook` monitors file `open` events. Any read of real configuration paths matching guarded patterns is intercepted and attributed to the offending test node (`_CURRENT_TEST_NODE`).
+3. **Per-Test Sandbox Redirection**: `_apply_isolate_process_home` redirects `HOME`, `XDG_CONFIG_HOME`, `GLOBAL_CONFIG_PATH`, `GLOBAL_AGENTS_CONFIG_PATH`, `DEFAULT_STATE_PATH`, and `_AGY_CLI_LOG_PATH` into isolated per-test sandboxes under `tmp_path_factory`.
+4. **Audit Trail of Test Files**: All test files referencing user home paths, global config constants, or path expansion have been audited to ensure complete isolation:
+   - `tests/agents/invoke/test_claude_interactive_real_capture_replay.py`: Redirects `Path.home()` via fixture monkeypatch.
+   - `tests/agents/invoke/test_subagent_transcript_tail.py`: Redirects `Path.home()` via fixture monkeypatch.
+   - `tests/config/test_conflict_resolution_config.py`: Explicitly overrides global paths with `tmp_path` fixtures.
+   - `tests/conftest.py`: Establishes session snapshots, audit hooks, and per-test home isolation.
+   - `tests/mcp/test_e25_candidate_survives_agent_tmp_deletion.py`: Uses sandboxed cache directories under isolated home.
+   - `tests/test_agent_config_subagent_default.py`: Monkeypatches `GLOBAL_CONFIG_PATH` and `GLOBAL_AGENTS_CONFIG_PATH` to `tmp_path`.
+   - `tests/test_agy_empty_output_failure.py`: Uses path tails instead of live `Path.home()` lookups.
+   - `tests/test_agy_live_regression.py`: Derives isolated sandbox home copying only required `.gemini` tokens.
+   - `tests/test_config_loader.py`: Monkeypatches global config constants to `tmp_path`.
+   - `tests/test_config_propagation.py`: Monkeypatches global config constants to `tmp_path`.
+   - `tests/test_pro_support_workspace.py`: Exercises `expanduser` against sandboxed `HOME`.
+   - `tests/test_provider_fallback_warning.py`: Monkeypatches global config constants to `tmp_path`.
+   - `tests/test_real_config_guard.py`: Meta-tests verifying detection of file creation, modification, deletion, chmod, and reads.
+   - `tests/test_skills_agent_paths.py`: Asserts dynamic re-resolution of `Path.home()`.
+   - `tests/test_skills_auto_update_no_repair.py`: Validates that canonical paths are sandboxed.
+   - `tests/test_skills_installer_project.py`: Uses `tmp_path` for all home directories.
 
 ## Runtime guarantees
 

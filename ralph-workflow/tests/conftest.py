@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import shutil
 import sys
@@ -10,10 +9,40 @@ import tempfile
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING
 
 import pytest
 from _pytest.unraisableexception import gc_collect_iterations_key
+
+from tests._real_config_guard_support import (
+    _REAL_HOME,
+    _REAL_XDG_CONFIG_HOME,
+    _clear_recorded_read_violations,
+    _compute_file_sha256,
+    _ConfigPathSnapshot,
+    _diff_config_snapshots,
+    _get_test_read_violations,
+    _install_config_guard_audit_hook,
+    _read_violations_count,
+    _resolve_guarded_config_dirs,
+    _scan_guarded_config_files,
+    _set_current_test_node,
+)
+
+__all__ = [
+    "_REAL_HOME",
+    "_REAL_XDG_CONFIG_HOME",
+    "_ConfigPathSnapshot",
+    "_clear_recorded_read_violations",
+    "_compute_file_sha256",
+    "_diff_config_snapshots",
+    "_get_test_read_violations",
+    "_install_config_guard_audit_hook",
+    "_read_violations_count",
+    "_resolve_guarded_config_dirs",
+    "_scan_guarded_config_files",
+    "_set_current_test_node",
+]
 
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -213,139 +242,6 @@ def _fake_agy_models_probe() -> Generator[None, None, None]:
         registry._default_agy_models_probe = original_probe
 
 
-# Real home and real XDG config home resolved before any test or fixture
-# monkeypatches HOME or XDG_CONFIG_HOME.
-_REAL_HOME: Path = Path(os.environ.get("HOME") or Path.home()).resolve()
-_REAL_XDG_CONFIG_HOME: Path = (
-    Path(os.environ["XDG_CONFIG_HOME"]).resolve()
-    if os.environ.get("XDG_CONFIG_HOME")
-    else (_REAL_HOME / ".config").resolve()
-)
-
-
-class _ConfigPathSnapshot(NamedTuple):
-    """Snapshot record of a guarded configuration file or directory."""
-
-    path: Path
-    is_dir: bool
-    mtime_ns: int
-    size: int
-    sha256: str
-
-
-def _compute_file_sha256(path: Path) -> str:
-    """Compute sha256 hex digest of a file, returning empty string on read failure."""
-    hasher = hashlib.sha256()
-    try:
-        with path.open("rb") as f:
-            while chunk := f.read(65536):
-                hasher.update(chunk)
-        return hasher.hexdigest()
-    except OSError:
-        return ""
-
-
-def _resolve_guarded_config_dirs() -> list[Path]:
-    """Resolve real configuration directories to guard against test pollution."""
-    override = os.environ.get("RALPH_TEST_GUARDED_CONFIG_DIRS")
-    if override:
-        return [Path(p).resolve() for p in override.split(os.pathsep) if p]
-    dirs: list[Path] = []
-    if _REAL_XDG_CONFIG_HOME not in dirs:
-        dirs.append(_REAL_XDG_CONFIG_HOME)
-    real_dot_config = (_REAL_HOME / ".config").resolve()
-    if real_dot_config not in dirs:
-        dirs.append(real_dot_config)
-    if _REAL_HOME not in dirs:
-        dirs.append(_REAL_HOME)
-    return dirs
-
-
-def _scan_guarded_config_files(
-    guarded_dirs: list[Path] | None = None,
-) -> dict[Path, _ConfigPathSnapshot]:
-    """Scan and snapshot all existing files matching ralph-workflow* in guarded dirs."""
-    if guarded_dirs is None:
-        guarded_dirs = _resolve_guarded_config_dirs()
-    snapshot: dict[Path, _ConfigPathSnapshot] = {}
-    for base_dir in guarded_dirs:
-        if not base_dir.exists():
-            continue
-        for pattern in ("ralph-workflow*", ".ralph-workflow*"):
-            try:
-                matches = list(base_dir.glob(pattern))
-            except OSError:
-                continue
-            for match in matches:
-                try:
-                    resolved = match.resolve()
-                    if match.is_dir():
-                        st = match.stat()
-                        snapshot[resolved] = _ConfigPathSnapshot(
-                            path=resolved,
-                            is_dir=True,
-                            mtime_ns=st.st_mtime_ns,
-                            size=0,
-                            sha256="",
-                        )
-                        for child in match.rglob("*"):
-                            try:
-                                child_resolved = child.resolve()
-                                child_st = child.stat()
-                                is_directory = child.is_dir()
-                                snapshot[child_resolved] = _ConfigPathSnapshot(
-                                    path=child_resolved,
-                                    is_dir=is_directory,
-                                    mtime_ns=child_st.st_mtime_ns,
-                                    size=0 if is_directory else child_st.st_size,
-                                    sha256="" if is_directory else _compute_file_sha256(child),
-                                )
-                            except OSError:
-                                pass
-                    elif match.is_file():
-                        st = match.stat()
-                        snapshot[resolved] = _ConfigPathSnapshot(
-                            path=resolved,
-                            is_dir=False,
-                            mtime_ns=st.st_mtime_ns,
-                            size=st.st_size,
-                            sha256=_compute_file_sha256(match),
-                        )
-                except OSError:
-                    pass
-    return snapshot
-
-
-def _diff_config_snapshots(
-    before: dict[Path, _ConfigPathSnapshot],
-    after: dict[Path, _ConfigPathSnapshot],
-) -> list[str]:
-    """Compare before and after snapshots and return a list of violation descriptions."""
-    violations: list[str] = []
-    created = set(after) - set(before)
-    for p in sorted(created):
-        violations.append(f"CREATED: {p}")
-
-    deleted = set(before) - set(after)
-    for p in sorted(deleted):
-        violations.append(f"DELETED: {p}")
-
-    common = set(before) & set(after)
-    for p in sorted(common):
-        b = before[p]
-        a = after[p]
-        if not b.is_dir and not a.is_dir:
-            if b.sha256 != a.sha256:
-                violations.append(
-                    f"MODIFIED (content hash changed): {p} (sha256 {b.sha256} -> {a.sha256})"
-                )
-            elif b.mtime_ns != a.mtime_ns:
-                violations.append(
-                    f"MODIFIED (mtime changed): {p} (mtime {b.mtime_ns} -> {a.mtime_ns})"
-                )
-    return violations
-
-
 @pytest.fixture(scope="session", autouse=True)
 def _guard_real_config_files() -> Generator[None, None, None]:
     """Snapshot real ~/.config and $XDG_CONFIG_HOME and verify no test touched them.
@@ -353,12 +249,19 @@ def _guard_real_config_files() -> Generator[None, None, None]:
     Takes a baseline snapshot of existing `ralph-workflow*` files and directories
     in the real user configuration directories before any tests run. At session
     teardown, verifies that no real configuration files were created, modified,
-    or deleted by the test suite.
+    chmodded, deleted, or read by the test suite.
     """
+    _install_config_guard_audit_hook()
+    _clear_recorded_read_violations()
     before = _scan_guarded_config_files()
     yield
     after = _scan_guarded_config_files()
     violations = _diff_config_snapshots(before, after)
+    for node, p in _clear_recorded_read_violations():
+        if node:
+            violations.append(f"READ: {p} (by {node})")
+        else:
+            violations.append(f"READ: {p}")
     if violations:
         msg = (
             "Test suite touched real user configuration files in violation of isolation rules:\n"
@@ -572,6 +475,14 @@ def _apply_isolate_process_home(
         state_store_mod.DEFAULT_STATE_PATH = fake_config_dir / "ralph-workflow-capabilities.json"
         state_store_mod.default_state_path = lambda: (
             fake_config_dir / "ralph-workflow-capabilities.json"
+        )
+    if "ralph.agents._agy_upstream_diagnostic" in sys.modules:
+        sys.modules["ralph.agents._agy_upstream_diagnostic"]._AGY_CLI_LOG_PATH = (
+            Path(fake_home) / ".gemini" / "antigravity-cli" / "cli.log"
+        )
+    if "ralph.pipeline.plumbing.smoke_plumbing" in sys.modules:
+        sys.modules["ralph.pipeline.plumbing.smoke_plumbing"]._AGY_CLI_LOG_PATH = (
+            Path(fake_home) / ".gemini" / "antigravity-cli" / "cli.log"
         )
 
 

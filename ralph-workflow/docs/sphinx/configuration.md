@@ -125,7 +125,7 @@ When an optional configuration file contains syntax errors, invalid UTF-8 bytes,
 - **Agent configurations**: user-global `~/.config/ralph-workflow-agents.toml` and project-local agent configurations (`.agent/agents.toml` or `[agents.*]` definitions).
 - **Policy TOML files**: pipeline configurations (`.agent/pipeline.toml`, `~/.config/ralph-workflow-pipeline.toml`), artifact schemas (`.agent/artifacts.toml`, `~/.config/ralph-workflow-artifacts.toml`), phase policy files, and other user policy TOMLs.
 - **MCP configurations**: global `~/.config/ralph-workflow-mcp.toml` and project-local `.agent/mcp.toml` (including the `[web_visit]` section).
-- **User portfolio TOML**: `docs/ralph-workflow-policy/portfolio.toml` and user project-policy portfolio settings.
+- **User portfolio TOML**: `docs/ralph-workflow-policy/policy-portfolio.toml` and user project-policy portfolio settings.
 
 Fallback warnings are deduplicated per file content fingerprint (SHA-256) so running workflows do not flood logs while still alerting when an edited file introduces a new error.
 
@@ -145,7 +145,7 @@ Validating configuration with `ralph --check-config` (and `ralph --diagnose`) op
 ralph --check-config
 ```
 
-Instead of halting at the first broken file (fail-fast), `ralph --check-config` evaluates every configuration file across all layers—`ralph-workflow.toml`, agent definitions, policy TOMLs, artifact contracts, and global/local MCP definitions. It logs a warning for each unreadable or invalid file and reports an aggregated summary of every broken file in a single run before exiting non-zero. This allows operators to identify and resolve all configuration errors at once.
+Instead of halting at the first broken file (fail-fast), `ralph --check-config` evaluates every configuration file across all layers—`ralph-workflow.toml`, agent definitions, policy TOMLs, artifact contracts, and global/local MCP definitions. It reports an aggregated summary of every broken file—including unreadable, parse-invalid, and schema-invalid optional files—before exiting non-zero. This allows operators to identify and resolve all configuration errors at once.
 
 ## Environment variables
 

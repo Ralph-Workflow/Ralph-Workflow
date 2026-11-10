@@ -24,6 +24,7 @@ when the live binary is healthy.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
@@ -105,29 +106,31 @@ def _write_smoke_prompt(prompt_file: Path) -> None:
     )
 
 
+def _get_live_agy_sandbox_home() -> Path:
+    sandbox = Path(tempfile.gettempdir()) / "ralph-live-agy-sandbox-home"
+    sandbox.mkdir(parents=True, exist_ok=True)
+    real_gemini = _REAL_HOME / ".gemini"
+    sandbox_gemini = sandbox / ".gemini"
+    if real_gemini.exists() and not sandbox_gemini.exists():
+        with contextlib.suppress(OSError):
+            shutil.copytree(real_gemini, sandbox_gemini, symlinks=True)
+    return sandbox
+
+
 def _build_live_env() -> dict[str, str]:
     """Build the env dict for a live AGY smoke run.
 
     AGY v1.1.8 stores its keyring credentials in the OS keychain but the
     Go runtime also keeps a session cache under ``$HOME/.gemini/antigravity-cli``.
-    The conftest ``_isolate_process_home`` autouse fixture remaps HOME to a
-    per-test sandbox, which makes AGY fall back to the OAuth browser flow
-    and time out (the ``Print mode: auth timed out`` state recorded in
-    ``cli.log``).
-
-    We therefore override HOME in the env returned here to the user's real
-    home (captured from the parent process before the autouse fixture ran)
-    so the live AGY can authenticate via the keychain. The test outputs
-    (``.agent/artifacts/smoke_test_result.md``, ``.agent/receipts/...``)
-    are still isolated to the workspace dir because the smoke CLI derives
-    ``workspace_root`` from ``Path.cwd()`` (the test's ``cwd=`` argument),
-    not from ``$HOME``.
+    We create an isolated sandbox home with a copy of ``.gemini`` so the
+    live binary finds its session cache without ever accessing the real
+    user home directory or user configuration directory.
     """
-    real_home = _REAL_HOME
+    sandbox_home = _get_live_agy_sandbox_home()
     env = {
         **os.environ,
-        "HOME": str(real_home),
-        "XDG_CONFIG_HOME": str(real_home / ".config"),
+        "HOME": str(sandbox_home),
+        "XDG_CONFIG_HOME": str(sandbox_home / ".config"),
     }
     # ``sys.executable`` already points at the uv-managed environment that
     # imports the local editable package. Never inherit the parent pipx
@@ -473,8 +476,8 @@ def test_live_agy_pty_read_thread_sees_output(
         config=config,
         show_progress=False,
         extra_env={
-            "HOME": str(_REAL_HOME),
-            "XDG_CONFIG_HOME": str(_REAL_HOME / ".config"),
+            "HOME": str(_get_live_agy_sandbox_home()),
+            "XDG_CONFIG_HOME": str(_get_live_agy_sandbox_home() / ".config"),
         },
         workspace_path=workspace_mirror,
         policy=_quick_policy(),

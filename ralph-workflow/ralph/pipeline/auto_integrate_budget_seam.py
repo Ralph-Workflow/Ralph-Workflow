@@ -46,6 +46,7 @@ __all__ = [
     "apply_completed_attempt_budget",
     "carry_budget_through_skip",
     "charge_failed_attempt",
+    "charge_non_repository_failure",
     "observe_conflict_identity",
 ]
 
@@ -129,6 +130,11 @@ def apply_completed_attempt_budget(
         return charge_failed_attempt(
             record, prior=prior, target=target, identity=identity, attempts=attempts
         )
+    if record.last_failure_cause in (
+        ResolutionFailureCause.CONFIG_FAILURE,
+        ResolutionFailureCause.CONTEXT_FAILURE,
+    ):
+        return charge_non_repository_failure(record, prior=prior, target=target, attempts=attempts)
     return apply_conflict_budget(
         record,
         prior=prior,
@@ -136,6 +142,39 @@ def apply_completed_attempt_budget(
         resolver_suppressed=resolver_suppressed,
         identity=identity,
         attempts=attempts,
+    )
+
+
+def charge_non_repository_failure(
+    skip: RebaseState,
+    *,
+    prior: RebaseState,
+    target: str,
+    attempts: int = MAX_TRACKED_CONFLICT_ATTEMPTS,
+) -> RebaseState:
+    """Preserve conflict history across a config or context failure without incrementing.
+
+    Neither CONFIG_FAILURE nor CONTEXT_FAILURE is an unresolved repository
+    conflict; neither increments consecutive_conflicts or stamps a new
+    repository-conflict identity onto the outcome.
+    """
+    carried = prior_conflict_count(prior, target, attempts=attempts)
+    updated = (
+        skip.record_consecutive_conflicts(carried, cap=attempts)
+        .set_retry_deadline(
+            skip.retry_deadline if skip.retry_deadline is not None else prior.retry_deadline
+        )
+        .project_conflict_strategy_from(prior)
+    )
+    return updated.model_copy(
+        update={
+            "last_conflict_feature_sha": prior.last_conflict_feature_sha,
+            "last_conflict_target_sha": prior.last_conflict_target_sha,
+            "last_conflict_paths": prior.last_conflict_paths,
+            "last_conflict_stage_oids": prior.last_conflict_stage_oids,
+            "last_conflict_scope": prior.last_conflict_scope,
+            "last_conflict_strategy_index": prior.last_conflict_strategy_index,
+        }
     )
 
 

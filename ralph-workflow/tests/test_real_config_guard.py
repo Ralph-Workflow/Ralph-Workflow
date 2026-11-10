@@ -72,6 +72,17 @@ def test_diff_config_snapshots_detection(tmp_path: Path) -> None:
     assert len(diff_mtime) == 1
     assert f"MODIFIED (mtime changed): {file_a}" in diff_mtime[0]
 
+    # Modified mode only
+    snap_a4 = _ConfigPathSnapshot(
+        file_a, is_dir=False, mtime_ns=1000, size=10, sha256="hash1", mode=0o644
+    )
+    snap_a5 = _ConfigPathSnapshot(
+        file_a, is_dir=False, mtime_ns=1000, size=10, sha256="hash1", mode=0o600
+    )
+    diff_mode = _diff_config_snapshots({file_a: snap_a4}, {file_a: snap_a5})
+    assert len(diff_mode) == 1
+    assert f"MODIFIED (mode changed): {file_a}" in diff_mode[0]
+
 
 def test_scan_guarded_config_files_scans_recursively(tmp_path: Path) -> None:
     """Guarded scanner captures files and nested directories matching ralph-workflow*."""
@@ -226,6 +237,92 @@ def test_real_config_guard_catches_deleted_file_in_pytester(
         in output
     )
     assert "DELETED:" in output
+    assert "ralph-workflow.toml" in output
+
+
+def test_real_config_guard_catches_chmod_in_pytester(
+    pytester: pytest.Pytester,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A test that chmods a file under the guarded config path fails loudly."""
+    guarded_dir = tmp_path / "guarded_config"
+    guarded_dir.mkdir(parents=True)
+    existing_file = guarded_dir / "ralph-workflow.toml"
+    existing_file.write_text("initial = 1\n", encoding="utf-8")
+
+    monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(guarded_dir))
+
+    pytester.makeconftest(
+        textwrap.dedent(
+            """
+            from tests.conftest import _guard_real_config_files
+            """
+        )
+    )
+    pytester.makepyfile(
+        test_chmod=textwrap.dedent(
+            f"""
+            from pathlib import Path
+
+            def test_deliberate_chmod():
+                target = Path({str(existing_file)!r})
+                target.chmod(0o600)
+            """
+        )
+    )
+
+    result = pytester.runpytest_inprocess("-q")
+    result.assert_outcomes(passed=1, errors=1)
+    output = result.stdout.str()
+    assert (
+        "Test suite touched real user configuration files in violation of isolation rules:"
+        in output
+    )
+    assert "MODIFIED (mode changed):" in output
+    assert "ralph-workflow.toml" in output
+
+
+def test_real_config_guard_catches_read_in_pytester(
+    pytester: pytest.Pytester,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A test that reads a file under the guarded config path fails loudly."""
+    guarded_dir = tmp_path / "guarded_config"
+    guarded_dir.mkdir(parents=True)
+    existing_file = guarded_dir / "ralph-workflow.toml"
+    existing_file.write_text("initial = 1\n", encoding="utf-8")
+
+    monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(guarded_dir))
+
+    pytester.makeconftest(
+        textwrap.dedent(
+            """
+            from tests.conftest import _guard_real_config_files
+            """
+        )
+    )
+    pytester.makepyfile(
+        test_read=textwrap.dedent(
+            f"""
+            from pathlib import Path
+
+            def test_deliberate_read():
+                target = Path({str(existing_file)!r})
+                _ = target.read_text(encoding="utf-8")
+            """
+        )
+    )
+
+    result = pytester.runpytest_inprocess("-q")
+    result.assert_outcomes(passed=1, errors=1)
+    output = result.stdout.str()
+    assert (
+        "Test suite touched real user configuration files in violation of isolation rules:"
+        in output
+    )
+    assert "READ:" in output
     assert "ralph-workflow.toml" in output
 
 

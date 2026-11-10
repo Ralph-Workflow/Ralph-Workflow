@@ -13,8 +13,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from loguru import logger
-
 from ralph.config._config_filenames import (
     _GLOBAL_AGENTS_FILENAME,
     _GLOBAL_ARTIFACTS_FILENAME,
@@ -25,7 +23,11 @@ from ralph.config._config_filenames import (
     _LOCAL_MCP_FILENAME,
 )
 from ralph.config._paths import resolve_global_config_dir
-from ralph.config._toml_fallback import _format_error_detail
+from ralph.config._toml_fallback import (
+    _format_error_detail,
+    emit_config_failure_warning,
+)
+from ralph.project_policy.markers import PORTFOLIO_PATH
 
 if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
@@ -101,14 +103,18 @@ def collect_unreadable_config_files(
             except OSError:
                 pass
 
-        error = _inspect_config_file_readability(path)
+        error = _inspect_config_file_readability(path, kind)
         if error is not None:
             error_detail = _format_error_detail(error)
-            logger.warning(
-                f"Failed to load {kind} configuration from {path}: {error_detail}; "
-                f"using built-in default. Fix: run `ralph --check-config`."
+            warned = emit_config_failure_warning(
+                path,
+                kind=kind,
+                error_detail=error_detail,
+                behaviour="using built-in default",
+                fix_hint="Fix: run `ralph --check-config`.",
+                exc=error,
             )
-            if display is not None and hasattr(display, "emit_warning"):
+            if warned and display is not None and hasattr(display, "emit_warning"):
                 display.emit_warning(
                     f"Failed to load {kind} configuration from {path}: {error_detail}; "
                     f"using built-in default. Fix: run `ralph --check-config`."
@@ -157,6 +163,8 @@ def _gather_candidate_config_paths(
         candidates.append((config_path, "config"))
         cfg_parent = config_path.parent
         candidates.extend((cfg_parent / fn, kind) for fn, kind in support_files)
+        candidates.append((cfg_parent.parent / PORTFOLIO_PATH, "portfolio"))
+        candidates.append((cfg_parent / PORTFOLIO_PATH, "portfolio"))
         if (cfg_parent / ".agent").is_dir():
             candidates.extend((cfg_parent / ".agent" / fn, kind) for fn, kind in support_files)
 
@@ -170,16 +178,66 @@ def _gather_candidate_config_paths(
             candidates.extend(
                 (scope.local_config_path.parent / fn, kind) for fn, kind in support_files
             )
+        candidates.append((scope.root / PORTFOLIO_PATH, "portfolio"))
         candidates.append((scope.root / "portfolio.toml", "portfolio"))
     elif config_path is None:
         cwd_agent = Path.cwd() / ".agent"
         candidates.extend((cwd_agent / fn, kind) for fn, kind in support_files)
         candidates.extend((Path.cwd() / fn, kind) for fn, kind in support_files)
+        candidates.append((Path.cwd() / PORTFOLIO_PATH, "portfolio"))
 
     return candidates
 
 
-def _inspect_config_file_readability(path: Path) -> BaseException | None:
+def _validate_config_file_schema(
+    path: Path, kind: str, data: dict[str, object], text: str
+) -> BaseException | None:
+    try:
+        if kind == "agents":
+            if path.name == "ralph-workflow-agents.toml":
+                from ralph.config.loader import _drop_cli_only_fields
+                from ralph.config.models import UnifiedConfig
+
+                cleaned = dict(data)
+                _drop_cli_only_fields(cleaned)
+                UnifiedConfig.model_validate(cleaned)
+            else:
+                from ralph.policy._policy_validation import validate_agents
+
+                validate_agents(data)
+        elif kind == "mcp":
+            from ralph.config.mcp_loader import _validate_mcp_layer
+
+            _validate_mcp_layer(path, data, strict=True)
+        elif kind == "pipeline":
+            from ralph.policy._policy_validation import validate_pipeline
+            from ralph.policy.loader import _merge_mapping_defaults, cached_default_pipeline_data
+
+            merged = _merge_mapping_defaults(cached_default_pipeline_data(), data)
+            validate_pipeline(merged, timeboxes_explicit=False)
+        elif kind == "artifacts":
+            from ralph.policy._policy_validation import validate_artifacts
+            from ralph.policy.loader import _merge_mapping_defaults, cached_default_artifacts_data
+
+            merged = _merge_mapping_defaults(cached_default_artifacts_data(), data)
+            validate_artifacts(merged)
+        elif kind == "portfolio":
+            from ralph.project_policy.portfolio import load_portfolio_toml
+
+            load_portfolio_toml(path, strict_optional_files=True)
+        elif kind == "config":
+            from ralph.config.loader import _convert_legacy_config, _drop_cli_only_fields
+            from ralph.config.models import UnifiedConfig
+
+            cleaned = _convert_legacy_config(data)
+            _drop_cli_only_fields(cleaned)
+            UnifiedConfig.model_validate(cleaned)
+    except (Exception, SystemExit) as exc:
+        return exc
+    return None
+
+
+def _inspect_config_file_readability(path: Path, kind: str = "config") -> BaseException | None:
     try:
         # filesystem-read-ok: test readability of config layer
         raw_bytes = path.read_bytes()
@@ -188,11 +246,11 @@ def _inspect_config_file_readability(path: Path) -> BaseException | None:
 
     try:
         text = raw_bytes.decode("utf-8")
-        tomllib.loads(text)
+        data: dict[str, object] = tomllib.loads(text)
     except (ValueError, UnicodeDecodeError) as exc:
         return exc
 
-    return None
+    return _validate_config_file_schema(path, kind, data, text)
 
 
 __all__ = ["UnreadableConfigFinding", "collect_unreadable_config_files"]
