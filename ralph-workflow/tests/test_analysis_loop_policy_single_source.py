@@ -110,6 +110,6 @@ failed_route = "failed_terminal"
     )
 
     with pytest.raises((PolicyValidationError, ValidationError)) as exc_info:
-        load_policy(config_dir)
+        load_policy(config_dir, strict_optional_files=True)
 
     assert "max_iterations" in str(exc_info.value)

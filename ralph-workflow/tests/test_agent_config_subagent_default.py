@@ -20,7 +20,11 @@ from typing import TYPE_CHECKING
 
 from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport
-from ralph.config.loader import GLOBAL_CONFIG_PATH, load_config
+from ralph.config.loader import (
+    GLOBAL_AGENTS_CONFIG_PATH,
+    GLOBAL_CONFIG_PATH,
+    load_config,
+)
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -94,6 +98,10 @@ def test_partial_override_inherits_subagent_capability_default_for_claude(
     """
     monkeypatch.setattr(
         "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
+    )
+    monkeypatch.setattr(
+        "ralph.config.loader.GLOBAL_AGENTS_CONFIG_PATH",
+        tmp_path / GLOBAL_AGENTS_CONFIG_PATH.name,
     )
     local_path = tmp_path / ".agent" / "ralph-workflow.toml"
     local_path.parent.mkdir(parents=True, exist_ok=True)

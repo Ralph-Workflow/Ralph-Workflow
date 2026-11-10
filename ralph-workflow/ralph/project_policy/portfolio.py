@@ -11,11 +11,13 @@ import re
 import tomllib
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
+from ralph.config._toml_fallback import load_optional_toml, validate_or_default
 from ralph.project_policy.markers import (
     CLAIM_SCOPE_PHRASES,
     PORTFOLIO_PATH,
@@ -23,6 +25,7 @@ from ralph.project_policy.markers import (
     supported_portfolio_schema_versions,
 )
 from ralph.project_policy.models import PortfolioError
+from ralph.project_policy.starters import PORTFOLIO_STARTER_NAME, read_starter
 
 SUPPORTED_PORTFOLIO_SCHEMA_VERSIONS: Final[frozenset[str]] = supported_portfolio_schema_versions()
 
@@ -571,23 +574,26 @@ def _apply_exceptions(
     return tuple(sorted(retained)), tuple(sorted(applied))
 
 
-def parse_portfolio_toml(
+_DEFAULT_PORTFOLIO_CACHE: list[
+    PolicyPortfolio
+] = []  # bounded-accumulator-ok: at most one cached default PolicyPortfolio
+
+
+def default_portfolio() -> PolicyPortfolio:
+    """Return the cached built-in default policy portfolio."""
+    if not _DEFAULT_PORTFOLIO_CACHE:
+        starter_content = read_starter(PORTFOLIO_STARTER_NAME)
+        _DEFAULT_PORTFOLIO_CACHE.append(_parse_portfolio_toml_strict(starter_content))
+    return _DEFAULT_PORTFOLIO_CACHE[0]
+
+
+def _parse_portfolio_toml_strict(
     content: str,
     *,
     today: date | None = None,
     workspace_exists: Callable[[str], bool] | None = None,
     expected_schema_version: str | None = None,
 ) -> PolicyPortfolio:
-    """Parse, validate, and deterministically compose one portfolio manifest.
-
-    ``workspace_exists`` is the production-side resolver for the
-    optional ``evidence_path`` existence check. The production ingress
-    in :func:`ralph.project_policy.validators._check_portfolio` always
-    supplies it; unit tests that exercise the parser in isolation may
-    omit it, in which case the existence check degrades to a no-op
-    while the strict shape validation still runs.
-    """
-
     if len(content.encode("utf-8")) > MAX_PORTFOLIO_BYTES:
         raise _error(f"portfolio exceeds {MAX_PORTFOLIO_BYTES} bytes")
     try:
@@ -651,6 +657,103 @@ def parse_portfolio_toml(
     )
 
 
+def parse_portfolio_toml(
+    content: str,
+    *,
+    today: date | None = None,
+    workspace_exists: Callable[[str], bool] | None = None,
+    expected_schema_version: str | None = None,
+    path: Path | str | None = None,
+    strict_optional_files: bool = True,
+) -> PolicyPortfolio:
+    """Parse, validate, and deterministically compose one portfolio manifest.
+
+    ``workspace_exists`` is the production-side resolver for the
+    optional ``evidence_path`` existence check. The production ingress
+    in :func:`ralph.project_policy.validators._check_portfolio` always
+    supplies it; unit tests that exercise the parser in isolation may
+    omit it, in which case the existence check degrades to a no-op
+    while the strict shape validation still runs.
+
+    When ``strict_optional_files=False``, invalid TOML or schema failures
+    emit a loguru warning and fall back to the built-in default portfolio.
+    """
+    if strict_optional_files:
+        return _parse_portfolio_toml_strict(
+            content,
+            today=today,
+            workspace_exists=workspace_exists,
+            expected_schema_version=expected_schema_version,
+        )
+
+    effective_path = Path(path) if path is not None else Path(PORTFOLIO_PATH)
+    return validate_or_default(
+        effective_path,
+        content,
+        lambda c: _parse_portfolio_toml_strict(
+            c,
+            today=today,
+            workspace_exists=workspace_exists,
+            expected_schema_version=expected_schema_version,
+        ),
+        default_portfolio(),
+        kind="portfolio",
+        strict=False,
+    )
+
+
+def load_portfolio_toml(
+    path: Path | str = PORTFOLIO_PATH,
+    *,
+    today: date | None = None,
+    workspace_exists: Callable[[str], bool] | None = None,
+    expected_schema_version: str | None = None,
+    strict_optional_files: bool = False,
+) -> PolicyPortfolio:
+    """Load and validate a portfolio TOML file with fallback to built-in default.
+
+    When strict_optional_files=False (the default), missing files return the
+    built-in default silently. Syntax errors, decode errors, permission errors,
+    or schema validation failures emit a loguru warning and fall back to the
+    built-in default without modifying the file on disk.
+    When strict_optional_files=True, errors are re-raised.
+    """
+    path_obj = Path(path)
+    # filesystem-read-ok: probe optional portfolio file existence for fallback loading
+    if not path_obj.exists():
+        return default_portfolio()
+
+    # Load raw TOML with fallback seam (handles OSError, UnicodeDecodeError, TOMLDecodeError)
+    raw = load_optional_toml(
+        path_obj,
+        kind="portfolio",
+        strict=strict_optional_files,
+        default_factory=lambda: None,
+    )
+    if raw is None:
+        return default_portfolio()
+
+    try:
+        # filesystem-read-ok: read portfolio toml for schema validation
+        content = path_obj.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        if strict_optional_files:
+            raise _error(f"could not read portfolio TOML: {exc}") from exc
+        return default_portfolio()
+
+    return parse_portfolio_toml(
+        content,
+        today=today,
+        workspace_exists=workspace_exists,
+        expected_schema_version=expected_schema_version,
+        path=path_obj,
+        strict_optional_files=strict_optional_files,
+    )
+
+
+load_portfolio = load_portfolio_toml
+
+
 __all__ = [
     "MAX_CONTEXT_VALUES",
     "MAX_CONTROLS",
@@ -662,5 +765,8 @@ __all__ = [
     "PORTFOLIO_SCHEMA_VERSION",
     "SUPPORTED_PORTFOLIO_SCHEMA_VERSIONS",
     "PolicyPortfolio",
+    "default_portfolio",
+    "load_portfolio",
+    "load_portfolio_toml",
     "parse_portfolio_toml",
 ]

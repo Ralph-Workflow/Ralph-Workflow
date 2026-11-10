@@ -96,6 +96,7 @@ import json
 import queue
 import re
 import sys
+import textwrap
 import threading
 import time
 import uuid
@@ -502,6 +503,12 @@ _BODY_SEMANTIC_KINDS: frozenset[str] = frozenset(
 )
 
 
+def _extract_terminal_theme(ctx: object) -> tuple[bool | None, str | None]:
+    if isinstance(ctx, DisplayContext):
+        return ctx.terminal_background_is_light, ctx.terminal_background_hex
+    return None, None
+
+
 class ParallelDisplay:
     """Multiplexed terminal display for parallel pipeline workers.
 
@@ -536,6 +543,7 @@ class ParallelDisplay:
         "_last_analysis_signature",
         "_last_budget_progress",
         "_last_checkpoint_chars",
+        "_last_emitted_status_lines",
         "_last_emitted_tool_signature",
         "_last_phase",
         "_last_phase_artifact_outcome",
@@ -544,6 +552,8 @@ class ParallelDisplay:
         "_last_phase_saved_counters",
         "_last_plan_signature",
         "_last_recorded_body",
+        "_last_status_lines",
+        "_last_status_message",
         "_last_text_thinking_block_close",
         "_last_tool_result_content",
         "_last_waiting_signature",
@@ -592,15 +602,8 @@ class ParallelDisplay:
             raise TypeError("display_context is required")
         self._ctx = display_context
         self._is_quiet: bool = is_quiet
-        self._terminal_bg_is_light = (
-            display_context.terminal_background_is_light
-            if isinstance(display_context, DisplayContext)
-            else None
-        )
-        self._terminal_background_hex = (
-            display_context.terminal_background_hex
-            if isinstance(display_context, DisplayContext)
-            else None
+        self._terminal_bg_is_light, self._terminal_background_hex = _extract_terminal_theme(
+            display_context
         )
         # S-5: per-instance recorder of capability observations. Defaults
         # to a fresh recorder so the smoke harness can query
@@ -691,6 +694,9 @@ class ParallelDisplay:
         ) = None
         self._last_analysis_signature: tuple[str | None, str | None, str | None] | None = None
         self._last_waiting_signature: str | None = None
+        self._last_status_message: str | None = None
+        self._last_emitted_status_lines: dict[str, str] = {}  # bounded-accumulator-ok
+        self._last_status_lines: dict[str, str] = {}  # bounded-accumulator-ok
         # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
         self._active_block: dict[str, tuple[str, list[str]]] = {}  # bounded-accumulator-ok
         self._active_block_chars: dict[str, int] = {}  # bounded-accumulator-ok: drop_unit
@@ -702,9 +708,9 @@ class ParallelDisplay:
         self._block_open_wall: dict[str, datetime] = {}  # bounded-accumulator-ok: _active_block
         self._block_open_mono: dict[str, float] = {}  # bounded-accumulator-ok: _active_block
         self._last_checkpoint_chars: dict[str, int] = {}  # bounded-accumulator-ok: drop_unit
-        self._emitted_empty_plan: bool = False
-        self._emitted_empty_activity: bool = False
-        self._emitted_empty_decision_log: bool = False
+        self._emitted_empty_plan = self._emitted_empty_activity = (
+            self._emitted_empty_decision_log
+        ) = False
         self._phase_counters: _PhaseCounters | None = None
         self._last_phase_saved_counters: _PhaseCounters | None = None
         self._last_phase_elapsed_seconds: float = 0.0
@@ -1803,14 +1809,19 @@ class ParallelDisplay:
         """Emit a status line with the same TIMESTAMP LEVEL CAT badge as other lines.
 
         No-op when ``is_quiet`` is true; quiet-mode machine-friendly runs
-        must not surface per-unit status banners.
+        must not surface per-unit status banners. Deduplicates repeated
+        consecutive identical status lines for the same unit.
         """
         if self._is_quiet:
             return
+        sanitized_status = _strip_control_chars_for_render(status)
+        if self._last_status_lines.get(unit_id) == sanitized_status:
+            return
+        self._last_status_lines[unit_id] = sanitized_status
         self._emit_carrier_rows(
             unit_id,
             "status",
-            _strip_control_chars_for_render(status),
+            sanitized_status,
             kind="status",
         )
 
@@ -3532,11 +3543,28 @@ class ParallelDisplay:
         """Return the composed :class:`StatusBar` (owner of the persistent footer)."""
         return self._status_bar
 
+    @staticmethod
+    def _is_status_line(line: str) -> bool:
+        """Return True when line represents a status line eligible for deduplication."""
+        status_prefixes = (
+            "WAITING:",
+            "RECOVERING:",
+            "STOPPING:",
+            "STATUS:",
+            "VALIDATION FAILURE:",
+            "Pipeline failed:",
+            "Interrupted:",
+            "Recovery triggered:",
+            "Recovery exhausted:",
+        )
+        return any(line.startswith(prefix) for prefix in status_prefixes)
+
     def emit(self, unit_id: str | None, line: str) -> None:
         """Emit a raw line directly to the consolidated log renderer.
 
         Bare lifecycle tokens (e.g. prefixed transcript noise) are silently
         dropped before reaching the renderer. If unit_id is None, defaults to "run".
+        Deduplicates repeated consecutive status lines (e.g. WAITING lines).
         """
         if self._is_quiet:
             return
@@ -3547,6 +3575,11 @@ class ParallelDisplay:
         # (Rich markup reduced). The transcript sink path (emit_log_line /
         # kind="raw") still preserves literal brackets for raw log payloads.
         sanitized_line = strip_markup(line)
+        effective_unit = unit_id or "run"
+        if self._is_status_line(sanitized_line):
+            if self._last_emitted_status_lines.get(effective_unit) == sanitized_line:
+                return
+            self._last_emitted_status_lines[effective_unit] = sanitized_line
         if unit_id is not None:
             with contextlib.suppress(Exception):
                 self._subscriber.record_activity(
@@ -3554,7 +3587,7 @@ class ParallelDisplay:
                     line=sanitized_line,
                     agent_name=unit_id,
                 )
-        self.emit_log_line(unit_id or "run", sanitized_line)
+        self.emit_log_line(effective_unit, sanitized_line)
 
     def emit_json_payload(self, payload: Mapping[str, object]) -> None:
         """Emit one serialized JSON object as the shared machine-contract line.
@@ -5394,10 +5427,14 @@ class ParallelDisplay:
 
         Ports the prior ``_status_text`` helper in
         :mod:`ralph.cli.commands.init` (one of the 13+ direct
-        ``console.print`` call sites).
+        ``console.print`` call sites). Deduplicates repeated consecutive
+        status messages.
         """
         if self._is_quiet:
             return
+        if self._last_status_message == message:
+            return
+        self._last_status_message = message
         with contextlib.suppress(Exception):
             self._emit_section_rule("[status]")
             self._console.print(
@@ -5924,16 +5961,38 @@ def resolve_display(
     return ParallelDisplay(display_context, is_quiet=is_quiet)
 
 
-def status_text(label: str, value: str, style: str) -> str:
+def status_text(
+    label: str,
+    value: str,
+    style: str,
+    *,
+    width: int | None = None,
+) -> str:
     """Build a styled status line as a plain string.
 
     Replaces the legacy `status_text` helper from
     `ralph.pipeline.legacy_console_display`. Returns plain text — the
     caller passes it through `emit_activity_line` which uses
     ParallelDisplay.emit (plain log routing) for rendering.
+
+    When ``width`` is specified and the rendered status line exceeds it,
+    wraps cleanly with hanging indent aligned after the label so the failure
+    cause and fix (e.g. "fix <file> then run ralph --check-config") are never
+    truncated.
     """
     del style  # styling is delegated to the renderer; keep the signature stable.
-    return f"{label}: {value}"
+    raw = f"{label}: {value}"
+    if width is None or cell_len(raw) <= width:
+        return raw
+    indent = " " * (cell_len(label) + 2)
+    wrapper = textwrap.TextWrapper(
+        width=width,
+        initial_indent="",
+        subsequent_indent=indent,
+        break_long_words=True,
+        break_on_hyphens=False,
+    )
+    return wrapper.fill(raw)
 
 
 def build_default_display_legacy_bridge(

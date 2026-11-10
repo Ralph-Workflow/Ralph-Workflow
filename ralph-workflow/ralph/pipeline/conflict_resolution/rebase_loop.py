@@ -50,6 +50,7 @@ from ralph.git.rebase.rebase_continuation import (
     rebase_in_progress_at,
     verify_rebase_completed_at,
 )
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._pending_rebase_continue import (
     finish_pending_rebase,
@@ -57,6 +58,9 @@ from ralph.pipeline._pending_rebase_continue import (
     retain_pending_rebase_error,
 )
 from ralph.pipeline._retained_resolution_scope import retained_rebase_paths
+from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+    ResolutionTerminationReason,
+)
 from ralph.pipeline.conflict_resolution.deterministic_resolution import (
     try_deterministic_resolution,
 )
@@ -374,7 +378,19 @@ def _resolve_one_stop(
             "handing the stop to the resolver",
             stop.stop_index,
         )
-    if not _resolution_succeeded(resolver(root, target, stop)):
+    outcome = resolver(root, target, stop)
+    if isinstance(outcome, ResolutionOutcome):
+        active_session = active_rebase_resolution_session()
+        if active_session is not None:
+            if outcome.failure_cause != ResolutionFailureCause.NONE:
+                active_session.last_failure_cause = outcome.failure_cause
+            if outcome.reason is not None:
+                raw_reason: object = outcome.reason
+                if isinstance(raw_reason, ResolutionTerminationReason):
+                    active_session.terminal_reason = raw_reason
+                elif isinstance(raw_reason, str) and not active_session.exhaustion_reason:
+                    active_session.exhaustion_reason = raw_reason
+    if not _resolution_succeeded(outcome):
         # "Declined" is the resolver's own verdict, and this branch is
         # reached by anything that did not resolve the stop -- including
         # a launch that never happened and a provider that was never

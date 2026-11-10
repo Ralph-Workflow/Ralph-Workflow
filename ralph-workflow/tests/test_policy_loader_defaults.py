@@ -194,7 +194,7 @@ def test_terminal_recovery_route_rejected(tmp_path: Path) -> None:
     )
 
     with pytest.raises(LoaderPolicyValidationError, match="deprecated"):
-        load_policy(config_dir, config=config)
+        load_policy(config_dir, config=config, strict_optional_files=True)
 
 
 def test_build_agents_policy_includes_custom_drains() -> None:

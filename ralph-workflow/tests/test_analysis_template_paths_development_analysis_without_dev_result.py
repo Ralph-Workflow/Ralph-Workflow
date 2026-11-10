@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 
 from ralph.policy.loader import load_policy
@@ -102,7 +104,30 @@ class TestDevelopmentAnalysisWithoutDevResult:
     def setup_class(cls) -> None:
         # Pre-warm the prompt template cache so the first test method does not
         # pay the one-time Jinja2 compilation latency under shard CPU load.
-        _render_development_analysis_no_dev_result(Path("/tmp"))
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_home = Path(tmp_dir)
+            import ralph.skills._state_store as state_store
+
+            old_default = state_store.DEFAULT_STATE_PATH
+            state_store.DEFAULT_STATE_PATH = (
+                tmp_home / ".config" / "ralph-workflow-capabilities.json"
+            )
+            old_home = os.environ.get("HOME")
+            old_xdg = os.environ.get("XDG_CONFIG_HOME")
+            os.environ["HOME"] = str(tmp_home)
+            os.environ["XDG_CONFIG_HOME"] = str(tmp_home / ".config")
+            try:
+                _render_development_analysis_no_dev_result(tmp_home)
+            finally:
+                state_store.DEFAULT_STATE_PATH = old_default
+                if old_home is not None:
+                    os.environ["HOME"] = old_home
+                else:
+                    os.environ.pop("HOME", None)
+                if old_xdg is not None:
+                    os.environ["XDG_CONFIG_HOME"] = old_xdg
+                else:
+                    os.environ.pop("XDG_CONFIG_HOME", None)
 
     def test_renders_without_crash_when_dev_result_absent(self, tmp_path: Path) -> None:
         rendered = _render_development_analysis_no_dev_result(tmp_path)

@@ -207,7 +207,7 @@ def test_load_mcp_config_malformed_local_toml_exits(
     bad = tmp_path / "bad.toml"
     bad.write_bytes(b"[invalid = }")
     with pytest.raises(SystemExit) as exc_info:
-        load_mcp_config(config_path=bad)
+        load_mcp_config(config_path=bad, strict_optional_files=True)
     assert exc_info.value.code == 1
 
 
@@ -219,7 +219,7 @@ def test_load_mcp_config_malformed_global_toml_exits(
     (xdg / "ralph-workflow-mcp.toml").write_bytes(b"not_valid = }")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
     with pytest.raises(SystemExit) as exc_info:
-        load_mcp_config()
+        load_mcp_config(strict_optional_files=True)
     assert exc_info.value.code == 1
 
 
@@ -243,7 +243,7 @@ def test_load_mcp_config_reserved_server_name_exits(
         encoding="utf-8",
     )
     with pytest.raises(SystemExit) as exc_info:
-        load_mcp_config(config_path=bad)
+        load_mcp_config(config_path=bad, strict_optional_files=True)
     assert exc_info.value.code == 1
 
 
@@ -265,7 +265,7 @@ def test_load_mcp_config_unknown_fallback_backend_exits(
         encoding="utf-8",
     )
     with pytest.raises(SystemExit) as exc_info:
-        load_mcp_config(config_path=cfg)
+        load_mcp_config(config_path=cfg, strict_optional_files=True)
     assert exc_info.value.code == 1
 
 
@@ -282,7 +282,7 @@ def test_load_mcp_config_unknown_fallback_backend_raises_typed_error(
         encoding="utf-8",
     )
     with pytest.raises(McpConfigError) as exc_info:
-        load_mcp_config(config_path=cfg)
+        load_mcp_config(config_path=cfg, strict_optional_files=True)
     assert exc_info.value.code == 1
     assert "fallback backend 'phantom_engine'" in str(exc_info.value)
 
@@ -466,7 +466,7 @@ def test_load_mcp_config_media_rejects_invalid_max_inline_bytes(
         encoding="utf-8",
     )
     with pytest.raises(SystemExit) as exc_info:
-        load_mcp_config(config_path=cfg)
+        load_mcp_config(config_path=cfg, strict_optional_files=True)
     assert exc_info.value.code == 1
 
 
@@ -490,7 +490,7 @@ def test_load_mcp_config_malformed_toml_emits_what_why_fix_envelope(
     bad = tmp_path / "mcp.toml"
     bad.write_bytes(b"[invalid = }")
     with pytest.raises(McpConfigError) as exc_info:
-        load_mcp_config(config_path=bad)
+        load_mcp_config(config_path=bad, strict_optional_files=True)
     message = str(exc_info.value)
     assert str(bad) in message, (
         f"Parse-error envelope MUST name the offending file; got: {message!r}"
@@ -525,7 +525,7 @@ def test_load_mcp_config_validation_failure_does_not_dump_raw_pydantic_blob(
         encoding="utf-8",
     )
     with pytest.raises(McpConfigError) as exc_info:
-        load_mcp_config(config_path=bad)
+        load_mcp_config(config_path=bad, strict_optional_files=True)
     message = str(exc_info.value)
     assert "validation errors for McpConfig" not in message, (
         f"Validation-error envelope MUST NOT dump raw pydantic framing; got: {message!r}"

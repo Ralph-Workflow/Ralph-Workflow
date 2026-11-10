@@ -62,6 +62,7 @@ RESOLVER_NOT_SPENT_TERMINATION_REASONS: frozenset[ResolutionTerminationReason] =
             ResolutionTerminationReason.OUT_OF_REACH,
             ResolutionTerminationReason.NO_RESOLVER_CONFIGURED,
             ResolutionTerminationReason.PROMPT_UNAVAILABLE,
+            ResolutionTerminationReason.CONFIG_FAILURE,
         }
     )
 )

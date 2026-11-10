@@ -73,6 +73,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline._auto_integrate_record_restamp import (
@@ -145,6 +146,7 @@ from ralph.pipeline.operation_fact import (
     _KIND_MERGE_OBJECT_RESOLVABLE,
     _KIND_REBASE_OBJECT_RESOLVABLE,
 )
+from ralph.workspace.context import WorkspaceContextError, workspace_context
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -372,6 +374,60 @@ def _settle_spent_budget(
     return record, True
 
 
+def _handle_diagnostic_config_failure(
+    root: Path,
+    record: IntegrationRecord,
+    exc: WorkspaceContextError,
+) -> None:
+    reason_text = exc.fix
+    logger.warning(
+        "Integration diagnostic: target worktree configuration error: {}; {}",
+        exc,
+        reason_text,
+    )
+    current = read_record(root) or record
+    target = current.with_transition(
+        BUMP_DIAGNOSTIC_ATTEMPT,
+        repair_last_error=reason_text,
+    ).model_copy(update={"last_failure_cause": ResolutionFailureCause.CONFIG_FAILURE})
+    write_record(root, target)
+
+
+def _handle_diagnostic_generic_failure(
+    root: Path,
+    record: IntegrationRecord,
+    exc: Exception,
+    *,
+    ledger: AttemptLedger | None,
+    git: GitPlumbing | None,
+    fs: FileQuarantine | None,
+    env: EnvironmentProbe | None,
+    clock: Clock | None,
+) -> None:
+    logger.critical("Integration diagnostic retained ownership after failure: {}", exc)
+    current = read_record(root) or record
+    target = _bump_attempt(current, f"diagnostic failure: {exc}")
+    write_record(root, target)
+    if target.merge_commit_repair_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP:
+        try:
+            escalate_diagnostic_budget_to_ladder(
+                root,
+                target,
+                reason=f"diagnostic failure: {exc}",
+                ledger=ledger,
+                git=git,
+                fs=fs,
+                env=env,
+                clock=clock,
+                target=target.target,
+            )
+        except Exception:
+            logger.critical(
+                "Integration diagnostic budget spent but ladder escalation raised; "
+                "the durable ledger keeps the climb and the next seam resumes it",
+            )
+
+
 def diagnose_retained_integration(
     ctx: _LoopContext,
     failure: str,
@@ -393,7 +449,6 @@ def diagnose_retained_integration(
         invoke_resolution_agent,
         resolution_chain_agents,
     )
-    from ralph.workspace.context import workspace_context
     from ralph.workspace.scope import WorkspaceScope
 
     pipeline_deps = ctx.pipeline_deps
@@ -430,20 +485,26 @@ def diagnose_retained_integration(
 
             def _default_invoke(agent: str, prompt: Path) -> bool:
                 attempt_session.last_attempt_failure = None
-                with workspace_context(operation_root):
-                    return invoke_resolution_agent(
-                        agent_name=agent,
-                        prompt_path=prompt,
-                        config=ctx.config,
-                        pipeline_deps=pipeline_deps,
-                        workspace_scope=WorkspaceScope(operation_root),
-                        policy_bundle=ctx.policy_bundle,
-                        display=ctx.active_display,
-                        display_context=ctx.display_context,
-                        operator_cap_seconds=ctx.config.conflict_resolution.total_resolution_cap_seconds,
-                        require_completion_evidence=True,
-                        session=attempt_session,
-                    )
+                try:
+                    with workspace_context(operation_root):
+                        return invoke_resolution_agent(
+                            agent_name=agent,
+                            prompt_path=prompt,
+                            config=ctx.config,
+                            pipeline_deps=pipeline_deps,
+                            workspace_scope=WorkspaceScope(operation_root),
+                            policy_bundle=ctx.policy_bundle,
+                            display=ctx.active_display,
+                            display_context=ctx.display_context,
+                            operator_cap_seconds=ctx.config.conflict_resolution.total_resolution_cap_seconds,
+                            require_completion_evidence=True,
+                            session=attempt_session,
+                        )
+                except WorkspaceContextError as exc:
+                    reason_text = exc.fix
+                    attempt_session.last_attempt_failure = reason_text
+                    attempt_session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
+                    raise
 
             effective_invoke = _default_invoke
         else:
@@ -502,32 +563,20 @@ def diagnose_retained_integration(
                 and not retained.diagnostic_evidence
                 and retained.diagnostic_ownership is None
             )
+        except WorkspaceContextError as exc:
+            _handle_diagnostic_config_failure(ctx.workspace_scope.root, record, exc)
         except Exception as exc:
-            logger.critical("Integration diagnostic retained ownership after failure: {}", exc)
-            current = read_record(ctx.workspace_scope.root) or record
-            target = _bump_attempt(current, f"diagnostic failure: {exc}")
-            write_record(ctx.workspace_scope.root, target)
-            if target.merge_commit_repair_attempts >= DIAGNOSTIC_REPAIR_ATTEMPT_CAP:
-                # The bump stamped the typed budget-spent outcome; route
-                # the state into the autonomous fallback ladder.
-                try:
-                    escalate_diagnostic_budget_to_ladder(
-                        ctx.workspace_scope.root,
-                        target,
-                        reason=f"diagnostic failure: {exc}",
-                        ledger=ledger,
-                        git=git,
-                        fs=fs,
-                        env=env,
-                        clock=clock,
-                        target=target.target,
-                    )
-                except Exception:
-                    logger.critical(
-                        "Integration diagnostic budget spent but ladder escalation raised; "
-                        "the durable ledger keeps the climb and the next seam resumes it",
-                    )
-            return False
+            _handle_diagnostic_generic_failure(
+                ctx.workspace_scope.root,
+                record,
+                exc,
+                ledger=ledger,
+                git=git,
+                fs=fs,
+                env=env,
+                clock=clock,
+            )
+        return False
 
 
 def _pre_pass_failure(
@@ -910,8 +959,19 @@ def handoff_integration_diagnostic(
                     "the durable ledger keeps the climb and the next seam resumes it",
                 )
         return False
-    agent = _next_resolver(controller, agents)
+    agent = _next_resolver(controller, agents, target_root=inspection_root)
     if agent is None:
+        return False
+    if agent not in agents:
+        logger.warning(
+            "Integration diagnostic: target worktree configuration error: {}",
+            agent,
+        )
+        target_record = record.with_transition(
+            BUMP_DIAGNOSTIC_ATTEMPT,
+            repair_last_error=agent,
+        ).model_copy(update={"last_failure_cause": ResolutionFailureCause.CONFIG_FAILURE})
+        write_record(root, target_record, backend=backend)
         return False
     prompt = root / ".agent" / "tmp" / "integration_diagnostic_prompt.md"
     content = (

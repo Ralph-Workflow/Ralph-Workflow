@@ -108,6 +108,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "budget_spent_record",
+    "check_target_worktree_context",
     "escalate_diagnostic_budget_to_ladder",
     "escalate_record_fact_outcome",
     "observe_workspace_change",
@@ -160,8 +161,38 @@ def observe_workspace_change(
         return False
 
 
-def _next_resolver(controller: RecoveryController, agents: Sequence[str]) -> str | None:
-    """Return the next resolver to call, or ``None`` (after saying why) while all are benched."""
+def check_target_worktree_context(target_root: Path) -> str | None:
+    """Check that the target worktree's config, policy, and AgentRegistry load cleanly.
+
+    Returns the CONFIG_FAILURE reason if context loading fails, or None if successful.
+    """
+    from ralph.workspace.context import WorkspaceContextError, workspace_context
+
+    try:
+        with workspace_context(target_root):
+            pass
+    except WorkspaceContextError as exc:
+        return exc.fix
+    except Exception as exc:
+        return f"target worktree context error: {exc}"
+    return None
+
+
+def _next_resolver(
+    controller: RecoveryController,
+    agents: Sequence[str],
+    target_root: Path | None = None,
+) -> str | None:
+    """Return the next resolver to call, or ``None`` (after saying why) while all are benched.
+
+    When ``target_root`` is given and fails its context load precondition, returns
+    the CONFIG_FAILURE reason without calling choose_resolver / announcing selection evidence.
+    """
+    if target_root is not None:
+        failure_reason = check_target_worktree_context(target_root)
+        if failure_reason is not None:
+            return failure_reason
+
     choice = choose_resolver(controller, agents)
     if choice.agent is None:
         logger.warning(
@@ -202,12 +233,15 @@ def _invoke_and_judge(
     pass.
     """
     from ralph.pipeline._integration_diagnostic_proof import _check_operation_completion_proof
+    from ralph.workspace.context import WorkspaceContextError
 
     def _attempt() -> None:
         invoke(agent, prompt)
 
     try:
         workspace_changed = observe_workspace_change(controller, inspection_root, _attempt)
+    except WorkspaceContextError:
+        raise
     except Exception as exc:
         bench_resolver(controller, agent, exc)
         raise

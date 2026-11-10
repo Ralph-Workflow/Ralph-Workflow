@@ -23,6 +23,8 @@ ralph --check-config
 ralph --check-policy
 ```
 
+`ralph --check-config` validates every configuration, policy, and MCP layer in an aggregated pass, reporting every unreadable or malformed file in a single run rather than stopping at the first failure.
+
 Ralph Workflow uses layered configuration. Settings are resolved in this order, highest priority first:
 
 1. **CLI flags**
@@ -93,7 +95,7 @@ The workflow structure itself lives in `pipeline.toml`.
 
 1. Decide whether the change is **global** or **repo-local**.
 2. Edit the right TOML file.
-3. Run `ralph --check-config`.
+3. Run `ralph --check-config` (aggregates and reports all broken config, policy, or MCP files in one pass).
 4. If you changed workflow behavior, also run `ralph --check-policy`.
 5. Run `ralph --diagnose` before the next real unattended run.
 
@@ -111,6 +113,39 @@ The bundled defaults live in `ralph/policy/defaults/`. When in doubt, the files 
 - `mcp.toml` — MCP server config
 - `pipeline.toml` — workflow phases and routing
 - `artifacts.toml` — artifact contracts
+
+## Configuration resilience: fallback versus fail-loud
+
+Ralph Workflow distinguishes between optional configuration layers that safely degrade to built-in defaults and authoritative files that fail loudly on syntax or validation errors.
+
+### Resilient fallback files
+
+When an optional configuration file contains syntax errors, invalid UTF-8 bytes, schema validation issues, or cannot be read due to filesystem permissions, Ralph Workflow emits a deduplicated warning naming the file, error details (including line and column numbers when available), and remediation advice (`ralph --check-config`), then safely falls back to built-in defaults:
+
+- **Agent configurations**: user-global `~/.config/ralph-workflow-agents.toml` and project-local agent configurations (`.agent/agents.toml` or `[agents.*]` definitions).
+- **Policy TOML files**: pipeline configurations (`.agent/pipeline.toml`, `~/.config/ralph-workflow-pipeline.toml`), artifact schemas (`.agent/artifacts.toml`, `~/.config/ralph-workflow-artifacts.toml`), phase policy files, and other user policy TOMLs.
+- **MCP configurations**: global `~/.config/ralph-workflow-mcp.toml` and project-local `.agent/mcp.toml` (including the `[web_visit]` section).
+- **User portfolio TOML**: `docs/ralph-workflow-policy/portfolio.toml` and user project-policy portfolio settings.
+
+Fallback warnings are deduplicated per file content fingerprint (SHA-256) so running workflows do not flood logs while still alerting when an edited file introduces a new error.
+
+### Strict fail-loud files
+
+Authoritative files never fall back to defaults and fail immediately upon syntax or schema errors:
+
+- **`ralph-workflow.toml`**: The main configuration file across all scopes (global `~/.config/ralph-workflow.toml`, project-local `.agent/ralph-workflow.toml`, and worktree-propagated copies) remains strict. Any malformed TOML syntax or schema violation raises `ConfigTomlError` with structured What/Why/Fix diagnostics.
+- **Shipped bundled package data**: Default configuration templates shipped inside the package (`ralph/policy/defaults/mcp.toml`, bundled `artifacts.toml`, bundled `pipeline.toml`, and bundled `ralph-workflow.toml`) are internal code and distribution assets, not user configuration. Corruption in shipped package data indicates a packaging defect and fails loudly.
+- **Third-party tool configurations**: External configuration files such as `~/.codex/config.toml` belong to third-party tools rather than Ralph Workflow. Ralph Workflow does not silently replace corrupted third-party configurations with defaults; it fails loudly (`CodexConfigError`) to avoid executing with unintended providers or credentials.
+
+### Aggregated validation with `ralph --check-config`
+
+Validating configuration with `ralph --check-config` (and `ralph --diagnose`) operates in strict aggregation mode:
+
+```bash
+ralph --check-config
+```
+
+Instead of halting at the first broken file (fail-fast), `ralph --check-config` evaluates every configuration file across all layers—`ralph-workflow.toml`, agent definitions, policy TOMLs, artifact contracts, and global/local MCP definitions. It logs a warning for each unreadable or invalid file and reports an aggregated summary of every broken file in a single run before exiting non-zero. This allows operators to identify and resolve all configuration errors at once.
 
 ## Environment variables
 
@@ -281,6 +316,18 @@ The same recovery ownership protects a verified rebase stop whose
 required source corrections must declare their paths and pass fresh index,
 conflict, and parent verification before the normal Git checks run again.
 Existing unfinished edits are excluded from those corrections.
+
+When paused rebase conflict resolution or auto-integration cannot proceed because
+a configuration file is malformed (such as syntax errors in `.agent/ralph-workflow.toml`
+or workspace context), the resolver terminates with a non-charged `CONFIG_FAILURE`
+cause. This failure does not debit the agent's conflict-attempt budget or increment
+`merge_commit_repair_attempts`. Ralph Workflow enters a non-busy waiting state
+displaying the exact unreadable file and actionable remediation (`fix <path> then run ralph --check-config`).
+While waiting, Ralph Workflow monitors the failing file: once repaired on disk,
+the paused rebase is retried automatically without requiring a process restart.
+Automatic retries are bounded to execute at most once per distinct file
+fingerprint (SHA-256 hash of file contents), preventing tight retry loops or
+CPU spinning during active editing.
 
 Interrupted target reconciliation also retains partial resolver edits in the
 worktree that owns the target branch. Recovery resumes that operation before

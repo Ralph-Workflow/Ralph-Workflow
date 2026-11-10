@@ -40,12 +40,18 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution import (
     run_conflict_resolution_pipeline,
     run_rebase_conflict_resolution_pipeline,
 )
+from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+    ResolutionTerminationReason,
+)
+from ralph.pipeline.conflict_resolution.rebase_loop import active_rebase_resolution_session
+from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 from ralph.pipeline.conflict_resolution.session import resolution_chain_agents
-from ralph.workspace.context import workspace_context
+from ralph.workspace.context import WorkspaceContextError, workspace_context
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -229,7 +235,7 @@ def build_agent_rebase_stop_resolver(
         The resolver callable. It never raises.
     """
 
-    def _resolver(root: Path, target: str, stop: RebaseStop) -> bool:
+    def _resolver(root: Path, target: str, stop: RebaseStop) -> ResolutionOutcome | bool:
         if pipeline_deps is None or workspace_scope is None:
             missing = "pipeline_deps" if pipeline_deps is None else "workspace_scope"
             logger.warning(
@@ -278,6 +284,32 @@ def build_agent_rebase_stop_resolver(
                 display_context=display_context,
                 strategy_history=strategy_history,
             )
+        except WorkspaceContextError as exc:
+            session = active_rebase_resolution_session()
+            reason_text = f"fix {exc.file} then run ralph --check-config"
+            if session is not None:
+                session.charge_conflict_budget = False
+                session.terminal_reason = ResolutionTerminationReason.CONFIG_FAILURE
+                session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
+                session.exhaustion_reason = reason_text
+            logger.warning(
+                "auto_integrate: target worktree configuration error: {}; {}",
+                exc,
+                reason_text,
+            )
+            emit_integration_warn_line(
+                display,
+                f"rebase conflict resolution unavailable: {reason_text}",
+            )
+            return ResolutionOutcome(
+                succeeded=False,
+                reason=cast("ResolutionTerminationReason | None", reason_text),
+                duration_seconds=0.0,
+                last_activity_kind=None,
+                last_activity_at=None,
+                unresolved_paths=(),
+                failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
+            )
         except Exception as exc:
             logger.warning(
                 "auto_integrate: could not use the target worktree's own "
@@ -303,7 +335,7 @@ def _resolve_within_target_context(
     display: ParallelDisplay,
     display_context: DisplayContext | None,
     strategy_history: tuple[str, ...],
-) -> bool:
+) -> ResolutionOutcome | bool:
     """Resolve one stop under the TARGET worktree's config, policy and registry.
 
     Split out of the resolver closure so entering ``workspace_context``

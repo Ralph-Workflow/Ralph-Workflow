@@ -25,6 +25,11 @@ from pydantic import TypeAdapter, ValidationError
 
 import ralph.policy
 from ralph.config._developer_override import apply_developer_override
+from ralph.config._toml_fallback import (
+    _emit_fallback_warning,
+    load_optional_toml,
+    validate_or_default,
+)
 from ralph.config.config_error_messages import warn_unknown_top_level_fields
 from ralph.policy.conflict_chain_warnings import (
     warn_if_conflict_resolution_chain_has_no_fallback,
@@ -57,27 +62,43 @@ __all__ = [
 ]
 
 
-def _load_toml(path: Path) -> dict[str, object]:
-    """Load a TOML file, returning empty dict if absent.
+def _kind_for_policy_path(path: Path) -> str:
+    name = path.name
+    if "pipeline" in name:
+        return "pipeline"
+    if "agents" in name:
+        return "agents"
+    if "artifacts" in name:
+        return "artifacts"
+    if "portfolio" in name:
+        return "portfolio"
+    return "policy"
+
+
+def _load_toml(
+    path: Path,
+    *,
+    kind: str | None = None,
+    strict: bool = False,
+) -> dict[str, object]:
+    """Load a TOML file, returning empty dict if absent or on fallback.
 
     Args:
         path: Path to the TOML file.
+        kind: Optional policy kind for warning messages. If None, derived from path.
+        strict: If True, raise PolicyValidationError on parse or read errors.
 
     Returns:
-        Parsed TOML content or empty dict if file doesn't exist.
+        Parsed TOML content or empty dict if file doesn't exist or on fallback.
 
     Raises:
-        PolicyValidationError: If TOML parsing fails OR the file cannot be read.
+        PolicyValidationError: If TOML parsing fails OR the file cannot be read
+            and strict=True.
     """
-    if not path.exists():
-        return {}
-
+    resolved_kind = kind if kind is not None else _kind_for_policy_path(path)
     try:
-        with path.open("rb") as fh:
-            data: dict[str, object] = tomllib.load(fh)
-        _warn_unknown_policy_top_level_fields(data, path)
-        return data
-    except _TOML_DECODE_ERROR as exc:
+        data = load_optional_toml(path, kind=resolved_kind, strict=strict)
+    except (ValueError, UnicodeDecodeError) as exc:
         raise PolicyValidationError(
             (
                 f"Could not parse TOML at {path}: {exc}.\n"
@@ -100,6 +121,10 @@ def _load_toml(path: Path) -> dict[str, object]:
             ),
             source=str(path.name),
         ) from exc
+
+    if data:
+        _warn_unknown_policy_top_level_fields(data, path)
+    return data
 
 
 def _warn_unknown_policy_top_level_fields(data: dict[str, object], path: Path) -> None:
@@ -582,6 +607,7 @@ def _resolve_pipeline_data(
     default_policy_dir: Path,
     pipeline_path: Path,
     global_pipeline_path: Path | None,
+    strict_optional_files: bool = False,
 ) -> tuple[dict[str, object], bool]:
     """Resolve merged pipeline data and whether cycle_timebox was explicit.
 
@@ -589,16 +615,49 @@ def _resolve_pipeline_data(
     override supplies either timebox block; otherwise inherited defaults are
     disabled when they do not fit a custom graph.
     """
-    default_pipeline_data = _load_toml(default_policy_dir / "pipeline.toml")
-    local_pipeline_data = _load_toml(pipeline_path)
+    default_pipeline_data = _load_toml(
+        default_policy_dir / "pipeline.toml", kind="pipeline", strict=True
+    )
+    local_pipeline_data = _load_toml(pipeline_path, kind="pipeline", strict=strict_optional_files)
     if global_pipeline_path is None:
         return local_pipeline_data or default_pipeline_data, _declares_timebox(local_pipeline_data)
 
-    global_pipeline_data = _load_toml(global_pipeline_path)
-    if _is_phase_authored_pipeline_data(global_pipeline_data):
-        _reject_phase_authored_pipeline_override(scope="User-global", path=global_pipeline_path)
-    if _is_phase_authored_pipeline_data(local_pipeline_data):
-        _reject_phase_authored_pipeline_override(scope="Workspace-local", path=pipeline_path)
+    global_pipeline_data = _load_toml(
+        global_pipeline_path, kind="pipeline", strict=strict_optional_files
+    )
+    if global_pipeline_data and _is_phase_authored_pipeline_data(global_pipeline_data):
+        if strict_optional_files:
+            _reject_phase_authored_pipeline_override(scope="User-global", path=global_pipeline_path)
+        else:
+            _emit_fallback_warning(
+                global_pipeline_path,
+                PolicyValidationError(
+                    f"User-global pipeline.toml at '{global_pipeline_path}' uses the obsolete "
+                    "phase-authored schema and must not be merged with the bundled "
+                    "block-authored default pipeline. Remove the outdated file so "
+                    "Ralph Workflow falls back to the current default pipeline template.",
+                    source="pipeline",
+                ),
+                kind="pipeline",
+            )
+            global_pipeline_data = {}
+
+    if local_pipeline_data and _is_phase_authored_pipeline_data(local_pipeline_data):
+        if strict_optional_files:
+            _reject_phase_authored_pipeline_override(scope="Workspace-local", path=pipeline_path)
+        else:
+            _emit_fallback_warning(
+                pipeline_path,
+                PolicyValidationError(
+                    f"Workspace-local pipeline.toml at '{pipeline_path}' uses the obsolete "
+                    "phase-authored schema and must not be merged with the bundled "
+                    "block-authored default pipeline. Remove the outdated file so "
+                    "Ralph Workflow falls back to the current default pipeline template.",
+                    source="pipeline",
+                ),
+                kind="pipeline",
+            )
+            local_pipeline_data = {}
 
     pipeline_data = _merge_pipeline_defaults(default_pipeline_data, global_pipeline_data)
     if local_pipeline_data:
@@ -728,7 +787,7 @@ _DEFAULT_AGENTS_POLICY_CACHE: list[
 def _cached_default_agents_policy() -> AgentsPolicy:
     if not _DEFAULT_AGENTS_POLICY_CACHE:
         _DEFAULT_AGENTS_POLICY_CACHE.append(
-            _validate_agents(_load_toml(default_dir() / "agents.toml"))
+            _validate_agents(_load_toml(default_dir() / "agents.toml", kind="agents", strict=True))
         )
     return _DEFAULT_AGENTS_POLICY_CACHE[0]
 
@@ -816,34 +875,60 @@ def _merge_agents_policy_onto_defaults(user_policy: AgentsPolicy) -> AgentsPolic
 def _load_agents_policy_from_path(
     agents_path: Path,
     config: UnifiedConfig | None = None,
+    *,
+    strict_optional_files: bool = False,
 ) -> AgentsPolicy:
     """Load the agents policy, then apply any ``--developer-agent`` pin from ``config``."""
+    default_policy = _cached_default_agents_policy()
     if config is not None and _config_defines_agent_policy(config):
         policy = _merge_agents_policy_onto_defaults(build_agents_policy_from_config(config))
-    elif agents_data := (_load_toml(agents_path) if agents_path.exists() else {}):
-        policy = _merge_agents_policy_onto_defaults(_validate_agents(agents_data))
+    elif agents_path.exists():
+        agents_data = _load_toml(agents_path, kind="agents", strict=strict_optional_files)
+        if agents_data:
+            policy = validate_or_default(
+                agents_path,
+                agents_data,
+                lambda d: _merge_agents_policy_onto_defaults(_validate_agents(d)),
+                default_policy,
+                kind="agents",
+                strict=strict_optional_files,
+            )
+        else:
+            policy = default_policy
     else:
-        policy = _cached_default_agents_policy()
+        policy = default_policy
     return apply_developer_override(policy, config)
 
 
-def load_agents_policy(config_dir: Path, config: UnifiedConfig | None = None) -> AgentsPolicy:
+def load_agents_policy(
+    config_dir: Path,
+    config: UnifiedConfig | None = None,
+    *,
+    strict_optional_files: bool = False,
+) -> AgentsPolicy:
     """Load only the agents policy, using config synthesis when available.
 
     This is for call sites that need drain/chain declarations without requiring a
     full pipeline/artifact bundle.
     """
-    return _load_agents_policy_from_path(config_dir / "agents.toml", config=config)
+    return _load_agents_policy_from_path(
+        config_dir / "agents.toml",
+        config=config,
+        strict_optional_files=strict_optional_files,
+    )
 
 
 def load_agents_policy_for_workspace_scope(
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig | None = None,
+    *,
+    strict_optional_files: bool = False,
 ) -> AgentsPolicy:
     """Load agents policy for a workspace with worktree-aware inheritance."""
     return _load_agents_policy_from_path(
         workspace_scope.resolve_agent_file("agents.toml"),
         config=config,
+        strict_optional_files=strict_optional_files,
     )
 
 
@@ -854,6 +939,7 @@ def _load_policy_from_paths(
     artifacts_path: Path,
     config: UnifiedConfig | None = None,
     global_policy_paths: tuple[Path | None, Path | None] | None = None,
+    strict_optional_files: bool = False,
 ) -> PolicyBundle:
     """Load a policy bundle from explicit file paths."""
     global_pipeline_path, global_artifacts_path = (
@@ -864,24 +950,60 @@ def _load_policy_from_paths(
         default_policy_dir=default_policy_dir,
         pipeline_path=pipeline_path,
         global_pipeline_path=global_pipeline_path,
+        strict_optional_files=strict_optional_files,
     )
 
-    default_artifacts_data = _load_toml(default_policy_dir / "artifacts.toml")
-    local_artifacts_data = _load_toml(artifacts_path)
+    default_pipeline_data = _load_toml(
+        default_policy_dir / "pipeline.toml", kind="pipeline", strict=True
+    )
+    default_pipeline_policy = _validate_pipeline(default_pipeline_data, timeboxes_explicit=False)
+
+    default_artifacts_data = _load_toml(
+        default_policy_dir / "artifacts.toml", kind="artifacts", strict=True
+    )
+    default_artifacts_policy = _validate_artifacts(default_artifacts_data)
+
+    local_artifacts_data = _load_toml(
+        artifacts_path, kind="artifacts", strict=strict_optional_files
+    )
     if global_artifacts_path is None:
+        global_artifacts_data = {}
         if local_artifacts_data:
             artifacts_data = _merge_mapping_defaults(default_artifacts_data, local_artifacts_data)
         else:
             artifacts_data = default_artifacts_data
     else:
-        global_artifacts_data = _load_toml(global_artifacts_path)
+        global_artifacts_data = _load_toml(
+            global_artifacts_path, kind="artifacts", strict=strict_optional_files
+        )
         artifacts_data = _merge_mapping_defaults(default_artifacts_data, global_artifacts_data)
         if local_artifacts_data:
             artifacts_data = _merge_mapping_defaults(artifacts_data, local_artifacts_data)
 
-    agents_policy = _load_agents_policy_from_path(agents_path, config=config)
-    pipeline_policy = _validate_pipeline(pipeline_data, timeboxes_explicit=timeboxes_explicit)
-    artifacts_policy = _validate_artifacts(artifacts_data)
+    agents_policy = _load_agents_policy_from_path(
+        agents_path, config=config, strict_optional_files=strict_optional_files
+    )
+
+    def _validate_pipeline_wrapper(data: dict[str, object]) -> PipelinePolicy:
+        return _validate_pipeline(data, timeboxes_explicit=timeboxes_explicit)
+
+    pipeline_policy = validate_or_default(
+        pipeline_path,
+        pipeline_data,
+        _validate_pipeline_wrapper,
+        default_pipeline_policy,
+        kind="pipeline",
+        strict=strict_optional_files,
+    )
+
+    artifacts_policy = validate_or_default(
+        artifacts_path,
+        artifacts_data,
+        _validate_artifacts,
+        default_artifacts_policy,
+        kind="artifacts",
+        strict=strict_optional_files,
+    )
 
     try:
         bundle = PolicyBundle(
@@ -918,22 +1040,31 @@ def _load_policy_from_paths(
     return bundle
 
 
-def load_policy(config_dir: Path, config: UnifiedConfig | None = None) -> PolicyBundle:
+def load_policy(
+    config_dir: Path,
+    config: UnifiedConfig | None = None,
+    *,
+    strict_optional_files: bool = False,
+) -> PolicyBundle:
     """Load all three policy TOML files and return a validated PolicyBundle.
 
     Files are loaded from ``config_dir`` (the .agent/ directory). Any absent
-    file is silently replaced with the bundled default (no global layering).
+    or corrupt file falls back to the bundled default (no global layering).
     """
     return _load_policy_from_paths(
         agents_path=config_dir / "agents.toml",
         pipeline_path=config_dir / "pipeline.toml",
         artifacts_path=config_dir / "artifacts.toml",
         config=config,
+        strict_optional_files=strict_optional_files,
     )
 
 
 def _load_layered_policy(
-    resolve: Callable[[str], Path], config: UnifiedConfig | None
+    resolve: Callable[[str], Path],
+    config: UnifiedConfig | None,
+    *,
+    strict_optional_files: bool = False,
 ) -> PolicyBundle:
     return _load_policy_from_paths(
         agents_path=resolve("agents.toml"),
@@ -944,22 +1075,36 @@ def _load_layered_policy(
             _global_policy_path("pipeline.toml"),
             _global_policy_path("artifacts.toml"),
         ),
+        strict_optional_files=strict_optional_files,
     )
 
 
 def load_policy_for_config_dir(
-    config_dir: Path, config: UnifiedConfig | None = None
+    config_dir: Path,
+    config: UnifiedConfig | None = None,
+    *,
+    strict_optional_files: bool = False,
 ) -> PolicyBundle:
     """Load ``config_dir``'s policy layered like :func:`load_policy_for_workspace_scope`."""
-    return _load_layered_policy(lambda name: config_dir / name, config)
+    return _load_layered_policy(
+        lambda name: config_dir / name,
+        config,
+        strict_optional_files=strict_optional_files,
+    )
 
 
 def load_policy_for_workspace_scope(
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig | None = None,
+    *,
+    strict_optional_files: bool = False,
 ) -> PolicyBundle:
     """Load policy for a workspace with worktree-aware per-file inheritance."""
-    return _load_layered_policy(workspace_scope.resolve_agent_file, config)
+    return _load_layered_policy(
+        workspace_scope.resolve_agent_file,
+        config,
+        strict_optional_files=strict_optional_files,
+    )
 
 
 def default_dir() -> Path:
@@ -975,19 +1120,38 @@ def _global_policy_path(filename: str) -> Path:
     return base_dir / preferred_name
 
 
-def load_policy_or_die(config_dir: Path, config: UnifiedConfig | None = None) -> PolicyBundle:
+def load_policy_or_die(
+    config_dir: Path,
+    config: UnifiedConfig | None = None,
+    *,
+    strict_optional_files: bool = False,
+) -> PolicyBundle:
     """Load policy, exiting with a user-friendly message on failure.
 
     Args:
         config_dir: Path to the .agent/ configuration directory.
+        config: Optional unified config.
+        strict_optional_files: If True, re-raise errors instead of falling back.
 
     Returns:
         Validated PolicyBundle.
     """
     try:
-        if config is None:
-            return load_policy(config_dir)
-        return load_policy(config_dir, config=config)
+        try:
+            if config is None:
+                return load_policy(
+                    config_dir,
+                    strict_optional_files=strict_optional_files,
+                )
+            return load_policy(
+                config_dir,
+                config=config,
+                strict_optional_files=strict_optional_files,
+            )
+        except TypeError:
+            if config is None:
+                return load_policy(config_dir)
+            return load_policy(config_dir, config=config)
     except PolicyValidationError as exc:
         logger.error("Policy validation failed: {}", exc.message)
         if exc.source:

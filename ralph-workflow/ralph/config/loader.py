@@ -31,6 +31,7 @@ from pydantic import ValidationError
 
 from ralph.config._general_workflow_flags import GeneralWorkflowFlags
 from ralph.config._source_migrations import remove_retired_agent_can_commit_assignments
+from ralph.config._toml_fallback import load_optional_toml, validate_or_default
 from ralph.config.agent_config import AgentConfig
 from ralph.config.config_error_messages import format_config_validation_error
 from ralph.config.conflict_resolution_config import ConflictResolutionConfig
@@ -122,8 +123,9 @@ def load_toml(path: Path) -> dict[str, object]:
     try:
         source = path.read_text(encoding="utf-8")
         data: dict[str, object] = tomllib.loads(source)
-    except cast(
-        "type[ValueError]", tomllib.TOMLDecodeError
+    except (
+        cast("type[ValueError]", tomllib.TOMLDecodeError),
+        UnicodeDecodeError,
     ) as exc:  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         raise ConfigTomlError(
             f"What failed: Ralph could not read {path}: {exc}.\n"
@@ -465,11 +467,81 @@ def _apply_cli_overrides(
     return deep_merge(data, cli_overrides) if cli_overrides else data
 
 
+def _validate_agents_layer(data: dict[str, object]) -> dict[str, object]:
+    """Validate that the agents configuration layer conforms to UnifiedConfig schema."""
+    if not data:
+        return data
+    cleaned = dict(data)
+    _drop_cli_only_fields(cleaned)
+    UnifiedConfig.model_validate(cleaned)
+    return data
+
+
+def _load_agents_data(agents_path: Path, *, strict: bool) -> dict[str, object]:
+    """Load, optionally migrate, and validate the agents configuration layer."""
+    agents_raw = load_optional_toml(
+        agents_path,
+        kind="agents",
+        strict=strict,
+    )
+    if agents_path.exists() and agents_raw:
+        try:
+            source = agents_path.read_text(encoding="utf-8")
+            migrated_source = remove_retired_agent_can_commit_assignments(source)
+            if migrated_source != source:
+                from ralph.config.agent_detection import (
+                    _commit_deterministic_config_write,
+                )
+
+                _commit_deterministic_config_write(
+                    agents_path,
+                    subject="chore(config): migrate retired agent_can_commit assignments",
+                    write_fn=lambda: atomic_write_text_if_changed(
+                        DEFAULT_FILE_BACKEND,
+                        agents_path,
+                        migrated_source,
+                        tmp_path=agents_path.with_name(f".{agents_path.name}.migration"),
+                        encoding="utf-8",
+                        sync_directory=True,
+                    ),
+                )
+                agents_raw = tomllib.loads(migrated_source)
+        except (OSError, UnicodeDecodeError):
+            pass
+    return validate_or_default(
+        agents_path,
+        agents_raw,
+        _validate_agents_layer,
+        default={},
+        kind="agents",
+        strict=strict,
+    )
+
+
+def _clean_general_layer(layer_data: dict[str, object]) -> None:
+    """Clean retired and reserved keys from the [general] table if present."""
+    general_layer = layer_data.get("general")
+    if isinstance(general_layer, dict):
+        _warn_and_remove_retired_auto_integrate_keys(general_layer)
+        _warn_reserved_provider_fallback(general_layer)
+
+
+def _load_agents_layer(agents_path: Path, *, strict: bool) -> dict[str, object]:
+    """Load agents data, failing fast with SystemExit on strict validation errors."""
+    try:
+        return _load_agents_data(agents_path, strict=strict)
+    except ValidationError as exc:
+        logger.error(format_config_validation_error(exc, agents_path))
+        raise SystemExit(1) from exc
+
+
 def load_config(
     config_path: Path | None = None,
     cli_overrides: dict[str, object] | None = None,
     workspace_scope: WorkspaceScope | None = None,
     unknown_field_warning: Callable[[str], None] | None = None,
+    *,
+    strict_optional_files: bool = False,
 ) -> UnifiedConfig:
     """Build merged UnifiedConfig from all layers.
 
@@ -483,6 +555,9 @@ def load_config(
     Args:
         config_path: Optional path to local config file. Defaults to .agent/ralph-workflow.toml.
         cli_overrides: Optional dictionary of CLI flag overrides.
+        workspace_scope: Optional workspace scope.
+        unknown_field_warning: Optional callback for unknown-field warnings.
+        strict_optional_files: When True, re-raise errors loading optional config files.
 
     Returns:
         Validated UnifiedConfig instance.
@@ -491,7 +566,7 @@ def load_config(
         SystemExit: If configuration validation fails.
     """
     agents_path = _global_agents_config_path()
-    agents_data = load_toml(agents_path)
+    agents_data = _load_agents_layer(agents_path, strict=strict_optional_files)
     global_data = load_toml(_global_config_path())
     # Track each propagated path's data separately so warn_unknown_fields
     # can name the exact source file when a typo is found in an inherited
@@ -519,17 +594,11 @@ def load_config(
     global_data = _convert_legacy_config(global_data)
     local_data = _convert_legacy_config(local_data)
     for layer_data in (global_data, local_data):
-        general_layer = layer_data.get("general")
-        if isinstance(general_layer, dict):
-            _warn_and_remove_retired_auto_integrate_keys(general_layer)
-            _warn_reserved_provider_fallback(general_layer)
+        _clean_general_layer(layer_data)
     propagated_data = {}
     for index, (propagated_path, propagated_path_data) in enumerate(propagated_entries):
         converted_entry = _convert_legacy_config(propagated_path_data)
-        general_layer = converted_entry.get("general")
-        if isinstance(general_layer, dict):
-            _warn_and_remove_retired_auto_integrate_keys(general_layer)
-            _warn_reserved_provider_fallback(general_layer)
+        _clean_general_layer(converted_entry)
         propagated_entries[index] = (propagated_path, converted_entry)
         propagated_data = deep_merge(propagated_data, converted_entry)
     warning_layers = [

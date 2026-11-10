@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.agents.invoke import InvokeOptions, policy_from_options
-from ralph.config.loader import GLOBAL_CONFIG_PATH, load_config
+from ralph.config.loader import (
+    GLOBAL_AGENTS_CONFIG_PATH,
+    GLOBAL_CONFIG_PATH,
+    load_config,
+)
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -39,6 +43,10 @@ def test_load_config_uses_main_worktree_as_propagation_layer(
     monkeypatch.chdir(child_worktree)
     monkeypatch.setattr(
         "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
+    )
+    monkeypatch.setattr(
+        "ralph.config.loader.GLOBAL_AGENTS_CONFIG_PATH",
+        tmp_path / GLOBAL_AGENTS_CONFIG_PATH.name,
     )
 
     config = load_config(
@@ -75,6 +83,10 @@ def test_load_config_prefers_child_worktree_local_override(
     monkeypatch.chdir(child_worktree)
     monkeypatch.setattr(
         "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
+    )
+    monkeypatch.setattr(
+        "ralph.config.loader.GLOBAL_AGENTS_CONFIG_PATH",
+        tmp_path / GLOBAL_AGENTS_CONFIG_PATH.name,
     )
 
     config = load_config(

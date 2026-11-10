@@ -9,12 +9,14 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._integration_diagnostic import _bump_attempt
 from ralph.pipeline._integration_diagnostic_handoff import observe_workspace_change
 from ralph.pipeline.auto_integrate_record import (
+    BUMP_DIAGNOSTIC_ATTEMPT,
     RESUME_REPAIR,
     IntegrationRecord,
     write_record,
@@ -25,6 +27,7 @@ from ralph.pipeline.conflict_resolution.resolver_health import (
     clear_resolver,
 )
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
+from ralph.workspace.context import WorkspaceContextError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -57,42 +60,62 @@ def repair_pending_merge(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> bool:
     """Hold recovery ownership while a supervised agent repairs the commit blocker."""
+    from ralph.git.resolution_failure_cause import ResolutionFailureCause
     from ralph.pipeline.auto_integrate_record import bind_integration_record_root, read_record
     from ralph.pipeline.auto_integrate_transaction import integration_transaction
-    from ralph.workspace.context import workspace_context
+    from ralph.workspace.context import WorkspaceContextError, workspace_context
     from ralph.workspace.scope import WorkspaceScope
 
     record_root = workspace_scope.root
-    with ExitStack() as stack:
-        root_lease = stack.enter_context(integration_transaction(record_root))
-        if not root_lease.acquired:
-            return False
-        record = read_record(record_root)
-        if record is None:
-            return False
-        if record.operation_kind == "target_reconcile":
-            if record.owning_worktree is None:
+    try:
+        with ExitStack() as stack:
+            root_lease = stack.enter_context(integration_transaction(record_root))
+            if not root_lease.acquired:
                 return False
-            owner = Path(record.owning_worktree)
-            if owner.resolve() != record_root.resolve():
-                owner_lease = stack.enter_context(integration_transaction(owner))
-                if not owner_lease.acquired or read_record(owner) is not None:
+            record = read_record(record_root)
+            if record is None:
+                return False
+            if record.operation_kind == "target_reconcile":
+                if record.owning_worktree is None:
                     return False
-                stack.enter_context(bind_integration_record_root(owner, record_root))
-                workspace_scope = WorkspaceScope(owner)
-                stack.enter_context(workspace_context(owner))
-        return _repair_owned_merge(
-            workspace_scope=workspace_scope,
-            config=config,
-            pipeline_deps=pipeline_deps,
-            policy_bundle=policy_bundle,
-            display=display,
-            display_context=display_context,
-            agents=agents,
-            failure=failure,
-            controller=controller,
-            backend=backend,
+                owner = Path(record.owning_worktree)
+                if owner.resolve() != record_root.resolve():
+                    owner_lease = stack.enter_context(integration_transaction(owner))
+                    if not owner_lease.acquired or read_record(owner) is not None:
+                        return False
+                    stack.enter_context(bind_integration_record_root(owner, record_root))
+                    workspace_scope = WorkspaceScope(owner)
+                    stack.enter_context(workspace_context(owner))
+            return _repair_owned_merge(
+                workspace_scope=workspace_scope,
+                config=config,
+                pipeline_deps=pipeline_deps,
+                policy_bundle=policy_bundle,
+                display=display,
+                display_context=display_context,
+                agents=agents,
+                failure=failure,
+                controller=controller,
+                backend=backend,
+            )
+    except WorkspaceContextError as exc:
+        reason_text = exc.fix
+        logger.warning(
+            "Pending integration retained; configuration error: {}; {}",
+            exc,
+            reason_text,
         )
+        retained = read_record(record_root)
+        if retained is not None:
+            write_record(
+                record_root,
+                retained.with_transition(
+                    BUMP_DIAGNOSTIC_ATTEMPT,
+                    repair_last_error=reason_text,
+                ).model_copy(update={"last_failure_cause": ResolutionFailureCause.CONFIG_FAILURE}),
+                backend=backend,
+            )
+        return False
 
 
 def _repair_owned_merge(
@@ -168,6 +191,24 @@ def _repair_owned_merge(
                 "repair changed commit hook or signing controls; restore checks before retry"
             )
         return repaired and accept_repair_edits(root, record, before, backend=backend)
+    except WorkspaceContextError as exc:
+        reason_text = exc.fix
+        logger.warning(
+            "Pending integration retained; configuration error: {}; {}",
+            exc,
+            reason_text,
+        )
+        retained = read_record(root)
+        if retained is not None:
+            write_record(
+                root,
+                retained.with_transition(
+                    BUMP_DIAGNOSTIC_ATTEMPT,
+                    repair_last_error=reason_text,
+                ).model_copy(update={"last_failure_cause": ResolutionFailureCause.CONFIG_FAILURE}),
+                backend=backend,
+            )
+        return False
     except Exception as exc:
         logger.critical("Pending integration retained; source repair refused: {}", exc)
         retained = read_record(root)
@@ -219,8 +260,22 @@ def handoff_pending_merge_repair(
     attempt is spent: the integration stays pending with its progress
     retained, and is retried when an agent is eligible again.
     """
+    from ralph.pipeline._integration_diagnostic_handoff import check_target_worktree_context
+
     if not agents:
         logger.critical("Pending integration retained: no installed repair agent")
+        return False
+    failure_reason = check_target_worktree_context(root)
+    if failure_reason is not None:
+        logger.warning(
+            "Pending integration retained; configuration error: {}",
+            failure_reason,
+        )
+        target_record = record.with_transition(
+            BUMP_DIAGNOSTIC_ATTEMPT,
+            repair_last_error=failure_reason,
+        ).model_copy(update={"last_failure_cause": ResolutionFailureCause.CONFIG_FAILURE})
+        write_record(root, target_record, backend=backend)
         return False
     choice = choose_resolver(controller, agents)
     if choice.agent is None:

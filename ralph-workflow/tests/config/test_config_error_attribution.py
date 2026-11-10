@@ -16,7 +16,7 @@ def _validation_message(local_config: Path) -> str:
     sink_id = logger.add(records.append, level="ERROR", format="{message}")
     try:
         with pytest.raises(SystemExit):
-            load_config(config_path=local_config)
+            load_config(config_path=local_config, strict_optional_files=True)
     finally:
         logger.remove(sink_id)
     return "\n".join(records)

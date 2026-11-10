@@ -2170,9 +2170,25 @@ def handle_check_config(
     if not check_config:
         return None
     display = _resolve_display_from_legacy(console=console, display_context=display_context)
+    config_path = _config_path(config)
+    from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
+
+    workspace_scope: WorkspaceScope | None = None
     try:
-        config_path = _config_path(config)
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
+    except Exception:
+        workspace_scope = None
+
+    from ralph.config.bootstrap import collect_unreadable_config_files
+
+    unreadable_files = collect_unreadable_config_files(
+        config_path=config_path,
+        workspace_scope=workspace_scope,
+        display=display,
+    )
+
+    validation_errors: list[str] = []
+    try:
         config_value = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
         registry = _load_agent_registry_factory().from_config(config_value)
         if config_path is not None:
@@ -2183,11 +2199,19 @@ def handle_check_config(
             bundle = load_policy_for_workspace_scope(workspace_scope, config=config_value)
         validate_agent_chains_satisfiable(bundle, registry)
         validate_chain_agents_on_path(bundle.agents)
-        display.emit_status("Configuration is valid")
-        return 0
     except Exception as e:
-        logger.error("Configuration is invalid: {}", e)
+        validation_errors.append(str(e))
+
+    if unreadable_files or validation_errors:
+        messages: list[str] = [f"{u.path}: {u.error}" for u in unreadable_files]
+        messages.extend(validation_errors)
+        err_msg = "Configuration is invalid:\n" + "\n".join(f"  - {m}" for m in messages)
+        logger.error("{}", err_msg)
+        display.emit_warning(err_msg)
         return 1
+
+    display.emit_status("Configuration is valid")
+    return 0
 
 
 if __name__ == "__main__":

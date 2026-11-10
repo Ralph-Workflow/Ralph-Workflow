@@ -31,7 +31,7 @@ def test_development_timebox_in_agents_toml_names_its_correct_home(tmp_path: Pat
     )
 
     with pytest.raises(PolicyValidationError, match="development_timebox.*pipeline\\.toml"):
-        load_policy(tmp_path)
+        load_policy(tmp_path, strict_optional_files=True)
 
 
 def test_unknown_agents_toml_field_warns_and_is_rejected(tmp_path: Path) -> None:
@@ -42,7 +42,7 @@ def test_unknown_agents_toml_field_warns_and_is_rejected(tmp_path: Path) -> None
     sink_id = logger.add(records.append, level="WARNING", format="{message}")
     try:
         with pytest.raises(PolicyValidationError, match="unexpected_setting"):
-            load_policy(tmp_path)
+            load_policy(tmp_path, strict_optional_files=True)
     finally:
         logger.remove(sink_id)
 

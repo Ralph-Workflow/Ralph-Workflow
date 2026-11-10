@@ -33,6 +33,7 @@ from ralph.recovery.failure_category import FailureCategory
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from pathlib import Path
 
     from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
     from ralph.recovery.controller import RecoveryController
@@ -53,7 +54,12 @@ class ResolverChoice:
     wait_ms: int
 
 
-def choose_resolver(controller: RecoveryController, candidates: Sequence[str]) -> ResolverChoice:
+def choose_resolver(
+    controller: RecoveryController,
+    candidates: Sequence[str],
+    *,
+    target_root: Path | None = None,
+) -> ResolverChoice:
     """Return the highest-priority candidate that is not cooling down.
 
     When every candidate is benched, ``agent`` is ``None`` and ``wait_ms`` is
@@ -62,6 +68,12 @@ def choose_resolver(controller: RecoveryController, candidates: Sequence[str]) -
     """
     if not candidates:
         return ResolverChoice(agent=None, wait_ms=0)
+    if target_root is not None:
+        from ralph.pipeline._integration_diagnostic_handoff import check_target_worktree_context
+
+        failure_reason = check_target_worktree_context(target_root)
+        if failure_reason is not None:
+            return ResolverChoice(agent=None, wait_ms=0)
     selection = controller.preferred_agent_index(PHASE_RESOLUTION, candidates)
     if selection.agent is not None:
         return ResolverChoice(agent=selection.agent, wait_ms=0)

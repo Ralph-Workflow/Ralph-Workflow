@@ -6,23 +6,28 @@ Merge order (lowest → highest priority):
                         (default: ~/.config/ralph-workflow-mcp.toml)
   3. Project-local    - .agent/mcp.toml  (resolved via WorkspaceScope)
 
-Unlike the main config loader, TOML parse errors here are fail-fast: any
-malformed file triggers a typed exit rather than a silent empty-dict fallback.
+Bundled default fails loudly on any error (packaging defect).
+User-global and project-local files fall back to built-in defaults on syntax,
+encoding, permission, or schema validation errors (including schema-invalid
+[web_visit]), emitting deduplicated warnings. Strict mode re-raises errors.
 """
 
 from __future__ import annotations
 
-import tomllib
+import copy
 from os import getenv
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 from pydantic import ValidationError
 
+from ralph.config._toml_fallback import load_optional_toml, validate_or_default
 from ralph.config.config_error_messages import warn_unknown_top_level_fields
 from ralph.config.loader import deep_merge as _deep_merge
 from ralph.config.mcp_models import McpConfig
+from ralph.config.web_service_configs import WebVisitConfig
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.pydantic_validation_errors import format_validation_error_messages
 
 if TYPE_CHECKING:
@@ -30,9 +35,6 @@ if TYPE_CHECKING:
 
 _GLOBAL_MCP_FILENAME = "ralph-workflow-mcp.toml"
 _LOCAL_MCP_FILENAME = "mcp.toml"
-_TOML_DECODE_ERROR = cast(
-    "type[ValueError]", tomllib.TOMLDecodeError
-)  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
 _MCP_TOP_LEVEL_FIELDS = frozenset({"mcp_servers", "web_search", "web_visit", "media"})
 
 
@@ -68,25 +70,80 @@ def local_mcp_config_path(workspace_scope: WorkspaceScope) -> Path:
     return workspace_scope.local_config_path.parent / _LOCAL_MCP_FILENAME
 
 
-def _load_mcp_toml(path: Path) -> dict[str, object]:
-    if not path.exists():
-        logger.trace("MCP config not found, skipping: {}", path)
-        return {}
-    logger.trace("Loading MCP config from {}", path)
-    with path.open("rb") as fh:
+def _raise_mcp_validation_error(exc: ValidationError, path: Path) -> None:
+    detail_lines = format_validation_error_messages(exc)
+    detail_block = "\n".join(detail_lines) if detail_lines else "(no field detail available)"
+    message = (
+        "MCP config validation failed; the values below do not match the MCP config schema.\n"
+        "WHY: a malformed MCP config means Ralph cannot start the servers / web-search "
+        "backends you asked for, so it stops before launching anything.\n"
+        f"FIX: fix the field-level errors in {path} (or "
+        f"{global_mcp_config_path()} / {bundled_default_mcp_config_path()}, depending on "
+        "where the bad value came from), then re-run `ralph --check-config`.\n"
+        f"DETAILS:\n{detail_block}"
+    )
+    logger.error(message)
+    raise McpConfigError(message) from exc
+
+
+def _load_mcp_toml(
+    path: Path,
+    *,
+    strict: bool = False,
+    is_bundled: bool = False,
+) -> dict[str, object]:
+    path_obj = Path(path)
+    if is_bundled and not DEFAULT_FILE_BACKEND.exists(path_obj):
+        message = (
+            f"Bundled default MCP config not found at {path_obj}.\n"
+            "WHY: bundled package data is required for Ralph to operate.\n"
+            "FIX: re-install ralph-workflow."
+        )
+        logger.error(message)
+        raise McpConfigError(message)
+    try:
+        return load_optional_toml(path_obj, kind="mcp", strict=strict)
+    except Exception as exc:
+        message = (
+            f"Could not parse MCP config at {path_obj}: {exc}.\n"
+            "WHY: settings in a malformed TOML file are not safe to use, "
+            "so Ralph refuses to guess what you meant and exits instead.\n"
+            f"FIX: correct the TOML syntax in {path_obj}, then re-run "
+            "`ralph --check-config`."
+        )
+        logger.error(message)
+        raise McpConfigError(message) from exc
+
+
+def _validate_web_visit_section(
+    path: Path,
+    layer_data: dict[str, object],
+    *,
+    strict: bool,
+) -> None:
+    if "web_visit" not in layer_data or layer_data["web_visit"] is None:
+        return
+    raw_val = layer_data["web_visit"]
+
+    def _validator(val: object) -> dict[str, object]:
+        if not isinstance(val, dict):
+            raise ValueError("[web_visit] section must be a table")
         try:
-            data: dict[str, object] = tomllib.load(fh)
-        except _TOML_DECODE_ERROR as exc:
-            message = (
-                f"Could not parse MCP config at {path}: {exc}.\n"
-                "WHY: settings in a malformed TOML file are not safe to use, "
-                "so Ralph refuses to guess what you meant and exits instead.\n"
-                f"FIX: correct the TOML syntax in {path}, then re-run "
-                "`ralph --check-config`."
-            )
-            logger.error(message)
-            raise McpConfigError(message) from exc
-    return data
+            return WebVisitConfig.model_validate(val).model_dump()
+        except ValidationError as exc:
+            if strict:
+                _raise_mcp_validation_error(exc, path)
+            raise
+
+    validated = validate_or_default(
+        path,
+        raw_val,
+        validator=_validator,
+        default=WebVisitConfig().model_dump(),
+        kind="mcp",
+        strict=strict,
+    )
+    layer_data["web_visit"] = validated
 
 
 def _validate_fallback_backends(config: McpConfig) -> None:
@@ -101,6 +158,40 @@ def _validate_fallback_backends(config: McpConfig) -> None:
             raise McpConfigError(message)
 
 
+def _validate_mcp_layer(
+    path: Path,
+    layer_data: dict[str, object],
+    *,
+    strict: bool,
+) -> dict[str, object]:
+    if not layer_data:
+        return {}
+
+    # Validate [web_visit] section if present; schema-invalid falls back to default + WARN
+    _validate_web_visit_section(path, layer_data, strict=strict)
+
+    def _layer_validator(data: dict[str, object]) -> dict[str, object]:
+        copied = copy.deepcopy(data)
+        _inject_mcp_server_names(copied)
+        try:
+            cfg = McpConfig.model_validate(copied)
+        except ValidationError as exc:
+            if strict:
+                _raise_mcp_validation_error(exc, path)
+            raise
+        _validate_fallback_backends(cfg)
+        return data
+
+    return validate_or_default(
+        path,
+        layer_data,
+        validator=_layer_validator,
+        default={},
+        kind="mcp",
+        strict=strict,
+    )
+
+
 def _inject_mcp_server_names(merged: dict[str, object]) -> None:
     raw_servers = merged.get("mcp_servers")
     if not isinstance(raw_servers, dict):
@@ -113,6 +204,8 @@ def _inject_mcp_server_names(merged: dict[str, object]) -> None:
 def load_mcp_config(
     workspace_scope: WorkspaceScope | None = None,
     config_path: Path | None = None,
+    *,
+    strict_optional_files: bool = False,
 ) -> McpConfig:
     """Build merged McpConfig from all layers.
 
@@ -120,32 +213,43 @@ def load_mcp_config(
         workspace_scope: Provides the project-local .agent/ root. Not used when
             config_path is given.
         config_path: Explicit override for the project-local layer.
+        strict_optional_files: When True, errors in optional user-global and
+            project-local configuration files fail loudly. When False (default),
+            malformed optional files fall back to built-in defaults with warnings.
 
     Returns:
         Validated McpConfig.
 
     Raises:
-        McpConfigError: On TOML parse error, schema validation failure, or
-            unknown fallback backend reference.
+        McpConfigError: On bundled default corruption, or when strict_optional_files=True
+            and an optional config file has TOML parse error, schema validation failure,
+            or unknown fallback backend reference.
     """
-    bundled = _load_mcp_toml(bundled_default_mcp_config_path())
-    global_data = _load_mcp_toml(global_mcp_config_path())
-
-    if config_path is not None:
-        local_data = _load_mcp_toml(config_path)
-    elif workspace_scope is not None:
-        local_data = _load_mcp_toml(local_mcp_config_path(workspace_scope))
-    else:
-        local_data = {}
-
-    warn_unknown_top_level_fields(bundled, bundled_default_mcp_config_path(), _MCP_TOP_LEVEL_FIELDS)
-    warn_unknown_top_level_fields(global_data, global_mcp_config_path(), _MCP_TOP_LEVEL_FIELDS)
+    bundled_path = bundled_default_mcp_config_path()
+    global_path = global_mcp_config_path()
     if config_path is not None:
         local_path = config_path
     elif workspace_scope is not None:
         local_path = local_mcp_config_path(workspace_scope)
     else:
         local_path = Path(_LOCAL_MCP_FILENAME)
+
+    # Bundled default stays FAIL LOUDLY (strict=True): packaging defect if corrupted.
+    bundled = _load_mcp_toml(bundled_path, strict=True, is_bundled=True)
+    bundled = _validate_mcp_layer(bundled_path, bundled, strict=True)
+
+    # Optional layers use fallback unless strict_optional_files=True.
+    global_data = _load_mcp_toml(global_path, strict=strict_optional_files)
+    global_data = _validate_mcp_layer(global_path, global_data, strict=strict_optional_files)
+
+    if config_path is not None or workspace_scope is not None:
+        local_data = _load_mcp_toml(local_path, strict=strict_optional_files)
+        local_data = _validate_mcp_layer(local_path, local_data, strict=strict_optional_files)
+    else:
+        local_data = {}
+
+    warn_unknown_top_level_fields(bundled, bundled_path, _MCP_TOP_LEVEL_FIELDS)
+    warn_unknown_top_level_fields(global_data, global_path, _MCP_TOP_LEVEL_FIELDS)
     warn_unknown_top_level_fields(local_data, local_path, _MCP_TOP_LEVEL_FIELDS)
 
     merged = _deep_merge(bundled, global_data)
@@ -155,19 +259,7 @@ def load_mcp_config(
     try:
         config = McpConfig.model_validate(merged)
     except ValidationError as exc:
-        detail_lines = format_validation_error_messages(exc)
-        detail_block = "\n".join(detail_lines) if detail_lines else "(no field detail available)"
-        message = (
-            "MCP config validation failed; the values below do not match the MCP config schema.\n"
-            "WHY: a malformed MCP config means Ralph cannot start the servers / web-search "
-            "backends you asked for, so it stops before launching anything.\n"
-            f"FIX: fix the field-level errors in {local_path} (or "
-            f"{global_mcp_config_path()} / {bundled_default_mcp_config_path()}, depending on "
-            "where the bad value came from), then re-run `ralph --check-config`.\n"
-            f"DETAILS:\n{detail_block}"
-        )
-        logger.error(message)
-        raise McpConfigError(message) from exc
+        _raise_mcp_validation_error(exc, local_path)
 
     logger.trace(
         "MCP config loaded: {} server(s), web_search.enabled={}",

@@ -587,6 +587,7 @@ def _field_overhead_and_label_budgets(
     has_inner_analysis: bool,
     has_agent: bool = False,
     outer_label_canonical_chars: int = _OUTER_DEV_LABEL_MAX_CHARS,
+    integration_alert_len: int = 0,
 ) -> _FieldBudgets:
     """Derive width-aware budgets that always fit ``ctx.width``.
 
@@ -771,6 +772,7 @@ def _field_overhead_and_label_budgets(
             - elapsed_chrome
             - agent_chrome
             - path_chrome
+            - integration_alert_len
         )
         if available < _MIN_PHASE_PLUS_PATH:
             return None
@@ -1259,6 +1261,23 @@ def _append_integration_alert(
     text.append(separator, style="theme.status.path_marker")
 
 
+def _finalize_status_bar_width(
+    text: Text,
+    model: StatusBarModel,
+    ctx: DisplayContext,
+) -> Text:
+    """Clamp or wrap the rendered status bar to ctx.width."""
+    if ctx.width < 1:
+        return Text(" ")
+    if cell_len(text.plain) <= ctx.width:
+        return text
+    if model.integration_alert or "check-config" in text.plain or "fix " in text.plain:
+        lines = text.wrap(ctx.console, ctx.width)
+        return Text("\n").join(lines)
+    text.truncate(ctx.width)
+    return text
+
+
 def render_status_bar(
     model: StatusBarModel,
     ctx: DisplayContext,
@@ -1320,12 +1339,16 @@ def render_status_bar(
     has_outer_dev = model.outer_dev_iteration is not None
     has_inner_analysis = model.inner_analysis is not None
     outer_label = _safe_single_line(model.outer_label) if model.outer_label else None
+    alert_len = 0
+    if model.integration_alert:
+        alert_len = cell_len(_safe_single_line(model.integration_alert)) + cell_len(separator) + 2
     budgets = _field_overhead_and_label_budgets(
         ctx,
         has_outer_dev=has_outer_dev,
         has_inner_analysis=has_inner_analysis,
         has_agent=model.agent_name is not None,
         outer_label_canonical_chars=_outer_label_canonical_chars(outer_label),
+        integration_alert_len=alert_len,
     )
 
     # wt-028-display S-2 (AC-01): elapsed NO LONGER participates in
@@ -1445,13 +1468,7 @@ def render_status_bar(
         else ""
     )
     _append_path_segment(text, path_display, separator, ctx.width)
-    # Final width clamp is a defensive guard for widths below the supported
-    # floor and hostile optional alerts; normal layouts fit by allocation.
-    if ctx.width < 1:
-        return Text(" ")
-    if cell_len(text.plain) > ctx.width:
-        text.truncate(ctx.width)
-    return text
+    return _finalize_status_bar_width(text, model, ctx)
 
 
 def _append_optional_segment(
@@ -1544,6 +1561,8 @@ class StatusBar:
         "_fallback_frame",
         "_fallback_rendered",
         "_home",
+        "_last_durable_state_key",
+        "_last_fallback_state_key",
         "_last_live_frame",
         "_live",
         "_live_frame_rendered",
@@ -1569,6 +1588,8 @@ class StatusBar:
         self._fallback_frame: str | None = None
         self._started = False
         self._durable_frame: str | None = None
+        self._last_durable_state_key: tuple[object, ...] | None = None
+        self._last_fallback_state_key: tuple[object, ...] | None = None
         self._last_live_frame: str | None = None
         self._live_frame_rendered = False
         self._ticker: threading.Thread | None = None
@@ -1690,6 +1711,19 @@ class StatusBar:
     def _fallback_render_once(self) -> None:
         if self._live_console_is_interactive():
             return
+        model = self._model
+        if model is not None and model.attention is not None:
+            state_key = (
+                model.attention,
+                model.operation_display_state,
+                model.integration_alert,
+                model.phase_label,
+                model.outer_dev_iteration,
+                model.agent_name,
+            )
+            if state_key == self._last_fallback_state_key:
+                return
+            self._last_fallback_state_key = state_key
         renderable = self._renderable()
         if self._fallback_rendered and self._fallback_frame == renderable.plain:
             return
@@ -1723,11 +1757,22 @@ class StatusBar:
         model = self._model
         if model is None or model.attention is None:
             return
+        state_key = (
+            model.attention,
+            model.operation_display_state,
+            model.integration_alert,
+            model.phase_label,
+            model.outer_dev_iteration,
+            model.agent_name,
+        )
+        if state_key == self._last_durable_state_key:
+            return
         renderable = self._renderable()
         if renderable.plain == self._durable_frame:
             return
         self._ctx().console.print(renderable)
         self._durable_frame = renderable.plain
+        self._last_durable_state_key = state_key
 
     def _fallback_cleanup(self) -> None:
         if not self._fallback_rendered:

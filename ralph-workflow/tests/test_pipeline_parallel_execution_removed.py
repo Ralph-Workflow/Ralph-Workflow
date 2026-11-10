@@ -32,7 +32,7 @@ def test_loading_pipeline_toml_with_global_parallel_execution_block_raises(
         """)
     )
     with pytest.raises(PolicyValidationError, match="parallel_execution"):
-        load_policy(tmp_path)
+        load_policy(tmp_path, strict_optional_files=True)
 
 
 def test_pipelinepolicy_model_rejects_parallel_execution_field() -> None:

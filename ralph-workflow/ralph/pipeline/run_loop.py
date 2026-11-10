@@ -30,6 +30,7 @@ from ralph.display.parallel_display import (
     status_text,
 )
 from ralph.display.status_bar import StatusBarModel
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
 from ralph.pipeline._auto_integrate_reclaim import target_worktree_lookup
@@ -113,6 +114,7 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.subscriber import PipelineSubscriber
+    from ralph.pipeline._config_failure_fingerprint import ConfigFileFingerprintWatcher
     from ralph.pipeline._integration_executor import RebaseContinuationExecutor
     from ralph.pipeline.auto_integrate_catchup import AutoIntegrateCatchupWorker
     from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
@@ -219,6 +221,8 @@ class LoopContext:
     snapshot_registry: SnapshotRegistry | None = None
     pipeline_deps: PipelineDeps | None = None
     last_waiting_state_phase: str | None = None
+    last_waiting_state_sig: tuple[str, str] | None = None
+    config_failure_watcher: ConfigFileFingerprintWatcher | None = None
     # Session-wide process teardown. Defaults to
     # ``ProcessManager.shutdown_all`` from the run-loop construction
     # site so non-phase-labeled children are reaped on every exit
@@ -613,6 +617,11 @@ def _log_waiting_state(
     unavail_reason: str,
     delay_ms: int,
 ) -> None:
+    sig = (phase_str, unavail_reason)
+    if ctx.last_waiting_state_sig == sig:
+        return
+    ctx.last_waiting_state_sig = sig
+    ctx.last_waiting_state_phase = phase_str
     chain = state.chain_for_phase(state.phase)
     agent_cooldowns: list[tuple[str, int, int]] = []
     if chain is not None:
@@ -641,6 +650,8 @@ def _log_resumed_state(
     unavail_reason: str,
     delay_ms: int,
 ) -> None:
+    ctx.last_waiting_state_sig = None
+    ctx.last_waiting_state_phase = None
     chain = state.chain_for_phase(state.phase)
     agents_now_available: list[str] = []
     if chain is not None:
@@ -740,6 +751,13 @@ def _integration_alert_for_state(state: PipelineState) -> str | None:
     if not rebase.is_conflict_resolution() and rebase.last_outcome != RebaseOutcomeKind.CONFLICT:
         return None
     reason = rebase.last_reason or "unresolved"
+    if rebase.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE:
+        fix_text = reason if "fix " in reason else "fix configuration then run ralph --check-config"
+        return (
+            f"integration conflict ({rebase.last_failure_cause}: {fix_text}) — resolution required"
+        )
+    if rebase.last_failure_cause != ResolutionFailureCause.NONE:
+        return f"integration conflict ({rebase.last_failure_cause}: {reason}) — resolution required"
     return f"integration conflict ({reason}) — resolution required"
 
 
@@ -2206,12 +2224,13 @@ def _resolve_paused_rebase(
         active_executor = (
             executor if executor is not None else default_rebase_continuation_executor()
         )
-        resolved, reason = active_executor.continue_rebase(
+        res = active_executor.continue_rebase(
             ctx.workspace_scope.root,
             target,
             stop_resolver,
             ctx.config.conflict_resolution,
         )
+        resolved, reason = res[0], res[1]
     except Exception as resolve_exc:  # pragma: no cover -- defensive
         logger.warning("integration resolution: paused rebase resolution failed: {}", resolve_exc)
         return False
@@ -3873,11 +3892,35 @@ def _handle_pending_retry(
             ctx.sleep(5.0)
             return state.clear_waiting()
 
-    bumped_conflicts = (
-        max(rebase.consecutive_conflicts, (recovered.consecutive_conflicts if recovered else 0)) + 1
-    )
-    rebase = (recovered or rebase).record_consecutive_conflicts(bumped_conflicts)
-    rebase = rebase.set_operation_display_state(OperationDisplayState.WAITING)
+    active_rebase = recovered or rebase
+    if active_rebase.last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE:
+        rebase = active_rebase.set_operation_display_state(OperationDisplayState.WAITING)
+        from ralph.pipeline._config_failure_fingerprint import (
+            ConfigFileFingerprintWatcher,
+            extract_config_path_from_reason,
+        )
+
+        bad_path = extract_config_path_from_reason(active_rebase.last_reason)
+        watcher = ctx.config_failure_watcher
+        if watcher is None:
+            watcher = ConfigFileFingerprintWatcher()
+            ctx.config_failure_watcher = watcher
+        if bad_path is not None and watcher.should_retry(bad_path):
+            logger.info(
+                "configuration failure self-recovery: {} repaired; retrying paused rebase",
+                bad_path,
+            )
+            state = state.copy_with(rebase=active_rebase).clear_waiting()
+            _save_recovered_rebase_checkpoint(state, ctx)
+            ctx.latest_state[:] = [state]
+            return state
+    else:
+        bumped_conflicts = (
+            max(rebase.consecutive_conflicts, (recovered.consecutive_conflicts if recovered else 0))
+            + 1
+        )
+        rebase = active_rebase.record_consecutive_conflicts(bumped_conflicts)
+        rebase = rebase.set_operation_display_state(OperationDisplayState.WAITING)
     state = state.copy_with(rebase=rebase).set_waiting(WaitReason.EXHAUSTED_RETRY, None)
     _save_recovered_rebase_checkpoint(state, ctx)
     ctx.latest_state[:] = [state]
@@ -3893,11 +3936,12 @@ def _handle_cooldown_delay(state: PipelineState, ctx: LoopContext) -> PipelineSt
     is_all_unavailable = state.is_waiting_state
     if not is_all_unavailable:
         ctx.last_waiting_state_phase = None
+        ctx.last_waiting_state_sig = None
     try:
         current_phase_str = str(state.phase)
         unavail_reason = state.last_unavailability_reason or "unknown"
-        if is_all_unavailable and ctx.last_waiting_state_phase != current_phase_str:
-            ctx.last_waiting_state_phase = current_phase_str
+        waiting_sig = (current_phase_str, unavail_reason)
+        if is_all_unavailable and ctx.last_waiting_state_sig != waiting_sig:
             emit_activity_line(
                 ctx.active_display,
                 None,

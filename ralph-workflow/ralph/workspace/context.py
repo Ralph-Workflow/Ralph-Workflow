@@ -31,10 +31,13 @@ The contract has three load-bearing properties:
 
 from __future__ import annotations
 
+import re
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from pydantic import ValidationError
 
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
@@ -45,6 +48,19 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.mcp.effective_session_mcp_plan import EffectiveSessionMcpPlan
     from ralph.policy.models import PolicyBundle
+
+
+class WorkspaceContextError(Exception):
+    """Raised when entering a workspace context fails due to invalid configuration."""
+
+    def __init__(self, file: Path, reason: str, fix: str | None = None) -> None:
+        self.file = Path(file)
+        self.reason = reason
+        self.fix = fix or f"fix {self.file} then run ralph --check-config"
+        if self.fix in self.reason:
+            super().__init__(self.reason)
+        else:
+            super().__init__(f"{self.reason} ({self.fix})")
 
 
 @dataclass(frozen=True)
@@ -110,6 +126,7 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
         AgentRegistry,
     )
     from ralph.config.loader import (  # noqa: PLC0415  # reason: same lazy-import rationale
+        ConfigTomlError,
         load_config,
     )
     from ralph.mcp.artifacts.file_backend import (  # noqa: PLC0415  # reason: same lazy-import rationale
@@ -132,10 +149,63 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
             f"workspace_context: target workspace root does not exist: {target_scope.root}"
         )
 
-    config = load_config(workspace_scope=target_scope)
-    policy_bundle = load_policy_for_workspace_scope(target_scope, config=config)
-    registry = AgentRegistry.from_config(config)
-    effective_mcp_plan = resolve_effective_session_mcp_plan(target_scope.root)
+    try:
+        config = load_config(workspace_scope=target_scope)
+        policy_bundle = load_policy_for_workspace_scope(target_scope, config=config)
+        registry = AgentRegistry.from_config(config)
+        effective_mcp_plan = resolve_effective_session_mcp_plan(target_scope.root)
+    except ConfigTomlError as exc:
+        msg = str(exc)
+        m = re.search(r"Ralph could not read (.*?):", msg)
+        matched_path = ""
+        if m is not None:
+            raw_match: object = m.group(1)
+            if isinstance(raw_match, str):
+                matched_path = raw_match.strip()
+        file_path = (
+            Path(matched_path)
+            if matched_path
+            else target_scope.root / ".agent" / "ralph-workflow.toml"
+        )
+        fix_str = f"fix {file_path} then run ralph --check-config"
+        raise WorkspaceContextError(
+            file=file_path,
+            reason=msg,
+            fix=fix_str,
+        ) from exc
+    except SystemExit as exc:
+        cause = exc.__cause__
+        local_path = target_scope.root / ".agent" / "ralph-workflow.toml"
+        file_path = local_path
+        reason_str = str(cause) if cause is not None else str(exc)
+        if cause is not None and isinstance(cause, ValidationError):
+            try:
+                from ralph.config.loader import (  # noqa: PLC0415
+                    _attribute_validation_error_to_layer,
+                    _global_config_path,
+                    load_toml,
+                )
+
+                agents_path = target_scope.root / ".agent" / "agents.toml"
+                file_layers = [
+                    (local_path, load_toml(local_path)),
+                    (_global_config_path(), load_toml(_global_config_path())),
+                    (agents_path, load_toml(agents_path)),
+                ]
+                file_path = _attribute_validation_error_to_layer(
+                    cause,
+                    local_path,
+                    file_layers,
+                    None,
+                )
+            except Exception:
+                file_path = local_path
+        fix_str = f"fix {file_path} then run ralph --check-config"
+        raise WorkspaceContextError(
+            file=file_path,
+            reason=f"configuration validation error in {file_path}: {reason_str}",
+            fix=fix_str,
+        ) from exc
     prompt_path = target_scope.root / "PROMPT.md"
 
     yield WorkspaceContext(
@@ -148,4 +218,4 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
     )
 
 
-__all__ = ["WorkspaceContext", "workspace_context"]
+__all__ = ["WorkspaceContext", "WorkspaceContextError", "workspace_context"]

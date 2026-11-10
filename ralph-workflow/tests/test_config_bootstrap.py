@@ -415,9 +415,15 @@ def test_resolve_global_config_dir_honors_xdg(
     assert resolve_global_config_dir() == tmp_path
 
 
-def test_resolve_global_config_dir_defaults_to_home(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_global_config_dir_defaults_to_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    assert resolve_global_config_dir() == Path.home() / ".config"
+    assert resolve_global_config_dir() == fake_home / ".config"
 
 
 def test_ensure_global_config_round_trips_through_loader(

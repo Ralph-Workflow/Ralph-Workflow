@@ -5,7 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.config.loader import GLOBAL_CONFIG_PATH, LOCAL_CONFIG_PATH, load_config
+from ralph.config.loader import (
+    GLOBAL_AGENTS_CONFIG_PATH,
+    GLOBAL_CONFIG_PATH,
+    LOCAL_CONFIG_PATH,
+    load_config,
+)
 
 if TYPE_CHECKING:
     import pytest
@@ -30,6 +35,10 @@ def test_provider_fallback_regression_warns_when_set(
         '[general]\nprovider_fallback = { claude = ["codex"] }\n', encoding="utf-8"
     )
     monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", global_path)
+    monkeypatch.setattr(
+        "ralph.config.loader.GLOBAL_AGENTS_CONFIG_PATH",
+        tmp_path / GLOBAL_AGENTS_CONFIG_PATH.name,
+    )
     monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", tmp_path / LOCAL_CONFIG_PATH.name)
     warnings = _capture_warnings(monkeypatch)
 
@@ -48,6 +57,10 @@ def test_provider_fallback_regression_empty_value_warns_on_presence(
     global_path = tmp_path / GLOBAL_CONFIG_PATH.name
     global_path.write_text("[general]\nprovider_fallback = {}\n", encoding="utf-8")
     monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", global_path)
+    monkeypatch.setattr(
+        "ralph.config.loader.GLOBAL_AGENTS_CONFIG_PATH",
+        tmp_path / GLOBAL_AGENTS_CONFIG_PATH.name,
+    )
     monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", tmp_path / LOCAL_CONFIG_PATH.name)
     warnings = _capture_warnings(monkeypatch)
 

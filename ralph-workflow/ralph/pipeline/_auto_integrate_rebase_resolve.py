@@ -33,6 +33,9 @@ from ralph.pipeline.auto_integrate_recovery import (
     TerminalStateViolationError,
     post_attempt_verify,
 )
+from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+    ResolutionTerminationReason,
+)
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
@@ -53,6 +56,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.rebase_state import RebaseState
 
 __all__ = [
+    "RebaseResolutionResult",
     "RebaseRunResult",
     "_clear_record_if_no_inflight_op",
     "_resolve_conflicted_rebase",
@@ -111,6 +115,31 @@ def verify_terminal_state(
         )
 
 
+class RebaseResolutionResult(tuple[bool, str | None]):
+    """Result of rebase resolution supporting 2-tuple unpacking and failure_cause attribute."""
+
+    failure_cause: ResolutionFailureCause
+
+    def __new__(
+        cls,
+        succeeded: bool,
+        reason: str | None,
+        failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE,
+    ) -> RebaseResolutionResult:
+        obj = super().__new__(cls, (succeeded, reason))
+        obj.failure_cause = failure_cause
+        return obj
+
+    @property
+    def succeeded(self) -> bool:
+        return bool(self[0])
+
+    @property
+    def reason(self) -> str | None:
+        val = self[1]
+        return str(val) if isinstance(val, str) else None
+
+
 def _resolve_conflicted_rebase(
     root: Path,
     target: str,
@@ -139,13 +168,16 @@ def _resolve_conflicted_rebase(
         )
         return None
     with conflict_status_bar_session(display, root):
-        resolved, exhaustion_reason = _resolve_rebase_with_config(
+        res = _resolve_rebase_with_config(
             root,
             target,
             rebase_stop_resolver,
             conflict_resolution_config,
             agent_runner,
         )
+        resolved = res.succeeded
+        exhaustion_reason = res.reason
+        failure_cause = res.failure_cause
     if resolved and not _merge_mod.set_resolving_rebase(root, False):
         logger.warning(
             "auto_integrate: could not clear completed rebase resolution flag for '{}'", target
@@ -163,15 +195,22 @@ def _resolve_conflicted_rebase(
             ).set_recovery_record_retained(StartupRetentionReason.FAILED_ABORT),
         )
     if not resolved:
+        effective_cause = (
+            failure_cause
+            if failure_cause != ResolutionFailureCause.NONE
+            else ResolutionFailureCause.UNRESOLVED_CONFLICT
+        )
+        effective_reason = (
+            exhaustion_reason or "rebase resolution incomplete; progress retained for next agent"
+        )
         return RebaseRunResult(
             rebase_outcome=RebaseConflicts(files=[]),
             merge_attempted=False,
             merge_outcome=None,
             short_circuit=record_conflict(
-                reason=exhaustion_reason
-                or "rebase resolution incomplete; progress retained for next agent",
+                reason=effective_reason,
                 target=target,
-                failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+                failure_cause=effective_cause,
             ).set_recovery_record_retained(StartupRetentionReason.FAILED_ABORT),
         )
     logger.info("auto_integrate: resolved the conflicted rebase onto '{}'", target)
@@ -189,7 +228,7 @@ def _resolve_rebase_with_config(
     resolver: RebaseStopResolver,
     config: ConflictResolutionConfig | None,
     agent_runner: AgentRunner | None = None,
-) -> tuple[bool, str | None]:
+) -> RebaseResolutionResult:
     """Return rebase completion and terminal resolver-chain evidence."""
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
@@ -214,7 +253,16 @@ def _resolve_rebase_with_config(
         else _merge_mod.resolve_rebase_in_progress(root, target, resolver, session=session)
     )
     if resolved:
-        return True, None
+        return RebaseResolutionResult(True, None, ResolutionFailureCause.NONE)
+    carried_cause = (
+        session.last_failure_cause
+        if session.last_failure_cause != ResolutionFailureCause.NONE
+        else (
+            ResolutionFailureCause.CONFIG_FAILURE
+            if session.terminal_reason == ResolutionTerminationReason.CONFIG_FAILURE
+            else ResolutionFailureCause.NONE
+        )
+    )
     if (
         not session.charge_conflict_budget
         or session.terminal_reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
@@ -232,8 +280,25 @@ def _resolve_rebase_with_config(
             target,
             session.terminal_reason.value if session.terminal_reason else "no terminal evidence",
         )
-        return False, None
-    return False, session.exhaustion_reason
+        carried_reason = (
+            session.exhaustion_reason
+            if carried_cause == ResolutionFailureCause.CONFIG_FAILURE
+            else None
+        )
+        if (
+            carried_reason is None
+            and session.terminal_reason is not None
+            and carried_cause == ResolutionFailureCause.CONFIG_FAILURE
+        ):
+            carried_reason = session.terminal_reason.value
+        return RebaseResolutionResult(False, carried_reason, carried_cause)
+    return RebaseResolutionResult(
+        False,
+        session.exhaustion_reason,
+        carried_cause
+        if carried_cause != ResolutionFailureCause.NONE
+        else ResolutionFailureCause.UNRESOLVED_CONFLICT,
+    )
 
 
 def _clear_record_if_no_inflight_op(root: Path) -> None:

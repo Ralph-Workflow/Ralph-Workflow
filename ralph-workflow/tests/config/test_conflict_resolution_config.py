@@ -71,6 +71,9 @@ def test_config_loader_warns_when_operator_enables_active_resolution_cap(
         encoding="utf-8",
     )
     monkeypatch.setattr("ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / "missing-global.toml")
+    monkeypatch.setattr(
+        "ralph.config.loader.GLOBAL_AGENTS_CONFIG_PATH", tmp_path / "missing-agents.toml"
+    )
     records: list[str] = []
     sink_id = logger.add(records.append, level="WARNING", format="{message}")
     try:

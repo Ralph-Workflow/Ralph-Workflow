@@ -67,7 +67,7 @@ def test_format_validation_helpers_handle_various_inputs() -> None:
 def test_load_policy_invalid_toml_raises(tmp_path: Path) -> None:
     (tmp_path / "agents.toml").write_text("not a valid toml: <<<")
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
-        load_policy(tmp_path)
+        load_policy(tmp_path, strict_optional_files=True)
     assert "Could not parse TOML" in excinfo.value.message
     assert "WHY:" in excinfo.value.message
     assert "FIX:" in excinfo.value.message
@@ -78,7 +78,7 @@ def test_load_policy_invalid_toml_raises(tmp_path: Path) -> None:
 def test_load_policy_reports_agent_validation_failure(tmp_path: Path) -> None:
     (tmp_path / "agents.toml").write_text("[agent_chains.planning]\nagents = []\n")
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
-        load_policy(tmp_path)
+        load_policy(tmp_path, strict_optional_files=True)
     assert "agents.toml validation failed" in excinfo.value.message
     assert excinfo.value.source == "agents"
 
@@ -107,7 +107,7 @@ def test_load_policy_read_error_distinct_from_parse_error(
     monkeypatch.setattr(Path, "open", fail_target_open)
 
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
-        load_policy(tmp_path)
+        load_policy(tmp_path, strict_optional_files=True)
     message = excinfo.value.message
     assert "Could not read TOML" in message, (
         f"Read-failure envelope MUST distinguish itself from parse failures; got: {message!r}"
@@ -140,7 +140,7 @@ def test_load_policy_reports_unknown_transition_target(tmp_path: Path) -> None:
     )
 
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
-        load_policy(tmp_path)
+        load_policy(tmp_path, strict_optional_files=True)
     assert "unknown phase 'missing_phase'" in excinfo.value.message
     assert excinfo.value.source == "pipeline"
 
@@ -163,7 +163,7 @@ def test_load_policy_reports_missing_entry_phase(tmp_path: Path) -> None:
     )
 
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
-        load_policy(tmp_path)
+        load_policy(tmp_path, strict_optional_files=True)
     assert "entry_phase 'planning' is not defined" in excinfo.value.message
     assert excinfo.value.source == "pipeline"
 
@@ -199,7 +199,7 @@ def test_load_policy_rejects_legacy_nested_pipeline_table(tmp_path: Path) -> Non
     )
 
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
-        load_policy(tmp_path)
+        load_policy(tmp_path, strict_optional_files=True)
     assert "obsolete [pipeline] wrapper format" in excinfo.value.message
     assert excinfo.value.source == "pipeline"
 
@@ -503,7 +503,7 @@ def test_load_policy_rejects_artifact_required_in_artifacts_toml(tmp_path: Path)
     )
 
     with pytest.raises(LoaderPolicyValidationError, match="artifact_required"):
-        load_policy(tmp_path)
+        load_policy(tmp_path, strict_optional_files=True)
 
 
 def test_default_pipeline_toml_makes_development_artifact_required(
@@ -724,7 +724,7 @@ def test_load_policy_for_workspace_scope_rejects_phase_authored_global_override_
     workspace_root.mkdir()
 
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
-        load_policy_for_workspace_scope(WorkspaceScope(workspace_root))
+        load_policy_for_workspace_scope(WorkspaceScope(workspace_root), strict_optional_files=True)
 
     assert "phase-authored" in excinfo.value.message
     assert "must not be merged" in excinfo.value.message
@@ -867,7 +867,7 @@ def test_cycle_timebox_rejects_unknown_target(tmp_path: Path) -> None:
     # one inside [cycle_timebox] by rewriting the whole cycle_timebox block.
     (tmp_path / "pipeline.toml").write_text(pipeline)
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
-        load_policy(tmp_path)
+        load_policy(tmp_path, strict_optional_files=True)
     assert "cycle_timebox" in excinfo.value.message
     assert "no_such_phase" in excinfo.value.message
 
@@ -885,7 +885,7 @@ def test_cycle_timebox_rejects_undeclared_start_edge(tmp_path: Path) -> None:
     )
     (tmp_path / "pipeline.toml").write_text(pipeline)
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
-        load_policy(tmp_path)
+        load_policy(tmp_path, strict_optional_files=True)
     assert "cycle_timebox" in excinfo.value.message
     assert "planning" in excinfo.value.message
     assert "development" in excinfo.value.message

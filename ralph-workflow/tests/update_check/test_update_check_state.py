@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import FileBackend
+
+if TYPE_CHECKING:
+    import pytest
 from ralph.update_check.state import (
     DEFAULT_TTL_SECONDS,
     VersionCheckState,
@@ -67,9 +71,11 @@ def test_cache_path_honors_xdg_cache_home() -> None:
     assert path == Path("/custom/cache/ralph-workflow/version-check.json")
 
 
-def test_cache_path_defaults_to_home_cache() -> None:
+def test_cache_path_defaults_to_home_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake_home = tmp_path / "home"
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
     path = cache_path({})
-    assert path == Path.home() / ".cache" / "ralph-workflow" / "version-check.json"
+    assert path == fake_home / ".cache" / "ralph-workflow" / "version-check.json"
 
 
 def test_save_state_regression_identical_replay_skips_cache_and_parent_mutations() -> None:

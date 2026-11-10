@@ -14,6 +14,7 @@ If you only need to run Ralph Workflow, start with [Configuration](configuration
 - [Streaming Blocks and Long-Content Display](#streaming-blocks-and-long-content-display) — output event structure and rendering behavior
 - [Background-aware presentation](#background-aware-presentation) — surface-adaptive chroma, frequency tiers, and the per-frame salience budget
 - [Supervising API](#supervising-api) — trackable instance model for orchestration use cases
+- [Configuration failure transport and rebase self-recovery](#configuration-failure-transport-and-rebase-self-recovery) — typed failure transport, budget protection, and fingerprint-based retry
 
 ## Configuration-loading internals
 
@@ -368,6 +369,48 @@ If ``snapshot.run_id`` is ``None`` and no override is provided, a ``ValueError``
 ### Out of scope
 
 This page does not define transport, storage, authentication, scheduling, fleet orchestration, or protocol details.
+
+## Configuration failure transport and rebase self-recovery
+
+During auto-integrate rebase conflict resolution, conflict resolution executes within the target workspace's configuration and policy context. If the target workspace contains a malformed configuration file, Ralph Workflow transports the failure through typed error channels, protects the conflict attempt budget, and uses content fingerprinting to gate automatic retries on operator repairs.
+
+### Typed configuration failure pipeline
+
+Target worktree activation is isolated via `workspace_context(target_root)` in `ralph.workspace.context`. When loading configuration and policies for the target worktree:
+
+1. **Error wrapping**: Syntactic defects raise `ConfigTomlError`, while schema validation defects trigger a `SystemExit` wrapping `pydantic.ValidationError`. `workspace_context` intercepts both exceptions and wraps them into a typed `WorkspaceContextError(file=file_path, reason=..., fix=...)`. The error attributes the failure to the specific offending file (such as `.agent/ralph-workflow.toml` or `.agent/agents.toml`) and provides an actionable remediation command: `fix <path> then run ralph --check-config`.
+2. **Resolver transport**: The rebase stop resolver in `ralph.pipeline.auto_integrate_agent` catches `WorkspaceContextError`. Rather than crashing or classifying the failure as an unresolved git conflict, it sets:
+   - `session.charge_conflict_budget = False`
+   - `session.terminal_reason = ResolutionTerminationReason.CONFIG_FAILURE`
+   - `session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE`
+   - `session.exhaustion_reason = f"fix {exc.file} then run ralph --check-config"`
+   The resolver returns a `ResolutionOutcome` marked with `failure_cause=ResolutionFailureCause.CONFIG_FAILURE`.
+3. **Engine-level propagation**: In `ralph.pipeline._auto_integrate_rebase_resolve`, `carried_cause` evaluates `session.last_failure_cause` and `session.terminal_reason`. When either matches `ResolutionFailureCause.CONFIG_FAILURE` or `ResolutionTerminationReason.CONFIG_FAILURE`, `RebaseResolutionResult(False, carried_reason, carried_cause)` propagates the typed failure out of the rebase resolution runner.
+
+### Conflict budget protection
+
+Configuration defects are environment and setup errors, not failed LLM resolution attempts. To ensure that an operator repairing a syntax error does not return to an exhausted conflict budget:
+
+- **Resolver not spent**: `ResolutionTerminationReason.CONFIG_FAILURE` is registered in `RESOLVER_NOT_SPENT_TERMINATION_REASONS`. Because `session.charge_conflict_budget = False`, the resolver chain is not recorded as exhausted.
+- **Counter protection**: In `ralph.pipeline.run_loop` (`_handle_pending_retry`), rebases with `last_failure_cause == ResolutionFailureCause.CONFIG_FAILURE` transition to `OperationDisplayState.WAITING` without incrementing the `consecutive_conflicts` counter.
+- **Repair attempts uncharged**: In `ralph.pipeline._integration_diagnostic`, diagnostic counters and `record.merge_commit_repair_attempts` are not charged for configuration failures, preserving the agent's resolution budget for genuine Git merge conflicts.
+- **Operator visibility**: The Status Bar and activity feed display the specific failure cause and required fix:
+  `integration conflict (CONFIG_FAILURE: fix <path> then run ralph --check-config) — resolution required`.
+
+### Fingerprint-based retry gating in the waiting loop
+
+When a rebase pauses on a configuration failure, Ralph Workflow enters a waiting loop to give the operator an opportunity to repair the defective file without aborting the workflow run. To prevent busy-spinning against unchanged defective files:
+
+1. **Content fingerprinting**: `ralph.pipeline._config_failure_fingerprint` computes immutable `ConfigFileFingerprint(path, content_hash)` tuples using SHA-256 digests via `compute_config_file_fingerprint(path)`:
+   - Valid, readable files produce a 64-character hexadecimal SHA-256 digest.
+   - Missing paths, directories, or `None` paths yield `None`.
+   - Files unreadable due to filesystem permissions or OS errors return distinct descriptors (`unreadable:<ErrorClass>`), allowing permission fixes to register as valid state transitions.
+   - `extract_config_path_from_reason(reason)` parses the target file path directly from the structured error reason string.
+2. **Distinct-fingerprint retry gating**: `ConfigFileFingerprintWatcher` (and the pure helper `should_retry_config_failure(path, last_fingerprint)`) tracks attempted fingerprints:
+   - The initial failure establishes a baseline fingerprint for the defective path.
+   - While the file remains unchanged on disk (`current_hash == last_hash`), `should_retry()` returns `False`. The run loop sleeps and preserves the `WAITING` state, generating zero CPU churn or repeated resolver invocations.
+   - When the operator edits and repairs the file, the file's content hash changes. `should_retry()` detects the distinct fingerprint, marks it as attempted, and allows exactly one paused rebase continuation attempt.
+   - If the repair succeeds, rebase continuation proceeds. If the file is still invalid (or introduces a new error), a new distinct fingerprint is recorded, awaiting the next file modification.
 
 ## Runtime guarantees
 

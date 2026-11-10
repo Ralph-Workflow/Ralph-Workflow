@@ -281,4 +281,4 @@ def test_load_policy_rejects_group_blocks_with_unknown_completion_block(tmp_path
     )
 
     with pytest.raises(PolicyValidationError, match="completion_block"):
-        load_policy(tmp_path)
+        load_policy(tmp_path, strict_optional_files=True)

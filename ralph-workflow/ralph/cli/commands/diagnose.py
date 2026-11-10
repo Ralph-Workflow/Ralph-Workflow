@@ -502,12 +502,14 @@ def _check_configuration(
     *,
     display: object,
 ) -> bool:
-    """Check configuration validity.
+    """Check configuration validity across all layers.
 
+    Inspects config, agents, policy, and MCP layers for unreadable or invalid
+    files, emitting warnings and reporting each unreadable file in the table.
     Surfaces typo'd config keys as a distinct warning row in the
     Configuration table so the operator sees them at the same gate that
     reports ``Config loaded: Success``. Unknown fields are ADVISORY only
-    \u2014 the gate never fails on them; the recommended fix is the
+    — the gate never fails on them; the recommended fix is the
     ``ralph --check-config`` flow that mirrors the loader warning.
     """
     from ralph.display.parallel_display import ParallelDisplay
@@ -515,8 +517,33 @@ def _check_configuration(
     assert isinstance(display, ParallelDisplay)
     rows: list[tuple[object, ...]] = []
 
+    workspace_scope: WorkspaceScope | None = None
     try:
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
+    except Exception:
+        workspace_scope = None
+
+    from ralph.config.bootstrap import collect_unreadable_config_files
+
+    unreadable_files = collect_unreadable_config_files(
+        config_path=config_path,
+        workspace_scope=workspace_scope,
+        display=display,
+    )
+
+    rows.extend(
+        (
+            str(u.path),
+            _status_text("Unreadable", str(u.error), "theme.status.error"),
+            "",
+            "",
+            "",
+        )
+        for u in unreadable_files
+    )
+
+    load_ok = True
+    try:
         config = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
         rows.append(("Config loaded", Text("Success", style="theme.status.success"), "", "", ""))
         rows.append(("Developer iters", str(config.general.developer_iters), "", "", ""))
@@ -524,11 +551,10 @@ def _check_configuration(
             ("Checkpoint enabled", str(config.general.workflow.checkpoint_enabled), "", "", "")
         )
     except Exception as e:
+        load_ok = False
         rows.append(
             ("Config loaded", _status_text("Error", str(e), "theme.status.error"), "", "", "")
         )
-        _emit_simple_table(display, "Configuration", rows)
-        return False
 
     # Advisory: re-read the effective global + local TOML so we can flag
     # typo'd keys without changing the validation result. Unknown keys
@@ -538,7 +564,7 @@ def _check_configuration(
     rows.extend(unknown_field_rows)
 
     _emit_simple_table(display, "Configuration", rows)
-    return True
+    return (not bool(unreadable_files)) and load_ok
 
 
 def _collect_unknown_field_rows(
@@ -556,23 +582,35 @@ def _collect_unknown_field_rows(
     findings: list[tuple[str, str | None]] = []
 
     global_path = _global_config_path()
-    global_data = load_toml(global_path)
-    findings.extend(_findings_with_path(global_data, global_path))
+    try:
+        global_data = load_toml(global_path)
+        findings.extend(_findings_with_path(global_data, global_path))
+    except Exception:
+        pass
 
     if config_path is not None:
-        local_data = load_toml(config_path)
-        findings.extend(_findings_with_path(local_data, config_path))
+        try:
+            local_data = load_toml(config_path)
+            findings.extend(_findings_with_path(local_data, config_path))
+        except Exception:
+            pass
     elif workspace_scope is not None:
         local_path = workspace_scope.local_config_path
-        local_data = load_toml(local_path)
-        findings.extend(_findings_with_path(local_data, local_path))
+        try:
+            local_data = load_toml(local_path)
+            findings.extend(_findings_with_path(local_data, local_path))
+        except Exception:
+            pass
         # Inherited / propagated ancestor config files contribute to
         # the effective config but the loader's per-source unknown-field
         # warning needs the per-path name so the operator can locate the
         # typo in a specific inherited file, not just the local one.
         for propagated_path in workspace_scope.propagated_config_paths:
-            propagated_data = load_toml(propagated_path)
-            findings.extend(_findings_with_path(propagated_data, propagated_path))
+            try:
+                propagated_data = load_toml(propagated_path)
+                findings.extend(_findings_with_path(propagated_data, propagated_path))
+            except Exception:
+                pass
 
     for field_path, suggestion in findings:
         fix = (

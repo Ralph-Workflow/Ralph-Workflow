@@ -48,9 +48,13 @@ def test_agent_skill_root_paths_use_home_dir(
             assert resolved.is_absolute()
 
 
-def test_canonical_root_matches_existing_claude_layout() -> None:
+def test_canonical_root_matches_existing_claude_layout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake_home = tmp_path / "fake-home"
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
     canonical = canonical_agent_skill_root()
-    assert canonical.resolve() == Path.home() / ".claude" / "skills"
+    assert canonical.resolve() == fake_home / ".claude" / "skills"
 
 
 def test_sibling_root_count_matches_supported_agents_minus_canonical() -> None:
