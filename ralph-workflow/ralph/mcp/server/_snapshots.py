@@ -28,7 +28,7 @@ def snapshot_dir(
     """Return protected snapshot dir outside the watched workspace.
 
     Protected location under ~/.cache/ralph-workflow/dev/mcp-snapshots/<bridge_run_id>
-    so that workspace cleanup (commit_cleanup, git clean, workspace reset) cannot
+    so that workspace cleanup (commit_review, git clean, workspace reset) cannot
     delete it mid-run (E2.5). When override_dir or env_getter is provided,
     that explicit location takes precedence (useful for test isolation).
     """

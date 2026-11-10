@@ -16,6 +16,7 @@ from ralph.mcp.artifacts.canonical_submit import (
     promote_fallback_artifact,
     submit_artifact_canonical,
 )
+from ralph.mcp.artifacts.citation_verifier import verify_reject_citations
 
 __all__ = [
     "DEFAULT_ARTIFACT_PERSISTENCE",
@@ -24,4 +25,5 @@ __all__ = [
     "SubmitResult",
     "promote_fallback_artifact",
     "submit_artifact_canonical",
+    "verify_reject_citations",
 ]

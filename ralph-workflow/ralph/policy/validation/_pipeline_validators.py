@@ -47,7 +47,7 @@ def _collect_reachable_phases(policy: PipelinePolicy) -> set[str]:
         visited.add(current)
         phase_def = phases[current]
         t = phase_def.transitions
-        candidates: list[str | None] = [t.on_success, t.on_failure, t.on_loopback]
+        candidates: list[str | None] = [t.on_success, t.on_failure, t.on_loopback, t.on_reject]
         candidates.extend(phase_def.bypass_routes.values())
         candidates.extend(d.target for d in (phase_def.decisions or {}).values())
         candidates.extend(
@@ -332,4 +332,36 @@ def _validate_review_phase_outcome_complete(
                 f"Add bypass_routes.{phase_def.clean_outcome} = '<target_phase>' "
                 f"so the runtime can route on a clean review. "
                 f"See docs/sphinx/policy-driven-overhaul-migration.md."
+            )
+
+
+def _validate_commit_review_policy(
+    policy: PipelinePolicy,
+    errors: list[str],
+) -> None:
+    cr = policy.commit_review
+    if cr.max_deleted_files < 0:
+        errors.append(
+            f"commit_review.max_deleted_files: must be non-negative (got {cr.max_deleted_files})"
+        )
+    if not (0.0 <= cr.max_deleted_fraction <= 1.0):
+        errors.append(
+            f"commit_review.max_deleted_fraction: must be between 0.0 and 1.0 (got {cr.max_deleted_fraction})"
+        )
+    if cr.binary_size_limit <= 0:
+        errors.append(
+            f"commit_review.binary_size_limit: must be positive (got {cr.binary_size_limit})"
+        )
+    if cr.proposal_retention < 1:
+        errors.append(
+            f"commit_review.proposal_retention: must be at least 1 (got {cr.proposal_retention})"
+        )
+    if cr.max_rejections < 1:
+        errors.append(f"commit_review.max_rejections: must be at least 1 (got {cr.max_rejections})")
+
+    if "commit_review_rejections" in policy.loop_counters:
+        counter = policy.loop_counters["commit_review_rejections"]
+        if counter.default_max < 1:
+            errors.append(
+                f"loop_counters.commit_review_rejections: default_max must be at least 1 (got {counter.default_max})"
             )

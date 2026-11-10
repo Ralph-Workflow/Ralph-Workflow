@@ -43,3 +43,6 @@ class DeveloperPromptInputs:
     # remaining minutes and the force-cut sentence.
     dev_warn_epoch: float | None = None
     dev_deadline_epoch: float | None = None
+    last_review_rejection_reason: str = ""
+    rollback_ref: str = ""
+    last_proposal_ref: str = ""

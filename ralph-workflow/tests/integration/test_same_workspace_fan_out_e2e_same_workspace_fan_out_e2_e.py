@@ -105,7 +105,7 @@ class TestSameWorkspaceFanOutE2E:
         assert isinstance(effect, InvokeAgentEffect)
         assert effect.phase == "development"
 
-    def test_fan_out_advances_to_development_commit_cleanup_after_all_succeed(self) -> None:
+    def test_fan_out_advances_to_development_commit_review_after_all_succeed(self) -> None:
         """After ALL_WORKERS_COMPLETE, reducer advances into the compiled commit hook path."""
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
@@ -132,8 +132,8 @@ class TestSameWorkspaceFanOutE2E:
         for event in events:
             reduced_state, _ = reducer_reduce(reduced_state, event, policy_bundle.pipeline)
 
-        assert reduced_state.phase == "development_commit_cleanup", (
-            f"Expected development_commit_cleanup after fan-out, got {reduced_state.phase!r}"
+        assert reduced_state.phase == "development_commit_review", (
+            f"Expected development_commit_review after fan-out, got {reduced_state.phase!r}"
         )
         assert reduced_state.worker_states["unit-a"].status == WorkerStatus.SUCCEEDED
         assert reduced_state.worker_states["unit-b"].status == WorkerStatus.SUCCEEDED
@@ -170,7 +170,7 @@ class TestSameWorkspaceFanOutE2E:
             )
 
     def test_no_merge_step_required_for_supported_path(self) -> None:
-        """The supported path transitions directly from fan-out into commit cleanup
+        """The supported path transitions directly from fan-out into commit review
         without any git merge/worktree step.
         """
         unit_a = _make_work_unit("unit-a")
@@ -197,7 +197,7 @@ class TestSameWorkspaceFanOutE2E:
             reduced_state, _ = reducer_reduce(reduced_state, event, policy_bundle.pipeline)
 
         # Phase advanced to compiled commit hook path — no merge/worktree event in the chain
-        assert reduced_state.phase == "development_commit_cleanup"
+        assert reduced_state.phase == "development_commit_review"
         # Verify there are no merge-related intermediate phases
         git_merge_events = [e for e in events if hasattr(e, "name") and "merge" in str(e).lower()]
         assert git_merge_events == [], (
@@ -263,7 +263,7 @@ class TestSameWorkspaceFanOutE2E:
         state = initial_state
         for event in events:
             state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
-        assert state.phase == "development_commit_cleanup"
+        assert state.phase == "development_commit_review"
 
         # Per-worker artifact directories exist and are separate
         artifact_a = tmp_path / ".agent" / "workers" / "unit-a" / "artifacts"

@@ -270,6 +270,13 @@ class PipelineState(_FrozenPipelineStateModel):
     last_error: str | None = None
     last_reviewed_sha: str | None = None
 
+    # Commit review safety gate and rollback state
+    rollback_pending: bool = False
+    rollback_ref: str | None = None
+    commit_review_rejections: int = 0
+    approved_tree_sha: str | None = None
+    last_review_rejection_reason: str | None = None
+
     # Policy-derived fields (set at startup and after phase transitions)
     policy_entry_phase: PipelinePhase = _UNSET_PHASE
     policy_format_version: int | None = None

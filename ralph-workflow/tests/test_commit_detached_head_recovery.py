@@ -149,11 +149,11 @@ def test_worktree_on_detached_head_commits_to_feature_branch_without_failed_term
 
     # Feed the event into reducer and ensure it advances cleanly without reaching failed_terminal
     policy = _load_pipeline_policy()
-    state = PipelineState(phase="development_commit", previous_phase="development_commit_cleanup")
+    state = PipelineState(phase="development_commit", previous_phase="development_commit_review")
     next_state, _ = reduce(state, event, policy)
 
     assert next_state.phase != "failed_terminal"
-    assert next_state.phase in ("development_analysis", "development_final_commit_cleanup")
+    assert next_state.phase in ("development_analysis", "development_final_commit_review")
 
 
 def test_worktree_on_detached_head_reattaches_without_explicit_branch_arg(
@@ -218,7 +218,7 @@ def test_commit_failure_routes_to_automated_recovery_not_failed_terminal() -> No
     policy = _load_pipeline_policy()
     state = PipelineState(
         phase="development_commit",
-        previous_phase="development_commit_cleanup",
+        previous_phase="development_commit_review",
         last_error="GitOperationError: index.lock contention",
         pending_cycle_outcome="completed",
     )
@@ -226,8 +226,8 @@ def test_commit_failure_routes_to_automated_recovery_not_failed_terminal() -> No
     try:
         next_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy)
 
-        # Routes to automated recovery (development_commit_cleanup) instead of failed_terminal
-        assert next_state.phase == "development_commit_cleanup"
+        # Routes to automated recovery (development_commit_review) instead of failed_terminal
+        assert next_state.phase == "development_commit_review"
         assert next_state.phase != "failed_terminal"
         # Phase display must NOT report 'completed' when a commit fails!
         assert next_state.pending_cycle_outcome is None
@@ -746,10 +746,10 @@ def test_detached_head_with_staged_changes_commits_on_feature_branch_and_integra
 
     # Reducer advances to next phase without failed_terminal
     policy = _load_pipeline_policy()
-    state = PipelineState(phase="development_commit", previous_phase="development_commit_cleanup")
+    state = PipelineState(phase="development_commit", previous_phase="development_commit_review")
     next_state, _ = reduce(state, event, policy)
     assert next_state.phase != "failed_terminal"
-    assert next_state.phase in ("development_analysis", "development_final_commit_cleanup")
+    assert next_state.phase in ("development_analysis", "development_final_commit_review")
 
     # Integrate the committed work into 'main'
     outcome = auto_integrate_after_commit(
@@ -776,7 +776,7 @@ def test_persistent_repairable_failure_without_recovery_phase_stops_at_retry_cap
     Verifies that when a persistent repairable Git failure (such as unmerged
     paths or a detached HEAD error; NOT git lock contention, which waits and never
     ends the run) occurs under a policy defining neither
-    ``commit_recovery`` nor ``commit_cleanup``:
+    ``commit_recovery`` nor ``commit_review``:
     1. Retries in-place up to the bounded ``_MAX_COMMIT_RECOVERY_ATTEMPTS`` cap.
     2. Once the counter is exhausted, does NOT cycle in-place indefinitely.
     3. Routes to the policy's terminal failure phase.
@@ -794,7 +794,7 @@ def test_persistent_repairable_failure_without_recovery_phase_stops_at_retry_cap
     phases = {
         name: defn
         for name, defn in base_policy.phases.items()
-        if defn.role != "commit_cleanup" and "cleanup" not in name and "recovery" not in name
+        if defn.role != "commit_review" and "cleanup" not in name and "recovery" not in name
     }
     dev_phase = phases["development"]
     phases["development"] = dev_phase.model_copy(
@@ -806,9 +806,9 @@ def test_persistent_repairable_failure_without_recovery_phase_stops_at_retry_cap
     )
     policy_no_cleanup = base_policy.model_copy(update={"phases": phases})
 
-    # Ensure policy has no commit_recovery or commit_cleanup phase
+    # Ensure policy has no commit_recovery or commit_review phase
     assert not any(
-        defn.role == "commit_cleanup" or "cleanup" in name or "recovery" in name
+        defn.role == "commit_review" or "cleanup" in name or "recovery" in name
         for name, defn in policy_no_cleanup.phases.items()
     )
 
@@ -893,7 +893,7 @@ def test_persistent_repairable_failure_stops_even_with_workflow_fallback() -> No
     phases = {
         name: defn
         for name, defn in base_policy.phases.items()
-        if defn.role != "commit_cleanup" and "cleanup" not in name and "recovery" not in name
+        if defn.role != "commit_review" and "cleanup" not in name and "recovery" not in name
     }
     # Configure workflow_fallback on development_commit to point to planning
     commit_phase = phases["development_commit"].model_copy(

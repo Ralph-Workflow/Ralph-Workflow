@@ -49,8 +49,8 @@ from ralph.prompts._commit_diff import _UNTRACKED_HEADER, _is_inside_git_repo
 from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
 from ralph.prompts._prompt_phase_context import PromptPhaseContext
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
-from ralph.prompts.commit_cleanup import render_commit_cleanup_prompt
 from ralph.prompts.commit_evidence import build_commit_evidence_bundle
+from ralph.prompts.commit_review import render_commit_review_prompt
 from ralph.prompts.debug_dump import (
     clear_multimodal_sidecar,
     collect_media_entries_for_phase,
@@ -147,6 +147,16 @@ class PromptPhaseOptions:
     # See docs/sphinx/concepts.md §'Deprecated: Ralph-orchestrated workers'.
     work_unit: WorkUnit | None = None
 
+    # Stage 1 evidence for commit review prompts
+    proposal_ref: str | None = None
+    tree_sha: str | None = None
+    soft_tripwires: list[dict[str, object]] | str | None = None
+
+    # Rejection context passed to developer prompt
+    last_review_rejection_reason: str | None = None
+    rollback_ref: str | None = None
+    last_proposal_ref: str | None = None
+
 
 def __getattr__(name: str) -> object:
     if name == "MultimodalSidecarEntry":
@@ -182,28 +192,55 @@ def materialize_prompt_for_phase(
                 "Path", kwargs["workspace_root"]
             ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
         )
-        if options is None:
-            options = PromptPhaseOptions(
-                artifacts_policy=cast(
-                    "ArtifactsPolicy | None", kwargs.get("artifacts_policy")
-                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-                worker_namespace=cast(
-                    "Path | None", kwargs.get("worker_namespace")
-                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-                previous_phase=cast(
-                    "str | None", kwargs.get("previous_phase")
-                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-                resume_existing_phase=cast(
-                    "bool", kwargs.get("resume_existing_phase", False)
-                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-                multimodal_entries=cast(
-                    "list[MultimodalSidecarEntry] | None", kwargs.get("multimodal_entries")
-                ),
-                work_unit=cast(
-                    "WorkUnit | None", kwargs.get("work_unit")
-                ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-            )
-    opts = options or PromptPhaseOptions()
+    if options is None:
+        opts = PromptPhaseOptions(
+            artifacts_policy=cast(
+                "ArtifactsPolicy | None", kwargs.get("artifacts_policy")
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            worker_namespace=cast(
+                "Path | None", kwargs.get("worker_namespace")
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            previous_phase=cast(
+                "str | None", kwargs.get("previous_phase")
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            resume_existing_phase=cast(
+                "bool", kwargs.get("resume_existing_phase", False)
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            multimodal_entries=cast(
+                "list[MultimodalSidecarEntry] | None", kwargs.get("multimodal_entries")
+            ),
+            work_unit=cast(
+                "WorkUnit | None", kwargs.get("work_unit")
+            ),  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+            proposal_ref=cast("str | None", kwargs.get("proposal_ref")),
+            tree_sha=cast("str | None", kwargs.get("tree_sha")),
+            soft_tripwires=cast(
+                "list[dict[str, object]] | str | None", kwargs.get("soft_tripwires")
+            ),
+            last_review_rejection_reason=cast(
+                "str | None", kwargs.get("last_review_rejection_reason")
+            ),
+            rollback_ref=cast("str | None", kwargs.get("rollback_ref")),
+            last_proposal_ref=cast("str | None", kwargs.get("last_proposal_ref")),
+        )
+    else:
+        opts = PromptPhaseOptions(
+            artifacts_policy=options.artifacts_policy,
+            worker_namespace=options.worker_namespace,
+            previous_phase=options.previous_phase,
+            resume_existing_phase=options.resume_existing_phase,
+            multimodal_entries=options.multimodal_entries,
+            work_unit=options.work_unit,
+            proposal_ref=options.proposal_ref or cast("str | None", kwargs.get("proposal_ref")),
+            tree_sha=options.tree_sha or cast("str | None", kwargs.get("tree_sha")),
+            soft_tripwires=options.soft_tripwires
+            or cast("list[dict[str, object]] | str | None", kwargs.get("soft_tripwires")),
+            last_review_rejection_reason=options.last_review_rejection_reason
+            or cast("str | None", kwargs.get("last_review_rejection_reason")),
+            rollback_ref=options.rollback_ref or cast("str | None", kwargs.get("rollback_ref")),
+            last_proposal_ref=options.last_proposal_ref
+            or cast("str | None", kwargs.get("last_proposal_ref")),
+        )
     if opts.work_unit is not None or opts.worker_namespace is not None:
         raise ValueError(
             "worker and work-unit execution is deprecated; use the developer execution path"
@@ -368,15 +405,15 @@ def _render_prompt_for_phase(
             optional_context_paths=optional_context_paths,
             allow_empty_diff=True,
         )
-    # Commit-cleanup prompt: commit_cleanup role
-    if phase_role == "commit_cleanup":
+    # Commit-cleanup prompt: commit_review role
+    if phase_role == "commit_review":
         _snapshot_partial_execution_result(
             workspace,
             previous_phase=previous_phase,
             pipeline_policy=pipeline_policy,
             artifacts_policy=artifacts_policy,
         )
-        return render_commit_cleanup_prompt(
+        return render_commit_review_prompt(
             phase=phase,
             workspace_root=workspace_root,
             worker_namespace=worker_namespace,
@@ -386,6 +423,9 @@ def _render_prompt_for_phase(
             tmpl_ctx=tmpl_ctx,
             session_caps=session_caps,
             pipeline_policy=pipeline_policy,
+            proposal_ref=options.proposal_ref,
+            tree_sha=options.tree_sha,
+            soft_tripwires=options.soft_tripwires,
         )
     plan_content, plan_path = _resolve_required_plan_handoff(
         workspace,
@@ -425,6 +465,7 @@ def _render_prompt_for_phase(
             pipeline_policy=pipeline_policy,
             artifacts_policy=artifacts_policy,
             product_criteria_path=product_criteria_path,
+            options=options,
         )
     msg = f"Unsupported phase '{phase}' (role={phase_role!r}) for prompt materialization"
     raise ValueError(msg)
@@ -581,6 +622,14 @@ def _render_developer_prompt(
     # through to the no-partial-on-exhaustion rule.
     dev_warn_epoch = read_published_epoch(DEV_WARN_EPOCH_ENV)
     dev_deadline_epoch = read_published_epoch(DEV_DEADLINE_EPOCH_ENV)
+    rejection_reason = options.last_review_rejection_reason or ""
+    rollback_ref = options.rollback_ref or options.last_proposal_ref or ""
+    if not rejection_reason and "Commit review rejected previous iteration:" in last_retry_error:
+        for line in last_retry_error.splitlines():
+            if line.startswith("Commit review rejected previous iteration:"):
+                rejection_reason = line.split(":", 1)[1].strip()
+            elif line.startswith("Proposal ref:"):
+                rollback_ref = line.split(":", 1)[1].strip()
     rendered = prompt_developer_iteration_xml_with_context(
         context=tmpl_ctx,
         inputs=DeveloperPromptInputs(
@@ -602,6 +651,9 @@ def _render_developer_prompt(
             ),
             prompt_name_prefix=phase,
             last_retry_error=last_retry_error,
+            last_review_rejection_reason=rejection_reason,
+            rollback_ref=rollback_ref,
+            last_proposal_ref=rollback_ref,
             prior_result_status=prior_partial_result[0] if prior_partial_result else "",
             prior_result_markdown=prior_partial_result[1] if prior_partial_result else "",
             prior_session_id=prior_partial_result[2] if prior_partial_result else "",
@@ -635,6 +687,7 @@ def _render_template_based_prompt(
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy | None,
     product_criteria_path: str | Path,
+    options: PromptPhaseOptions | None = None,
 ) -> str:
     template = tmpl_ctx.registry.get_template(template_name)
     diff_content = ""
@@ -682,6 +735,17 @@ def _render_template_based_prompt(
         variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
     variables.update(_product_criteria_variables(prompt_content, str(product_criteria_path)))
     variables["LAST_RETRY_ERROR"] = last_retry_error
+    rejection_reason = (options.last_review_rejection_reason if options else None) or ""
+    rollback_ref = (options.rollback_ref or options.last_proposal_ref if options else None) or ""
+    if not rejection_reason and "Commit review rejected previous iteration:" in last_retry_error:
+        for line in last_retry_error.splitlines():
+            if line.startswith("Commit review rejected previous iteration:"):
+                rejection_reason = line.split(":", 1)[1].strip()
+            elif line.startswith("Proposal ref:"):
+                rollback_ref = line.split(":", 1)[1].strip()
+    variables["LAST_REVIEW_REJECTION_REASON"] = rejection_reason
+    variables["ROLLBACK_REF"] = rollback_ref
+    variables["LAST_PROPOSAL_REF"] = rollback_ref
     variables["HAS_DOCS_MCP"] = "true" if has_docs_mcp else ""
     variables["DOCS_MCP_PORT"] = "localhost:6280"
     variables["SKILLS_INLINE_CONTENT"] = skills_inline_content
@@ -1209,7 +1273,7 @@ def _optional_commit_context_paths(
         else tuple(
             phase_def
             for phase_def in pipeline_policy.phases.values()
-            if previous_phase_def.role == "commit_cleanup"
+            if previous_phase_def.role == "commit_review"
             and previous_phase_def.transitions.on_success == phase
             and phase_def.role == "execution"
             and phase_def.transitions.on_success == previous_phase
@@ -1300,7 +1364,7 @@ def _find_work_artifact(
         if pdef is None:
             continue
         role = pdef.role
-        skip = role in ("commit", "commit_cleanup", "analysis") or (
+        skip = role in ("commit", "commit_review", "analysis") or (
             role == "execution" and pdef.skip_invocation
         )
         if skip:

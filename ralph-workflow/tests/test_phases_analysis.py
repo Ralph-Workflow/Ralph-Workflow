@@ -25,7 +25,7 @@ from ralph.phases import HANDLERS, PhaseHandlerNotFoundError, handle_phase, regi
 from ralph.phases.analysis import handle_generic_analysis_phase, parse_analysis_decision_status
 from ralph.phases.artifacts import decision_vocabulary_for_drain
 from ralph.phases.commit import handle_commit_phase
-from ralph.phases.commit_cleanup import handle_commit_cleanup_phase
+from ralph.phases.commit_review import handle_commit_review_phase
 from ralph.phases.execution import handle_execution_phase
 from ralph.phases.required_artifacts import retry_hint_path
 from ralph.phases.review import handle_review
@@ -612,20 +612,20 @@ class TestRegisterRoleHandlers:
             handle_phase(effect, MagicMock())
         assert "totally_unknown_phase" in str(exc_info.value)
 
-    def test_register_role_handlers_registers_commit_cleanup_phase(self) -> None:
-        """register_role_handlers adds handle_commit_cleanup_phase for commit_cleanup roles."""
+    def test_register_role_handlers_registers_commit_review_phase(self) -> None:
+        """register_role_handlers adds handle_commit_review_phase for commit_review roles."""
         policy = PipelinePolicy(
             phases={
                 "my_custom_cleanup": PhaseDefinition(
                     drain="commit",
-                    role="commit_cleanup",
-                    prompt_template="commit_cleanup.jinja",
+                    role="commit_review",
+                    prompt_template="commit_review.jinja",
                     transitions=PhaseTransition(
                         on_success="done",
                         on_loopback="my_custom_cleanup",
                         on_failure="done",
                     ),
-                    loop_policy=PhaseLoopPolicy(iteration_state_field="commit_cleanup_iteration"),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="commit_review_iteration"),
                 ),
                 "done": PhaseDefinition(
                     drain="done",
@@ -636,9 +636,9 @@ class TestRegisterRoleHandlers:
             },
             entry_phase="my_custom_cleanup",
             terminal_phase="done",
-            loop_counters={"commit_cleanup_iteration": LoopCounterConfig(default_max=3)},
+            loop_counters={"commit_review_iteration": LoopCounterConfig(default_max=3)},
         )
         HANDLERS.pop("my_custom_cleanup", None)
         register_role_handlers(policy)
-        assert HANDLERS.get("my_custom_cleanup") is handle_commit_cleanup_phase
+        assert HANDLERS.get("my_custom_cleanup") is handle_commit_review_phase
         HANDLERS.pop("my_custom_cleanup", None)

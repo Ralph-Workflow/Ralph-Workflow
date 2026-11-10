@@ -104,6 +104,7 @@ def _explain_phase(
         on_success=phase_def.transitions.on_success,
         on_failure=phase_def.transitions.on_failure,
         on_loopback=phase_def.transitions.on_loopback,
+        on_reject=phase_def.transitions.on_reject,
         bypass_routes=dict(phase_def.bypass_routes),
         decisions={dk: dr.target for dk, dr in phase_def.decisions.items()},
         loop_policy=loop_expl,

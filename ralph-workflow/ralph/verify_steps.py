@@ -182,7 +182,7 @@ _VERIFY_STEPS: tuple[VerifyStep, ...] = (
         # wt-025 / AC-01, AC-04, AC-05: AST + literal-string audit that pins the
         # deterministic skill-update auto-commit contract (``chore(skills): sync
         # baseline bundle`` subject, the FIVE skill-root prefixes, AST placement of the
-        # early-skip in commit_cleanup.py, existence of the new helper module).
+        # early-skip in commit_review.py, existence of the new helper module).
         "skill auto-commit audit (audit_skill_auto_commit)",
         "uv",
         ("run", "python", "-m", "ralph.testing.audit_skill_auto_commit"),

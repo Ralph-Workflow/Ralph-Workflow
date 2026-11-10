@@ -1790,16 +1790,44 @@ Git
 
 The Git group bundles the GitPython-backed repository operations used by
 the runtime: status, diff, log, show, rebase, hooks, subprocess runner,
-and the commit-cleanup helpers that ship under ``ralph/git/commit_cleanup.py``.
+and the commit-review helpers that ship under ``ralph/git/commit_review.py``.
 Every blocking call in this group uses a bounded timeout via
 ``ralph/git/subprocess_runner.run_git``; see the bounded-subprocess
 contract in `docs/agents/verification.md
 <https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/agents/verification.md>`__.
 
-ralph.git.commit_cleanup
+ralph.git.commit_review
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.git.commit_cleanup
+.. automodule:: ralph.git.commit_review
+   :members:
+   :show-inheritance:
+
+ralph.git.proposal_seal
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.proposal_seal
+   :members:
+   :show-inheritance:
+
+ralph.git.proposal_seal_error
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.proposal_seal_error
+   :members:
+   :show-inheritance:
+
+ralph.git.proposal_preflight_error
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.proposal_preflight_error
+   :members:
+   :show-inheritance:
+
+ralph.git.diff_entry
+~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.diff_entry
    :members:
    :show-inheritance:
 
@@ -1816,7 +1844,7 @@ Phases
 ------
 
 This group holds the per-phase logic: analysis (``ralph/phases/analysis.py``),
-artifact-required checks (``required_artifacts``), commit / commit-cleanup
+artifact-required checks (``required_artifacts``), commit / commit-review
 / commit-logging, execution, integrity, review, verification, and timing.
 Each phase maps to a TOML block under ``[blocks.*]`` in the bundled
 ``ralph/policy/defaults/pipeline.toml``. See :doc:`concepts` for how
@@ -1861,10 +1889,10 @@ ralph.phases.commit
    :members:
    :show-inheritance:
 
-ralph.phases.commit_cleanup
+ralph.phases.commit_review
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.phases.commit_cleanup
+.. automodule:: ralph.phases.commit_review
    :members:
    :show-inheritance:
 
@@ -2407,6 +2435,13 @@ ralph.mcp.artifacts.canonical_submit
    :members:
    :show-inheritance:
 
+ralph.mcp.artifacts.citation_verifier
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.citation_verifier
+   :members:
+   :show-inheritance:
+
 ralph.mcp.artifacts.commit_message
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2549,7 +2584,7 @@ ralph.mcp.artifacts.markdown.specs
 .. automodule:: ralph.mcp.artifacts.markdown.specs.analysis_decision
    :members:
 
-.. automodule:: ralph.mcp.artifacts.markdown.specs.commit_cleanup
+.. automodule:: ralph.mcp.artifacts.markdown.specs.commit_review
    :members:
 
 .. automodule:: ralph.mcp.artifacts.markdown.specs.commit_message

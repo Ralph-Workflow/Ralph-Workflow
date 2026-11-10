@@ -1,28 +1,29 @@
 """Security contracts for commit markdown artifact specs."""
 
 from ralph.mcp.artifacts.markdown import parse_and_validate
-from ralph.mcp.artifacts.markdown.specs.commit_cleanup import COMMIT_CLEANUP_SPEC
 from ralph.mcp.artifacts.markdown.specs.commit_message import COMMIT_MESSAGE_SPEC
+from ralph.mcp.artifacts.markdown.specs.commit_review import COMMIT_REVIEW_SPEC
 
 
-def test_commit_cleanup_spec_preserves_path_and_pattern_injection_guards() -> None:
+def test_commit_review_spec_preserves_path_and_pattern_injection_guards() -> None:
     valid, valid_diagnostics = parse_and_validate(
-        "---\ntype: commit_cleanup\nanalysis_complete: false\n---\n"
+        "---\ntype: commit_review\nverdict: approve\ntree_sha: 0123456789abcdef0123456789abcdef01234567\n---\n"
         "## Actions\n- [A1] add_to_gitignore | *.pyc\n",
-        COMMIT_CLEANUP_SPEC,
+        COMMIT_REVIEW_SPEC,
     )
 
     assert valid == {
-        "analysis_complete": False,
+        "verdict": "approve",
+        "tree_sha": "0123456789abcdef0123456789abcdef01234567",
         "actions": [{"action": "add_to_gitignore", "pattern": "*.pyc"}],
     }
     assert valid_diagnostics == []
 
     for injected_value in ("#disabled-rule", "caf\u00e9"):
         content, diagnostics = parse_and_validate(
-            "---\ntype: commit_cleanup\nanalysis_complete: false\n---\n## Actions\n"
+            "---\ntype: commit_review\nverdict: approve\ntree_sha: 0123456789abcdef0123456789abcdef01234567\n---\n## Actions\n"
             f"- [A1] add_to_gitignore | {injected_value}\n",
-            COMMIT_CLEANUP_SPEC,
+            COMMIT_REVIEW_SPEC,
         )
 
         assert content == {}

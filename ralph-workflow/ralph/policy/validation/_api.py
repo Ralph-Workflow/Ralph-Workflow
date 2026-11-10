@@ -18,9 +18,9 @@ from ralph.policy.validation._checkpoint_policy_mismatch_error import (
 )
 from ralph.policy.validation._phase_validators import (
     _validate_analysis_phase,
-    _validate_commit_cleanup_phase,
     _validate_commit_phase_loop_resets,
     _validate_commit_phase_post_commit_routes,
+    _validate_commit_review_phase,
     _validate_loop_policy_role,
     _validate_review_phase,
     _validate_skip_invocation_has_on_success,
@@ -28,6 +28,7 @@ from ralph.policy.validation._phase_validators import (
     _validate_verification_phase,
 )
 from ralph.policy.validation._pipeline_validators import (
+    _validate_commit_review_policy,
     _validate_no_legacy_phase_constants,
     _validate_post_commit_routes_complete,
     _validate_reachability,
@@ -213,8 +214,8 @@ def validate_policy_completeness(
         if role == "verification":
             _validate_verification_phase(phase_name, phase_def, policy, errors)
 
-        if role == "commit_cleanup":
-            _validate_commit_cleanup_phase(phase_name, phase_def, bundle, errors)
+        if role == "commit_review":
+            _validate_commit_review_phase(phase_name, phase_def, bundle, errors)
 
         _validate_loop_policy_role(phase_name, phase_def, errors)
         _validate_skip_invocation_has_on_success(phase_name, phase_def, errors)
@@ -227,6 +228,7 @@ def validate_policy_completeness(
     _validate_terminal_failure_phase_declared(policy, errors)
     _validate_tracked_counters_have_positive_max(policy, errors)
     _validate_shared_drain_history_consistency(policy, errors)
+    _validate_commit_review_policy(policy, errors)
 
     if cli_counter_overrides:
         validate_cli_counter_overrides(policy, cli_counter_overrides, errors)

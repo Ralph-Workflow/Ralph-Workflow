@@ -461,7 +461,7 @@ class TestBuildSessionBridge:
         # surface, not a hand-picked subset.
         expected = {
             "commit_message",
-            "commit_cleanup",
+            "commit_review",
             "development_result",
             "issues",
             "development_analysis_decision",

@@ -1,8 +1,8 @@
 """Registered markdown artifact specifications."""
 
 from ralph.mcp.artifacts.markdown.specs.analysis_decision import ANALYSIS_DECISION_SPECS
-from ralph.mcp.artifacts.markdown.specs.commit_cleanup import COMMIT_CLEANUP_SPEC
 from ralph.mcp.artifacts.markdown.specs.commit_message import COMMIT_MESSAGE_SPEC
+from ralph.mcp.artifacts.markdown.specs.commit_review import COMMIT_REVIEW_SPEC
 from ralph.mcp.artifacts.markdown.specs.design_verdict import DESIGN_VERDICT_SPEC
 from ralph.mcp.artifacts.markdown.specs.development_result import DEVELOPMENT_RESULT_SPEC
 from ralph.mcp.artifacts.markdown.specs.fix_result import FIX_RESULT_SPEC
@@ -14,8 +14,8 @@ from ralph.mcp.artifacts.markdown.specs.smoke_test_result import SMOKE_TEST_RESU
 
 __all__ = [
     "ANALYSIS_DECISION_SPECS",
-    "COMMIT_CLEANUP_SPEC",
     "COMMIT_MESSAGE_SPEC",
+    "COMMIT_REVIEW_SPEC",
     "DESIGN_VERDICT_SPEC",
     "DEVELOPMENT_RESULT_SPEC",
     "FIX_RESULT_SPEC",

@@ -78,6 +78,9 @@ def prompt_developer_iteration_xml_with_context(
         "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
         "DOCS_MCP_PORT": DEFAULT_DOCS_MCP_PORT,
         "IS_CONTINUATION": "true" if is_continuation else "",
+        "LAST_REVIEW_REJECTION_REASON": inputs.last_review_rejection_reason,
+        "ROLLBACK_REF": inputs.rollback_ref or inputs.last_proposal_ref,
+        "LAST_PROPOSAL_REF": inputs.rollback_ref or inputs.last_proposal_ref,
     }
     # remaining-minutes and force-cut sentence. The run-budget partial
     # uses these to render the concrete countdown when the pipeline has

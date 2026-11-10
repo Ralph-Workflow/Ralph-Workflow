@@ -186,10 +186,10 @@ class TestDetermineEffect:
         workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
         monkeypatch.setattr(runner_module, "_cleanup_commit_message_artifacts", MagicMock())
         state = PipelineState(
-            phase="development_final_commit_cleanup",
+            phase="development_final_commit_review",
             outer_progress={"iteration": DEVELOPER_ITERATIONS - 1},
             loop_iterations={
-                "commit_cleanup_iteration": SECOND_ITERATION,
+                "commit_review_iteration": SECOND_ITERATION,
                 "development_analysis_iteration": SECOND_ITERATION,
             },
             pending_cycle_outcome="completed",
@@ -207,7 +207,7 @@ class TestDetermineEffect:
         )
 
         assert isinstance(cleanup_effect, EmptyCommitEffect)
-        assert cleanup_effect.phase_role == "commit_cleanup"
+        assert cleanup_effect.phase_role == "commit_review"
         assert (
             runner_module.execute_effect(cleanup_effect, MagicMock(), workspace_scope)
             is PipelineEvent.AGENT_SUCCESS
@@ -236,7 +236,7 @@ class TestDetermineEffect:
         )
         assert complete.phase == "complete"
         assert complete.get_outer_progress("iteration") == DEVELOPER_ITERATIONS
-        assert complete.get_loop_iteration("commit_cleanup_iteration") == 0
+        assert complete.get_loop_iteration("commit_review_iteration") == 0
         assert complete.get_loop_iteration("development_analysis_iteration") == 0
 
     def test_complete_phase_returns_exit_success(self) -> None:
@@ -497,9 +497,9 @@ class TestDetermineEffect:
 
         assert isinstance(effect, EmptyCommitEffect)
 
-    def test_commit_cleanup_inspection_failure_invokes_an_agent(self, tmp_path: Path) -> None:
+    def test_commit_review_inspection_failure_invokes_an_agent(self, tmp_path: Path) -> None:
         bundle = _load_default_policy_bundle()
-        state = PipelineState(phase="development_commit_cleanup")
+        state = PipelineState(phase="development_commit_review")
 
         effect = runner_module.determine_effect_from_policy(
             state,

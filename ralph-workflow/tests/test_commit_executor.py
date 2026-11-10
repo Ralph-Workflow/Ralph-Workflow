@@ -236,7 +236,7 @@ def test_detached_head_commit_failure_not_routed_to_failed_terminal_and_clears_c
     # Verify reducer routing: not failed_terminal, and pending_cycle_outcome is cleared
     state = PipelineState(
         phase="development_commit",
-        previous_phase="development_commit_cleanup",
+        previous_phase="development_commit_review",
         pending_cycle_outcome="completed",
         last_error=last_err,
     )
@@ -245,7 +245,7 @@ def test_detached_head_commit_failure_not_routed_to_failed_terminal_and_clears_c
     assert next_state.phase != "failed_terminal", (
         "Must route to automated recovery, not failed_terminal"
     )
-    assert next_state.phase in ("development_commit_cleanup", "commit_recovery")
+    assert next_state.phase in ("development_commit_review", "commit_recovery")
     assert next_state.pending_cycle_outcome is None, (
         "Phase display must not report completed for failed commit"
     )
@@ -286,9 +286,72 @@ def test_detached_head_auto_repaired_commit_succeeds_without_failed_terminal(
 
     state = PipelineState(
         phase="development_commit",
-        previous_phase="development_commit_cleanup",
+        previous_phase="development_commit_review",
         pending_cycle_outcome="completed",
     )
     next_state, _ = reduce(state, event, policy)
     assert next_state.phase != "failed_terminal"
-    assert next_state.phase in ("development_analysis", "development_final_commit_cleanup")
+    assert next_state.phase in ("development_analysis", "development_final_commit_review")
+
+
+def test_sha_bound_staging_succeeds_when_tree_sha_matches(tmp_path: Path) -> None:
+    from ralph.config.bootstrap import auto_seed_default_git_exclude
+    from ralph.git.operations import write_tree
+
+    repo = _init_test_git_repo(tmp_path, "main")
+    auto_seed_default_git_exclude(tmp_path)
+    work_file = tmp_path / "initial.txt"
+    work_file.write_text("updated content for sha bound test", encoding="utf-8")
+    repo.index.add(["initial.txt"])
+    expected_tree = write_tree(tmp_path)
+
+    message_file = _create_commit_message_artifact(tmp_path, "feat: sha bound test")
+    event = execute_commit_effect(
+        CommitEffect(message_file=str(message_file), expected_tree_sha=expected_tree),
+        tmp_path,
+        branch="main",
+    )
+    assert event == PipelineEvent.COMMIT_SUCCESS
+
+
+def test_sha_bound_staging_fails_when_tree_sha_mismatches(tmp_path: Path) -> None:
+    _ = _init_test_git_repo(tmp_path, "main")
+    work_file = tmp_path / "initial.txt"
+    work_file.write_text("updated content for sha bound failure test", encoding="utf-8")
+
+    message_file = _create_commit_message_artifact(tmp_path, "feat: sha bound test")
+    event = execute_commit_effect(
+        CommitEffect(
+            message_file=str(message_file),
+            expected_tree_sha="1111111111111111111111111111111111111111",
+        ),
+        tmp_path,
+        branch="main",
+    )
+    assert event == PipelineEvent.COMMIT_FAILURE
+    last_err = get_last_commit_error()
+    assert last_err is not None
+    assert "does not match approved tree SHA" in last_err
+
+
+def test_execute_commit_effect_prunes_proposals_on_success(tmp_path: Path) -> None:
+    _ = _init_test_git_repo(tmp_path, "main")
+    work_file = tmp_path / "initial.txt"
+    work_file.write_text("updated content for prune test", encoding="utf-8")
+
+    pruned = False
+
+    def _mock_prune(root: Path) -> list[str]:
+        nonlocal pruned
+        pruned = True
+        return ["refs/ralph/proposals/test/1"]
+
+    message_file = _create_commit_message_artifact(tmp_path, "feat: prune test")
+    event = execute_commit_effect(
+        CommitEffect(message_file=str(message_file)),
+        tmp_path,
+        branch="main",
+        prune_fn=_mock_prune,
+    )
+    assert event == PipelineEvent.COMMIT_SUCCESS
+    assert pruned is True

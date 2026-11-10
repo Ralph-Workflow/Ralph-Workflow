@@ -370,7 +370,7 @@ class TestAnalysisDecisionDispatch:
         assert new_state.phase == "development"
         assert new_state.previous_phase == "development_analysis"
 
-    def test_analysis_failed_routes_development_analysis_to_final_commit_cleanup(self) -> None:
+    def test_analysis_failed_routes_development_analysis_to_final_commit_review(self) -> None:
         """A terminal analyzer verdict closes the cycle through its commit boundary."""
         policy = _policy_with_post_commit_routes()
         analysis = policy.phases["development_analysis"]
@@ -801,23 +801,23 @@ class TestAnalysisDecisionDispatch:
         )
         assert new_state.review_outcome is not None
 
-    def test_commit_cleanup_loopback_does_not_apply_analysis_iteration_bookkeeping(self) -> None:
+    def test_commit_review_loopback_does_not_apply_analysis_iteration_bookkeeping(self) -> None:
         policy = PipelinePolicy(
             phases={
-                "development_commit_cleanup": PhaseDefinition(
+                "development_commit_review": PhaseDefinition(
                     drain="commit",
-                    role="commit_cleanup",
+                    role="commit_review",
                     transitions=PhaseTransition(
                         on_success="development_commit",
-                        on_loopback="development_commit_cleanup",
+                        on_loopback="development_commit_review",
                     ),
-                    loop_policy=PhaseLoopPolicy(iteration_state_field="commit_cleanup_iteration"),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="commit_review_iteration"),
                 ),
                 "development_commit": PhaseDefinition(
                     drain="development_commit",
                     role="commit",
                     transitions=PhaseTransition(on_success="complete"),
-                    commit_policy=PhaseCommitPolicy(loop_resets=["commit_cleanup_iteration"]),
+                    commit_policy=PhaseCommitPolicy(loop_resets=["commit_review_iteration"]),
                 ),
                 "complete": PhaseDefinition(
                     drain="complete",
@@ -826,18 +826,18 @@ class TestAnalysisDecisionDispatch:
                     transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
                 ),
             },
-            entry_phase="development_commit_cleanup",
+            entry_phase="development_commit_review",
             terminal_phase="complete",
-            loop_counters={"commit_cleanup_iteration": LoopCounterConfig(default_max=3)},
+            loop_counters={"commit_review_iteration": LoopCounterConfig(default_max=3)},
         )
         state = PipelineState(
-            phase="development_commit_cleanup",
-            loop_iterations={"commit_cleanup_iteration": 1},
+            phase="development_commit_review",
+            loop_iterations={"commit_review_iteration": 1},
         )
 
         new_state, _ = _reduce(state, PipelineEvent.PHASE_LOOPBACK, policy)
 
-        assert new_state.phase == "development_commit_cleanup"
-        assert new_state.previous_phase == "development_commit_cleanup"
-        assert new_state.get_loop_iteration("commit_cleanup_iteration") == 2
+        assert new_state.phase == "development_commit_review"
+        assert new_state.previous_phase == "development_commit_review"
+        assert new_state.get_loop_iteration("commit_review_iteration") == 2
         assert new_state.review_outcome is None

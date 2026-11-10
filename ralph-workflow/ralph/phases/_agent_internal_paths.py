@@ -1,10 +1,10 @@
 """Canonical allowlist of Ralph Workflow runtime-artifact paths.
 
 This module is the single source of truth for which paths the
-``commit_cleanup`` phase treats as engine-owned and unconditionally
+``commit_review`` phase treats as engine-owned and unconditionally
 deletable. Three places in Ralph must agree on this allowlist:
 
-1. ``ralph/phases/commit_cleanup.py`` -- the fast-path exemption that
+1. ``ralph/phases/commit_review.py`` -- the fast-path exemption that
    bypasses the universal HEAD veto in ``_is_safe_to_delete``.
 2. ``ralph/config/bootstrap.py`` -- the patterns seeded into
    ``.gitignore`` (root-anchored) and ``.git/info/exclude`` so these

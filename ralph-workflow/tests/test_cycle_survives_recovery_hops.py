@@ -78,7 +78,7 @@ def test_the_deadline_still_redirects_after_a_commit_failure() -> None:
         routing_timing=RoutingTiming(total_elapsed_seconds=36_000.0),
     )
 
-    assert redirected.phase == "development_final_commit_cleanup"
+    assert redirected.phase == "development_final_commit_review"
     assert redirected.cycle_timebox_redirect_reason is not None
 
 
@@ -142,7 +142,7 @@ def test_a_recovery_re_entry_is_still_bound_by_the_deadline() -> None:
         routing_timing=RoutingTiming(total_elapsed_seconds=36_000.0),
     )
 
-    assert decision.target_phase == "development_final_commit_cleanup"
+    assert decision.target_phase == "development_final_commit_review"
     assert decision.redirected is True
 
 
@@ -173,7 +173,7 @@ def test_the_runtime_re_entry_applies_that_decision(tmp_path: Path) -> None:
         workspace_scope=WorkspaceScope(tmp_path),
     )
 
-    assert updated.phase == "development_final_commit_cleanup"
+    assert updated.phase == "development_final_commit_review"
     assert updated.cycle_timebox_active is True
 
 
@@ -300,7 +300,7 @@ def test_a_redirected_recovery_hop_prepares_the_phase_it_actually_enters(
     finally:
         logger.remove(sink_id)
 
-    target = "development_final_commit_cleanup"
+    target = "development_final_commit_review"
     assert updated.phase == target
     assert updated.current_drain == bundle.pipeline.phases[target].drain
     assert any("cycle timebox reached" in record for record in records)
@@ -337,7 +337,7 @@ def test_the_recovery_hop_judges_the_deadline_on_the_sampled_clock(
         routing_timing=RoutingTiming(total_elapsed_seconds=36100.0),
     )
 
-    assert updated.phase == "development_final_commit_cleanup"
+    assert updated.phase == "development_final_commit_review"
 
 
 def test_a_resumed_concluded_cycle_is_not_re_armed(tmp_path: Path) -> None:

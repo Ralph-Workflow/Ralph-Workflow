@@ -3,7 +3,7 @@
 Mirror of the wt-025 skill auto-commit: when the readiness preflight leaves
 the project READY, the policy surfaces it wrote are committed in one
 deterministic chore commit. Without it, the next run's development agent
-sees the drift in its working tree and the commit-cleanup phase warns about
+sees the drift in its working tree and the commit-review phase warns about
 files it does not own.
 
 Shares the git mechanics (scoped dirty discovery, staged-state preservation,

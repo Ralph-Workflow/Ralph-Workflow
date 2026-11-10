@@ -88,13 +88,13 @@ class TestPhaseEntryModel:
         with pytest.raises((AttributeError, TypeError)):
             m.__setattr__("outer_dev_iteration", 2)
 
-    def test_commit_cleanup_entry_model_does_not_render_inner_analysis_context(self) -> None:
+    def test_commit_review_entry_model_does_not_render_inner_analysis_context(self) -> None:
         policy = PipelinePolicy(
             phases={
-                "development_commit_cleanup": PhaseDefinition(
+                "development_commit_review": PhaseDefinition(
                     drain="commit",
-                    role="commit_cleanup",
-                    loop_policy=PhaseLoopPolicy(iteration_state_field="commit_cleanup_iteration"),
+                    role="commit_review",
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="commit_review_iteration"),
                     transitions=PhaseTransition(on_success="development_commit"),
                 ),
                 "development_commit": PhaseDefinition(
@@ -109,24 +109,24 @@ class TestPhaseEntryModel:
                     transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
                 ),
             },
-            entry_phase="development_commit_cleanup",
+            entry_phase="development_commit_review",
             terminal_phase="complete",
             loop_counters={
-                "commit_cleanup_iteration": LoopCounterConfig(default_max=3),
+                "commit_review_iteration": LoopCounterConfig(default_max=3),
             },
         )
         state = PipelineState(
-            phase="development_commit_cleanup",
-            loop_iterations={"commit_cleanup_iteration": 1},
+            phase="development_commit_review",
+            loop_iterations={"commit_review_iteration": 1},
         )
 
         entry = build_phase_entry_model_from_state(
-            "development_commit_cleanup",
+            "development_commit_review",
             state,
             policy,
         )
 
-        assert entry.phase_role == "commit_cleanup"
+        assert entry.phase_role == "commit_review"
         assert entry.inner_analysis is None
         assert entry.inner_analysis_cap is None
 

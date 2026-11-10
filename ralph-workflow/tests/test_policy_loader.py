@@ -806,7 +806,7 @@ def test_default_cycle_timebox_values() -> None:
     assert ct.start_entry == "development"
     assert ct.guarded_entry == "development"
     assert ct.end_entry == "development_final_commit"
-    assert ct.finalization_target == "development_final_commit_cleanup"
+    assert ct.finalization_target == "development_final_commit_review"
     assert ct.finalization_cycle_outcome == "completed"
 
 
@@ -850,8 +850,8 @@ def test_cycle_timebox_rejects_invalid_duration(bad_duration: float) -> None:
             start_source="planning_analysis",
             start_entry="development",
             guarded_entry="development",
-            end_entry="development_final_commit_cleanup",
-            finalization_target="development_final_commit_cleanup",
+            end_entry="development_final_commit_review",
+            finalization_target="development_final_commit_review",
         )
     assert "duration_seconds must be finite and greater than zero" in str(excinfo.value)
 
@@ -860,7 +860,7 @@ def test_cycle_timebox_rejects_unknown_target(tmp_path: Path) -> None:
     _copy_default_policy_files(tmp_path)
     pipeline = (tmp_path / "pipeline.toml").read_text()
     pipeline = pipeline.replace(
-        'finalization_target = "development_final_commit_cleanup"',
+        'finalization_target = "development_final_commit_review"',
         'finalization_target = "no_such_phase"',
     )
     # The toml has two lines matching the replacement target; replace only the
@@ -947,8 +947,8 @@ def test_inherited_cycle_timebox_disabled_when_graph_lacks_referenced_phases() -
             "start_source": "planning_analysis",
             "start_entry": "development",
             "guarded_entry": "development",
-            "end_entry": "development_final_commit_cleanup",
-            "finalization_target": "development_final_commit_cleanup",
+            "end_entry": "development_final_commit_review",
+            "finalization_target": "development_final_commit_review",
         },
     }
 
@@ -960,3 +960,21 @@ def test_inherited_cycle_timebox_disabled_when_graph_lacks_referenced_phases() -
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
         policy_loader._validate_pipeline(custom_graph, cycle_timebox_explicit=True)
     assert "cycle_timebox" in excinfo.value.message
+
+
+def test_pipeline_loader_loads_commit_review_policy(tmp_path: Path) -> None:
+    """load_policy loads commit_review section into CommitReviewPolicy."""
+    _copy_default_policy_files(tmp_path)
+    pipeline = (tmp_path / "pipeline.toml").read_text()
+    pipeline = pipeline.replace("max_deleted_files = 50", "max_deleted_files = 15")
+    pipeline = pipeline.replace("max_deleted_fraction = 0.25", "max_deleted_fraction = 0.4")
+    pipeline = pipeline.replace("binary_size_limit = 1000000", "binary_size_limit = 5000000")
+    pipeline = pipeline.replace("proposal_retention = 10", "proposal_retention = 7")
+    pipeline = pipeline.replace("max_rejections = 2", "max_rejections = 3")
+    (tmp_path / "pipeline.toml").write_text(pipeline)
+    bundle = load_policy(tmp_path)
+    assert bundle.pipeline.commit_review.max_deleted_files == 15
+    assert bundle.pipeline.commit_review.max_deleted_fraction == 0.4
+    assert bundle.pipeline.commit_review.binary_size_limit == 5000000
+    assert bundle.pipeline.commit_review.proposal_retention == 7
+    assert bundle.pipeline.commit_review.max_rejections == 3

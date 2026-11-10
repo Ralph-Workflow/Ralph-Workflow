@@ -414,12 +414,12 @@ def test_emit_phase_transition_skipped_analysis_emits_routing_note() -> None:
     #
     # In the default policy, development_commit (role=commit) has on_success=development_analysis.
     # When development_analysis_iteration hits cap, we skip development_analysis and go
-    # to development_final_commit_cleanup. So we set
-    # state.phase="development_final_commit_cleanup" which differs from
+    # to development_final_commit_review. So we set
+    # state.phase="development_final_commit_review" which differs from
     # previous_phase="development_commit".
     display = _StubDisplay()
     state = PipelineState(
-        phase="development_final_commit_cleanup",  # Actual phase after skipping analysis
+        phase="development_final_commit_review",  # Actual phase after skipping analysis
         previous_phase="development_commit",  # Previous phase whose success target was analysis
         budget_caps={"iteration": 1},
         # Set loop iteration to cap to trigger skipped analysis
@@ -431,7 +431,7 @@ def test_emit_phase_transition_skipped_analysis_emits_routing_note() -> None:
         runner_module.PENDING_PHASE_TRANSITION_METADATA_ATTR,
         runner_module.PendingPhaseTransitionMetadata(
             previous_phase="development_commit",
-            current_phase="development_final_commit_cleanup",
+            current_phase="development_final_commit_review",
             routing_note="Analysis cap reached, skipping",
         ),
     )

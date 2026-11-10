@@ -19,7 +19,7 @@ and bounded. Without it, future refactors could silently break:
    ``.codex/skills/``, ``.gemini/antigravity-cli/skills/``);
 
 3. the AST placement of the early-skip block in
-   ``ralph/git/commit_cleanup.py::untrack_engine_internal_files`` -- the
+   ``ralph/git/commit_review.py::untrack_engine_internal_files`` -- the
    skip MUST run BEFORE the symlink-WARNING block so tracked skill
    symlinks never trigger the WARNING noise on a clean run; and
 
@@ -137,13 +137,13 @@ _INVARIANTS: tuple[Invariant, ...] = (
             ".gemini/antigravity-cli/skills/",
         ),
     ),
-    # The commit_cleanup.py early-skip block MUST come BEFORE the
+    # The commit_review.py early-skip block MUST come BEFORE the
     # symlink-WARNING block. The literal-string check alone is insufficient
     # -- the AST placement check below provides the stronger guarantee.
     # Here we pin the literal-string presence of the early-skip so a
     # future refactor that accidentally removes the entire block fails.
     Invariant(
-        rel_path="git/commit_cleanup.py",
+        rel_path="git/commit_review.py",
         present=(
             "_SKILL_ROOT_PREFIXES",
             "Skipping tracked skill-root path",
@@ -269,7 +269,7 @@ def _check_skill_root_skip_placement() -> list[str]:  # noqa: PLR0912 - AST walk
     check alone cannot catch ordering drift because both literals are
     still present in the file body.
     """
-    rel = "git/commit_cleanup.py"
+    rel = "git/commit_review.py"
     try:
         src = _read(rel)
     except FileNotFoundError:

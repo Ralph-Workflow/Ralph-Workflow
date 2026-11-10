@@ -143,7 +143,7 @@ def test_active_legacy_checkpoint_without_epoch_fails_closed_at_warning() -> Non
 
     assert sampled.dev_timebox_consumed_seconds == 4200.0
     assert redirected is not None
-    assert redirected[0].phase == "development_commit_cleanup"
+    assert redirected[0].phase == "development_commit_review"
 
 
 def test_active_legacy_cycle_without_epoch_fails_closed_at_deadline() -> None:
@@ -176,7 +176,7 @@ def test_active_legacy_cycle_without_epoch_fails_closed_at_deadline() -> None:
 
     assert sampled.cycle_timebox_consumed_seconds == 36_000.0
     assert redirected is not None
-    assert redirected[0].phase == "development_final_commit_cleanup"
+    assert redirected[0].phase == "development_final_commit_review"
 
 
 def test_checkpoint_file_preserves_both_independent_timer_origins(tmp_path: Path) -> None:
@@ -234,7 +234,7 @@ def test_phase_wide_timer_redirects_on_first_restart_at_warning() -> None:
         policy,
         routing_timing=warning_timing,
     )
-    assert redirected.phase == "development_commit_cleanup"
+    assert redirected.phase == "development_commit_review"
     assert redirected.dev_timebox_active is True
     assert redirected.pending_cycle_outcome is None
     assert redirected.post_commit_phase_override == "development_analysis"
@@ -251,7 +251,7 @@ def test_same_phase_retry_past_warning_redirects_before_hard_deadline() -> None:
     redirected = redirect_expired_cycle_in_place(state, policy, _timing(4201.0))
     assert redirected is not None
     next_state, _ = redirected
-    assert next_state.phase == "development_commit_cleanup"
+    assert next_state.phase == "development_commit_review"
     assert next_state.dev_timebox_active is True
     assert next_state.dev_timebox_redirect_reason is not None
 
@@ -267,7 +267,7 @@ def test_same_phase_retry_redirects_at_warning_before_hard_deadline() -> None:
     redirected = redirect_expired_cycle_in_place(state, policy, _timing(4200.0))
     assert redirected is not None
     next_state, _ = redirected
-    assert next_state.phase == "development_commit_cleanup"
+    assert next_state.phase == "development_commit_review"
 
 
 def test_development_timebox_regression_deadline_routes_without_cycle_timebox() -> None:
@@ -290,7 +290,7 @@ def test_development_timebox_regression_deadline_routes_without_cycle_timebox() 
     redirected = redirect_expired_cycle_in_place(state, policy, routing_timing)
     assert redirected is not None
     next_state, _ = redirected
-    assert next_state.phase == "development_commit_cleanup"
+    assert next_state.phase == "development_commit_review"
 
 
 def test_default_watchdog_ceiling_cannot_preempt_development_redirect() -> None:
@@ -418,7 +418,7 @@ def test_development_commit_ends_phase_timer_without_resetting_cycle_timer() -> 
         policy,
         routing_timing=_timing(4200.0),
     )
-    assert final_commit.phase == "development_commit_cleanup"
+    assert final_commit.phase == "development_commit_review"
     assert final_commit.dev_timebox_active is True
     assert final_commit.dev_timebox_consumed_seconds == 4200.0
     assert final_commit.cycle_timebox_active is True
@@ -490,7 +490,7 @@ def test_validation_retry_preserves_elapsed_then_redirects_at_warning() -> None:
         policy,
         routing_timing=_timing(4200.0, cycle_elapsed=1234.0),
     )
-    assert redirected.phase == "development_commit_cleanup"
+    assert redirected.phase == "development_commit_review"
     assert redirected.dev_timebox_redirect_reason is not None
 
 
@@ -549,7 +549,7 @@ def test_recovery_controller_cannot_select_another_agent_after_warning() -> None
         routing_timing=_timing(4200.0),
     )
 
-    assert redirected.phase == "development_commit_cleanup"
+    assert redirected.phase == "development_commit_review"
     assert redirected.dev_timebox_active is True
     assert redirected.chain_for_phase("development").current_index == 0
 
@@ -573,7 +573,7 @@ def test_warning_routes_through_commit_and_analysis_before_fresh_development() -
         policy,
         routing_timing=_timing(4200.0, 4200.0),
     )
-    assert state.phase == "development_commit_cleanup"
+    assert state.phase == "development_commit_review"
     assert state.dev_timebox_active is True
     assert state.cycle_timebox_active is True
 

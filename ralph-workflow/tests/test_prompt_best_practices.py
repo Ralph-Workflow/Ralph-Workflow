@@ -10,7 +10,7 @@ _TEMPLATE_NAMES = (
     "planning_analysis.jinja",
     "developer_iteration.jinja",
     "development_analysis.jinja",
-    "commit_cleanup.jinja",
+    "commit_review.jinja",
     "commit_message.jinja",
     "commit_simplified.jinja",
     "conflict_resolution.jinja",

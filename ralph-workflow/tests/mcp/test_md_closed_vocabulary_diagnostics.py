@@ -244,21 +244,22 @@ def test_consumed_status_diagnostic_survives_missing_required_sections(
     assert status_errors[0].line == 3
 
 
-@pytest.mark.parametrize(
-    "analysis_complete_line", (None, "analysis_complete:", "analysis_complete: done")
-)
-def test_commit_cleanup_analysis_complete_teaches_its_closed_vocabulary(
-    analysis_complete_line: str | None,
+@pytest.mark.parametrize("verdict_line", (None, "verdict:", "verdict: done"))
+def test_commit_review_verdict_teaches_its_closed_vocabulary(
+    verdict_line: str | None,
 ) -> None:
-    frontmatter = ["type: commit_cleanup"]
-    if analysis_complete_line is not None:
-        frontmatter.append(analysis_complete_line)
-    expected_line = 3 if analysis_complete_line == "analysis_complete: done" else 1
+    frontmatter = [
+        "type: commit_review",
+        "tree_sha: 0123456789abcdef0123456789abcdef01234567",
+    ]
+    if verdict_line is not None:
+        frontmatter.append(verdict_line)
+    expected_line = 4 if verdict_line == "verdict: done" else 1
     _assert_closed_vocabulary_error(
-        "commit_cleanup",
+        "commit_review",
         _document(tuple(frontmatter), "## Actions\n- [A1] add_to_gitignore | *.tmp"),
         field_line=expected_line,
-        valid_vocabulary=("true", "false"),
+        valid_vocabulary=("approve", "reject"),
     )
 
 
@@ -313,11 +314,11 @@ def test_commit_cleanup_analysis_complete_teaches_its_closed_vocabulary(
             id="product-spec",
         ),
         pytest.param(
-            "commit_cleanup",
+            "commit_review",
             ("type: wrong", "analysis_complete: false"),
             "## Actions\n- [A1] add_to_gitignore | *.tmp",
-            ("commit_cleanup",),
-            id="commit-cleanup",
+            ("commit_review",),
+            id="commit-review",
         ),
         *(
             pytest.param(

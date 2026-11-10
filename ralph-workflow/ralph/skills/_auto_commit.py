@@ -4,7 +4,7 @@ When Ralph Workflow installs a fresh skill bundle via the pre-pipeline sync
 (``_sync_shipped_skills_on_pipeline_run`` in ``ralph/cli/commands/run.py``),
 the project-canonical and its sibling fan-out entries can drift away from
 HEAD. Without an auto-commit, the development agent sees those changes in
-its working tree on the next ``ralph`` run and the ``development_commit_cleanup``
+its working tree on the next ``ralph`` run and the ``development_commit_review``
 phase logs a WARNING for every tracked ``.agents/skills/<name>`` symlink.
 
 This module provides the deterministic single-commit resolution:

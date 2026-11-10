@@ -73,22 +73,22 @@ child_blocks = [
   "planning",
   "planning_analysis",
   "development",
-  "development_commit_cleanup",
+  "development_commit_review",
   "development_commit",
   "development_analysis",
-  "development_final_commit_cleanup",
+  "development_final_commit_review",
   "development_final_commit",
   "complete",
   "failed_terminal",
 ]
 completion_block = "development_final_commit"
 before_complete = [
-  "development_commit_cleanup",
+  "development_commit_review",
   "development_commit",
-  "development_final_commit_cleanup",
+  "development_final_commit_review",
 ]
 increments_counter = "iteration"
-loop_resets = ["development_analysis_iteration", "commit_cleanup_iteration"]
+loop_resets = ["development_analysis_iteration", "commit_review_iteration"]
 ```
 
 Use `[blocks.*]` when you want to compose the workflow from reusable units rather than declaring a flat phase graph. Most operators can start with the bundled block layout and override only the `[phases.<name>]` details inside the blocks they want to change.
@@ -142,6 +142,7 @@ Roles include:
 - `execution`
 - `analysis`
 - `review`
+- `commit_review`
 - `commit`
 - `verification`
 - `terminal`
@@ -240,6 +241,50 @@ skipped_advances_progress = true
 increments_counter = "iteration"
 loop_resets = ["development_analysis_iteration"]
 ```
+
+### Commit review phase and safety tripwires
+
+The commit review phases (`development_commit_review` and `development_final_commit_review`) precede their respective commit steps (`development_commit` and `development_final_commit`). They have `role = "commit_review"` and use `prompt_template = "commit_review.jinja"`.
+
+Example block configuration:
+
+```toml
+[blocks.development_commit_review]
+kind = "individual"
+phase_name = "development_commit_review"
+[blocks.development_commit_review.phase]
+drain = "commit"
+role = "commit_review"
+prompt_template = "commit_review.jinja"
+display_style = "theme.phase.commit"
+[blocks.development_commit_review.phase.transitions]
+on_success = "development_commit"
+on_loopback = "development_commit_review"
+on_failure = "development_commit"
+[blocks.development_commit_review.phase.loop_policy]
+iteration_state_field = "commit_review_iteration"
+```
+
+#### Deterministic tripwires and thresholds
+
+Before invoking the review agent, the engine seals pending changes into an isolated proposal ref (`refs/ralph/proposals/<run>/<iteration>`) and runs Stage 1 deterministic tripwires. Tripwires protect against accidental repository destruction:
+
+- **Mass deletion threshold (`max_deleted_files`, default: 50):** If the count of deleted tracked files exceeds this limit, the gate triggers a hard rejection.
+- **Mass deletion ratio (`max_deleted_fraction`, default: 0.25):** If the fraction of deleted tracked files exceeds 25% of the repository's total tracked files, the gate triggers a hard rejection.
+- **Binary size ceiling (`binary_size_limit`, default: 1,000,000 bytes / 1 MB):** Binaries exceeding this size are flagged for cleanup review.
+- **Protected paths:** Deleting or overwriting `.git` internals, manifest files (`package.json`, `Cargo.toml`, `pyproject.toml`), lockfiles (`uv.lock`, `package-lock.json`, etc.), top-level source/test directories, or core prompts (`PROMPT.md`, `AGENTS.md`) is rejected immediately.
+- **Proposal retention (`proposal_retention`, default: 10):** Limits how many historical proposal refs are retained before older ones are pruned.
+
+#### Rejection, rollback, and recovery
+
+- **Rejection routing:** When a review artifact submits `verdict = "reject"`, or when a hard tripwire triggers, the run does not commit. The engine performs a preflight check, checkpoints `rollback_pending`, and restores the tree to `HEAD` (or the clean run-start baseline) with `git read-tree --reset -u HEAD`, removing files introduced in the proposal tree while keeping `.agent/` and ignored files intact.
+- **Continuation:** The rejection reason and proposal ref are carried to the next developer prompt, and routing returns to `development`.
+- **Rejection counter ceiling:** The `commit_review_rejections` counter tracks consecutive rejections (default limit: 2). Unlike iteration counters, it is not cleared by loop resets; reaching the ceiling routes to `failed_terminal`.
+- **Fail-closed gate:** Reviewer malfunctions (such as unparseable artifacts or unverifiable reason citations) fail closed with `on_failure = "failed_terminal"` rather than discarding code.
+- **Manual proposal recovery:** Proposals are preserved under `refs/ralph/proposals/<run>/<iteration>` and can be inspected or restored:
+  ```bash
+  git checkout refs/ralph/proposals/<run>/<iteration> -- .
+  ```
 
 ### `[phases.<name>.parallelization]`
 
@@ -419,7 +464,7 @@ This is where you change how far the workflow is allowed to keep trying before i
 The cycle timebox imposes a configurable wall-clock limit on each
 plan-to-final-commit development cycle. When the budget is exhausted,
 subsequent development entries are redirected to the configured
-finalization target (the final-commit cleanup phase) so the cycle
+finalization target (the final-commit review phase) so the cycle
 concludes with a real commit rather than looping indefinitely.
 
 | Field | Default | Description |
@@ -428,8 +473,8 @@ concludes with a real commit rather than looping indefinitely.
 | `start_source` | `planning_analysis` | Source phase of the transition that starts the timer. |
 | `start_entry` | `development` | Target phase of the start transition (phase whose entry begins the cycle). |
 | `guarded_entry` | `development` | Phase where the deadline is enforced on re-entry. |
-| `end_entry` | `development_final_commit_cleanup` | Phase whose entry clears timing. Routing out of the cycle by any other route clears it too. |
-| `finalization_target` | `development_final_commit_cleanup` | Redirect target when the deadline is reached. |
+| `end_entry` | `development_final_commit_review` | Phase whose entry clears timing. Routing out of the cycle by any other route clears it too. |
+| `finalization_target` | `development_final_commit_review` | Redirect target when the deadline is reached. |
 | `finalization_cycle_outcome` | `completed` | Cycle outcome stamped on a redirect so `post_commit_routes` route the finished cycle normally. |
 
 A redirect ends the cycle at the dev cycle's final commit, not the run.
@@ -453,8 +498,8 @@ duration_seconds = 7200
 start_source = "planning_analysis"
 start_entry = "development"
 guarded_entry = "development"
-end_entry = "development_final_commit_cleanup"
-finalization_target = "development_final_commit_cleanup"
+end_entry = "development_final_commit_review"
+finalization_target = "development_final_commit_review"
 finalization_cycle_outcome = "completed"
 ```
 
@@ -484,11 +529,11 @@ one limit does not reset, extend, or otherwise change the other timer.
 | `warning_seconds` | `4200` | Finite non-negative warning point, strictly less than `duration_seconds`. |
 | `start_source` / `start_entry` | `planning_analysis` / `development` | Transition that starts the timer. |
 | `guarded_entry` | `development` | Development entry guarded by the hard stop. |
-| `end_entry` / `finalization_target` | `development_final_commit_cleanup` | Entry that ends timing and redirect target. |
+| `end_entry` / `finalization_target` | `development_final_commit_review` | Entry that ends timing and redirect target. |
 
 Validation failures and same-phase retries do not reset or pause this timer.
 The timer ends whenever routing leaves development, including the normal route
-to final-commit cleanup; only a later `planning_analysis` → `development`
+to final-commit review; only a later `planning_analysis` → `development`
 entry starts a fresh timer. Once the configured hard stop is reached, the next
 attempt (including a same-phase retry) follows the existing finalization route.
 The runtime publishes its warning and deadline as `RALPH_DEV_WARN_EPOCH` and
@@ -595,8 +640,8 @@ duration_seconds = 3600
 start_source = "planning_analysis"
 start_entry = "development"
 guarded_entry = "development"
-end_entry = "development_final_commit_cleanup"
-finalization_target = "development_final_commit_cleanup"
+end_entry = "development_final_commit_review"
+finalization_target = "development_final_commit_review"
 ```
 
 This reduces the budget to 60 minutes; the 80% warning fires at 48

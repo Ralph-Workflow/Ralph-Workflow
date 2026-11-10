@@ -25,7 +25,7 @@ ARTIFACT_SKILLS = (
     "submit-commit-message-artifact.md",
     "submit-development-result-artifact.md",
     "submit-development-analysis-decision-artifact.md",
-    "submit-commit-cleanup-artifact.md",
+    "submit-commit-review-artifact.md",
 )
 
 
@@ -55,7 +55,7 @@ _EXPECTED_ARTIFACT_SKILL_VERSIONS: dict[str, str] = {
     "submit-artifact.md": "2.2.0",
     "submit-plan-artifact.md": "2.2.0",
     "submit-commit-message-artifact.md": "2.2.0",
-    "submit-commit-cleanup-artifact.md": "2.2.0",
+    "submit-commit-review-artifact.md": "2.2.0",
     "submit-development-result-artifact.md": "3.0.0",
     "submit-development-analysis-decision-artifact.md": "1.0.0",
 }

@@ -96,7 +96,7 @@ because routing depends on it.
 | artifact_type | Purpose | Format doc path |
 |--------------|---------|-----------------|
 | `commit_message` | Git commit message (or skip) | `.agent/artifact-formats/commit_message.md` |
-| `commit_cleanup` | Pre-commit file cleanup actions | `.agent/artifact-formats/commit_cleanup.md` |
+| `commit_review` | Pre-commit file cleanup actions | `.agent/artifact-formats/commit_review.md` |
 | `development_result` | Outcome of a development task | `.agent/artifact-formats/development_result.md` |
 | `issues` | Issues found during review | `.agent/artifact-formats/issues.md` |
 | `fix_result` | Outcome of a fix task | `.agent/artifact-formats/fix_result.md` |

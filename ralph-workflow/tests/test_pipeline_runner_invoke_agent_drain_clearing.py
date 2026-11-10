@@ -389,7 +389,7 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         )
         state = PipelineState(
             phase="development_commit",
-            previous_phase="development_commit_cleanup",
+            previous_phase="development_commit_review",
         )
 
         result = _run_pipeline_step(
@@ -433,7 +433,7 @@ class TestPipelineRunnerInvokeAgentDrainClearing:
         )
         state = PipelineState(
             phase="development_final_commit",
-            previous_phase="development_final_commit_cleanup",
+            previous_phase="development_final_commit_review",
         )
 
         result = _run_pipeline_step(

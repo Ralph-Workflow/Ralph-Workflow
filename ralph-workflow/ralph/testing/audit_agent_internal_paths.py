@@ -1,7 +1,7 @@
 """Audit that the Ralph runtime-artifact allowlist is consistent across all three consumers.
 
 Without this audit, future drift in any consumer of the canonical allowlist
-(``commit_cleanup``, ``bootstrap``, and this audit itself) could silently
+(``commit_review``, ``bootstrap``, and this audit itself) could silently
 re-introduce the original bug: tracked engine-owned files blocked from
 deletion by the universal HEAD veto in ``_is_safe_to_delete``.
 
@@ -21,7 +21,7 @@ Enforces non-vacuous invariants across:
    matches from silently deleting user-authored tracked files like
    ``.agent/raw/script.py`` or ``.agent/workers/<unit>/src/main.py``.
 
-2. **LITERAL-STRING** -- ``ralph/phases/commit_cleanup.py`` MUST import
+2. **LITERAL-STRING** -- ``ralph/phases/commit_review.py`` MUST import
    ``is_agent_internal_path`` from the leaf module AND call it as the
    FIRST statement in ``_is_safe_to_delete`` (the fast-path exemption).
 
@@ -44,7 +44,7 @@ Enforces non-vacuous invariants across:
    directories, paths outside ``.agent/``). All accepts must return
    True, all rejects must return False.
 
-5. **AST PLACEMENT** -- parse ``ralph/phases/commit_cleanup.py`` with the
+5. **AST PLACEMENT** -- parse ``ralph/phases/commit_review.py`` with the
    ``ast`` module and verify that the FIRST executable statement inside
    ``_is_safe_to_delete`` is the ``is_agent_internal_path(path)`` check.
    This is the stronger guarantee the audit pins: a future refactor
@@ -123,7 +123,7 @@ _FAST_PATH_TARGET_SOURCE: str = "is_agent_internal_path(path)"
 def _check_fast_path_placement() -> list[str]:
     """Verify the agent-internal fast path is the FIRST statement in ``_is_safe_to_delete``.
 
-    Uses Python's ``ast`` module to parse ``ralph/phases/commit_cleanup.py``
+    Uses Python's ``ast`` module to parse ``ralph/phases/commit_review.py``
     and locate the function body. Walks the body in source order and
     returns a violation if the FIRST executable statement is NOT the
     ``is_agent_internal_path(path)`` check.
@@ -142,7 +142,7 @@ def _check_fast_path_placement() -> list[str]:
         List of violation strings. Empty on success.
     """
     problems: list[str] = []
-    rel_path = "phases/commit_cleanup.py"
+    rel_path = "phases/commit_review.py"
     try:
         source = _read(rel_path)
     except FileNotFoundError:
@@ -203,7 +203,7 @@ def _check_fast_path_placement() -> list[str]:
 
 
 # Target function whose on-entry auto-seed placement the audit pins.
-_AUTO_SEED_TARGET_FUNCTION: str = "handle_commit_cleanup_phase"
+_AUTO_SEED_TARGET_FUNCTION: str = "handle_commit_review_phase"
 
 # Real exported helper names from ralph.config.bootstrap. PA-003 closed:
 # the prior audit used a nonexistent symbol ``auto_seed_default_git_execute``
@@ -216,7 +216,7 @@ _AUTO_SEED_GITEXCLUDE_HELPER: str = "auto_seed_default_git_exclude"
 # Anchor calls whose relative position we use to verify the auto-seed
 # block sits between the ensure_git_initialized call and the artifact
 # load. Both anchor names are stable identifiers that have existed since
-# the original commit_cleanup phase was introduced.
+# the original commit_review phase was introduced.
 _AUTO_SEED_PRIOR_ANCHOR: str = "ensure_git_initialized"
 _AUTO_SEED_LATER_ANCHOR: str = "_load_cleanup_artifact"
 
@@ -229,7 +229,7 @@ _PRE_EMPTIVE_UNTRACK_HELPER: str = "untrack_engine_internal_files"
 def _check_auto_seed_placement() -> list[str]:
     """Verify both auto-seed helpers are called between the prior and later anchors.
 
-    Walks ``handle_commit_cleanup_phase`` body in source order and verifies
+    Walks ``handle_commit_review_phase`` body in source order and verifies
     that:
 
     1. The ``ensure_git_initialized`` anchor appears BEFORE both
@@ -248,7 +248,7 @@ def _check_auto_seed_placement() -> list[str]:
     Returns:
         List of violation strings. Empty on success.
     """
-    rel_path = "phases/commit_cleanup.py"
+    rel_path = "phases/commit_review.py"
     source = _read_or_synthesize_violation(rel_path)
     if isinstance(source, list):
         return source
@@ -288,14 +288,14 @@ def _parse_source_or_synthesize_violation(rel_path: str, source: str) -> ast.AST
 
 
 def _find_target_function(tree: ast.AST) -> ast.FunctionDef | ast.AsyncFunctionDef | list[str]:
-    """Locate the ``handle_commit_cleanup_phase`` function in the parsed AST."""
+    """Locate the ``handle_commit_review_phase`` function in the parsed AST."""
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == (
             _AUTO_SEED_TARGET_FUNCTION
         ):
             return node
     return [
-        f"phases/commit_cleanup.py: function {_AUTO_SEED_TARGET_FUNCTION!r} not found -- "
+        f"phases/commit_review.py: function {_AUTO_SEED_TARGET_FUNCTION!r} not found -- "
         "auto-seed placement cannot be verified"
     ]
 
@@ -417,12 +417,12 @@ def _check_pre_emptive_untrack_placement() -> list[str]:
     (the call must run AFTER ``ensure_git_initialized`` and BEFORE
     ``_load_cleanup_artifact``). The audit also asserts there is
     EXACTLY ONE call to ``untrack_engine_internal_files`` in the
-    ``handle_commit_cleanup_phase`` body -- a duplicate call would
+    ``handle_commit_review_phase`` body -- a duplicate call would
     widen the index-walk surface area for no gain.
 
     The check reuses ``_collect_call_sites`` so the call shape must be
     a plain ``ast.Name`` call (``untrack_engine_internal_files(...)``),
-    NOT a module-qualified ``commit_cleanup_module.untrack_engine_internal_files(...)``
+    NOT a module-qualified ``commit_review_module.untrack_engine_internal_files(...)``
     -- the latter would be silently skipped by ``_collect_call_sites``
     and pass the audit, which is exactly the regression mode this
     placement check exists to prevent.
@@ -430,7 +430,7 @@ def _check_pre_emptive_untrack_placement() -> list[str]:
     Returns:
         List of violation strings. Empty on success.
     """
-    rel_path = "phases/commit_cleanup.py"
+    rel_path = "phases/commit_review.py"
     source = _read_or_synthesize_violation(rel_path)
     if isinstance(source, list):
         return source
@@ -499,11 +499,11 @@ def _check_best_effort_invariants() -> list[str]:
 
     Asserts:
 
-    1. ``ralph/phases/commit_cleanup.py`` does NOT contain the literal
+    1. ``ralph/phases/commit_review.py`` does NOT contain the literal
        string ``raise ValueError`` paired with ``Refusing to delete
        non-housekeeping`` -- the hard fail was removed in favor of a
        WARNING log + skipped_delete_paths return.
-    2. ``ralph/phases/commit_cleanup.py`` DOES define a
+    2. ``ralph/phases/commit_review.py`` DOES define a
        ``build_cleanup_retry_hint`` helper (the structured reason
        producer for ``PhaseFailureEvent``).
 
@@ -511,7 +511,7 @@ def _check_best_effort_invariants() -> list[str]:
         List of violation strings. Empty on success.
     """
     problems: list[str] = []
-    rel_path = "phases/commit_cleanup.py"
+    rel_path = "phases/commit_review.py"
     try:
         source = _read(rel_path)
     except FileNotFoundError:
@@ -566,7 +566,7 @@ _BEHAVIORAL_ACCEPT_PATHS: tuple[str, ...] = (
     ".agent/tmp/mcp-server.log",
     ".agent/artifacts/plan.md",
     ".agent/workers/unit-a/tmp/checkpoint.json",
-    ".agent/receipts/run-1/commit_cleanup.json",
+    ".agent/receipts/run-1/commit_review.json",
     ".agent/prompt_history/x.json",
     ".agent/artifact-formats/x.md",
     # Completion-sentinel glob (canonical on-disk filename pattern).
@@ -712,7 +712,7 @@ _INVARIANTS: tuple[Invariant, ...] = (
         ),
     ),
     Invariant(
-        rel_path="phases/commit_cleanup.py",
+        rel_path="phases/commit_review.py",
         present=(
             "from ralph.phases._agent_internal_paths import is_agent_internal_path",
             "if is_agent_internal_path(path):",
@@ -809,7 +809,7 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(
             "The Ralph runtime-artifact allowlist has drifted between the leaf module "
-            "(_agent_internal_paths.py), the commit_cleanup fast-path (literal + AST placement), "
+            "(_agent_internal_paths.py), the commit_review fast-path (literal + AST placement), "
             "and the bootstrap gitignore/exclude seed. Re-read the rework plan in PLAN.md and "
             "restore the missing/forbidden literals and the first-statement placement."
         )
@@ -819,12 +819,12 @@ def main(argv: list[str] | None = None) -> int:
         f"audit_agent_internal_paths OK ({total} invariants checked): "
         "_agent_internal_paths.py exports the canonical frozensets + completion_seen_*.json "
         "glob + is_agent_internal_path predicate, "
-        "commit_cleanup.py imports and invokes is_agent_internal_path as the fast-path, "
+        "commit_review.py imports and invokes is_agent_internal_path as the fast-path, "
         "_is_safe_to_delete places is_agent_internal_path(path) as the "
         "FIRST executable statement (AST placement), "
-        "handle_commit_cleanup_phase auto-seeds canonical .gitignore + .git/info/exclude "
+        "handle_commit_review_phase auto-seeds canonical .gitignore + .git/info/exclude "
         "patterns between ensure_git_initialized and _load_cleanup_artifact (AST placement), "
-        "handle_commit_cleanup_phase pre-emptively untracks tracked engine-internal files "
+        "handle_commit_review_phase pre-emptively untracks tracked engine-internal files "
         "via untrack_engine_internal_files between ensure_git_initialized and "
         "_load_cleanup_artifact (AST placement, EXACTLY ONCE), "
         "bootstrap.py defines _DEFAULT_GIT_EXCLUDE_PATTERNS + auto_seed_default_git_exclude "

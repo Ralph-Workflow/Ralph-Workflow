@@ -1,7 +1,7 @@
 """Black-box tests for the Ralph runtime-artifact allowlist predicate.
 
 The leaf module ``ralph.phases._agent_internal_paths`` is the single source of
-truth for which paths the commit_cleanup phase is allowed to delete
+truth for which paths the commit_review phase is allowed to delete
 unconditionally. These tests pin the canonical inventory (positive cases)
 and the security boundary (negative cases).
 """
@@ -188,9 +188,9 @@ def test_accepts_engine_extensions_inside_engine_internal_dirs() -> None:
         ".agent/tmp/mcp-server.log",
         ".agent/tmp/scratch.json",
         ".agent/tmp/prompt.md",
-        ".agent/artifacts/commit_cleanup.md",
+        ".agent/artifacts/commit_review.md",
         ".agent/artifacts/plan.md",
-        ".agent/receipts/run-1/commit_cleanup.json",
+        ".agent/receipts/run-1/commit_review.json",
         ".agent/receipts/run-2/smoke.json",
         ".agent/prompt_history/abc.json",
         ".agent/artifact-formats/commit_message.md",

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.git.commit_cleanup import is_recognized_secret_path
+from ralph.git.commit_review import is_recognized_secret_path
 from ralph.git.operations import has_staged_changes, has_uncommitted_changes, list_changed_paths
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
@@ -93,7 +93,7 @@ def determine_effect_from_policy(
     if phase_def.skip_invocation is True:
         return _skip_invocation_effect(state, phase_def, policy_bundle.pipeline)
 
-    if phase_def.role in ("commit", "commit_cleanup"):
+    if phase_def.role in ("commit", "commit_review"):
         scope = workspace_scope or resolve_workspace_scope()
         return _commit_phase_effect(
             state,
@@ -277,8 +277,8 @@ def _commit_phase_effect(
     has_uncommitted_changes_fn: Callable[[Path], bool] = has_uncommitted_changes,
     recovery: RecoveryController | None = None,
 ) -> Effect:
-    if phase_def.role == "commit_cleanup":
-        completed_effect = _empty_commit_cleanup_effect(
+    if phase_def.role == "commit_review":
+        completed_effect = _empty_commit_review_effect(
             workspace_scope.root,
             has_uncommitted_changes_fn=has_uncommitted_changes_fn,
         )
@@ -300,7 +300,10 @@ def _commit_phase_effect(
     if completed_effect is not None:
         return completed_effect
     if state.commit.agent_invoked and read_commit_message_artifact(workspace_scope.root):
-        return CommitEffect(message_file=str(workspace_scope.root / COMMIT_MESSAGE_ARTIFACT))
+        return CommitEffect(
+            message_file=str(workspace_scope.root / COMMIT_MESSAGE_ARTIFACT),
+            expected_tree_sha=state.approved_tree_sha,
+        )
     if state.commit.agent_invoked:
         logger.warning(
             "Commit invocation state has no valid durable message artifact; regenerating it"
@@ -316,7 +319,7 @@ def _commit_phase_effect(
     )
 
 
-def _empty_commit_cleanup_effect(
+def _empty_commit_review_effect(
     workspace_root: Path,
     *,
     has_uncommitted_changes_fn: Callable[[Path], bool],
@@ -326,7 +329,7 @@ def _empty_commit_cleanup_effect(
     except Exception:
         return None
     if not has_pending_work:
-        return EmptyCommitEffect(phase_role="commit_cleanup")
+        return EmptyCommitEffect(phase_role="commit_review")
     return None
 
 

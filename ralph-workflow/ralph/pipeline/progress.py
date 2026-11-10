@@ -331,7 +331,7 @@ def analysis_loopback_is_already_charged(
 
     Restricted to analysis phases on purpose. The charged flag is set when the
     invocation gate admits an analysis cycle and is cleared only on entry to an
-    execution phase, so it is still set when the run reaches a commit-cleanup
+    execution phase, so it is still set when the run reaches a commit-review
     phase later in the same cycle. Suppressing the charge there stopped that
     phase's own loop counter from ever advancing, so its cap never fired and a
     cleanup that kept asking to loop looped forever — with no timebox left to
@@ -359,13 +359,17 @@ def apply_commit_outcome(
     if policy is None:
         msg = f"apply_commit_outcome requires PipelinePolicy for commit-role phase {state.phase!r}"
         raise ValueError(msg)
-    lifecycle = policy.lifecycle_phases.get(state.phase)
+    target_phase = state.phase
+    phase_def = policy.phases.get(target_phase)
+    if phase_def is not None and phase_def.role == "commit_review":
+        target_phase = phase_def.transitions.on_success
+    lifecycle = policy.lifecycle_phases.get(target_phase)
     if lifecycle is not None:
         return _apply_lifecycle_completion_policy(state, advanced_state, lifecycle)
-    phase_def = policy.phases.get(state.phase)
-    if phase_def is not None and phase_def.commit_policy is not None:
+    target_phase_def = policy.phases.get(target_phase)
+    if target_phase_def is not None and target_phase_def.commit_policy is not None:
         return _apply_commit_outcome_policy_driven(
-            state, advanced_state, skipped, phase_def.commit_policy
+            state, advanced_state, skipped, target_phase_def.commit_policy
         )
     return advanced_state
 

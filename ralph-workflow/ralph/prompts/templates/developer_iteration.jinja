@@ -11,6 +11,7 @@ IMPORTANT: The previous attempt did not complete successfully.
 
 {{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
 {% endif %}
+{% include 'shared/_commit_review_rejection.j2' %}
 {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
 {% include 'shared/_unattended_mode.j2' %}
 

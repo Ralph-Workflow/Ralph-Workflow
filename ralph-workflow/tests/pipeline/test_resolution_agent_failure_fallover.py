@@ -69,7 +69,7 @@ def _reduce_with(entries: dict[str, UnavailabilityEntry], *, phase: str) -> Pipe
 
 
 @pytest.mark.parametrize(
-    "phase", ["development", "development_commit_cleanup", "development_commit"]
+    "phase", ["development", "development_commit_review", "development_commit"]
 )
 def test_agent_failure_falls_over_without_spending_pending_conflict_budget(phase: str) -> None:
     state = _reduce_with({"claude": _entry(5000)}, phase=phase)
@@ -83,7 +83,7 @@ def test_agent_failure_falls_over_without_spending_pending_conflict_budget(phase
 
 
 @pytest.mark.parametrize(
-    "phase", ["development", "development_commit_cleanup", "development_commit"]
+    "phase", ["development", "development_commit_review", "development_commit"]
 )
 def test_agent_failure_waits_when_all_resolvers_are_cooling_down(phase: str) -> None:
     state = _reduce_with(

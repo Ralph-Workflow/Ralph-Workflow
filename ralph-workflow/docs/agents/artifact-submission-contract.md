@@ -324,7 +324,7 @@ The audit module derives ``_CANONICAL_TYPES`` directly from
 separate hardcoded set. That source stays aligned with the registered markdown
 spec types, including ``plan``, every ``*_analysis_decision`` type,
 ``development_result``, ``product_spec``, ``issues``, ``fix_result``,
-``smoke_test_result``, ``commit_cleanup``, and ``commit_message``.
+``smoke_test_result``, ``commit_review``, and ``commit_message``.
 
 This single-source-of-truth arrangement means any future canonical type added
 to ``KNOWN_ARTIFACT_TYPES`` propagates automatically to the audit — no

@@ -109,12 +109,18 @@ def _validate_commit_phase_loop_resets(
     if not loop_resets:
         return
 
+    if "commit_review_rejections" in loop_resets:
+        errors.append(
+            f"phases.{phase_name}.commit_policy.loop_resets: 'commit_review_rejections' "
+            "cannot be reset in loop_resets as it must survive iteration resets."
+        )
+
     valid_iteration_fields: set[str] = set()
     for defn in policy.phases.values():
         lp = defn.loop_policy
         if (
             isinstance(defn, PhaseDefinition)
-            and defn.role in ("analysis", "commit_cleanup")
+            and defn.role in ("analysis", "commit_review")
             and lp is not None
         ):
             valid_iteration_fields.add(lp.iteration_state_field)
@@ -125,7 +131,7 @@ def _validate_commit_phase_loop_resets(
             f"phases.{phase_name}.commit_policy.loop_resets: "
             f"invalid iteration field(s) {invalid_resets}. "
             f"loop_resets must reference iteration_state_field values from analysis phases "
-            f"or commit_cleanup phases or be empty. Valid fields: {sorted(valid_iteration_fields)}"
+            f"or commit_review phases or be empty. Valid fields: {sorted(valid_iteration_fields)}"
         )
 
 
@@ -217,7 +223,7 @@ def _validate_skip_invocation_has_on_success(
         )
 
 
-def _validate_commit_cleanup_phase(
+def _validate_commit_review_phase(
     phase_name: str,
     phase_def: object,
     bundle: object,
@@ -227,7 +233,7 @@ def _validate_commit_cleanup_phase(
         return
     if phase_def.loop_policy is None:
         errors.append(
-            f"phases.{phase_name}: role='commit_cleanup' requires loop_policy "
+            f"phases.{phase_name}: role='commit_review' requires loop_policy "
             f"(iteration_state_field for the cleanup iteration counter)"
         )
     else:
@@ -237,6 +243,23 @@ def _validate_commit_cleanup_phase(
                 f"phases.{phase_name}.loop_policy.iteration_state_field: "
                 f"'{field}' is not declared in pipeline.loop_counters."
             )
+
+    if (
+        phase_def.transitions.on_reject is not None
+        and phase_def.transitions.on_reject not in bundle.pipeline.phases
+    ):
+        errors.append(
+            f"phases.{phase_name}.transitions.on_reject: "
+            f"'{phase_def.transitions.on_reject}' is not a declared phase."
+        )
+    if (
+        phase_def.transitions.on_failure is not None
+        and phase_def.transitions.on_failure not in bundle.pipeline.phases
+    ):
+        errors.append(
+            f"phases.{phase_name}.transitions.on_failure: "
+            f"'{phase_def.transitions.on_failure}' is not a declared phase."
+        )
 
 
 def _validate_loop_policy_role(
@@ -248,10 +271,10 @@ def _validate_loop_policy_role(
         return
     if phase_def.loop_policy is None:
         return
-    if phase_def.role not in ("analysis", "commit_cleanup"):
+    if phase_def.role not in ("analysis", "commit_review"):
         errors.append(
             f"phases.{phase_name}: loop_policy is only valid for role='analysis' "
-            f"or role='commit_cleanup' (got role='{phase_def.role}')"
+            f"or role='commit_review' (got role='{phase_def.role}')"
         )
 
 

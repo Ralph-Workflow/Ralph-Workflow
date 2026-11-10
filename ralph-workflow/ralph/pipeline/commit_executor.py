@@ -17,18 +17,21 @@ from ralph.display.parallel_display import (
     resolve_active_display,
 )
 from ralph.git._lock_recovery import reap_stale_locks
-from ralph.git.commit_cleanup import (
+from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
+from ralph.git.commit_review import (
     add_to_git_exclude,
     is_recognized_secret_path,
 )
-from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
 from ralph.git.operations import (
     create_commit,
     get_head_sha,
     has_uncommitted_changes,
     stage_all,
+    write_tree,
 )
-from ralph.git.operations import stage_files as _stage_files
+from ralph.git.operations import (
+    stage_files as _stage_files,
+)
 from ralph.git.subprocess_runner import run_git
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
@@ -604,6 +607,8 @@ def _perform_commit_creation(
     create_commit_fn: _CreateCommitFn,
     stage_all_fn: _StageAllFn,
     repair_opts: Mapping[str, object],
+    expected_tree_sha: str | None = None,
+    write_tree_fn: Callable[[Path | str], str] | None = None,
 ) -> str:
     """Attempt commit creation with repairable git state retry, returning commit sha."""
 
@@ -612,6 +617,13 @@ def _perform_commit_creation(
         # orphaned index.lock is first hit, so it must reach the same repair.
         head = get_head_sha(repo_root)
         _stage_commit_scope(repo_root, payload, stage_all_fn)
+        if expected_tree_sha is not None:
+            _wt = write_tree_fn if write_tree_fn is not None else write_tree
+            actual_tree = _wt(repo_root)
+            if actual_tree != expected_tree_sha:
+                raise RuntimeError(
+                    f"Staged tree SHA {actual_tree} does not match approved tree SHA {expected_tree_sha}"
+                )
         return create_commit_fn(str(repo_root), message, expected_head=head)
 
     try:
@@ -627,6 +639,13 @@ def _perform_commit_creation(
             logger.info("Retrying commit creation after git state repair")
             expected_head = get_head_sha(repo_root)
             _stage_commit_scope(repo_root, payload, stage_all_fn)
+            if expected_tree_sha is not None:
+                _wt = write_tree_fn if write_tree_fn is not None else write_tree
+                actual_tree = _wt(repo_root)
+                if actual_tree != expected_tree_sha:
+                    raise RuntimeError(
+                        f"Staged tree SHA {actual_tree} does not match approved tree SHA {expected_tree_sha}"
+                    )
             with suppress(Exception):
                 result = create_commit_fn(str(repo_root), message, expected_head=expected_head)
         if result.status is not CommitCreationStatus.CREATED or result.sha is None:
@@ -636,6 +655,40 @@ def _perform_commit_creation(
     if result.sha is None:
         raise RuntimeError("commit creation produced no sha")
     return result.sha
+
+
+def _handle_post_commit_actions(
+    repo_root: Path,
+    sha: str,
+    display: ParallelDisplay | None,
+    verbosity: Verbosity,
+    opts: dict[str, object],
+) -> None:
+    """Run post-commit side effects: proposal pruning, message rendering, display, artifact cleanup."""
+    _prune_fn = opts.get("prune_fn")
+    if callable(_prune_fn):
+        with suppress(Exception):
+            _prune_fn(repo_root)
+    else:
+        with suppress(Exception):
+            from ralph.git.proposal_seal import prune
+
+            prune(repo_root)
+
+    with suppress(Exception):
+        _render_commit_fn = cast(
+            "_RenderCommitMessageFn",
+            opts.get("render_commit_message_fn")
+            if callable(opts.get("render_commit_message_fn"))
+            else _render_commit_message_via_display,
+        )
+        render_target: object = display if display is not None else get_display_context(display)
+        _render_commit_fn(repo_root, render_target)
+
+    if verbosity != Verbosity.QUIET:
+        _record_display_outcome(display, f"sha={sha[:8]}", **opts)
+    with suppress(Exception):
+        cleanup_commit_message_artifacts(repo_root)
 
 
 def execute_commit_effect(
@@ -663,6 +716,10 @@ def execute_commit_effect(
     _raw_residual_work = opts.get("has_residual_work_fn")
     _has_residual_work_fn: _HasCommitWorkFn | None = cast(
         "_HasCommitWorkFn | None", _raw_residual_work if callable(_raw_residual_work) else None
+    )
+    _raw_write_tree = opts.get("write_tree_fn")
+    _write_tree_fn: Callable[[Path | str], str] | None = (
+        cast("Callable[[Path | str], str]", _raw_write_tree) if callable(_raw_write_tree) else None
     )
     try:
         payload = _read_commit_effect_payload(effect)
@@ -701,6 +758,8 @@ def execute_commit_effect(
             _create_commit_fn,
             _stage_all_fn,
             opts,
+            expected_tree_sha=effect.expected_tree_sha,
+            write_tree_fn=_write_tree_fn,
         )
         set_last_commit_error(None)
         logger.info("Created commit: {}", sha[:8])
@@ -711,19 +770,7 @@ def execute_commit_effect(
         _record_display_outcome(display, "failed", **opts)
         return PipelineEvent.COMMIT_FAILURE
 
-    with suppress(Exception):
-        _render_commit_fn = cast(
-            "_RenderCommitMessageFn",
-            opts.get("render_commit_message_fn")
-            if callable(opts.get("render_commit_message_fn"))
-            else _render_commit_message_via_display,
-        )
-        render_target: object = display if display is not None else get_display_context(display)
-        _render_commit_fn(repo_root, render_target)
-    if verbosity != Verbosity.QUIET:
-        _record_display_outcome(display, f"sha={sha[:8]}", **opts)
-    with suppress(Exception):
-        cleanup_commit_message_artifacts(repo_root)
+    _handle_post_commit_actions(repo_root, sha, display, verbosity, opts)
     if _has_residual_work_fn is not None:
         try:
             if _has_residual_work_fn(repo_root):
@@ -808,9 +855,12 @@ def cleanup_commit_message_artifacts(repo_root: Path) -> None:
     delete_commit_message_artifacts(repo_root)
 
 
-def commit_effect(workspace_root: Path) -> CommitEffect:
+def commit_effect(workspace_root: Path, expected_tree_sha: str | None = None) -> CommitEffect:
     """Build a CommitEffect pointing at the standard commit message artifact path."""
-    return CommitEffect(message_file=str(workspace_root / COMMIT_MESSAGE_ARTIFACT))
+    return CommitEffect(
+        message_file=str(workspace_root / COMMIT_MESSAGE_ARTIFACT),
+        expected_tree_sha=expected_tree_sha,
+    )
 
 
 def clear_phase_output_artifacts(

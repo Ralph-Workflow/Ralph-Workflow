@@ -53,7 +53,7 @@ def _custom_policy(
             "builder": PhaseDefinition.model_validate(execution_data),
             "polisher": PhaseDefinition(
                 drain="polisher",
-                role="commit_cleanup",
+                role="commit_review",
                 transitions=PhaseTransition(
                     on_success="savepoint",
                     on_loopback="polisher",
@@ -244,7 +244,7 @@ def test_default_policy_routes_every_development_result_to_analysis_after_commit
             policy,
         )
         assert analysis_state.phase == "development_analysis"
-        assert cleanup_state.phase == "development_commit_cleanup"
+        assert cleanup_state.phase == "development_commit_review"
         assert commit_state.phase == "development_commit"
 
 
@@ -319,7 +319,7 @@ def test_development_result_regression_every_terminal_result_consumes_one_analys
         policy,
     )
 
-    assert next_state.phase == "development_commit_cleanup"
+    assert next_state.phase == "development_commit_review"
     # The analysis counter is NOT charged at execution-result time;
     # it is charged at the post-commit seam when analysis is entered.
     assert next_state.get_loop_iteration("development_analysis_iteration") == 0
@@ -365,7 +365,7 @@ def test_invocation_gate_threshold_controls_analysis_entry(
         assert next_state.phase == "development_analysis"
         assert next_state.get_loop_iteration("development_analysis_iteration") == 1
     else:
-        assert next_state.phase == "development_final_commit_cleanup"
+        assert next_state.phase == "development_final_commit_review"
         assert next_state.pending_cycle_outcome == "completed"
         assert next_state.get_loop_iteration("development_analysis_iteration") == 0
 
@@ -387,7 +387,7 @@ def test_invocation_gate_fractional_records_straddle_threshold() -> None:
         if enters:
             assert next_state.phase == "development_analysis"
         else:
-            assert next_state.phase == "development_final_commit_cleanup"
+            assert next_state.phase == "development_final_commit_review"
 
 
 def test_invocation_gate_skipped_analysis_sets_cycle_outcome() -> None:
@@ -401,7 +401,7 @@ def test_invocation_gate_skipped_analysis_sets_cycle_outcome() -> None:
     commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
     next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
 
-    assert next_state.phase == "development_final_commit_cleanup"
+    assert next_state.phase == "development_final_commit_review"
     assert next_state.pending_cycle_outcome == "completed"
 
 
@@ -413,8 +413,8 @@ def test_session_ceiling_partial_result_enters_analysis_regardless_of_time() -> 
     cleanup_state, _ = reducer_reduce(
         state, _execution_result_event("development", "partial"), policy
     )
-    # The partial result routes to commit cleanup first
-    assert cleanup_state.phase == "development_commit_cleanup"
+    # The partial result routes to commit review first
+    assert cleanup_state.phase == "development_commit_review"
 
     commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
     assert commit_state.phase == "development_commit"
@@ -481,7 +481,7 @@ def test_cycle_timing_start_index_resets_on_lifecycle_commit() -> None:
     commit_state2, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
     next_state, _ = reducer_reduce(commit_state2, PipelineEvent.COMMIT_SUCCESS, policy)
 
-    assert next_state.phase == "development_final_commit_cleanup"
+    assert next_state.phase == "development_final_commit_review"
 
 
 @pytest.mark.parametrize("status", ["partial", "failed"])
@@ -509,7 +509,7 @@ def test_completed_below_threshold_skips_analysis_and_charges_no_cycle() -> None
     commit_state, _ = reducer_reduce(cleanup_state, PipelineEvent.AGENT_SUCCESS, policy)
     next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
 
-    assert next_state.phase == "development_final_commit_cleanup"
+    assert next_state.phase == "development_final_commit_review"
     assert next_state.pending_cycle_outcome == "completed"
     assert next_state.get_loop_iteration("development_analysis_iteration") == 0
 

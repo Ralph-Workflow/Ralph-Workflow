@@ -215,7 +215,7 @@ immediately editable.
 | `issues` | reviewer agent | List of issues found during review, each with severity and fix guidance |
 | `fix_result` | fix agent | Summary of fixes applied and residual issues |
 | `commit_message` | commit agent | Conventional commit message for the changes |
-| `commit_cleanup` | commit-cleanup agent | Cleanup actions for transient or internal files before commit |
+| `commit_review` | commit-review agent | Commit review verdict (approve / reject) against sealed proposal tree, actions to delete / gitignore / git-exclude, and cited reasons on rejection |
 | `development_analysis_decision` | analysis agent (development) | Decision on whether to proceed, loop, or escalate after development |
 | `planning_analysis_decision` | analysis agent (planning) | Decision on whether to approve, revise, or restart the plan |
 | `review_analysis_decision` | analysis agent (review) | Decision on whether to pass, loop review, or escalate after review |

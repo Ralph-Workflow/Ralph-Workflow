@@ -67,7 +67,7 @@ def test_a_spent_analysis_budget_is_not_charged_again_on_the_way_past() -> None:
         _pipeline(),
     )
 
-    assert next_state.phase == "development_final_commit_cleanup"
+    assert next_state.phase == "development_final_commit_review"
 
 
 def test_the_gated_loop_runs_exactly_its_declared_number_of_passes() -> None:

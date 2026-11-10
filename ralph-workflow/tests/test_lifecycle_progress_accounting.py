@@ -88,7 +88,7 @@ def _lifecycle_policy() -> PipelinePolicy:
                 completion_block="development_commit",
                 increments_counter="iteration",
                 loop_resets=["development_analysis_iteration"],
-                before_complete=["development_commit_cleanup"],
+                before_complete=["development_commit_review"],
                 after_complete=[],
             )
         },

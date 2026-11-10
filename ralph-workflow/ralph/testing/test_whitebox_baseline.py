@@ -165,7 +165,7 @@ tests/integration/test_codex_home_cap_eviction.py|0,0,11
 tests/integration/test_codex_home_cleanup.py|0,3,23
 tests/integration/test_codex_home_live_sessions.py|0,1,9
 tests/integration/test_codex_home_release_path.py|0,5,24
-tests/integration/test_commit_cleanup_rock_solid.py|0,2,0
+tests/integration/test_commit_review_rock_solid.py|0,2,0
 tests/integration/test_lifecycle_restart_acceptance.py|0,6,14
 tests/integration/test_mcp_exec_result_contract.py|0,3,2
 tests/integration/test_multimodal_default_client_surface.py|0,3,0
@@ -460,10 +460,11 @@ tests/test_cli_workspace_health.py|0,0,1
 tests/test_codex_inline_image_roundtrip.py|0,1,0
 tests/test_codex_transport_reaches_the_session.py|0,1,0
 tests/test_commit_attempt_clears_receipt.py|0,1,0
-tests/test_commit_cleanup_artifact.py|0,3,0
-tests/test_commit_cleanup_diff.py|0,2,0
-tests/test_commit_cleanup_invariants.py|0,2,0
-tests/test_commit_cleanup_verify_gate.py|0,2,0
+tests/test_commit_review_artifact.py|0,3,0
+tests/test_commit_review_diff.py|0,2,0
+tests/test_commit_review_invariants.py|0,2,0
+tests/test_commit_review_tripwires.py|0,1,0
+tests/test_commit_review_verify_gate.py|0,2,0
 tests/test_commit_completion_authority.py|0,1,0
 tests/test_commit_detached_head_recovery.py|0,2,0
 tests/test_commit_executor.py|2,0,0
@@ -564,7 +565,7 @@ tests/test_generate_commit_canonical_path.py|0,2,2
 tests/test_git_call_policy.py|1,0,0
 tests/test_git_command_queue.py|2,0,1
 tests/test_git_command_queue_lease_clock.py|0,1,0
-tests/test_git_commit_cleanup.py|3,0,6
+tests/test_git_commit_review.py|3,0,6
 tests/test_git_lock_liveness_probe.py|2,0,0
 tests/test_git_lock_real_processes.py|2,0,0
 tests/test_git_lock_recovery.py|0,1,0
@@ -690,7 +691,7 @@ tests/test_phase_and_commit_sessions_are_wired.py|0,1,0
 tests/test_phase_process_cleanup.py|0,0,15
 tests/test_phase_raw_log_break_reporting.py|3,0,0
 tests/test_phase_transport_failure_reporting.py|1,0,0
-tests/test_phases_commit_cleanup.py|0,6,0
+tests/test_phases_commit_review.py|0,6,0
 tests/test_phases_commit_planning_fix.py|0,1,0
 tests/test_phases_retry_on_stale_session.py|1,1,0
 tests/test_pipeline_core.py|0,3,0

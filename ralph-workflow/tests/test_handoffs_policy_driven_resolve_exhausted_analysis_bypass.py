@@ -96,28 +96,28 @@ def _planning_bypass_policy() -> PipelinePolicy:
     )
 
 
-def _commit_cleanup_bypass_policy() -> PipelinePolicy:
+def _commit_review_bypass_policy() -> PipelinePolicy:
     return PipelinePolicy(
         phases={
             "development": PhaseDefinition(
                 drain="development",
                 role="execution",
-                transitions=PhaseTransition(on_success="development_commit_cleanup"),
+                transitions=PhaseTransition(on_success="development_commit_review"),
             ),
-            "development_commit_cleanup": PhaseDefinition(
+            "development_commit_review": PhaseDefinition(
                 drain="commit",
-                role="commit_cleanup",
-                loop_policy=PhaseLoopPolicy(iteration_state_field="commit_cleanup_iteration"),
+                role="commit_review",
+                loop_policy=PhaseLoopPolicy(iteration_state_field="commit_review_iteration"),
                 transitions=PhaseTransition(
                     on_success="development_commit",
-                    on_loopback="development_commit_cleanup",
+                    on_loopback="development_commit_review",
                 ),
             ),
             "development_commit": PhaseDefinition(
                 drain="development_commit",
                 role="commit",
                 transitions=PhaseTransition(on_success="done"),
-                commit_policy=PhaseCommitPolicy(loop_resets=["commit_cleanup_iteration"]),
+                commit_policy=PhaseCommitPolicy(loop_resets=["commit_review_iteration"]),
             ),
             "done": PhaseDefinition(
                 drain="done",
@@ -128,7 +128,7 @@ def _commit_cleanup_bypass_policy() -> PipelinePolicy:
         },
         entry_phase="development",
         terminal_phase="done",
-        loop_counters={"commit_cleanup_iteration": LoopCounterConfig(default_max=3)},
+        loop_counters={"commit_review_iteration": LoopCounterConfig(default_max=3)},
     )
 
 
@@ -189,18 +189,18 @@ class TestResolveExhaustedAnalysisBypass:
         assert second_bypass.state == first_bypass.state
         assert second_bypass.skipped == ()
 
-    def test_commit_cleanup_candidate_uses_generic_loop_bypass(self) -> None:
-        policy = _commit_cleanup_bypass_policy()
+    def test_commit_review_candidate_uses_generic_loop_bypass(self) -> None:
+        policy = _commit_review_bypass_policy()
         state = PipelineState(
             phase="development",
-            loop_iterations={"commit_cleanup_iteration": 3},
+            loop_iterations={"commit_review_iteration": 3},
             review_outcome="issues",
         )
 
-        bypass = resolve_exhausted_analysis_bypass(state, "development_commit_cleanup", policy)
+        bypass = resolve_exhausted_analysis_bypass(state, "development_commit_review", policy)
 
         assert bypass.target_phase == "development_commit"
-        assert bypass.state.get_loop_iteration("commit_cleanup_iteration") == 0
+        assert bypass.state.get_loop_iteration("commit_review_iteration") == 0
         assert len(bypass.skipped) == 1
-        assert bypass.skipped[0].phase == "development_commit_cleanup"
+        assert bypass.skipped[0].phase == "development_commit_review"
         assert bypass.skipped[0].target_phase == "development_commit"

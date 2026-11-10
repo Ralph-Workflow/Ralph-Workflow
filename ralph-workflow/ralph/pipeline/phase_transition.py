@@ -98,7 +98,7 @@ def _find_commit_counter_from_phase(
         # Commit-role phases: if they own the counter, return it; otherwise
         # continue the trace to find the lifecycle owner downstream
         # (development_commit, which has no increments_counter, advances to
-        # development_analysis -> development_final_commit_cleanup ->
+        # development_analysis -> development_final_commit_review ->
         # development_final_commit which DOES declare increments_counter).
         if phase_def.role == "commit" and phase_def.commit_policy is not None:
             counter = phase_def.commit_policy.increments_counter

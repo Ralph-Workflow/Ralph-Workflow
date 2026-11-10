@@ -43,8 +43,8 @@ def _drive_to_next_cycle(
     *,
     elapsed: float,
 ) -> PipelineState:
-    """Advance from the final-commit cleanup phase through the final commit."""
-    assert state.phase == "development_final_commit_cleanup"
+    """Advance from the final-commit review phase through the final commit."""
+    assert state.phase == "development_final_commit_review"
     state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, routing_timing=_rt(elapsed))
     assert state.phase == "development_final_commit"
     state, _ = reduce(state, PipelineEvent.COMMIT_SUCCESS, policy, routing_timing=_rt(elapsed))
@@ -63,7 +63,7 @@ def test_exhausted_analysis_loop_starts_next_cycle_when_budget_remains() -> None
     )
 
     state, _ = reduce(state, PipelineEvent.COMMIT_SUCCESS, policy, routing_timing=_rt(100.0))
-    assert state.phase == "development_final_commit_cleanup"
+    assert state.phase == "development_final_commit_review"
 
     state = _drive_to_next_cycle(state, policy, elapsed=100.0)
 
@@ -87,7 +87,7 @@ def test_timebox_redirect_starts_next_cycle_when_budget_remains() -> None:
         policy,
         routing_timing=_rt(36000.0),
     )
-    assert state.phase == "development_final_commit_cleanup"
+    assert state.phase == "development_final_commit_review"
 
     state = _drive_to_next_cycle(state, policy, elapsed=36000.0)
 
@@ -157,7 +157,7 @@ def test_recorded_failure_outranks_a_deadline_redirect() -> None:
         policy,
         routing_timing=_rt(36000.0),
     )
-    assert state.phase == "development_final_commit_cleanup"
+    assert state.phase == "development_final_commit_review"
 
     state = _drive_to_next_cycle(state, policy, elapsed=36000.0)
 
@@ -175,7 +175,7 @@ def test_analysis_success_without_a_decision_starts_the_next_cycle() -> None:
     )
 
     state, _ = reduce(state, PipelineEvent.AGENT_SUCCESS, policy, routing_timing=_rt(100.0))
-    assert state.phase == "development_final_commit_cleanup"
+    assert state.phase == "development_final_commit_review"
 
     state = _drive_to_next_cycle(state, policy, elapsed=100.0)
 
@@ -220,7 +220,7 @@ def test_timebox_redirect_completes_run_when_budget_is_spent() -> None:
         policy,
         routing_timing=_rt(36000.0),
     )
-    assert state.phase == "development_final_commit_cleanup"
+    assert state.phase == "development_final_commit_review"
 
     state = _drive_to_next_cycle(state, policy, elapsed=36000.0)
 
@@ -289,7 +289,7 @@ def test_exhausted_analysis_loop_completes_run_when_budget_is_spent() -> None:
     )
 
     state, _ = reduce(state, PipelineEvent.COMMIT_SUCCESS, policy, routing_timing=_rt(100.0))
-    assert state.phase == "development_final_commit_cleanup"
+    assert state.phase == "development_final_commit_review"
 
     state = _drive_to_next_cycle(state, policy, elapsed=100.0)
 
@@ -362,7 +362,7 @@ def test_redirect_reason_survives_to_the_run_time_report(tmp_path: Path) -> None
     assert "cycle timebox reached" in report
     # The reason ends with the phase the cycle was redirected to, so a report
     # that truncates it names a phase that does not exist.
-    assert "redirecting to development_final_commit_cleanup" in report
+    assert "redirecting to development_final_commit_review" in report
 
 
 def test_bypassed_analysis_into_finalization_preserves_the_cycle() -> None:
@@ -379,7 +379,7 @@ def test_bypassed_analysis_into_finalization_preserves_the_cycle() -> None:
 
     state, _ = reduce(state, PipelineEvent.COMMIT_SUCCESS, policy, routing_timing=_rt(3600.0))
 
-    assert state.phase == "development_final_commit_cleanup"
+    assert state.phase == "development_final_commit_review"
     assert state.cycle_timebox_active is True
 
 
@@ -481,7 +481,7 @@ def test_intermediate_commit_does_not_destroy_a_recorded_verdict() -> None:
     )
 
     state, _ = reduce(state, PipelineEvent.COMMIT_SUCCESS, policy, routing_timing=_rt(100.0))
-    assert state.phase == "development_final_commit_cleanup"
+    assert state.phase == "development_final_commit_review"
 
     state = _drive_to_next_cycle(state, policy, elapsed=100.0)
 
@@ -500,7 +500,7 @@ def test_the_recovery_failed_route_keeps_the_cycle_timer_armed() -> None:
     """
     policy = _policy()
     state = PipelineState(
-        phase="development_commit_cleanup",
+        phase="development_commit_review",
         budget_caps={"iteration": 5},
         outer_progress={"iteration": 1},
         cycle_timebox_active=True,
@@ -509,7 +509,7 @@ def test_the_recovery_failed_route_keeps_the_cycle_timer_armed() -> None:
 
     state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, policy, routing_timing=_rt(1200.0))
 
-    assert state.phase in {"failed_terminal", "development_commit_cleanup"}
+    assert state.phase in {"failed_terminal", "development_commit_review"}
     assert state.cycle_timebox_active is True
 
 
@@ -585,7 +585,7 @@ def test_a_loopback_that_skips_final_commit_preserves_the_timer() -> None:
     assert state.cycle_timebox_active is True
 
 
-def test_commit_cleanup_loop_cap_still_counts_after_a_charged_analysis_cycle() -> None:
+def test_commit_review_loop_cap_still_counts_after_a_charged_analysis_cycle() -> None:
     """A cleanup loop must remain bounded however the cycle got there.
 
     The charged-cycle flag is set when the invocation gate admits analysis and
@@ -597,7 +597,7 @@ def test_commit_cleanup_loop_cap_still_counts_after_a_charged_analysis_cycle() -
     """
     policy = _policy()
     state = PipelineState(
-        phase="development_final_commit_cleanup",
+        phase="development_final_commit_review",
         budget_caps={"iteration": 5},
         outer_progress={"iteration": 1},
         execution_cycle_charged=True,
@@ -605,7 +605,7 @@ def test_commit_cleanup_loop_cap_still_counts_after_a_charged_analysis_cycle() -
 
     for _ in range(4):
         state, _ = reduce(state, PipelineEvent.PHASE_LOOPBACK, policy, routing_timing=_rt(10.0))
-        if state.phase != "development_final_commit_cleanup":
+        if state.phase != "development_final_commit_review":
             break
 
     assert state.phase == "development_final_commit", (

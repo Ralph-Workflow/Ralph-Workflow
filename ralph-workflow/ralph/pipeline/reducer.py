@@ -27,6 +27,13 @@ if TYPE_CHECKING:
     from ralph.config.enums import PipelinePhase
 from loguru import logger
 
+from ralph.phases._commit_review_events import (
+    CommitReviewApproved,
+    CommitReviewEvent,
+    CommitReviewGateFailed,
+    CommitReviewLoopback,
+    CommitReviewRejected,
+)
 from ralph.pipeline import progress
 from ralph.pipeline._failure_formatting import (
     classified_failure_reason_for_event,
@@ -450,14 +457,47 @@ def _route_reduced_decision(
     return new_state
 
 
-def _reduce_pure(
+def _reduce_agent_failure_pure(
     state: PipelineState,
     event: Event,
+    pipeline_policy: PipelinePolicy | None,
+    recovery: RecoveryController | None,
+    routing_timing: RoutingTiming | None,
+) -> tuple[PipelineState, list[Effect]] | None:
+    recovered_agent_failure = _reduce_captured_agent_failure(
+        state, pipeline_policy, recovery, routing_timing
+    )
+    if recovered_agent_failure is not None:
+        return recovered_agent_failure
+    if recovery is not None:
+        new_st, effs = _handle_agent_failure(
+            state, pipeline_policy, routing_timing, recovery=recovery, event=event
+        )
+        return _restore_work_units(state, new_st), effs
+    return None
+
+
+def _reduce_pure(
+    state: PipelineState,
+    event: Event | CommitReviewEvent,
     pipeline_policy: PipelinePolicy | None = None,
     recovery: RecoveryController | None = None,
     *,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
+    if isinstance(
+        event,
+        (
+            CommitReviewApproved,
+            CommitReviewRejected,
+            CommitReviewGateFailed,
+            CommitReviewLoopback,
+        ),
+    ):
+        return _reduce_commit_review_event(
+            state, event, pipeline_policy, routing_timing=routing_timing, recovery=recovery
+        )
+
     reduced_event: tuple[PipelineState, list[Effect]] | None = None
     if event == PipelineEvent.COMMIT_RESIDUAL:
         reduced_event = (state, [])
@@ -487,16 +527,11 @@ def _reduce_pure(
     if reduced_event is not None:
         return reduced_event
     if event == PipelineEvent.AGENT_FAILURE or isinstance(event, AgentFailureEvent):
-        recovered_agent_failure = _reduce_captured_agent_failure(
-            state, pipeline_policy, recovery, routing_timing
+        agent_failure_result = _reduce_agent_failure_pure(
+            state, event, pipeline_policy, recovery, routing_timing
         )
-        if recovered_agent_failure is not None:
-            return recovered_agent_failure
-        if recovery is not None:
-            new_st, effs = _handle_agent_failure(
-                state, pipeline_policy, routing_timing, recovery=recovery, event=event
-            )
-            return _restore_work_units(state, new_st), effs
+        if agent_failure_result is not None:
+            return agent_failure_result
     worker_result = _dispatch_worker_event(
         state, event, recovery, policy=pipeline_policy, routing_timing=routing_timing
     )
@@ -513,7 +548,7 @@ def _reduce_pure(
 
 def reduce(
     state: PipelineState,
-    event: Event,
+    event: Event | CommitReviewEvent,
     pipeline_policy: PipelinePolicy | None = None,
     recovery: RecoveryController | None = None,
     *,
@@ -1547,6 +1582,7 @@ def _handle_commit_success(
         return _advance_to_failed(state, "No policy loaded for commit success routing", policy)
     try:
         progress_state = progress.apply_commit_outcome(state, state, skipped=False, policy=policy)
+        progress_state = progress_state.copy_with(approved_tree_sha=None)
         next_phase = resolve_post_commit_phase(progress_state, policy)
         has_override = progress_state.post_commit_phase_override is not None
         if has_override:
@@ -1588,6 +1624,7 @@ def _handle_commit_skipped(
         return _advance_to_failed(state, "No policy loaded for commit skipped routing", policy)
     try:
         progress_state = progress.apply_commit_outcome(state, state, skipped=True, policy=policy)
+        progress_state = progress_state.copy_with(approved_tree_sha=None)
         next_phase = resolve_post_commit_phase(progress_state, policy)
         has_override = progress_state.post_commit_phase_override is not None
         if has_override:
@@ -1601,6 +1638,129 @@ def _handle_commit_skipped(
         return _advance_to_failed(
             state, f"Routing error after commit skipped in '{state.phase}': {exc}", policy
         )
+
+
+def _reduce_commit_review_rejection(
+    state: PipelineState,
+    event: CommitReviewRejected,
+    policy: PipelinePolicy,
+    phase_def: PhaseDefinition,
+    *,
+    routing_timing: RoutingTiming | None = None,
+) -> tuple[PipelineState, list[Effect]]:
+    """Handle a commit review rejection with rollback setup and iteration loopback."""
+    new_rejections = state.commit_review_rejections + 1
+    loop_counter_cfg = policy.loop_counters.get("commit_review_rejections")
+    max_rejections = (
+        loop_counter_cfg.default_max
+        if loop_counter_cfg is not None
+        else policy.commit_review.max_rejections
+    )
+
+    timebox_expired = False
+    ct = policy.cycle_timebox
+    if (
+        ct is not None
+        and routing_timing is not None
+        and state.cycle_timebox_active
+        and routing_timing.total_elapsed_seconds >= ct.duration_seconds
+    ):
+        timebox_expired = True
+
+    if new_rejections > max_rejections or timebox_expired:
+        reason = (
+            f"Commit review rejection limit exceeded ({new_rejections}/{max_rejections}): {event.reason}"
+            if not timebox_expired
+            else f"Cycle timebox expired on commit review rejection: {event.reason}"
+        )
+        failed_state = state.copy_with(
+            commit_review_rejections=new_rejections,
+            last_error=reason,
+            rollback_pending=False,
+        )
+        target = (
+            phase_def.transitions.on_failure
+            if phase_def.transitions.on_failure
+            else policy.recovery.failed_route
+        )
+        return _advance_phase(
+            failed_state,
+            target,
+            policy,
+            routing_timing=routing_timing,
+        )
+
+    progress_state = progress.apply_commit_outcome(state, state, skipped=False, policy=policy)
+    target_phase = phase_def.transitions.on_reject or "development"
+    state_for_advance = progress_state.copy_with(
+        commit_review_rejections=new_rejections,
+        rollback_pending=True,
+        rollback_ref=event.ref,
+        last_review_rejection_reason=event.reason,
+    )
+    return _advance_phase(
+        state_for_advance,
+        target_phase,
+        policy,
+        routing_timing=routing_timing,
+    )
+
+
+def _reduce_commit_review_event(
+    state: PipelineState,
+    event: (
+        CommitReviewApproved | CommitReviewRejected | CommitReviewGateFailed | CommitReviewLoopback
+    ),
+    policy: PipelinePolicy | None,
+    *,
+    routing_timing: RoutingTiming | None = None,
+    recovery: RecoveryController | None = None,
+) -> tuple[PipelineState, list[Effect]]:
+    """Handle commit review lifecycle events."""
+    phase_def = policy.phases.get(state.phase) if policy is not None else None
+    if policy is None or phase_def is None:
+        err = (
+            "No policy loaded for commit review routing"
+            if policy is None
+            else f"Unknown phase '{state.phase}' for commit review"
+        )
+        return _advance_to_failed(state, err, policy)
+
+    if isinstance(event, CommitReviewApproved):
+        target_phase = phase_def.transitions.on_success
+        updated_state = state.copy_with(approved_tree_sha=event.tree_sha)
+        if phase_def.loop_policy is not None:
+            updated_state = updated_state.with_loop_iteration(
+                phase_def.loop_policy.iteration_state_field, 0
+            )
+        return _advance_phase(updated_state, target_phase, policy, routing_timing=routing_timing)
+
+    if isinstance(event, CommitReviewRejected):
+        return _reduce_commit_review_rejection(
+            state,
+            event,
+            policy,
+            phase_def,
+            routing_timing=routing_timing,
+        )
+
+    if isinstance(event, CommitReviewGateFailed):
+        reason = f"Commit review gate failed: {event.detail}"
+        target = (
+            phase_def.transitions.on_failure
+            if phase_def.transitions.on_failure
+            else policy.recovery.failed_route
+        )
+        failed_state = state.copy_with(last_error=reason)
+        return _advance_phase(failed_state, target, policy, routing_timing=routing_timing)
+
+    # CommitReviewLoopback
+    target = phase_def.transitions.on_loopback if phase_def.transitions.on_loopback else state.phase
+    loop_state = state.copy_with(last_error=event.hint)
+    if phase_def.loop_policy is not None:
+        field = phase_def.loop_policy.iteration_state_field
+        loop_state = loop_state.with_loop_iteration(field, loop_state.get_loop_iteration(field) + 1)
+    return _advance_phase(loop_state, target, policy, routing_timing=routing_timing)
 
 
 _MAX_COMMIT_RECOVERY_ATTEMPTS = 3
@@ -1655,14 +1815,14 @@ def _resolve_commit_recovery_phase(
     for name in ("commit_recovery", "COMMIT_RECOVERY"):
         if name in policy.phases and name != state.phase:
             return name
-    for name in ("development_commit_cleanup", "DEVELOPMENT_COMMIT_CLEANUP"):
+    for name in ("development_commit_review", "DEVELOPMENT_COMMIT_REVIEW"):
         if name in policy.phases and name != state.phase:
             return name
     for name, defn in policy.phases.items():
         if (
-            defn.role == "commit_cleanup"
+            defn.role == "commit_review"
             and name != state.phase
-            and not name.endswith("_final_commit_cleanup")
+            and not name.endswith("_final_commit_review")
         ):
             return name
     return None
@@ -1677,7 +1837,7 @@ def _recoverable_git_failure_default_target(
 
     Returns the current phase name (e.g. ``development_commit``) when all of:
       - The failure is repairable (matches ``_is_repairable_git_failure``)
-      - The policy defines neither ``commit_recovery`` nor ``commit_cleanup`` phase
+      - The policy defines neither ``commit_recovery`` nor ``commit_review`` phase
         (i.e. ``_resolve_commit_recovery_phase`` returns ``None``)
 
     When these hold, the reducer re-routes the cycle to the in-place phase so a
@@ -1775,7 +1935,7 @@ def _handle_commit_failure(
     unmerged paths, conflict, repeated commit failure) receives a bounded
     automated recovery budget before Ralph stops the workflow.
     1. If the policy defines a recovery phase (``commit_recovery`` or
-       ``commit_cleanup``), the reducer routes there until ``recovery_epoch``
+       ``commit_review``), the reducer routes there until ``recovery_epoch``
        reaches ``_MAX_COMMIT_RECOVERY_ATTEMPTS``.
     2. If the policy defines no recovery phase, the reducer performs an in-place
        retry of the current commit phase (via :func:`_recoverable_git_failure_default_target`),
@@ -1853,7 +2013,7 @@ def _handle_commit_failure(
             )
             return new_state, []
 
-        # No commit_recovery / commit_cleanup phase: re-route in-place to retry
+        # No commit_recovery / commit_review phase: re-route in-place to retry
         # with the validated message preserved on disk at effect.message_file.
         in_place_target = _recoverable_git_failure_default_target(
             cleared_state,
@@ -1878,7 +2038,7 @@ def _handle_commit_failure(
             logger.bind(component="policy.routing").warning(
                 "Repairable git failure with no recovery phase defined; "
                 "re-routing in-place to {} (lock={}) with validated message preserved "
-                "at effect.message_file; policy has no commit_recovery/commit_cleanup phase; "
+                "at effect.message_file; policy has no commit_recovery/commit_review phase; "
                 "recovery_epoch={}/{}",
                 in_place_target,
                 lock_path_str or last_error,
@@ -2167,7 +2327,7 @@ def _should_preserve_commit_retry(
     """Return True if transitioning to a commit phase should preserve commit state.
 
     Preserves commit state across the cleanup->commit transition when:
-    1. The source phase is a commit cleanup phase (role == "commit_cleanup").
+    1. The source phase is a commit review phase (role == "commit_review").
     2. The target phase is a commit phase (role == "commit").
     3. The cleanup is handling a currently recorded recoverable git failure.
        ``recovery_epoch`` is historical accounting and cannot prove that the
@@ -2175,7 +2335,7 @@ def _should_preserve_commit_retry(
     4. A validated commit message was already prepared (commit.agent_invoked is True).
     """
     source_phase_def = policy.phases.get(state.phase)
-    if source_phase_def is None or source_phase_def.role != "commit_cleanup":
+    if source_phase_def is None or source_phase_def.role != "commit_review":
         return False
     target_phase_def = policy.phases.get(target_phase)
     if target_phase_def is None or target_phase_def.role != "commit":
@@ -2258,9 +2418,9 @@ def _resolve_or_terminal(
         target_phase_def = policy.phases.get(advanced_target)
         if (
             source_phase_def is not None
-            and source_phase_def.role == "commit_cleanup"
+            and source_phase_def.role == "commit_review"
             and target_phase_def is not None
-            and target_phase_def.role == "commit_cleanup"
+            and target_phase_def.role == "commit_review"
         ):
             new_state = new_state.copy_with(
                 recovery_epoch=state.recovery_epoch,

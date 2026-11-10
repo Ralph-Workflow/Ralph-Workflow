@@ -355,7 +355,7 @@ def test_run_inner_loop_pushes_status_bar_with_full_contract(
     #   2. (``development_analysis``, outer_dev=1, inner=3)
     #      -> ``Development Analysis`` label, outer iteration traced
     #         to 1/5 (the find_commit_counter_from_phase logic reaches
-    #         ``development_final_commit_cleanup`` whose
+    #         ``development_final_commit_review`` whose
     #         ``increments_counter="iteration"``), analysis iteration
     #         3/3.
     assert len(captured) == 2, (

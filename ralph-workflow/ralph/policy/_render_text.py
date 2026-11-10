@@ -297,6 +297,8 @@ def _render_phase_routing(phase: PhaseExplanation, lines: list[str]) -> None:
         lines.append("    On failure → pipeline fails (no on_failure route)")
     if phase.on_loopback:
         lines.append(f"    On loopback → {phase.on_loopback}")
+    if phase.on_reject:
+        lines.append(f"    On reject → {phase.on_reject}")
 
     for outcome, target in phase.bypass_routes.items():
         lines.append(f"    Bypass [{outcome}] → {target}")

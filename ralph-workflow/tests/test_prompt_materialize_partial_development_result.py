@@ -143,8 +143,8 @@ def _policy() -> tuple[PipelinePolicy, ArtifactsPolicy]:
             ),
             "polish_changes": PhaseDefinition(
                 drain="change_cleanup",
-                role="commit_cleanup",
-                prompt_template="commit_cleanup.jinja",
+                role="commit_review",
+                prompt_template="commit_review.jinja",
                 transitions=PhaseTransition(on_success="sync_changes"),
             ),
             "sync_changes": PhaseDefinition(

@@ -22,7 +22,7 @@ from rich.console import Console
 from ralph.cli.commands import run as run_module
 from ralph.cli.commands._load_result import _LoadResult
 from ralph.display.context import make_display_context
-from ralph.git.commit_cleanup import untrack_engine_internal_files
+from ralph.git.commit_review import untrack_engine_internal_files
 from ralph.skills._agent_paths import _SKILL_ROOT_PREFIXES
 from ralph.skills._content import BASELINE_SKILL_NAMES, get_skill_content
 from ralph.skills._installer import install_project_baseline_skills
@@ -692,12 +692,12 @@ def test_skill_sync_autocommits_before_agent_sees_skill_tree_drift(
 
 
     drift at runtime; ``_sync_shipped_skills_on_pipeline_run`` runs as
-    Phase 2b BEFORE the agent's commit_cleanup phase and MUST land an
+    Phase 2b BEFORE the agent's commit_review phase and MUST land an
     auto-commit that resolves the drift.
 
     The test drives the FULL pipeline ordering: a pre-dirty skill tree
     is installed, ``_sync_shipped_skills_on_pipeline_run`` runs, then
-    the test simulates the agent's commit_cleanup phase by calling
+    the test simulates the agent's commit_review phase by calling
     ``untrack_engine_internal_files`` with a DEBUG-level loguru sink
     (so both the early-skip DEBUG lines AND any WARNING lines are
     observable).
@@ -716,7 +716,7 @@ def test_skill_sync_autocommits_before_agent_sees_skill_tree_drift(
 
       (4) NO captured log message matches
           ``Refusing to git rm --cached symlink under tracked engine-internal path``
-          -- ZERO WARNING noise from the agent's commit_cleanup phase.
+          -- ZERO WARNING noise from the agent's commit_review phase.
 
       (5) AT LEAST ONE captured DEBUG message contains
           ``Skipping tracked skill-root path`` -- the FIVE-root early-skip
@@ -807,7 +807,7 @@ def test_skill_sync_autocommits_before_agent_sees_skill_tree_drift(
     finally:
         repo.close()
 
-    # Assertion (3) + (4) + (5): simulate the agent's commit_cleanup phase
+    # Assertion (3) + (4) + (5): simulate the agent's commit_review phase
     # by calling untrack_engine_internal_files with a DEBUG-level sink so
     # we can observe BOTH the early-skip DEBUG messages AND any WARNING
     # messages. The canonical predicate accepts any path under ``.agent/``.

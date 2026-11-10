@@ -570,7 +570,7 @@ def _planning_sync_gate_routes_hermetic(
 
     (tmp_path / ".git").mkdir(exist_ok=True)
     cleanup = SimpleNamespace(
-        role="commit_cleanup", transitions=SimpleNamespace(on_success="commit")
+        role="commit_review", transitions=SimpleNamespace(on_success="commit")
     )
     commit = SimpleNamespace(role="commit")
     ctx = SimpleNamespace(

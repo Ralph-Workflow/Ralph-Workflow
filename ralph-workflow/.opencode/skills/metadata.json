@@ -40,7 +40,7 @@
     "submit-artifact",
     "submit-commit-message-artifact",
     "submit-development-result-artifact",
-    "submit-commit-cleanup-artifact"
+    "submit-commit-review-artifact"
   ],
   "bundles": {
     "using-superpowers": "core-workflow",
@@ -70,7 +70,7 @@
     "submit-artifact": "core-workflow",
     "submit-commit-message-artifact": "core-workflow",
     "submit-development-result-artifact": "core-workflow",
-    "submit-commit-cleanup-artifact": "core-workflow"
+    "submit-commit-review-artifact": "core-workflow"
   },
   "skill_sources": {
     "using-superpowers": {
@@ -343,15 +343,15 @@
       "ref": null,
       "path": "ralph/skills/content/submit-development-result-artifact.md"
     },
-    "submit-commit-cleanup-artifact": {
+    "submit-commit-review-artifact": {
       "bundle": "core-workflow",
-      "upstream_name": "submit-commit-cleanup-artifact",
+      "upstream_name": "submit-commit-review-artifact",
       "catalog_repo": null,
       "catalog_ref": null,
       "catalog_path": null,
       "repo": null,
       "ref": null,
-      "path": "ralph/skills/content/submit-commit-cleanup-artifact.md"
+      "path": "ralph/skills/content/submit-commit-review-artifact.md"
     }
   }
 }

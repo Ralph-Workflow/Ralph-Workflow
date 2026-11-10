@@ -51,6 +51,7 @@ PIPELINE_POLICY_FIELDS = frozenset(
         "recovery",
         "cycle_timebox",
         "development_timebox",
+        "commit_review",
     }
 )
 _BLOCKS_ADAPTER = TypeAdapter(dict[str, PolicyBlock])
@@ -309,7 +310,7 @@ def _phase_def_declares_edge(phase_def: PhaseDefinition, target: str) -> bool:
     routes, and post-commit routes declared on the phase definition.
     """
     t = phase_def.transitions
-    for candidate in (t.on_success, t.on_failure, t.on_loopback):
+    for candidate in (t.on_success, t.on_failure, t.on_loopback, t.on_reject):
         if candidate == target:
             return True
     for route in phase_def.decisions.values():

@@ -80,7 +80,7 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("commit_executor", "PLC0415"),
     ("runner", "PLC0415"),  # lazy import in module __getattr__ breaks runner<->run_loop cycle
     ("worker_runtime", "PLC0415"),
-    ("commit_cleanup", "PLC0415"),
+    ("commit_review", "PLC0415"),
     ("materialize", "PLC0415"),
     ("supervising", "PLC0415"),
     ("pytest_timeout_plugin", "PLC0415"),
@@ -295,7 +295,7 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("test_audit_agent_module_state", "PLC0415"),
     # wt-025 auto-commit skill: lazy import of git.Repo and stage_files
     # defers the import until a real call (mirrors the existing
-    # commit_cleanup / runner pattern; both are in this allowlist).
+    # commit_review / runner pattern; both are in this allowlist).
     ("_auto_commit", "PLC0415"),
     # wt-025 auto-commit audit: AST walker over the untrack_engine_internal_files
     # function has 15+ branches because of the nested search for the
@@ -313,7 +313,7 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     # GitPython import (git.Repo / GitCommandError /
     # InvalidGitRepositoryError) inside a try/except so a non-git
     # workspace can import the module without GitPython installed; the
-    # same lazy-import rationale already covers commit_cleanup,
+    # same lazy-import rationale already covers commit_review,
     # runner, and _auto_commit in this allowlist.
     ("scoped_auto_commit", "PLC0415"),
     # project_policy/cli_integration.py: lazy imports of

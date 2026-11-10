@@ -46,7 +46,7 @@ def test_no_recovery_phase_routes_in_place() -> None:
     """A repairable git failure with no recovery phase re-routes in-place.
 
     When _resolve_commit_recovery_phase returns None (no commit_recovery and no
-    commit_cleanup phase), _recoverable_git_failure_default_target returns the
+    commit_review phase), _recoverable_git_failure_default_target returns the
     in-place phase name ('development_commit'). The reducer re-routes to it
     (not to failed_terminal), allowing commit_executor to re-read the validated
     message from effect.message_file.
@@ -54,7 +54,7 @@ def test_no_recovery_phase_routes_in_place() -> None:
     policy = _load_pipeline_policy()
 
     # Use development_commit phase; patch _resolve_commit_recovery_phase to
-    # return None (simulating a policy with no commit_cleanup phases).
+    # return None (simulating a policy with no commit_review phases).
     state = PipelineState(
         phase="development_commit",
         recovery_epoch=0,
@@ -291,7 +291,7 @@ def test_valid_message_preserved_through_failure_then_success(tmp_path: Path) ->
         "Validated message bytes must be preserved byte-for-byte after failure"
     )
 
-    # Reducer routes in-place for a policy with no commit_recovery/commit_cleanup.
+    # Reducer routes in-place for a policy with no commit_recovery/commit_review.
     policy_bundle = _load_policy_bundle()
     policy = policy_bundle.pipeline
     state = PipelineState(

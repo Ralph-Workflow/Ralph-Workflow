@@ -5,7 +5,7 @@ The audit pins the wt-025 deterministic skill-update auto-commit contract:
 * the literal subject ``chore(skills): sync baseline bundle``,
 * the FIVE canonical project-scope skill-root prefix set,
 * the AST placement of the early-skip block in
-  ``ralph/git/commit_cleanup.py::untrack_engine_internal_files``, and
+  ``ralph/git/commit_review.py::untrack_engine_internal_files``, and
 * the existence of ``ralph/skills/_auto_commit.py``.
 
 Mirrors the structure of ``tests/test_audit_parallelization_dormant.py``
@@ -127,12 +127,12 @@ def test_audit_blocks_regression_when_helper_module_deleted(
     assert "_auto_commit.py" in captured.out
 
 
-def test_audit_blocks_regression_when_commit_cleanup_skip_removed(
+def test_audit_blocks_regression_when_commit_review_skip_removed(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Removing the literal-string skip block from commit_cleanup.py triggers rc=1."""
+    """Removing the literal-string skip block from commit_review.py triggers rc=1."""
     real_read = audit_module._read
-    cleanup_path = "git/commit_cleanup.py"
+    cleanup_path = "git/commit_review.py"
 
     def _read_with_skip_removed(rel_path: str) -> str:
         content = real_read(rel_path)

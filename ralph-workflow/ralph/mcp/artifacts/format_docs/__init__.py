@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 FORMAT_DOC_ARTIFACT_TYPES: tuple[str, ...] = (
     "commit_message",
-    "commit_cleanup",
+    "commit_review",
     "development_result",
     "issues",
     "fix_result",

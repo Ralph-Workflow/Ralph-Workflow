@@ -75,14 +75,14 @@ def test_redirect_leaves_no_banner_item_because_the_operator_never_sees_one() ->
     from ralph.pipeline.cycle_timing import cycle_timebox_status_item
 
     state = PipelineState(
-        phase="development_final_commit_cleanup",
+        phase="development_final_commit_review",
         previous_phase="development_analysis",
         cycle_timebox_active=False,
         cycle_timebox_consumed_seconds=36000.0,
         pending_cycle_outcome="completed",
         cycle_timebox_redirect_reason=(
             "cycle timebox reached 36000s (elapsed 36000s); "
-            "redirecting to development_final_commit_cleanup"
+            "redirecting to development_final_commit_review"
         ),
     )
 

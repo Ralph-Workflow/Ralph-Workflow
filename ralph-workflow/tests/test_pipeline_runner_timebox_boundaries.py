@@ -70,7 +70,7 @@ def test_restored_warning_redirects_before_agent_dispatch(
         deps,
     )
     assert isinstance(result, PipelineState)
-    assert observed == ["development_commit_cleanup"]
+    assert observed == ["development_commit_review"]
 
 
 def test_crash_crossing_warning_routes_without_retry(
@@ -113,5 +113,5 @@ def test_crash_crossing_warning_routes_without_retry(
         deps,
     )
     assert isinstance(result, PipelineState)
-    assert result.phase == "development_commit_cleanup"
+    assert result.phase == "development_commit_review"
     assert result.dev_timebox_consumed_seconds == 4201.0

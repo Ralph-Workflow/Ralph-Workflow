@@ -108,7 +108,7 @@ def test_successful_wave_advances_phase_from_empty_state(
         ],
     )
 
-    assert result.phase == "development_commit_cleanup"
+    assert result.phase == "development_commit_review"
 
 
 def test_successful_wave_clears_parallel_tracking_state(
@@ -254,6 +254,6 @@ def test_resume_with_all_units_succeeded_advances_instead_of_stalling(
         expect_coordinator_call=False,
     )
 
-    assert result.phase == "development_commit_cleanup"
+    assert result.phase == "development_commit_review"
     assert result.work_units == ()
     assert result.worker_states == {}

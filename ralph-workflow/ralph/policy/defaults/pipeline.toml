@@ -28,15 +28,22 @@ description = "Development analysis loop iteration counter"
 default_max = 3
 description = "Planning analysis loop iteration counter"
 
-# Raise this only if commit-cleanup (fixing lint/format issues before a commit) needs more than 3 self-correction passes;
+# Raise this only if commit-review (fixing lint/format issues before a commit) needs more than 3 self-correction passes;
 # most agents fix cleanup issues in one or two passes.
-[loop_counters.commit_cleanup_iteration]
+[loop_counters.commit_review_iteration]
 default_max = 3
-description = "Commit cleanup loop iteration counter"
+description = "Commit review loop iteration counter"
 
-[loop_counters.commit_cleanup_identity]
+[loop_counters.commit_review_identity]
 default_max = 3
-description = "Identical no-progress commit-cleanup attempt counter"
+description = "Identical no-progress commit-review attempt counter"
+
+# Consecutive commit review rejection counter. Fails the run to failed_terminal
+# when exhausted without another rollback. Absent from loop_resets so it survives
+# normal iteration loop resets and accumulates across the run.
+[loop_counters.commit_review_rejections]
+default_max = 2
+description = "Consecutive commit review rejections counter"
 
 # ---------------------------------------------------------------------------
 # Edit this only if you need to change the total development-cycle budget.
@@ -68,7 +75,7 @@ start_source = "planning_analysis"
 start_entry = "development"
 guarded_entry = "development"
 end_entry = "development_final_commit"
-finalization_target = "development_final_commit_cleanup"
+finalization_target = "development_final_commit_review"
 # A redirected cycle still finishes at the dev cycle's final commit, so it is
 # stamped with a normal cycle outcome and post_commit_routes decide what comes
 # next: another planning cycle while the iteration budget has room, or the
@@ -86,7 +93,26 @@ start_source = "planning_analysis"
 start_entry = "development"
 guarded_entry = "development"
 end_entry = "development_commit"
-finalization_target = "development_commit_cleanup"
+finalization_target = "development_commit_review"
+
+# ---------------------------------------------------------------------------
+# Commit review policy (Stage 1 deterministic tripwires & proposal retention)
+# ---------------------------------------------------------------------------
+
+# Stage 1 deterministic safety tripwires run before agent review.
+# If a hard tripwire triggers (e.g. mass deletion, protected file removal), the
+# proposal is rejected immediately and rolled back to HEAD/baseline.
+[commit_review]
+# Maximum allowed number of deleted tracked files before mass deletion hard tripwire triggers.
+max_deleted_files = 50
+# Maximum fraction of tracked files deleted (0.0 to 1.0) before mass deletion hard tripwire triggers.
+max_deleted_fraction = 0.25
+# Maximum allowed binary file size in bytes (1 MB) before triggering oversized-binary warning.
+binary_size_limit = 1000000
+# Number of recent sealed proposal references to keep per run before pruning.
+proposal_retention = 10
+# Maximum consecutive commit review rejections before failing the run to failed_terminal.
+max_rejections = 2
 
 # ---------------------------------------------------------------------------
 # Edit this only if you are changing the workflow phases or their order.
@@ -99,22 +125,22 @@ child_blocks = [
   "planning",
   "planning_analysis",
   "development",
-  "development_commit_cleanup",
+  "development_commit_review",
   "development_commit",
   "development_analysis",
-  "development_final_commit_cleanup",
+  "development_final_commit_review",
   "development_final_commit",
   "complete",
   "failed_terminal",
 ]
 completion_block = "development_final_commit"
 before_complete = [
-  "development_commit_cleanup",
+  "development_commit_review",
   "development_commit",
-  "development_final_commit_cleanup",
+  "development_final_commit_review",
 ]
 increments_counter = "iteration"
-loop_resets = ["development_analysis_iteration", "commit_cleanup_iteration"]
+loop_resets = ["development_analysis_iteration", "commit_review_iteration"]
 
 [blocks.planning]
 kind = "individual"
@@ -168,7 +194,7 @@ continuation_template = "developer_iteration_continuation.jinja"
 display_style = "theme.phase.development"
 clear_drains_on_fresh_entry = ["planning_analysis", "development", "development_analysis"]
 [blocks.development.phase.transitions]
-on_success = "development_commit_cleanup"
+on_success = "development_commit_review"
 on_loopback = "development"
 [blocks.development.phase.artifact_history]
 enabled = true
@@ -181,20 +207,21 @@ max_work_units = 50
 require_allowed_directories = true
 post_fanout_verification = false
 
-[blocks.development_commit_cleanup]
+[blocks.development_commit_review]
 kind = "individual"
-phase_name = "development_commit_cleanup"
-[blocks.development_commit_cleanup.phase]
+phase_name = "development_commit_review"
+[blocks.development_commit_review.phase]
 drain = "commit"
-role = "commit_cleanup"
-prompt_template = "commit_cleanup.jinja"
+role = "commit_review"
+prompt_template = "commit_review.jinja"
 display_style = "theme.phase.commit"
-[blocks.development_commit_cleanup.phase.transitions]
+[blocks.development_commit_review.phase.transitions]
 on_success = "development_commit"
-on_loopback = "development_commit_cleanup"
-on_failure = "development_commit"
-[blocks.development_commit_cleanup.phase.loop_policy]
-iteration_state_field = "commit_cleanup_iteration"
+on_loopback = "development_commit_review"
+on_failure = "failed_terminal"
+on_reject = "development"
+[blocks.development_commit_review.phase.loop_policy]
+iteration_state_field = "commit_review_iteration"
 
 [blocks.development_commit]
 kind = "individual"
@@ -214,7 +241,7 @@ on_failure = "failed_terminal"
 [blocks.development_commit.phase.commit_policy]
 requires_artifact = true
 skipped_advances_progress = false
-loop_resets = ["commit_cleanup_iteration"]
+loop_resets = ["commit_review_iteration"]
 
 [blocks.development_analysis]
 kind = "individual"
@@ -228,7 +255,7 @@ display_style = "theme.phase.development_analysis"
 enabled = true
 clear_on_fresh_entry = false
 [blocks.development_analysis.phase.transitions]
-on_success = "development_final_commit_cleanup"
+on_success = "development_final_commit_review"
 on_loopback = "development"
 [blocks.development_analysis.phase.invocation_gate]
 upstream_execution_phase = "development"
@@ -237,7 +264,7 @@ always_invoke_statuses = ["partial", "failed"]
 [blocks.development_analysis.phase.loop_policy]
 iteration_state_field = "development_analysis_iteration"
 [blocks.development_analysis.phase.decisions.completed]
-target = "development_final_commit_cleanup"
+target = "development_final_commit_review"
 reset_loop = true
 cycle_outcome = "completed"
 [blocks.development_analysis.phase.decisions.request_changes]
@@ -247,20 +274,21 @@ reset_loop = false
 target = "development"
 reset_loop = false
 
-[blocks.development_final_commit_cleanup]
+[blocks.development_final_commit_review]
 kind = "individual"
-phase_name = "development_final_commit_cleanup"
-[blocks.development_final_commit_cleanup.phase]
+phase_name = "development_final_commit_review"
+[blocks.development_final_commit_review.phase]
 drain = "commit"
-role = "commit_cleanup"
-prompt_template = "commit_cleanup.jinja"
+role = "commit_review"
+prompt_template = "commit_review.jinja"
 display_style = "theme.phase.commit"
-[blocks.development_final_commit_cleanup.phase.transitions]
+[blocks.development_final_commit_review.phase.transitions]
 on_success = "development_final_commit"
-on_loopback = "development_final_commit_cleanup"
-on_failure = "development_final_commit"
-[blocks.development_final_commit_cleanup.phase.loop_policy]
-iteration_state_field = "commit_cleanup_iteration"
+on_loopback = "development_final_commit_review"
+on_failure = "failed_terminal"
+on_reject = "development"
+[blocks.development_final_commit_review.phase.loop_policy]
+iteration_state_field = "commit_review_iteration"
 
 [blocks.development_final_commit]
 kind = "individual"
@@ -281,7 +309,7 @@ on_failure = "failed_terminal"
 requires_artifact = true
 skipped_advances_progress = true
 increments_counter = "iteration"
-loop_resets = ["development_analysis_iteration", "commit_cleanup_iteration"]
+loop_resets = ["development_analysis_iteration", "commit_review_iteration"]
 
 [blocks.complete]
 kind = "individual"

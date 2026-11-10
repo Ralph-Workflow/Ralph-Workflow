@@ -32,9 +32,9 @@ def _commit_failure_policy() -> PipelinePolicy:
                 role="commit",
                 transitions=PhaseTransition(on_success="failed_terminal"),
             ),
-            "development_commit_cleanup": PhaseDefinition(
-                drain="development_commit_cleanup",
-                role="commit_cleanup",
+            "development_commit_review": PhaseDefinition(
+                drain="development_commit_review",
+                role="commit_review",
                 transitions=PhaseTransition(on_success="development_commit"),
             ),
             "failed_terminal": PhaseDefinition(
@@ -82,7 +82,7 @@ class TestDirtyWorktreeFailureEncoding:
 
         next_state, effects = _reduce_commit_failure(reason, policy)
 
-        assert next_state.phase == "development_commit_cleanup"
+        assert next_state.phase == "development_commit_review"
         assert next_state.last_error == reason
         assert next_state.pending_cycle_outcome is None
         assert effects == []

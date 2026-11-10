@@ -153,7 +153,7 @@ class TestRenderExplanationText:
         assert "36000s" in text
         assert "28800s" in text
         assert "planning_analysis -> development" in text
-        assert "development_final_commit_cleanup" in text
+        assert "development_final_commit_review" in text
         # The outcome a redirected cycle is finalized with decides whether the
         # run continues, so the operator must be able to read it back.
         assert "Finalization outcome: completed" in text

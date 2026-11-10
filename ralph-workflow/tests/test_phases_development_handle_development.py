@@ -260,7 +260,7 @@ class TestHandleDevelopment:
         next_state, _ = reducer_reduce(commit_state, PipelineEvent.COMMIT_SUCCESS, policy)
 
         assert result == [ExecutionResultEvent(phase="development", status="partial")]
-        assert cleanup_state.phase == "development_commit_cleanup"
+        assert cleanup_state.phase == "development_commit_review"
         assert commit_state.phase == "development_commit"
         assert next_state.phase == "development_analysis"
         assert next_state.last_agent_session_id is None

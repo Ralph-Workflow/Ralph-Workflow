@@ -96,7 +96,7 @@ def test_development_and_fix_phases_trigger_refresh() -> None:
 
 def test_review_and_commit_phases_do_not_trigger_refresh() -> None:
     """AC-04: review and commit drains never trigger a refresh."""
-    for drain in ("commit", "commit_cleanup", "review", "terminal", "complete"):
+    for drain in ("commit", "commit_review", "review", "terminal", "complete"):
         assert is_execution_phase_for_refresh(phase_role="execution", phase_drain=drain) is False, (
             f"drain {drain!r} must not trigger refresh"
         )

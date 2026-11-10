@@ -453,8 +453,8 @@ def _execute_empty_commit_effect(
     workspace_scope: WorkspaceScope,
 ) -> PipelineEvent:
     match effect.phase_role:
-        case "commit_cleanup":
-            logger.info("Completing empty commit cleanup without invoking an agent")
+        case "commit_review":
+            logger.info("Completing empty commit review without invoking an agent")
             return PipelineEvent.AGENT_SUCCESS
         case "commit":
             logger.info("Completing empty commit without invoking a commit agent")
@@ -2046,6 +2046,57 @@ def _handle_blocked_dispatch_recovery(
     )
 
 
+def _execute_pending_rollback_if_needed(
+    next_state: PipelineState,
+    workspace_scope: WorkspaceScope,
+    policy_bundle: PolicyBundle,
+) -> PipelineState:
+    """Execute rollback if flagged as pending in next_state and record retry hint."""
+    if not (
+        isinstance(next_state.rollback_pending, bool)
+        and next_state.rollback_pending is True
+        and isinstance(next_state.rollback_ref, str)
+        and next_state.rollback_ref
+    ):
+        return next_state
+    _save_checkpoint_or_log(
+        next_state,
+        message="Checkpoint save failed before rollback in phase={phase}: {err}",
+        path=_checkpoint_path(workspace_scope),
+    )
+    from ralph.git.proposal_seal import rollback
+    from ralph.phases.required_artifacts import retry_hint_path
+
+    rollback(workspace_scope.root, next_state.rollback_ref)
+    dev_hint_path = workspace_scope.root / retry_hint_path(
+        "development", pipeline_policy=policy_bundle.pipeline
+    )
+    dev_hint_path.parent.mkdir(parents=True, exist_ok=True)
+    rejection_text = (
+        f"Commit review rejected previous iteration: {next_state.last_review_rejection_reason or '(no reason provided)'}\n"
+        f"Proposal ref: {next_state.rollback_ref}\n"
+        f"Working tree rolled back to HEAD. To inspect rejected changes: git checkout {next_state.rollback_ref} -- .\n"
+    )
+    dev_hint_path.write_text(
+        rejection_text, encoding="utf-8"
+    )  # filesystem-write-ok: record rollback retry context for next dev prompt
+    return next_state.copy_with(rollback_pending=False, rollback_ref=None)
+
+
+def _finalize_step_state(
+    next_state: PipelineState,
+    workspace_scope: WorkspaceScope,
+    policy_bundle: PolicyBundle,
+    auto_integrate_outcome: RebaseState | None,
+    config: UnifiedConfig | None,
+) -> PipelineState:
+    """Post-reducer state finalization: execute rollbacks and thread integration outcomes."""
+    next_state = _execute_pending_rollback_if_needed(next_state, workspace_scope, policy_bundle)
+    return _apply_step_integration_outcome(
+        next_state, workspace_scope, policy_bundle, auto_integrate_outcome, config=config
+    )
+
+
 def _run_pipeline_step(
     *,
     state: PipelineState,
@@ -2316,11 +2367,7 @@ def _run_pipeline_step(
             development_sample_box=_development_sample_box,
             development_policy=dt_policy,
         )
-        # Thread the integration outcome into the persisted checkpoint.
-        # Must happen AFTER reducer_reduce (so the state model is
-        # consistent) and BEFORE _save_checkpoint_or_log (so the
-        # outcome survives a crash right after the phase).
-        next_state = _apply_step_integration_outcome(
+        next_state = _finalize_step_state(
             next_state, workspace_scope, policy_bundle, _auto_integrate_outcome, config=config
         )
         skipped_phases = record_phase_transition_metadata(

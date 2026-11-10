@@ -16,7 +16,7 @@ Artifacts are the structured files Ralph Workflow leaves behind so later phases 
 | `issues` | review agent | List of issues found in the development output | yes |
 | `fix_result` | fix agent | Summary of fixes applied | yes |
 | `commit_message` | commit agent | Proposed commit subject and body | yes |
-| `commit_cleanup` | commit cleanup agent | Cleanup actions for transient or internal files before commit | yes |
+| `commit_review` | commit review agent | Commit review verdict, pending diff classification, and safety actions | yes |
 | `development_analysis_decision` | analysis agent | Go/no-go for development output | yes |
 | `planning_analysis_decision` | analysis agent | Go/no-go for planning output | yes |
 | `review_analysis_decision` | analysis agent | Go/no-go for review output | yes |
@@ -34,7 +34,7 @@ Each artifact type with a bundled format guide — including `plan` — ships wi
 The format doc loader is in `ralph.mcp.artifacts.format_docs`. The `FORMAT_DOC_ARTIFACT_TYPES` tuple lists all types that have bundled docs:
 
 ```
-commit_message, commit_cleanup, development_result, issues, fix_result,
+commit_message, commit_review, development_result, issues, fix_result,
 development_analysis_decision, planning_analysis_decision,
 review_analysis_decision, smoke_test_result, product_spec, plan
 ```
@@ -92,6 +92,41 @@ coverage are judged by development analysis, not matched mechanically here.
 A useful shape is one `## Summary` item, a `## Files Changed` block listing
 the paths touched, and short evidence lines for affected criteria, but no
 specific section or field is required.
+
+## Commit review contract
+
+The `commit_review` artifact acts as the second stage of the pre-commit damage gate and cleanup phase.
+
+### Frontmatter
+
+```yaml
+---
+type: commit_review
+verdict: approve
+tree_sha: 0123456789abcdef0123456789abcdef01234567
+---
+```
+
+- **`type`**: Must be `commit_review`.
+- **`verdict`**: Strict closed enum: `approve` or `reject`.
+- **`tree_sha`**: 40-character hex SHA of the sealed proposal tree evaluated by the reviewer.
+
+### Sections
+
+- **`## Actions`**: Optional section listing pre-commit repository cleanup actions:
+  - `- delete_file: <path>`: Deletes a transient or untracked file within permitted boundaries.
+  - `- add_to_gitignore: <pattern>`: Appends pattern to `.gitignore`.
+  - `- add_to_git_exclude: <pattern>`: Appends pattern to `.git/info/exclude`.
+  Every path is checked for printable ASCII characters and validated against security rules (protected system files, `.git` internals, and out-of-scope paths are blocked).
+- **`## Reason`**: Mandatory when `verdict: reject`; optional when `verdict: approve`. When rejecting, the reviewer must cite concrete paths or counts present in the proposal diff against `HEAD`. The engine mechanically verifies that every cited path exists in the diff and cited counts match; unverifiable citations fail closed as reviewer malfunctions rather than triggering rollbacks.
+
+### Proposal sealing and rollback
+
+1. Before review, changes are sealed into `refs/ralph/proposals/<run>/<iteration>` using a temporary index.
+2. If Stage 1 deterministic tripwires trigger (mass deletion, protected file removal, oversized binaries), the engine rejects immediately without an agent.
+3. If Stage 2 approves, actions are applied, the tree is resealed, and the commit executor verifies that staging matches the approved `tree_sha`.
+4. If Stage 2 rejects, the engine checkpoints `rollback_pending` and cleanly restores the working tree to `HEAD` (or dirty baseline), forwarding the rejection reason and proposal ref to the next developer prompt.
+5. Preserved proposal refs can be recovered manually with `git checkout refs/ralph/proposals/<run>/<iteration> -- .`.
 
 ## Validation
 

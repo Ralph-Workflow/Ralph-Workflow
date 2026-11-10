@@ -165,9 +165,9 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     "tests/test_tool_git_read_path_validation.py",
     # I1/I2/I4 housekeeping bounds live in a subprocess_e2e module; keep
     # them on the default make-test profile via this registry.
-    "tests/test_commit_cleanup_invariants.py",
-    "tests/test_commit_cleanup_verify_gate.py",
-    "tests/integration/test_pipeline_commit_cleanup_to_commit_e2e.py",
+    "tests/test_commit_review_invariants.py",
+    "tests/test_commit_review_verify_gate.py",
+    "tests/integration/test_pipeline_commit_review_to_commit_e2e.py",
     # wt-11: crash-safety and concurrency proofs for the indexed
     # exploration substrate (S-5). subprocess_e2e so the cross-process
     # boundary and atomic promotion are exercised; in-budget on the
@@ -378,7 +378,7 @@ SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/test_auto_integrate_gates.py",
     "tests/test_bootstrap_auto_seed_git_exclude.py",
     "tests/test_bootstrap_auto_seed_gitignore.py",
-    "tests/test_commit_cleanup_diff.py",
+    "tests/test_commit_review_diff.py",
     "tests/test_commit_detached_head_recovery.py",
     "tests/test_commit_executor.py",
     "tests/test_cycle_baseline_diff_cycle_baseline_diff.py",

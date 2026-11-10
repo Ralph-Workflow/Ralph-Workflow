@@ -201,7 +201,7 @@ _SEAM_ALLOWLIST: frozenset[tuple[str, str]] = frozenset(
         ("audit_typecheck_bypass", "list[str]"),
         ("bench", "McpConfig"),
         ("commit", "UnifiedConfig"),
-        ("commit_cleanup", "str"),
+        ("commit_review", "str"),
         ("commit_executor", "DisplayContext"),
         ("commit_executor", "ParallelDisplay"),
         ("commit_executor", "PolicyBundle | None"),

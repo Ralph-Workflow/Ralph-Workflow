@@ -25,15 +25,15 @@ Two MCP tools operate on every artifact type:
     receive no receipt; their staged draft remains available for revision.
 
 Supported `artifact_type` values: `plan`, `development_result`,
-`commit_message`, `commit_cleanup`, `fix_result`, `issues`,
+`commit_message`, `commit_review`, `fix_result`, `issues`,
 `smoke_test_result`, `product_spec`, `planning_analysis_decision`,
 `development_analysis_decision`, `review_analysis_decision`,
 `policy_remediation_analysis_decision`.
 
-For `plan`, `development_result`, `commit_message`, and `commit_cleanup`,
+For `plan`, `development_result`, `commit_message`, and `commit_review`,
 use the dedicated companion skills (`submit-plan-artifact`,
 `submit-development-result-artifact`, `submit-commit-message-artifact`,
-`submit-commit-cleanup-artifact`). This skill teaches the shared grammar
+`submit-commit-review-artifact`). This skill teaches the shared grammar
 for non-plan artifacts; `submit-plan-artifact` supplies optional plan guidance.
 
 ## The Closed Grammar

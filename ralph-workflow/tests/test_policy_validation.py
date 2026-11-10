@@ -69,6 +69,7 @@ from ralph.policy.models import (
     ArtifactHistoryPolicy,
     ArtifactsPolicy,
     BudgetCounterConfig,
+    CommitReviewPolicy,
     DrainName,
     LoopCounterConfig,
     PhaseCommitPolicy,
@@ -364,28 +365,28 @@ class TestDefaultPolicyLoading:
                 f"Phase '{phase_name}' uses unbound drain '{phase_def.drain}'"
             )
 
-    def test_development_commit_cleanup_phase_in_default_policy(self) -> None:
-        """Test that the default policy exposes both pre-analysis and final commit cleanups."""
+    def test_development_commit_review_phase_in_default_policy(self) -> None:
+        """Test that the default policy exposes both pre-analysis and final commit reviews."""
         bundle = _cached_default_bundle()
 
-        pre_analysis_cleanup = bundle.pipeline.phases["development_commit_cleanup"]
-        final_cleanup = bundle.pipeline.phases["development_final_commit_cleanup"]
+        pre_analysis_cleanup = bundle.pipeline.phases["development_commit_review"]
+        final_cleanup = bundle.pipeline.phases["development_final_commit_review"]
         development = bundle.pipeline.phases["development"]
         dev_analysis = bundle.pipeline.phases["development_analysis"]
 
-        assert pre_analysis_cleanup.role == "commit_cleanup"
+        assert pre_analysis_cleanup.role == "commit_review"
         assert pre_analysis_cleanup.drain == "commit"
-        assert final_cleanup.role == "commit_cleanup"
+        assert final_cleanup.role == "commit_review"
         assert final_cleanup.drain == "commit"
 
-        assert development.transitions.on_success == "development_commit_cleanup"
-        assert dev_analysis.transitions.on_success == "development_final_commit_cleanup"
-        assert dev_analysis.decisions["completed"].target == "development_final_commit_cleanup"
+        assert development.transitions.on_success == "development_commit_review"
+        assert dev_analysis.transitions.on_success == "development_final_commit_review"
+        assert dev_analysis.decisions["completed"].target == "development_final_commit_review"
 
         for phase in (pre_analysis_cleanup, final_cleanup):
-            assert phase.loop_policy is not None, "commit cleanup phases must declare a loop_policy"
-            assert phase.loop_policy.iteration_state_field == "commit_cleanup_iteration", (
-                f"loop_policy.iteration_state_field must be 'commit_cleanup_iteration', "
+            assert phase.loop_policy is not None, "commit review phases must declare a loop_policy"
+            assert phase.loop_policy.iteration_state_field == "commit_review_iteration", (
+                f"loop_policy.iteration_state_field must be 'commit_review_iteration', "
                 f"got: {phase.loop_policy.iteration_state_field}"
             )
 
@@ -393,8 +394,8 @@ class TestDefaultPolicyLoading:
         """Default policy should commit before analysis and again after successful analysis."""
         bundle = _cached_default_bundle()
 
-        pre_analysis_cleanup = bundle.pipeline.phases["development_commit_cleanup"]
-        final_cleanup = bundle.pipeline.phases["development_final_commit_cleanup"]
+        pre_analysis_cleanup = bundle.pipeline.phases["development_commit_review"]
+        final_cleanup = bundle.pipeline.phases["development_final_commit_review"]
         final_commit = bundle.pipeline.phases["development_final_commit"]
         pre_analysis_commit = bundle.pipeline.phases["development_commit"]
 
@@ -415,12 +416,12 @@ class TestDefaultPolicyLoading:
 
         pre_analysis_commit = bundle.pipeline.phases["development_commit"]
         assert pre_analysis_commit.commit_policy is not None
-        assert pre_analysis_commit.commit_policy.loop_resets == ["commit_cleanup_iteration"]
+        assert pre_analysis_commit.commit_policy.loop_resets == ["commit_review_iteration"]
 
         final_commit = bundle.pipeline.phases["development_final_commit"]
         assert final_commit.commit_policy is not None
         loop_resets = final_commit.commit_policy.loop_resets
-        assert "commit_cleanup_iteration" in loop_resets
+        assert "commit_review_iteration" in loop_resets
         assert "development_analysis_iteration" in loop_resets
 
 
@@ -1701,7 +1702,7 @@ class TestValidatePolicyCompletenessNewRules:
 
         with pytest.raises(
             PolicyValidationError,
-            match="loop_policy is only valid for role='analysis' or role='commit_cleanup'",
+            match="loop_policy is only valid for role='analysis' or role='commit_review'",
         ):
             validate_policy_completeness(bundle)
 
@@ -1929,16 +1930,16 @@ class TestValidatePolicyCompletenessNewRules:
         with pytest.raises(PolicyValidationError, match="clean_outcome"):
             validate_policy_completeness(bundle)
 
-    def test_commit_policy_loop_resets_accepts_commit_cleanup_iteration_field(self) -> None:
-        """commit_policy.loop_resets accepting commit_cleanup iteration field passes validation.
+    def test_commit_policy_loop_resets_accepts_commit_review_iteration_field(self) -> None:
+        """commit_policy.loop_resets accepting commit_review iteration field passes validation.
 
         Bug #1: The validator only scanned analysis-role phases for valid iteration
-        fields. This test verifies that commit_cleanup-role phases are also accepted.
+        fields. This test verifies that commit_review-role phases are also accepted.
         """
         drains = [
             "development_analysis",
             "commit",
-            "development_commit_cleanup",
+            "development_commit_review",
             "development_commit",
             "complete",
         ]
@@ -1948,18 +1949,18 @@ class TestValidatePolicyCompletenessNewRules:
                 "development_analysis": self._minimal_analysis_phase(
                     "development_analysis",
                     "development_analysis_iteration",
-                    on_success="development_commit_cleanup",
+                    on_success="development_commit_review",
                     failure_target="failed_terminal",
                 ),
-                "development_commit_cleanup": PhaseDefinition(
+                "development_commit_review": PhaseDefinition(
                     drain="commit",
-                    role="commit_cleanup",
+                    role="commit_review",
                     transitions=PhaseTransition(
                         on_success="development_commit",
-                        on_loopback="development_commit_cleanup",
+                        on_loopback="development_commit_review",
                         on_failure="failed_terminal",
                     ),
-                    loop_policy=PhaseLoopPolicy(iteration_state_field="commit_cleanup_iteration"),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="commit_review_iteration"),
                 ),
                 "development_commit": PhaseDefinition(
                     drain="development_commit",
@@ -1970,7 +1971,7 @@ class TestValidatePolicyCompletenessNewRules:
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="iteration",
-                        loop_resets=["commit_cleanup_iteration"],
+                        loop_resets=["commit_review_iteration"],
                     ),
                 ),
                 "failed_terminal": PhaseDefinition(
@@ -1991,7 +1992,7 @@ class TestValidatePolicyCompletenessNewRules:
             },
             loop_counters={
                 "development_analysis_iteration": LoopCounterConfig(default_max=3),
-                "commit_cleanup_iteration": LoopCounterConfig(default_max=3),
+                "commit_review_iteration": LoopCounterConfig(default_max=3),
             },
             entry_phase="development_analysis",
             terminal_phase="complete",
@@ -2000,7 +2001,7 @@ class TestValidatePolicyCompletenessNewRules:
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
         validate_policy_completeness(bundle)  # must not raise
 
-    def test_commit_policy_loop_resets_rejects_field_not_from_analysis_or_commit_cleanup(
+    def test_commit_policy_loop_resets_rejects_field_not_from_analysis_or_commit_review(
         self,
     ) -> None:
         """commit_policy.loop_resets with field from unknown role fails validation.
@@ -2036,7 +2037,7 @@ class TestValidatePolicyCompletenessNewRules:
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="iteration",
-                        # "unknown_iteration_field" is not from any analysis or commit_cleanup phase
+                        # "unknown_iteration_field" is not from any analysis or commit_review phase
                         loop_resets=["unknown_iteration_field"],
                     ),
                 ),
@@ -3129,3 +3130,167 @@ class TestInvocationGateSuccessPath:
         )
         with pytest.raises(PolicyValidationError, match="always_invoke_statuses.*not valid"):
             validate_policy_completeness(bundle)
+
+
+class TestCommitReviewPolicyValidation:
+    """Tests for CommitReviewPolicy models and validation."""
+
+    def test_default_policy_commit_review_configured(self) -> None:
+        """Default policy includes properly configured commit_review thresholds, counter, and routing."""
+        bundle = _cached_default_bundle()
+
+        # Check commit_review thresholds on pipeline policy
+        cr = bundle.pipeline.commit_review
+        assert cr.max_deleted_files == 50
+        assert cr.max_deleted_fraction == 0.25
+        assert cr.binary_size_limit == 1_000_000
+        assert cr.proposal_retention == 10
+
+        # Check rejection counter
+        assert "commit_review_rejections" in bundle.pipeline.loop_counters
+        rejections_counter = bundle.pipeline.loop_counters["commit_review_rejections"]
+        assert rejections_counter.default_max == 2
+
+        # Check rejection counter is absent from all loop_resets
+        for phase_name, phase_def in bundle.pipeline.phases.items():
+            if phase_def.commit_policy is not None:
+                assert "commit_review_rejections" not in phase_def.commit_policy.loop_resets, (
+                    f"phase {phase_name} unexpectedly includes commit_review_rejections in loop_resets"
+                )
+
+        # Check routing on commit review phases
+        for phase_name in ("development_commit_review", "development_final_commit_review"):
+            phase = bundle.pipeline.phases[phase_name]
+            assert phase.transitions.on_reject == "development"
+            assert phase.transitions.on_failure == "failed_terminal"
+
+    def test_commit_review_policy_model_defaults_and_custom(self) -> None:
+        """CommitReviewPolicy accepts defaults and custom thresholds."""
+        default_policy = CommitReviewPolicy()
+        assert default_policy.max_deleted_files == 50
+        assert default_policy.max_deleted_fraction == 0.25
+        assert default_policy.binary_size_limit == 1_000_000
+        assert default_policy.proposal_retention == 10
+
+        custom_policy = CommitReviewPolicy(
+            max_deleted_files=5,
+            max_deleted_fraction=0.5,
+            binary_size_limit=10_485_760,
+            proposal_retention=20,
+        )
+        assert custom_policy.max_deleted_files == 5
+        assert custom_policy.max_deleted_fraction == 0.5
+        assert custom_policy.binary_size_limit == 10_485_760
+        assert custom_policy.proposal_retention == 20
+
+    def test_commit_review_policy_validation_constraints(self) -> None:
+        """CommitReviewPolicy rejects out-of-range values."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            CommitReviewPolicy(max_deleted_files=-1)
+        with pytest.raises(ValidationError):
+            CommitReviewPolicy(max_deleted_fraction=-0.1)
+        with pytest.raises(ValidationError):
+            CommitReviewPolicy(max_deleted_fraction=1.5)
+        with pytest.raises(ValidationError):
+            CommitReviewPolicy(binary_size_limit=0)
+        with pytest.raises(ValidationError):
+            CommitReviewPolicy(proposal_retention=0)
+
+    def test_phase_transition_on_reject(self) -> None:
+        """PhaseTransition accepts on_reject routing target."""
+        trans = PhaseTransition(
+            on_success="next",
+            on_reject="rollback_phase",
+            on_failure="fail",
+        )
+        assert trans.on_reject == "rollback_phase"
+
+    def test_commit_policy_rejects_rejections_counter_in_loop_resets(self) -> None:
+        """Commit phase loop_resets cannot contain commit_review_rejections."""
+        bundle = _cached_default_bundle()
+        bad_phase = bundle.pipeline.phases["development_commit"].model_copy(
+            update={
+                "commit_policy": PhaseCommitPolicy(
+                    increments_counter="iteration",
+                    loop_resets=["commit_review_rejections"],
+                )
+            }
+        )
+        bad_pipeline = bundle.pipeline.model_copy(
+            update={"phases": {**bundle.pipeline.phases, "development_commit": bad_phase}}
+        )
+        bad_bundle = PolicyBundle(
+            agents=bundle.agents,
+            pipeline=bad_pipeline,
+            artifacts=bundle.artifacts,
+        )
+        with pytest.raises(PolicyValidationError, match="commit_review_rejections"):
+            validate_policy_completeness(bad_bundle)
+
+    def test_commit_review_phase_rejects_unknown_on_reject_route(self) -> None:
+        """commit_review phase transitions.on_reject must point to a declared phase."""
+        bundle = _cached_default_bundle()
+        bad_trans = bundle.pipeline.phases["development_commit_review"].transitions.model_copy(
+            update={"on_reject": "unknown_phase"}
+        )
+        bad_phase = bundle.pipeline.phases["development_commit_review"].model_copy(
+            update={"transitions": bad_trans}
+        )
+        bad_pipeline = bundle.pipeline.model_copy(
+            update={"phases": {**bundle.pipeline.phases, "development_commit_review": bad_phase}}
+        )
+        bad_bundle = bundle.model_copy(update={"pipeline": bad_pipeline})
+        with pytest.raises(PolicyValidationError, match="transitions.on_reject"):
+            validate_policy_completeness(bad_bundle)
+
+    def test_commit_review_policy_validation_catches_invalid_fields(self) -> None:
+        """_validate_commit_review_policy flags negative files, invalid fractions, etc."""
+        bundle = _cached_default_bundle()
+        bad_cr = CommitReviewPolicy.model_construct(
+            max_deleted_files=-5,
+            max_deleted_fraction=1.5,
+            binary_size_limit=0,
+            proposal_retention=0,
+        )
+        bad_pipeline = bundle.pipeline.model_copy(update={"commit_review": bad_cr})
+        bad_bundle = bundle.model_copy(update={"pipeline": bad_pipeline})
+        with pytest.raises(PolicyValidationError) as excinfo:
+            validate_policy_completeness(bad_bundle)
+        msg = str(excinfo.value)
+        assert "commit_review.max_deleted_files" in msg
+        assert "commit_review.max_deleted_fraction" in msg
+        assert "commit_review.binary_size_limit" in msg
+        assert "commit_review.proposal_retention" in msg
+
+    def test_commit_review_rejections_counter_must_have_positive_max(self) -> None:
+        """commit_review_rejections counter default_max must be >= 1."""
+        bundle = _cached_default_bundle()
+        bad_counters = {
+            **bundle.pipeline.loop_counters,
+            "commit_review_rejections": LoopCounterConfig(default_max=0),
+        }
+        bad_pipeline = bundle.pipeline.model_copy(update={"loop_counters": bad_counters})
+        bad_bundle = bundle.model_copy(update={"pipeline": bad_pipeline})
+        with pytest.raises(PolicyValidationError, match="loop_counters.commit_review_rejections"):
+            validate_policy_completeness(bad_bundle)
+
+    def test_status_bar_phase_abbreviations_for_commit_review(self) -> None:
+        """Status bar shortens development_commit_review to DCr and final to FCr."""
+        from ralph.display.context import make_display_context
+        from ralph.display.status_bar import StatusBarModel, render_status_bar
+
+        ctx = make_display_context(force_width=60, env={"NO_COLOR": "1"})
+        m1 = StatusBarModel(
+            workspace_root="/tmp",
+            phase_label="development_commit_review",
+            phase_style="",
+        )
+        assert "DCr" in render_status_bar(m1, ctx=ctx).plain
+        m2 = StatusBarModel(
+            workspace_root="/tmp",
+            phase_label="development_final_commit_review",
+            phase_style="",
+        )
+        assert "FCr" in render_status_bar(m2, ctx=ctx).plain

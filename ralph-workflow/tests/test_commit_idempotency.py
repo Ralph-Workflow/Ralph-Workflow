@@ -554,7 +554,7 @@ def test_create_commit_detached_head_no_branch_raises_with_explanatory_error(
         )
 
 
-def test_commit_seam_no_commit_cleanup_loop(monkeypatch: MonkeyPatch) -> None:
+def test_commit_seam_no_commit_review_loop(monkeypatch: MonkeyPatch) -> None:
     """AC8: a second pass through the commit seam is a no-op, no commit/cleanup loop.
 
     After a successful first commit, a subsequent pass through the

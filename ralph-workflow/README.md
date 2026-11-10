@@ -74,6 +74,19 @@ keep the older refuse-and-retry behavior. See the
 [configuration reference](docs/sphinx/configuration.md#auto-integration) for
 all six settings.
 
+### Accidental damage protection: two-stage commit review
+
+Before any code is committed, Ralph Workflow evaluates the pending diff through a two-stage commit review gate:
+
+1. **Deterministic tripwires:** The engine seals pending changes into an isolated proposal ref (`refs/ralph/proposals/<run>/<iteration>`) and checks deterministic damage tripwires against `HEAD` (such as mass deletion exceeding count or fraction limits, or removal of protected paths like `.git`, manifests, lockfiles, or `AGENTS.md`). Hard tripwires reject automatically without an agent.
+2. **Agent review:** An agent inspects the sealed proposal diff and Stage 1 evidence, executes permitted cleanup actions (`delete_file`, `add_to_gitignore`, `add_to_git_exclude`), and submits an approved or rejected verdict bound to the sealed tree SHA.
+
+On rejection, the engine performs a crash-safe rollback restoring the tree to `HEAD` (or dirty run-start baseline) while preserving the proposal ref for inspection. Recover discarded changes at any time via:
+
+```bash
+git checkout refs/ralph/proposals/<run>/<iteration> -- .
+```
+
 ### Architecture: one source of truth per domain fact
 
 Every lifecycle fact in Ralph Workflow has exactly one authoritative

@@ -32,6 +32,7 @@ class PhaseExplanation:
     terminal_outcome: str | None
     clean_outcome: str | None = None
     issues_outcome: str | None = None
+    on_reject: str | None = None
     is_entry: bool = False
     is_terminal: bool = False
     verification: VerificationExplanation | None = None

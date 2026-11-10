@@ -159,7 +159,7 @@ _MUTUALLY_EXCLUSIVE_BRANCH_GROUPS: tuple[frozenset[str], ...] = (
 #: Runtime routing chooses either inline content or a file path, never both.
 
 _TOP_LEVEL_DRAINS: dict[str, SessionDrain] = {
-    "commit_cleanup": SessionDrain.COMMIT,
+    "commit_review": SessionDrain.COMMIT,
     "commit_message": SessionDrain.COMMIT,
     "commit_simplified": SessionDrain.COMMIT,
     "conflict_resolution": SessionDrain.DEVELOPMENT,

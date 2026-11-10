@@ -92,7 +92,7 @@ _EXCLUDED: dict[str, str] = {
     "pipeline.verification_result": "internal pipeline type, not public API",
     "prompts.developer.developer_prompt_inputs": "internal prompts type, not public API",
     "prompts.template_not_found_error": "internal prompts type, not public API",
-    "prompts.commit_cleanup": "internal prompts type, not public API",
+    "prompts.commit_review": "internal prompts type, not public API",
     "recovery.agent_unavailability_tracker": "internal recovery type, not public API",
     "recovery.connectivity_event": "internal recovery type, not public API",
     "recovery.connectivity_state": "internal recovery type, not public API",

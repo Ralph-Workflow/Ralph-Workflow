@@ -648,7 +648,7 @@ def test_run_verify_single_step_within_budget(
     # desynchronize budget coverage. make test takes 1s; every other step 0s.
     times = [0.0] * (2 * len(verify_module._VERIFY_STEPS))
     times[5:] = [1.0] * (len(times) - 5)
-    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
+    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
     exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
 
@@ -687,7 +687,7 @@ def test_run_verify_single_step_exceeds_budget(
 
     # make test appears to take 65s (budget is 60s).
     times = [0.0, 0.0, 0.0, 0.0, 0.0, 65.0]
-    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
+    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
     exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
 
@@ -732,7 +732,7 @@ def test_run_verify_multiple_steps_combined_exceeds(
     # Suite B: start=55.0, end=65.0 (10s elapsed, effective_timeout was 5s)
     # Cumulative = 65.0 > 60.0 → cumulative_exhausted
     times = [0.0, 55.0, 55.0, 65.0]
-    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
+    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
     exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
 
@@ -774,7 +774,7 @@ def test_run_verify_multiple_steps_combined_within(
 
     # Each suite takes 10s → total 20s < 60s
     times = [0.0, 10.0, 10.0, 20.0]
-    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
+    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
     exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
 
@@ -800,7 +800,7 @@ def test_run_verify_non_test_steps_not_counted(
     # Every non-test step takes 100s — all pass because nothing is tracked.
     # Derive the fixture from the real step list so audit additions stay covered.
     times = [100.0 * (index // 2) for index in range(2 * len(verify_module._VERIFY_STEPS))]
-    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
+    monkeypatch.setattr(time, "monotonic", lambda: times.pop(0) if times else 1.0)
 
     exit_code = verify_module.run_verify(cwd=tmp_path, runner=runner)
 

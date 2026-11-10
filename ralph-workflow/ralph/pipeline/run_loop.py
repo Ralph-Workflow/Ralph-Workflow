@@ -1233,6 +1233,8 @@ def _resolve_initial_state(
         PipelineState,
     ]
     | None,
+    *,
+    workspace_root: Path | None = None,
 ) -> PipelineState:
     """Resolve the initial :class:`PipelineState` with the standard DI precedence.
 
@@ -1242,17 +1244,35 @@ def _resolve_initial_state(
     budget, reported it as spent, and terminated at the next final commit.
     """
     if initial_state is not None:
+        resumed = initial_state
+        if (
+            isinstance(resumed.rollback_pending, bool)
+            and resumed.rollback_pending is True
+            and isinstance(resumed.rollback_ref, str)
+            and resumed.rollback_ref
+        ):
+            from ralph.git.proposal_seal import rollback
+
+            root = workspace_root if workspace_root is not None else Path()
+            try:
+                rollback(root, resumed.rollback_ref)
+            except Exception as exc:
+                logger.error("Failed to complete pending rollback on resume: {}", exc)
+                raise
+            resumed = resumed.copy_with(rollback_pending=False, rollback_ref=None)
+            with suppress(Exception):
+                from ralph.pipeline.checkpoint import save as save_checkpoint
+
+                save_checkpoint(resumed, root / ".agent" / "checkpoint.json")
+
         # Legacy checkpoints carry no cycle timing; initialize it HERE, in the
         # one seam every resumed run passes through, so the wiring cannot be
         # deleted while the tests that cover resuming stay green. Guarded: this
         # seam is also reached with stub policy bundles that carry no phase
         # graph, and a resumed run must never fail to start over timing setup.
-        resumed = initial_state
         with suppress(AttributeError, TypeError):
             current_epoch = _resume_epoch(pipeline_deps)
-            resumed = _initialize_resumed_timeboxes(
-                initial_state, policy_bundle.pipeline, current_epoch
-            )
+            resumed = _initialize_resumed_timeboxes(resumed, policy_bundle.pipeline, current_epoch)
         return _with_counter_overrides(resumed, counter_overrides)
     if pipeline_deps is not None and pipeline_deps.state_factory is not None:
         return pipeline_deps.state_factory(
@@ -1403,6 +1423,7 @@ def _resolve_run_collaborators(
         pipeline_deps,
         pro_hooks,
         state_factory,
+        workspace_root=workspace_scope.root,
     )
     effective_verbosity = _normalize_run_verbosity(config, verbosity=verbosity)
     is_quiet = verbosity_rank(effective_verbosity) <= VERBOSITY_RANK[Verbosity.QUIET]
@@ -2501,7 +2522,7 @@ def _route_planning_commit(state: PipelineState, ctx: LoopContext) -> PipelineSt
         (
             name
             for name, definition in pipeline.phases.items()
-            if definition.role == "commit_cleanup"
+            if definition.role == "commit_review"
             and (commit := pipeline.phases.get(definition.transitions.on_success)) is not None
             and commit.role == "commit"
         ),
@@ -2540,7 +2561,7 @@ def _resume_planning_after_commit(
     if isinstance(state, int):
         return _wait_for_integration_retry(previous, ctx, backend=backend)
     definition = ctx.policy_bundle.pipeline.phases.get(str(state.phase))
-    if definition is not None and definition.role in {"commit_cleanup", "commit"}:
+    if definition is not None and definition.role in {"commit_review", "commit"}:
         return state
     state = advance_phase(state, resume, policy=ctx.policy_bundle.pipeline).copy_with(
         integration_commit_resume_phase=None,

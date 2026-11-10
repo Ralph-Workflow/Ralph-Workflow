@@ -2,7 +2,7 @@
 
 Catalogue requirement E2.5:
 - Candidate inputs vanish or change mid-run: The agent or a cleanup phase
-  (commit_cleanup, git clean, workspace resets) deletes or edits .agent/tmp, the
+  (commit_review, git clean, workspace resets) deletes or edits .agent/tmp, the
   session file, the tool catalog or mcp.toml.
 - Required: the candidate's inputs are a snapshot owned by the parent, held
   where workspace cleanup cannot remove them, or re-materialised and checked by

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.history import history_dir_for_artifact, history_index_path
+from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.mcp.tools.names import SUBMIT_MD_ARTIFACT_TOOL, claude_tool_name
 from ralph.policy.models import (
     ArtifactContract,
@@ -26,7 +27,7 @@ from ralph.prompts.materialize import (
     submit_artifact_tool_name_for_transport,
     tool_name_prefix_for_transport,
 )
-from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.prompts.types import SessionCapabilities
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
 
@@ -423,9 +424,13 @@ def test_planning_analysis_to_development_clears_history_per_policy(
     monkeypatch: MonkeyPatch,
 ) -> None:
     """planning_analysis→development clears planning and development history per policy."""
+
+    def _mock_docs(*_args: object, **_kwargs: object) -> bool:
+        return False
+
     monkeypatch.setattr(
         "ralph.prompts.materialize.SkillManager.get_docs_mcp_available",
-        lambda *_args, **_kwargs: False,
+        _mock_docs,
     )
     pipeline_policy = PipelinePolicy(
         phases={
@@ -949,49 +954,3 @@ def test_development_analysis_bypass_clears_history_per_policy(
     # development_result history is cleared (clear_on_fresh_entry=true for development)
     assert not dev_archived.exists(), "development_result archive must be removed on bypass"
     assert not dev_index.exists(), "development_result history index must be removed on bypass"
-
-
-def test_commit_cleanup_phase_renders_prompt_successfully(tmp_path: Path) -> None:
-    p = PipelinePolicy(
-        phases={
-            "development_commit_cleanup": PhaseDefinition(
-                drain="commit",
-                role="commit_cleanup",
-                prompt_template="commit_cleanup.jinja",
-                transitions=PhaseTransition(
-                    on_success="complete",
-                    on_loopback="development_commit_cleanup",
-                    on_failure="failed_terminal",
-                ),
-                loop_policy=PhaseLoopPolicy(iteration_state_field="commit_cleanup_iteration"),
-            ),
-            "complete": PhaseDefinition(
-                drain="complete",
-                role="terminal",
-                terminal_outcome="success",
-                transitions=PhaseTransition(on_success="complete"),
-            ),
-        },
-        entry_phase="development_commit_cleanup",
-        terminal_phase="complete",
-        loop_counters={"commit_cleanup_iteration": LoopCounterConfig(default_max=3)},
-    )
-    ws = MemoryWorkspace(root=str(tmp_path))
-    ws.write("PROMPT.md", "x")
-    ws.write(".agent/PLAN.md", "# Plan")
-    caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
-    ctx = PromptPhaseContext(
-        phase="development_commit_cleanup",
-        workspace=ws,
-        pipeline_policy=p,
-        session_caps=caps,
-        workspace_root=tmp_path,
-    )
-    rendered = ws.read(
-        materialize_prompt_for_phase(
-            ctx,
-            PromptPhaseOptions(artifacts_policy=ArtifactsPolicy(artifacts={}), previous_phase=None),
-        )
-    )
-    assert "ralph_submit_md_artifact" in rendered and "DIFF" in rendered
-    assert rendered.startswith("Classify only the pending diff's unsafe or machine-local files")

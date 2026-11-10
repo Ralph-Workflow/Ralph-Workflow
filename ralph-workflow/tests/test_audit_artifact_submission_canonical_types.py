@@ -30,7 +30,7 @@ _KNOWN_TYPES = KNOWN_ARTIFACT_TYPES
 # test_audit_artifact_submission_standardization.py uses. (The fallback
 # template is excluded — see the rationale in that test.)
 SINGLE_SHOT_TEMPLATES: tuple[str, ...] = (
-    "commit_cleanup.jinja",
+    "commit_review.jinja",
     "commit_message.jinja",
     "commit_simplified.jinja",
     "developer_iteration.jinja",

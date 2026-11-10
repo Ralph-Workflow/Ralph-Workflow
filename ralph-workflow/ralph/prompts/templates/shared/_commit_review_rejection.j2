@@ -1,0 +1,12 @@
+{% if LAST_REVIEW_REJECTION_REASON|default('') or ROLLBACK_REF|default('') or LAST_PROPOSAL_REF|default('') %}
+## PREVIOUS COMMIT REVIEW REJECTION
+
+The previous iteration was rejected by commit review:
+- Reason: {{ LAST_REVIEW_REJECTION_REASON|default('(no reason provided)') }}
+{% if ROLLBACK_REF|default('') or LAST_PROPOSAL_REF|default('') -%}
+- Proposal ref: {{ ROLLBACK_REF|default(LAST_PROPOSAL_REF|default('')) }}
+The working tree has been rolled back to HEAD (or baseline).
+To inspect the rejected proposal changes: `git checkout {{ ROLLBACK_REF|default(LAST_PROPOSAL_REF|default('')) }} -- .`
+{% endif %}
+Address the cited damage/issue in this iteration before completing.
+{% endif %}

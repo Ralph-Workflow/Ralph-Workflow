@@ -22,8 +22,8 @@ from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import phase_style_for_phase, resolve_active_display
 from ralph.display.status_bar import StatusBarModel
-from ralph.git.commit_cleanup import stage_commit_changes_safely
 from ralph.git.commit_result import CommitCreationResult, CommitCreationStatus
+from ralph.git.commit_review import stage_commit_changes_safely
 from ralph.git.operations import (
     create_commit,
     find_repo_root,

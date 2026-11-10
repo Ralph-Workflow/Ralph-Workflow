@@ -59,7 +59,7 @@ def test_a_retry_inside_a_spent_cycle_is_redirected_instead() -> None:
     """The retry would be a fresh full-length invocation on a spent budget."""
     redirected = _fail(_developing(_SPENT), _SPENT)
 
-    assert redirected.phase == "development_final_commit_cleanup"
+    assert redirected.phase == "development_final_commit_review"
     assert redirected.cycle_timebox_active is True
     assert redirected.cycle_timebox_redirect_reason is not None
 
@@ -82,7 +82,7 @@ def test_a_spent_cycle_cannot_fall_over_to_the_next_agent_either() -> None:
 
     redirected = _fail(exhausted, _SPENT)
 
-    assert redirected.phase == "development_final_commit_cleanup"
+    assert redirected.phase == "development_final_commit_review"
 
 
 def test_a_failure_outside_the_guarded_phase_is_unaffected() -> None:
@@ -107,7 +107,7 @@ def test_a_continuation_inside_a_spent_cycle_is_redirected_too() -> None:
         routing_timing=RoutingTiming(total_elapsed_seconds=_SPENT),
     )
 
-    assert redirected.phase == "development_final_commit_cleanup"
+    assert redirected.phase == "development_final_commit_review"
 
 
 def test_a_stale_active_cycle_redirects_the_start_edge_entry() -> None:
@@ -137,5 +137,5 @@ def test_a_stale_active_cycle_redirects_the_start_edge_entry() -> None:
         routing_timing=RoutingTiming(total_elapsed_seconds=_SPENT),
     )
 
-    assert redirected.phase == "development_final_commit_cleanup"
+    assert redirected.phase == "development_final_commit_review"
     assert redirected.cycle_timebox_redirect_reason is not None

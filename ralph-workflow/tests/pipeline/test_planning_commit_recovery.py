@@ -30,7 +30,7 @@ def _policy() -> PipelinePolicy:
             ),
             "tidy": PhaseDefinition(
                 drain="commit",
-                role="commit_cleanup",
+                role="commit_review",
                 transitions=PhaseTransition(on_success="package"),
             ),
             "package": PhaseDefinition(

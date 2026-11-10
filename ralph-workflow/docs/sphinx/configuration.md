@@ -336,7 +336,7 @@ restart the same remote conflict.
 
 Ralph Workflow does not stash unfinished edits or sweep them into preservation commits.
 Dirty files that Git refuses to merge remain intact. When additional pending
-work blocks integration, recovery uses the configured commit-cleanup and commit
+work blocks integration, recovery uses the configured commit-review and commit
 phases before retrying planning synchronization. Repeated identical integration failures
 yield to a retry cooldown instead of exhausting the resolver budget in a tight loop.
 Crash recovery uses
@@ -484,6 +484,37 @@ local override set, use `ralph --init-local-config` explicitly.
 - parallel execution — how independent extracted work units can fan out concurrently in safe waves
 
 Each phase can declare a `display_style` override to control its banner colour. Available theme keys include `theme.phase.planning`, `theme.phase.development`, `theme.phase.development_analysis`, `theme.phase.commit`, and others defined in `ralph.display.theme`.
+
+### Commit review configuration
+
+The commit review phases (`development_commit_review` and `development_final_commit_review`) run immediately before their corresponding commit phases. They act as both a deterministic safety gate and an edit phase.
+
+#### Loop counters
+
+- **`[loop_counters.commit_review_iteration]`** (default: `3`): Maximum review passes per iteration.
+- **`[loop_counters.commit_review_identity]`** (default: `3`): Maximum identical no-progress review attempts before advancing or escalating.
+- **`commit_review_rejections`** (default: `2`): Maximum consecutive rejections across the run. Unlike iteration counters, this counter survives loop resets; reaching the limit transitions the run to `failed_terminal` without further rollback.
+
+#### Deterministic tripwire thresholds
+
+Configured under the commit review policy settings:
+
+| Setting | Default | Description |
+|---|---|---|
+| `max_deleted_files` | `50` | Maximum count of deleted tracked files allowed before triggering a hard mass-deletion tripwire. |
+| `max_deleted_fraction` | `0.25` (25%) | Maximum ratio of deleted tracked files to total tracked files. Exceeding this triggers a hard tripwire. |
+| `binary_size_limit` | `1000000` (1 MB) | Maximum size in bytes for binary files before flagging them for cleanup review. |
+| `proposal_retention` | `10` | Number of proposal refs to retain before pruning historical proposals. |
+
+#### Transitions and recovery
+
+- **`on_success`**: Advances to the commit phase (`development_commit` or `development_final_commit`).
+- **`on_reject`**: Executes a crash-safe rollback to `HEAD` (or dirty run-start baseline) and returns to `development`. The proposal ref (`refs/ralph/proposals/<run>/<iteration>`) and rejection reason are injected into the next prompt.
+- **`on_failure`**: Fail-closed transition to `failed_terminal` on reviewer malfunction (invalid artifact, unresolvable HEAD preflight, or unverifiable reason citation). No rollback is performed on malfunction.
+- **Manual recovery**: A rejected iteration's files can be inspected or recovered at any time via:
+  ```bash
+  git checkout refs/ralph/proposals/<run>/<iteration> -- .
+  ```
 
 ## `artifacts.toml` in plain language
 

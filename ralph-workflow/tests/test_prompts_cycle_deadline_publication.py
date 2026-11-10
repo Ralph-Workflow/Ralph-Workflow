@@ -165,12 +165,12 @@ def test_deadline_is_withdrawn_once_the_cycle_concludes(
     """Finalization phases run with no deadline published."""
     _reserve_env(monkeypatch)
     state = PipelineState(
-        phase="development_final_commit_cleanup",
+        phase="development_final_commit_review",
         cycle_timebox_active=False,
         cycle_timebox_consumed_seconds=36000.0,
     )
 
-    _materialize("development_final_commit_cleanup", state, tmp_path, cycle_total_elapsed=36000.0)
+    _materialize("development_final_commit_review", state, tmp_path, cycle_total_elapsed=36000.0)
 
     assert CYCLE_DEADLINE_EPOCH_ENV not in os.environ
 

@@ -98,7 +98,7 @@ def test_phase_display_honesty_on_commit_failure_never_reports_completed() -> No
 
     state = PipelineState(
         phase="development_commit",
-        previous_phase="development_commit_cleanup",
+        previous_phase="development_commit_review",
         last_error="GitOperationError: cannot lock ref",
         pending_cycle_outcome="completed",
         last_execution_result_status="completed",
@@ -109,7 +109,7 @@ def test_phase_display_honesty_on_commit_failure_never_reports_completed() -> No
         next_state, _effects = reduce(state, PipelineEvent.COMMIT_FAILURE, policy)
 
         assert next_state.phase != "failed_terminal"
-        assert next_state.phase == "development_commit_cleanup"
+        assert next_state.phase == "development_commit_review"
         assert next_state.pending_cycle_outcome is None
         assert next_state.last_execution_result_status != "completed"
     finally:

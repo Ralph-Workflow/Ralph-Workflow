@@ -238,7 +238,7 @@ def test_run_time_report_shows_redirect_reason_when_set() -> None:
     """When redirect_reason is set, the report shows a CT-2 redirect line."""
     report = render_run_time_report(
         state=PipelineState(
-            phase="development_final_commit_cleanup",
+            phase="development_final_commit_review",
             cycle_timebox_active=False,
             cycle_timebox_consumed_seconds=7200.0,
             cycle_timebox_redirect_reason="cycle_deadline_expired",
@@ -262,8 +262,8 @@ def test_run_time_report_shows_configured_limit_and_target_when_policy_given() -
         start_source="planning_analysis",
         start_entry="development",
         guarded_entry="development",
-        end_entry="development_final_commit_cleanup",
-        finalization_target="development_final_commit_cleanup",
+        end_entry="development_final_commit_review",
+        finalization_target="development_final_commit_review",
     )
     report = render_run_time_report(
         state=PipelineState(
@@ -279,5 +279,5 @@ def test_run_time_report_shows_configured_limit_and_target_when_policy_given() -
     assert "[CT-1]" in report
     assert "Limit: 7200" in report
     assert "consumed: 3600" in report
-    assert "Finalization: development_final_commit_cleanup" in report
+    assert "Finalization: development_final_commit_review" in report
     assert len(report) <= 1_600

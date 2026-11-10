@@ -6,6 +6,7 @@ from typing import Self
 from pydantic import Field, model_validator
 
 from ralph.policy.models._budget_counter_config import BudgetCounterConfig
+from ralph.policy.models._commit_review_policy import CommitReviewPolicy
 from ralph.policy.models._cycle_timebox_policy import CycleTimeboxPolicy
 from ralph.policy.models._development_timebox_policy import DevelopmentTimeboxPolicy
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
@@ -71,6 +72,10 @@ class PipelinePolicy(_FrozenPolicyModel):
         default_factory=RecoveryPolicy,
         description="Pipeline-wide recovery configuration",
     )
+    commit_review: CommitReviewPolicy = Field(
+        default_factory=CommitReviewPolicy,
+        description="Pipeline-wide commit review and proposal tripwire configuration",
+    )
     development_timebox: DevelopmentTimeboxPolicy | None = Field(
         default=None,
         description="Optional independent hard-stop timebox for the development phase.",
@@ -114,6 +119,7 @@ class PipelinePolicy(_FrozenPolicyModel):
                 ("on_success", t.on_success),
                 ("on_failure", t.on_failure),
                 ("on_loopback", t.on_loopback),
+                ("on_reject", t.on_reject),
             ]:
                 if target is not None and target not in ts and target not in self.phases:
                     raise ValueError(
@@ -381,7 +387,7 @@ class PipelinePolicy(_FrozenPolicyModel):
 
         Entry to ``end_entry`` stops the clock. If it names a phase the cycle
         routes through normally — say the
-        intermediate commit cleanup rather than the final one, a one-word
+        intermediate commit review rather than the final one, a one-word
         difference between two real phase names — then the first ordinary
         re-entry disarms the deadline, and it can never re-arm, because
         starting a cycle requires the declared start transition. The rest of
@@ -501,7 +507,7 @@ def _phase_declares_edge(policy: PipelinePolicy, source: str, target: str) -> bo
     phase_def = policy.phases.get(source)
     if phase_def is not None:
         t = phase_def.transitions
-        for candidate in (t.on_success, t.on_failure, t.on_loopback):
+        for candidate in (t.on_success, t.on_failure, t.on_loopback, t.on_reject):
             if candidate == target:
                 return True
         if phase_def.decisions:

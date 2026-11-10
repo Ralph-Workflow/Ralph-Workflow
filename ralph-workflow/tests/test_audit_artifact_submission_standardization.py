@@ -42,7 +42,7 @@ TEMPLATES_DIR = Path("ralph/prompts/templates")
 # canonical submit path is broken, so the contract uses the validated markdown
 # write-file fallback (handled in :mod:`ralph.agents.developer`).
 SINGLE_SHOT_TEMPLATES: tuple[str, ...] = (
-    "commit_cleanup.jinja",
+    "commit_review.jinja",
     "commit_message.jinja",
     "commit_simplified.jinja",
     "developer_iteration.jinja",

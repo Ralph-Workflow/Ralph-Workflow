@@ -8,6 +8,7 @@ IMPLEMENTATION MODE
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
 {% include 'shared/_unattended_mode.j2' %}
+{% include 'shared/_commit_review_rejection.j2' %}
 
 {% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
 

@@ -28,14 +28,14 @@
 <<< REJOIN >>>
     |
     v
-[loop: counter=commit_cleanup_iteration, max=3]
-+----------------------------+
-| development_commit_cleanup |
-|    role=commit_cleanup     |
-+----------------------------+
-    <<==[loopback]== returns to 'development_commit_cleanup'
-    [LOOPBACK: counter=commit_cleanup_iteration, max=3]
-    >> RE-ENTRY at development_commit_cleanup
+[loop: counter=commit_review_iteration, max=3]
++---------------------------+
+| development_commit_review |
+|     role=commit_review    |
++---------------------------+
+    <<==[loopback]== returns to 'development_commit_review'
+    [LOOPBACK: counter=commit_review_iteration, max=3]
+    >> RE-ENTRY at development_commit_review
     |
     v
 +--------------------+
@@ -56,14 +56,14 @@
     >> RE-ENTRY at development
     |
     v
-[loop: counter=commit_cleanup_iteration, max=3]
-+----------------------------------+
-| development_final_commit_cleanup |
-|       role=commit_cleanup        |
-+----------------------------------+
-    <<==[loopback]== returns to 'development_final_commit_cleanup'
-    [LOOPBACK: counter=commit_cleanup_iteration, max=3]
-    >> RE-ENTRY at development_final_commit_cleanup
+[loop: counter=commit_review_iteration, max=3]
++---------------------------------+
+| development_final_commit_review |
+|        role=commit_review       |
++---------------------------------+
+    <<==[loopback]== returns to 'development_final_commit_review'
+    [LOOPBACK: counter=commit_review_iteration, max=3]
+    >> RE-ENTRY at development_final_commit_review
     |
     v
 +--------------------------+

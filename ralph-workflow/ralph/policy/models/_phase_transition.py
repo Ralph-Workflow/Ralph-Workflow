@@ -18,3 +18,7 @@ class PhaseTransition(_FrozenPolicyModel):
         default=None,
         description="Next phase on loopback/continue signal (e.g., more iterations)",
     )
+    on_reject: str | None = Field(
+        default=None,
+        description="Next phase on rejection signal (e.g., commit review rejected)",
+    )

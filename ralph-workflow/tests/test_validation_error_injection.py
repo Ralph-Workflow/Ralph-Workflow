@@ -56,7 +56,7 @@ type: product_spec
 def _custom_pipeline_policy() -> PipelinePolicy:
     return PipelinePolicy(
         phases={
-            "development_commit_cleanup": PhaseDefinition(
+            "development_commit_review": PhaseDefinition(
                 drain="commit",
                 transitions=PhaseTransition(on_success="complete"),
             ),
@@ -65,7 +65,7 @@ def _custom_pipeline_policy() -> PipelinePolicy:
                 transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
             ),
         },
-        entry_phase="development_commit_cleanup",
+        entry_phase="development_commit_review",
         terminal_phase="complete",
     )
 
@@ -73,7 +73,7 @@ def _custom_pipeline_policy() -> PipelinePolicy:
 def test_retry_hint_path_resolves_policy_phase_to_its_drain() -> None:
     policy = _custom_pipeline_policy()
 
-    assert retry_hint_path("development_commit_cleanup", pipeline_policy=policy) == (
+    assert retry_hint_path("development_commit_review", pipeline_policy=policy) == (
         ".agent/tmp/last_retry_error_commit.txt"
     )
     assert (
@@ -97,7 +97,7 @@ def test_agent_retry_prompt_reads_drain_keyed_validator_context_without_consumin
     hint_path.parent.mkdir(parents=True)
     hint_path.write_text(hint, encoding="utf-8")
     prompt_path = tmp_path / "PROMPT.md"
-    prompt_path.write_text("Repair the commit cleanup artifact.", encoding="utf-8")
+    prompt_path.write_text("Repair the commit review artifact.", encoding="utf-8")
 
     retry_prompt = _write_agent_retry_prompt(
         workspace_root=tmp_path,
@@ -163,7 +163,7 @@ def test_successful_artifact_operations_clear_drain_and_legacy_phase_hints(
     worker: bool,
 ) -> None:
     session = MockSession(drain="commit")
-    session.phase = "development_commit_cleanup"
+    session.phase = "development_commit_review"
     if worker:
         session.worker_namespace = tmp_path / ".agent" / "workers" / "unit-1"
     workspace = MockWorkspace(tmp_path)
@@ -171,7 +171,7 @@ def test_successful_artifact_operations_clear_drain_and_legacy_phase_hints(
     deps = ArtifactHandlerDeps(backend=backend)
     hint_directory = session.worker_namespace / "tmp" if worker else tmp_path / ".agent" / "tmp"
     canonical_path = hint_directory / "last_retry_error_commit.txt"
-    legacy_path = hint_directory / "last_retry_error_development_commit_cleanup.txt"
+    legacy_path = hint_directory / "last_retry_error_development_commit_review.txt"
     backend.write_text(canonical_path, "canonical validator error")
     backend.write_text(legacy_path, "legacy validator error")
 
@@ -245,7 +245,7 @@ def test_recovery_prompt_reads_worker_validation_hint_without_coordinator_leak(
             max_recovery_attempts=1,
             effect=InvokeAgentEffect(
                 agent_name="agent",
-                phase="development_commit_cleanup",
+                phase="development_commit_review",
                 prompt_file=str(prompt_path),
                 drain="commit",
             ),
@@ -287,22 +287,22 @@ def test_recovery_controller_writes_session_reset_hint_for_effective_drain(tmp_p
         category=FailureCategory.ENVIRONMENTAL,
         reason="stale session",
         attributed_agent=None,
-        attributed_phase="development_commit_cleanup",
+        attributed_phase="development_commit_review",
         counts_against_budget=False,
         original_exception=None,
         raw_message="stale session",
     )
     backend = MemoryBackend()
 
-    controller._write_session_reset_hint("development_commit_cleanup", failure, backend=backend)
+    controller._write_session_reset_hint("development_commit_review", failure, backend=backend)
 
     assert backend.exists(Path(".agent/tmp/last_retry_error_commit.txt"))
-    assert not backend.exists(Path(".agent/tmp/last_retry_error_development_commit_cleanup.txt"))
+    assert not backend.exists(Path(".agent/tmp/last_retry_error_development_commit_review.txt"))
 
 
 def test_failed_submit_writes_drain_keyed_hint_for_custom_phase(tmp_path: Path) -> None:
     session = MockSession(drain="commit")
-    session.phase = "development_commit_cleanup"
+    session.phase = "development_commit_review"
     workspace = MockWorkspace(tmp_path)
     backend = MemoryBackend()
 
@@ -315,4 +315,4 @@ def test_failed_submit_writes_drain_keyed_hint_for_custom_phase(tmp_path: Path) 
 
     assert result.is_error is True
     assert backend.exists(tmp_path / retry_hint_path("commit"))
-    assert not backend.exists(tmp_path / retry_hint_path("development_commit_cleanup"))
+    assert not backend.exists(tmp_path / retry_hint_path("development_commit_review"))

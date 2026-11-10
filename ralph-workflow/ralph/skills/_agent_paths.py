@@ -245,7 +245,7 @@ _PROJECT_CANONICAL_DIR_SEGMENTS: tuple[str, ...] = (".opencode", "skills")
 #   * ralph.skills._auto_commit.commit_skill_updates -- restrictive allowlist
 #     for the auto-commit diff so the agent's own commit never inherits
 #     skill-tree changes (the "invisible to the agent" property).
-#   * ralph.git.commit_cleanup.untrack_engine_internal_files -- early-skip
+#   * ralph.git.commit_review.untrack_engine_internal_files -- early-skip
 #     optimization for the symlink-WARNING noise on tracked skill symlinks.
 #   * ralph.testing.audit_skill_auto_commit -- AST regression pin.
 #

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.executor.process import ProcessRunOptions, run_process
-from ralph.git.commit_cleanup import is_recognized_secret_path
+from ralph.git.commit_review import is_recognized_secret_path
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -37,7 +37,7 @@ def _is_inside_git_repo(workspace_root: Path) -> bool:
 # (e.g. a node_modules tree that escaped the .gitignore).
 _MAX_UNTRACKED_FILES_IN_DIFF: int = 500
 
-# Shared header used by the commit cleanup diff and the commit phase diff to
+# Shared header used by the commit review diff and the commit phase diff to
 # mark the untracked file list section. Importing this constant from
 # ``materialize`` keeps both call sites in sync.
 _UNTRACKED_HEADER: str = "## Untracked files (not yet tracked by git):"
@@ -189,10 +189,47 @@ def commit_generation_diff(workspace_root: Path) -> str:
     return _with_secret_signal(diff, secret_work_present)
 
 
-def commit_cleanup_diff(workspace_root: Path) -> str:
-    """Return safe pending work and a content-free secret cleanup signal."""
+def commit_review_diff(workspace_root: Path, proposal_ref: str | None = None) -> str:
+    """Return safe pending work and a content-free secret cleanup signal.
+
+    If ``proposal_ref`` is provided and resolves, the diff is computed against
+    that proposal ref (``git diff HEAD <proposal_ref>``), falling back to the
+    working tree diff if unavailable or empty.
+    """
+    if proposal_ref and _is_inside_git_repo(workspace_root):
+        ref_check = run_process(
+            "git",
+            ("rev-parse", "--verify", proposal_ref),
+            options=ProcessRunOptions(cwd=workspace_root),
+        )
+        if ref_check.returncode == 0:
+            head_check = run_process(
+                "git",
+                ("rev-parse", "--verify", "HEAD"),
+                options=ProcessRunOptions(cwd=workspace_root),
+            )
+            tracked_paths_raw = _git_output_or_empty(workspace_root, "ls-files", "--cached", "-z")
+            tracked_secret_paths = [
+                path
+                for path in tracked_paths_raw.split("\0")
+                if path and is_recognized_secret_path(path)
+            ]
+            diff_base: tuple[str, ...] = (
+                ("diff", "HEAD", proposal_ref)
+                if head_check.returncode == 0
+                else ("diff", proposal_ref)
+            )
+            diff_args: tuple[str, ...] = (
+                *diff_base,
+                "--",
+                ".",
+                *(f":(exclude,literal){path}" for path in tracked_secret_paths),
+            )
+            tracked = _git_output_or_empty(workspace_root, *diff_args)
+            if tracked:
+                return tracked
     diff, secret_work_present = _secret_filtered_pending_diff(workspace_root)
     return _with_secret_signal(diff, secret_work_present) or _NO_DIFF_SENTINEL
 
 
-__all__ = ["commit_cleanup_diff", "commit_generation_diff"]
+__all__ = ["commit_generation_diff", "commit_review_diff"]

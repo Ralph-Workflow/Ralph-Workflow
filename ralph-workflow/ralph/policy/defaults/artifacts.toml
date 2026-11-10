@@ -85,11 +85,11 @@ artifact_type = "commit_message"
 decision_vocabulary = []
 prompt_template = "commit_message.jinja"
 
-[artifacts.development_commit_cleanup_artifact]
+[artifacts.development_commit_review_artifact]
 drain = "commit"
-artifact_type = "commit_cleanup"
+artifact_type = "commit_review"
 decision_vocabulary = []
-prompt_template = "commit_cleanup.jinja"
+prompt_template = "commit_review.jinja"
 
 # ---------------------------------------------------------------------------
 # Edit this only if you are changing the policy-remediation artifact.

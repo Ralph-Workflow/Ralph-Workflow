@@ -16,7 +16,7 @@ from ralph.pipeline.run_time_report import render_run_time_report
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import CycleTimeboxPolicy
 
-_TARGET = "development_final_commit_cleanup"
+_TARGET = "development_final_commit_review"
 
 
 def _timebox() -> CycleTimeboxPolicy:

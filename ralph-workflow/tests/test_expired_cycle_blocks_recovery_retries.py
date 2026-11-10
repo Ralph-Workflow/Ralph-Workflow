@@ -23,7 +23,7 @@ from ralph.recovery.controller import RecoveryController, RecoveryControllerOpti
 
 _DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 _SPENT = 36001.0
-_TARGET = "development_final_commit_cleanup"
+_TARGET = "development_final_commit_review"
 
 
 @lru_cache(maxsize=1)

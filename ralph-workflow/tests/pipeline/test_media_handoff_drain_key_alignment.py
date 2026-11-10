@@ -27,9 +27,9 @@ from ralph.workspace.fs import FsWorkspace
 # `ralph/policy/defaults/pipeline.toml` and is the only divergence Ralph can
 # see at this writing.
 DIVERGENT_PHASES: tuple[str, str] = (
-    ("development_commit_cleanup", "commit"),
+    ("development_commit_review", "commit"),
     ("development_final_commit", "development_commit"),
-    ("development_final_commit_cleanup", "commit"),
+    ("development_final_commit_review", "commit"),
 )
 
 
@@ -219,7 +219,7 @@ def test_default_policy_lists_divergent_phases() -> None:
         phase: resolve_phase_drain(phase, policy.pipeline) or phase for phase, _ in DIVERGENT_PHASES
     }
     assert resolved == {
-        "development_commit_cleanup": "commit",
+        "development_commit_review": "commit",
         "development_final_commit": "development_commit",
-        "development_final_commit_cleanup": "commit",
+        "development_final_commit_review": "commit",
     }

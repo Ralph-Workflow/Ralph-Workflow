@@ -8,7 +8,7 @@ The existing ``tests/pipeline/test_reducer_lock_retry.py`` covers the
 reducer seam (in-place re-route, cap clamp, message file survival),
 while this module covers both:
 1. The in-place retry route (when policy defines no recovery/cleanup phase).
-2. The default-policy route through ``development_commit_cleanup`` back
+2. The default-policy route through ``development_commit_review`` back
    to ``development_commit``.
 
 When transitioning from cleanup back to commit following recoverable lock
@@ -200,7 +200,7 @@ def test_in_place_retry_next_effect_is_commit_effect_not_invoke_agent(
         assert first_event is PipelineEvent.COMMIT_FAILURE
         assert message_file.exists(), "Validated message must be preserved on COMMIT_FAILURE"
 
-        # Reducer routes in-place when commit_recovery/commit_cleanup phase is absent.
+        # Reducer routes in-place when commit_recovery/commit_review phase is absent.
         state = PipelineState(
             phase="development_commit",
             phase_chains={
@@ -270,17 +270,17 @@ def test_in_place_retry_next_effect_is_commit_effect_not_invoke_agent(
 
 
 # ---------------------------------------------------------------------------
-# Default-policy ``commit_cleanup`` route.
+# Default-policy ``commit_review`` route.
 # ---------------------------------------------------------------------------
 
 
-def test_default_policy_routes_to_commit_cleanup_phase(tmp_path: Path) -> None:
-    """Default-policy lock-contention routes to ``development_commit_cleanup``."""
+def test_default_policy_routes_to_commit_review_phase(tmp_path: Path) -> None:
+    """Default-policy lock-contention routes to ``development_commit_review``."""
     policy_bundle = _load_policy_bundle()
     pipeline_policy = policy_bundle.pipeline
 
-    assert "development_commit_cleanup" in pipeline_policy.phases, (
-        "Default policy must define development_commit_cleanup"
+    assert "development_commit_review" in pipeline_policy.phases, (
+        "Default policy must define development_commit_review"
     )
 
     state = PipelineState(
@@ -302,9 +302,9 @@ def test_default_policy_routes_to_commit_cleanup_phase(tmp_path: Path) -> None:
         "Default-policy lock-contention must not reach failed_terminal "
         "on the first attempt; the cleanup phase must run first."
     )
-    assert next_state.phase == "development_commit_cleanup", (
+    assert next_state.phase == "development_commit_review", (
         f"Default-policy lock-contention must route to "
-        f"development_commit_cleanup, got phase={next_state.phase}"
+        f"development_commit_review, got phase={next_state.phase}"
     )
     assert next_state.pending_cycle_outcome is None
 
@@ -316,10 +316,10 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
 
     When ``development_commit`` fails due to recoverable lock contention after
     a validated commit message artifact has been produced (``commit.agent_invoked=True``):
-    1. The reducer routes to ``development_commit_cleanup``, retaining the commit
+    1. The reducer routes to ``development_commit_review``, retaining the commit
        state and recording ``recovery_epoch=1``.
     2. The real effect router produces an observable cleanup effect
-       (``InvokeAgentEffect``) for ``development_commit_cleanup``.
+       (``InvokeAgentEffect``) for ``development_commit_review``.
     3. The cleanup agent finishes successfully, emitting ``AGENT_SUCCESS``.
     4. On cleanup success (``AGENT_SUCCESS``), the reducer advances to
        ``development_commit`` and preserves ``state.commit``
@@ -362,7 +362,7 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
         phase="development_commit",
         phase_chains={
             "development_commit": AgentChainState(agents=["claude"], current_index=0, retries=0),
-            "development_commit_cleanup": AgentChainState(
+            "development_commit_review": AgentChainState(
                 agents=["claude"], current_index=0, retries=0
             ),
         },
@@ -373,14 +373,14 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
     )
     set_last_commit_error(state.last_error or "")
     try:
-        # Step 1: lock-contention routes to development_commit_cleanup.
+        # Step 1: lock-contention routes to development_commit_review.
         cleanup_state, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
     finally:
         set_last_commit_error(None)
 
-    assert cleanup_state.phase == "development_commit_cleanup", (
+    assert cleanup_state.phase == "development_commit_review", (
         f"Default-policy lock-contention must route to "
-        f"development_commit_cleanup, got phase={cleanup_state.phase}"
+        f"development_commit_review, got phase={cleanup_state.phase}"
     )
     assert cleanup_state.recovery_epoch == 1
     assert cleanup_state.commit.agent_invoked is True
@@ -395,8 +395,8 @@ def test_default_policy_cleanup_to_commit_preserves_commit_message_and_emits_com
     assert isinstance(cleanup_effect, InvokeAgentEffect), (
         f"Cleanup phase must emit InvokeAgentEffect, got {type(cleanup_effect).__name__}"
     )
-    assert cleanup_effect.phase == "development_commit_cleanup", (
-        f"Cleanup effect must target development_commit_cleanup, got {cleanup_effect.phase}"
+    assert cleanup_effect.phase == "development_commit_review", (
+        f"Cleanup effect must target development_commit_review, got {cleanup_effect.phase}"
     )
 
     # Step 3: Assert byte-for-byte artifact preservation during cleanup.
@@ -465,7 +465,7 @@ def test_fresh_commit_entry_resets_commit_state_and_invokes_agent(tmp_path: Path
     pipeline_policy = policy_bundle.pipeline
 
     # Entering development_commit fresh via the normal development workflow.
-    # In default policy: development -> development_commit_cleanup -> development_commit.
+    # In default policy: development -> development_commit_review -> development_commit.
     # On this fresh path, there is no lock contention or repairable error, so
     # transitioning into development_commit resets CommitState (agent_invoked=False).
     stale_commit = CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True)
@@ -479,7 +479,7 @@ def test_fresh_commit_entry_resets_commit_state_and_invokes_agent(tmp_path: Path
     )
 
     cleanup_state, _ = reduce(state, PipelineEvent.PHASE_ADVANCE, pipeline_policy)
-    assert cleanup_state.phase == "development_commit_cleanup"
+    assert cleanup_state.phase == "development_commit_review"
     assert cleanup_state.recovery_epoch == 0
     assert cleanup_state.last_error is None
 
@@ -508,10 +508,10 @@ def test_cleanup_failure_does_not_reuse_commit_message(tmp_path: Path) -> None:
     pipeline_policy = policy_bundle.pipeline
 
     cleanup_state = PipelineState(
-        phase="development_commit_cleanup",
+        phase="development_commit_review",
         previous_phase="development_commit",
         phase_chains={
-            "development_commit_cleanup": AgentChainState(
+            "development_commit_review": AgentChainState(
                 agents=["claude"], current_index=0, retries=0
             )
         },
@@ -521,7 +521,7 @@ def test_cleanup_failure_does_not_reuse_commit_message(tmp_path: Path) -> None:
     )
 
     failure_event = PhaseFailureEvent(
-        phase="development_commit_cleanup",
+        phase="development_commit_review",
         reason="cleanup script failed unrecoverably",
         recoverable=False,
     )
@@ -544,10 +544,10 @@ def test_cleanup_without_validated_message_does_not_emit_commit_effect(
 
     # commit.agent_invoked is False: no validated message exists
     cleanup_state = PipelineState(
-        phase="development_commit_cleanup",
+        phase="development_commit_review",
         previous_phase="development_commit",
         phase_chains={
-            "development_commit_cleanup": AgentChainState(
+            "development_commit_review": AgentChainState(
                 agents=["claude"], current_index=0, retries=0
             )
         },
@@ -624,7 +624,7 @@ def test_repeated_lock_contention_preserves_and_advances_recovery_epoch(
     # Iteration 1: lock failure -> cleanup -> commit (epoch=1)
     set_last_commit_error(repairable_error)
     cleanup_1, _ = reduce(state, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
-    assert cleanup_1.phase == "development_commit_cleanup"
+    assert cleanup_1.phase == "development_commit_review"
     assert cleanup_1.recovery_epoch == 1
     assert cleanup_1.commit.agent_invoked is True
 
@@ -635,7 +635,7 @@ def test_repeated_lock_contention_preserves_and_advances_recovery_epoch(
 
     # Iteration 2: 2nd lock failure -> cleanup -> commit (epoch=2)
     cleanup_2, _ = reduce(commit_1, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
-    assert cleanup_2.phase == "development_commit_cleanup"
+    assert cleanup_2.phase == "development_commit_review"
     assert cleanup_2.recovery_epoch == 2
 
     commit_2, _ = reduce(cleanup_2, PipelineEvent.PHASE_ADVANCE, pipeline_policy)
@@ -643,7 +643,7 @@ def test_repeated_lock_contention_preserves_and_advances_recovery_epoch(
     assert commit_2.recovery_epoch == 2
     # Iteration 3: 3rd lock failure -> cleanup -> commit (epoch=3, cap reached)
     cleanup_3, _ = reduce(commit_2, PipelineEvent.COMMIT_FAILURE, pipeline_policy)
-    assert cleanup_3.phase == "development_commit_cleanup"
+    assert cleanup_3.phase == "development_commit_review"
     assert cleanup_3.recovery_epoch == 3
 
     commit_3, _ = reduce(cleanup_3, PipelineEvent.PHASE_ADVANCE, pipeline_policy)
@@ -666,7 +666,7 @@ def test_stale_recovery_epoch_does_not_reuse_an_old_commit_invocation() -> None:
     """Ordinary cleanup must not turn historical recovery into a commit retry."""
     policy = _load_policy_bundle().pipeline
     stale_state = PipelineState(
-        phase="development_commit_cleanup",
+        phase="development_commit_review",
         commit=CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True),
         recovery_epoch=1,
         last_error=None,

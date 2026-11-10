@@ -589,6 +589,36 @@ def stage_all(repo_root: Path | str) -> None:
         _close_repo(repo)
 
 
+def write_tree(repo_root: Path | str) -> str:
+    """Write the current index to a tree object and return its 40-character hex SHA.
+
+    Args:
+        repo_root: Path to the repository root.
+
+    Returns:
+        The 40-character hex SHA of the written tree object.
+
+    Raises:
+        GitOperationError: If write-tree fails.
+    """
+    repo: Repo | None = None
+    try:
+        repo = Repo(repo_root)
+        active_repo = repo
+
+        def _write() -> str:
+            tree_sha = _queued_git_call(repo_root, active_repo, "write_tree")
+            return str(tree_sha).strip()
+
+        return str(
+            _run_git_operation_with_stale_lock_recovery("write_tree", _write, repo_root)
+        ).strip()
+    except Exception as exc:
+        raise GitOperationError("write_tree", str(exc)) from exc
+    finally:
+        _close_repo(repo)
+
+
 def stage_files(repo_root: Path | str, files: list[str]) -> None:
     """Stage only the provided repository-relative paths.
 

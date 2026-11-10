@@ -150,7 +150,7 @@ def test_development_commit_prompt_links_optional_development_context(
         ),
         PromptPhaseOptions(
             artifacts_policy=policy.artifacts,
-            previous_phase="development_commit_cleanup",
+            previous_phase="development_commit_review",
         ),
     )
 
@@ -182,7 +182,7 @@ def test_final_commit_prompt_omits_development_context_links(
         ),
         PromptPhaseOptions(
             artifacts_policy=policy.artifacts,
-            previous_phase="development_final_commit_cleanup",
+            previous_phase="development_final_commit_review",
         ),
     )
 

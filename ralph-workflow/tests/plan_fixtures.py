@@ -90,15 +90,15 @@ status: completed
 """
 
 
-def commit_cleanup_markdown(actions: Iterable[tuple[str, str]]) -> str:
-    """Return a valid commit-cleanup document for action/value pairs."""
+def commit_review_markdown(actions: Iterable[tuple[str, str]]) -> str:
+    """Return a valid commit-review document for action/value pairs."""
     rendered_actions = "\n".join(
         f"- [A-{index}] {action} | {value}"
         for index, (action, value) in enumerate(actions, start=1)
     )
     return f"""\
 ---
-type: commit_cleanup
+type: commit_review
 analysis_complete: true
 ---
 ## Actions

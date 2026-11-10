@@ -220,7 +220,7 @@ The runtime then consults the artifact contract for the current phase and decide
 | `issues`            | review phase              | List of issues raised during review                              |
 | `fix_result`        | fix cycle                 | Same shape as `development_result`, scoped to the fix             |
 | `commit_message`    | commit phase              | Conventional-commit subject + structured payload                  |
-| `commit_cleanup`    | commit phase              | Actions to delete / gitignore / git-exclude before commit         |
+| `commit_review`    | commit review phase       | Verdict (approve/reject), actions to delete/gitignore/git-exclude, reason citations |
 | `planning_analysis_decision` | planning analysis | analysis decision for a plan section                              |
 | `review_analysis_decision`   | review analysis   | analysis decision for a review section                           |
 | `development_analysis_decision` | development analysis | analysis decision for a development section                |
@@ -244,6 +244,55 @@ The terminal is the **only** signal the runtime hands back. There is no "trust t
 ### Why the canonical path matters
 
 The canonical submission path is audited because ad-hoc artifact writes are an attack surface: a bad artifact could advance the pipeline past verification. By making the canonical path the only supported write, the runtime guarantees every artifact passes its type's boundary, including the sanity-only plan check, every artifact is associated with a run ID, every artifact is recorded in the audit sink, and no artifact can bypass validation.
+
+---
+
+## Commit review and damage gate
+
+Before any code change is committed, the commit review phase executes as both a deterministic safety gate and an edit phase. Accidental damage—such as mass file deletion, removal of protected project files, or staged secrets—is caught and rolled back before `git commit` ever runs.
+
+### Two-stage review architecture
+
+1. **Stage 1 — Deterministic tripwires (engine, no agent):**
+   The engine computes diff statistics between `HEAD` and the pending change. Hard tripwires reject automatically without consulting an agent:
+   - **Mass deletion:** Deleted tracked files exceed the count limit (`max_deleted_files`, default 50) or fractional limit (`max_deleted_fraction`, default 0.25 / 25%).
+   - **Protected paths:** Deletion or overwrite of `.git` internals, project manifests or lockfiles (`pyproject.toml`, `package.json`, `Cargo.toml`, `uv.lock`, etc.), entire top-level source or test directories (`src`, `tests`, `ralph`, `lib`), or core instructions (`PROMPT.md`, `AGENTS.md`).
+   - **Out-of-scope paths:** Modifications outside `allowed_directories` when configured.
+   - **Secrets and binaries:** Recognized secret filenames or patterns and binaries exceeding `binary_size_limit` (default 1,000,000 bytes / 1 MB) are surfaced as evidence for cleanup.
+
+2. **Stage 2 — Agent review:**
+   When no hard tripwire fires, an agent inspects the diff and Stage 1 evidence. The agent submits a `commit_review` artifact containing:
+   - `verdict: approve | reject`: Strict closed-vocabulary verdict.
+   - `tree_sha`: 40-character hex SHA of the sealed proposal tree.
+   - `## Actions`: Permitted cleanup operations (`delete_file`, `add_to_gitignore`, `add_to_git_exclude`) executed through a strict security boundary.
+   - `## Reason`: Mandatory on `reject`. The reviewer must cite concrete paths or counts present in the diff. Unverifiable citations fail as reviewer malfunctions rather than triggering rollbacks.
+
+Commit review is **not** a code quality review—`development_analysis` owns code quality and plan adherence. Commit review answers only: *"does this diff look like accidental damage?"*
+
+### Proposal sealing
+
+To ensure review and commit operate on a consistent snapshot rather than an uncoordinated working directory:
+- Working tree changes are sealed into an isolated Git tree and commit object parented on `HEAD` under `refs/ralph/proposals/<run>/<iteration>`.
+- Sealing uses a temporary Git index without mutating the developer's working tree or the real `.git/index`.
+- Any actions applied during review reseal the state to produce an updated `tree_sha`.
+- The commit executor verifies `write-tree` matches the approved `tree_sha` before running `git commit`, ensuring only the exact approved state is committed.
+
+### Rollback on rejection
+
+When a proposal is rejected:
+- **Preflight check:** Confirms `git rev-parse HEAD` and the proposal ref resolve.
+- **Checkpoint:** Records `rollback_pending` for crash-safe resume.
+- **Restore:** Resets the working tree to `HEAD` (or the run-start baseline if the run started on a dirty tree) using `git read-tree --reset -u HEAD`, removing files present in the proposal tree but absent from `HEAD`. Ignored files and `.agent/` runtime state are preserved intact.
+- **Continuation:** The rejection reason and proposal ref are passed to the next developer prompt, and the workflow loops back to `development`.
+- **Bounded retries:** Each rejection charges the iteration budget like a commit. The `commit_review_rejections` counter tracks consecutive rejections (default limit 2); hitting the ceiling transitions to `failed_terminal` without another rollback.
+
+### Manual recovery
+
+Because rejected proposals are sealed under `refs/ralph/proposals/<run>/<iteration>`, discarded changes are not lost. If a rejection was triggered in error, you can recover the sealed state directly:
+
+```bash
+git checkout refs/ralph/proposals/<run>/<iteration> -- .
+```
 
 ---
 

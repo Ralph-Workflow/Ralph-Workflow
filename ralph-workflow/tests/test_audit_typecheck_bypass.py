@@ -79,7 +79,7 @@ def test_allowlisted_type_ignore_with_reason_passes() -> None:
     lines = [
         f"Repo.init(repo_root)  # type: ignore[misc]  {_EXTERNAL_REASON}",
     ]
-    violations = _find_type_ignore_violations(lines, "ralph/git/commit_cleanup.py")
+    violations = _find_type_ignore_violations(lines, "ralph/git/commit_review.py")
     assert len(violations) == 0
 
 
@@ -88,7 +88,7 @@ def test_allowlisted_type_ignore_without_reason_flagged() -> None:
     lines = [
         "Repo.init(repo_root)  # type: ignore[misc]",
     ]
-    violations = _find_type_ignore_violations(lines, "ralph/git/commit_cleanup.py")
+    violations = _find_type_ignore_violations(lines, "ralph/git/commit_review.py")
     assert len(violations) == 1
     assert violations[0].category == "missing-reason"
 

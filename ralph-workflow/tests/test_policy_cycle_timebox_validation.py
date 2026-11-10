@@ -26,7 +26,7 @@ _DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defa
 def _phases_recording_failed(pipeline: PipelinePolicy) -> dict[str, Any]:
     phases = {name: phase.model_dump() for name, phase in pipeline.phases.items()}
     failed_route = phases["development_analysis"]["decisions"]["failed"]
-    failed_route["target"] = "development_final_commit_cleanup"
+    failed_route["target"] = "development_final_commit_review"
     failed_route["reset_loop"] = True
     failed_route["cycle_outcome"] = "failed"
     return phases
@@ -44,8 +44,8 @@ def test_cycle_timebox_rejects_an_outcome_outside_the_vocabulary() -> None:
             start_source="planning_analysis",
             start_entry="development",
             guarded_entry="development",
-            end_entry="development_final_commit_cleanup",
-            finalization_target="development_final_commit_cleanup",
+            end_entry="development_final_commit_review",
+            finalization_target="development_final_commit_review",
             finalization_cycle_outcome="timeboxed",
         )
 
@@ -303,7 +303,7 @@ def test_the_bundled_policy_can_finish_once_its_budget_is_spent() -> None:
 def test_a_finalization_target_inside_the_cycle_is_rejected() -> None:
     """The typo this catches is one word apart from the correct phase name.
 
-    `development_commit_cleanup` and `development_final_commit_cleanup` both
+    `development_commit_review` and `development_final_commit_review` both
     exist in the bundled graph. Naming the intermediate one stops the clock on
     the first ordinary re-entry, and it can never re-arm — the cycle then runs
     with no deadline at all.
@@ -320,7 +320,7 @@ def test_a_finalization_target_inside_the_cycle_is_rejected() -> None:
                 **pipeline.model_dump(),
                 "cycle_timebox": {
                     **pipeline.cycle_timebox.model_dump(),
-                    "finalization_target": "development_commit_cleanup",
+                    "finalization_target": "development_commit_review",
                 },
             }
         )
@@ -339,7 +339,7 @@ def test_an_end_entry_inside_the_cycle_is_rejected() -> None:
                 **pipeline.model_dump(),
                 "cycle_timebox": {
                     **pipeline.cycle_timebox.model_dump(),
-                    "end_entry": "development_commit_cleanup",
+                    "end_entry": "development_commit_review",
                 },
             }
         )
@@ -364,8 +364,8 @@ def test_a_misspelled_timebox_field_is_rejected_rather_than_ignored() -> None:
             start_source="planning_analysis",
             start_entry="development",
             guarded_entry="development",
-            end_entry="development_final_commit_cleanup",
-            finalization_target="development_final_commit_cleanup",
+            end_entry="development_final_commit_review",
+            finalization_target="development_final_commit_review",
             finalisation_cycle_outcome="failed",
         )
 
@@ -445,8 +445,8 @@ def test_the_model_defaults_are_the_documented_ones() -> None:
         start_source="planning_analysis",
         start_entry="development",
         guarded_entry="development",
-        end_entry="development_final_commit_cleanup",
-        finalization_target="development_final_commit_cleanup",
+        end_entry="development_final_commit_review",
+        finalization_target="development_final_commit_review",
     )
 
     assert minimal.duration_seconds == 36000.0
@@ -469,7 +469,7 @@ def test_an_inherited_timebox_whose_start_edge_is_gone_is_disabled() -> None:
     phases["planning_analysis"] = planning_analysis.model_copy(
         update={
             "transitions": planning_analysis.transitions.model_copy(
-                update={"on_success": "development_final_commit_cleanup"}
+                update={"on_success": "development_final_commit_review"}
             ),
             "decisions": {},
         }

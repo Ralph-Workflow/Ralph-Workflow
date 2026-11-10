@@ -36,7 +36,7 @@ ACTIVE_AGENT_DRAINS = {
     "development": "development",
     "development_analysis": "analysis",
     "development_commit": "commit",
-    "development_commit_cleanup": "commit",
+    "development_commit_review": "commit",
     "commit": "commit",
     "review": "review",
     "review_analysis": "analysis",

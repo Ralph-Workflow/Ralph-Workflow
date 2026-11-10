@@ -485,7 +485,7 @@ def _ensure_default_gitignore(repo_root: Path) -> None:
 def _ensure_default_git_exclude(repo_root: Path) -> None:
     """Append the canonical engine-internal patterns to ``.git/info/exclude``.
 
-    Uses ``add_to_git_exclude`` from ``ralph.git.commit_cleanup`` which is
+    Uses ``add_to_git_exclude`` from ``ralph.git.commit_review`` which is
     idempotent and preserves user-added entries. Idempotent on its own --
     the helper will simply return ``[]`` when every default pattern is
     already present.
@@ -502,7 +502,7 @@ def _ensure_default_git_exclude(repo_root: Path) -> None:
     """
     from git import InvalidGitRepositoryError
 
-    from ralph.git.commit_cleanup import add_to_git_exclude
+    from ralph.git.commit_review import add_to_git_exclude
 
     try:
         add_to_git_exclude(repo_root, list(_DEFAULT_GIT_EXCLUDE_PATTERNS))

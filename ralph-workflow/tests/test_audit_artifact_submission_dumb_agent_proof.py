@@ -16,7 +16,7 @@ from ralph.prompts.template_registry import load_partial_templates, packaged_tem
 TEMPLATES_DIR = Path("ralph/prompts/templates")
 MACRO_PATH = TEMPLATES_DIR / "shared" / "_artifact_submission.j2"
 SINGLE_SHOT_TEMPLATES: tuple[str, ...] = (
-    "commit_cleanup.jinja",
+    "commit_review.jinja",
     "commit_message.jinja",
     "commit_simplified.jinja",
     "developer_iteration.jinja",

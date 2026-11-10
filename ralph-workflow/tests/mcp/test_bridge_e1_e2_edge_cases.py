@@ -654,7 +654,7 @@ def test_e24_stage_id_fresh_per_spawn() -> None:
 
 
 # ---------------------------------------------------------------------------
-# E2.5: Snapshot directory outside workspace survives commit_cleanup
+# E2.5: Snapshot directory outside workspace survives commit_review
 # ---------------------------------------------------------------------------
 def test_e25_snapshot_survives_tmp_cleanup(tmp_path: pathlib.Path) -> None:
     snap_dir = snapshot_dir(tmp_path, "run-e25")

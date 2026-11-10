@@ -20,7 +20,7 @@ _TEMPLATES_DIR = Path(__file__).parent.parent / "ralph" / "prompts" / "templates
 _RETRY_HINT_TEMPLATES = (
     "planning.jinja",
     "planning_edit.jinja",
-    "commit_cleanup.jinja",
+    "commit_review.jinja",
     "planning_analysis.jinja",
     "development_analysis.jinja",
     "developer_iteration_continuation.jinja",
@@ -32,7 +32,7 @@ _RETRY_HINT_TEMPLATES = (
 _TEMPLATE_DRAINS = {
     "planning.jinja": SessionDrain.PLANNING,
     "planning_edit.jinja": SessionDrain.PLANNING,
-    "commit_cleanup.jinja": SessionDrain.COMMIT,
+    "commit_review.jinja": SessionDrain.COMMIT,
     "planning_analysis.jinja": SessionDrain.ANALYSIS,
     "development_analysis.jinja": SessionDrain.DEVELOPMENT_ANALYSIS,
     "developer_iteration_continuation.jinja": SessionDrain.DEVELOPMENT,

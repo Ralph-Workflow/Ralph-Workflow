@@ -7,6 +7,7 @@ from ralph.policy.models._artifact_contract import ArtifactContract
 from ralph.policy.models._artifact_history_policy import ArtifactHistoryPolicy
 from ralph.policy.models._artifacts_policy import ArtifactsPolicy
 from ralph.policy.models._budget_counter_config import BudgetCounterConfig
+from ralph.policy.models._commit_review_policy import CommitReviewPolicy
 from ralph.policy.models._cycle_timebox_policy import CycleTimeboxPolicy
 from ralph.policy.models._development_timebox_policy import DevelopmentTimeboxPolicy
 from ralph.policy.models._group_policy_block import GroupPolicyBlock
@@ -40,6 +41,7 @@ __all__ = [
     "ArtifactHistoryPolicy",
     "ArtifactsPolicy",
     "BudgetCounterConfig",
+    "CommitReviewPolicy",
     "CycleTimeboxPolicy",
     "DevelopmentTimeboxPolicy",
     "DrainName",

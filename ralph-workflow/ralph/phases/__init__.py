@@ -39,7 +39,7 @@ top-of-file declarations cycle-free without changing observable behavior.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -126,7 +126,7 @@ def register_role_handlers(policy: PipelinePolicy) -> None:
     """
     from ralph.phases import analysis as _analysis
     from ralph.phases import commit as _commit
-    from ralph.phases import commit_cleanup as _commit_cleanup
+    from ralph.phases import commit_review as _commit_review
     from ralph.phases import execution as _execution
     from ralph.phases import review as _review
     from ralph.phases import verification as _verification
@@ -142,8 +142,8 @@ def register_role_handlers(policy: PipelinePolicy) -> None:
             HANDLERS[phase_name] = _review.handle_review
         elif phase_def.role == "verification" and phase_name not in HANDLERS:
             HANDLERS[phase_name] = _verification.handle_verification_phase
-        elif phase_def.role == "commit_cleanup" and phase_name not in HANDLERS:
-            HANDLERS[phase_name] = _commit_cleanup.handle_commit_cleanup_phase
+        elif phase_def.role == "commit_review" and phase_name not in HANDLERS:
+            HANDLERS[phase_name] = cast("PhaseHandler", _commit_review.handle_commit_review_phase)
 
 
 def get_handler(phase_name: str) -> PhaseHandler:
