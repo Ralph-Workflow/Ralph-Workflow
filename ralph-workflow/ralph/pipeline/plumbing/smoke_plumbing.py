@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Final, cast
 from loguru import logger
 
 from ralph.agents._agy_upstream_diagnostic import agy_empty_output_reason
+from ralph.agents._broker_secret import _parent_broker_secret
 from ralph.agents.catalog import AgentCatalog
 from ralph.agents.completion_signals import (
     _check_completion_sentinel,
@@ -38,7 +39,6 @@ from ralph.agents.invoke import (
     extract_transport_session_id,
     invoke_agent,
 )
-from ralph.agents.invoke._process_reader import _parent_broker_secret
 from ralph.agents.parsers import get_parser, resolve_parser_key
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport

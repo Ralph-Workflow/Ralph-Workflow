@@ -195,6 +195,9 @@ select = [
     "PLR0911",
     "PLC0415"
 ]
+"ralph/agents/completion_signals.py" = [
+    "PLC0415"
+]
 "ralph/pipeline/plumbing/smoke_multimodal.py" = [
     "PLR0911",
     "PLR0912",
@@ -227,6 +230,12 @@ select = [
 "ralph/cli/**/*.py" = ["PLC0415"]  # Lazy imports avoid circular dependencies in CLI
 "ralph/config/**/*.py" = ["PLC0415"]  # Lazy imports avoid circular dependencies in config package
 "ralph/display/**/*.py" = ["PLC0415"]  # Lazy imports avoid circular dependencies in display package
+"ralph/mcp/tools/_validation_retry_hints.py" = [
+    "PLC0415",  # The retry-hint helpers are resolved at call time so every spawned MCP server child avoids the heavy ralph.recovery module chain.
+]
+"ralph/mcp/tools/coordination.py" = [
+    "PLC0415",  # The validation banner constant is resolved at call time so every spawned MCP server child avoids the heavy ralph.recovery module chain.
+]
 # Indexed MCP handlers (grep / search / read / read_multiple) grow with
 # eligibility/fallback/evidence-id plumbing and the explore substrate has
 # single-writer accumulator marker lines (bounded-accumulator-ok on the

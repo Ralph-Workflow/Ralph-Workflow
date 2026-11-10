@@ -11,9 +11,9 @@ from typing import TYPE_CHECKING, Final, cast
 
 from loguru import logger
 
+from ralph.agents._broker_secret import _parent_broker_secret
 from ralph.agents.chain import ChainManager
 from ralph.agents.completion_signals import evaluate_completion, graded_phase_verdict
-from ralph.agents.invoke._process_reader import _parent_broker_secret
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import Verbosity
 from ralph.display.line_sanitizer import strip_terminal_control

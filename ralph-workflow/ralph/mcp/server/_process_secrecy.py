@@ -8,7 +8,7 @@ import secrets
 import sys
 from typing import TYPE_CHECKING, Protocol, cast
 
-from ralph.agents.invoke import _parent_broker_secret
+from ralph.agents._broker_secret import _parent_broker_secret
 from ralph.checked_accessors import as_int
 
 if TYPE_CHECKING:

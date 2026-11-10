@@ -14,8 +14,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.cli.commands.explain import _resolve_policy_dir
-from ralph.display.context import make_display_context
-from ralph.display.parallel_display import resolve_active_display
 from ralph.policy.loader import load_policy, load_policy_for_workspace_scope
 from ralph.policy.validation import PolicyValidationError, validate_policy_completeness
 from ralph.workspace.scope import resolve_workspace_scope
@@ -53,6 +51,9 @@ def check_policy_command(
     Returns:
         Exit code: 0 on success, 1 on general error, 2 on policy validation error.
     """
+    from ralph.display.context import make_display_context
+    from ralph.display.parallel_display import resolve_active_display
+
     ctx = display_context if display_context is not None else make_display_context()
     display = resolve_active_display(None, ctx)
     try:

@@ -209,9 +209,16 @@ def test_black_box_real_child_slowed_past_budget_fails_preflight(tmp_path: Path)
     child_env[MCP_INHERITED_FD_ENV] = str(parent_sock.fileno())
     child_env[MCP_STAGE_ID_ENV] = spawn_id
     child_env[MCP_TEST_PRE_SERVE_GATE_ENV] = str(sentinel)
-    # Set preflight to 4100ms so probe ceiling is 2050ms > 2000ms safety floor,
-    # giving a real startup deadline of 2.1s (4.1s - 2.0s probe safety floor).
-    child_env[MCP_PREFLIGHT_TIMEOUT_MS_ENV] = "4100"
+    # Set preflight to 8100ms so probe ceiling is 4050ms > 2000ms safety floor,
+    # giving a real startup deadline of 6.1s (8.1s - 2.0s probe safety floor).
+    # The deadline must cover the child's OWN startup path (config load,
+    # session load, registry build) on top of the deliberate slowdown this
+    # test applies below: a deadline sized only for the slowdown lets a
+    # loaded host trip it during startup instead, and the child then dies
+    # at ``session_ready`` rather than at the serving boundary this test
+    # asserts on.
+    child_env[MCP_PREFLIGHT_TIMEOUT_MS_ENV] = "8100"
+    real_deadline_s = mcp_preflight_timeout_from_env(child_env).total_seconds() - _PROBE_SAFETY_S
 
     proc = get_process_manager().spawn(
         [
@@ -249,9 +256,11 @@ def test_black_box_real_child_slowed_past_budget_fails_preflight(tmp_path: Path)
         client_sock = socket.create_connection((host, port), timeout=5.0)
         assert client_sock is not None
 
-        # Hold child until past the 2.1s cumulative startup deadline
-        # (t0 is before registry_built, so 2.2s hold guarantees elapsed > 2.1s)
-        time.sleep(2.2)
+        # Hold child until past the real startup deadline. The elapsed
+        # clock starts at the child's own t0 (before registry_built), so
+        # holding for the deadline plus a margin guarantees the elapsed
+        # time exceeds it when the gate is released.
+        time.sleep(real_deadline_s + 0.2)
 
         # Release the gate: child unblocks, attempts to serve, checks cumulative startup deadline
         sentinel.touch()

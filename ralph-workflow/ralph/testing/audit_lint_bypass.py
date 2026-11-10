@@ -505,8 +505,11 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "ralph/diagnostics/**/*.py",
             "ralph/agents/builtin_spec.py",
             "ralph/agents/support.py",
+            "ralph/agents/completion_signals.py",
             "ralph/pipeline/plumbing/smoke_multimodal.py",
             "ralph/pipeline/plumbing/smoke_plumbing.py",
+            "ralph/mcp/tools/_validation_retry_hints.py",
+            "ralph/mcp/tools/coordination.py",
             "tests/**/*.py",
         ],
         "reason": (
@@ -518,7 +521,10 @@ _PYPROJECT_IGNORE_ALLOWLIST: dict[str, dict[str, object]] = {
             "registration seam so register_role_handlers can be defined "
             "before ralph.policy.loader imports it. _workspace<->dirty_paths "
             "for the scheduler lifecycle; diagnostics<->CLI/explore for the "
-            "workspace-health maintenance read. Mirrors the "
+            "workspace-health maintenance read. The two MCP tool modules "
+            "resolve their retry-hint and validation-banner dependencies at "
+            "call time so the MCP module tree does not pull the "
+            "ralph.recovery module tree. Mirrors the "
             "CLI/config/display precedent."
         ),
     },

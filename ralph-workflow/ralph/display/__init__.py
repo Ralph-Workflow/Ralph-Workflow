@@ -146,18 +146,6 @@ from ralph.display.context import (
     install_width_refresher,
     make_display_context,
 )
-from ralph.display.parallel_display import (
-    ParallelDisplay,
-    build_default_display_legacy_bridge,
-    emit_activity_line,
-    get_display_context,
-    phase_style_for_phase,
-    resolve_active_display,
-    resolve_display,
-    status_text,
-    strip_markup,
-    subscriber_for_display,
-)
 from ralph.display.phase_status import (
     PhaseIterationContext,
     format_analysis_cycle,
@@ -168,6 +156,44 @@ from ralph.display.status_bar import (
     StatusBarModel,
     render_status_bar,
 )
+
+#: Names exported from :mod:`ralph.display.parallel_display`. That module
+#: pulls the artifact-reader and markdown-spec chains, so importing it
+#: eagerly charged every process that touched the display package (the CLI
+#: entry point, every spawned agent child, and every pytest worker) for
+#: roughly a second of import CPU. The names are resolved on first
+#: attribute access instead, so a process that never renders a display pays
+#: none of it.
+_PARALLEL_DISPLAY_EXPORTS = frozenset(
+    {
+        "ParallelDisplay",
+        "build_default_display_legacy_bridge",
+        "emit_activity_line",
+        "get_display_context",
+        "phase_style_for_phase",
+        "resolve_active_display",
+        "resolve_display",
+        "status_text",
+        "strip_markup",
+        "subscriber_for_display",
+    }
+)
+
+
+def __getattr__(name: str) -> object:
+    """Resolve a lazily-exported :mod:`ralph.display.parallel_display` name."""
+    if name in _PARALLEL_DISPLAY_EXPORTS:
+        from typing import cast
+
+        from ralph.display import parallel_display
+
+        return cast("object", getattr(parallel_display, name))
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(__all__)
+
 
 __all__ = [
     "DisplayContext",

@@ -22,6 +22,7 @@ from ralph.agents._agy_upstream_diagnostic import (
     agy_cli_log_start_offset,
     agy_fresh_cli_log_tail,
 )
+from ralph.agents._broker_secret import _BROKER_ENV_VAR_NAME, _parent_broker_secret
 from ralph.agents.activity import AgentActivityKind
 from ralph.agents.completion_signals import completion_signals_terminal, evaluate_completion
 from ralph.agents.execution_state import (
@@ -511,14 +512,6 @@ def _convert_idle_stream_timeout_to_agent_error(
     )
 
 
-_BROKER_SECRET_ENV = "RALPH_BROKER_SECRET"
-
-
-def _parent_broker_secret(getenv: Callable[[str], str | None] = os.getenv) -> str | None:
-    """Return the parent-only broker secret used for completion verification."""
-    return getenv(_BROKER_SECRET_ENV)
-
-
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
     env = scrub_activity_relay_controls(os.environ.copy())
     # ``RALPH_BROKER_SECRET`` is the broker-owned HMAC secret used by the
@@ -528,13 +521,13 @@ def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
     # parent side only. Strip from both the inherited environment AND
     # any caller-supplied ``extra_env`` so neither path can smuggle the
     # secret into the child process.
-    env.pop(_BROKER_SECRET_ENV, None)
+    env.pop(_BROKER_ENV_VAR_NAME, None)
     if extra_env:
         env.update(extra_env)
     if extra_env and "AGENT_CLI_CREDENTIAL_STORE" in extra_env:
         for marker in _CURSOR_SSH_MARKERS:
             env.pop(marker, None)
-    env.pop(_BROKER_SECRET_ENV, None)
+    env.pop(_BROKER_ENV_VAR_NAME, None)
     scrub_activity_relay_controls(env)
     return env
 

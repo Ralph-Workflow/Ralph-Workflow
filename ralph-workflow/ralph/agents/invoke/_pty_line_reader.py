@@ -22,6 +22,7 @@ from ralph.agents._agy_upstream_diagnostic import (
     agy_fresh_cli_log_tail,
 )
 from ralph.agents._bounded_text_buffer import DEFAULT_MAX_BUFFER_CHARS, clamp_tail
+from ralph.agents._broker_secret import _parent_broker_secret
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.completion_signals import completion_signals_terminal
 from ralph.agents.execution_state import (
@@ -53,7 +54,6 @@ from ralph.agents.invoke._process_reader import (
     _append_conflict_termination_diagnostic,
     _extract_tool_call_from_activity_signal,
     _is_resumable_fire_reason,
-    _parent_broker_secret,
     _raise_on_relay_health_error,
     check_broken_agent_timer,
 )

@@ -37,10 +37,7 @@ if TYPE_CHECKING:
     from ralph.mcp.tools.artifact import ArtifactHandlerDeps
     from ralph.phases.required_artifacts import RequiredArtifact
 
-from ralph.mcp.tools.coordination import COMPLETION_SENTINEL_RELPATHFMT
-
 _EXPLICIT_COMPLETION_MARKER = "Task declared complete:"
-_COMPLETION_SENTINEL_RELPATHFMT = COMPLETION_SENTINEL_RELPATHFMT
 
 
 def _bool_evidence(value: bool, *, holding_detail: str, absent_detail: str) -> Evidence:
@@ -283,7 +280,9 @@ def _check_legacy_file_sentinel(
     sentinel_secret: str | None,
 ) -> bool:
     """Read the legacy sentinel file (or the test seam)."""
-    sentinel_path = workspace / _COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
+    from ralph.mcp.tools.coordination import COMPLETION_SENTINEL_RELPATHFMT
+
+    sentinel_path = workspace / COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
     read_fn = _read_fn or (lambda path: path.read_text(encoding="utf-8"))
     try:
         content = read_fn(sentinel_path)
@@ -620,6 +619,27 @@ def graded_phase_verdict(
         return "FAILED", Provenance.ABSENT, detail
     label, weakest = graded_verdict(signals)
     return label, weakest, ""
+
+
+#: Names resolved from :mod:`ralph.mcp.tools.coordination` on first
+#: attribute access. That module pulls the MCP artifact and policy-model
+#: chains, so importing it at module scope charged every process that
+#: imports completion signals (the agent registry, the CLI entry point, and
+#: every pytest worker) for that import cost.
+_COORDINATION_EXPORTS = frozenset({"COMPLETION_SENTINEL_RELPATHFMT"})
+
+
+def __getattr__(name: str) -> object:
+    """Resolve a lazily-imported :mod:`ralph.mcp.tools.coordination` name."""
+    if name in _COORDINATION_EXPORTS:
+        from ralph.mcp.tools import coordination
+
+        return cast("object", getattr(coordination, name))
+    if name == "_COMPLETION_SENTINEL_RELPATHFMT":
+        from ralph.mcp.tools import coordination
+
+        return cast("object", coordination.COMPLETION_SENTINEL_RELPATHFMT)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [

@@ -556,7 +556,10 @@ def test_e15_ack_before_resume_prompt_ack(tmp_path: Path) -> None:
     pause/ack/resume sentinel protocol, not HTTP serving).
     """
     ralph_root = str(Path(__file__).resolve().parents[2])
-    run_id = "run-e15"
+    # ``accept.pause.ack`` from it when a replacement starts. A constant
+    # run_id therefore lets a concurrent run of this same test delete the
+    # sentinels this run's handover protocol depends on.
+    run_id = f"run-e15-{uuid.uuid4().hex}"
     snap = lifecycle.snapshot_dir(tmp_path, run_id)
     pause_file = snap / "accept.pause.stage-old"
     ready_file = tmp_path / "old_ready.txt"
@@ -614,11 +617,11 @@ def test_e15_ack_before_resume_prompt_ack(tmp_path: Path) -> None:
             old_inner,
             restart_fn=lambda: cand_inner,
             restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
-            run_id="run-e15",
+            run_id=run_id,
             workspace_root=tmp_path,
         )
 
-        snap = lifecycle.snapshot_dir(tmp_path, "run-e15")
+        snap = lifecycle.snapshot_dir(tmp_path, run_id)
         resume_file = snap / "accept.resume.stage-cand"
 
         # Run handover in a background thread to inspect intermediate state
@@ -678,16 +681,17 @@ def test_e15_ack_before_resume_hung_child_killed_before_resume(tmp_path: Path) -
             stage_id="stage-cand-2",
         )
 
+        hung_run_id = f"run-e15-hung-{uuid.uuid4().hex}"
         bridge = lifecycle.RestartAwareMcpBridge(
             old_inner,
             restart_fn=lambda: cand_inner,
             restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
-            run_id="run-e15-hung",
+            run_id=hung_run_id,
             workspace_root=tmp_path,
             sleep_fn=lambda s: time.sleep(0.01),
         )
 
-        snap = lifecycle.snapshot_dir(tmp_path, "run-e15-hung")
+        snap = lifecycle.snapshot_dir(tmp_path, hung_run_id)
         resume_file = snap / "accept.resume.stage-cand-2"
 
         start = time.monotonic()
@@ -1035,7 +1039,7 @@ def test_e16_fail_closed_resume_timeout(tmp_path: Path) -> None:
             old_inner,
             restart_fn=lambda: cand_inner,
             restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
-            run_id="run-e16",
+            run_id=f"run-e16-{uuid.uuid4().hex}",
             workspace_root=tmp_path,
         )
 

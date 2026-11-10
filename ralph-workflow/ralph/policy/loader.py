@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
+from importlib import import_module
 from os import getenv
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -25,7 +26,6 @@ from pydantic import TypeAdapter, ValidationError
 import ralph.policy
 from ralph.config._developer_override import apply_developer_override
 from ralph.config.config_error_messages import warn_unknown_top_level_fields
-from ralph.phases import register_role_handlers
 from ralph.policy.conflict_chain_warnings import (
     warn_if_conflict_resolution_chain_has_no_fallback,
 )
@@ -913,7 +913,7 @@ def _load_policy_from_paths(
             source=exc.source or "completeness",
         ) from exc
 
-    register_role_handlers(pipeline_policy)
+    import_module("ralph.phases").register_role_handlers(pipeline_policy)
     warn_if_conflict_resolution_chain_has_no_fallback(bundle)
     return bundle
 

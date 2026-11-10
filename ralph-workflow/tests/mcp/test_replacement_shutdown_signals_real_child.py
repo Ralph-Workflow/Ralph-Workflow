@@ -27,6 +27,7 @@ import socket
 import sys
 import threading
 import time
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -269,7 +270,7 @@ def test_e43_supervisor_exit_mid_replacement_reaps_candidate_and_old(tmp_path: P
             old_inner,
             restart_fn=lambda: cand_inner,
             restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
-            run_id="test-e43-exit",
+            run_id=f"test-e43-exit-{uuid.uuid4().hex}",
             sleep_fn=lambda s: None,
             verify_started=verify_started,
             verify_release=verify_release,
@@ -352,7 +353,7 @@ def test_e44_bridge_shutdown_mid_replacement_reaps_candidate_and_old(tmp_path: P
             old_inner,
             restart_fn=lambda: cand_inner,
             restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
-            run_id="test-e44-mid-replace",
+            run_id=f"test-e44-mid-replace-{uuid.uuid4().hex}",
             sleep_fn=lambda s: None,
             verify_started=verify_started,
             verify_release=verify_release,
@@ -428,7 +429,7 @@ def test_e44_bridge_shutdown_mid_drain_reaps_old_and_candidate(tmp_path: Path) -
             cand_inner,
             restart_fn=lambda: cand_inner,
             restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
-            run_id="test-e44-mid-drain",
+            run_id=f"test-e44-mid-drain-{uuid.uuid4().hex}",
             workspace_root=tmp_path,
         )
         bridge._listening_socket = sock
@@ -502,7 +503,13 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
     """
     # Resolve the real snapshot dir the production code writes sentinels
     # into (a protected cache path keyed by run_id, NOT tmp_path).
-    snap_dir = lifecycle.snapshot_dir(tmp_path, "test-e45-handover")
+    # The run_id MUST be unique per invocation: the snapshot dir it keys is a
+    # machine-global cache path, and production unlinks ``accept.pause`` /
+    # ``accept.pause.ack`` from it when a replacement starts. A constant
+    # run_id therefore lets a concurrent run of this same test delete the
+    # sentinels this run's handover protocol depends on.
+    run_id = f"test-e45-handover-{uuid.uuid4().hex}"
+    snap_dir = lifecycle.snapshot_dir(tmp_path, run_id)
     sock, _port = _reserve_listening_socket()
     old_proc = _spawn_long_sleeper(tmp_path, label="e45-handover-old")
     cand_proc = _spawn_long_sleeper(tmp_path, label="e45-handover-cand")
@@ -553,7 +560,7 @@ def test_e45_sigint_during_handover_no_orphans(tmp_path: Path) -> None:
         old_inner,
         restart_fn=lambda: cand_inner,
         restart_policy=McpRestartPolicy(max_restarts=3, cooldown_seconds=0.0),
-        run_id="test-e45-handover",
+        run_id=run_id,
         workspace_root=tmp_path,
         sleep_fn=_in_flight_sleep,
         handover_ack_timeout_s=30.0,

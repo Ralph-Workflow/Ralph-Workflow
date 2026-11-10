@@ -60,7 +60,6 @@ from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.artifacts.state_db import RunStateDB
 from ralph.mcp.multimodal import ImageContent
 from ralph.mcp.tools._validation_retry_hints import validation_retry_hint_file
-from ralph.recovery.retry_prompt import VALIDATION_FAILURE_BANNER
 
 from .capability_denied_error import CapabilityDeniedError
 from .coordination_session_like import CoordinationSessionLike
@@ -390,6 +389,13 @@ def handle_declare_complete(
             content=[ToolContent.text_content(error_message)],
             is_error=True,
         )
+    # The validation banner constant sits behind the recovery module chain
+    # (about 0.15 CPU core-seconds). It is resolved at call time so that the
+    # MCP server module tree does not pull that module tree.
+    from ralph.recovery.retry_prompt import (
+        VALIDATION_FAILURE_BANNER,
+    )
+
     retry_hint_path = (
         validation_retry_hint_file(session, workspace) if workspace is not None else None
     )

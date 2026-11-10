@@ -13,7 +13,7 @@ import threading
 import uuid
 from typing import TYPE_CHECKING, Protocol, cast
 
-from ralph.agents.invoke._process_reader import _parent_broker_secret
+from ralph.agents._broker_secret import _parent_broker_secret
 from ralph.mcp.artifacts.format_docs import materialize_all_format_docs
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession

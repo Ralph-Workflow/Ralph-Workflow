@@ -25,6 +25,7 @@ from uuid import uuid4
 
 from loguru import logger
 
+from ralph.agents._broker_secret import _parent_broker_secret
 from ralph.agents.catalog import default_catalog
 from ralph.agents.completion_signals import evaluate_completion
 from ralph.agents.execution_state import strategy_for_command
@@ -66,7 +67,6 @@ from ralph.agents.invoke._options import (
 )
 from ralph.agents.invoke._process_reader import (
     ProcessLineReader,
-    _parent_broker_secret,
     _raise_on_relay_health_error,
     _read_lines_from_process,
     _run_subprocess_and_read_lines,

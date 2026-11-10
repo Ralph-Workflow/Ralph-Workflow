@@ -8,6 +8,7 @@ from collections import deque
 from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
 
 from ralph.agents._agy_upstream_diagnostic import agy_cli_log_start_offset
+from ralph.agents._broker_secret import _parent_broker_secret
 from ralph.agents.execution_state import GenericExecutionStrategy
 from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, WatchdogFireReason
 from ralph.agents.invoke._completion import (
@@ -26,7 +27,6 @@ from ralph.agents.invoke._process_reader import (
     _agent_process_label,
     _has_meaningful_output_from_reader,
     _is_resumable_fire_reason,
-    _parent_broker_secret,
     _subprocess_env,
     collect_r7_diagnostic_fields,
 )

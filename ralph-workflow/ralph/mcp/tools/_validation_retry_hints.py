@@ -11,7 +11,6 @@ from ralph.mcp.tools.artifact import (
     _session_drain,
     _workspace_root,
 )
-from ralph.phases.required_artifacts import build_validation_retry_hint, retry_hint_path
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -47,6 +46,13 @@ def validation_retry_hint_file(
     session: CoordinationSessionLike, workspace: WorkspaceLike
 ) -> Path | None:
     """Resolve the drain-keyed retry-hint path for coordinator or worker scope."""
+    # The retry-hint path helper sits behind the recovery module chain (about
+    # 0.15 CPU core-seconds). It is resolved at call time so that the MCP
+    # server module tree does not pull that module tree.
+    from ralph.phases.required_artifacts import (
+        retry_hint_path,
+    )
+
     drain = _session_drain(session)
     if drain is None:
         return None
@@ -64,6 +70,13 @@ def persist_validation_retry_hint(
     deps: ArtifactHandlerDeps | None,
 ) -> None:
     """Persist exact validator errors for injection into the next retry prompt."""
+    # The retry-hint builder sits behind the recovery module chain (about 0.15
+    # CPU core-seconds). It is resolved at call time so that the MCP server
+    # module tree does not pull that module tree.
+    from ralph.phases.required_artifacts import (
+        build_validation_retry_hint,
+    )
+
     backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
     path = validation_retry_hint_file(session, workspace)
     if path is None:
@@ -84,6 +97,13 @@ def clear_validation_retry_hint(
     deps: ArtifactHandlerDeps | None,
 ) -> bool:
     """Clear canonical and legacy validation context after successful submission."""
+    # The retry-hint path helper sits behind the recovery module chain (about
+    # 0.15 CPU core-seconds). It is resolved at call time so that the MCP
+    # server module tree does not pull that module tree.
+    from ralph.phases.required_artifacts import (
+        retry_hint_path,
+    )
+
     backend = (deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend
     path = validation_retry_hint_file(session, workspace)
     if path is None:

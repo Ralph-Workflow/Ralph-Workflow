@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from ralph.agents.invoke import AgentInvocationError, invoke_agent
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.cli.commands._commit_chain_config import CommitChainConfig
@@ -63,6 +62,7 @@ from ralph.workspace.scope import resolve_workspace_scope
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.agents.invoke import AgentInvocationError, invoke_agent
     from ralph.config.models import UnifiedConfig
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.policy.models import AgentsPolicy
@@ -82,6 +82,23 @@ __all__ = [
     "materialize_master_prompt",
     "submit_artifact_tool_name_for_transport",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Resolve the lazily re-exported :mod:`ralph.agents.invoke` names.
+
+    ``ralph.agents.invoke`` is the heaviest import in the CLI tree, and
+    these two names exist here only so tests can patch them. Resolving
+    them on first access keeps every CLI child that never patches them
+    from paying that import cost.
+    """
+    if name in ("AgentInvocationError", "invoke_agent"):
+        from typing import cast
+
+        from ralph.agents import invoke
+
+        return cast("object", getattr(invoke, name))
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # Maximum number of staged files to display in output
