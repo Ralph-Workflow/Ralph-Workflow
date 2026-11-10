@@ -89,9 +89,14 @@ def emit_attempt_outcome(display: ParallelDisplay | None, outcome: ResolutionOut
     """Render a typed non-success outcome without misclassifying it as a hang."""
     if outcome.succeeded or outcome.reason is None:
         return
+    reason_label = (
+        outcome.reason.value
+        if isinstance(outcome.reason, ResolutionTerminationReason)
+        else str(outcome.reason)
+    )
     _emit(
         display,
-        f"{outcome.reason.value}: duration={outcome.duration_seconds:.1f}s; "
+        f"{reason_label}: duration={outcome.duration_seconds:.1f}s; "
         f"last_activity_kind={outcome.last_activity_kind or 'none'}; "
         f"last_activity_at={outcome.last_activity_at or 'never'}; "
         f"last_progress=unresolved_count={len(outcome.unresolved_paths)}; "

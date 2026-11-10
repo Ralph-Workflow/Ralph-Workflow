@@ -62,10 +62,13 @@ def check_policy_command(
             if not resolved_dir.is_dir():
                 display.emit_warning(f"Policy directory not found: {resolved_dir}")
                 return 1
-            bundle = load_policy(resolved_dir)
+            bundle = load_policy(resolved_dir, strict_optional_files=True)
         else:
             resolved_dir, _ = _resolve_policy_dir()
-            bundle = load_policy_for_workspace_scope(resolve_workspace_scope())
+            bundle = load_policy_for_workspace_scope(
+                resolve_workspace_scope(),
+                strict_optional_files=True,
+            )
 
         if counter_overrides:
             validate_policy_completeness(bundle, cli_counter_overrides=counter_overrides)

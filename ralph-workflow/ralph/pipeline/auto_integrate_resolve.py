@@ -192,8 +192,8 @@ def _resolve_and_commit_with_reason(
             f"resolver raised: {resolver_exc}; partial resolution retained",
             failure_cause=ResolutionFailureCause.AGENT_FAILURE,
         )
-    reason = (
-        result.reason.value
+    reason: str | None = (
+        str(result.reason)
         if isinstance(result, ResolutionOutcome) and result.reason is not None
         else None
     )

@@ -2263,8 +2263,7 @@ def resolve_paused_rebase(
         return False
     if not resolved:
         logger.warning(
-            "integration resolution: the paused rebase for '{}' was not resolved: {} "
-            "(cause: {})",
+            "integration resolution: the paused rebase for '{}' was not resolved: {} (cause: {})",
             target,
             reason or "no terminal evidence",
             failure_cause.value,

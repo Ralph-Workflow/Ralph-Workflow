@@ -201,7 +201,10 @@ def _record_invoker_outcome(
 ) -> None:
     session.last_failure_cause = invoker_result.failure_cause
     if invoker_result.reason is not None:
-        session.terminal_reason = invoker_result.reason
+        if isinstance(invoker_result.reason, ResolutionTerminationReason):
+            session.terminal_reason = invoker_result.reason
+        else:
+            session.exhaustion_reason = invoker_result.reason
     if invoker_result.last_activity_kind is not None:
         session.last_activity_kind = invoker_result.last_activity_kind
     if invoker_result.last_activity_at is not None:

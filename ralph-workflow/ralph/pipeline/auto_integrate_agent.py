@@ -318,7 +318,7 @@ def build_agent_rebase_stop_resolver(
             )
             return ResolutionOutcome(
                 succeeded=False,
-                reason=cast("ResolutionTerminationReason | None", reason_text),
+                reason=reason_text,
                 duration_seconds=0.0,
                 last_activity_kind=None,
                 last_activity_at=None,

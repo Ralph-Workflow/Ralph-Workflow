@@ -18,7 +18,7 @@ class ResolutionOutcome:
     """Observable resolution attempt outcome used for status and terminal handling."""
 
     succeeded: bool
-    reason: ResolutionTerminationReason | None
+    reason: ResolutionTerminationReason | str | None
     duration_seconds: float
     last_activity_kind: str | None
     last_activity_at: float | None

@@ -32,7 +32,9 @@ if TYPE_CHECKING:
 
 # Process-level registry for deduplicating fallback warnings.
 # Keyed by (resolved Path, sha256_of_bytes | error_class).
-_FALLBACK_WARNING_REGISTRY: set[tuple[Path, str | type[BaseException]]] = set()
+_FALLBACK_WARNING_REGISTRY: set[tuple[Path, str | type[BaseException]]] = (
+    set()  # bounded-accumulator-ok: warning dedup registry bounded by distinct config file paths and content hashes per process
+)
 
 
 def reset_fallback_warning_registry() -> None:

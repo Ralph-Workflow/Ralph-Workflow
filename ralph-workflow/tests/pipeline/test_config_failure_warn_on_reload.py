@@ -259,9 +259,7 @@ def test_startup_load_reports_failure_through_shared_recorder(tmp_path: Path) ->
                     "strict configuration behaviour in effect "
                     "(this file has no built-in default fallback)"
                 ),
-                fix_hint=(
-                    f"To continue: fix {startup_error.file} then run ralph --check-config"
-                ),
+                fix_hint=(f"To continue: fix {startup_error.file} then run ralph --check-config"),
                 exc=startup_error,
             )
             is False
