@@ -39,6 +39,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 
+from ralph.config._toml_fallback import describe_config_failure, emit_config_failure_warning
+from ralph.workspace.errors import WorkspaceContextError
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
@@ -48,19 +50,6 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.mcp.effective_session_mcp_plan import EffectiveSessionMcpPlan
     from ralph.policy.models import PolicyBundle
-
-
-class WorkspaceContextError(Exception):
-    """Raised when entering a workspace context fails due to invalid configuration."""
-
-    def __init__(self, file: Path, reason: str, fix: str | None = None) -> None:
-        self.file = Path(file)
-        self.reason = reason
-        self.fix = fix or f"fix {self.file} then run ralph --check-config"
-        if self.fix in self.reason:
-            super().__init__(self.reason)
-        else:
-            super().__init__(f"{self.reason} ({self.fix})")
 
 
 @dataclass(frozen=True)
@@ -127,7 +116,10 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
     )
     from ralph.config.loader import (  # noqa: PLC0415  # reason: same lazy-import rationale
         ConfigTomlError,
+        _attribute_validation_error_to_layer,
+        _global_config_path,
         load_config,
+        load_toml,
     )
     from ralph.mcp.artifacts.file_backend import (  # noqa: PLC0415  # reason: same lazy-import rationale
         DEFAULT_FILE_BACKEND,
@@ -168,6 +160,17 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
             else target_scope.root / ".agent" / "ralph-workflow.toml"
         )
         fix_str = f"fix {file_path} then run ralph --check-config"
+        emit_config_failure_warning(
+            file_path,
+            kind="ralph-workflow",
+            error_detail=describe_config_failure(exc),
+            behaviour=(
+                "strict configuration behaviour in effect "
+                "(this file has no built-in default fallback)"
+            ),
+            fix_hint=f"To continue: {fix_str}",
+            exc=exc,
+        )
         raise WorkspaceContextError(
             file=file_path,
             reason=msg,
@@ -180,12 +183,6 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
         reason_str = str(cause) if cause is not None else str(exc)
         if cause is not None and isinstance(cause, ValidationError):
             try:
-                from ralph.config.loader import (  # noqa: PLC0415
-                    _attribute_validation_error_to_layer,
-                    _global_config_path,
-                    load_toml,
-                )
-
                 agents_path = target_scope.root / ".agent" / "agents.toml"
                 file_layers = [
                     (local_path, load_toml(local_path)),
@@ -201,6 +198,17 @@ def workspace_context(target_root: Path) -> Iterator[WorkspaceContext]:
             except Exception:
                 file_path = local_path
         fix_str = f"fix {file_path} then run ralph --check-config"
+        emit_config_failure_warning(
+            file_path,
+            kind="ralph-workflow",
+            error_detail=describe_config_failure(exc),
+            behaviour=(
+                "strict configuration behaviour in effect "
+                "(this file has no built-in default fallback)"
+            ),
+            fix_hint=f"To continue: {fix_str}",
+            exc=exc,
+        )
         raise WorkspaceContextError(
             file=file_path,
             reason=f"configuration validation error in {file_path}: {reason_str}",

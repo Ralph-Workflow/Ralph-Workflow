@@ -26,9 +26,7 @@ _DEFAULT_GITIGNORE_PATTERNS).
 
 from __future__ import annotations
 
-import importlib.util
 import shutil
-import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib import import_module
@@ -38,9 +36,29 @@ from typing import TYPE_CHECKING, Literal, cast
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from loguru import logger
 
+from ralph.config._agent_internal_globs import (
+    _AGENT_INTERNAL_COMPLETION_SENTINEL_GLOB,
+    AGENT_INTERNAL_DIR_GLOBS,
+    AGENT_INTERNAL_ROOT_BASENAMES,
+    AGENT_INTERNAL_TOP_LEVEL_BASENAMES,
+)
+from ralph.config._config_filenames import (
+    _ADVANCED_LOCAL_POLICY_FILENAMES,
+    _GLOBAL_AGENTS_FILENAME,
+    _GLOBAL_CONFIG_FILENAME,
+    _GLOBAL_MCP_FILENAME,
+    _GLOBAL_POLICY_FILENAME_MAP,
+    _LOCAL_CONFIG_FILENAME,
+    _LOCAL_CONFIG_SOURCE,
+    _LOCAL_MCP_FILENAME,
+    _LOCAL_POLICY_FILENAMES,
+)
 from ralph.config._paths import resolve_global_config_dir as _resolve_global_config_dir
-from ralph.config._toml_fallback import _format_error_detail
 from ralph.config.loader import load_toml
+from ralph.config.unreadable_config_finding import (
+    UnreadableConfigFinding,
+    collect_unreadable_config_files,
+)
 from ralph.git.operations import _atomic_append_text, create_commit, stage_files
 from ralph.git.scoped_auto_commit import (
     ScopedCommitStatus,
@@ -53,22 +71,22 @@ from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 if TYPE_CHECKING:
     from types import ModuleType
 
-    from ralph.workspace.scope import WorkspaceScope
-
-_GLOBAL_CONFIG_FILENAME = "ralph-workflow.toml"
-_GLOBAL_AGENTS_FILENAME = "ralph-workflow-agents.toml"
-_GLOBAL_MCP_FILENAME = "ralph-workflow-mcp.toml"
-_GLOBAL_PIPELINE_FILENAME = "ralph-workflow-pipeline.toml"
-_GLOBAL_ARTIFACTS_FILENAME = "ralph-workflow-artifacts.toml"
-_LOCAL_CONFIG_FILENAME = "ralph-workflow.toml"
-_LOCAL_MCP_FILENAME = "mcp.toml"
-_LOCAL_POLICY_FILENAMES = ("pipeline.toml", "artifacts.toml")
-_GLOBAL_POLICY_FILENAME_MAP = {
-    "pipeline.toml": _GLOBAL_PIPELINE_FILENAME,
-    "artifacts.toml": _GLOBAL_ARTIFACTS_FILENAME,
-}
-_ADVANCED_LOCAL_POLICY_FILENAMES = ("agents.toml",)
-_LOCAL_CONFIG_SOURCE = "ralph-workflow-local.toml"
+__all__ = [
+    "BootstrapResult",
+    "UnreadableConfigFinding",
+    "auto_seed_default_git_exclude",
+    "auto_seed_default_gitignore",
+    "collect_unreadable_config_files",
+    "ensure_global_agents_config",
+    "ensure_global_config",
+    "ensure_global_mcp_config",
+    "ensure_global_policy_configs",
+    "ensure_local_configs",
+    "ensure_local_main_config",
+    "ensure_local_support_configs",
+    "regenerate_all",
+    "resolve_global_config_dir",
+]
 
 
 def resolve_global_config_dir(env: Mapping[str, str] | None = None) -> Path:
@@ -231,43 +249,9 @@ _DEFAULT_GITIGNORE_PATTERNS: tuple[str, ...] = (
 # Root-anchored ``/checkpoint.json`` is used (NOT bare ``checkpoint.json``
 # which would silently match every nested directory).
 #
-# NOTE: ``_agent_internal_paths.py`` is loaded via ``importlib`` rather than
-# a normal ``from ... import`` so this module never transitively triggers
-# ``ralph.phases.__init__.py``. A normal import would create a cycle
-# (``ralph.config`` -> ``bootstrap`` -> ``ralph.phases.__init__`` ->
-# ``ralph.policy.loader`` -> ``ralph.phases``), so the leaf module is loaded
-# directly by file path. The audit
-# (``ralph/testing/audit_agent_internal_paths.py``) uses the same pattern.
-def _load_agent_internal_paths_module() -> ModuleType:
-    """Load ``_agent_internal_paths`` directly without triggering ``ralph.phases.__init__``.
-
-    Returns:
-        The loaded ``_agent_internal_paths`` module.
-    """
-    module_path = Path(__file__).resolve().parent.parent / "phases" / "_agent_internal_paths.py"
-    spec = importlib.util.spec_from_file_location(
-        "_ralph_agent_internal_paths_bootstrap_target", module_path
-    )
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot build import spec for {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-_agent_internal_paths_module = _load_agent_internal_paths_module()
-_AGENT_INTERNAL_COMPLETION_SENTINEL_GLOB: str = (
-    _agent_internal_paths_module._AGENT_INTERNAL_COMPLETION_SENTINEL_GLOB
-)
-AGENT_INTERNAL_DIR_GLOBS: frozenset[str] = _agent_internal_paths_module.AGENT_INTERNAL_DIR_GLOBS
-AGENT_INTERNAL_ROOT_BASENAMES: frozenset[str] = (
-    _agent_internal_paths_module.AGENT_INTERNAL_ROOT_BASENAMES
-)
-AGENT_INTERNAL_TOP_LEVEL_BASENAMES: frozenset[str] = (
-    _agent_internal_paths_module.AGENT_INTERNAL_TOP_LEVEL_BASENAMES
-)
-
-
+# The engine-internal globs come from ``ralph.config._agent_internal_globs``,
+# which loads the canonical leaf module by file path so this module never
+# transitively triggers ``ralph.phases.__init__.py``.
 _DEFAULT_GIT_EXCLUDE_PATTERNS: tuple[str, ...] = (
     # Engine-internal directories under .agent/ -- everything inside is engine-owned.
     *tuple(f".agent/{dir_name}/" for dir_name in sorted(AGENT_INTERNAL_DIR_GLOBS)),
@@ -981,167 +965,3 @@ def _repo_rel_path(target: Path, working_dir: Path) -> str:
     inside ``working_dir``; bootstrap only writes paths inside the repo.
     """
     return target.relative_to(working_dir).as_posix()
-
-
-@dataclass(frozen=True)
-class UnreadableConfigFinding:
-    """Represents an unreadable or invalid configuration file finding.
-
-    Attributes:
-        path: Path to the offending configuration file.
-        kind: Category or role of the configuration layer.
-        error: Underlying exception encountered when reading or parsing.
-    """
-
-    path: Path
-    kind: str
-    error: BaseException
-
-    def format_line(self) -> str:
-        """Format the finding as a path and error string."""
-        return f"{self.path}: {self.error}"
-
-
-def collect_unreadable_config_files(
-    *,
-    config_path: Path | None = None,
-    workspace_scope: WorkspaceScope | None = None,
-    global_dir: Path | None = None,
-    display: object | None = None,
-) -> list[UnreadableConfigFinding]:
-    """Inspect all configuration, policy, and MCP layers for unreadable/invalid files.
-
-    Aggregates errors across:
-      - config & agents layers
-      - global / local layers
-      - policy layers (pipeline, agents, artifacts, portfolio)
-      - MCP layers (global and local)
-
-    For every unreadable or malformed file found, emits a WARN log record and
-    collects the finding without failing fast.
-
-    Returns:
-        List of UnreadableConfigFinding instances naming every unreadable file.
-    """
-    candidates = _gather_candidate_config_paths(
-        config_path=config_path,
-        workspace_scope=workspace_scope,
-        global_dir=global_dir,
-    )
-
-    seen: set[Path] = set()
-    deduped_candidates: list[tuple[Path, str]] = []
-    for path, kind in candidates:
-        try:
-            resolved = path.resolve()
-        except Exception:
-            resolved = path
-        if resolved in seen:
-            continue
-        seen.add(resolved)
-        deduped_candidates.append((path, kind))
-
-    findings: list[UnreadableConfigFinding] = []
-    for path, kind in deduped_candidates:
-        try:
-            if not path.is_file():
-                continue
-        except OSError:
-            try:
-                if not path.exists():
-                    continue
-            except OSError:
-                pass
-
-        error = _inspect_config_file_readability(path)
-        if error is not None:
-            error_detail = _format_error_detail(error)
-            logger.warning(
-                f"Failed to load {kind} configuration from {path}: {error_detail}; "
-                f"using built-in default. Fix: run `ralph --check-config`."
-            )
-            if display is not None and hasattr(display, "emit_warning"):
-                display.emit_warning(
-                    f"Failed to load {kind} configuration from {path}: {error_detail}; "
-                    f"using built-in default. Fix: run `ralph --check-config`."
-                )
-            findings.append(UnreadableConfigFinding(path=path, kind=kind, error=error))
-
-    return findings
-
-
-def _gather_candidate_config_paths(
-    *,
-    config_path: Path | None,
-    workspace_scope: WorkspaceScope | None,
-    global_dir: Path | None,
-) -> list[tuple[Path, str]]:
-    resolved_global_dir = global_dir or resolve_global_config_dir()
-    candidates: list[tuple[Path, str]] = [
-        (resolved_global_dir / _GLOBAL_CONFIG_FILENAME, "config"),
-        (resolved_global_dir / _GLOBAL_AGENTS_FILENAME, "agents"),
-        (resolved_global_dir / _GLOBAL_MCP_FILENAME, "mcp"),
-        (resolved_global_dir / _GLOBAL_PIPELINE_FILENAME, "pipeline"),
-        (resolved_global_dir / "pipeline.toml", "pipeline"),
-        (resolved_global_dir / _GLOBAL_ARTIFACTS_FILENAME, "artifacts"),
-        (resolved_global_dir / "artifacts.toml", "artifacts"),
-    ]
-
-    from ralph.workspace.scope import resolve_workspace_scope
-
-    scope = workspace_scope
-    if scope is None and config_path is None:
-        try:
-            scope = resolve_workspace_scope()
-        except Exception:
-            scope = None
-
-    support_files: tuple[tuple[str, str], ...] = (
-        (_LOCAL_CONFIG_FILENAME, "config"),
-        ("agents.toml", "agents"),
-        (_LOCAL_MCP_FILENAME, "mcp"),
-        ("pipeline.toml", "pipeline"),
-        ("artifacts.toml", "artifacts"),
-        ("portfolio.toml", "portfolio"),
-    )
-
-    if config_path is not None:
-        candidates.append((config_path, "config"))
-        cfg_parent = config_path.parent
-        candidates.extend((cfg_parent / fn, kind) for fn, kind in support_files)
-        if (cfg_parent / ".agent").is_dir():
-            candidates.extend((cfg_parent / ".agent" / fn, kind) for fn, kind in support_files)
-
-    if scope is not None:
-        candidates.append((scope.local_config_path, "config"))
-        candidates.extend((prop, "config") for prop in scope.propagated_config_paths)
-
-        local_agent_dir = scope.root / ".agent"
-        candidates.extend((local_agent_dir / fn, kind) for fn, kind in support_files)
-        if scope.local_config_path.parent != local_agent_dir:
-            candidates.extend(
-                (scope.local_config_path.parent / fn, kind) for fn, kind in support_files
-            )
-        candidates.append((scope.root / "portfolio.toml", "portfolio"))
-    elif config_path is None:
-        cwd_agent = Path.cwd() / ".agent"
-        candidates.extend((cwd_agent / fn, kind) for fn, kind in support_files)
-        candidates.extend((Path.cwd() / fn, kind) for fn, kind in support_files)
-
-    return candidates
-
-
-def _inspect_config_file_readability(path: Path) -> BaseException | None:
-    try:
-        # filesystem-read-ok: test readability of config layer
-        raw_bytes = path.read_bytes()
-    except (OSError, UnicodeDecodeError) as exc:
-        return exc
-
-    try:
-        text = raw_bytes.decode("utf-8")
-        tomllib.loads(text)
-    except (ValueError, UnicodeDecodeError) as exc:
-        return exc
-
-    return None

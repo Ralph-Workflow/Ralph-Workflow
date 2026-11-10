@@ -9,15 +9,15 @@ from unittest.mock import MagicMock
 from loguru import logger
 
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
-from ralph.pipeline._auto_integrate_rebase_resolve import (
+from ralph.pipeline import (
+    RebaseOutcomeKind,
     RebaseResolutionResult,
-    _resolve_conflicted_rebase,
-    _resolve_rebase_with_config,
+    resolve_conflicted_rebase,
+    resolve_rebase_with_config,
 )
-from ralph.pipeline._integration_action import RebaseOutcomeKind
 from ralph.pipeline.auto_integrate_agent import build_agent_rebase_stop_resolver
-from ralph.pipeline.conflict_resolution import RebaseStop
-from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+from ralph.pipeline.conflict_resolution import (
+    RebaseStop,
     ResolutionTerminationReason,
 )
 from ralph.pipeline.conflict_resolution.attempt_fault import (
@@ -31,10 +31,10 @@ from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.rebase_state import RebaseState
 from ralph.pipeline.run_loop import (
     LoopContext,
-    _handle_pending_retry,
-    _integration_alert_for_state,
-    _log_waiting_state,
-    _resolve_paused_rebase,
+    handle_pending_retry,
+    integration_alert_for_state,
+    log_waiting_state,
+    resolve_paused_rebase,
 )
 from ralph.pipeline.state import PipelineState
 from ralph.workspace.context import WorkspaceContextError, workspace_context
@@ -163,7 +163,7 @@ def test_rebase_resolution_result_unpacking() -> None:
 
 
 def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> None:
-    """_resolve_conflicted_rebase carries CONFIG_FAILURE into record_conflict."""
+    """resolve_conflicted_rebase carries CONFIG_FAILURE into record_conflict."""
 
     def _fake_resolve_rebase(root: Any, target: Any, resolver: Any, session: Any = None) -> bool:
         outcome = resolver(root, target, None)
@@ -195,7 +195,7 @@ def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> Non
             failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
         )
 
-    res = _resolve_rebase_with_config(
+    res = resolve_rebase_with_config(
         tmp_path,
         "main",
         _failing_resolver,
@@ -204,7 +204,7 @@ def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> Non
     )
     assert res.succeeded is False
 
-    # Simulate run through _resolve_conflicted_rebase with monkeypatched set_resolving_rebase
+    # Simulate run through resolve_conflicted_rebase with monkeypatched set_resolving_rebase
     from ralph.pipeline import auto_integrate_rebase_merge as merge_mod
 
     set_resolving = MagicMock(return_value=True)
@@ -214,7 +214,7 @@ def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> Non
     try:
         merge_mod.set_resolving_rebase = set_resolving
         merge_mod.read_record = read_rec
-        result = _resolve_conflicted_rebase(
+        result = resolve_conflicted_rebase(
             tmp_path,
             "main",
             _failing_resolver,
@@ -231,7 +231,7 @@ def test_resolve_conflicted_rebase_carries_config_failure(tmp_path: Path) -> Non
 
 
 def test_run_loop_does_not_bump_consecutive_conflicts_on_config_failure() -> None:
-    """_handle_pending_retry does NOT charge conflict-attempt counter for CONFIG_FAILURE."""
+    """handle_pending_retry does NOT charge conflict-attempt counter for CONFIG_FAILURE."""
     rebase = RebaseState(
         last_outcome=RebaseOutcomeKind.CONFLICT,
         last_reason="fix .agent/ralph-workflow.toml then run ralph --check-config",
@@ -243,7 +243,7 @@ def test_run_loop_does_not_bump_consecutive_conflicts_on_config_failure() -> Non
     mock_ctx.latest_state = []
     mock_ctx.sleep = MagicMock()
 
-    new_state = _handle_pending_retry(
+    new_state = handle_pending_retry(
         state,
         mock_ctx,
         rebase,
@@ -262,7 +262,7 @@ def test_run_loop_integration_alert_format_with_cause_and_fix() -> None:
         last_failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
     )
     state = PipelineState(phase="planning", rebase=rebase)
-    alert = _integration_alert_for_state(state)
+    alert = integration_alert_for_state(state)
     assert alert is not None
     assert "CONFIG_FAILURE" in alert
     assert fix_msg in alert
@@ -283,23 +283,23 @@ def test_run_loop_waiting_log_gate_emits_once() -> None:
         mock_ctx.sleep = MagicMock()
 
         state = PipelineState(phase="planning", last_unavailability_reason="agents busy")
-        # Direct call to _log_waiting_state
-        _log_waiting_state(state, mock_ctx, "planning", "agents busy", 5000)
+        # Direct call to log_waiting_state
+        log_waiting_state(state, mock_ctx, "planning", "agents busy", 5000)
         assert len(records) == 1
 
         # Second call with identical state - gated!
-        _log_waiting_state(state, mock_ctx, "planning", "agents busy", 5000)
+        log_waiting_state(state, mock_ctx, "planning", "agents busy", 5000)
         assert len(records) == 1
 
         # Third call with new state - emits!
-        _log_waiting_state(state, mock_ctx, "planning", "cooldown active", 5000)
+        log_waiting_state(state, mock_ctx, "planning", "cooldown active", 5000)
         assert len(records) == 2
     finally:
         logger.remove(sink_id)
 
 
 def test_run_loop_logs_carried_reason() -> None:
-    """_resolve_paused_rebase logs the carried reason on failure."""
+    """resolve_paused_rebase logs the carried reason on failure."""
     records: list[dict[str, Any]] = []
     sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="WARNING")
     try:
@@ -320,7 +320,7 @@ def test_run_loop_logs_carried_reason() -> None:
             ResolutionFailureCause.CONFIG_FAILURE,
         )
 
-        resolved = _resolve_paused_rebase(
+        resolved = resolve_paused_rebase(
             mock_ctx,
             "main",
             executor=mock_executor,

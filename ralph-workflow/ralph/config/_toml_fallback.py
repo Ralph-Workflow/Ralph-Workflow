@@ -3,6 +3,19 @@
 Provides resilient loading and validation of optional configuration files,
 falling back to built-in defaults on syntax errors, decoding issues,
 permission errors, or schema validation failures when strict mode is disabled.
+
+This module is also the single RECORDER for configuration-failure
+warnings. Both failure paths report through
+:func:`emit_config_failure_warning`:
+
+- the soft fallback path (:func:`load_optional_toml`,
+  :func:`validate_or_default`), where the built-in default takes over;
+- the loud path (a broken ``ralph-workflow.toml``), which has no built-in
+  default to fall back to and keeps the strict behaviour.
+
+Both record the failure under one ``(resolved path, sha256 of the file
+bytes | error class)`` key, so an unchanged broken file warns exactly once
+per process while a file whose content changed warns again.
 """
 
 from __future__ import annotations
@@ -56,6 +69,88 @@ def _compute_file_fingerprint(
         return type(exc)
 
 
+def describe_config_failure(exc: BaseException) -> str:
+    """Return the underlying parse error of a configuration failure.
+
+    Walks the ``__cause__`` chain and returns the deepest cause that
+    carries a message: the raw ``TOMLDecodeError`` -- with its line and
+    column -- for a syntax failure, the pydantic ``ValidationError`` for
+    a schema failure. A wrapper that only repeats "something went wrong"
+    is never returned while a cause with a real message exists.
+
+    Args:
+        exc: The exception the configuration failure surfaced.
+
+    Returns:
+        The most specific error text available for the failure.
+    """
+    causes: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None:
+        causes.append(current)
+        current = current.__cause__
+    for cause in reversed(causes):
+        detail = _format_error_detail(cause).strip()
+        if detail:
+            return detail
+    return _format_error_detail(exc)
+
+
+def emit_config_failure_warning(
+    path: Path | str,
+    *,
+    kind: str,
+    error_detail: str,
+    behaviour: str,
+    fix_hint: str,
+    exc: BaseException,
+    raw_bytes: bytes | None = None,
+) -> bool:
+    """Emit ONE deduplicated WARN for a configuration file that failed to load.
+
+    The single recorder behind both configuration failure paths:
+
+    - the soft fallback path (:func:`load_optional_toml`,
+      :func:`validate_or_default`), where the built-in default takes over;
+    - the loud path (a broken ``ralph-workflow.toml``), which has no
+      built-in default and keeps the strict behaviour.
+
+    Both record the failure under one ``(resolved path, sha256 of the file
+    bytes | error class)`` key, so an unchanged broken file warns exactly
+    once per process and a file whose content changed warns again.
+
+    Args:
+        path: The configuration file the operator has to fix.
+        kind: What the file configures (``agents``, ``policy``,
+            ``ralph-workflow``, ...).
+        error_detail: The underlying parse error, with line and column
+            when the underlying error carries them.
+        behaviour: The behaviour in effect -- ``using built-in default``
+            for the soft path, the strict behaviour for the loud path.
+        fix_hint: The operator-facing fix instruction.
+        exc: The exception the failure carries; its class is the
+            fingerprint fallback when the file bytes cannot be read.
+        raw_bytes: The file bytes, when the caller already read them.
+
+    Returns:
+        ``True`` when the warning was emitted, ``False`` when it was
+        suppressed because the same (file, content) pair already warned.
+    """
+    path_obj = Path(path)
+    resolved = path_obj.resolve()
+    fingerprint = _compute_file_fingerprint(resolved, exc, raw_bytes=raw_bytes)
+    key = (resolved, fingerprint)
+    if key in _FALLBACK_WARNING_REGISTRY:
+        return False
+    _FALLBACK_WARNING_REGISTRY.add(key)
+
+    logger.warning(
+        f"Failed to load {kind} configuration from {path_obj}: {error_detail}; "
+        f"{behaviour}. {fix_hint}"
+    )
+    return True
+
+
 def _emit_fallback_warning(
     path: Path,
     exc: BaseException,
@@ -63,17 +158,14 @@ def _emit_fallback_warning(
     raw_bytes: bytes | None = None,
 ) -> None:
     """Emit a deduped loguru warning for a fallback to built-in default."""
-    resolved = path.resolve()
-    fingerprint = _compute_file_fingerprint(resolved, exc, raw_bytes=raw_bytes)
-    key = (resolved, fingerprint)
-    if key in _FALLBACK_WARNING_REGISTRY:
-        return
-    _FALLBACK_WARNING_REGISTRY.add(key)
-
-    error_detail = _format_error_detail(exc)
-    logger.warning(
-        f"Failed to load {kind} configuration from {path}: {error_detail}; "
-        f"using built-in default. Fix: run `ralph --check-config`."
+    emit_config_failure_warning(
+        path,
+        kind=kind,
+        error_detail=_format_error_detail(exc),
+        behaviour="using built-in default",
+        fix_hint="Fix: run `ralph --check-config`.",
+        exc=exc,
+        raw_bytes=raw_bytes,
     )
 
 
@@ -163,6 +255,8 @@ def validate_or_default[DataT, T](
 
 
 __all__ = [
+    "describe_config_failure",
+    "emit_config_failure_warning",
     "load_optional_toml",
     "reset_fallback_warning_registry",
     "validate_or_default",

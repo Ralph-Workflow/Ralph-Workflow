@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from ralph.pipeline._config_failure_fingerprint import (
+from ralph.pipeline.config_file_fingerprint import (
     ConfigFileFingerprint,
-    ConfigFileFingerprintWatcher,
     compute_config_file_fingerprint,
     extract_config_path_from_reason,
     get_config_file_fingerprint,
     should_retry_config_failure,
 )
+from ralph.pipeline.config_file_fingerprint_watcher import ConfigFileFingerprintWatcher
 
 
 def test_compute_config_file_fingerprint_existing_and_missing(tmp_path: Path) -> None:

@@ -564,6 +564,13 @@ ralph.config.models
    :members:
    :show-inheritance:
 
+ralph.config.unreadable_config_finding
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.config.unreadable_config_finding
+   :members:
+   :show-inheritance:
+
 ralph.config.welcome
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -1183,6 +1190,36 @@ ralph.pipeline.conflict_resolution
 
 .. automodule:: ralph.pipeline.conflict_resolution
    :no-members:
+
+ralph.pipeline.config_file_fingerprint
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.config_file_fingerprint
+   :members:
+   :show-inheritance:
+   :no-index:
+
+ralph.pipeline.config_file_fingerprint_watcher
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.config_file_fingerprint_watcher
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.integration_diagnostic
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.integration_diagnostic
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.rebase_resolution_result
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.rebase_resolution_result
+   :members:
+   :show-inheritance:
+   :no-index:
 
 ralph.pipeline.conflict_resolution.abort
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -3405,6 +3442,13 @@ ralph.workspace.context
    context manager that yields the bundle.
 
 .. automodule:: ralph.workspace.context
+   :members:
+   :show-inheritance:
+
+ralph.workspace.errors
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.workspace.errors
    :members:
    :show-inheritance:
 

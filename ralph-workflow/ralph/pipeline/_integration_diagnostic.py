@@ -56,12 +56,18 @@ the seam that composes them and re-exports their public surface:
   evidence-collector seam and the held-lease verdict;
 * :mod:`ralph.pipeline._integration_diagnostic_proof` -- the
   four-condition positive operation-completion proof;
+* :mod:`ralph.pipeline._integration_diagnostic_prepass` -- the
+  pre-pass facts (which root the operation runs in, whether the
+  completion proof applies, whether the repair budget is spent);
 * :mod:`ralph.pipeline._integration_diagnostic_handoff` -- the typed
   "diagnostic budget spent" outcome and its routing into the
   autonomous fallback ladder;
 * :mod:`ralph.pipeline._integration_record_facts` -- the durable record
   facts that decide the fail-closed verdict and the persisted
   bounded-retry deadline.
+
+The public entry points of this path are published by
+:mod:`ralph.pipeline.integration_diagnostic`.
 """
 
 from __future__ import annotations
@@ -78,7 +84,6 @@ from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 from ralph.pipeline._auto_integrate_record_restamp import (
     current_boot_id,
-    is_owner_dead,
 )
 from ralph.pipeline._git_operation_authority import GitOperationKind, classify_git_operation
 from ralph.pipeline._integration_action import (
@@ -97,10 +102,15 @@ from ralph.pipeline._integration_diagnostic_evidence import (
 )
 from ralph.pipeline._integration_diagnostic_handoff import (
     _invoke_and_judge,
-    _next_resolver,
     budget_spent_record,
     escalate_diagnostic_budget_to_ladder,
     escalate_record_fact_outcome,
+    next_resolver,
+)
+from ralph.pipeline._integration_diagnostic_prepass import (
+    _completion_proof_applies,
+    _operation_root_for,
+    _settle_spent_budget,
 )
 from ralph.pipeline._integration_diagnostic_proof import (
     _check_ancestry_proof,
@@ -132,7 +142,6 @@ from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     RecordBusyError,
     RecordUnreadableError,
-    parse_lease,
     read_record,
     write_record,
 )
@@ -221,25 +230,6 @@ __all__ = [
 DIAGNOSTIC_REPAIR_ATTEMPT_CAP: int = 5
 
 
-def _operation_root_for(record: IntegrationRecord, default_root: Path) -> Path:
-    """Single source of truth for the diagnostic's operation root.
-
-    The diagnostic only switches to ``record.owning_worktree`` when
-    the operation is a ``target_reconcile`` AND the path still
-    exists on disk; otherwise it falls back to the caller-supplied
-    ``default_root``. Four call sites used to implement this gate
-    with subtly different predicates; this helper is the canonical
-    rule every site must consult.
-    """
-    if (
-        record.operation_kind == "target_reconcile"
-        and record.owning_worktree
-        and DEFAULT_FILE_BACKEND.exists(Path(record.owning_worktree))
-    ):
-        return Path(record.owning_worktree)
-    return default_root
-
-
 def _bump_attempt(
     record: IntegrationRecord,
     exc: str,
@@ -298,80 +288,6 @@ def diagnostic_needed(root: Path, record: IntegrationRecord) -> bool:
         )
     except Exception:
         return True
-
-
-def _settle_spent_budget(
-    root: Path,
-    record: IntegrationRecord,
-    *,
-    ledger: AttemptLedger | None = None,
-    git: GitPlumbing | None = None,
-    fs: FileQuarantine | None = None,
-    env: EnvironmentProbe | None = None,
-    clock: Clock | None = None,
-) -> tuple[IntegrationRecord, bool]:
-    """Return ``(record, budget_spent)`` for the diagnostic-repair budget.
-
-    While the budget is unspent the record is returned unchanged and the
-    flag is ``False``. Once the cap is reached:
-
-    * a stale hold (expired lease, no lease at all, or a dead owner) is
-      released first -- the spent-budget marker SURVIVES the release,
-      because it is the durable signal that routes every later seam
-      into the ladder;
-    * the state escalates into the autonomous fallback ladder through
-      :func:`escalate_diagnostic_budget_to_ladder` (ledger-charged,
-      idempotent, resumable) and the flag is ``True``: the caller
-      offers no agent on this pass.
-
-    The ladder dispatch never raises out of this seam: a failure to
-    escalate leaves the durable ledger as the single source of truth,
-    and the next seam resumes the climb.
-    """
-    if record.merge_commit_repair_attempts < DIAGNOSTIC_REPAIR_ATTEMPT_CAP:
-        return record, False
-    _fingerprint, held_at = parse_lease(record.diagnostic_ownership)
-    is_expired_lease = held_at is None or (time.time() - held_at) > EVIDENCE_LEASE_SECONDS
-    is_old_flagged = not record.diagnostic_evidence and not record.diagnostic_ownership
-    if is_expired_lease or is_old_flagged or is_owner_dead(record):
-        try:
-            apply_record_transition(
-                root,
-                RELEASE_DIAGNOSTIC_EVIDENCE,
-                diagnostic_evidence=(),
-                diagnostic_ownership=None,
-                diagnostic_owner_pid=None,
-                diagnostic_owner_boot_id=None,
-                diagnostic_intervention_required=False,
-                # The spent-budget marker survives the hold release: it
-                # is the durable signal that routes every subsequent
-                # seam into the ladder.
-                repair_cap_reason=record.repair_cap_reason,
-            )
-            refreshed = read_record(root)
-            if refreshed is not None:
-                record = refreshed
-        except Exception:
-            pass
-    if record.merge_commit_repair_attempts < DIAGNOSTIC_REPAIR_ATTEMPT_CAP:
-        return record, False
-    try:
-        escalate_diagnostic_budget_to_ladder(
-            root,
-            record,
-            target=record.target,
-            ledger=ledger,
-            git=git,
-            fs=fs,
-            env=env,
-            clock=clock,
-        )
-    except Exception:
-        logger.critical(
-            "Integration diagnostic budget spent but ladder escalation raised; "
-            "the durable ledger keeps the climb and the next seam resumes it",
-        )
-    return record, True
 
 
 def _handle_diagnostic_config_failure(
@@ -621,22 +537,6 @@ def _pre_pass_failure(
             )
     logger.warning("Operation completion proof failed ({}); bounded diagnostic retry", reason)
     return False
-
-
-def _completion_proof_applies(record: IntegrationRecord) -> bool:
-    """Whether the four-condition completion proof applies to ``record``.
-
-    ADR-0008 section 3: the proof is evaluated when the DURABLE RECORD
-    says the Git operation is still in flight (a continuation or a merge
-    commit is pending) or that the integration has landed
-    (``phase == "integrated"``). These are record facts, not
-    observations: the proof verifies the durable record against live
-    Git, so the record must be the trigger.
-    """
-    kind = classify_git_operation(record)
-    if kind in (GitOperationKind.AWAITING_CONTINUE, GitOperationKind.AWAITING_MERGE_COMMIT):
-        return True
-    return record.is_integrated
 
 
 def _run_completion_pre_pass(
@@ -959,7 +859,7 @@ def handoff_integration_diagnostic(
                     "the durable ledger keeps the climb and the next seam resumes it",
                 )
         return False
-    agent = _next_resolver(controller, agents, target_root=inspection_root)
+    agent = next_resolver(controller, agents, target_root=inspection_root)
     if agent is None:
         return False
     if agent not in agents:

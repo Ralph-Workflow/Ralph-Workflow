@@ -10,22 +10,18 @@ from loguru import logger
 
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline import IntegrationAction
-from ralph.pipeline._integration_diagnostic import (
-    diagnose_retained_integration,
-    handoff_integration_diagnostic,
-)
-from ralph.pipeline._integration_diagnostic_handoff import (
-    _next_resolver,
-    check_target_worktree_context,
-)
-from ralph.pipeline._pending_merge_repair import (
-    handoff_pending_merge_repair,
-    repair_pending_merge,
-)
 from ralph.pipeline.auto_integrate_record import (
     IntegrationRecord,
     read_record,
     write_record,
+)
+from ralph.pipeline.integration_diagnostic import (
+    check_target_worktree_context,
+    diagnose_retained_integration,
+    handoff_integration_diagnostic,
+    handoff_pending_merge_repair,
+    next_resolver,
+    repair_pending_merge,
 )
 from ralph.pipeline.operation_evidence import (
     InMemoryOperationEvidenceCollector,
@@ -56,7 +52,7 @@ def test_check_target_worktree_context_identifies_bad_config(tmp_path: Path) -> 
 def test_next_resolver_context_precondition_prevents_selection_announcement(
     tmp_path: Path,
 ) -> None:
-    """_next_resolver returns CONFIG_FAILURE reason and skips selection when target context is broken."""
+    """next_resolver returns CONFIG_FAILURE reason and skips selection when target context is broken."""
     worktree = tmp_path / "wt"
     agent_dir = worktree / ".agent"
     agent_dir.mkdir(parents=True)
@@ -68,7 +64,7 @@ def test_next_resolver_context_precondition_prevents_selection_announcement(
     handler_id = logger.add(captured_logs.append, level="DEBUG")
 
     try:
-        result = _next_resolver(controller, ["agent_a", "agent_b"], target_root=worktree)
+        result = next_resolver(controller, ["agent_a", "agent_b"], target_root=worktree)
     finally:
         logger.remove(handler_id)
 
@@ -84,7 +80,7 @@ def test_next_resolver_context_precondition_prevents_selection_announcement(
 
 
 def test_next_resolver_proceeds_with_selection_when_context_valid(tmp_path: Path) -> None:
-    """_next_resolver calls choose_resolver and announces selection when target context is valid."""
+    """next_resolver calls choose_resolver and announces selection when target context is valid."""
     worktree = tmp_path / "wt"
     agent_dir = worktree / ".agent"
     agent_dir.mkdir(parents=True)
@@ -96,7 +92,7 @@ def test_next_resolver_proceeds_with_selection_when_context_valid(tmp_path: Path
     handler_id = logger.add(captured_logs.append, level="DEBUG")
 
     try:
-        result = _next_resolver(controller, ["agent_a", "agent_b"], target_root=worktree)
+        result = next_resolver(controller, ["agent_a", "agent_b"], target_root=worktree)
     finally:
         logger.remove(handler_id)
 

@@ -13,6 +13,7 @@ from ralph.prompts.materialize import (
     materialize_prompt_for_phase,
 )
 from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.skills import state_store
 from ralph.workspace.memory import MemoryWorkspace
 
 _TINY_PROMPT = "Implement the feature."
@@ -106,7 +107,6 @@ class TestDevelopmentAnalysisWithoutDevResult:
         # pay the one-time Jinja2 compilation latency under shard CPU load.
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_home = Path(tmp_dir)
-            import ralph.skills._state_store as state_store
 
             old_default = state_store.DEFAULT_STATE_PATH
             state_store.DEFAULT_STATE_PATH = (

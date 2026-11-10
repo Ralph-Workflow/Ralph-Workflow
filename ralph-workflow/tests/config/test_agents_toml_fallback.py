@@ -16,7 +16,7 @@ import pytest
 from loguru import logger
 from pydantic import ValidationError
 
-from ralph.config._toml_fallback import reset_fallback_warning_registry
+from ralph.config import reset_fallback_warning_registry
 from ralph.config.loader import load_config
 
 

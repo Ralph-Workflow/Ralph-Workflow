@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
+from ralph.config._toml_fallback import describe_config_failure, emit_config_failure_warning
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution import (
     run_conflict_resolution_pipeline,
@@ -292,10 +293,24 @@ def build_agent_rebase_stop_resolver(
                 session.terminal_reason = ResolutionTerminationReason.CONFIG_FAILURE
                 session.last_failure_cause = ResolutionFailureCause.CONFIG_FAILURE
                 session.exhaustion_reason = reason_text
-            logger.warning(
-                "auto_integrate: target worktree configuration error: {}; {}",
-                exc,
-                reason_text,
+            # The WARN goes through the shared configuration-failure
+            # recorder, the same one the soft fallback path uses. It used
+            # to be emitted here directly, so EVERY conflict re-logged an
+            # identical warning for a file that had not changed: the
+            # operator saw the same line once per conflict and could not
+            # tell a repaired file from an unrepaired one. The recorder
+            # deduplicates per (file, content), so an unchanged broken
+            # file warns once and a repaired-then-broken file warns again.
+            emit_config_failure_warning(
+                exc.file,
+                kind="ralph-workflow",
+                error_detail=describe_config_failure(exc),
+                behaviour=(
+                    "strict configuration behaviour in effect "
+                    "(this file has no built-in default fallback)"
+                ),
+                fix_hint=f"To continue: {reason_text}",
+                exc=exc,
             )
             emit_integration_warn_line(
                 display,

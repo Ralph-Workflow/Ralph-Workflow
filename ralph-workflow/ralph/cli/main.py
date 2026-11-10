@@ -348,6 +348,27 @@ def _handle_init(
         raise typer.Exit(code=1) from None
 
 
+def diagnose_command(
+    config_path: RuntimePath | None = None,
+    cli_overrides: dict[str, object] | None = None,
+    *,
+    display_context: DisplayContext | None = None,
+) -> int:
+    """Run diagnostics by delegating to the lazily-loaded real command.
+
+    ``ralph.cli.commands.diagnose`` pulls in the heavy MCP/skill/agent import
+    graph, so that module loads inside the handler instead of at CLI start-up.
+    This module-level entry point keeps ``ralph.cli.main.diagnose_command``
+    resolvable — and monkeypatchable — for the ``--diagnose`` CLI path.
+
+    The signature mirrors ``ralph.cli.commands.diagnose.diagnose_command``;
+    keep the two in step when the real command changes.
+    """
+    from ralph.cli.commands.diagnose import diagnose_command as _diagnose_command
+
+    return _diagnose_command(config_path, cli_overrides, display_context=display_context)
+
+
 def _handle_diagnose(
     *,
     config: str | None,
@@ -355,8 +376,6 @@ def _handle_diagnose(
     display_context: DisplayContext,
 ) -> None:
     """Run diagnose command and exit with its status code."""
-    from ralph.cli.commands.diagnose import diagnose_command
-
     exit_code = diagnose_command(
         _config_path(config), cli_overrides, display_context=display_context
     )
@@ -1863,37 +1882,6 @@ def _handle_list_providers(
         return 0
     except Exception as e:
         logger.error("Failed to list providers: {}", e)
-        return 1
-
-
-def _handle_check_config(
-    config: str | None,
-    cli_overrides: dict[str, object],
-    check_config: bool,
-    *,
-    display_context: DisplayContext,
-) -> int | None:
-    """Handle --check-config flag; returns exit code or None to continue."""
-    if not check_config:
-        return None
-    display = resolve_active_display(None, display_context)
-    try:
-        config_path = _config_path(config)
-        workspace_scope = None if config_path is not None else resolve_workspace_scope()
-        config_value = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
-        registry = _load_agent_registry_factory().from_config(config_value)
-        if config_path is not None:
-            bundle = load_policy_for_config_dir(config_path.parent, config=config_value)
-        else:
-            if workspace_scope is None:
-                raise RuntimeError("workspace scope is required for the active configuration")
-            bundle = load_policy_for_workspace_scope(workspace_scope, config=config_value)
-        validate_agent_chains_satisfiable(bundle, registry)
-        validate_chain_agents_on_path(bundle.agents)
-        display.emit_status("Configuration is valid")
-        return 0
-    except Exception as e:
-        logger.error("Configuration is invalid: {}", e)
         return 1
 
 

@@ -16,23 +16,21 @@ import pytest
 from loguru import logger
 
 from ralph.agents.registry import AgentRegistry
-from ralph.config._toml_fallback import reset_fallback_warning_registry
+from ralph.config import reset_fallback_warning_registry
 from ralph.config.loader import load_config
 from ralph.display.auto_integrate_message import OperationDisplayState
 from ralph.git.rebase.rebase import RebaseSuccess
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline import auto_integrate_rebase_merge as merge_mod
-from ralph.pipeline._auto_integrate_rebase_resolve import _resolve_conflicted_rebase
+from ralph.pipeline import resolve_conflicted_rebase
 from ralph.pipeline.auto_integrate_agent import build_agent_rebase_stop_resolver
-from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
-    ResolutionTerminationReason,
-)
-from ralph.pipeline.conflict_resolution.rebase_loop import (
+from ralph.pipeline.conflict_resolution import (
     RebaseStop,
+    ResolutionTerminationReason,
     bind_active_rebase_resolution_session,
 )
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
-from ralph.pipeline.run_loop import LoopContext, _resolve_paused_rebase
+from ralph.pipeline.run_loop import LoopContext, resolve_paused_rebase
 from ralph.policy.loader import default_dir, load_policy
 from ralph.workspace.scope import WorkspaceScope
 
@@ -192,7 +190,7 @@ def test_corrupt_agents_toml_auto_integrate_rebase_does_not_enter_waiting(
     monkeypatch.setattr(merge_mod, "set_resolving_rebase", MagicMock(return_value=True))
     monkeypatch.setattr(merge_mod, "read_record", MagicMock(return_value=None))
 
-    run_result = _resolve_conflicted_rebase(
+    run_result = resolve_conflicted_rebase(
         repo_root,
         "main",
         resolver,
@@ -212,7 +210,7 @@ def test_corrupt_agents_toml_paused_rebase_in_run_loop_does_not_enter_waiting(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """_resolve_paused_rebase drives stop resolver successfully with corrupt agents TOML."""
+    """resolve_paused_rebase drives stop resolver successfully with corrupt agents TOML."""
     repo_root = tmp_path / "repo"
     _seed_workspace(repo_root)
 
@@ -263,7 +261,7 @@ def test_corrupt_agents_toml_paused_rebase_in_run_loop_does_not_enter_waiting(
                 return (True, None, ResolutionFailureCause.NONE)
             return (False, "failed", ResolutionFailureCause.AGENT_FAILURE)
 
-    resolved = _resolve_paused_rebase(
+    resolved = resolve_paused_rebase(
         ctx,
         "main",
         executor=_ContinuationExecutor(),
@@ -339,7 +337,7 @@ def test_contrast_corrupt_ralph_workflow_toml_declines_and_enters_waiting(
     monkeypatch.setattr(merge_mod, "set_resolving_rebase", MagicMock(return_value=True))
     monkeypatch.setattr(merge_mod, "read_record", MagicMock(return_value=None))
 
-    run_result = _resolve_conflicted_rebase(
+    run_result = resolve_conflicted_rebase(
         repo_root,
         "main",
         resolver,

@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 import pytest
 from loguru import logger
 
-from ralph.config._toml_fallback import reset_fallback_warning_registry
+from ralph.config import reset_fallback_warning_registry
 from ralph.config.mcp_loader import (
     McpConfigError,
     load_mcp_config,

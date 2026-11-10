@@ -21,6 +21,9 @@ so the completion contract and the git denial are both real.
 
 from __future__ import annotations
 
+from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+    ResolutionTerminationReason,
+)
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     AttemptFault,
     attempt_fault_to_termination_reason,
@@ -48,6 +51,7 @@ __all__ = [
     "RebaseStop",
     "RebaseStopResolver",
     "ResolutionAction",
+    "ResolutionTerminationReason",
     "active_rebase_resolution_session",
     "attempt_fault_to_termination_reason",
     "bind_active_rebase_resolution_session",

@@ -2126,11 +2126,14 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         # circular chain. ``audit_lint_bypass.py`` already gates the
         # corresponding ``PLR0912`` suppression against a documented
         # rationale; these entries mirror the same policy.
-        ("ralph/workspace/context.py", 109),
-        ("ralph/workspace/context.py", 112),
-        ("ralph/workspace/context.py", 115),
-        ("ralph/workspace/context.py", 118),
-        ("ralph/workspace/context.py", 121),
+        # Re-anchored to the current lines after ``WorkspaceContextError``
+        # moved to ``ralph/workspace/errors.py`` (the lazy-import block
+        # keeps the same five suppressions, at their new lines).
+        ("ralph/workspace/context.py", 114),
+        ("ralph/workspace/context.py", 117),
+        ("ralph/workspace/context.py", 124),
+        ("ralph/workspace/context.py", 127),
+        ("ralph/workspace/context.py", 130),
         # v5: the guard-inventory parser was split out of
         # ``_content_checks.py`` to keep the 1000-line audit cap; the
         # F401 re-export in ``_content_checks.py`` is the public seam

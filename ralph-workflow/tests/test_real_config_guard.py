@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 import ralph.config.loader as config_loader
-import ralph.skills._state_store as state_store
+from ralph.skills import state_store
 from tests.conftest import (
     _ConfigPathSnapshot,
     _diff_config_snapshots,

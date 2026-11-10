@@ -16,7 +16,6 @@ from ralph.pipeline._git_operation_authority import GitOperationKind, classify_g
 from ralph.pipeline._integration_diagnostic import _bump_attempt
 from ralph.pipeline._integration_diagnostic_handoff import observe_workspace_change
 from ralph.pipeline.auto_integrate_record import (
-    BUMP_DIAGNOSTIC_ATTEMPT,
     RESUME_REPAIR,
     IntegrationRecord,
     write_record,
@@ -46,6 +45,33 @@ if TYPE_CHECKING:
 _REPAIR_DECLARATION = Path(".agent") / "tmp" / "pending_commit_repair_paths.json"
 
 
+def _config_failure_record(record: IntegrationRecord, reason_text: str) -> IntegrationRecord:
+    """Stamp a configuration failure WITHOUT charging a repair attempt.
+
+    A target-workspace configuration error is an operator fix, not a
+    repository failure: it must never advance the diagnostic-repair
+    budget, and it must never stamp the spent-budget marker that
+    routes a record into the autonomous fallback ladder.
+
+    The shared bump helper owns the attempt emission, so this path
+    routes through it and then restores the budget fields the
+    no-charge rule protects: the durable counter, the spent-budget
+    marker, and the recorded error (the helper replaces the error
+    with the marker text once the counter reaches the cap). The
+    configuration reason and the typed failure cause are what the
+    record keeps.
+    """
+    stamped = _bump_attempt(record, reason_text)
+    return stamped.model_copy(
+        update={
+            "merge_commit_repair_attempts": record.merge_commit_repair_attempts,
+            "repair_last_error": reason_text,
+            "repair_cap_reason": record.repair_cap_reason,
+            "last_failure_cause": ResolutionFailureCause.CONFIG_FAILURE,
+        }
+    )
+
+
 def repair_pending_merge(
     *,
     workspace_scope: WorkspaceScope,
@@ -60,7 +86,6 @@ def repair_pending_merge(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> bool:
     """Hold recovery ownership while a supervised agent repairs the commit blocker."""
-    from ralph.git.resolution_failure_cause import ResolutionFailureCause
     from ralph.pipeline.auto_integrate_record import bind_integration_record_root, read_record
     from ralph.pipeline.auto_integrate_transaction import integration_transaction
     from ralph.workspace.context import WorkspaceContextError, workspace_context
@@ -109,10 +134,7 @@ def repair_pending_merge(
         if retained is not None:
             write_record(
                 record_root,
-                retained.with_transition(
-                    BUMP_DIAGNOSTIC_ATTEMPT,
-                    repair_last_error=reason_text,
-                ).model_copy(update={"last_failure_cause": ResolutionFailureCause.CONFIG_FAILURE}),
+                _config_failure_record(retained, reason_text),
                 backend=backend,
             )
         return False
@@ -202,10 +224,7 @@ def _repair_owned_merge(
         if retained is not None:
             write_record(
                 root,
-                retained.with_transition(
-                    BUMP_DIAGNOSTIC_ATTEMPT,
-                    repair_last_error=reason_text,
-                ).model_copy(update={"last_failure_cause": ResolutionFailureCause.CONFIG_FAILURE}),
+                _config_failure_record(retained, reason_text),
                 backend=backend,
             )
         return False
@@ -271,10 +290,7 @@ def handoff_pending_merge_repair(
             "Pending integration retained; configuration error: {}",
             failure_reason,
         )
-        target_record = record.with_transition(
-            BUMP_DIAGNOSTIC_ATTEMPT,
-            repair_last_error=failure_reason,
-        ).model_copy(update={"last_failure_cause": ResolutionFailureCause.CONFIG_FAILURE})
+        target_record = _config_failure_record(record, failure_reason)
         write_record(root, target_record, backend=backend)
         return False
     choice = choose_resolver(controller, agents)

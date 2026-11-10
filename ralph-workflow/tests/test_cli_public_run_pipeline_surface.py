@@ -2,9 +2,9 @@
 
 ``ralph.cli.main.run_pipeline`` is the PUBLIC run entry point of the CLI.
 Other layers reach the pipeline through it, and the CLI's own dispatch
-(``ralph.cli.main._run_pipeline``, exposed publicly as ``invoke_pipeline``)
-must go through that very module attribute -- so a caller who replaces the
-attribute replaces the call the CLI makes.
+(``ralph.cli.main.invoke_pipeline``, the public name the CLI entry point
+calls) must go through that very module attribute -- so a caller who
+replaces the attribute replaces the call the CLI makes.
 
 This file pins that contract and nothing else. The pipeline's own behaviour
 is covered by the CLI suites; what is pinned here is the SHAPE of the public
@@ -95,45 +95,17 @@ def test_cli_dispatch_calls_the_module_level_run_pipeline(
     Replacing the module attribute has to intercept the call the dispatch
     makes; otherwise the replacement only affects direct callers of the
     attribute and the CLI silently keeps running its own path.
+
+    The dispatch is reached through its PUBLIC name (``invoke_pipeline``),
+    the name the CLI entry point itself calls, so an operator's replacement
+    of the public attribute is the path that has to be intercepted.
     """
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
-    monkeypatch.setattr(ralph_cli_run, "run_pipeline", _bypassed_run_pipeline, raising=False)
-
-    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
-
-    def _replacement(*args: object, **kwargs: object) -> int:
-        calls.append((args, kwargs))
-        return _REPLACEMENT_EXIT_CODE
-
-    monkeypatch.setattr(ralph_cli_main, "run_pipeline", _replacement)
-
-    exit_code = ralph_cli_main._run_pipeline(
-        config=None,
-        opts=_dry_run_opts(),
-        display_context=_display_context(),
-    )
-
-    assert calls, (
-        "ralph.cli.main._run_pipeline must dispatch through the module-level "
-        f"run_pipeline attribute; the replacement was never invoked "
-        f"(exit code was {exit_code})"
-    )
-    assert exit_code == _REPLACEMENT_EXIT_CODE, (
-        "the CLI dispatch must return the exit code of the callable it invoked; "
-        f"expected {_REPLACEMENT_EXIT_CODE}, got {exit_code}"
-    )
-
-
-def test_public_dispatch_alias_calls_the_module_level_run_pipeline(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """The PUBLIC dispatch alias MUST also go through the module attribute.
-
-    ``invoke_pipeline`` is the name the CLI entry point calls, so it is the
-    path an operator's replacement of the public attribute has to intercept.
-    """
+    # RALPH-TEST-REASON: the dispatch was reached through the private
+    # ``_run_pipeline`` name; the public alias ``invoke_pipeline`` is the
+    # same dispatch, so the two dispatch tests were duplicates of each
+    # other. They are merged into ONE test that keeps BOTH observable
+    # assertions: the replacement was invoked, and the dispatch returned the
+    # replacement's exit code.
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("RALPH_DISABLE_TELEMETRY", "1")
     monkeypatch.setattr(ralph_cli_run, "run_pipeline", _bypassed_run_pipeline, raising=False)

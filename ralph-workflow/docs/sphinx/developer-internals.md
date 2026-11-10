@@ -401,12 +401,12 @@ Configuration defects are environment and setup errors, not failed LLM resolutio
 
 When a rebase pauses on a configuration failure, Ralph Workflow enters a waiting loop to give the operator an opportunity to repair the defective file without aborting the workflow run. To prevent busy-spinning against unchanged defective files:
 
-1. **Content fingerprinting**: `ralph.pipeline._config_failure_fingerprint` computes immutable `ConfigFileFingerprint(path, content_hash)` tuples using SHA-256 digests via `compute_config_file_fingerprint(path)`:
+1. **Content fingerprinting**: `ralph.pipeline.config_file_fingerprint` computes immutable `ConfigFileFingerprint(path, content_hash)` tuples using SHA-256 digests via `compute_config_file_fingerprint(path)`:
    - Valid, readable files produce a 64-character hexadecimal SHA-256 digest.
    - Missing paths, directories, or `None` paths yield `None`.
    - Files unreadable due to filesystem permissions or OS errors return distinct descriptors (`unreadable:<ErrorClass>`), allowing permission fixes to register as valid state transitions.
    - `extract_config_path_from_reason(reason)` parses the target file path directly from the structured error reason string.
-2. **Distinct-fingerprint retry gating**: `ConfigFileFingerprintWatcher` (and the pure helper `should_retry_config_failure(path, last_fingerprint)`) tracks attempted fingerprints:
+2. **Distinct-fingerprint retry gating**: `ralph.pipeline.config_file_fingerprint_watcher.ConfigFileFingerprintWatcher` (and the pure helper `should_retry_config_failure(path, last_fingerprint)`) tracks attempted fingerprints:
    - The initial failure establishes a baseline fingerprint for the defective path.
    - While the file remains unchanged on disk (`current_hash == last_hash`), `should_retry()` returns `False`. The run loop sleeps and preserves the `WAITING` state, generating zero CPU churn or repeated resolver invocations.
    - When the operator edits and repairs the file, the file's content hash changes. `should_retry()` detects the distinct fingerprint, marks it as attempted, and allows exactly one paused rebase continuation attempt.

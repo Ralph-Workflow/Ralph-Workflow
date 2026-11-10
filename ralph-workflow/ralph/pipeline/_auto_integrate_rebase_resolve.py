@@ -1,6 +1,6 @@
 """In-place rebase-stop resolution companions for the rebase/merge engine.
 
-:func:`_resolve_conflicted_rebase` / :func:`_resolve_rebase_with_config`
+:func:`resolve_conflicted_rebase` / :func:`resolve_rebase_with_config`
 resolve a paused rebase commit-by-commit before the endpoint-merge
 fallback is considered, :func:`verify_terminal_state` runs the shared
 terminal-state probe for the merge / fallback exits, and
@@ -10,6 +10,12 @@ companion module so :mod:`ralph.pipeline.auto_integrate_rebase_merge`
 stays under the repo-structure file-size cap; the engine driver keeps
 the skip-reason registry, the range routing, and the fallback branch
 table, and re-exports every name defined here unchanged.
+
+The outcome of one resolution attempt is
+:class:`ralph.pipeline.rebase_resolution_result.RebaseResolutionResult`:
+``(succeeded, reason, failure_cause)``. The typed cause travels with the
+outcome because the reason text alone cannot tell a broken configuration
+(``CONFIG_FAILURE``) apart from an unresolved conflict.
 
 Names that tests monkeypatch on the
 ``ralph.pipeline.auto_integrate_rebase_merge`` module
@@ -40,6 +46,7 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
 from ralph.pipeline.conflict_resolution.status import conflict_status_bar_session
+from ralph.pipeline.rebase_resolution_result import RebaseResolutionResult
 from ralph.pipeline.rebase_state import (
     StartupRetentionReason,
 )
@@ -58,9 +65,13 @@ if TYPE_CHECKING:
 __all__ = [
     "RebaseResolutionResult",
     "RebaseRunResult",
+    # Compatibility seams re-exported by
+    # ``ralph.pipeline.auto_integrate_rebase_merge``.
     "_clear_record_if_no_inflight_op",
     "_resolve_conflicted_rebase",
     "_resolve_rebase_with_config",
+    "resolve_conflicted_rebase",
+    "resolve_rebase_with_config",
     "verify_terminal_state",
 ]
 
@@ -115,8 +126,15 @@ def verify_terminal_state(
         )
 
 
-class RebaseResolutionResult(tuple[bool, str | None]):
-    """Result of rebase resolution supporting 2-tuple unpacking and failure_cause attribute."""
+class _RebaseResolutionOutcome(tuple[bool, str | None]):
+    """The two-value compatibility outcome of a rebase-resolution attempt.
+
+    The engine driver re-exports the two-value resolver seam and its
+    callers unpack exactly two values, so that shape stays available
+    here. The typed cause rides along as an attribute so a caller that
+    needs it does not lose it; the canonical three-value transport is
+    :class:`ralph.pipeline.rebase_resolution_result.RebaseResolutionResult`.
+    """
 
     failure_cause: ResolutionFailureCause
 
@@ -125,7 +143,7 @@ class RebaseResolutionResult(tuple[bool, str | None]):
         succeeded: bool,
         reason: str | None,
         failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE,
-    ) -> RebaseResolutionResult:
+    ) -> _RebaseResolutionOutcome:
         obj = super().__new__(cls, (succeeded, reason))
         obj.failure_cause = failure_cause
         return obj
@@ -140,7 +158,7 @@ class RebaseResolutionResult(tuple[bool, str | None]):
         return str(val) if isinstance(val, str) else None
 
 
-def _resolve_conflicted_rebase(
+def resolve_conflicted_rebase(
     root: Path,
     target: str,
     rebase_stop_resolver: RebaseStopResolver,
@@ -168,7 +186,7 @@ def _resolve_conflicted_rebase(
         )
         return None
     with conflict_status_bar_session(display, root):
-        res = _resolve_rebase_with_config(
+        res = resolve_rebase_with_config(
             root,
             target,
             rebase_stop_resolver,
@@ -222,14 +240,23 @@ def _resolve_conflicted_rebase(
     )
 
 
-def _resolve_rebase_with_config(
+#: The engine driver imports this name; it stays the same callable.
+_resolve_conflicted_rebase = resolve_conflicted_rebase
+
+
+def resolve_rebase_with_config(
     root: Path,
     target: str,
     resolver: RebaseStopResolver,
     config: ConflictResolutionConfig | None,
     agent_runner: AgentRunner | None = None,
 ) -> RebaseResolutionResult:
-    """Return rebase completion and terminal resolver-chain evidence."""
+    """Return rebase completion and terminal resolver-chain evidence.
+
+    The outcome carries the typed root cause beside the reason text, so
+    the run loop can name a broken configuration instead of re-deriving
+    it from the prose.
+    """
     from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
     session = (
@@ -299,6 +326,25 @@ def _resolve_rebase_with_config(
         if carried_cause != ResolutionFailureCause.NONE
         else ResolutionFailureCause.UNRESOLVED_CONFLICT,
     )
+
+
+def _resolve_rebase_with_config(
+    root: Path,
+    target: str,
+    resolver: RebaseStopResolver,
+    config: ConflictResolutionConfig | None,
+    agent_runner: AgentRunner | None = None,
+) -> _RebaseResolutionOutcome:
+    """The two-value compatibility seam over :func:`resolve_rebase_with_config`.
+
+    ``ralph.pipeline.auto_integrate_rebase_merge`` re-exports this name
+    and its callers unpack exactly two values, so the legacy shape stays
+    available here. The typed cause stays reachable on the outcome's
+    ``failure_cause`` attribute; the canonical three-value transport is
+    :func:`resolve_rebase_with_config`.
+    """
+    result = resolve_rebase_with_config(root, target, resolver, config, agent_runner)
+    return _RebaseResolutionOutcome(result.succeeded, result.reason, result.failure_cause)
 
 
 def _clear_record_if_no_inflight_op(root: Path) -> None:

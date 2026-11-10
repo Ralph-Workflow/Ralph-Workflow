@@ -62,16 +62,19 @@ def continue_retained_resolution(
                 if matches
                 else "active rebase identity differs from retained ownership; operator work preserved"
             )
-        from ralph.pipeline.auto_integrate_rebase_merge import _resolve_rebase_with_config
+        from ralph.pipeline._auto_integrate_rebase_resolve import resolve_rebase_with_config
 
-        resolved, reason = _resolve_rebase_with_config(
+        resolved, reason, failure_cause = resolve_rebase_with_config(
             root,
             target,
             rebase_stop_resolver,
             config.conflict_resolution if config is not None else None,
         )
         if not resolved:
-            return reason or "rebase resolution remains pending after continuation"
+            return reason or (
+                "rebase resolution remains pending after continuation "
+                f"(cause: {failure_cause.value})"
+            )
     return _promote_completed_resolution(root, record)
 
 

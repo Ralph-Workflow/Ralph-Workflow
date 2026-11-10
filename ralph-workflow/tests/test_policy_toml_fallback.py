@@ -18,16 +18,16 @@ from typing import TYPE_CHECKING
 import pytest
 from loguru import logger
 
-from ralph.config._toml_fallback import reset_fallback_warning_registry
+from ralph.config import reset_fallback_warning_registry
 from ralph.policy.loader import (
     PolicyValidationError,
-    _cached_default_agents_policy,
-    _load_toml,
-    _validate_artifacts,
-    _validate_pipeline,
+    cached_default_agents_policy,
     default_dir,
     load_agents_policy,
     load_policy,
+    load_toml,
+    validate_artifacts,
+    validate_pipeline,
 )
 from ralph.project_policy.portfolio import (
     PortfolioError,
@@ -93,8 +93,8 @@ def test_pipeline_toml_syntax_error_fallback(tmp_path: Path) -> None:
     with _capture_warnings() as warnings:
         bundle = load_policy(tmp_path)
 
-    default_pipeline = _validate_pipeline(
-        _load_toml(default_dir() / "pipeline.toml", kind="pipeline", strict=True),
+    default_pipeline = validate_pipeline(
+        load_toml(default_dir() / "pipeline.toml", kind="pipeline", strict=True),
         timeboxes_explicit=False,
     )
     assert bundle.pipeline.entry_block == default_pipeline.entry_block
@@ -128,8 +128,8 @@ def test_pipeline_toml_schema_invalid_fallback(tmp_path: Path) -> None:
     with _capture_warnings() as warnings:
         bundle = load_policy(tmp_path)
 
-    default_pipeline = _validate_pipeline(
-        _load_toml(default_dir() / "pipeline.toml", kind="pipeline", strict=True),
+    default_pipeline = validate_pipeline(
+        load_toml(default_dir() / "pipeline.toml", kind="pipeline", strict=True),
         timeboxes_explicit=False,
     )
     assert bundle.pipeline.entry_block == default_pipeline.entry_block
@@ -161,7 +161,7 @@ def test_agents_toml_syntax_error_fallback(tmp_path: Path) -> None:
     with _capture_warnings() as warnings:
         bundle = load_policy(tmp_path)
 
-    default_agents = _cached_default_agents_policy()
+    default_agents = cached_default_agents_policy()
     assert bundle.agents.agent_chains.keys() == default_agents.agent_chains.keys()
     assert bundle.agents.agent_drains.keys() == default_agents.agent_drains.keys()
     assert agents_file.read_bytes() == bad_content
@@ -179,7 +179,7 @@ def test_agents_toml_schema_invalid_fallback(tmp_path: Path) -> None:
     with _capture_warnings() as warnings:
         policy = load_agents_policy(tmp_path)
 
-    default_agents = _cached_default_agents_policy()
+    default_agents = cached_default_agents_policy()
     assert policy.agent_chains.keys() == default_agents.agent_chains.keys()
     assert agents_file.read_bytes() == before_bytes
     assert len(warnings) == 1
@@ -209,8 +209,8 @@ def test_artifacts_toml_syntax_error_fallback(tmp_path: Path) -> None:
     with _capture_warnings() as warnings:
         bundle = load_policy(tmp_path)
 
-    default_artifacts = _validate_artifacts(
-        _load_toml(default_dir() / "artifacts.toml", kind="artifacts", strict=True)
+    default_artifacts = validate_artifacts(
+        load_toml(default_dir() / "artifacts.toml", kind="artifacts", strict=True)
     )
     assert bundle.artifacts.artifacts.keys() == default_artifacts.artifacts.keys()
     assert artifacts_file.read_bytes() == bad_content
@@ -234,8 +234,8 @@ def test_artifacts_toml_schema_invalid_fallback(tmp_path: Path) -> None:
     with _capture_warnings() as warnings:
         bundle = load_policy(tmp_path)
 
-    default_artifacts = _validate_artifacts(
-        _load_toml(default_dir() / "artifacts.toml", kind="artifacts", strict=True)
+    default_artifacts = validate_artifacts(
+        load_toml(default_dir() / "artifacts.toml", kind="artifacts", strict=True)
     )
     assert bundle.artifacts.artifacts.keys() == default_artifacts.artifacts.keys()
     assert artifacts_file.read_bytes() == before_bytes
@@ -264,7 +264,7 @@ def test_other_user_policy_toml_fallback(tmp_path: Path) -> None:
     custom_policy_file.write_bytes(bad_content)
 
     with _capture_warnings() as warnings:
-        data = _load_toml(custom_policy_file, kind="policy", strict=False)
+        data = load_toml(custom_policy_file, kind="policy", strict=False)
 
     assert data == {}
     assert custom_policy_file.read_bytes() == bad_content
@@ -281,7 +281,7 @@ def test_other_user_policy_toml_permission_error_fallback(tmp_path: Path) -> Non
 
     try:
         with _capture_warnings() as warnings:
-            data = _load_toml(policy_file, kind="policy", strict=False)
+            data = load_toml(policy_file, kind="policy", strict=False)
         assert data == {}
         assert len(warnings) == 1
         _assert_fallback_warning(warnings[0], policy_file, expected_kind="policy")
@@ -297,7 +297,7 @@ def test_other_user_policy_toml_bad_encoding_fallback(tmp_path: Path) -> None:
     bad_encoding_file.write_bytes(bad_bytes)
 
     with _capture_warnings() as warnings:
-        data = _load_toml(bad_encoding_file, kind="policy", strict=False)
+        data = load_toml(bad_encoding_file, kind="policy", strict=False)
 
     assert data == {}
     assert bad_encoding_file.read_bytes() == bad_bytes

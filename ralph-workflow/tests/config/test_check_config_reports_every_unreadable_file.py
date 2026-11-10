@@ -13,13 +13,12 @@ from collections.abc import Generator
 from pathlib import Path
 
 import pytest
-from git import Repo
 from loguru import logger
 from rich.console import Console
 
 from ralph.cli.commands.diagnose import diagnose_command
 from ralph.cli.main import handle_check_config
-from ralph.config._toml_fallback import reset_fallback_warning_registry
+from ralph.config import reset_fallback_warning_registry
 from ralph.display.context import make_display_context
 
 pytestmark = pytest.mark.timeout_seconds(5.0)
@@ -50,16 +49,17 @@ def _capture_loguru_warnings() -> tuple[list[str], int]:
 
 
 def _setup_test_environment(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[Path, Path, Path, Path, Path, Path]:
     """Set up an isolated workspace repo and global config directory.
+
+    The workspace root is a real Git repository supplied by the shared
+    ``tmp_git_repo`` fixture, so no test in this file creates a repository
+    of its own.
 
     Returns:
         (repo_root, global_dir, agents_file, policy_file, global_mcp_file, local_mcp_file)
     """
-    repo_root = tmp_path / "workspace"
-    repo_root.mkdir()
-    Repo.init(repo_root)
     monkeypatch.chdir(repo_root)
 
     global_dir = tmp_path / "global_config"
@@ -95,7 +95,7 @@ def _setup_test_environment(
 
 
 def test_check_config_reports_every_unreadable_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """handle_check_config names every unreadable file in one run, exits 1, and emits WARN records."""
     (
@@ -105,7 +105,7 @@ def test_check_config_reports_every_unreadable_file(
         policy_file,
         global_mcp_file,
         local_mcp_file,
-    ) = _setup_test_environment(tmp_path, monkeypatch)
+    ) = _setup_test_environment(tmp_git_repo, tmp_path, monkeypatch)
 
     console_buf = io.StringIO()
     console = Console(file=console_buf, force_terminal=False)
@@ -146,7 +146,7 @@ def test_check_config_reports_every_unreadable_file(
 
 
 def test_diagnose_reports_every_unreadable_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """diagnose_command names every unreadable file in one run, exits non-zero, and emits WARN records."""
     (
@@ -156,7 +156,7 @@ def test_diagnose_reports_every_unreadable_file(
         policy_file,
         global_mcp_file,
         local_mcp_file,
-    ) = _setup_test_environment(tmp_path, monkeypatch)
+    ) = _setup_test_environment(tmp_git_repo, tmp_path, monkeypatch)
 
     console_buf = io.StringIO()
     console = Console(file=console_buf, force_terminal=False)
@@ -195,12 +195,10 @@ def test_diagnose_reports_every_unreadable_file(
 
 
 def test_check_config_and_diagnose_all_valid_files(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """When all files are valid, check-config and diagnose exit 0 with no fallback warnings."""
-    repo_root = tmp_path / "valid_workspace"
-    repo_root.mkdir()
-    Repo.init(repo_root)
+    repo_root = tmp_git_repo
     monkeypatch.chdir(repo_root)
 
     global_dir = tmp_path / "valid_global"
@@ -237,12 +235,10 @@ def test_check_config_and_diagnose_all_valid_files(
 
 
 def test_check_config_and_diagnose_global_layers_corrupt(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Check-config and diagnose aggregate unreadable global agents, global policy, and MCP files."""
-    repo_root = tmp_path / "global_corrupt_workspace"
-    repo_root.mkdir()
-    Repo.init(repo_root)
+    repo_root = tmp_git_repo
     monkeypatch.chdir(repo_root)
 
     global_dir = tmp_path / "global_corrupt_dir"
@@ -310,12 +306,10 @@ def test_check_config_and_diagnose_global_layers_corrupt(
 
 
 def test_check_config_reports_permission_denied_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, tmp_git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Check-config and diagnose report permission-denied (chmod 000) files as unreadable."""
-    repo_root = tmp_path / "perm_workspace"
-    repo_root.mkdir()
-    Repo.init(repo_root)
+    repo_root = tmp_git_repo
     monkeypatch.chdir(repo_root)
 
     global_dir = tmp_path / "perm_global"

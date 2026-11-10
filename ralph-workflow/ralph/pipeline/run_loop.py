@@ -610,13 +610,14 @@ def _target_worktree_path(ctx: LoopContext) -> str | None:
     return str(owner) if owner is not None else None
 
 
-def _log_waiting_state(
+def log_waiting_state(
     state: PipelineState,
     ctx: LoopContext,
     phase_str: str,
     unavail_reason: str,
     delay_ms: int,
 ) -> None:
+    """Log the one-shot WAITING entry for an all-agents-unavailable phase."""
     sig = (phase_str, unavail_reason)
     if ctx.last_waiting_state_sig == sig:
         return
@@ -641,6 +642,22 @@ def _log_waiting_state(
         cooldowns=agent_cooldowns,
         wait_ms=delay_ms,
     )
+
+
+def _log_waiting_state(
+    state: PipelineState,
+    ctx: LoopContext,
+    phase_str: str,
+    unavail_reason: str,
+    delay_ms: int,
+) -> None:
+    """Compatibility seam over :func:`log_waiting_state`.
+
+    The private name is the established call surface of the run loop
+    (and of the suites that replace it), so it stays and delegates to
+    the public seam; either name can therefore be replaced by a caller.
+    """
+    log_waiting_state(state, ctx, phase_str, unavail_reason, delay_ms)
 
 
 def _log_resumed_state(
@@ -726,7 +743,7 @@ def _build_status_bar_model(
     )
 
 
-def _integration_alert_for_state(state: PipelineState) -> str | None:
+def integration_alert_for_state(state: PipelineState) -> str | None:
     """Alert text while the last auto-integrate outcome blocks integration.
 
     A typed ladder escalation (a spent conflict cap or an exhausted
@@ -759,6 +776,16 @@ def _integration_alert_for_state(state: PipelineState) -> str | None:
     if rebase.last_failure_cause != ResolutionFailureCause.NONE:
         return f"integration conflict ({rebase.last_failure_cause}: {reason}) — resolution required"
     return f"integration conflict ({reason}) — resolution required"
+
+
+def _integration_alert_for_state(state: PipelineState) -> str | None:
+    """Compatibility seam over :func:`integration_alert_for_state`.
+
+    The private name is the established call surface of the run loop
+    (and of the suites that replace it), so it stays and delegates to
+    the public seam; either name can therefore be replaced by a caller.
+    """
+    return integration_alert_for_state(state)
 
 
 def _attention_state_for_state(state: PipelineState) -> str | None:
@@ -2184,7 +2211,7 @@ def _resolve_paused_rebase_with_history(
     return _resolve_paused_rebase(ctx, target, rebase, executor=executor)
 
 
-def _resolve_paused_rebase(
+def resolve_paused_rebase(
     ctx: LoopContext,
     target: str,
     rebase: RebaseState | None = None,
@@ -2230,17 +2257,35 @@ def _resolve_paused_rebase(
             stop_resolver,
             ctx.config.conflict_resolution,
         )
-        resolved, reason = res[0], res[1]
+        resolved, reason, failure_cause = res
     except Exception as resolve_exc:  # pragma: no cover -- defensive
         logger.warning("integration resolution: paused rebase resolution failed: {}", resolve_exc)
         return False
     if not resolved:
         logger.warning(
-            "integration resolution: the paused rebase for '{}' was not resolved: {}",
+            "integration resolution: the paused rebase for '{}' was not resolved: {} "
+            "(cause: {})",
             target,
             reason or "no terminal evidence",
+            failure_cause.value,
         )
     return bool(resolved)
+
+
+def _resolve_paused_rebase(
+    ctx: LoopContext,
+    target: str,
+    rebase: RebaseState | None = None,
+    *,
+    executor: RebaseContinuationExecutor | None = None,
+) -> bool:
+    """Compatibility seam over :func:`resolve_paused_rebase`.
+
+    The private name is the established call surface of the run loop
+    (and of the suites that replace it), so it stays and delegates to
+    the public seam; either name can therefore be replaced by a caller.
+    """
+    return resolve_paused_rebase(ctx, target, rebase, executor=executor)
 
 
 def _complete_in_progress_merge(root: Path, target: str, resolver: ConflictResolver) -> bool:
@@ -3818,7 +3863,7 @@ def _resolver_cooldown_wait_ms(ctx: LoopContext) -> int:
     return choice.wait_ms if choice.agent is None else 0
 
 
-def _handle_pending_retry(
+def handle_pending_retry(
     state: PipelineState,
     ctx: LoopContext,
     rebase: RebaseState,
@@ -3926,6 +3971,22 @@ def _handle_pending_retry(
     ctx.latest_state[:] = [state]
     ctx.sleep(5.0)
     return state.clear_waiting()
+
+
+def _handle_pending_retry(
+    state: PipelineState,
+    ctx: LoopContext,
+    rebase: RebaseState,
+    detail: str,
+    backend: FileBackend,
+) -> PipelineState:
+    """Compatibility seam over :func:`handle_pending_retry`.
+
+    The private name is the established call surface of the run loop
+    (and of the suites that replace it), so it stays and delegates to
+    the public seam; either name can therefore be replaced by a caller.
+    """
+    return handle_pending_retry(state, ctx, rebase, detail, backend)
 
 
 def _handle_cooldown_delay(state: PipelineState, ctx: LoopContext) -> PipelineState:

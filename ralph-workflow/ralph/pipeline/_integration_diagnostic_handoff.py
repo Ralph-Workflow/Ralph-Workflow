@@ -111,6 +111,7 @@ __all__ = [
     "check_target_worktree_context",
     "escalate_diagnostic_budget_to_ladder",
     "escalate_record_fact_outcome",
+    "next_resolver",
     "observe_workspace_change",
 ]
 
@@ -178,7 +179,7 @@ def check_target_worktree_context(target_root: Path) -> str | None:
     return None
 
 
-def _next_resolver(
+def next_resolver(
     controller: RecoveryController,
     agents: Sequence[str],
     target_root: Path | None = None,
