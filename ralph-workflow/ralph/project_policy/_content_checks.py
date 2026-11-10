@@ -106,6 +106,7 @@ def _check_citation_freshness(
                     f"review and re-verify citation {index} and update its `review date` to within "
                     f"{markers.RESEARCH_FRESHNESS_MAX_DAYS} days"
                 ),
+                blocking=False,
             )
         ]
     return []

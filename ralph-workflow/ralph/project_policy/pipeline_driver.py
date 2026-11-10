@@ -81,7 +81,7 @@ def _not_ready(
         status=ReadinessStatus.BLOCKED,
         findings=findings,
         command_outcomes=command_outcomes,
-        assessment=ReadinessAssessment(structure_complete=not bool(findings)),
+        assessment=ReadinessAssessment(structure_complete=not any(f.blocking for f in findings)),
         report_lines=[reason, *remediation.render_blocked_report(findings)],
     )
 
@@ -172,7 +172,7 @@ def run_policy_pipeline(
                 phase = TERMINAL_DONE
                 continue
 
-            if current:
+            if any(f.blocking for f in current):
                 # HARD GATE. The deterministic validator is still failing, so the
                 # analysis agent is never consulted: reviewing the QUALITY of a
                 # structurally invalid policy is wasted work, and an analysis
@@ -260,7 +260,7 @@ def _assess(
     policy tree that has since changed cannot certify the present
     policy, so the dimension fails closed.
     """
-    structure_complete = not bool(findings)
+    structure_complete = not any(f.blocking for f in findings)
     implementation_verified = False
     if outcomes:
         expected_hash = _combined_policy_content_hash(workspace, stack)
@@ -323,7 +323,7 @@ def _route_after_remediation(
             f"({analysis_cap}), skipping further review"
         )
         return TERMINAL_DONE
-    if current:
+    if any(f.blocking for f in current):
         return PHASE_REMEDIATION
     on_success = phase_definition(PHASE_REMEDIATION).on_success
     if on_success is None:  # pragma: no cover - the graph always defines it
@@ -361,7 +361,8 @@ def _finish(
         )
 
     remaining = validators.validate_readiness(workspace, stack)
-    if remaining:
+    blocking_remaining = [f for f in remaining if f.blocking]
+    if blocking_remaining:
         return ReadinessResult(
             status=ReadinessStatus.BLOCKED,
             findings=remaining,
@@ -387,6 +388,7 @@ def _finish(
     emit("project-policy-readiness: ready (validator clean, analysis approved)")
     return ReadinessResult(
         status=ReadinessStatus.READY,
+        findings=remaining,
         command_outcomes=command_outcomes,
         assessment=_assess(workspace, stack, [], command_outcomes),
         report_lines=["project-policy-readiness: ready"],

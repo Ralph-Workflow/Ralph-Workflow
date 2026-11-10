@@ -75,15 +75,17 @@ def _noop_emit(message: str) -> None:
 
 def _serialize_findings(findings: list[PolicyFinding]) -> str:
     """Render the findings into a stable, machine-readable block."""
-    return "\n".join(
-        (
+    items: list[str] = []
+    for finding in findings:
+        severity_label = "blocking" if finding.blocking else "warning"
+        items.append(
             f"- requirement_id: {finding.requirement_id}\n"
             f"  path: {finding.path}\n"
+            f"  severity: {severity_label}\n"
             f"  missing_evidence: {finding.missing_evidence}\n"
             f"  required_outcome: {finding.required_outcome}"
         )
-        for finding in findings
-    )
+    return "\n".join(items)
 
 
 def _load_prompt_template() -> str:

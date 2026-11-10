@@ -27,26 +27,9 @@ from ralph._build_meta import build_provenance_line, flavored_version
 from ralph.api.opencode import list_providers as fetch_providers
 from ralph.cli._capability_summary import print_capability_summary
 from ralph.cli._cli_override_input import CLIOverrideInput
-from ralph.cli.commands.check_policy import check_policy_command
+from ralph.cli.commands._commit_plumbing_options import CommitPlumbingOptions
 from ralph.cli.commands.cleanup import cleanup
-from ralph.cli.commands.commit import CommitPlumbingOptions, commit_plumbing
 from ralph.cli.commands.contribute import contribute
-from ralph.cli.commands.diagnose import diagnose_command
-from ralph.cli.commands.explain import explain_command
-from ralph.cli.commands.init import init_command
-from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
-from ralph.cli.commands.smoke import (
-    smoke_headless_claude_command,
-    smoke_interactive_agy_command,
-    smoke_interactive_ccs_command,
-    smoke_interactive_claude_command,
-    smoke_interactive_codex_command,
-    smoke_interactive_cursor_command,
-    smoke_interactive_kimi_command,
-    smoke_interactive_nanocoder_command,
-    smoke_interactive_opencode_command,
-    smoke_interactive_pi_command,
-)
 from ralph.cli.commands.star import star
 from ralph.cli.commands.workspace_health import workspace_health
 from ralph.config.bootstrap import (
@@ -356,10 +339,27 @@ def _handle_init(
 ) -> None:
     """Run init and preserve the setup-time TOML error envelope."""
     try:
+        from ralph.cli.commands.init import init_command
+
         init_command(template, _config_path(config), display_context=display_context)
     except ConfigTomlError as exc:
         logger.error(str(exc))
         raise typer.Exit(code=1) from None
+
+
+def _handle_diagnose(
+    *,
+    config: str | None,
+    cli_overrides: dict[str, object],
+    display_context: DisplayContext,
+) -> None:
+    """Run diagnose command and exit with its status code."""
+    from ralph.cli.commands.diagnose import diagnose_command
+
+    exit_code = diagnose_command(
+        _config_path(config), cli_overrides, display_context=display_context
+    )
+    raise typer.Exit(code=exit_code)
 
 
 def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
@@ -473,9 +473,13 @@ def _handle_early_exit_flags(
     if version:
         version_callback(version)
     if explain_policy:
+        from ralph.cli.commands.explain import explain_command
+
         policy_dir = RuntimePath(explain_policy_dir) if explain_policy_dir else None
         raise typer.Exit(code=explain_command(policy_dir))
     if check_policy:
+        from ralph.cli.commands.check_policy import check_policy_command
+
         policy_dir = RuntimePath(explain_policy_dir) if explain_policy_dir else None
         raise typer.Exit(code=check_policy_command(policy_dir, counter_overrides=counter_overrides))
 
@@ -1110,8 +1114,7 @@ def main(
         raise typer.Exit(code=exit_code)
 
     if diagnose:
-        exit_code = diagnose_command(_config_path(config), cli_overrides, display_context=_cli_ctx)
-        raise typer.Exit(code=exit_code)
+        _handle_diagnose(config=config, cli_overrides=cli_overrides, display_context=_cli_ctx)
 
     if init is not None:
         _handle_init(template=init, config=config, display_context=_cli_ctx)
@@ -1246,6 +1249,8 @@ def smoke_interactive_claude(
     ] = None,
 ) -> None:
     """Run the manual PTY/TUI smoke test for interactive Claude using claude/haiku."""
+    from ralph.cli.commands.smoke import smoke_interactive_claude_command
+
     raise typer.Exit(
         code=smoke_interactive_claude_command(
             agent_name=agent,
@@ -1294,6 +1299,8 @@ def smoke_headless_claude(
     ] = None,
 ) -> None:
     """Run the manual NDJSON smoke test for headless Claude using claude-headless/haiku."""
+    from ralph.cli.commands.smoke import smoke_headless_claude_command
+
     raise typer.Exit(
         code=smoke_headless_claude_command(
             agent_name=agent,
@@ -1342,6 +1349,8 @@ def smoke_interactive_agy(
     ] = None,
 ) -> None:
     """Run the manual PTY smoke test for Google Anti Gravity."""
+    from ralph.cli.commands.smoke import smoke_interactive_agy_command
+
     raise typer.Exit(
         code=smoke_interactive_agy_command(
             agent_name=agent,
@@ -1390,6 +1399,8 @@ def smoke_interactive_nanocoder(
     ] = None,
 ) -> None:
     """Run the manual PTY smoke test for Nanocoder interactive mode."""
+    from ralph.cli.commands.smoke import smoke_interactive_nanocoder_command
+
     raise typer.Exit(
         code=smoke_interactive_nanocoder_command(
             agent_name=agent,
@@ -1438,6 +1449,8 @@ def smoke_interactive_cursor(
     ] = None,
 ) -> None:
     """Run the manual end-to-end smoke test for the Cursor Agent CLI."""
+    from ralph.cli.commands.smoke import smoke_interactive_cursor_command
+
     raise typer.Exit(
         code=smoke_interactive_cursor_command(
             agent_name=agent,
@@ -1488,6 +1501,8 @@ def smoke_interactive_kimi(
     ] = None,
 ) -> None:
     """Run the manual end-to-end smoke test for the Kimi Code CLI."""
+    from ralph.cli.commands.smoke import smoke_interactive_kimi_command
+
     raise typer.Exit(
         code=smoke_interactive_kimi_command(
             agent_name=agent,
@@ -1551,6 +1566,8 @@ def smoke_interactive_opencode(
     if (provider is None) != (model is None):
         raise click.UsageError("--provider and --model must be given together")
     agent_name = f"opencode/{provider}/{model}" if provider is not None else agent
+    from ralph.cli.commands.smoke import smoke_interactive_opencode_command
+
     raise typer.Exit(
         code=smoke_interactive_opencode_command(
             agent_name=agent_name,
@@ -1600,6 +1617,8 @@ def smoke_interactive_codex(
     ] = None,
 ) -> None:
     """Run the manual smoke test for Codex CLI."""
+    from ralph.cli.commands.smoke import smoke_interactive_codex_command
+
     raise typer.Exit(
         code=smoke_interactive_codex_command(
             agent_name=agent,
@@ -1648,6 +1667,8 @@ def smoke_interactive_pi(
     ] = None,
 ) -> None:
     """Run the manual smoke test for the Pi coding agent."""
+    from ralph.cli.commands.smoke import smoke_interactive_pi_command
+
     raise typer.Exit(
         code=smoke_interactive_pi_command(
             agent_name=agent,
@@ -1693,6 +1714,8 @@ def smoke_interactive_ccs(
     ] = None,
 ) -> None:
     """Run the manual smoke test for a CCS (Claude Code Switch) alias."""
+    from ralph.cli.commands.smoke import smoke_interactive_ccs_command
+
     raise typer.Exit(
         code=smoke_interactive_ccs_command(
             agent_name=agent,
@@ -1902,6 +1925,8 @@ def _handle_commit_plumbing(
     if not (options.generate_commit_msg or options.generate_commit or options.show_commit_msg):
         return None
 
+    from ralph.cli.commands.commit import commit_plumbing
+
     return commit_plumbing(options=options, display_context=display_context)
 
 
@@ -1945,6 +1970,8 @@ def _run_pipeline(
 
     display = resolve_active_display(None, display_context)
     try:
+        from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
+
         request = RunPipelineRequest(
             config_path=_config_path(config),
             cli_overrides=opts.cli_overrides,

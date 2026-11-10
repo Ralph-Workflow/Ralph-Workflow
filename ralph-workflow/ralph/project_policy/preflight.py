@@ -119,16 +119,16 @@ def run_policy_readiness_preflight(
     findings: list[PolicyFinding] = validators.validate_readiness(workspace, stack)
     migrated_sources = _collect_migrated_sources(workspace, findings)
 
-    if not findings:
+    blocking = [f for f in findings if f.blocking]
+    if not blocking:
         # Cache write is owned by the OUTER boundary in
-        # ``_finalize_ready_state`` (cli_integration.py) so the cached
-        # signature is taken over the tree the run actually leaves
-        # behind -- after ``agents_md.condense_placeholder_block`` and
-        # the auto-commit. Writing here would race those post-READY
-        # mutations and produce a stale cache signature that flunks
+        # ``_finalize_ready_state`` (cli_integration.py) so the cached signature
+        # is taken over the tree the run leaves behind. Writing here would race
+        # post-READY mutations and produce a stale cache signature that flunks
         # the very next preflight into a full re-validation.
         return ReadinessResult(
             status=ReadinessStatus.READY,
+            findings=findings,
             changed_files=changed_files,
             migrated_sources=migrated_sources,
             report_lines=[
@@ -139,7 +139,7 @@ def run_policy_readiness_preflight(
 
     # REMEDIATION_REQUIRED: emit here because remediation follows and the
     # run-loop needs to know the count.
-    emit(f"project-policy-readiness: remediation-required ({len(findings)} findings)")
+    emit(f"project-policy-readiness: remediation-required ({len(blocking)} findings)")
     return ReadinessResult(
         status=ReadinessStatus.REMEDIATION_REQUIRED,
         findings=findings,

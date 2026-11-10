@@ -27,20 +27,25 @@ class PolicyFinding:
             missing or invalid. Surfaced directly in the BLOCKED report and
             the remediation prompt.
         required_outcome: What an agent must do to clear the finding.
+        blocking: Whether this finding prevents policy readiness (default True).
+            Advisory warnings (e.g. line-budget and freshness findings) set
+            this to False so they do not block READY.
     """
 
     requirement_id: str
     path: str
     missing_evidence: str
     required_outcome: str
+    blocking: bool = True
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, str | bool]:
         """Return a JSON-serializable dict representation."""
         return {
             "requirement_id": self.requirement_id,
             "path": self.path,
             "missing_evidence": self.missing_evidence,
             "required_outcome": self.required_outcome,
+            "blocking": self.blocking,
         }
 
 

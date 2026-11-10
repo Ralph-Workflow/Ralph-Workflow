@@ -42,7 +42,7 @@ def collect_violations(repo_root: Path | None = None) -> list[str]:
     ws = FsWorkspace(root)
     stack = ProjectStack(primary_language="Python")
     findings = validators.validate_readiness(ws, stack)
-    return [f"{f.requirement_id}: {f.path}: {f.missing_evidence}" for f in findings]
+    return [f"{f.requirement_id}: {f.path}: {f.missing_evidence}" for f in findings if f.blocking]
 
 
 def main(argv: list[str] | None = None) -> int:

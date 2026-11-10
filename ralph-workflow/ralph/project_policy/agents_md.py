@@ -399,6 +399,7 @@ def check_agents_md_line_budgets(content: str) -> list[PolicyFinding]:
                     f"trim project AGENTS.md to <= {PROJECT_AGENTS_MD_LINE_BUDGET} lines "
                     "by moving detail to dedicated policy files"
                 ),
+                blocking=False,
             )
         )
     if markers.AGENTS_BLOCK_BEGIN in content and markers.AGENTS_BLOCK_END in content:
@@ -419,6 +420,7 @@ def check_agents_md_line_budgets(content: str) -> list[PolicyFinding]:
                         required_outcome=(
                             f"condense the managed AGENTS.md block to <= {MANAGED_BLOCK_LINE_BUDGET} lines"
                         ),
+                        blocking=False,
                     )
                 )
     return findings
