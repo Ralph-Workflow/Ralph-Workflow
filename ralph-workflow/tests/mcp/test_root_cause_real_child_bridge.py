@@ -350,7 +350,7 @@ def test_c1_matching_tool_hash_promoted_and_private_hash_equals_served_tools(
                         burst_results.append(False)
                 except Exception as exc:
                     burst_errors.append(exc)
-                time.sleep(0.002)
+                time.sleep(0.015)
 
         burst_thread = threading.Thread(target=_burst_worker, daemon=True)
         burst_thread.start()

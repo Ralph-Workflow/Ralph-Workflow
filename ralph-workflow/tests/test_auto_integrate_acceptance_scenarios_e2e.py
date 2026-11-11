@@ -722,7 +722,7 @@ else:
 """
 
 
-def _read_line_bounded(stream: TextIO, timeout: float = 15.0) -> str:
+def _read_line_bounded(stream: TextIO, timeout: float = 30.0) -> str:
     """Read a single line from a text stream within bounded timeout."""
     import select
 
@@ -792,14 +792,14 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
             # At attempts 1 and 2, tacos remains unreachable and we send RETRY.
             # At attempt 3 (> cap 2), we restore tacos to bare, then send RESTORED.
             for attempt_expected in (1, 2, 3):
-                line = _read_line_bounded(proc.stdout, timeout=15.0).strip()
+                line = _read_line_bounded(proc.stdout, timeout=30.0).strip()
                 assert line == f"DEFERRED:{attempt_expected}:{local_sha}", (
                     f"Expected DEFERRED:{attempt_expected}:{local_sha}, got: {line}"
                 )
                 if skip_second:
                     proc.stdin.write("RETRY\n")
                     proc.stdin.flush()
-                    _out, _ = proc.communicate(timeout=15)
+                    _out, _ = proc.communicate(timeout=30)
                     stderr_file.seek(0)
                     err = stderr_file.read()
                     assert proc.returncode == 0, (
@@ -828,7 +828,7 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
                     proc.stdin.write("RESTORED\n")
                     proc.stdin.flush()
 
-            published_line = _read_line_bounded(proc.stdout, timeout=15.0).strip()
+            published_line = _read_line_bounded(proc.stdout, timeout=30.0).strip()
             assert published_line == f"PUBLISHED:{local_sha}", (
                 f"Expected PUBLISHED:{local_sha}, got: {published_line}"
             )

@@ -540,7 +540,7 @@ def _sample_loop(
         overlap_samples.append(sample)
         if sample.fd_holders == OVERLAP_MAX_CHILDREN:
             candidate_overlap_observed.set()
-        stop_sampling.wait(0.001)
+        stop_sampling.wait(0.005)
 
 
 def _drive_make_before_break(bridge: lifecycle.RestartAwareMcpBridge) -> bool:

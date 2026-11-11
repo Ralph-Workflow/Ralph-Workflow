@@ -331,16 +331,16 @@ def test_failed_writer_interleaved_at_backup_publication_preserves_concurrent_ba
     )
 
 
-def test_deterministic_post_identity_check_interleave_preserves_concurrent_backup(
+def test_replacement_failure_interleave_preserves_concurrent_backup(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When Writer A fails post backup publication, Writer B's backup is preserved.
+    """When Writer A fails during target replacement, Writer B's backup is preserved.
 
-    Deterministic post-identity-check interleave: Writer A publishes its backup
-    and encounters a failure on target replacement. Concurrently, Writer B publishes
-    a new backup to ``bak_path`` with distinct content and identity. Writer A's
-    failure handling must not delete or overwrite Writer B's backup, leaving
+    Target replacement failure interleave: Writer A publishes its backup and fails
+    during target replacement. Concurrently, Writer B publishes a new backup to
+    ``bak_path``. Writer A's failure cleanup removes only its writer-specific
+    temporary file and never deletes or overwrites Writer B's backup, leaving
     Writer B's backup as valid TOML with bytes and identity intact.
     """
     target = tmp_path / _AGENTS_FILENAME
@@ -396,8 +396,8 @@ def test_deterministic_post_identity_check_interleave_preserves_concurrent_backu
     assert not thread_a.is_alive()
     assert isinstance(outcome.get("error"), OSError)
 
-    # RALPH-TEST-REASON: Writer A's failure handling cleans its temp file without
-    # deleting or overwriting the concurrent writer's backup.
+    # RALPH-TEST-REASON: Writer A's failure cleanup removes only its writer-specific
+    # temporary file and never deletes or overwrites Writer B's backup.
     assert bak_path.is_file()
     assert writer_b_backup_bytes is not None
     assert bak_path.read_bytes() == writer_b_backup_bytes
