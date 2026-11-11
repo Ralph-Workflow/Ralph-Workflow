@@ -1,11 +1,19 @@
-"""Unit tests for deterministic Stage 1 commit review tripwires."""
+"""Unit tests for deterministic Stage 1 commit review tripwires.
+
+The unit cases drive the tripwire evaluator with synthetic diff entries. The
+black-box proofs at the end of this module drive the REAL commit-review phase
+against a REAL temporary git repository, so the post-edit re-check is proven
+against the sealed proposal tree instead of a synthetic diff.
+"""
 
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+from pathlib import Path
 
 import pytest
 
+from ralph.phases import PhaseContext
 from ralph.phases._commit_review_tripwires import (
     DEFAULT_BINARY_SIZE_LIMIT,
     DEFAULT_MAX_DELETED_FILES,
@@ -18,6 +26,13 @@ from ralph.phases._commit_review_tripwires import (
     is_recognized_secret_path,
     resolve_immutable_tracked_count,
 )
+from ralph.phases.commit_review import (
+    CommitReviewApproved,
+    CommitReviewRejected,
+    handle_commit_review_phase,
+)
+from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.workspace.fs import FsWorkspace
 
 
 def test_thresholds_defaults() -> None:
@@ -547,3 +562,175 @@ def test_the_immutable_tracked_count_is_unavailable_without_the_base_membership(
     base_paths = _base_tree_paths(4)
     carried = [DiffEntry(path="components/module_000.py", status="D", base_tree_paths=base_paths)]
     assert resolve_immutable_tracked_count(carried) == 4
+
+
+# Black-box proofs: the post-edit re-check of the REAL commit-review phase.
+#
+# A staged secret and an oversized binary are FIRST offered to the edit step:
+# the reviewer may untrack or ignore them. When the unsafe content is still
+# in the re-sealed proposal, the engine must REJECT the proposal on its own
+# evidence (the affected paths and the concrete counts and limits) and must
+# never approve it. The proofs below drive ``handle_commit_review_phase``
+# against a REAL temporary git repository, so the sealed proposal tree, the
+# re-seal after the edit step and the real diff are the subject under test.
+
+_COMMIT_REVIEW_ARTIFACT_PATH = ".agent/artifacts/commit_review.md"
+_REVIEW_PHASE = "development_commit_review"
+
+#: A recognized secret file name the engine's default ignore rules do NOT
+#: cover, so the sealed proposal really carries it.
+_SECRET_REL_PATH = "secrets.yml"
+
+#: A binary one byte above the default ``binary_size_limit``.
+_BINARY_REL_PATH = "assets/big.bin"
+_BINARY_SIZE = DEFAULT_BINARY_SIZE_LIMIT + 1
+
+
+def _write_review_artifact(
+    repo_root: Path,
+    *,
+    verdict: str,
+    actions: tuple[tuple[str, str], ...] = (),
+) -> None:
+    """Write a canonical commit_review artifact with the given verdict and actions."""
+    lines = ["---", "type: commit_review", f"verdict: {verdict}", "---"]
+    if actions:
+        lines.extend(["", "## Actions"])
+        for index, (action, value) in enumerate(actions, start=1):
+            lines.append(f"- [A{index}] {action} | {value}")
+    artifact_path = repo_root / _COMMIT_REVIEW_ARTIFACT_PATH
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _run_review_phase(repo_root: Path) -> list[object]:
+    """Drive the real commit-review phase entry point against ``repo_root``."""
+    workspace = FsWorkspace(repo_root)
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev",
+        phase=_REVIEW_PHASE,
+        prompt_file="cleanup.txt",
+    )
+    return handle_commit_review_phase(effect, ctx)
+
+
+def _write_secret(repo_root: Path) -> None:
+    """Write a recognized secret file into the working tree."""
+    (repo_root / _SECRET_REL_PATH).write_text("token: hunter2\n", encoding="utf-8")
+
+
+def _write_oversized_binary(repo_root: Path) -> None:
+    """Write a binary one byte above the default binary size limit."""
+    target = repo_root / _BINARY_REL_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"\x00" * _BINARY_SIZE)
+
+
+@pytest.mark.timeout_seconds(20)
+def test_a_staged_secret_that_survives_the_edit_step_is_rejected_on_engine_evidence(
+    tmp_git_repo: Path,
+) -> None:
+    """A staged secret the edit step did not remove must never be approved.
+
+    The reviewer approved the proposal, but the secret is still in the sealed
+    proposal tree, so the engine rejects it on its own evidence instead of
+    honouring the verdict.
+    """
+    repo_root = tmp_git_repo
+    _write_secret(repo_root)
+    _write_review_artifact(repo_root, verdict="approve")
+
+    result = _run_review_phase(repo_root)
+
+    assert len(result) == 1, f"Expected exactly one event, got {result!r}"
+    rejection = result[0]
+    assert isinstance(rejection, CommitReviewRejected), (
+        f"A surviving secret must be rejected, got {type(rejection).__name__}: {rejection!r}"
+    )
+    assert not isinstance(rejection, CommitReviewApproved), (
+        "A proposal that still carries a secret must never be approved"
+    )
+    assert _SECRET_REL_PATH in rejection.reason, (
+        f"The engine-owned reason must name the surviving path; got {rejection.reason!r}"
+    )
+
+
+@pytest.mark.timeout_seconds(20)
+def test_an_oversized_binary_that_survives_the_edit_step_is_rejected_on_engine_evidence(
+    tmp_git_repo: Path,
+) -> None:
+    """An oversized binary the edit step did not remove must never be approved."""
+    repo_root = tmp_git_repo
+    _write_oversized_binary(repo_root)
+    _write_review_artifact(repo_root, verdict="approve")
+
+    result = _run_review_phase(repo_root)
+
+    assert len(result) == 1, f"Expected exactly one event, got {result!r}"
+    rejection = result[0]
+    assert isinstance(rejection, CommitReviewRejected), (
+        f"A surviving oversized binary must be rejected, got "
+        f"{type(rejection).__name__}: {rejection!r}"
+    )
+    assert not isinstance(rejection, CommitReviewApproved), (
+        "A proposal that still carries an oversized binary must never be approved"
+    )
+    assert _BINARY_REL_PATH in rejection.reason, (
+        f"The engine-owned reason must name the surviving path; got {rejection.reason!r}"
+    )
+    assert str(_BINARY_SIZE) in rejection.reason, (
+        f"The engine-owned reason must carry the measured size; got {rejection.reason!r}"
+    )
+    assert str(DEFAULT_BINARY_SIZE_LIMIT) in rejection.reason, (
+        f"The engine-owned reason must carry the limit; got {rejection.reason!r}"
+    )
+
+
+@pytest.mark.timeout_seconds(20)
+def test_a_secret_the_edit_step_removed_is_approved(tmp_git_repo: Path) -> None:
+    """A secret the edit step DID remove must be approved, with no false rejection.
+
+    The reviewer ignored the secret file, so it is no longer in the re-sealed
+    proposal tree and the gate has nothing left to reject.
+    """
+    repo_root = tmp_git_repo
+    _write_secret(repo_root)
+    _write_review_artifact(
+        repo_root,
+        verdict="approve",
+        actions=(("add_to_gitignore", _SECRET_REL_PATH),),
+    )
+
+    result = _run_review_phase(repo_root)
+
+    assert len(result) == 1, f"Expected exactly one event, got {result!r}"
+    assert isinstance(result[0], CommitReviewApproved), (
+        f"A secret removed by the edit step must be approved, got {result[0]!r}"
+    )
+
+
+@pytest.mark.timeout_seconds(20)
+def test_an_oversized_binary_the_edit_step_excluded_is_approved(tmp_git_repo: Path) -> None:
+    """An oversized binary the edit step excluded must be approved."""
+    repo_root = tmp_git_repo
+    _write_oversized_binary(repo_root)
+    _write_review_artifact(
+        repo_root,
+        verdict="approve",
+        actions=(("add_to_git_exclude", _BINARY_REL_PATH),),
+    )
+
+    result = _run_review_phase(repo_root)
+
+    assert len(result) == 1, f"Expected exactly one event, got {result!r}"
+    assert isinstance(result[0], CommitReviewApproved), (
+        f"An oversized binary excluded by the edit step must be approved, got {result[0]!r}"
+    )

@@ -258,9 +258,9 @@ Before any code change is committed, the commit review phase executes as both a 
    - **Mass deletion:** Deleted tracked files exceed the count limit (`max_deleted_files`, default 50) or fractional limit (`max_deleted_fraction`, default 0.25 / 25%).
    - **Protected paths:** Deletion or overwrite of `.git` internals and of the core instructions (`PROMPT.md`, `AGENTS.md`); deletion of a project manifest or lockfile (`pyproject.toml`, `package.json`, `Cargo.toml`, `uv.lock`, etc.); and deletion of a top-level source or test directory entry (`src`, `tests`, `test`, `lib`, `ralph`, `app`, `pkg`).
 
-   **Soft findings** never reject on their own; they are passed to Stage 2 as structured evidence:
+   **Soft findings** do not reject at Stage 1; they are passed to Stage 2 as structured evidence:
    - **Out-of-scope paths:** Modified or added files outside `allowed_directories` when configured.
-   - **Secrets and binaries:** Recognized secret filenames or patterns and binaries exceeding `binary_size_limit` (default 1,000,000 bytes / 1 MB) are surfaced as evidence for cleanup.
+   - **Secrets and binaries:** Recognized secret filenames or patterns and binaries exceeding `binary_size_limit` (default 1,000,000 bytes / 1 MB) are surfaced as evidence for cleanup. When the edit step cannot untrack or ignore them, the unsafe content is still in the re-sealed proposal and the engine rejects it on its own evidence (path, size, and the policy limit).
 
 2. **Stage 2 — Agent review:**
    When no hard tripwire fires, an agent inspects the diff and Stage 1 evidence. The agent submits a `commit_review` artifact containing:

@@ -24,7 +24,9 @@ from ralph.git.commit_review import (
     is_recognized_secret_path,
 )
 from ralph.git.operations import (
+    CommitTreeMismatchError,
     create_commit,
+    create_commit_with_hooks,
     get_head_sha,
     has_uncommitted_changes,
     stage_all,
@@ -260,6 +262,18 @@ def _is_write_tree_fn(value: object) -> TypeGuard[Callable[[Path | str], str]]:
     return callable(value)
 
 
+def _is_create_commit_with_hooks_fn(value: object) -> TypeGuard[_CreateCommitWithHooksFn]:
+    """Return whether ``value`` can be used as the commit-with-hooks seam.
+
+    The seam's signature is the injecting caller's contract -- the same
+    contract the other injectable seams in this module carry. The runtime
+    check proves that a callable was supplied, which is what the executor
+    needs before it calls it; the parameter and return types are the
+    caller's obligation.
+    """
+    return callable(value)
+
+
 if TYPE_CHECKING:
 
     class _CreateCommitFn(Protocol):
@@ -269,6 +283,16 @@ if TYPE_CHECKING:
             message: str,
             *,
             expected_head: str,
+        ) -> CommitCreationResult: ...
+
+    class _CreateCommitWithHooksFn(Protocol):
+        def __call__(
+            self,
+            repo_root: Path | str,
+            message: str,
+            *,
+            expected_head: str,
+            expected_tree_sha: str,
         ) -> CommitCreationResult: ...
 
     class _StageAllFn(Protocol):
@@ -368,6 +392,33 @@ def _perform_commit_creation(
             "no approved tree SHA for this commit attempt; the commit is refused",
         )
 
+    def _create(root: Path, commit_message: str, *, expected_head: str) -> CommitCreationResult:
+        """Create the commit, honouring the approved tree when one is bound.
+
+        A SHA-bound attempt goes through a real ``git commit`` (so the
+        repository's own hooks run and can block the commit) and the created
+        commit is verified against the approved tree; a hook that rewrote the
+        index is caught there and refused. An unbound attempt keeps the plain
+        commit path: there is no approved tree to check it against.
+        """
+        if approved_tree_sha is None:
+            return create_commit_fn(str(root), commit_message, expected_head=expected_head)
+        create_with_hooks = repair_opts.get("create_commit_with_hooks_fn")
+        hook_committer: _CreateCommitWithHooksFn = (
+            create_with_hooks
+            if _is_create_commit_with_hooks_fn(create_with_hooks)
+            else create_commit_with_hooks
+        )
+        try:
+            return hook_committer(
+                str(root),
+                commit_message,
+                expected_head=expected_head,
+                expected_tree_sha=approved_tree_sha,
+            )
+        except CommitTreeMismatchError as exc:
+            raise CommitApprovalError(COMMIT_TREE_SHA_MISMATCH_CODE, str(exc)) from exc
+
     def _stage_and_create() -> CommitCreationResult:
         # Staging is inside the repair-and-retry too: ``git add -A`` is where an
         # orphaned index.lock is first hit, so it must reach the same repair.
@@ -375,10 +426,14 @@ def _perform_commit_creation(
         _stage_commit_scope(repo_root, payload, stage_all_fn)
         if approved_tree_sha is not None:
             _verify_approved_tree(repo_root, approved_tree_sha, write_tree_fn)
-        return create_commit_fn(str(repo_root), message, expected_head=head)
+        return _create(repo_root, message, expected_head=head)
 
     try:
         result = _stage_and_create()
+    except CommitApprovalError:
+        # An approval failure is a routing decision, not a repairable git
+        # state problem: re-running the attempt would only repeat it.
+        raise
     except Exception:
         if _attempt_repair_git_state(repo_root, **repair_opts):
             logger.info("Retrying commit creation after git state repair")
@@ -393,7 +448,7 @@ def _perform_commit_creation(
             if approved_tree_sha is not None:
                 _verify_approved_tree(repo_root, approved_tree_sha, write_tree_fn)
             with suppress(Exception):
-                result = create_commit_fn(str(repo_root), message, expected_head=expected_head)
+                result = _create(repo_root, message, expected_head=expected_head)
         if result.status is not CommitCreationStatus.CREATED or result.sha is None:
             err_msg = result.error or f"commit creation returned {result.status.value}"
             logger.warning("Commit was not created: {}", err_msg)

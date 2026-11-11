@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ralph.policy.models._group_policy_block import GroupPolicyBlock
 from ralph.policy.models._phase_definition import PhaseDefinition
 from ralph.policy.models._phase_invocation_gate import EXECUTION_RESULT_STATUSES
 from ralph.policy.models._pipeline_policy import PipelinePolicy
@@ -91,6 +92,66 @@ def _validate_review_phase(
             f"phases.{phase_name}: role='review' with bypass_routes requires clean_outcome "
             f"(the bypass_routes key that signals a clean review, e.g. 'clean'). "
             f"See docs/sphinx/concepts.md."
+        )
+
+
+COMMIT_REVIEW_REJECTION_COUNTER = "commit_review_rejections"
+
+
+def _resets_rejection_counter(loop_resets: object) -> bool:
+    """Return whether *loop_resets* lists the commit-review rejection counter."""
+    if not isinstance(loop_resets, (list, tuple)):
+        return False
+    return COMMIT_REVIEW_REJECTION_COUNTER in loop_resets
+
+
+def _validate_rejection_counter_not_reset(policy: object, errors: list[str]) -> None:
+    """The rejection counter must survive every loop reset in the policy.
+
+    ``commit_review_rejections`` bounds the commit-review rejection loop, so
+    any ``loop_resets`` list that names it would silently zero the counter
+    and let the run reject forever. A commit phase's ``commit_policy`` is
+    checked by :func:`_validate_commit_phase_loop_resets`; this helper covers
+    the remaining reset sites: group blocks (whose ``loop_resets`` become the
+    compiled lifecycle phase's ``loop_resets``) and any other phase that
+    carries a ``commit_policy``.
+    """
+    if not isinstance(policy, PipelinePolicy):
+        return
+
+    reported_lifecycles: set[str] = set()
+    for block_name, block in policy.blocks.items():
+        loop_resets = block.loop_resets if isinstance(block, GroupPolicyBlock) else []
+        if not _resets_rejection_counter(loop_resets):
+            continue
+        errors.append(
+            f"blocks.{block_name}.loop_resets: '{COMMIT_REVIEW_REJECTION_COUNTER}' "
+            "cannot be reset in loop_resets as it must survive iteration resets."
+        )
+        reported_lifecycles.add(block_name)
+
+    for phase_name, lifecycle in policy.lifecycle_phases.items():
+        lifecycle_name = lifecycle.lifecycle_name
+        if lifecycle_name in reported_lifecycles:
+            continue
+        if not _resets_rejection_counter(lifecycle.loop_resets):
+            continue
+        errors.append(
+            f"lifecycle_phases.{phase_name}.loop_resets: '{COMMIT_REVIEW_REJECTION_COUNTER}' "
+            "cannot be reset in loop_resets as it must survive iteration resets."
+        )
+
+    for phase_name, phase_def in policy.phases.items():
+        if phase_def.role == "commit":
+            continue
+        commit_policy = phase_def.commit_policy
+        if commit_policy is None:
+            continue
+        if not _resets_rejection_counter(commit_policy.loop_resets):
+            continue
+        errors.append(
+            f"phases.{phase_name}.commit_policy.loop_resets: '{COMMIT_REVIEW_REJECTION_COUNTER}' "
+            "cannot be reset in loop_resets as it must survive iteration resets."
         )
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from typer.testing import CliRunner
@@ -103,6 +104,24 @@ def test_init_command_creates_missing_agents_file(
     """The explicit init route requests the creation; a normal route does not."""
     target = _isolate_config(monkeypatch, tmp_path)
     monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    # The init route also installs the baseline skills, which materializes
+    # every canonical skill into the user-global skill directory. That work is
+    # unrelated to this contract (the global agents file) and costs more CPU
+    # than the per-test budget allows, so it is stubbed here - the same way
+    # this file stubs the unrelated run_pipeline and diagnose_command routes.
+    monkeypatch.setattr(
+        "ralph.skills.manager.SkillManager.ensure_baseline_capabilities",
+        lambda *_args, **_kwargs: (None, []),
+    )
+    monkeypatch.setattr(
+        "ralph.skills._installer.install_project_baseline_skills_with_diff",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            failures=[],
+            written_paths=[],
+            pre_contents={},
+            intentional_transitions=[],
+        ),
+    )
     assert not target.exists()
 
     result = CliRunner().invoke(app, ["--init"])

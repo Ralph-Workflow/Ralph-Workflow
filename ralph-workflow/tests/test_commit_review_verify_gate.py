@@ -907,10 +907,15 @@ def test_staged_secret_is_offered_to_the_edit_step_instead_of_being_rejected(
     assert _commit_count(tmp_git_repo) == commits_before
 
 
-def test_oversized_binary_is_evidence_not_a_hard_rejection(
+def test_oversized_binary_is_evidence_and_a_survivor_is_rejected(
     tmp_git_repo: Path,
 ) -> None:
-    """A binary above the size limit is EDIT evidence, not a hard rejection."""
+    """A binary above the size limit is EDIT evidence, and a survivor is rejected.
+
+    The binary reaches the reviewer as Stage 1 evidence, but the reviewer took
+    no action for it, so the unsafe content is still in the re-sealed proposal:
+    the engine rejects the proposal on its OWN evidence.
+    """
     policy = load_policy(_DEFAULT_POLICY_DIR).pipeline.model_copy(
         update={"commit_review": CommitReviewPolicy(binary_size_limit=1024)}
     )
@@ -934,8 +939,17 @@ def test_oversized_binary_is_evidence_not_a_hard_rejection(
 
     assert len(result) == 1
     event = result[0]
-    assert isinstance(event, CommitReviewApproved), (
-        f"An oversized binary must not reject the iteration, got: {event!r}"
+    # RALPH-TEST-REASON: the old expectation was that an approved oversized
+    # binary advanced the iteration. The product criteria require a survivor
+    # to be rejected on the engine's own evidence.
+    assert isinstance(event, CommitReviewRejected), (
+        f"An oversized binary that survives the edit step must reject, got: {event!r}"
+    )
+    assert "assets/payload.bin" in event.reason and "4096" in event.reason, (
+        f"The engine-owned reason must name the path and the size, got: {event.reason!r}"
+    )
+    assert "1024" in event.reason, (
+        f"The engine-owned reason must carry the policy limit, got: {event.reason!r}"
     )
     assert blob.exists()
     assert _head_sha(tmp_git_repo) == head_before

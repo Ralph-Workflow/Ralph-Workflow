@@ -147,6 +147,15 @@ IO_ALLOWLIST: set[str] = {
     # git would reproduce the synthetic shapes the unit tests already use
     # and would pass vacuously.
     "test_commit_review_real_diff_proofs",
+    # Commit-review tripwire proofs. The four post-edit survival proofs write
+    # a secret file and an oversized binary into the tmp_git_repo fixture
+    # directory and read the real sealed proposal back, because the behaviour
+    # under test (an unsafe file that survives the edit step is rejected on the
+    # engine's own evidence, an unsafe file the edit step removed is approved)
+    # is a property of the REAL working tree and the REAL sealed diff; a fake
+    # filesystem would not carry the git objects the seal and the rollback
+    # read.
+    "test_commit_review_tripwires",
     # Legacy-restart acceptance test (scenario 8) seeds raw legacy checkpoint
     # + record bytes into the tmp_git_repo fixture dir so the production
     # resume read must parse and migrate them; same tmp_git_repo-writes

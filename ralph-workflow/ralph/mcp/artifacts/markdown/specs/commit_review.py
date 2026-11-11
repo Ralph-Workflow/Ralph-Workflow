@@ -93,7 +93,7 @@ COMMIT_REVIEW_SPEC = MdArtifactSpec(
     artifact_type="commit_review",
     required_frontmatter=frozenset({"type", "verdict", "tree_sha"}),
     closed_frontmatter={
-        "type": FrontmatterVocabulary(("commit_review",), "CLEANUP001"),
+        "type": FrontmatterVocabulary(("commit_review",), "SPEC010"),
         "verdict": FrontmatterVocabulary(("approve", "reject"), "SPEC010"),
     },
     sections={

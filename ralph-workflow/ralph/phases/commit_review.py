@@ -13,7 +13,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from git import InvalidGitRepositoryError, Repo
 from loguru import logger
@@ -100,6 +100,14 @@ if TYPE_CHECKING:
 COMMIT_REVIEW_ARTIFACT_PATH = ".agent/artifacts/commit_review.md"
 _IDENTITY_STATE_PATH = ".agent/tmp/commit_review_identity.json"
 _COMMIT_REVIEW_CONTEXT_PATH = ".agent/tmp/commit_review_context.json"
+
+#: The soft tripwire categories that must NOT survive the commit-review edit
+#: step. A staged secret and an oversized binary are FIRST offered to the edit
+#: step (the reviewer may untrack or ignore them); when the unsafe content is
+#: still in the re-sealed proposal, the engine rejects on its own evidence.
+#: The out-of-scope signal stays advisory and the hard tripwires keep their
+#: own Stage 1 behaviour.
+_UNSAFE_SURVIVAL_CATEGORIES: Final[frozenset[str]] = frozenset({"secret", "binary_size"})
 
 
 def _close_repo(repo: Repo | None) -> None:
@@ -592,6 +600,63 @@ def _handle_actions_and_reseal(
     return seal, diff_entries
 
 
+def _surviving_unsafe_findings(
+    diff_entries: list[DiffEntry],
+    phase_name: str,
+    ctx: PhaseContext,
+) -> tuple[Finding, ...]:
+    """Return the secret and oversized-binary findings that survive the edit step.
+
+    The re-check runs on the diff of the RE-SEALED proposal tree, so a finding
+    the edit step removed is absent and a finding the edit step could not
+    remove is still there. Only the two unsafe categories are considered: the
+    out-of-scope signal stays advisory and the hard tripwires keep their own
+    Stage 1 behaviour.
+    """
+    thresholds, allowed_dirs, protected = _resolve_policy_thresholds(
+        ctx.pipeline_policy, phase_name
+    )
+    entries = [
+        entry
+        for entry in diff_entries
+        if not (
+            entry.path == ".agent"
+            or entry.path.startswith(".agent/")
+            or is_agent_internal_path(entry.path)
+        )
+    ]
+    tracked_count = resolve_immutable_tracked_count(entries) or 0
+    report = evaluate_tripwires(
+        entries,
+        tracked_count,
+        thresholds,
+        allowed_dirs=allowed_dirs,
+        protected=protected,
+    )
+    return tuple(
+        finding for finding in report.soft if finding.category in _UNSAFE_SURVIVAL_CATEGORIES
+    )
+
+
+def _render_surviving_unsafe_reason(findings: tuple[Finding, ...]) -> str:
+    """Render the engine-owned evidence for unsafe content that survived the edit step.
+
+    The reason names the affected paths and the concrete counts and limits, so
+    the rejection stands on the engine's own evidence and never depends on the
+    reviewer's ``## Reason`` citations being verifiable.
+    """
+    rendered = []
+    for finding in findings:
+        location = finding.path or "<unknown path>"
+        count = f" (count {finding.count})" if finding.count is not None else ""
+        rendered.append(f"{finding.category} at {location!r}{count}: {finding.message}")
+    return (
+        f"Unsafe content survived the commit-review edit step: {len(findings)} finding(s) "
+        f"remain in the sealed proposal ({'; '.join(rendered)}). The proposal is rejected on "
+        "the engine's own evidence: untrack or ignore the affected paths and resubmit."
+    )
+
+
 def _evaluate_verdict(
     artifact: CommitReviewParsedArtifact,
     seal: Seal,
@@ -628,6 +693,12 @@ def _evaluate_verdict(
                 )
             ]
         return [CommitReviewRejected(reason=artifact.reason or "", ref=seal.ref, hard=False)]
+
+    surviving = _surviving_unsafe_findings(diff_entries, phase_name, ctx)
+    if surviving:
+        reason = _render_surviving_unsafe_reason(surviving)
+        logger.warning("{}: {}", phase_name, reason)
+        return [CommitReviewRejected(reason=reason, ref=seal.ref, hard=True)]
 
     clear_validation_retry_hint(ctx.workspace, phase_name, pipeline_policy=ctx.pipeline_policy)
     return [CommitReviewApproved(tree_sha=seal.tree_sha)]

@@ -972,6 +972,232 @@ def create_commit(
         _close_repo(repo)
 
 
+class CommitTreeMismatchError(GitOperationError):
+    """The commit that was created does not carry the approved tree SHA.
+
+    Raised by :func:`create_commit_with_hooks` when the tree recorded by the
+    created commit differs from the tree the commit review approved -- for
+    example because a repository hook rewrote the index while the commit was
+    being created. The mismatched commit is never left published: the branch
+    is moved back to the commit's parent and the index is restored to the
+    approved tree before this error is raised. When that undo itself fails
+    (a locked ref, a concurrent ref update), the error message names the
+    published commit so it can be removed manually instead of claiming an
+    undo that did not happen.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__("create_commit", message)
+
+
+def _commit_parent_sha(repo_root: Path, commit_sha: str) -> str:
+    """Return the first parent of ``commit_sha``, or ``""`` for a root commit."""
+    result = run_git(
+        ("rev-parse", "--verify", f"{commit_sha}^"),
+        cwd=repo_root,
+        label="git-rev-parse-commit-parent",
+    )
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def _undo_unapproved_commit(
+    repo_root: Path,
+    ref_name: str,
+    created_sha: str,
+    parent_sha: str,
+    approved_tree_sha: str,
+) -> bool:
+    """Move the branch back to the commit's parent and restore the index.
+
+    The branch is restored to the commit's PARENT (not to a remembered
+    ``expected_head``) so a concurrent commit that landed before this one
+    survives the undo. The index is restored to the approved tree so a hook's
+    index rewrite cannot leak into the next attempt.
+
+    Returns:
+        True when both the branch and the index were restored, False when
+        either step failed (the caller reports the still-published commit).
+    """
+    if parent_sha:
+        undo = run_git(
+            ("update-ref", ref_name, parent_sha, created_sha),
+            cwd=repo_root,
+            label="git-update-ref-undo-unapproved-commit",
+            options=GitRunOptions(env={"GIT_REFLOG_ACTION": "ralph undo unapproved commit"}),
+        )
+    else:
+        undo = run_git(
+            ("update-ref", "-d", ref_name, created_sha),
+            cwd=repo_root,
+            label="git-update-ref-delete-unapproved-commit",
+            options=GitRunOptions(env={"GIT_REFLOG_ACTION": "ralph undo unapproved commit"}),
+        )
+    restored = True
+    if undo.returncode != 0:
+        logger.error(
+            "Could not undo the unapproved commit {} on {}: {}",
+            created_sha[:8],
+            ref_name,
+            undo.stderr.strip() or "no diagnostics",
+        )
+        restored = False
+    restore = run_git(
+        ("read-tree", approved_tree_sha),
+        cwd=repo_root,
+        label="git-read-tree-restore-approved-tree",
+    )
+    if restore.returncode != 0:
+        logger.error(
+            "Could not restore the index to the approved tree {}: {}",
+            approved_tree_sha[:8],
+            restore.stderr.strip() or "no diagnostics",
+        )
+        restored = False
+    return restored
+
+
+def create_commit_with_hooks(
+    repo_root: Path | str,
+    message: str,
+    *,
+    expected_head: str,
+    expected_tree_sha: str,
+    author_name: str | None = None,
+    author_email: str | None = None,
+) -> CommitCreationResult:
+    """Create the approved commit through a real ``git commit`` invocation.
+
+    ``git commit`` runs the repository's own hooks (``pre-commit``,
+    ``prepare-commit-msg``, ``commit-msg``, ``post-commit``), so a hook can
+    block the commit: a non-zero hook exit aborts the commit, no commit is
+    created, and the failure is surfaced to the caller.
+
+    The commit stays bound to the approved tree. The staged tree is checked
+    against ``expected_tree_sha`` BEFORE the commit is allowed, and the tree
+    recorded by the CREATED commit is checked against ``expected_tree_sha``
+    AFTER the commit: a hook that rewrote the index cannot smuggle a
+    different tree into the published history, because the post-check reads
+    the tree of the commit object git itself created, and a mismatch undoes
+    the commit (the branch moves back to the commit's parent and the index is
+    restored to the approved tree).
+
+    Args:
+        repo_root: Path to the repository root.
+        message: Commit message.
+        expected_head: HEAD SHA the commit attempt is bound to.
+        expected_tree_sha: The tree SHA the commit review approved.
+        author_name: Optional author name override.
+        author_email: Optional author email override.
+
+    Returns:
+        Typed result describing commit creation.
+
+    Raises:
+        CommitTreeMismatchError: If the created commit does not carry the
+            approved tree (the commit is undone before this is raised).
+        GitOperationError: If the commit fails (including a hook that blocks
+            it).
+    """
+    repo: Repo | None = None
+    try:
+        repo = Repo(repo_root)
+        message = _append_ralph_workflow_coauthor_trailer(message)
+        current_head_sha = repo.head.commit.hexsha if hasattr(repo, "head") else ""
+        if current_head_sha and current_head_sha != expected_head:
+            return CommitCreationResult.already_advanced(current_head_sha)
+        author_name, author_email = _resolve_commit_identity(repo, author_name, author_email)
+        ref_name = _reattach_or_resolve_ref_name(Path(repo_root))
+
+        staged_tree_sha = _candidate_commit_tree(Path(repo_root))
+        if staged_tree_sha != expected_tree_sha:
+            raise CommitTreeMismatchError(
+                f"staged tree SHA {staged_tree_sha} does not match approved tree SHA "
+                f"{expected_tree_sha}"
+            )
+        if _tree_matches_head(Path(repo_root), current_head_sha, staged_tree_sha):
+            return CommitCreationResult.already_advanced(current_head_sha)
+
+        with tempfile.TemporaryDirectory(prefix="ralph-commit-") as scratch:
+            message_path = Path(scratch) / "COMMIT_EDITMSG"
+            message_path.write_text(  # filesystem-write-ok: transient commit-message scratch file inside a TemporaryDirectory that is removed when the block exits
+                message, encoding="utf-8"
+            )
+            commit_result = run_git(
+                (
+                    "commit",
+                    "--allow-empty",
+                    "--cleanup=verbatim",
+                    "--no-gpg-sign",
+                    "--file",
+                    str(message_path),
+                ),
+                cwd=Path(repo_root),
+                label="git-commit",
+                options=GitRunOptions(
+                    env={
+                        "GIT_AUTHOR_NAME": author_name,
+                        "GIT_AUTHOR_EMAIL": author_email,
+                        "GIT_COMMITTER_NAME": author_name,
+                        "GIT_COMMITTER_EMAIL": author_email,
+                        "GIT_REFLOG_ACTION": "ralph create_commit",
+                    },
+                ),
+            )
+        if commit_result.returncode != 0:
+            detail = commit_result.stderr.strip() or commit_result.stdout.strip()
+            raise GitOperationError("create_commit", detail or "git commit failed")
+
+        created_sha = _current_head_sha(Path(repo_root)) or ""
+        if not created_sha:
+            raise GitOperationError("create_commit", "git commit did not advance HEAD")
+        committed_tree_sha = _head_tree_sha(Path(repo_root), created_sha) or ""
+        parent_sha = _commit_parent_sha(Path(repo_root), created_sha)
+        if committed_tree_sha != expected_tree_sha:
+            undone = _undo_unapproved_commit(
+                Path(repo_root),
+                ref_name,
+                created_sha,
+                parent_sha,
+                expected_tree_sha,
+            )
+            if not undone:
+                raise CommitTreeMismatchError(
+                    f"committed tree SHA {committed_tree_sha} does not match approved tree SHA "
+                    f"{expected_tree_sha}; the unapproved commit {created_sha[:8]} could NOT be "
+                    "undone and is still published - remove it manually"
+                )
+            raise CommitTreeMismatchError(
+                f"committed tree SHA {committed_tree_sha} does not match approved tree SHA "
+                f"{expected_tree_sha}"
+            )
+        if parent_sha and expected_head and parent_sha != expected_head:
+            # HEAD advanced between the attempt and the commit: the created
+            # commit is not bound to the approved head, so it is undone and
+            # the attempt is reported as idempotently already advanced.
+            _undo_unapproved_commit(
+                Path(repo_root),
+                ref_name,
+                created_sha,
+                parent_sha,
+                expected_tree_sha,
+            )
+            return CommitCreationResult.already_advanced(parent_sha)
+        logger.info(
+            "Created commit {}: {}",
+            created_sha[:8],
+            message.splitlines()[0] if message else "(no message)",
+        )
+        return CommitCreationResult.created(created_sha)
+    except GitOperationError:
+        raise
+    except Exception as exc:
+        raise GitOperationError("create_commit", str(exc)) from exc
+    finally:
+        _close_repo(repo)
+
+
 def push(
     repo_root: Path | str,
     remote: str,

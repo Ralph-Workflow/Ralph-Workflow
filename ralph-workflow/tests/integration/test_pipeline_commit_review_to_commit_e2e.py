@@ -73,9 +73,10 @@ from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import Verbosity
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
-from ralph.git.operations import create_commit, stage_all
+from ralph.git.operations import create_commit, stage_all, write_tree
 from ralph.phases import PhaseContext, handle_phase
 from ralph.pipeline import runner
+from ralph.pipeline.commit_executor import execute_commit_effect, get_last_commit_error
 from ralph.pipeline.effects import (
     CommitEffect,
     Effect,
@@ -695,6 +696,144 @@ def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
         "A symlink-delete rejection must NOT cause failed_terminal; the "
         "best-effort _apply_safe_deletes try/except absorbs it as a WARNING."
     )
+
+
+def _install_hook(repo_root: Path, name: str, script: str) -> None:
+    """Install a real, executable git hook file under ``.git/hooks``."""
+    hook = repo_root / ".git" / "hooks" / name
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text(script, encoding="utf-8")
+    hook.chmod(0o755)
+
+
+def _approved_repo(repo_root: Path) -> tuple[str, str]:
+    """Stage one tracked change and return ``(approved_tree_sha, head_sha)``."""
+    readme = repo_root / "README.md"
+    readme.write_text("approved change\n", encoding="utf-8")
+    repo = Repo(repo_root)
+    try:
+        repo.index.add(["README.md"])
+        head_sha = repo.head.commit.hexsha
+    finally:
+        repo.close()
+    return write_tree(repo_root), head_sha
+
+
+def _commit_history_shas(repo_root: Path) -> list[str]:
+    """Return the SHAs reachable from HEAD, newest first."""
+    repo = Repo(repo_root)
+    try:
+        return [entry.hexsha for entry in repo.iter_commits("HEAD")]
+    finally:
+        repo.close()
+
+
+def test_sha_bound_commit_runs_pre_commit_hook_and_a_blocking_hook_stops_the_commit(
+    tmp_git_repo: Path,
+) -> None:
+    """A real ``pre-commit`` hook that fails blocks the approved commit.
+
+    The commit goes through a real ``git commit``, so the repository's own
+    hook runs. A non-zero hook exit means no commit is created, HEAD does
+    not move, and the failure is surfaced instead of swallowed.
+    """
+    repo_root = tmp_git_repo
+    approved_tree, head_before = _approved_repo(repo_root)
+    _install_hook(
+        repo_root,
+        "pre-commit",
+        "#!/bin/sh\necho 'PRE_COMMIT_BLOCKED' >&2\nexit 1\n",
+    )
+    _write_commit_message_artifacts(repo_root, "feat: blocked by hook")
+
+    message_file = repo_root / ".agent" / "artifacts" / "commit_message.md"
+    event = execute_commit_effect(
+        CommitEffect(message_file=str(message_file), expected_tree_sha=approved_tree),
+        repo_root,
+    )
+
+    assert event == PipelineEvent.COMMIT_FAILURE
+    assert _commit_history_shas(repo_root) == [head_before], (
+        "A blocking pre-commit hook must leave the history untouched: no commit may be created."
+    )
+    repo = Repo(repo_root)
+    try:
+        assert repo.head.commit.hexsha == head_before
+    finally:
+        repo.close()
+    last_error = get_last_commit_error()
+    assert last_error is not None
+    assert "PRE_COMMIT_BLOCKED" in last_error, (
+        f"The hook's own diagnostic must be surfaced, got: {last_error!r}"
+    )
+
+
+def test_sha_bound_commit_refuses_a_hook_mutated_tree(tmp_git_repo: Path) -> None:
+    """A ``pre-commit`` hook that rewrites the index cannot smuggle a tree.
+
+    The hook stages an extra file, so the commit git creates carries a tree
+    that the commit review never approved. The executor must refuse that
+    tree: the branch is moved back, the index is restored to the approved
+    tree, and the attempt is reported as an approval mismatch.
+    """
+    repo_root = tmp_git_repo
+    approved_tree, head_before = _approved_repo(repo_root)
+    _install_hook(
+        repo_root,
+        "pre-commit",
+        "#!/bin/sh\nprintf 'smuggled\\n' > smuggled.txt\ngit add smuggled.txt\n",
+    )
+    _write_commit_message_artifacts(repo_root, "feat: hook mutated tree")
+
+    message_file = repo_root / ".agent" / "artifacts" / "commit_message.md"
+    event = execute_commit_effect(
+        CommitEffect(message_file=str(message_file), expected_tree_sha=approved_tree),
+        repo_root,
+    )
+
+    assert event == PipelineEvent.COMMIT_FAILURE
+    assert _commit_history_shas(repo_root) == [head_before], (
+        "The mismatched commit must never be published: the branch has to go "
+        "back to the state it had before the attempt."
+    )
+    repo = Repo(repo_root)
+    try:
+        assert repo.head.commit.hexsha == head_before
+        assert "smuggled.txt" not in repo.head.commit.tree
+    finally:
+        repo.close()
+    assert write_tree(repo_root) == approved_tree, (
+        "The index must be restored to the approved tree so the hook's rewrite "
+        "cannot leak into the next attempt."
+    )
+    last_error = get_last_commit_error()
+    assert last_error is not None
+    assert "COMMIT_TREE_SHA_MISMATCH" in last_error, (
+        f"The refusal must carry the machine-readable mismatch code, got: {last_error!r}"
+    )
+
+
+def test_sha_bound_commit_publishes_the_approved_tree(tmp_git_repo: Path) -> None:
+    """The normal path commits exactly the tree the commit review approved."""
+    repo_root = tmp_git_repo
+    approved_tree, head_before = _approved_repo(repo_root)
+    _write_commit_message_artifacts(repo_root, "feat: approved tree")
+
+    message_file = repo_root / ".agent" / "artifacts" / "commit_message.md"
+    event = execute_commit_effect(
+        CommitEffect(message_file=str(message_file), expected_tree_sha=approved_tree),
+        repo_root,
+    )
+
+    assert event == PipelineEvent.COMMIT_SUCCESS
+    history = _commit_history_shas(repo_root)
+    assert len(history) == 2, f"Exactly one commit must land, got: {history}"
+    assert history[-1] == head_before
+    repo = Repo(repo_root)
+    try:
+        assert repo.head.commit.tree.hexsha == approved_tree
+    finally:
+        repo.close()
 
 
 def _assert_worktree_is_clean(repo_root: Path) -> None:

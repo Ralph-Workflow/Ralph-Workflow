@@ -1928,20 +1928,20 @@ def test_apply_time_delete_failure_triggers_commit_review_loopback(
 
 
 @pytest.mark.timeout_seconds(5)
-def test_apply_time_delete_failure_with_safe_gitignore_succeeds(
+def test_apply_time_delete_failure_with_safe_gitignore_loops_back(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression: apply-time failure on delete + safe gitignore pattern = CommitReviewApproved.
+    """Apply-time failure on one action loops back even when a sibling action applied.
 
-    Pins the partial-success contract: when an apply-time delete
-    failure happens ALONGSIDE a successful ``add_to_gitignore``
-    action, the gitignore action's success counts toward
-    ``safe_actions_count`` so the phase returns ``CommitReviewApproved``,
-    not ``PhaseFailureEvent``. The failure is still surfaced via
-    WARNING log and the failed path is recorded -- the phase does not
-    silently swallow the failure, it just does not escalate when
-    other safe work succeeded.
+    PRODUCT_CRITERIA "Gate semantics" item 3: the commit phase runs
+    normally only when ``approve`` AND all actions applied or were safely
+    skipped. A ``delete_file`` that failed at apply time was neither
+    applied nor safely skipped, so the batch is not "all actions applied
+    or safely skipped" and the phase must NOT advance: it loops back to
+    commit review carrying the retry hint that names the action-failure
+    reason. The sibling ``add_to_gitignore`` action still applies -- the
+    loopback does not undo work that already succeeded.
     """
     workspace = FsWorkspace(tmp_git_repo)
     binary = tmp_git_repo / "binary.exe"
@@ -1978,9 +1978,26 @@ def test_apply_time_delete_failure_with_safe_gitignore_succeeds(
     )
     events = handle_commit_review_phase(effect, ctx)
 
-    assert len(events) == 1 and isinstance(events[0], CommitReviewApproved), (
-        f"Phase must return CommitReviewApproved when the gitignore action "
-        f"succeeded alongside the apply-time delete failure; got: {events!r}"
+    # RALPH-TEST-REASON: the retired expectation asserted CommitReviewApproved
+    # for a batch with an apply-time failure. PRODUCT_CRITERIA "Gate
+    # semantics" item 3 allows the commit phase to run only when "approve
+    # and all actions applied or safely skipped"; an action that failed at
+    # apply time was neither applied nor safely skipped, so the phase must
+    # loop back with the retry hint instead of advancing.
+    assert len(events) == 1, f"Expected exactly one event, got {len(events)}: {events!r}"
+    event = events[0]
+    assert isinstance(event, CommitReviewLoopback), (
+        f"Phase must loop back when an action failed at apply time, got "
+        f"{type(event).__name__}: {event!r}"
+    )
+    assert not isinstance(event, CommitReviewApproved), (
+        "A batch with an apply-time failure must never advance to the commit phase"
+    )
+    assert "binary.exe" in event.hint, (
+        f"The loopback hint must name the action that failed at apply time, got: {event.hint!r}"
+    )
+    assert "failed while applying" in event.hint, (
+        f"The loopback hint must carry the action-failure reason, got: {event.hint!r}"
     )
     gitignore_text = (tmp_git_repo / ".gitignore").read_text()
     assert "*.scratch" in gitignore_text, (

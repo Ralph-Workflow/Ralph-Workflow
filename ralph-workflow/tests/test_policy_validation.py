@@ -3232,6 +3232,47 @@ class TestCommitReviewPolicyValidation:
         with pytest.raises(PolicyValidationError, match="commit_review_rejections"):
             validate_policy_completeness(bad_bundle)
 
+    def test_group_block_rejects_rejections_counter_in_loop_resets(self) -> None:
+        """A group block's loop_resets cannot zero the rejection counter.
+
+        The rejection counter bounds the commit-review rejection loop. A
+        group block's ``loop_resets`` becomes the compiled lifecycle phase's
+        ``loop_resets``, which the runtime applies on lifecycle completion,
+        so listing the counter there would silently reset it.
+        """
+        bundle = _cached_default_bundle()
+        block = bundle.pipeline.blocks["developer_iteration"]
+        bad_block = block.model_copy(
+            update={"loop_resets": [*block.loop_resets, "commit_review_rejections"]}
+        )
+        bad_pipeline = bundle.pipeline.model_copy(
+            update={
+                "blocks": {**bundle.pipeline.blocks, "developer_iteration": bad_block},
+            }
+        )
+        bad_bundle = bundle.model_copy(update={"pipeline": bad_pipeline})
+        with pytest.raises(PolicyValidationError, match="commit_review_rejections"):
+            validate_policy_completeness(bad_bundle)
+
+    def test_lifecycle_phase_rejects_rejections_counter_in_loop_resets(self) -> None:
+        """A compiled lifecycle phase's loop_resets cannot zero the counter."""
+        bundle = _cached_default_bundle()
+        phase_name, lifecycle = next(iter(bundle.pipeline.lifecycle_phases.items()))
+        bad_lifecycle = lifecycle.model_copy(
+            update={"loop_resets": [*lifecycle.loop_resets, "commit_review_rejections"]}
+        )
+        bad_pipeline = bundle.pipeline.model_copy(
+            update={
+                "lifecycle_phases": {
+                    **bundle.pipeline.lifecycle_phases,
+                    phase_name: bad_lifecycle,
+                }
+            }
+        )
+        bad_bundle = bundle.model_copy(update={"pipeline": bad_pipeline})
+        with pytest.raises(PolicyValidationError, match="commit_review_rejections"):
+            validate_policy_completeness(bad_bundle)
+
     def test_commit_review_phase_rejects_unknown_on_reject_route(self) -> None:
         """commit_review phase transitions.on_reject must point to a declared phase."""
         bundle = _cached_default_bundle()
