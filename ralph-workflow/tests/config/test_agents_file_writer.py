@@ -16,6 +16,7 @@ import pytest
 from loguru import logger as loguru_logger
 
 from ralph.config.agents_file_writer import write_agents_toml
+from ralph.config.bootstrap import ensure_global_config
 
 
 @contextmanager
@@ -356,3 +357,54 @@ def test_module_imports_only_stdlib_and_loguru() -> None:
             assert top_level in allowed_top_levels, (
                 f"Unexpected from-import: {node.module} (top-level: {top_level})"
             )
+
+
+def test_migrate_legacy_global_config_skips_symlink_to_agents_config(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Calling ensure_global_config on a symlink to ralph-workflow-agents.toml skips migration."""
+    agents_file = tmp_path / "ralph-workflow-agents.toml"
+    content = '[agent_drains]\nanalysis = "legacy_analysis"\ncommit = "legacy_commit"\n'
+    agents_file.write_text(content, encoding="utf-8")
+    original_bytes = agents_file.read_bytes()
+
+    symlink_path = tmp_path / "ralph-workflow.toml"
+    symlink_path.symlink_to(agents_file)
+
+    with caplog.at_level(logging.WARNING), _capture_loguru_lines() as log_lines:
+        result = ensure_global_config(global_dir=tmp_path)
+
+    assert result.action == "skipped"
+    assert result.backup is None
+    assert agents_file.read_bytes() == original_bytes
+    assert symlink_path.read_bytes() == original_bytes
+    assert not (tmp_path / "ralph-workflow.toml.bak").exists()
+    assert not (tmp_path / "ralph-workflow-agents.toml.bak").exists()
+    assert any("ralph-workflow-agents.toml" in line for line in log_lines) or any(
+        "ralph-workflow-agents.toml" in rec.message for rec in caplog.records
+    )
+
+
+def test_migrate_legacy_global_config_rejects_invalid_candidate_toml(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """When candidate text produces invalid TOML syntax, migration is rejected without backup or write."""
+    target_path = tmp_path / "ralph-workflow.toml"
+    # Eligible legacy [agent_drains] with a valid TOML literal containing a double quote
+    content = '[agent_drains]\nanalysis = \'val"quote\'\ncommit = "some_chain"\n'
+    target_path.write_text(content, encoding="utf-8")
+    original_bytes = target_path.read_bytes()
+    bak_path = target_path.with_name(f"{target_path.name}.bak")
+
+    with caplog.at_level(logging.WARNING), _capture_loguru_lines() as log_lines:
+        result = ensure_global_config(global_dir=tmp_path)
+
+    assert result.action == "skipped"
+    assert result.backup is None
+    assert target_path.read_bytes() == original_bytes
+    assert not bak_path.exists()
+    assert any(rec.levelno >= logging.WARNING for rec in caplog.records) or any(
+        "invalid" in line.lower() for line in log_lines
+    )

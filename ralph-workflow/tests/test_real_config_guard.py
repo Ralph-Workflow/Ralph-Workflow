@@ -609,6 +609,17 @@ def test_default_guard_snapshot_includes_bundled_agents_template() -> None:
     assert not guarded.is_dir
 
 
+def test_scan_guarded_config_files_with_explicit_dirs_includes_bundled_template(
+    tmp_path: Path,
+) -> None:
+    """Explicit guarded_dirs must still snapshot the bundled agents template."""
+    snapshot = _scan_guarded_config_files(guarded_dirs=[tmp_path])
+    assert _BUNDLED_AGENTS_TEMPLATE.resolve() in snapshot
+    guarded = snapshot[_BUNDLED_AGENTS_TEMPLATE.resolve()]
+    assert guarded.sha256
+    assert not guarded.is_dir
+
+
 def test_real_config_guard_catches_symlink_unprefixed_and_transient_in_pytester(
     pytester: pytest.Pytester,
     tmp_path: Path,

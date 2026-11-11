@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
+import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from loguru import logger
+
 from ralph.config._bootstrap_types import BootstrapResult
-from ralph.config._config_filenames import _GLOBAL_POLICY_FILENAME_MAP
+from ralph.config._config_filenames import (
+    _GLOBAL_AGENTS_FILENAME,
+    _GLOBAL_POLICY_FILENAME_MAP,
+)
 from ralph.config.loader import load_toml
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
+
+_std_logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -81,19 +90,22 @@ def _resolve_global_policy_source(
     return _get_bundled_defaults_dir() / local_policy_filename
 
 
-def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
+def _is_agents_config(target: Path) -> bool:
     try:
-        text = target.read_text(encoding="utf-8")
+        resolved_name = target.resolve().name
     except OSError:
-        return None
+        resolved_name = target.name
+    return _GLOBAL_AGENTS_FILENAME in {target.name, resolved_name}
 
+
+def _extract_legacy_agent_drains(target: Path) -> list[tuple[str, str]]:
     try:
         data = cast("Mapping[str, object]", load_toml(target))
     except Exception:
-        return None
+        return []
     raw_drains_obj: object = data.get("agent_drains")
     if not isinstance(raw_drains_obj, Mapping):
-        return None
+        return []
     raw_drains = cast("Mapping[str, object]", raw_drains_obj)
 
     drains: dict[str, object] = {
@@ -110,7 +122,25 @@ def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
         )
     if isinstance(commit_chain, str) and "development_commit" not in drains:
         missing.append(("development_commit", commit_chain))
+    return missing
 
+
+def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
+    if _is_agents_config(target):
+        msg = (
+            f"Skipping legacy global config migration: target {target} refers to "
+            f"agents configuration file {_GLOBAL_AGENTS_FILENAME}"
+        )
+        logger.warning(msg)
+        _std_logger.warning(msg)
+        return None
+
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    missing = _extract_legacy_agent_drains(target)
     section_start = text.find("[agent_drains]")
     if not missing or section_start == -1:
         return None
@@ -121,6 +151,15 @@ def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
     if insert_at == len(text) and not text.endswith("\n"):
         insert_lines = "\n" + insert_lines
 
+    candidate = text[:insert_at] + insert_lines + text[insert_at:]
+    try:
+        tomllib.loads(candidate)
+    except ValueError as exc:
+        msg = f"Candidate migrated config for {target} is invalid TOML, aborting migration: {exc}"
+        logger.warning(msg)
+        _std_logger.warning(msg)
+        return None
+
     backup = _backup_path(target)
     if backup.exists():
         backup.unlink()
@@ -129,7 +168,7 @@ def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
     write_text_if_changed(
         DEFAULT_FILE_BACKEND,
         target,
-        text[:insert_at] + insert_lines + text[insert_at:],
+        candidate,
         encoding="utf-8",
     )
     return BootstrapResult(target, "regenerated", backup)

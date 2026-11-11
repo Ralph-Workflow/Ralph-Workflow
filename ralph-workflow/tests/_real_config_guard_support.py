@@ -127,7 +127,6 @@ def _scan_guarded_config_files(
     prev_scanning = _STATE.scanning
     _STATE.scanning = True
     try:
-        include_bundled_agents_template = guarded_dirs is None
         if guarded_dirs is None:
             guarded_dirs = _resolve_guarded_config_dirs()
         snapshot: dict[Path, _ConfigPathSnapshot] = {}
@@ -184,7 +183,7 @@ def _scan_guarded_config_files(
                             )
                     except OSError:
                         pass
-        if include_bundled_agents_template and _BUNDLED_AGENTS_TEMPLATE.is_file():
+        if _BUNDLED_AGENTS_TEMPLATE.is_file():
             st = _BUNDLED_AGENTS_TEMPLATE.stat()
             resolved = _BUNDLED_AGENTS_TEMPLATE.resolve()
             snapshot[resolved] = _ConfigPathSnapshot(
