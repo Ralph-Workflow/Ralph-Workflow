@@ -141,7 +141,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # wt-15-policy (U1): the 460-test parametrized display module is too
     # heavy for the 16-shard LPT partition (it lands on the slowest
     # low-file-count shard, costing ~5s of wall clock on a 40-core host).
-    # Moving it here lets the E2E shard's eight xdist workers absorb
+    # Moving it here lets the E2E shard's ten xdist workers absorb
     # the parametrization fan-out, so the slowest general shard and
     # the E2E shard both fit inside the 60-second combined budget
     # verified by ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``.
@@ -162,7 +162,7 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # worker (~6 s for opts-key drift, ~2.5 s for kwargs-forwarding)
     # and would tip a single-file shard past the 60 s combined
     # budget even when every other shard finishes inside it. Moving
-    # them to the E2E shard gives the eight in-shard xdist workers
+    # them to the E2E shard gives the ten in-shard xdist workers
     # enough headroom to absorb the scan, and keeps the regression
     # gates on the default ``make test`` profile so the silent-key
     # drop cannot rot. They are marked ``subprocess_e2e`` so the

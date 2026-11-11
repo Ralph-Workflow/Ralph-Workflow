@@ -450,21 +450,21 @@ The ratchet and the whole-tree reconciliation are what keep the table honest.
 
 | cluster | files | setattr_private | private_import | private_attr | total | owner |
 | --- | --- | --- | --- | --- | --- | --- |
-| root | 459 | 394 | 858 | 864 | 2116 | follow-up: backlog white-box conversion unit |
-| mcp-bridge | 82 | 23 | 265 | 142 | 430 | mcp-bridge |
+| root | 463 | 397 | 864 | 858 | 2119 | follow-up: backlog white-box conversion unit |
+| mcp-bridge | 82 | 23 | 265 | 141 | 429 | mcp-bridge |
 | agents | 97 | 34 | 279 | 100 | 413 | agents |
-| auto-integrate | 41 | 162 | 37 | 54 | 253 | auto-integrate |
-| project-policy | 28 | 4 | 53 | 161 | 218 | project-policy |
-| run-loop | 17 | 100 | 27 | 84 | 211 | run-loop |
+| auto-integrate | 41 | 162 | 38 | 54 | 254 | auto-integrate |
+| project-policy | 28 | 4 | 53 | 158 | 215 | project-policy |
+| run-loop | 17 | 103 | 29 | 89 | 221 | run-loop |
 | display | 21 | 22 | 85 | 75 | 182 | display |
 | pipeline | 32 | 72 | 33 | 79 | 184 | pipeline |
 | integration | 22 | 21 | 40 | 98 | 159 | integration |
 | property | 11 | 0 | 59 | 35 | 94 | property |
-| recovery | 26 | 7 | 42 | 24 | 73 | recovery |
+| recovery | 24 | 6 | 40 | 23 | 69 | recovery |
 | tool-exec | 9 | 0 | 36 | 29 | 65 | tool-exec |
 | process | 8 | 5 | 10 | 12 | 27 | process |
 | dir:unit | 5 | 4 | 7 | 8 | 19 | follow-up: backlog white-box conversion unit |
-| dir:config | 6 | 0 | 7 | 2 | 9 | follow-up: backlog white-box conversion unit |
+| dir:config | 5 | 0 | 6 | 2 | 8 | follow-up: backlog white-box conversion unit |
 | dir:git | 1 | 0 | 1 | 0 | 1 | follow-up: backlog white-box conversion unit |
 | dir:update_check | 1 | 0 | 0 | 1 | 1 | follow-up: backlog white-box conversion unit |
 | dir:workspace | 1 | 0 | 1 | 0 | 1 | follow-up: backlog white-box conversion unit |
@@ -602,7 +602,6 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/agents/test_workspace_event_backpressure.py` | 0 | 3 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/agents/test_workspace_watch_scoping.py` | 0 | 5 | 0 | agents | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: agent public-seam unit |
 | `tests/config/test_agents_config_file.py` | 0 | 0 | 1 | dir:config | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
-| `tests/config/test_general_config_same_shape_resumes.py` | 0 | 1 | 0 | dir:config | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/config/test_heartbeat_ceiling_config.py` | 0 | 2 | 0 | dir:config | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/config/test_no_output_at_start_config.py` | 0 | 2 | 0 | dir:config | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/config/test_retention_max_age_config.py` | 0 | 0 | 1 | dir:config | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
@@ -776,7 +775,6 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/recovery/test_agent_unavailable_tracker.py` | 0 | 4 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
 | `tests/recovery/test_agy_incomplete_exit_recovery.py` | 0 | 1 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
 | `tests/recovery/test_all_agents_unavailable_never_crashes.py` | 0 | 2 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
-| `tests/recovery/test_broken_agent_no_output_loop_bounds.py` | 1 | 1 | 1 | recovery | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: recovery public-seam unit |
 | `tests/recovery/test_broken_agent_single_agent_chain_loop_exit.py` | 0 | 0 | 1 | recovery | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: recovery public-seam unit |
 | `tests/recovery/test_classifier_typed_cause_chain_child_alive.py` | 0 | 4 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
 | `tests/recovery/test_controller_all_agents_unavailable_never_exits.py` | 0 | 2 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
@@ -791,7 +789,6 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/recovery/test_prompt_scenario_unavailability.py` | 0 | 2 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
 | `tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py` | 0 | 6 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
 | `tests/recovery/test_runner_offline_pause_resume.py` | 1 | 0 | 0 | recovery | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: recovery public-seam unit |
-| `tests/recovery/test_same_shape_retry_bounds.py` | 0 | 1 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
 | `tests/recovery/test_two_main_retry_rules.py` | 0 | 2 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
 | `tests/recovery/test_two_state_invariant.py` | 0 | 2 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
 | `tests/recovery/test_unavailability_reason.py` | 0 | 3 | 0 | recovery | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: recovery public-seam unit |
@@ -892,7 +889,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_busy_refusal_state_factory.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_canonical_artifact_submit.py` | 2 | 1 | 4 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_capability_state_idempotent.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_catchup_observed_case_composed.py` | 2 | 0 | 0 | auto-integrate | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: auto-integrate public-seam unit |
+| `tests/test_catchup_observed_case_composed.py` | 2 | 1 | 0 | auto-integrate | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: auto-integrate public-seam unit |
 | `tests/test_checkpoint_idempotent.py` | 0 | 0 | 6 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
 | `tests/test_claude_interactive_parser.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_claude_interactive_pty.py` | 1 | 1 | 0 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
@@ -915,10 +912,6 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_codex_inline_image_roundtrip.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_codex_transport_reaches_the_session.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_commit_attempt_clears_receipt.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_commit_review_artifact.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_commit_review_diff.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_commit_review_invariants.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_commit_review_verify_gate.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_commit_completion_authority.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_commit_detached_head_recovery.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_commit_executor.py` | 2 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |
@@ -926,6 +919,11 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_commit_plumbing_transport_tools.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_commit_plumbing_uses_canonical_submit.py` | 0 | 1 | 4 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_commit_retry_cooldown.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_commit_review_artifact.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_commit_review_diff.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_commit_review_invariants.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_commit_review_tripwires.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_commit_review_verify_gate.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_completion_invocation_exit_logging.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_completion_receipts.py` | 14 | 1 | 0 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_completion_run_id_from_env.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
@@ -941,7 +939,8 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_conflict_resolution_liveness_matrix.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_conflict_resolution_outcome_judging.py` | 5 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |
 | `tests/test_conflict_resolution_phase_parity.py` | 10 | 1 | 2 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
-| `tests/test_conflict_resolution_pipeline.py` | 11 | 1 | 1 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
+| `tests/test_conflict_resolution_pipeline.py` | 8 | 1 | 1 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
+| `tests/test_conflict_resolution_pipeline_outcome.py` | 5 | 1 | 0 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_conflict_resolution_rebase_loop.py` | 16 | 0 | 9 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_conflict_resolution_relay_failure.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_conflict_resolution_resume.py` | 8 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |
@@ -1057,8 +1056,10 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_integration_owner.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_integration_owner_config.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_integration_phase_proof.py` | 0 | 1 | 3 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
+| `tests/test_integration_planning_sync_seam.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_integration_public_entry_trace.py` | 6 | 1 | 0 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_integration_record_legacy_migration.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_integration_record_rewrite_back.py` | 0 | 0 | 2 | root | private-attribute-assert | return the value through a public result object the owner already publishes | follow-up: backlog white-box conversion unit |
 | `tests/test_integration_remote_ops.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_integration_resolution.py` | 0 | 0 | 1 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
 | `tests/test_integration_success_state.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
@@ -1142,8 +1143,8 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_phase_process_cleanup.py` | 0 | 0 | 15 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
 | `tests/test_phase_raw_log_break_reporting.py` | 3 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |
 | `tests/test_phase_transport_failure_reporting.py` | 1 | 0 | 0 | root | private-attribute-patch | expose the patched attribute as an injected dependency or public config | follow-up: backlog white-box conversion unit |
-| `tests/test_phases_commit_review.py` | 0 | 6 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_phases_commit_planning_fix.py` | 0 | 1 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
+| `tests/test_phases_commit_review.py` | 0 | 6 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_phases_retry_on_stale_session.py` | 1 | 1 | 0 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_pipeline_core.py` | 0 | 3 | 0 | pipeline | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: pipeline public-seam unit |
 | `tests/test_pipeline_development_timebox.py` | 0 | 0 | 5 | pipeline | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: pipeline public-seam unit |
@@ -1245,7 +1246,7 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_rfc013_db_close_best_effort.py` | 0 | 4 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_run_loop_configured_cap.py` | 12 | 0 | 9 | run-loop | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: run-loop public-seam unit |
 | `tests/test_run_loop_decision_delegation.py` | 0 | 1 | 3 | run-loop | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: run-loop public-seam unit |
-| `tests/test_run_loop_failed_ladder_terminal.py` | 9 | 0 | 8 | run-loop | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: run-loop public-seam unit |
+| `tests/test_run_loop_failed_ladder_terminal.py` | 12 | 2 | 13 | run-loop | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: run-loop public-seam unit |
 | `tests/test_run_loop_pro_integration.py` | 30 | 3 | 11 | run-loop | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: run-loop public-seam unit |
 | `tests/test_run_loop_resolver_cooldown_wait.py` | 6 | 2 | 4 | run-loop | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: run-loop public-seam unit |
 | `tests/test_run_loop_resolver_ledger.py` | 0 | 0 | 3 | run-loop | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: run-loop public-seam unit |
@@ -1293,10 +1294,10 @@ file; `sa` = `setattr_private`, `pi` = `private_import`, `pa` = `private_attr`.
 | `tests/test_smoke_ccs.py` | 0 | 1 | 2 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_smoke_multimodal_end_to_end.py` | 1 | 0 | 1 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_smoke_plumbing_uses_canonical_submit.py` | 0 | 3 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
-| `tests/test_stale_resolution_replay.py` | 1 | 2 | 0 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
+| `tests/test_stale_resolution_replay.py` | 2 | 3 | 0 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_startup_timeouts_invariants.py` | 7 | 18 | 14 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_state_db_schema_guard.py` | 0 | 0 | 4 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
-| `tests/test_strategy_escalation_e2e.py` | 2 | 0 | 2 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
+| `tests/test_strategy_escalation_e2e.py` | 2 | 1 | 3 | root | mixed | split the coupling: inject the dependency, then assert the public result | follow-up: backlog white-box conversion unit |
 | `tests/test_subprocess_agent_executor.py` | 0 | 0 | 12 | root | private-attribute-assert | return the value through a public result/property instead of the private field | follow-up: backlog white-box conversion unit |
 | `tests/test_subprocess_agent_executor_teardown.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |
 | `tests/test_subprocess_env_secret_isolation.py` | 0 | 2 | 0 | root | private-symbol-import | publish a public accessor or promote the private symbol to a public API | follow-up: backlog white-box conversion unit |

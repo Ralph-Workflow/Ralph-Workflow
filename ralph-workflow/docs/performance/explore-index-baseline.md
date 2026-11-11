@@ -81,7 +81,7 @@ allow an extra 2 ms of host noise. Live query percentiles allow an extra
 50 ms because the default verify profile measures them beside other test
 shards. Positive wall-clock and CPU targets also allow 50 ms of scheduler
 noise (the cold-build subprocess shares CPU with sibling xdist workers
-under the default 4-worker REQUIRED_AUTO_INTEGRATE_E2E shard; empirical
+under the default 10-worker REQUIRED_AUTO_INTEGRATE_E2E shard; empirical
 parallel-shard noise runs ~30-50 ms above the isolated value, so the
 slack matches the live-query latency slack above). Cold-build wall time
 has no floor, so a

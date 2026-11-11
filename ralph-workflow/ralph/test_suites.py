@@ -371,7 +371,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # process boundary (the FIFO-blocked open/session tests must reach the
     # fail-closed overrun helpers inside a real child, and the invalid-inherited-FD
     # tests prove the typed McpServerError reaches the parent as a non-zero exit).
-    # Registered on the default profile in the dedicated E2E shard (4 xdist workers)
+    # Registered on the default profile in the dedicated E2E shard (10 xdist workers)
     # so the fail-closed real-child proofs cannot rot silently and fit within the
     # 60s immutable combined test budget.
     "tests/mcp/test_whole_startup_budget_production.py",
