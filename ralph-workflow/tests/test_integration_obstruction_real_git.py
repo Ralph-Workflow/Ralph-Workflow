@@ -100,24 +100,16 @@ def _base_branch(tmp_git_repo: Path) -> str:
             return head_content.removeprefix("ref: refs/heads/")
     except OSError:
         pass
-    from git import Repo
-
-    return Repo(tmp_git_repo).active_branch.name
+    return _run(tmp_git_repo, "branch", "--show-current").stdout.strip()
 
 
 def _commit_file(repo_root: Path, filename: str, content: str, message: str) -> str:
     target = repo_root / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    from git import Repo
-
-    repo = Repo(repo_root)
-    try:
-        repo.index.add([filename])
-        commit = repo.index.commit(message)
-        return commit.hexsha
-    finally:
-        repo.close()
+    _run(repo_root, "add", filename)
+    _run(repo_root, "commit", "-m", message)
+    return _run(repo_root, "rev-parse", "HEAD").stdout.strip()
 
 
 def _behind_with_untracked_copy(tmp_git_repo: Path, content: str) -> str:

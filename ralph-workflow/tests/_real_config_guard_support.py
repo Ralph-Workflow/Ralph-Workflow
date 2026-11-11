@@ -368,10 +368,10 @@ def _split_final_component(target_str: str) -> tuple[str, str] | None:
     return (parent_str or "/", final)
 
 
-def _final_component_is_plain(parent_str: str, final: str) -> bool:
+def _final_component_is_plain(target_str: str) -> bool:
     """Report whether the last component of a path is a plain, non-symlink name."""
     try:
-        final_stat = os.lstat(_join_parent(parent_str, final))
+        final_stat = os.lstat(target_str)
     except FileNotFoundError:
         # The last component does not exist, so it cannot be a symlink.
         return True
@@ -396,7 +396,7 @@ def _canonicalize_path(target_str: str) -> str | None:
     resolved_parent = _resolve_parent_directory(parent_str)
     if resolved_parent is None:
         return _resolve_fully(target_str)
-    if not _final_component_is_plain(parent_str, final):
+    if not _final_component_is_plain(target_str):
         return _resolve_fully(target_str)
     return _join_parent(resolved_parent, final)
 
@@ -430,7 +430,7 @@ def _extract_guarded_path(event: str, args: tuple[object, ...]) -> Path | None:
     if s_str is None:
         return None
     env_raw = _env_override_raw()
-    target_str = s_str if s_str.startswith("/") else f"{Path.cwd()}/{s_str}"
+    target_str = s_str if s_str.startswith("/") else _join_parent(str(Path.cwd()), s_str)
     if _is_safe_pre_canonical_path(target_str):
         return None
 

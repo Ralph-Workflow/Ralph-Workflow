@@ -750,6 +750,7 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
     """AC8: production recovery entry point automatically retries and publishes once reachable."""
     import os
     import sys
+    import tempfile
 
     repo = tmp_path / "repo"
     unreachable_bare = tmp_path / "tacos_unreachable.git"
@@ -772,74 +773,79 @@ def test_unreachable_then_reachable_production_retry_succeeds_across_subprocess(
     if skip_second:
         env["DELIBERATELY_SKIP_SECOND_ITERATION"] = "1"
 
-    proc = subprocess.Popen(
-        [sys.executable, "-c", _SUBPROCESS_SCRIPT, str(repo), local_sha],
-        env=env,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-
-    try:
-        assert proc.stdout is not None
-        assert proc.stdin is not None
-
-        # Conflict cap is configured to 2 in subprocess.
-        # We simulate a prolonged outage by letting retry occur for 3 attempts (> cap of 2).
-        # At attempts 1 and 2, tacos remains unreachable and we send RETRY.
-        # At attempt 3 (> cap 2), we restore tacos to bare, then send RESTORED.
-        for attempt_expected in (1, 2, 3):
-            line = _read_line_bounded(proc.stdout, timeout=15.0).strip()
-            assert line == f"DEFERRED:{attempt_expected}:{local_sha}", (
-                f"Expected DEFERRED:{attempt_expected}:{local_sha}, got: {line}"
-            )
-            if skip_second:
-                proc.stdin.write("RETRY\n")
-                proc.stdin.flush()
-                _out, err = proc.communicate(timeout=15)
-                assert proc.returncode == 0, f"Subprocess failed with code {proc.returncode}: {err}"
-                assert "SKIPPED_SECOND_ITERATION" in err
-                bare_sha = subprocess.run(
-                    ["git", "-C", str(bare), "rev-parse", "release"],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                ).stdout.strip()
-                assert bare_sha == seed_sha
-                assert bare_sha != local_sha
-                return
-
-            if attempt_expected < 3:
-                proc.stdin.write("RETRY\n")
-                proc.stdin.flush()
-            else:
-                # Point configured tacos remote to the now-reachable bare repo (after > cap retries)
-                subprocess.run(
-                    ["git", "-C", str(repo), "remote", "set-url", "tacos", str(bare)],
-                    check=True,
-                    capture_output=True,
-                )
-                proc.stdin.write("RESTORED\n")
-                proc.stdin.flush()
-
-        published_line = _read_line_bounded(proc.stdout, timeout=15.0).strip()
-        assert published_line == f"PUBLISHED:{local_sha}", (
-            f"Expected PUBLISHED:{local_sha}, got: {published_line}"
+    with tempfile.TemporaryFile(mode="w+") as stderr_file:
+        proc = subprocess.Popen(
+            [sys.executable, "-c", _SUBPROCESS_SCRIPT, str(repo), local_sha],
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=stderr_file,
+            text=True,
         )
 
-        _out, err = proc.communicate(timeout=15)
-        assert proc.returncode == 0, f"Subprocess failed with code {proc.returncode}: {err}"
+        try:
+            assert proc.stdout is not None
+            assert proc.stdin is not None
 
-        # Convergence proof: bare ref now points to local_sha
-        bare_sha = subprocess.run(
-            ["git", "-C", str(bare), "rev-parse", "release"],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        assert bare_sha == local_sha
-    finally:
-        if proc.poll() is None:
-            proc.kill()
-            proc.wait()
+            # Conflict cap is configured to 2 in subprocess.
+            # We simulate a prolonged outage by letting retry occur for 3 attempts (> cap of 2).
+            # At attempts 1 and 2, tacos remains unreachable and we send RETRY.
+            # At attempt 3 (> cap 2), we restore tacos to bare, then send RESTORED.
+            for attempt_expected in (1, 2, 3):
+                line = _read_line_bounded(proc.stdout, timeout=15.0).strip()
+                assert line == f"DEFERRED:{attempt_expected}:{local_sha}", (
+                    f"Expected DEFERRED:{attempt_expected}:{local_sha}, got: {line}"
+                )
+                if skip_second:
+                    proc.stdin.write("RETRY\n")
+                    proc.stdin.flush()
+                    _out, _ = proc.communicate(timeout=15)
+                    stderr_file.seek(0)
+                    err = stderr_file.read()
+                    assert proc.returncode == 0, (
+                        f"Subprocess failed with code {proc.returncode}: {err}"
+                    )
+                    assert "SKIPPED_SECOND_ITERATION" in err
+                    bare_sha = subprocess.run(
+                        ["git", "-C", str(bare), "rev-parse", "release"],
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                    ).stdout.strip()
+                    assert bare_sha == seed_sha
+                    assert bare_sha != local_sha
+                    return
+
+                if attempt_expected < 3:
+                    proc.stdin.write("RETRY\n")
+                    proc.stdin.flush()
+                else:
+                    subprocess.run(
+                        ["git", "-C", str(repo), "remote", "set-url", "tacos", str(bare)],
+                        check=True,
+                        capture_output=True,
+                    )
+                    proc.stdin.write("RESTORED\n")
+                    proc.stdin.flush()
+
+            published_line = _read_line_bounded(proc.stdout, timeout=15.0).strip()
+            assert published_line == f"PUBLISHED:{local_sha}", (
+                f"Expected PUBLISHED:{local_sha}, got: {published_line}"
+            )
+
+            _out, _ = proc.communicate(timeout=15)
+            stderr_file.seek(0)
+            err = stderr_file.read()
+            assert proc.returncode == 0, f"Subprocess failed with code {proc.returncode}: {err}"
+
+            bare_sha = subprocess.run(
+                ["git", "-C", str(bare), "rev-parse", "release"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            assert bare_sha == local_sha
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
