@@ -587,7 +587,7 @@ def _check_one_candidate(
             ".lock",
         )
     )
-    if not (has_slash or has_ext) or (not has_slash and "." in candidate):
+    if not (has_slash or has_ext):
         return
     if candidate in seen:
         return
@@ -614,6 +614,12 @@ def _check_one_candidate(
 
 def check_agents_md_path_citations(workspace: Workspace, content: str) -> list[PolicyFinding]:
     """Validate that paths cited in AGENTS.md exist in the workspace."""
+    block = _locate_managed_block(content)
+    if block is not None:
+        content = (
+            content[: block.begin_index]
+            + content[block.end_index + len(markers.AGENTS_BLOCK_END) :]
+        )
     findings: list[PolicyFinding] = []
     seen: set[str] = set()
     for line in content.splitlines():

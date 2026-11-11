@@ -619,6 +619,8 @@ def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
             RebaseState(),
             conflict_resolver=merge_resolver,
             rebase_stop_resolver=rebase_resolver,
+            sleep=lambda _s: None,
+            jitter=lambda: 0.0,
         )
     elif seam == "boundary":
         outcome = auto_integrate_on_phase_transition(
@@ -627,6 +629,8 @@ def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
             RebaseState(),
             conflict_resolver=merge_resolver,
             rebase_stop_resolver=rebase_resolver,
+            sleep=lambda _s: None,
+            jitter=lambda: 0.0,
         )
     else:
         outcome = auto_integrate_after_commit(
@@ -635,6 +639,8 @@ def test_retained_resolution_hands_off_and_lands_at_public_integration_seam(
             RebaseState(),
             conflict_resolver=merge_resolver,
             rebase_stop_resolver=rebase_resolver,
+            sleep=lambda _s: None,
+            jitter=lambda: 0.0,
         )
     assert calls == [target]
     assert outcome is not None and outcome.fast_forwarded

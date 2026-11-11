@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.testing.audit_sast import audit_sast_roots, main
+from ralph.testing.audit_sast import SastFinding, audit_sast_roots, diff_findings, main
 
 #: The gate spawns the Bandit engine, whose start-up costs more CPU than the
 #: default one-second per-test budget allows.
@@ -101,3 +101,54 @@ def test_command_line_exit_code_reflects_the_new_findings(
     current = _write_tree(tmp_path / "current", {"ralph/pkg/mod.py": current_source})
 
     assert main([str(baseline), str(current)]) == expected_exit
+
+
+def _make_finding(
+    file_path: str,
+    test_id: str,
+    line: int,
+    code_line: str = "assert True",
+) -> SastFinding:
+    return SastFinding(
+        file_path=file_path,
+        line=line,
+        test_id=test_id,
+        test_name="assert_used",
+        severity="HIGH",
+        message="Use of assert detected",
+        fix_hint="hint",
+        code_line=code_line,
+    )
+
+
+def test_diff_findings_exact_match_unchanged() -> None:
+    f1 = _make_finding("ralph/a.py", "B101", 10, code_line="assert a")
+    baseline = [f1]
+    current = [f1]
+    new, count = diff_findings(baseline, current)
+    assert new == []
+    assert count == 1
+
+
+def test_diff_findings_same_file_id_new_line_reported_when_exceeding_baseline() -> None:
+    f1 = _make_finding("ralph/a.py", "B101", 10, code_line="assert a")
+    f2 = _make_finding("ralph/a.py", "B101", 20, code_line="assert b")
+    baseline = [f1]
+    current = [f1, f2]
+    new, count = diff_findings(baseline, current)
+    assert new == [f2]
+    assert count == 1
+
+
+def test_diff_findings_order_invariance() -> None:
+    f_orig = _make_finding("ralph/a.py", "B101", 10, code_line="assert orig")
+    f_new = _make_finding("ralph/a.py", "B101", 20, code_line="assert new")
+    baseline = [f_orig]
+
+    # Both [f_new, f_orig] and [f_orig, f_new] must produce exactly [f_new] as the new finding
+    new_order1, count1 = diff_findings(baseline, [f_new, f_orig])
+    new_order2, count2 = diff_findings(baseline, [f_orig, f_new])
+
+    assert count1 == count2 == 1
+    assert new_order1 == [f_new]
+    assert new_order2 == [f_new]

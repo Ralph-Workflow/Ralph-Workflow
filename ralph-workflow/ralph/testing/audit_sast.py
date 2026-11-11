@@ -331,22 +331,31 @@ def diff_findings(
     Returns:
         The new findings and the number of findings the baseline carried.
     """
-    exact = Counter(_finding_key(finding) for finding in baseline)
-    broad = Counter(_broad_key(finding) for finding in baseline)
-    exact_used: Counter[tuple[str, str, str]] = Counter()
-    broad_used: Counter[tuple[str, str]] = Counter()
-    new: list[SastFinding] = []
+    exact_available = Counter(_finding_key(finding) for finding in baseline)
+    broad_available = Counter(_broad_key(finding) for finding in baseline)
+    total_baseline = sum(broad_available.values())
+
+    # Pass 1: match exact (file, id, line)
+    unmatched: list[SastFinding] = []
     for finding in current:
         key = _finding_key(finding)
-        if exact_used[key] < exact.get(key, 0):
-            exact_used[key] += 1
-            continue
         wide = _broad_key(finding)
-        if broad_used[wide] < broad.get(wide, 0):
-            broad_used[wide] += 1
-            continue
-        new.append(finding)
-    return new, sum(broad.values())
+        if exact_available[key] > 0:
+            exact_available[key] -= 1
+            broad_available[wide] -= 1
+        else:
+            unmatched.append(finding)
+
+    # Pass 2: match broad (file, id) for remaining unmatched
+    new: list[SastFinding] = []
+    for finding in unmatched:
+        wide = _broad_key(finding)
+        if broad_available[wide] > 0:
+            broad_available[wide] -= 1
+        else:
+            new.append(finding)
+
+    return new, total_baseline
 
 
 def audit_sast_roots(

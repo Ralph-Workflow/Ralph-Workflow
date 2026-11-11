@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -21,7 +22,9 @@ from ralph.config.models import UnifiedConfig
 from ralph.git.merge import branch_sha
 from ralph.git.rebase.rebase import rebase_in_progress
 from ralph.pipeline import auto_integrate, auto_integrate_sync
-from ralph.pipeline.auto_integrate import auto_integrate_after_commit
+from ralph.pipeline.auto_integrate import (
+    auto_integrate_after_commit as _auto_integrate_after_commit,
+)
 from ralph.pipeline.auto_integrate_ff import is_retryable_fast_forward_failure
 from ralph.pipeline.auto_integrate_sync import (
     REFRESH_DIVERGED,
@@ -36,6 +39,12 @@ from ralph.workspace.scope import WorkspaceScope
 #: transient concurrent target move (asserted below, so the literal
 #: cannot silently drift away from the production set).
 _CONCURRENT_MOVE = "target advanced concurrently (CAS mismatch)"
+
+
+def auto_integrate_after_commit(*args: Any, **kwargs: Any) -> Any:
+    kwargs.setdefault("sleep", lambda _s: None)
+    kwargs.setdefault("jitter", lambda: 0.0)
+    return _auto_integrate_after_commit(*args, **kwargs)
 
 
 def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:

@@ -103,6 +103,16 @@ def test_agents_md_path_citations_fires_on_missing_path() -> None:
     assert any("tools/ghost.py" in f.missing_evidence for f in findings)
 
 
+def test_agents_md_path_citations_detects_bare_filenames() -> None:
+    ws = MemoryWorkspace()
+    ws.write("PROMPT.md", "# Existing\n")
+    content = "# Instructions\n\nSee `MISSING.md` and `PROMPT.md`.\n"
+    findings = agents_md.check_agents_md_path_citations(ws, content)
+    assert len(findings) == 1
+    assert findings[0].requirement_id == markers.AGENTS_MD_CITED_PATH_FINDING_ID
+    assert "MISSING.md" in findings[0].missing_evidence
+
+
 def test_agents_md_path_citations_ignores_external_urls_and_git_refs() -> None:
     ws = MemoryWorkspace()
     content = (

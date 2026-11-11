@@ -147,6 +147,7 @@ _SKIP_DIRS: frozenset[str] = frozenset(
         "dist",
         "htmlcov",
         "node_modules",
+        "probe-ws",
         "tmp",
     }
 )
@@ -765,7 +766,7 @@ def audit_instruction_integrity(root: Path) -> list[InstructionIntegrityFinding]
 
 def _default_root() -> Path:
     """Return the repository root the gate scans when no root is given."""
-    return Path(__file__).resolve().parent.parent.parent
+    return Path(__file__).resolve().parent.parent.parent.parent
 
 
 def main(argv: list[str] | None = None) -> int:

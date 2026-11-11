@@ -516,3 +516,10 @@ def test_main_cli_fails_on_metadata_only_or_subtable_configurations(tmp_path: Pa
         'version = "1.2.3"\nreview = "quarterly"\n',
     )
     assert main([str(tmp_path)]) == 1
+
+
+def test_audit_instruction_integrity_skips_probe_ws(tmp_path: Path) -> None:
+    """The audit skips non-canonical fixture directories like probe-ws and tmp."""
+    _write(tmp_path, "probe-ws/mcp.json", _UNPINNED_JSON)
+    _write(tmp_path, "tmp/mcp.json", _UNPINNED_JSON)
+    assert audit_instruction_integrity(tmp_path) == []

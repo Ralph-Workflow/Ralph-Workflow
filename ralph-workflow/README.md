@@ -184,9 +184,9 @@ ralph-workflow package. Ralph Workflow copies them into the user project as
 three surfaces are auto-updated by the engine and are never hand-edited.
 
 The v6 model is two layers. The first is a small outcome-oriented
-execution kernel: five generic rules (truthful evidence, fail-closed
-verification, bounded execution, no weakening of checks, explicit
-unverified-claim reporting) that ship once in `execution-kernel.md`
+execution kernel: five generic rules (Truthful evidence, Run every
+gate, No weakening, Policy follows reality, Report failures honestly)
+that ship once in `execution-kernel.md`
 and are never rephrased in domain starters. The second is evidence-backed,
 selectively applicable domain controls — each domain policy is loaded
 only when its declared trigger fires. The default for a conditional

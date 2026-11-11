@@ -37,7 +37,51 @@ pytestmark = [
 ]
 
 
+def _fast_branch_name(root: Path) -> str | None:
+    head_file = root / ".git" / "HEAD"
+    try:
+        head_content = head_file.read_text(encoding="utf-8").strip()
+        if head_content.startswith("ref: refs/heads/"):
+            return head_content.removeprefix("ref: refs/heads/")
+    except OSError:
+        pass
+    return None
+
+
+def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
+    try:
+        if ref_name == "HEAD":
+            head_file = root / ".git" / "HEAD"
+            head_content = head_file.read_text(encoding="utf-8").strip()
+            if head_content.startswith("ref: refs/heads/"):
+                target_ref = root / ".git" / head_content.removeprefix("ref: ")
+                if target_ref.is_file():
+                    return target_ref.read_text(encoding="utf-8").strip()
+            elif len(head_content) == 40:
+                return head_content
+        else:
+            ref_file = root / ".git" / "refs" / "heads" / ref_name
+            if ref_file.is_file():
+                return ref_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
+    return None
+
+
 def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    # RALPH-TEST-REASON: fast-paths for rev-parse, show, and branch reduce test subprocess CPU overhead
+    if args == ("branch", "--show-current"):
+        name = _fast_branch_name(repo_root)
+        if name is not None:
+            return subprocess.CompletedProcess(
+                args=("git", *args), stdout=name + "\n", stderr="", returncode=0
+            )
+    if len(args) == 2 and args[0] == "rev-parse" and not args[1].startswith("-"):
+        sha = _fast_rev_parse(repo_root, args[1])
+        if sha is not None:
+            return subprocess.CompletedProcess(
+                args=("git", *args), stdout=sha + "\n", stderr="", returncode=0
+            )
     return subprocess.run(
         ("git", *args),
         cwd=str(repo_root),
@@ -182,6 +226,8 @@ def test_verified_resolution_using_target_version_lands_and_synchronizes(
         RebaseState(),
         conflict_resolver=discard_feature,
         rebase_stop_resolver=choose_target_at_stop if resolve_rebase else None,
+        sleep=lambda _s: None,
+        jitter=lambda: 0.0,
     )
 
     assert outcome is not None and outcome.fast_forwarded
@@ -267,6 +313,8 @@ def test_unexpected_integration_failure_retains_recovery_ownership(
         config,
         WorkspaceScope(tmp_git_repo),
         RebaseState(),
+        sleep=lambda _s: None,
+        jitter=lambda: 0.0,
     )
     assert outcome is not None and outcome.recovery_record_retained
     record = read_record(tmp_git_repo)
@@ -296,11 +344,15 @@ def test_failed_landing_recovers_and_fast_forwards_on_next_seam(
 
     with monkeypatch.context() as failure:
         failure.setattr(integration, "_fast_forward_target", locked)
-        outcome = integration.auto_integrate_after_commit(config, scope, RebaseState())
+        outcome = integration.auto_integrate_after_commit(
+            config, scope, RebaseState(), sleep=lambda _s: None, jitter=lambda: 0.0
+        )
     assert outcome is not None and not outcome.fast_forwarded
     assert read_record(tmp_git_repo) is not None
     assert _run(tmp_git_repo, "rev-parse", "HEAD").stdout.strip() == feature
-    recovered = integration.auto_integrate_after_commit(config, scope, outcome)
+    recovered = integration.auto_integrate_after_commit(
+        config, scope, outcome, sleep=lambda _s: None, jitter=lambda: 0.0
+    )
     assert recovered is not None and recovered.fast_forwarded
     assert read_record(tmp_git_repo) is None
     assert _run(tmp_git_repo, "rev-parse", base).stdout.strip() == feature
@@ -348,6 +400,8 @@ def test_rejected_merge_commit_retains_resolution_until_commit_and_fast_forward(
         WorkspaceScope(tmp_git_repo),
         RebaseState(),
         conflict_resolver=_resolver,
+        sleep=lambda _s: None,
+        jitter=lambda: 0.0,
     )
     assert outcome is not None
     assert outcome.fast_forwarded is False
@@ -650,6 +704,8 @@ def _interrupt_rebase_agent(
         WorkspaceScope(root),
         RebaseState(),
         rebase_stop_resolver=agent,
+        sleep=lambda _s: None,
+        jitter=lambda: 0.0,
     )
     assert outcome is not None and outcome.recovery_record_retained
     record = read_record(root)
