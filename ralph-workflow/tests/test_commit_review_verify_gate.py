@@ -8,6 +8,10 @@ import pytest
 from git import Repo
 
 from ralph.agents.chain import ChainManager
+from ralph.config.bootstrap import auto_seed_default_git_exclude, auto_seed_default_gitignore
+from ralph.git.proposal_seal import seal_pending
+from ralph.mcp.artifacts.markdown import parse_and_validate
+from ralph.mcp.artifacts.markdown.specs import COMMIT_REVIEW_SPEC
 from ralph.mcp.protocol._session_drain import SessionDrain
 from ralph.phases import PhaseContext
 from ralph.phases._commit_review_catalog import (
@@ -19,10 +23,15 @@ from ralph.phases.commit_review import (
     CommitReviewApproved,
     CommitReviewGateFailed,
     CommitReviewLoopback,
+    CommitReviewRejected,
     handle_commit_review_phase,
-    seal_pending,
 )
-from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.commit_executor import (
+    execute_commit_effect,
+    get_last_commit_error,
+    set_last_commit_error,
+)
+from ralph.pipeline.effects import CommitEffect, InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.handoffs import resolve_next_phase
 from ralph.policy.loader import load_policy
@@ -57,10 +66,6 @@ def _resolve_tree_sha(workspace: FsWorkspace, content: dict[str, object]) -> str
     if not (repo_path / ".git").exists():
         return None
     try:
-        from ralph.config.bootstrap import (
-            auto_seed_default_git_exclude,
-            auto_seed_default_gitignore,
-        )
         from ralph.git.commit_review import untrack_engine_internal_files
         from ralph.phases.commit_review import is_agent_internal_path
 
@@ -413,3 +418,315 @@ def test_prompt_named_deletable_classes_match_engine_boundary(tmp_git_repo: Path
             ineligible_result[0], CommitReviewLoopback
         )
         assert target.exists()
+
+
+# The commit-review acceptance criteria used to be pinned only inside the
+# opt-in ``subprocess_e2e`` lane, so the default ``make verify`` profile never
+# executed them and their coverage could rot unnoticed. Every proof below runs
+# in the DEFAULT lane: this module carries NO ``subprocess_e2e`` marker and IS
+# registered in ``ralph.test_suites.REQUIRED_AUTO_INTEGRATE_E2E_FILES``.
+
+
+def _head_sha(repo_root: Path) -> str:
+    """Return the SHA of the repository's current ``HEAD`` commit."""
+    repo = Repo(repo_root)
+    try:
+        return str(repo.head.commit.hexsha)
+    finally:
+        repo.close()
+
+
+def _commit_count(repo_root: Path) -> int:
+    """Return the number of commits reachable from ``HEAD``."""
+    repo = Repo(repo_root)
+    try:
+        return sum(1 for _ in repo.iter_commits())
+    finally:
+        repo.close()
+
+
+def _track_and_commit(repo_root: Path, paths: list[str]) -> None:
+    """Track ``paths`` and record them in a single commit."""
+    repo = Repo(repo_root)
+    try:
+        repo.index.add(paths)
+        repo.index.commit(f"track {', '.join(paths)}")
+    finally:
+        repo.close()
+
+
+def _seed_engine_defaults(repo_root: Path) -> None:
+    """Seed the engine's canonical ignore/exclude files before a proof starts.
+
+    The commit-review phase seeds these files itself, and the ``.gitignore``
+    seed is a DETERMINISTIC COMMIT. Seeding them up front makes the phase's
+    own seeding a no-op, so a proof that asserts "nothing was committed"
+    measures the gate and not the seeding.
+    """
+    auto_seed_default_gitignore(repo_root)
+    auto_seed_default_git_exclude(repo_root)
+
+
+def test_hard_tripwire_rejects_without_an_agent_and_commits_nothing(
+    tmp_git_repo: Path,
+) -> None:
+    """A protected-file deletion is rejected by Stage 1, with no agent and no commit.
+
+    The reviewer agent is never consulted: no artifact exists, and a
+    consulted reviewer would have produced an artifact-validation failure
+    instead of a hard rejection. Nothing is committed, and the working tree
+    is left untouched -- the rollback belongs to the commit phase, not to
+    the gate.
+    """
+    agents_md = tmp_git_repo / "AGENTS.md"
+    agents_md.write_text("# Agents Policy\n", encoding="utf-8")
+    fillers = [f"filler_{index:02d}.py" for index in range(12)]
+    for name in fillers:
+        filler_path = tmp_git_repo / name
+        filler_path.write_text("VALUE = 1\n", encoding="utf-8")
+    _seed_engine_defaults(tmp_git_repo)
+    _track_and_commit(tmp_git_repo, ["AGENTS.md", *fillers])
+
+    head_before = _head_sha(tmp_git_repo)
+    commits_before = _commit_count(tmp_git_repo)
+
+    agents_md.unlink()
+
+    workspace = FsWorkspace(tmp_git_repo)
+    result = _run(workspace)
+
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, CommitReviewRejected)
+    assert event.hard is True
+    assert "Protected document deleted" in event.reason
+    assert "AGENTS.md" in event.reason
+    assert event.ref.startswith("refs/ralph/proposals/")
+    # The agent was never invoked: it produced no artifact, and the gate
+    # never reported an artifact-validation failure.
+    assert not (tmp_git_repo / COMMIT_REVIEW_ARTIFACT_PATH).exists()
+    assert not any(isinstance(item, PhaseFailureEvent) for item in result)
+    # Nothing was committed and the damage was not silently discarded.
+    assert _head_sha(tmp_git_repo) == head_before
+    assert _commit_count(tmp_git_repo) == commits_before
+    assert not agents_md.exists()
+
+
+def test_whole_repo_deletion_is_rejected_by_the_hard_tripwire_without_an_agent(
+    tmp_git_repo: Path,
+) -> None:
+    """Deleting the whole repository trips the mass-deletion wire, agentlessly.
+
+    The mass-deletion wire is a HARD tripwire: it rejects the proposal
+    before any agent is consulted, so the rejection cannot be talked out of
+    and no artifact is required.
+    """
+    tracked: list[str] = []
+    for index in range(60):
+        name = f"module_{index:03d}.py"
+        module_path = tmp_git_repo / name
+        module_path.write_text(f"VALUE = {index}\n", encoding="utf-8")
+        tracked.append(name)
+    _seed_engine_defaults(tmp_git_repo)
+    _track_and_commit(tmp_git_repo, tracked)
+
+    head_before = _head_sha(tmp_git_repo)
+    commits_before = _commit_count(tmp_git_repo)
+
+    for name in tracked:
+        (tmp_git_repo / name).unlink()
+
+    workspace = FsWorkspace(tmp_git_repo)
+    result = _run(workspace)
+
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, CommitReviewRejected)
+    assert event.hard is True
+    assert "Mass deletion" in event.reason
+    assert event.ref.startswith("refs/ralph/proposals/")
+    assert not (tmp_git_repo / COMMIT_REVIEW_ARTIFACT_PATH).exists()
+    assert not any(isinstance(item, PhaseFailureEvent) for item in result)
+    assert _head_sha(tmp_git_repo) == head_before
+    assert _commit_count(tmp_git_repo) == commits_before
+
+
+def test_unverifiable_reject_citation_is_a_reviewer_malfunction_not_a_rollback(
+    tmp_git_repo: Path,
+) -> None:
+    """A rejection citing a path outside the diff fails the gate, never rolls back.
+
+    The reviewer malfunctioned: the engine cannot verify the citation, so
+    the verdict is a gate failure. The pending work is NOT discarded --
+    nothing is rolled back and nothing is committed.
+    """
+    app_file = tmp_git_repo / "src" / "app.py"
+    app_file.parent.mkdir(parents=True, exist_ok=True)
+    app_file.write_text("print('hello')\n", encoding="utf-8")
+
+    workspace = FsWorkspace(tmp_git_repo)
+    _write_commit_review_artifact(
+        workspace,
+        {
+            "verdict": "reject",
+            "reason": "Cites absent_file.txt which is not part of the pending diff",
+        },
+    )
+
+    head_before = _head_sha(tmp_git_repo)
+    commits_before = _commit_count(tmp_git_repo)
+
+    result = _run(workspace)
+
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, CommitReviewGateFailed)
+    assert "citations could not be verified" in event.detail
+    # A malfunction never discards work: the pending change survives.
+    assert app_file.read_text(encoding="utf-8") == "print('hello')\n"
+    assert _head_sha(tmp_git_repo) == head_before
+    assert _commit_count(tmp_git_repo) == commits_before
+
+
+def test_verifiable_reject_citation_is_a_rejection_not_a_reviewer_malfunction(
+    tmp_git_repo: Path,
+) -> None:
+    """The same reject verdict with a citable path is a rejection, not a malfunction.
+
+    This is the control for the malfunction proof above: the ONLY
+    difference is whether the cited path appears in the pending diff.
+    """
+    app_file = tmp_git_repo / "src" / "app.py"
+    app_file.parent.mkdir(parents=True, exist_ok=True)
+    app_file.write_text("print('hello')\n", encoding="utf-8")
+
+    workspace = FsWorkspace(tmp_git_repo)
+    _write_commit_review_artifact(
+        workspace,
+        {
+            "verdict": "reject",
+            "reason": "src/app.py was corrupted by the change",
+        },
+    )
+
+    result = _run(workspace)
+
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, CommitReviewRejected)
+    assert event.hard is False
+    assert "src/app.py" in event.reason
+
+
+def test_stale_tree_sha_in_the_artifact_is_a_gate_failure(tmp_git_repo: Path) -> None:
+    """An artifact that judged a different tree is stale and fails the gate."""
+    workspace = FsWorkspace(tmp_git_repo)
+    _seed_engine_defaults(tmp_git_repo)
+    _write_commit_review_artifact(
+        workspace,
+        {
+            "verdict": "approve",
+            "tree_sha": "0" * 40,
+        },
+    )
+
+    head_before = _head_sha(tmp_git_repo)
+    commits_before = _commit_count(tmp_git_repo)
+
+    result = _run(workspace)
+
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, CommitReviewGateFailed)
+    assert "Stale tree SHA" in event.detail
+    assert _head_sha(tmp_git_repo) == head_before
+    assert _commit_count(tmp_git_repo) == commits_before
+
+
+def test_mismatched_tree_sha_at_commit_is_refused_without_creating_a_commit(
+    tmp_git_repo: Path,
+) -> None:
+    """The commit executor refuses to commit a tree the review never approved.
+
+    The review approves a SEALED tree. When the staged tree no longer
+    matches that approval, the commit is refused: no commit object is
+    created and ``HEAD`` does not move.
+    """
+    readme = tmp_git_repo / "README.md"
+    readme.write_text("approved change\n", encoding="utf-8")
+
+    approved = seal_pending(tmp_git_repo, "run", 1)
+
+    # Control: staging the working tree reproduces EXACTLY the approved
+    # tree, so the refusal below can only come from the post-approval
+    # tampering and not from an unrelated staging difference.
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.git.add("-A")
+        assert repo.index.write_tree().hexsha == approved.tree_sha
+    finally:
+        repo.close()
+
+    tampered_path = tmp_git_repo / "tampered.txt"
+    tampered_path.write_text("tampered after approval\n", encoding="utf-8")
+
+    message_path = tmp_git_repo / ".agent" / "artifacts" / "commit_message.md"
+    message_path.parent.mkdir(parents=True, exist_ok=True)
+    message_path.write_text(
+        "---\ntype: commit\nsubject: feat: tampered\n---\n",
+        encoding="utf-8",
+    )
+
+    head_before = _head_sha(tmp_git_repo)
+    commits_before = _commit_count(tmp_git_repo)
+
+    effect = CommitEffect(
+        message_file=str(message_path),
+        expected_tree_sha=approved.tree_sha,
+    )
+    try:
+        event = execute_commit_effect(effect, tmp_git_repo)
+
+        assert event == PipelineEvent.COMMIT_FAILURE
+        diagnostic = get_last_commit_error()
+        assert diagnostic is not None
+        assert "does not match approved tree SHA" in diagnostic
+        # No commit object was created and HEAD did not move.
+        assert _head_sha(tmp_git_repo) == head_before
+        assert _commit_count(tmp_git_repo) == commits_before
+    finally:
+        # The pending diagnostic is a handoff slot, not a log: clear it so
+        # this failure cannot be routed by a later attempt.
+        set_last_commit_error(None)
+
+
+def test_invalid_verdict_produces_the_documented_validation_diagnostic(
+    tmp_git_repo: Path,
+) -> None:
+    """A verdict outside the closed vocabulary is a hard error with a diagnostic."""
+    workspace = FsWorkspace(tmp_git_repo)
+    _seed_engine_defaults(tmp_git_repo)
+    _write_commit_review_artifact(workspace, {"verdict": "maybe"})
+    artifact_text = workspace.read(COMMIT_REVIEW_ARTIFACT_PATH)
+
+    head_before = _head_sha(tmp_git_repo)
+    commits_before = _commit_count(tmp_git_repo)
+
+    result = _run(workspace)
+
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, CommitReviewGateFailed)
+    assert "Invalid verdict" in event.detail
+    assert "approve" in event.detail
+    assert "reject" in event.detail
+    assert _head_sha(tmp_git_repo) == head_before
+    assert _commit_count(tmp_git_repo) == commits_before
+
+    # The artifact grammar rejects the very same document with the
+    # documented MD/SPEC diagnostic code.
+    _, diagnostics = parse_and_validate(artifact_text, COMMIT_REVIEW_SPEC)
+    error_rule_ids = {
+        diagnostic.rule_id for diagnostic in diagnostics if diagnostic.severity == "error"
+    }
+    assert "SPEC010" in error_rule_ids

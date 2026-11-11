@@ -273,8 +273,22 @@ class PipelineState(_FrozenPipelineStateModel):
     # Commit review safety gate and rollback state
     rollback_pending: bool = False
     rollback_ref: str | None = None
+    # Baseline seal recorded at run start when the working tree was dirty.
+    # A rejection rollback restores to this ref instead of HEAD so the
+    # user's pre-existing uncommitted work survives the rollback. ``None``
+    # means "no baseline was recorded" -- a clean tree at run start, or a
+    # checkpoint written before this field existed -- and the rollback
+    # restores to HEAD exactly as it did before. A recorded ref that does
+    # not resolve is a GATE FAILURE, never a destructive rollback.
+    rollback_baseline_ref: str | None = None
     commit_review_rejections: int = 0
     approved_tree_sha: str | None = None
+    # True once a commit review approved a tree for the pending commit. A
+    # SHA-bound commit that reaches the executor without an approved tree SHA
+    # is refused (fail closed), so a lost approval cannot degrade into an
+    # unbounded commit. Flows that never ran a commit review keep the default
+    # False and commit exactly as they did before.
+    commit_approval_required: bool = False
     last_review_rejection_reason: str | None = None
 
     # Policy-derived fields (set at startup and after phase transitions)

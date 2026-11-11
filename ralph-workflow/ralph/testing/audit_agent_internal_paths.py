@@ -218,7 +218,7 @@ _AUTO_SEED_GITEXCLUDE_HELPER: str = "auto_seed_default_git_exclude"
 # load. Both anchor names are stable identifiers that have existed since
 # the original commit_review phase was introduced.
 _AUTO_SEED_PRIOR_ANCHOR: str = "ensure_git_initialized"
-_AUTO_SEED_LATER_ANCHOR: str = "_load_cleanup_artifact"
+_AUTO_SEED_LATER_ANCHOR: str = "_load_commit_review_artifact"
 
 # Helper whose placement the new pre-emptive-untrack audit pins. The
 # call shape MUST be a plain ``ast.Name`` call (not a module-qualified
@@ -234,7 +234,7 @@ def _check_auto_seed_placement() -> list[str]:
 
     1. The ``ensure_git_initialized`` anchor appears BEFORE both
        ``auto_seed_default_gitignore`` and ``auto_seed_default_git_exclude``.
-    2. The ``_load_cleanup_artifact`` anchor appears AFTER both seed calls.
+    2. The ``_load_commit_review_artifact`` anchor appears AFTER both seed calls.
     3. Both seed helpers are present in the body (this is the PA-003
        closure -- the prior audit's string-literal check could be
        satisfied by a commented-out line; the AST check requires an
@@ -415,7 +415,7 @@ def _check_pre_emptive_untrack_placement() -> list[str]:
 
     Reuses the prior / later anchors from ``_check_auto_seed_placement``
     (the call must run AFTER ``ensure_git_initialized`` and BEFORE
-    ``_load_cleanup_artifact``). The audit also asserts there is
+    ``_load_commit_review_artifact``). The audit also asserts there is
     EXACTLY ONE call to ``untrack_engine_internal_files`` in the
     ``handle_commit_review_phase`` body -- a duplicate call would
     widen the index-walk surface area for no gain.
@@ -504,7 +504,7 @@ def _check_best_effort_invariants() -> list[str]:
        non-housekeeping`` -- the hard fail was removed in favor of a
        WARNING log + skipped_delete_paths return.
     2. ``ralph/phases/commit_review.py`` DOES define a
-       ``build_cleanup_retry_hint`` helper (the structured reason
+       ``build_commit_review_retry_hint`` helper (the structured reason
        producer for ``PhaseFailureEvent``).
 
     Returns:
@@ -532,9 +532,9 @@ def _check_best_effort_invariants() -> list[str]:
             "Reintroducing this string is a security-policy regression."
         )
 
-    if "build_cleanup_retry_hint" not in source:
+    if "build_commit_review_retry_hint" not in source:
         problems.append(
-            f"{rel_path}: missing required symbol 'build_cleanup_retry_hint' -- "
+            f"{rel_path}: missing required symbol 'build_commit_review_retry_hint' -- "
             "the phase MUST provide a structured retry-hint producer for "
             "unapplied delete and apply-failed decisions"
         )
@@ -823,10 +823,10 @@ def main(argv: list[str] | None = None) -> int:
         "_is_safe_to_delete places is_agent_internal_path(path) as the "
         "FIRST executable statement (AST placement), "
         "handle_commit_review_phase auto-seeds canonical .gitignore + .git/info/exclude "
-        "patterns between ensure_git_initialized and _load_cleanup_artifact (AST placement), "
+        "patterns between ensure_git_initialized and _load_commit_review_artifact (AST placement), "
         "handle_commit_review_phase pre-emptively untracks tracked engine-internal files "
         "via untrack_engine_internal_files between ensure_git_initialized and "
-        "_load_cleanup_artifact (AST placement, EXACTLY ONCE), "
+        "_load_commit_review_artifact (AST placement, EXACTLY ONCE), "
         "bootstrap.py defines _DEFAULT_GIT_EXCLUDE_PATTERNS + auto_seed_default_git_exclude "
         "+ root-anchored /checkpoint.json (NOT bare checkpoint.json), "
         "git/operations.py _atomic_append_text staging filename is content-derived "

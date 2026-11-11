@@ -303,6 +303,7 @@ def _commit_phase_effect(
         return CommitEffect(
             message_file=str(workspace_scope.root / COMMIT_MESSAGE_ARTIFACT),
             expected_tree_sha=state.approved_tree_sha,
+            require_approved_tree=state.commit_approval_required,
         )
     if state.commit.agent_invoked:
         logger.warning(

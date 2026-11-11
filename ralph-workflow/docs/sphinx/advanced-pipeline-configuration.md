@@ -287,7 +287,7 @@ Before invoking the review agent, the engine seals pending changes into an isola
 Policy knobs in the `[commit_review]` block of `pipeline.toml`:
 
 - **Proposal retention (`proposal_retention`, default: 10):** Limits how many historical proposal refs are retained before older ones are pruned.
-- **Rejection ceiling (`max_rejections`, default: 2):** Maximum consecutive commit-review rejections before the run fails to `failed_terminal`. The `[loop_counters.commit_review_rejections]` counter takes precedence when it is declared, and it carries the same default of 2.
+- **Rejection ceiling (`max_rejections`, default: 2):** The consecutive-rejection count at which the run fails to `failed_terminal`: with the default of 2, the second consecutive rejection is terminal, without another rollback. The `[loop_counters.commit_review_rejections]` counter takes precedence when it is declared, and it carries the same default of 2.
 
 #### No plan-based bypass for intentional large deletions
 

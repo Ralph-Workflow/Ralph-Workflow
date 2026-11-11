@@ -14,16 +14,16 @@ from ralph.git.proposal_seal import seal_pending
 from ralph.mcp.artifacts._commit_review import CommitReview
 from ralph.mcp.artifacts._commit_review_action import CommitReviewAction
 from ralph.phases import PhaseContext
-from ralph.phases._commit_review_actions import CleanupApplyReport
+from ralph.phases._commit_review_actions import CommitReviewApplyReport
 from ralph.phases._commit_review_catalog import LOCKFILE_BASENAMES, UNSAFE_EXTENSIONS
-from ralph.phases._commit_review_outcome import decide_cleanup_outcome
+from ralph.phases._commit_review_outcome import decide_commit_review_outcome
 from ralph.phases.commit_review import (
     CommitReviewApproved,
     CommitReviewGateFailed,
     CommitReviewLoopback,
     CommitReviewRejected,
-    _apply_cleanup_actions,
-    build_cleanup_retry_hint,
+    _apply_commit_review_actions,
+    build_commit_review_retry_hint,
     handle_commit_review_phase,
 )
 from ralph.pipeline.effects import CommitEffect, InvokeAgentEffect, PreparePromptEffect
@@ -1550,7 +1550,7 @@ def test_empty_path_in_delete_action_is_skipped_with_debug_log(tmp_git_repo: Pat
         actions=[whitespace_action, real_action],
     )
 
-    skipped, _failed = _apply_cleanup_actions(tmp_git_repo, cleanup)
+    skipped, _failed = _apply_commit_review_actions(tmp_git_repo, cleanup)
     # Whitespace-only paths are silently dropped -- not surfaced in the
     # retry hint because the agent cannot meaningfully retry them.
     assert skipped == []
@@ -1572,7 +1572,7 @@ def test_empty_pattern_in_gitignore_action_is_skipped(tmp_git_repo: Path) -> Non
         actions=[whitespace_action, real_action],
     )
 
-    _apply_cleanup_actions(tmp_git_repo, cleanup)
+    _apply_commit_review_actions(tmp_git_repo, cleanup)
     gitignore_text = (tmp_git_repo / ".gitignore").read_text()
     assert "*.real" in gitignore_text
 
@@ -1640,23 +1640,23 @@ def test_unsafe_delete_with_whitespace_only_gitignore_loops_back(
         actions=[unsafe_action, whitespace_action],
     )
 
-    skipped, _failed = _apply_cleanup_actions(tmp_git_repo, cleanup)
+    skipped, _failed = _apply_commit_review_actions(tmp_git_repo, cleanup)
     assert "module.py" in skipped
     gitignore_path = tmp_git_repo / ".gitignore"
     gitignore_text = gitignore_path.read_text() if gitignore_path.exists() else ""
     applied_gitignore = ["   "] if "   " in gitignore_text else []
-    report = CleanupApplyReport(
+    report = CommitReviewApplyReport(
         declined_delete_paths=list(skipped),
         applied_gitignore_patterns=applied_gitignore,
     )
 
-    outcome = decide_cleanup_outcome("development_commit_review", cleanup, report)
-    # RALPH-TEST-REASON: Outcome returns CommitReviewLoopback on declined deletes instead of legacy PHASE_LOOPBACK
-    assert len(outcome) == 1 and isinstance(outcome[0], CommitReviewLoopback), (
+    outcome = decide_commit_review_outcome("development_commit_review", report)
+    # RALPH-TEST-REASON: The live outcome path returns CommitReviewLoopback on declined deletes instead of legacy PHASE_LOOPBACK
+    assert outcome is not None and isinstance(outcome, CommitReviewLoopback), (
         f"A declined delete must loop the agent back, got: {outcome!r}"
     )
-    assert "module.py" in outcome[0].hint, (
-        f"The loopback hint must name the rejected path, got: {outcome[0].hint!r}"
+    assert "module.py" in outcome.hint, (
+        f"The loopback hint must name the rejected path, got: {outcome.hint!r}"
     )
     assert source.exists()
 
@@ -1684,23 +1684,23 @@ def test_unsafe_delete_with_whitespace_only_git_exclude_loops_back(
         actions=[unsafe_action, whitespace_action],
     )
 
-    skipped, _failed = _apply_cleanup_actions(tmp_git_repo, cleanup)
+    skipped, _failed = _apply_commit_review_actions(tmp_git_repo, cleanup)
     assert "module.py" in skipped
     exclude_path = tmp_git_repo / ".git" / "info" / "exclude"
     exclude_text = exclude_path.read_text() if exclude_path.exists() else ""
     applied_exclude = ["   "] if "   " in exclude_text else []
-    report = CleanupApplyReport(
+    report = CommitReviewApplyReport(
         declined_delete_paths=list(skipped),
         applied_exclude_patterns=applied_exclude,
     )
 
-    outcome = decide_cleanup_outcome("development_commit_review", cleanup, report)
-    # RALPH-TEST-REASON: Outcome returns CommitReviewLoopback on declined deletes instead of legacy PHASE_LOOPBACK
-    assert len(outcome) == 1 and isinstance(outcome[0], CommitReviewLoopback), (
+    outcome = decide_commit_review_outcome("development_commit_review", report)
+    # RALPH-TEST-REASON: The live outcome path returns CommitReviewLoopback on declined deletes instead of legacy PHASE_LOOPBACK
+    assert outcome is not None and isinstance(outcome, CommitReviewLoopback), (
         f"A declined delete must loop the agent back, got: {outcome!r}"
     )
-    assert "module.py" in outcome[0].hint, (
-        f"The loopback hint must name the rejected path, got: {outcome[0].hint!r}"
+    assert "module.py" in outcome.hint, (
+        f"The loopback hint must name the rejected path, got: {outcome.hint!r}"
     )
     assert source.exists()
 
@@ -1725,19 +1725,21 @@ def test_whitespace_only_delete_path_with_safe_gitignore_succeeds(
         actions=[whitespace_action, real_action],
     )
 
-    _apply_cleanup_actions(tmp_git_repo, cleanup)
+    _apply_commit_review_actions(tmp_git_repo, cleanup)
     gitignore_text = (tmp_git_repo / ".gitignore").read_text()
     assert "*.scratch" in gitignore_text
     applied_gitignore = ["*.scratch"] if "*.scratch" in gitignore_text else []
-    report = CleanupApplyReport(
+    report = CommitReviewApplyReport(
         declined_delete_paths=[],
         applied_gitignore_patterns=applied_gitignore,
     )
 
-    outcome = decide_cleanup_outcome("development_commit_review", cleanup, report)
-    # RALPH-TEST-REASON: Outcome returns exactly [AGENT_SUCCESS] on approved verdict with safe work
-    assert outcome == [PipelineEvent.AGENT_SUCCESS], (
-        f"An approving verdict with applied safe work must succeed; got: {outcome!r}"
+    outcome = decide_commit_review_outcome("development_commit_review", report)
+    # RALPH-TEST-REASON: The live outcome path must not loop back when the only
+    # meaningful work is a safe gitignore action. The approving verdict itself
+    # is proven end-to-end by test_all_safe_actions_with_no_delete_succeeds.
+    assert outcome is None, (
+        f"Safe applied work with no declined deletes must not loop back; got: {outcome!r}"
     )
 
 
@@ -1768,34 +1770,35 @@ def test_retry_hint_named_for_each_rejected_path(tmp_git_repo: Path) -> None:
     assert source_b.exists()
 
 
-# --- Phase 7 edge-case tests for build_cleanup_retry_hint ---
+# --- Phase 7 edge-case tests for build_commit_review_retry_hint ---
 #
 # Each test pins one observable behavior of the structured retry-hint
-# builder. The names follow the plan: test_build_cleanup_retry_hint_<branch>
+# builder. The names follow the plan: test_build_commit_review_retry_hint_<branch>
 # so the test id maps directly to the helper's branch coverage.
 
 
 @pytest.mark.timeout_seconds(5)
-def test_build_cleanup_retry_hint_empty_skipped_paths_returns_sentinel() -> None:
+def test_build_commit_review_retry_hint_empty_skipped_paths_returns_sentinel() -> None:
     """Empty ``skipped_paths`` returns the sentinel message, not an empty string.
 
-    Pins the contract that ``build_cleanup_retry_hint`` ALWAYS returns a
+    Pins the contract that ``build_commit_review_retry_hint`` ALWAYS returns a
     non-empty string, even when there are no skipped paths. The sentinel
     tells the agent that the phase still failed despite no rejected
     delete actions -- pointing the diagnostic toward the artifact schema
     itself rather than the path list.
     """
-    hint = build_cleanup_retry_hint(skipped_paths=[], safe_applied_count=0)
+    hint = build_commit_review_retry_hint(skipped_paths=[], safe_applied_count=0)
 
     assert isinstance(hint, str)
-    assert hint, "build_cleanup_retry_hint must NOT return an empty string"
+    # RALPH-TEST-REASON: Renamed build_cleanup_retry_hint to build_commit_review_retry_hint
+    assert hint, "build_commit_review_retry_hint must NOT return an empty string"
     assert "no delete actions were rejected" in hint, (
         f"Sentinel must explicitly state that no delete actions were rejected; got: {hint!r}"
     )
 
 
 @pytest.mark.timeout_seconds(5)
-def test_build_cleanup_retry_hint_with_skipped_paths_and_safe_count() -> None:
+def test_build_commit_review_retry_hint_with_skipped_paths_and_safe_count() -> None:
     """Non-empty ``skipped_paths`` with a positive safe count renders both sections.
 
     Pins the contract that:
@@ -1803,7 +1806,7 @@ def test_build_cleanup_retry_hint_with_skipped_paths_and_safe_count() -> None:
       2. The safe-applied count appears in the form ``Safe actions applied: N``
          when ``safe_applied_count > 0``.
     """
-    hint = build_cleanup_retry_hint(skipped_paths=["foo.py", "bar.py"], safe_applied_count=2)
+    hint = build_commit_review_retry_hint(skipped_paths=["foo.py", "bar.py"], safe_applied_count=2)
 
     assert "foo.py" in hint, f"Path foo.py must be named in the hint; got: {hint!r}"
     assert "bar.py" in hint, f"Path bar.py must be named in the hint; got: {hint!r}"
@@ -1813,7 +1816,7 @@ def test_build_cleanup_retry_hint_with_skipped_paths_and_safe_count() -> None:
 
 
 @pytest.mark.timeout_seconds(5)
-def test_build_cleanup_retry_hint_with_skipped_paths_and_zero_safe_count() -> None:
+def test_build_commit_review_retry_hint_with_skipped_paths_and_zero_safe_count() -> None:
     """Non-empty ``skipped_paths`` with zero safe count renders the zero-summary branch.
 
     Pins the contract that a zero ``safe_applied_count`` produces the
@@ -1821,7 +1824,7 @@ def test_build_cleanup_retry_hint_with_skipped_paths_and_zero_safe_count() -> No
     form. The wording is intentionally distinct so the agent's self-correct
     path can distinguish "nothing was applied" from "exactly zero was applied".
     """
-    hint = build_cleanup_retry_hint(skipped_paths=["baz.py"], safe_applied_count=0)
+    hint = build_commit_review_retry_hint(skipped_paths=["baz.py"], safe_applied_count=0)
 
     assert "baz.py" in hint, f"Path baz.py must be named in the hint; got: {hint!r}"
     assert "No safe actions were applied" in hint, (
@@ -1988,11 +1991,11 @@ def test_apply_time_delete_failure_with_safe_gitignore_succeeds(
 
 
 @pytest.mark.timeout_seconds(5)
-def test_apply_cleanup_actions_returns_separate_skipped_and_failed_lists(
+def test_apply_commit_review_actions_returns_separate_skipped_and_failed_lists(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression: ``_apply_cleanup_actions`` returns ``(skipped, failed)`` disjoint tuple.
+    """Regression: ``_apply_commit_review_actions`` returns ``(skipped, failed)`` disjoint tuple.
 
     Pins the public contract: the function returns a tuple of two
     disjoint lists so callers can distinguish safety-classifier
@@ -2025,7 +2028,7 @@ def test_apply_cleanup_actions_returns_separate_skipped_and_failed_lists(
         _raise_on_delete,
     )
 
-    skipped, failed = _apply_cleanup_actions(tmp_git_repo, cleanup)
+    skipped, failed = _apply_commit_review_actions(tmp_git_repo, cleanup)
 
     assert "module.py" in skipped, f"Unsafe path module.py must be in skipped; got: {skipped!r}"
     assert "binary.exe" in failed, (

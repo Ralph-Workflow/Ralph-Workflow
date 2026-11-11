@@ -8,12 +8,14 @@ import dataclasses
 import sys
 import threading
 import time
+import uuid
 from collections.abc import Mapping
 from contextlib import nullcontext, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal, cast
 
+from git.exc import InvalidGitRepositoryError, NoSuchPathError
 from loguru import logger
 
 import ralph.pipeline.runner as _runner_module
@@ -30,6 +32,7 @@ from ralph.display.parallel_display import (
     status_text,
 )
 from ralph.display.status_bar import StatusBarModel
+from ralph.git.proposal_seal import seal_baseline
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
@@ -1221,11 +1224,57 @@ def _initialize_resumed_timeboxes(
     return state
 
 
-def _resolve_initial_state(
+#: Namespace the run-start baseline seal lives under. The baseline is
+#: deliberately OUTSIDE the proposal namespace (``refs/ralph/proposals``) so
+#: the proposal sweep can never prune it and no commit can source a tree
+#: from it.
+_BASELINE_REF_NAMESPACE: Final = "refs/ralph/baselines"
+
+
+def _capture_rollback_baseline(state: PipelineState, root: Path | None) -> PipelineState:
+    """Record the run-start baseline seal when the working tree is dirty.
+
+    A run that starts on a dirty tree must not lose the user's pre-existing
+    uncommitted work when a commit-review rejection rolls the tree back: a
+    ``reset``-style restore to ``HEAD`` deletes exactly that work. The
+    baseline seal captures the dirty state in an isolated ref
+    (``refs/ralph/baselines/<run id>``) through the temporary-index route,
+    so the real ``.git/index`` is never written.
+
+    Args:
+        state: The state the run starts from.
+        root: The workspace root, or ``None`` when the run has no workspace
+            (a non-Git workspace cannot hold a baseline).
+
+    Returns:
+        The state with ``rollback_baseline_ref`` pointing at the sealed
+        baseline, or the state unchanged when the tree was clean.
+    """
+    if root is None or state.rollback_baseline_ref:
+        return state
+    run_id = uuid.uuid4().hex
+    try:
+        seal = seal_baseline(root, run_id, force=False)
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        # Not a Git workspace: there is no tree to protect, and no rollback
+        # is possible there either.
+        return state
+    except Exception as exc:
+        # The tree was dirty and could not be sealed. Record the ref the seal
+        # WOULD have created: it does not resolve, so the rollback fails
+        # closed as a gate failure instead of restoring to HEAD and
+        # destroying the very work the baseline was meant to protect.
+        logger.error("Failed to seal the run-start baseline: {}", exc)
+        return state.copy_with(rollback_baseline_ref=f"{_BASELINE_REF_NAMESPACE}/{run_id}")
+    if seal is None:
+        return state
+    logger.info("Recorded the run-start rollback baseline: {}", seal.ref)
+    return state.copy_with(rollback_baseline_ref=seal.ref)
+
+
+def _create_initial_state(
     config: UnifiedConfig,
     policy_bundle: PolicyBundle,
-    initial_state: PipelineState | None,
-    counter_overrides: dict[str, int] | None,
     pipeline_deps: PipelineDeps | None,
     pro_hooks: ProPipelineHooks | None,
     state_factory: Callable[
@@ -1233,47 +1282,9 @@ def _resolve_initial_state(
         PipelineState,
     ]
     | None,
-    *,
-    workspace_root: Path | None = None,
+    counter_overrides: dict[str, int] | None,
 ) -> PipelineState:
-    """Resolve the initial :class:`PipelineState` with the standard DI precedence.
-
-    A resumed run adopts the checkpoint's state, but explicit counter
-    overrides are the operator's newest instruction and outrank the caps
-    frozen into it — without this a resumed run silently ignored a raised
-    budget, reported it as spent, and terminated at the next final commit.
-    """
-    if initial_state is not None:
-        resumed = initial_state
-        if (
-            isinstance(resumed.rollback_pending, bool)
-            and resumed.rollback_pending is True
-            and isinstance(resumed.rollback_ref, str)
-            and resumed.rollback_ref
-        ):
-            from ralph.git.proposal_seal import rollback
-
-            root = workspace_root if workspace_root is not None else Path()
-            try:
-                rollback(root, resumed.rollback_ref)
-            except Exception as exc:
-                logger.error("Failed to complete pending rollback on resume: {}", exc)
-                raise
-            resumed = resumed.copy_with(rollback_pending=False, rollback_ref=None)
-            with suppress(Exception):
-                from ralph.pipeline.checkpoint import save as save_checkpoint
-
-                save_checkpoint(resumed, root / ".agent" / "checkpoint.json")
-
-        # Legacy checkpoints carry no cycle timing; initialize it HERE, in the
-        # one seam every resumed run passes through, so the wiring cannot be
-        # deleted while the tests that cover resuming stay green. Guarded: this
-        # seam is also reached with stub policy bundles that carry no phase
-        # graph, and a resumed run must never fail to start over timing setup.
-        with suppress(AttributeError, TypeError):
-            current_epoch = _resume_epoch(pipeline_deps)
-            resumed = _initialize_resumed_timeboxes(resumed, policy_bundle.pipeline, current_epoch)
-        return _with_counter_overrides(resumed, counter_overrides)
+    """Create the state a fresh run starts from (standard DI precedence)."""
     if pipeline_deps is not None and pipeline_deps.state_factory is not None:
         return pipeline_deps.state_factory(
             config,
@@ -1301,6 +1312,76 @@ def _resolve_initial_state(
         pipeline_policy=policy_bundle.pipeline,
         counter_overrides=counter_overrides,
     )
+
+
+def _resolve_initial_state(
+    config: UnifiedConfig,
+    policy_bundle: PolicyBundle,
+    initial_state: PipelineState | None,
+    counter_overrides: dict[str, int] | None,
+    pipeline_deps: PipelineDeps | None,
+    pro_hooks: ProPipelineHooks | None,
+    state_factory: Callable[
+        [UnifiedConfig, AgentsPolicy, PipelinePolicy, dict[str, int] | None],
+        PipelineState,
+    ]
+    | None,
+    *,
+    workspace_root: Path | None = None,
+) -> PipelineState:
+    """Resolve the initial :class:`PipelineState` with the standard DI precedence.
+
+    A resumed run adopts the checkpoint's state, but explicit counter
+    overrides are the operator's newest instruction and outrank the caps
+    frozen into it — without this a resumed run silently ignored a raised
+    budget, reported it as spent, and terminated at the next final commit.
+
+    A FRESH run records the run-start baseline (see
+    :func:`_capture_rollback_baseline`); a resumed run keeps the baseline
+    its checkpoint already carries, so the user's pre-existing uncommitted
+    work survives a rejection rollback across a restart.
+    """
+    if initial_state is not None:
+        resumed = initial_state
+        if (
+            isinstance(resumed.rollback_pending, bool)
+            and resumed.rollback_pending is True
+            and isinstance(resumed.rollback_ref, str)
+            and resumed.rollback_ref
+        ):
+            root = workspace_root if workspace_root is not None else Path()
+            # A pending rollback that cannot be preflighted is a GATE
+            # FAILURE, never a rollback attempt: the tree keeps the state it
+            # had, the proposal ref is kept, and the run stops on the
+            # policy's failure route instead of restoring blindly.
+            resumed = _runner_module.execute_pending_rollback(
+                resumed,
+                root,
+                policy_bundle.pipeline,
+            )
+            with suppress(Exception):
+                from ralph.pipeline.checkpoint import save as save_checkpoint
+
+                save_checkpoint(resumed, root / ".agent" / "checkpoint.json")
+
+        # Legacy checkpoints carry no cycle timing; initialize it HERE, in the
+        # one seam every resumed run passes through, so the wiring cannot be
+        # deleted while the tests that cover resuming stay green. Guarded: this
+        # seam is also reached with stub policy bundles that carry no phase
+        # graph, and a resumed run must never fail to start over timing setup.
+        with suppress(AttributeError, TypeError):
+            current_epoch = _resume_epoch(pipeline_deps)
+            resumed = _initialize_resumed_timeboxes(resumed, policy_bundle.pipeline, current_epoch)
+        return _with_counter_overrides(resumed, counter_overrides)
+    fresh_state = _create_initial_state(
+        config,
+        policy_bundle,
+        pipeline_deps,
+        pro_hooks,
+        state_factory,
+        counter_overrides,
+    )
+    return _capture_rollback_baseline(fresh_state, workspace_root)
 
 
 def _resolve_recovery_sleep(

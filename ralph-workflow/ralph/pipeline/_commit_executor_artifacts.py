@@ -8,14 +8,18 @@ repository's file-size limit without changing any caller-facing names.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT
 from ralph.mcp.session_plan import build_session_mcp_plan
-from ralph.phases.required_artifacts import build_required_artifacts
+from ralph.phases.required_artifacts import (
+    build_required_artifacts,
+    resolve_phase_required_artifact,
+)
 
 if TYPE_CHECKING:
     from ralph.policy.models import AgentsPolicy, PolicyBundle
+    from ralph.workspace import FsWorkspace
 
 
 def phase_output_artifact_paths(
@@ -57,3 +61,32 @@ def default_mcp_capabilities_for_phase(
             agents_policy=agents_policy,
         ).capabilities
     )
+
+
+def clear_phase_output_artifacts(
+    workspace: FsWorkspace,
+    phase: str,
+    **opts: object,
+) -> None:
+    """Remove stale per-phase artifacts before invoking an agent."""
+    drain = cast(
+        "str | None", opts.get("drain")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    policy_bundle = cast(
+        "PolicyBundle | None", opts.get("policy_bundle")
+    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
+    effective_drain = drain or phase
+    required_artifact = (
+        resolve_phase_required_artifact(
+            policy_bundle.pipeline,
+            policy_bundle.artifacts,
+            phase=phase,
+            drain=effective_drain,
+        )
+        if policy_bundle is not None
+        else None
+    )
+    if required_artifact is not None and required_artifact.artifact_type == "plan":
+        return
+    for path in phase_output_artifact_paths(phase, drain=drain, policy_bundle=policy_bundle):
+        workspace.remove(path)

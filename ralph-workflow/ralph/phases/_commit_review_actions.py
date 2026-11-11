@@ -22,8 +22,8 @@ class _CommitReviewLike(Protocol):
 
 
 @dataclass
-class CleanupApplyReport:
-    """Observed apply results for one cleanup batch."""
+class CommitReviewApplyReport:
+    """Observed apply results for one commit-review action batch."""
 
     declined_delete_paths: list[str] = field(default_factory=list)
     failed_delete_paths: list[str] = field(default_factory=list)
@@ -49,22 +49,22 @@ class CleanupApplyReport:
         return [*self.failed_gitignore_patterns, *self.failed_exclude_patterns]
 
 
-def apply_cleanup_actions(
+def apply_commit_review_actions(
     repo_root: Path,
-    cleanup: _CommitReviewLike,
+    commit_review: _CommitReviewLike,
     *,
     is_safe_to_delete: Callable[[Path, str], bool],
     append_to_gitignore: Callable[[Path, list[str]], None],
     add_to_git_exclude: Callable[[Path, list[str]], None],
     delete_file_from_repo: Callable[[Path, str], None],
-) -> CleanupApplyReport:
-    """Apply cleanup actions and return observed results."""
-    report = CleanupApplyReport()
+) -> CommitReviewApplyReport:
+    """Apply commit-review actions and return observed results."""
+    report = CommitReviewApplyReport()
     gitignore_patterns: list[str] = []
     git_exclude_patterns: list[str] = []
     safe_delete_files: list[str] = []
 
-    for action in cleanup.actions:
+    for action in commit_review.actions:
         _classify_action(
             action,
             repo_root,
@@ -102,11 +102,11 @@ def _classify_action(
     gitignore_patterns: list[str],
     git_exclude_patterns: list[str],
     safe_delete_files: list[str],
-    report: CleanupApplyReport,
+    report: CommitReviewApplyReport,
     *,
     is_safe_to_delete: Callable[[Path, str], bool],
 ) -> None:
-    """Route one cleanup action into the appropriate output bucket."""
+    """Route one commit-review action into the appropriate output bucket."""
     act_type = action.action
     if act_type == "add_to_gitignore":
         pattern = action.pattern
@@ -142,7 +142,7 @@ def _classify_action(
             logger.warning(
                 "Skipping unsafe delete_file action for {!r} "
                 "(target does not match the engine housekeeping allowlist). "
-                "The rest of the cleanup batch will continue.",
+                "The rest of the commit-review action batch will continue.",
                 path,
             )
             report.declined_delete_paths.append(path)
@@ -153,7 +153,7 @@ def _classify_action(
 def _apply_gitignore_patterns(
     repo_root: Path,
     patterns: list[str],
-    report: CleanupApplyReport,
+    report: CommitReviewApplyReport,
     *,
     append_to_gitignore: Callable[[Path, list[str]], None],
 ) -> None:
@@ -171,7 +171,7 @@ def _apply_gitignore_patterns(
 def _apply_git_exclude_patterns(
     repo_root: Path,
     patterns: list[str],
-    report: CleanupApplyReport,
+    report: CommitReviewApplyReport,
     *,
     add_to_git_exclude: Callable[[Path, list[str]], None],
 ) -> None:
@@ -189,7 +189,7 @@ def _apply_git_exclude_patterns(
 def _apply_safe_deletes(
     repo_root: Path,
     safe_delete_files: list[str],
-    report: CleanupApplyReport,
+    report: CommitReviewApplyReport,
     *,
     delete_file_from_repo: Callable[[Path, str], None],
 ) -> None:
@@ -211,18 +211,13 @@ def _apply_safe_deletes(
             logger.warning("Failed to delete file {!r} (continuing batch): {}", file_path, exc)
 
 
-def _note_once(report: CleanupApplyReport, note: str) -> None:
+def _note_once(report: CommitReviewApplyReport, note: str) -> None:
     """Record one distinct unapplied decision for operator visibility."""
     if note not in report.unapplied_notes:
         report.unapplied_notes.append(note)
 
 
-CommitReviewApplyReport = CleanupApplyReport
-apply_commit_review_actions = apply_cleanup_actions
-
 __all__ = [
-    "CleanupApplyReport",
     "CommitReviewApplyReport",
-    "apply_cleanup_actions",
     "apply_commit_review_actions",
 ]

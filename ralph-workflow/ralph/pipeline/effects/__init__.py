@@ -12,7 +12,6 @@ from __future__ import annotations
 import warnings
 
 from .commit_effect import CommitEffect
-from .commit_review_reject_effect import CommitReviewRejectEffect
 from .empty_commit_effect import EmptyCommitEffect
 from .exhausted_analysis_phase_advance_effect import ExhaustedAnalysisPhaseAdvanceEffect
 from .exit_failure_effect import ExitFailureEffect
@@ -25,7 +24,6 @@ from .save_checkpoint_effect import SaveCheckpointEffect
 
 __all__ = [
     "CommitEffect",
-    "CommitReviewRejectEffect",
     "Effect",
     "EmptyCommitEffect",
     "ExhaustedAnalysisPhaseAdvanceEffect",
@@ -55,7 +53,6 @@ Effect = (
     InvokeAgentEffect
     | PreparePromptEffect
     | CommitEffect
-    | CommitReviewRejectEffect
     | EmptyCommitEffect
     | ExhaustedAnalysisPhaseAdvanceEffect
     | PushEffect

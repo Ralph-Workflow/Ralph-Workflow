@@ -41,7 +41,6 @@ from ralph.mcp.artifacts.commit_message import (
     read_commit_message_payload_from_path,
 )
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
-from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline import _commit_executor_artifacts, _commit_failure_pending, _commit_scope
 from ralph.pipeline._auto_integrate_recovery_git_state import (
     common_git_dir,
@@ -698,6 +697,33 @@ def _attempt_repair_git_state(repo_root: Path, **opts: object) -> bool:
     return repaired
 
 
+#: Machine-readable codes for the commit approval signals.
+COMMIT_TREE_SHA_MISMATCH_CODE = "COMMIT_TREE_SHA_MISMATCH"
+COMMIT_APPROVAL_MISSING_CODE = "COMMIT_APPROVAL_MISSING"
+
+
+class CommitApprovalError(RuntimeError):
+    """A commit attempt was not made against the tree the commit review approved."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(f"{code}: {message}")
+        self.code = code
+
+
+def _verify_approved_tree(
+    repo_root: Path,
+    approved_tree_sha: str,
+    write_tree_fn: Callable[[Path | str], str] | None,
+) -> None:
+    writer = write_tree_fn if write_tree_fn is not None else write_tree
+    actual_tree = writer(repo_root)
+    if actual_tree != approved_tree_sha:
+        raise CommitApprovalError(
+            COMMIT_TREE_SHA_MISMATCH_CODE,
+            f"tree SHA {actual_tree} does not match approved tree SHA {approved_tree_sha}",
+        )
+
+
 def _perform_commit_creation(
     repo_root: Path,
     message: str,
@@ -706,22 +732,32 @@ def _perform_commit_creation(
     stage_all_fn: _StageAllFn,
     repair_opts: Mapping[str, object],
     expected_tree_sha: str | None = None,
+    require_approved_tree: bool = False,
     write_tree_fn: Callable[[Path | str], str] | None = None,
 ) -> str:
-    """Attempt commit creation with repairable git state retry, returning commit sha."""
+    """Attempt commit creation with repairable git state retry, returning commit sha.
+
+    The attempt is bound to the tree the commit review approved. When the
+    commit is SHA-bound (``require_approved_tree``) and no approved tree SHA
+    is available, the attempt is refused (fail closed) instead of committing
+    an unbounded tree. A commit that was never bound to a reviewed tree keeps
+    the plain behaviour: there is nothing to check it against.
+    """
+
+    approved_tree_sha: str | None = expected_tree_sha
+    if approved_tree_sha is None and require_approved_tree:
+        raise CommitApprovalError(
+            COMMIT_APPROVAL_MISSING_CODE,
+            "no approved tree SHA for this commit attempt; the commit is refused",
+        )
 
     def _stage_and_create() -> CommitCreationResult:
         # Staging is inside the repair-and-retry too: ``git add -A`` is where an
         # orphaned index.lock is first hit, so it must reach the same repair.
         head = get_head_sha(repo_root)
         _stage_commit_scope(repo_root, payload, stage_all_fn)
-        if expected_tree_sha is not None:
-            _wt = write_tree_fn if write_tree_fn is not None else write_tree
-            actual_tree = _wt(repo_root)
-            if actual_tree != expected_tree_sha:
-                raise RuntimeError(
-                    f"Staged tree SHA {actual_tree} does not match approved tree SHA {expected_tree_sha}"
-                )
+        if approved_tree_sha is not None:
+            _verify_approved_tree(repo_root, approved_tree_sha, write_tree_fn)
         return create_commit_fn(str(repo_root), message, expected_head=head)
 
     try:
@@ -737,13 +773,8 @@ def _perform_commit_creation(
             logger.info("Retrying commit creation after git state repair")
             expected_head = get_head_sha(repo_root)
             _stage_commit_scope(repo_root, payload, stage_all_fn)
-            if expected_tree_sha is not None:
-                _wt = write_tree_fn if write_tree_fn is not None else write_tree
-                actual_tree = _wt(repo_root)
-                if actual_tree != expected_tree_sha:
-                    raise RuntimeError(
-                        f"Staged tree SHA {actual_tree} does not match approved tree SHA {expected_tree_sha}"
-                    )
+            if approved_tree_sha is not None:
+                _verify_approved_tree(repo_root, approved_tree_sha, write_tree_fn)
             with suppress(Exception):
                 result = create_commit_fn(str(repo_root), message, expected_head=expected_head)
         if result.status is not CommitCreationStatus.CREATED or result.sha is None:
@@ -812,8 +843,8 @@ def execute_commit_effect(
         _raw_write_tree if _is_write_tree_fn(_raw_write_tree) else None
     )
     try:
-        payload = _read_commit_effect_payload(effect)
-        message = _read_commit_effect_message(effect)
+        payload = read_commit_message_payload_from_path(Path(effect.message_file))
+        message = read_commit_message_from_path(Path(effect.message_file)) or ""
         if payload is None or not message:
             # "Empty" only when it really is: a file that failed the artifact
             # grammar (a NUL in a Files path, a malformed section) also lands
@@ -849,6 +880,7 @@ def execute_commit_effect(
             _stage_all_fn,
             opts,
             expected_tree_sha=effect.expected_tree_sha,
+            require_approved_tree=effect.require_approved_tree,
             write_tree_fn=_write_tree_fn,
         )
         set_last_commit_error(None)
@@ -882,10 +914,6 @@ def execute_commit_effect(
                     logger.warning("Residual commit paths overlap committed paths; no re-entry")
         except Exception as exc:
             logger.warning("Unable to inspect residual commit work: {}", exc)
-    return _commit_success_event()
-
-
-def _commit_success_event() -> Event:
     return PipelineEvent.COMMIT_SUCCESS
 
 
@@ -897,14 +925,6 @@ def _has_content(message_file: str) -> bool:
     # filesystem-read-ok: the artifact was already read on this path; this
     # distinguishes an absent/blank file from one that failed the grammar.
     return bool(DEFAULT_FILE_BACKEND.read_text(path, encoding="utf-8").strip())
-
-
-def _read_commit_effect_payload(effect: CommitEffect) -> dict[str, object] | None:
-    return read_commit_message_payload_from_path(Path(effect.message_file))
-
-
-def _read_commit_effect_message(effect: CommitEffect) -> str:
-    return read_commit_message_from_path(Path(effect.message_file)) or ""
 
 
 def _stage_commit_scope(
@@ -961,35 +981,8 @@ def clear_phase_output_artifacts(
     phase: str,
     **opts: object,
 ) -> None:
-    """Remove stale per-phase artifacts before invoking an agent.
-
-    Planning artifacts are an exception: fresh-vs-preserve invalidation is
-    owned by prompt materialization, which has the semantic context to
-    distinguish fresh planning from loopback, retry, and resume. Clearing plan
-    outputs again here reintroduces a second, less-informed authority and can
-    delete the live plan handoff on non-fresh planning entries.
-    """
-    drain = cast(
-        "str | None", opts.get("drain")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    policy_bundle = cast(
-        "PolicyBundle | None", opts.get("policy_bundle")
-    )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-    effective_drain = drain or phase
-    required_artifact = (
-        resolve_phase_required_artifact(
-            policy_bundle.pipeline,
-            policy_bundle.artifacts,
-            phase=phase,
-            drain=effective_drain,
-        )
-        if policy_bundle is not None
-        else None
-    )
-    if required_artifact is not None and required_artifact.artifact_type == "plan":
-        return
-    for path in phase_output_artifact_paths(phase, drain=drain, policy_bundle=policy_bundle):
-        workspace.remove(path)
+    """Remove stale per-phase artifacts before invoking an agent."""
+    _commit_executor_artifacts.clear_phase_output_artifacts(workspace, phase, **opts)
 
 
 repo_has_commit_work = _repo_has_commit_work

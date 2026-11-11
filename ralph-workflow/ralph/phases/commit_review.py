@@ -31,10 +31,8 @@ from ralph.mcp.artifacts.citation_verifier import verify_reject_citations
 from ralph.mcp.artifacts.markdown import parse_markdown_document
 from ralph.phases._agent_internal_paths import is_agent_internal_path
 from ralph.phases._commit_review_actions import (
-    CleanupApplyReport,
     CommitReviewApplyReport,
     _CommitReviewLike,
-    apply_cleanup_actions,
     apply_commit_review_actions,
 )
 from ralph.phases._commit_review_catalog import (
@@ -73,7 +71,7 @@ from ralph.phases._commit_review_events import (
     CommitReviewRejected,
 )
 from ralph.phases._commit_review_outcome import (
-    build_cleanup_retry_hint,
+    build_commit_review_retry_hint,
     build_unapplied_retry_hint,
     decide_commit_review_outcome,
 )
@@ -261,7 +259,7 @@ def _resolve_policy_thresholds(
 
     policy: object = ctx.pipeline_policy
     if isinstance(policy, PipelinePolicy):
-        cr_policy_obj = cast("object", getattr(policy, "commit_review_policy", None))
+        cr_policy_obj = cast("object", getattr(policy, "commit_review", None))
         if cr_policy_obj is not None:
             max_del_obj = cast(
                 "object", getattr(cr_policy_obj, "max_deleted_files", DEFAULT_MAX_DELETED_FILES)
@@ -425,22 +423,14 @@ def _load_commit_review_artifact(
     )
 
 
-def _load_cleanup_artifact(
-    ctx: PhaseContext,
-    phase_name: str,
-) -> CommitReviewParsedArtifact | None:
-    """Anchor wrapper for artifact loading to satisfy audit placement."""
-    return _load_commit_review_artifact(ctx, phase_name)
-
-
-def _apply_cleanup_report(
+def _apply_commit_review_report(
     repo_root: Path,
-    cleanup: CommitReviewParsedArtifact | _CommitReviewLike,
-) -> CleanupApplyReport:
+    commit_review: CommitReviewParsedArtifact | _CommitReviewLike,
+) -> CommitReviewApplyReport:
     """Apply actions through the isolated action engine."""
-    return apply_cleanup_actions(
+    return apply_commit_review_actions(
         repo_root,
-        cleanup,
+        commit_review,
         is_safe_to_delete=_is_safe_to_delete,
         append_to_gitignore=append_to_gitignore,
         add_to_git_exclude=add_to_git_exclude,
@@ -448,12 +438,12 @@ def _apply_cleanup_report(
     )
 
 
-def _apply_cleanup_actions(
+def _apply_commit_review_actions(
     repo_root: Path,
-    cleanup: CommitReviewParsedArtifact | _CommitReviewLike,
+    commit_review: CommitReviewParsedArtifact | _CommitReviewLike,
 ) -> tuple[list[str], list[str]]:
     """Apply actions and return (declined, failed-delete) for existing tests."""
-    report = _apply_cleanup_report(repo_root, cleanup)
+    report = _apply_commit_review_report(repo_root, commit_review)
     return report.declined_delete_paths, report.failed_delete_paths
 
 
@@ -518,16 +508,16 @@ def _handle_actions_and_reseal(
         return seal, diff_entries
 
     try:
-        report = _apply_cleanup_report(repo_root, artifact)
+        report = _apply_commit_review_report(repo_root, artifact)
     except Exception as exc:
-        _consume_cleanup_artifact(ctx)
+        _consume_commit_review_artifact(ctx)
         return [CommitReviewGateFailed(detail=f"Failed to apply commit review actions: {exc}")]
 
     _persist_unapplied_hint(ctx, phase_name, report)
 
     loopback = decide_commit_review_outcome(phase_name, report)
     if loopback is not None:
-        _consume_cleanup_artifact(ctx)
+        _consume_commit_review_artifact(ctx)
         return [loopback]
 
     if report.applied_count > 0:
@@ -535,7 +525,7 @@ def _handle_actions_and_reseal(
             seal = seal_pending(repo_root, run_id, iteration)
             diff_entries = diff_tree(repo_root, seal.ref, base=base)
         except Exception as exc:
-            _consume_cleanup_artifact(ctx)
+            _consume_commit_review_artifact(ctx)
             return [CommitReviewGateFailed(detail=f"Failed to reseal proposal tree: {exc}")]
 
     return seal, diff_entries
@@ -602,7 +592,7 @@ def _stage2_process_artifact(
     ctx: PhaseContext,
 ) -> list[Event | CommitReviewEvent]:
     if artifact.tree_sha is not None and artifact.tree_sha != seal.tree_sha:
-        _consume_cleanup_artifact(ctx)
+        _consume_commit_review_artifact(ctx)
         return [
             CommitReviewGateFailed(
                 detail=f"Stale tree SHA: artifact has {artifact.tree_sha!r}, "
@@ -617,7 +607,7 @@ def _stage2_process_artifact(
         return action_res
     seal, diff_entries = action_res
 
-    _consume_cleanup_artifact(ctx)
+    _consume_commit_review_artifact(ctx)
     return _evaluate_verdict(artifact, seal, diff_entries, phase_name, ctx)
 
 
@@ -690,7 +680,7 @@ def handle_commit_review_phase(
     _persist_commit_review_context(ctx, seal, tripwire_report.soft, diff_entries)
 
     artifact_digest = _artifact_digest(ctx)
-    artifact = _load_cleanup_artifact(ctx, phase_name)
+    artifact = _load_commit_review_artifact(ctx, phase_name)
     if artifact is None:
         return _maybe_succeed_after_identity_bound(
             ctx,
@@ -712,7 +702,7 @@ def handle_commit_review_phase(
     )
 
 
-def _consume_cleanup_artifact(ctx: PhaseContext) -> None:
+def _consume_commit_review_artifact(ctx: PhaseContext) -> None:
     """Drop a graded well-formed leftover so the next attempt needs a new submit."""
     try:
         if ctx.workspace.exists(COMMIT_REVIEW_ARTIFACT_PATH):
@@ -752,7 +742,7 @@ def _maybe_succeed_after_identity_bound(
 
 
 def _artifact_digest(ctx: PhaseContext) -> str:
-    """Fingerprint the leftover or newly submitted cleanup artifact bytes."""
+    """Fingerprint the leftover or newly submitted commit-review artifact bytes."""
     if not ctx.workspace.exists(COMMIT_REVIEW_ARTIFACT_PATH):
         return "missing"
     try:
@@ -763,7 +753,7 @@ def _artifact_digest(ctx: PhaseContext) -> str:
 
 
 def _identity_max(ctx: PhaseContext) -> int:
-    """Return the policy cap for identical no-progress cleanup attempts."""
+    """Return the policy cap for identical no-progress commit-review attempts."""
     policy: object = ctx.pipeline_policy
     if isinstance(policy, PipelinePolicy):
         cfg = policy.loop_counters.get(COMMIT_REVIEW_IDENTITY_COUNTER)
@@ -832,7 +822,7 @@ def _write_identity_state(ctx: PhaseContext, phase_name: str, fingerprint: str, 
 def _persist_unapplied_hint(
     ctx: PhaseContext,
     phase_name: str,
-    report: CleanupApplyReport,
+    report: CommitReviewApplyReport,
 ) -> None:
     """Write declined and apply-failed decisions for the next prompt."""
     hint = build_unapplied_retry_hint(report)
@@ -859,9 +849,8 @@ __all__ = [
     "CommitReviewGateFailed",
     "CommitReviewLoopback",
     "CommitReviewRejected",
-    "apply_cleanup_actions",
     "apply_commit_review_actions",
-    "build_cleanup_retry_hint",
+    "build_commit_review_retry_hint",
     "handle_commit_review_phase",
     "is_agent_internal_path",
     "verify_reject_citations",

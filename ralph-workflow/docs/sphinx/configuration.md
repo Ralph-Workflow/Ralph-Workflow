@@ -493,7 +493,7 @@ The commit review phases (`development_commit_review` and `development_final_com
 
 - **`[loop_counters.commit_review_iteration]`** (default: `3`): Maximum review passes per iteration.
 - **`[loop_counters.commit_review_identity]`** (default: `3`): Maximum identical no-progress review attempts before advancing or escalating.
-- **`commit_review_rejections`** (default: `2`): Maximum consecutive rejections across the run. Unlike iteration counters, this counter survives loop resets; reaching the limit transitions the run to `failed_terminal` without further rollback.
+- **`commit_review_rejections`** (default: `2`): The consecutive-rejection count at which the run transitions to `failed_terminal`. Unlike iteration counters, this counter survives loop resets. The run fails once the counter reaches this limit: with the default of `2`, the second consecutive rejection is terminal, without another rollback, and the rejected proposal ref is kept.
 
 #### Deterministic tripwire thresholds
 
@@ -505,7 +505,7 @@ Configured under the commit review policy settings (`[commit_review]` in `pipeli
 | `max_deleted_fraction` | `0.25` (25%) | Maximum ratio of deleted tracked files to total tracked files. Exceeding this triggers a hard tripwire. |
 | `binary_size_limit` | `1000000` (1 MB) | Maximum size in bytes for binary files before flagging them for cleanup review. This is a **soft** finding: it is review evidence, not an automatic rejection. |
 | `proposal_retention` | `10` | Number of proposal refs to retain before pruning historical proposals. |
-| `max_rejections` | `2` | Maximum consecutive commit-review rejections before the run fails to `failed_terminal`. The `[loop_counters.commit_review_rejections]` counter takes precedence when it is declared, and it carries the same default of `2`. |
+| `max_rejections` | `2` | The consecutive-rejection count at which the run fails to `failed_terminal`: with the default of `2`, the second consecutive rejection is terminal, without another rollback. The `[loop_counters.commit_review_rejections]` counter takes precedence when it is declared, and it carries the same default of `2`. |
 
 #### Transitions and recovery
 

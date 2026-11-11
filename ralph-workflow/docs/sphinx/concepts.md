@@ -290,7 +290,7 @@ When a proposal is rejected:
 - **Checkpoint:** Records `rollback_pending` for crash-safe resume.
 - **Restore:** Resets the working tree to `HEAD` (or the run-start baseline if the run started on a dirty tree) using `git read-tree --reset -u HEAD`, removing files present in the proposal tree but absent from `HEAD`. Ignored files and `.agent/` runtime state are preserved intact. The rollback is driven by the sealed proposal ref and uses **neither `git stash` nor a saved patch file**.
 - **Continuation:** The rejection reason and proposal ref are passed to the next developer prompt, and the workflow loops back to `development`.
-- **Bounded retries:** Each rejection charges the iteration budget like a commit. The `commit_review_rejections` counter tracks consecutive rejections (default limit 2); hitting the ceiling transitions to `failed_terminal` without another rollback.
+- **Bounded retries:** Each rejection charges the iteration budget like a commit. The `commit_review_rejections` counter tracks consecutive rejections (default limit 2); the run fails once the counter reaches that limit — with the default of 2, the second consecutive rejection is terminal, without another rollback — and the rejected proposal ref is kept.
 - **Timebox exhaustion:** A rejection that arrives after the cycle timebox has elapsed does not loop back to `development`. It routes to `failed_terminal` (the phase's `on_failure` target, or the recovery `failed_route` when `on_failure` is unset) and performs no rollback.
 
 ### Manual recovery

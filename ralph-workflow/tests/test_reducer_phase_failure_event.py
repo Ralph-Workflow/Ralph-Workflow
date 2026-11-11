@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.agents.timeout_clock import FakeClock
+from ralph.phases.commit_review import CommitReviewGateFailed, CommitReviewRejected
 from ralph.pipeline.agent_retry_intent import AgentRetryIntent
 from ralph.pipeline.auto_integrate_conflict_budget import resolver_allowed
 from ralph.pipeline.events import (
@@ -69,6 +70,39 @@ def _basic_pipeline_policy() -> PipelinePolicy:
             ),
         },
         entry_phase="development",
+        terminal_phase="complete",
+        recovery=RecoveryPolicy(failed_route="failed_terminal"),
+    )
+
+
+def _commit_review_policy() -> PipelinePolicy:
+    """Return a policy with a commit-review phase that fails closed."""
+    return PipelinePolicy(
+        phases={
+            "development": PhaseDefinition(
+                drain="development",
+                transitions=PhaseTransition(
+                    on_success="complete",
+                    on_loopback="development",
+                ),
+            ),
+            "development_commit_review": PhaseDefinition(
+                drain="development_commit_review",
+                role="commit_review",
+                transitions=PhaseTransition(
+                    on_success="development",
+                    on_failure="failed_terminal",
+                    on_reject="development",
+                ),
+            ),
+            "failed_terminal": PhaseDefinition(
+                drain="development",
+                role="terminal",
+                terminal_outcome="failure",
+                transitions=PhaseTransition(on_success="failed_terminal"),
+            ),
+        },
+        entry_phase="development_commit_review",
         terminal_phase="complete",
         recovery=RecoveryPolicy(failed_route="failed_terminal"),
     )
@@ -719,3 +753,41 @@ class TestPhaseFailureEvent:
         assert new_state.last_error is not None
         assert "Ambiguous fault" in new_state.last_error
         assert "Artifact validation fault" not in new_state.last_error
+
+    def test_commit_review_gate_failure_leaves_no_rollback_flags(self) -> None:
+        """A commit review gate failure stops the run without a rollback effect."""
+        state = PipelineState(
+            phase="development_commit_review",
+            rollback_pending=True,
+            rollback_ref="refs/ralph/proposals/run-1/0",
+        )
+        event = CommitReviewGateFailed(detail="unverifiable reason citation")
+
+        new_state, effects = _reduce(state, event, _commit_review_policy())
+
+        assert new_state.phase == "failed_terminal"
+        assert new_state.rollback_pending is False
+        # The proposal ref survives so the rejected work stays recoverable.
+        assert new_state.rollback_ref == "refs/ralph/proposals/run-1/0"
+        assert "gate failed" in (new_state.last_error or "")
+        assert effects == []
+
+    def test_commit_review_rejection_at_the_limit_fails_without_rollback(self) -> None:
+        """The second consecutive rejection is terminal: no rollback, proposal ref kept."""
+        state = PipelineState(
+            phase="development_commit_review",
+            commit_review_rejections=1,
+        )
+        event = CommitReviewRejected(
+            reason="Repeated damage",
+            ref="refs/ralph/proposals/run-1/1",
+        )
+
+        new_state, effects = _reduce(state, event, _commit_review_policy())
+
+        assert new_state.phase == "failed_terminal"
+        assert new_state.commit_review_rejections == 2
+        assert new_state.rollback_pending is False
+        assert new_state.rollback_ref == "refs/ralph/proposals/run-1/1"
+        assert "limit reached" in (new_state.last_error or "")
+        assert effects == []

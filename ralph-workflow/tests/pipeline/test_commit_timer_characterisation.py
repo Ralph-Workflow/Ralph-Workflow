@@ -599,18 +599,23 @@ def test_rollback_reentering_development_restarts_development_timer_from_zero() 
 
 
 def test_commit_review_rejection_limit_exhaustion_transitions_to_failed_terminal() -> None:
-    """When commit_review_rejections exceeds limit (default 2), transition to failed_terminal without rollback."""
+    """When commit_review_rejections reaches the limit (default 2), fail to failed_terminal.
+
+    The run fails once the counter REACHES its limit: with the default limit of
+    2 the second consecutive rejection is terminal. The terminal transition
+    performs no rollback and keeps the rejected proposal ref.
+    """
     policy = _policy()
     pre_dev_commit = _phase_before_dev_commit(policy)
 
     state = PipelineState(
         phase=pre_dev_commit,
-        commit_review_rejections=2,
+        commit_review_rejections=1,
     )
 
     event = CommitReviewRejected(
         reason="Repeated damage",
-        ref="refs/ralph/proposals/run-1/2",
+        ref="refs/ralph/proposals/run-1/1",
     )
 
     next_state, _ = reduce(
@@ -621,9 +626,12 @@ def test_commit_review_rejection_limit_exhaustion_transitions_to_failed_terminal
     )
 
     assert next_state.phase == policy.recovery.failed_route
-    assert next_state.commit_review_rejections == 3
+    # RALPH-TEST-REASON: Rejection limit is now >= policy limit (reaches 2) instead of > 2
+    assert next_state.commit_review_rejections == 2
     assert next_state.rollback_pending is False
-    assert "limit exceeded" in (next_state.last_error or "")
+    # The rejected proposal ref is kept, so the rejected work stays recoverable.
+    assert next_state.rollback_ref == "refs/ralph/proposals/run-1/1"
+    assert "limit reached" in (next_state.last_error or "")
 
 
 def test_commit_review_rejection_after_cycle_timebox_expired_transitions_to_failed_terminal() -> (

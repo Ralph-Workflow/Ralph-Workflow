@@ -63,6 +63,10 @@ from ralph.pipeline.agent_retry_intent import (
     cleared_agent_retry_intent,
     resume_agent_retry_intent,
 )
+from ralph.pipeline.commit_executor import (
+    COMMIT_APPROVAL_MISSING_CODE,
+    COMMIT_TREE_SHA_MISMATCH_CODE,
+)
 from ralph.pipeline.cycle_timing import (
     RoutingTiming,
     apply_cycle_timebox,
@@ -1649,7 +1653,13 @@ def _reduce_commit_review_rejection(
     *,
     routing_timing: RoutingTiming | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle a commit review rejection with rollback setup and iteration loopback."""
+    """Handle a commit review rejection with rollback setup and iteration loopback.
+
+    The rejection counter fails the run once it REACHES the policy limit: with
+    the default limit of 2 the second consecutive rejection is terminal. The
+    terminal transition performs no rollback and keeps the rejected proposal
+    ref, so the rejected work stays recoverable by hand.
+    """
     new_rejections = state.commit_review_rejections + 1
     loop_counter_cfg = policy.loop_counters.get("commit_review_rejections")
     max_rejections = (
@@ -1668,16 +1678,24 @@ def _reduce_commit_review_rejection(
     ):
         timebox_expired = True
 
-    if new_rejections > max_rejections or timebox_expired:
-        reason = (
-            f"Commit review rejection limit exceeded ({new_rejections}/{max_rejections}): {event.reason}"
-            if not timebox_expired
-            else f"Cycle timebox expired on commit review rejection: {event.reason}"
-        )
+    if new_rejections >= max_rejections or timebox_expired:
+        if timebox_expired:
+            reason = f"Cycle timebox expired on commit review rejection: {event.reason}"
+        elif new_rejections > max_rejections:
+            reason = (
+                f"Commit review rejection limit exceeded ({new_rejections}/{max_rejections}): "
+                f"{event.reason}"
+            )
+        else:
+            reason = (
+                f"Commit review rejection limit reached ({new_rejections}/{max_rejections}); "
+                f"the run fails at the limit without another rollback: {event.reason}"
+            )
         failed_state = state.copy_with(
             commit_review_rejections=new_rejections,
             last_error=reason,
             rollback_pending=False,
+            rollback_ref=event.ref,
         )
         target = (
             phase_def.transitions.on_failure
@@ -1729,7 +1747,10 @@ def _reduce_commit_review_event(
 
     if isinstance(event, CommitReviewApproved):
         target_phase = phase_def.transitions.on_success
-        updated_state = state.copy_with(approved_tree_sha=event.tree_sha)
+        updated_state = state.copy_with(
+            approved_tree_sha=event.tree_sha,
+            commit_approval_required=True,
+        )
         if phase_def.loop_policy is not None:
             updated_state = updated_state.with_loop_iteration(
                 phase_def.loop_policy.iteration_state_field, 0
@@ -1752,7 +1773,10 @@ def _reduce_commit_review_event(
             if phase_def.transitions.on_failure
             else policy.recovery.failed_route
         )
-        failed_state = state.copy_with(last_error=reason)
+        # A gate failure is fail-closed: the run stops without a rollback, so
+        # no pending rollback flag may survive into the terminal phase. The
+        # proposal ref is kept, so the rejected work stays recoverable by hand.
+        failed_state = state.copy_with(last_error=reason, rollback_pending=False)
         return _advance_phase(failed_state, target, policy, routing_timing=routing_timing)
 
     # CommitReviewLoopback
@@ -1806,6 +1830,20 @@ def _is_repairable_git_failure(reason: str | None) -> bool:
         "giterror",
     )
     return any(p in error_text for p in repairable_patterns)
+
+
+def _is_commit_approval_signal(reason: str | None) -> bool:
+    """Determine whether a commit failure carries a machine-readable approval signal.
+
+    The commit executor reports an approval failure with a stable code
+    (:data:`COMMIT_TREE_SHA_MISMATCH_CODE` for a tree that differs from the
+    approved one, :data:`COMMIT_APPROVAL_MISSING_CODE` for an attempt without
+    an approved tree SHA) instead of prose the reducer would have to guess at.
+    The route is decided on the code alone, never on the words around it.
+    """
+    if not reason:
+        return False
+    return COMMIT_TREE_SHA_MISMATCH_CODE in reason or COMMIT_APPROVAL_MISSING_CODE in reason
 
 
 def _resolve_commit_recovery_phase(
@@ -1978,6 +2016,11 @@ def _handle_commit_failure(
     being routed (see :func:`_pending_commit_failure_belongs_to_state`); a
     diagnostic left behind by another attempt is discarded, and the failure is
     routed from the canonical commit-failure reason instead.
+
+    A commit that was not made against the approved tree carries a
+    machine-readable approval signal (see :func:`_is_commit_approval_signal`)
+    and is routed like a repairable git failure: back to commit review, which
+    approves the tree again.
     """
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for commit failure routing", policy)
@@ -1995,8 +2038,18 @@ def _handle_commit_failure(
     if last_error is None and _is_repairable_git_failure(state.last_error):
         last_error = state.last_error
 
-    if _is_repairable_git_failure(last_error):
+    # A commit that was not made against the approved tree is repairable: it
+    # goes back to commit review, which approves the tree again. The decision
+    # is made on the machine-readable approval signal, never on the prose of
+    # the diagnostic.
+    approval_signal = _is_commit_approval_signal(last_error)
+    if approval_signal or _is_repairable_git_failure(last_error):
         failure_reason = last_error or commit_failure_reason(state)
+        if approval_signal:
+            logger.bind(component="policy.routing").info(
+                "Commit was not made against the approved tree; routing back to commit review: {}",
+                failure_reason,
+            )
         lock_retry = _route_lock_contention_in_place(
             state, cleared_state, policy, last_error, failure_reason, routing_timing
         )

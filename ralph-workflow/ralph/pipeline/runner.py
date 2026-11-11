@@ -45,6 +45,7 @@ from ralph.mcp.server.lifecycle import (
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.onboarding import GITHUB_STAR_CTA
 from ralph.phases import handle_phase, register_role_handlers
+from ralph.phases._commit_review_events import CommitReviewGateFailed
 from ralph.phases.timing import PhaseTimer
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import progress
@@ -215,6 +216,7 @@ if TYPE_CHECKING:
     from pathlib import Path
     from typing import Protocol
 
+    from ralph.config.enums import PipelinePhase
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.mcp.websearch.secrets import EnvGetter
@@ -258,6 +260,7 @@ __all__ = [
     "execute_agent_effect",
     "execute_commit_effect",
     "execute_commit_effect_from_deps",
+    "execute_pending_rollback",
     "handle_phase",
     "heartbeat_policy_from_env",
     "install_signal_handlers",
@@ -275,6 +278,7 @@ __all__ = [
     "repo_has_commit_work",
     "resolve_display",
     "resolve_workspace_scope",
+    "rollback_gate_failure_state",
     "run_process_async",
     "run_visual_capture_lifecycle",
     "shutdown_mcp_server",
@@ -2046,6 +2050,143 @@ def _handle_blocked_dispatch_recovery(
     )
 
 
+def _commit_review_phase_for_gate_failure(
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+) -> PipelinePhase:
+    """Return the commit-review phase that owns a failed rollback.
+
+    A rejection advances the run to the phase the review routes to, so the
+    commit-review phase that produced the rejection is the run's
+    ``previous_phase``. The gate failure is routed through THAT phase's own
+    failure transition, exactly as a reviewer malfunction would be.
+
+    Args:
+        state: The state the failed rollback was attempted from.
+        pipeline_policy: The active pipeline policy.
+
+    Returns:
+        The commit-review phase name, or the state's current phase when the
+        run did not come from one.
+    """
+    previous = state.previous_phase
+    if isinstance(previous, str):
+        phase_def = pipeline_policy.phases.get(previous)
+        if phase_def is not None and phase_def.role == "commit_review":
+            return previous
+    return state.phase
+
+
+def rollback_gate_failure_state(
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+    detail: str,
+) -> PipelineState:
+    """Return the terminal gate-failure state for a rollback that must not run.
+
+    A rejection whose rollback cannot be preflighted -- a damaged ``.git``,
+    a proposal ref that does not resolve, or a baseline ref that does not
+    resolve -- is a GATE FAILURE, never a rollback attempt: the working tree
+    is left exactly as it was and the run stops on the policy's failure
+    route. The proposal ref is kept, so the rejected work stays recoverable
+    by hand.
+
+    Args:
+        state: The state the failed rollback was attempted from.
+        pipeline_policy: The active pipeline policy.
+        detail: Operator-facing detail describing why the rollback failed.
+
+    Returns:
+        The state advanced to the failure route, with ``rollback_pending``
+        cleared and the rejection's proposal ref preserved.
+    """
+    gate_state = state.copy_with(
+        phase=_commit_review_phase_for_gate_failure(state, pipeline_policy),
+        rollback_pending=False,
+        last_agent_session_id=None,
+        agent_retry_intent=cleared_agent_retry_intent(),
+    )
+    failed_state, _ = reducer_reduce(
+        gate_state,
+        CommitReviewGateFailed(detail=detail),
+        pipeline_policy,
+    )
+    return failed_state
+
+
+def _write_rejection_hint(
+    state: PipelineState,
+    workspace_root: Path,
+    pipeline_policy: PipelinePolicy,
+) -> None:
+    """Record the rejection context the next development prompt reads."""
+    from ralph.phases.required_artifacts import retry_hint_path
+
+    dev_hint_path = workspace_root / retry_hint_path("development", pipeline_policy=pipeline_policy)
+    dev_hint_path.parent.mkdir(parents=True, exist_ok=True)
+    baseline_note = (
+        f"Working tree rolled back to the run-start baseline ({state.rollback_baseline_ref})."
+        if state.rollback_baseline_ref
+        else "Working tree rolled back to HEAD."
+    )
+    rejection_text = (
+        f"Commit review rejected previous iteration: {state.last_review_rejection_reason or '(no reason provided)'}\n"
+        f"Proposal ref: {state.rollback_ref}\n"
+        f"{baseline_note} To inspect rejected changes: git checkout {state.rollback_ref} -- .\n"
+    )
+    # filesystem-write-ok: record rollback retry context for the next dev prompt
+    dev_hint_path.write_text(rejection_text, encoding="utf-8")
+
+
+def execute_pending_rollback(
+    state: PipelineState,
+    workspace_root: Path,
+    pipeline_policy: PipelinePolicy,
+) -> PipelineState:
+    """Roll the working tree back to the run's restore point.
+
+    The restore target is the run-start baseline seal when the run recorded
+    one (the run started on a dirty tree), and ``HEAD`` otherwise. The
+    restore is REFUSED when it cannot be preflighted: a damaged ``.git``, a
+    proposal ref that does not resolve, or a baseline ref that does not
+    resolve is a gate failure, never a rollback attempt. The working tree
+    then keeps exactly the state it had.
+
+    This is the single owner of the rollback decision, so the runner's
+    post-reducer step and the run loop's resume path cannot drift apart.
+
+    Args:
+        state: The state asking for the rollback.
+        workspace_root: The workspace root the restore runs in.
+        pipeline_policy: The active pipeline policy.
+
+    Returns:
+        The state with the rollback flags cleared and the rejection context
+        recorded, or the terminal gate-failure state when the restore could
+        not be preflighted.
+    """
+    from ralph.git.proposal_seal import rollback
+
+    rollback_ref = state.rollback_ref
+    if not isinstance(rollback_ref, str) or not rollback_ref:
+        return state
+    try:
+        rollback(workspace_root, rollback_ref, baseline_ref=state.rollback_baseline_ref)
+    except Exception as exc:
+        logger.exception(
+            "Commit review rollback refused for {ref}: {err}",
+            ref=rollback_ref,
+            err=exc,
+        )
+        return rollback_gate_failure_state(
+            state,
+            pipeline_policy,
+            f"Rollback preflight failed: {exc}",
+        )
+    _write_rejection_hint(state, workspace_root, pipeline_policy)
+    return state.copy_with(rollback_pending=False, rollback_ref=None)
+
+
 def _execute_pending_rollback_if_needed(
     next_state: PipelineState,
     workspace_scope: WorkspaceScope,
@@ -2064,22 +2205,11 @@ def _execute_pending_rollback_if_needed(
         message="Checkpoint save failed before rollback in phase={phase}: {err}",
         path=_checkpoint_path(workspace_scope),
     )
-    from ralph.git.proposal_seal import rollback
-    from ralph.phases.required_artifacts import retry_hint_path
-
-    rollback(workspace_scope.root, next_state.rollback_ref)
-    dev_hint_path = workspace_scope.root / retry_hint_path(
-        "development", pipeline_policy=policy_bundle.pipeline
+    return execute_pending_rollback(
+        next_state,
+        workspace_scope.root,
+        policy_bundle.pipeline,
     )
-    dev_hint_path.parent.mkdir(parents=True, exist_ok=True)
-    rejection_text = (
-        f"Commit review rejected previous iteration: {next_state.last_review_rejection_reason or '(no reason provided)'}\n"
-        f"Proposal ref: {next_state.rollback_ref}\n"
-        f"Working tree rolled back to HEAD. To inspect rejected changes: git checkout {next_state.rollback_ref} -- .\n"
-    )
-    # filesystem-write-ok: record rollback retry context for the next dev prompt
-    dev_hint_path.write_text(rejection_text, encoding="utf-8")
-    return next_state.copy_with(rollback_pending=False, rollback_ref=None)
 
 
 def _finalize_step_state(

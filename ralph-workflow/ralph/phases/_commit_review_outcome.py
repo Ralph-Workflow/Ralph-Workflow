@@ -2,25 +2,17 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.phases._commit_review_events import CommitReviewEvent, CommitReviewLoopback
-from ralph.pipeline.events import Event, PipelineEvent
+from ralph.phases._commit_review_events import CommitReviewLoopback
 
 if TYPE_CHECKING:
-    from ralph.phases._commit_review_actions import CleanupApplyReport
+    from ralph.phases._commit_review_actions import CommitReviewApplyReport
 
 
-@runtime_checkable
-class _HasVerdict(Protocol):
-    """Protocol for artifacts reporting a verdict."""
-
-    verdict: str
-
-
-def build_cleanup_retry_hint(skipped_paths: list[str], safe_applied_count: int) -> str:
+def build_commit_review_retry_hint(skipped_paths: list[str], safe_applied_count: int) -> str:
     """Build a structured retry hint naming rejected paths."""
     if not skipped_paths:
         return (
@@ -45,7 +37,7 @@ def build_cleanup_retry_hint(skipped_paths: list[str], safe_applied_count: int) 
     )
 
 
-def build_unapplied_retry_hint(report: CleanupApplyReport) -> str:
+def build_unapplied_retry_hint(report: CommitReviewApplyReport) -> str:
     """Build the hint delivered to the next prompt for unapplied decisions."""
     lines: list[str] = ["Commit review retry hint: some requested actions were not applied."]
     if report.declined_delete_paths:
@@ -74,7 +66,7 @@ def build_unapplied_retry_hint(report: CleanupApplyReport) -> str:
 
 def decide_commit_review_outcome(
     phase_name: str,
-    report: CleanupApplyReport,
+    report: CommitReviewApplyReport,
 ) -> CommitReviewLoopback | None:
     """Return the loopback event when the applied batch needs another attempt.
 
@@ -85,7 +77,7 @@ def decide_commit_review_outcome(
     """
     if all_applications_failed(report):
         logger.warning(
-            "{}: every requested cleanup action failed at apply time; looping back",
+            "{}: every requested commit-review action failed at apply time; looping back",
             phase_name,
         )
         return CommitReviewLoopback(hint=build_unapplied_retry_hint(report))
@@ -96,28 +88,12 @@ def decide_commit_review_outcome(
             report.declined_delete_paths,
         )
         return CommitReviewLoopback(
-            hint=build_cleanup_retry_hint(report.declined_delete_paths, report.applied_count)
+            hint=build_commit_review_retry_hint(report.declined_delete_paths, report.applied_count)
         )
     return None
 
 
-def decide_cleanup_outcome(
-    phase_name: str,
-    cleanup: object,
-    report: CleanupApplyReport,
-) -> list[Event | CommitReviewEvent]:
-    """Return the phase events for one applied cleanup batch.
-
-    The batch decision comes first: when the agent has to try again the
-    batch wins, otherwise the artifact's verdict decides the outcome.
-    """
-    loopback = decide_commit_review_outcome(phase_name, report)
-    if loopback is not None:
-        return [loopback]
-    return _verdict_outcome(cleanup)
-
-
-def all_applications_failed(report: CleanupApplyReport) -> bool:
+def all_applications_failed(report: CommitReviewApplyReport) -> bool:
     """Return True when every attempted apply threw and nothing applied."""
     attempted = (
         len(report.failed_delete_paths) + len(report.failed_pattern_tokens) + report.applied_count
@@ -125,17 +101,9 @@ def all_applications_failed(report: CleanupApplyReport) -> bool:
     return report.applied_count == 0 and attempted > 0
 
 
-def _verdict_outcome(cleanup: object) -> list[Event | CommitReviewEvent]:
-    """Return success for an approving verdict, otherwise loop back."""
-    if isinstance(cleanup, _HasVerdict) and cleanup.verdict == "approve":
-        return [PipelineEvent.AGENT_SUCCESS]
-    return [PipelineEvent.PHASE_LOOPBACK]
-
-
 __all__ = [
     "all_applications_failed",
-    "build_cleanup_retry_hint",
+    "build_commit_review_retry_hint",
     "build_unapplied_retry_hint",
-    "decide_cleanup_outcome",
     "decide_commit_review_outcome",
 ]
