@@ -143,6 +143,32 @@ tree_sha: shortsha
     assert "SPEC010" in _error_ids(doc)
 
 
+def test_commit_review_spec_regression_wrong_type_diagnostic_uses_shared_grammar_code() -> None:
+    """A wrong artifact type is diagnosed with the shared markdown grammar code.
+
+    Plan step: WU-3 — the commit-review artifact must not carry the retired
+    cleanup family's rule code. The artifact contract (PROMPT.md, "Artifact
+    contract") requires validation diagnostics to follow the existing
+    markdown artifact grammar (``MD``/``SPEC``/``REF`` codes), so a wrong
+    ``type`` frontmatter value is reported with the shared closed-grammar
+    code ``SPEC010`` — the code this spec already uses for its other
+    closed-grammar rejections.
+    """
+    doc = f"""---
+type: wrong
+verdict: approve
+tree_sha: {_VALID_TREE_SHA}
+---
+## Actions
+"""
+    content, diagnostics = parse_and_validate(doc, get_spec("commit_review"))
+
+    assert content == {}
+    assert {diagnostic.rule_id for diagnostic in diagnostics if diagnostic.severity == "error"} == {
+        "SPEC010"
+    }
+
+
 def test_legacy_analysis_complete_not_accepted_as_verdict() -> None:
     doc = """---
 type: commit_review

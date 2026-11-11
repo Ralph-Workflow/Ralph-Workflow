@@ -225,6 +225,8 @@ EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/test_auto_integrate_gates.py",
     "tests/test_bootstrap_auto_seed_git_exclude.py",
     "tests/test_bootstrap_auto_seed_gitignore.py",
+    "tests/config/test_agents_file_immutable.py",
+    "tests/config/test_init_agents_autowire.py",
     "tests/test_commit_review_diff.py",
     "tests/test_commit_review_real_diff_proofs.py",
     "tests/test_commit_review_reject_citation_gate.py",
