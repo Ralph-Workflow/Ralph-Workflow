@@ -673,7 +673,8 @@ def _recover_pending_merge(
             stop_identity=stop_identity,
         )
     if isinstance(resumed, str):
-        return _resumed_failure_outcome(record, resumed)
+        latest_record = read_record_outcome(root).record or record
+        return _resumed_failure_outcome(latest_record, resumed)
     if resumed.reintegrate_pending:
         return _replay_stale_resolution(
             root,
@@ -696,16 +697,29 @@ recover_pending_merge = _recover_pending_merge
 
 def _resumed_failure_outcome(record: IntegrationRecord, reason: str) -> RebaseState:
     """Map a refused continuation onto the typed retained or conflict state."""
-    if not reason.startswith("WAITING:"):
+    from ralph.git.resolution_failure_cause import ResolutionFailureCause
+
+    effective_cause = record.last_failure_cause
+    if effective_cause == ResolutionFailureCause.NONE:
+        if (
+            "fix " in reason and "then run ralph --check-config" in reason
+        ) or f"(cause: {ResolutionFailureCause.CONFIG_FAILURE.value})" in reason:
+            effective_cause = ResolutionFailureCause.CONFIG_FAILURE
+        else:
+            effective_cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
+
+    if (
+        not reason.startswith("WAITING:")
+        and effective_cause != ResolutionFailureCause.CONFIG_FAILURE
+    ):
         logger.critical("CRITICAL: {}", reason)
     if is_in_active_resolution_state(record):
-        from ralph.git.resolution_failure_cause import ResolutionFailureCause
         from ralph.pipeline.auto_integrate_outcome import record_conflict
 
         conflicted = record_conflict(
             reason=reason,
             target=record.target,
-            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+            failure_cause=effective_cause,
         )
         return conflicted.set_recovery_record_retained(
             StartupRetentionReason.OWNED_OPERATION_IDENTITY_MISMATCH

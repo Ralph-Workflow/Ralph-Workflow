@@ -118,10 +118,10 @@ def _uninvoked_round_reason(
             return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     ledger = session.ledger
     if ledger is not None and effective_candidates:
-        delay = ledger.earliest_wait_ms(PHASE_RESOLUTION, effective_candidates)
-        if delay > 0:
+        wait = ledger.earliest_wait_ms(PHASE_RESOLUTION, effective_candidates)
+        if wait is not None and wait > 0:
             return ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-        if ledger.all_exhausted(PHASE_RESOLUTION, effective_candidates):
+        if wait is None:
             return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
 
     return ResolutionTerminationReason.CANDIDATE_EXHAUSTED

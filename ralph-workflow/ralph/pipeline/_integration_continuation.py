@@ -8,6 +8,7 @@ from loguru import logger
 
 from ralph.git.merge import MERGE_STATE_IN_PROGRESS, MERGE_STATE_NONE, is_ancestor, merge_state
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
+from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.git.subprocess_runner import run_git
 from ralph.pipeline._commit_completion_authority import CommitCompletion, complete_commit
 from ralph.pipeline._pending_merge_commit import _git_value
@@ -186,7 +187,10 @@ def _continue_merge_resolution(
     result = resolve_and_commit_with_reason(root, target, conflict_resolver)
     if result.outcome != "success":
         latest_record = read_record(root) or record
-        write_record(root, latest_record.with_resolution_gate_key(gate_key))
+        updates: dict[str, object] = {"resolution_gate_key": gate_key}
+        if result.failure_cause != ResolutionFailureCause.NONE:
+            updates["last_failure_cause"] = result.failure_cause
+        write_record(root, latest_record.model_copy(update=updates))
         return result.reason or "merge resolution remains pending after continuation"
     return None
 
@@ -252,7 +256,10 @@ def _continue_rebase_resolution(
     )
     if not resolved:
         latest_record = read_record(root) or record
-        write_record(root, latest_record.with_resolution_gate_key(gate_key))
+        updates: dict[str, object] = {"resolution_gate_key": gate_key}
+        if failure_cause != ResolutionFailureCause.NONE:
+            updates["last_failure_cause"] = failure_cause
+        write_record(root, latest_record.model_copy(update=updates))
         return reason or (
             f"rebase resolution remains pending after continuation (cause: {failure_cause.value})"
         )

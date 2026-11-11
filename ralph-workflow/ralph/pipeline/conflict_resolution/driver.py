@@ -653,7 +653,8 @@ def _can_continue_rounds(session: ResolutionSession, candidates: tuple[str, ...]
             return True
         return controller.earliest_available_wait_ms(PHASE_RESOLUTION, live) > 0
     if session.ledger is not None:
-        return any(session.ledger.is_available(PHASE_RESOLUTION, name) for name in live)
+        wait = session.ledger.earliest_wait_ms(PHASE_RESOLUTION, live)
+        return wait is not None
     return True
 
 
@@ -681,14 +682,17 @@ def _dead_chain_reason(
             if launch_attempted
             else ResolutionTerminationReason.CANDIDATE_EXHAUSTED
         )
-    delay = 0
-    all_exhausted = False
+    delay: int = 0
+    all_exhausted: bool = False
     if controller is not None:
         delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
         all_exhausted = controller.all_exhausted(PHASE_RESOLUTION, candidates)
     elif ledger is not None:
-        delay = ledger.earliest_wait_ms(PHASE_RESOLUTION, list(candidates))
-        all_exhausted = ledger.all_exhausted(PHASE_RESOLUTION, candidates)
+        wait = ledger.earliest_wait_ms(PHASE_RESOLUTION, list(candidates))
+        if wait is None:
+            all_exhausted = True
+        elif wait > 0:
+            delay = wait
     else:
         return (
             ResolutionTerminationReason.TOOL_SURFACE_DEAD

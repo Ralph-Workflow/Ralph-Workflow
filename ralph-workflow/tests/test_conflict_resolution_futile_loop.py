@@ -21,6 +21,7 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
 from ralph.pipeline.conflict_resolution.chain_candidates import skipped_candidates
 from ralph.pipeline.conflict_resolution.driver import run_conflict_resolution_pipeline
 from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
+from ralph.pipeline.conflict_resolution.round_verdict import round_termination_reason
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
 from ralph.pipeline.conflict_resolution.status import ResolutionStatusReporter
 from ralph.policy.loader import load_policy
@@ -339,6 +340,87 @@ def test_an_unspendable_chain_reports_candidate_exhausted(
     assert session.exhaustion_reason.startswith(
         ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value
     )
+
+
+def test_all_spent_candidates_yields_candidate_exhausted_terminal_reason(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Consumer proof: tri-state wait contract consumed by driver and round_verdict."""
+    _install_seams(monkeypatch)
+    clock = FakeClock(start=100.0)
+    candidates = ("primary", "fallback")
+
+    # 1. All-spent case -> wait is None -> CANDIDATE_EXHAUSTED
+    spent_ledger = AgentFailureLedger(clock=clock, total_limit=1)
+    for agent in candidates:
+        spent_ledger.record(
+            AttemptFact(
+                phase=PHASE_RESOLUTION,
+                agent=agent,
+                artifact_valid=False,
+            )
+        )
+    # RALPH-TEST-REASON: tri-state wait contract returns None when all candidates are spent
+    assert spent_ledger.earliest_wait_ms(PHASE_RESOLUTION, candidates) is None
+
+    session_spent = ResolutionSession(ledger=spent_ledger)
+    # RALPH-TEST-REASON: round_termination_reason maps None wait to CANDIDATE_EXHAUSTED
+    assert (
+        round_termination_reason(session_spent, invoked=False, candidates=candidates)
+        is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    )
+    outcome_spent = driver_module.run_conflict_resolution_outcome(
+        root=tmp_path,
+        target="main",
+        config=_CONFIG,
+        pipeline_deps=None,
+        workspace_scope=None,
+        policy_bundle=_policy_bundle(),
+        display=None,
+        display_context=None,
+        invoke=lambda *_args: True,
+        session=session_spent,
+    )
+    # RALPH-TEST-REASON: driver maps None wait to CANDIDATE_EXHAUSTED
+    assert outcome_spent.reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+
+    # 2. Cooldown case -> wait > 0 -> CANDIDATE_UNAVAILABLE
+    cooldown_ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=5)
+    for agent in candidates:
+        cooldown_ledger.record(
+            AttemptFact(
+                phase=PHASE_RESOLUTION,
+                agent=agent,
+                artifact_valid=False,
+            )
+        )
+    wait_ms = cooldown_ledger.earliest_wait_ms(PHASE_RESOLUTION, candidates)
+    # RALPH-TEST-REASON: tri-state wait contract returns positive wait during cooldown
+    assert wait_ms is not None and wait_ms > 0
+
+    session_cooldown = ResolutionSession(ledger=cooldown_ledger)
+    # RALPH-TEST-REASON: round_termination_reason maps positive wait to CANDIDATE_UNAVAILABLE
+    assert (
+        round_termination_reason(session_cooldown, invoked=False, candidates=candidates)
+        is ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+    )
+
+    # 3. Eligible case -> wait == 0
+    fresh_ledger = AgentFailureLedger(clock=clock)
+    # RALPH-TEST-REASON: tri-state wait contract returns 0 for eligible agents
+    assert fresh_ledger.earliest_wait_ms(PHASE_RESOLUTION, candidates) == 0
+
+    # 4. Mixed case: one cooling down, one eligible
+    mixed_ledger = AgentFailureLedger(clock=clock, consecutive_limit=1, total_limit=5)
+    mixed_ledger.record(
+        AttemptFact(
+            phase=PHASE_RESOLUTION,
+            agent="primary",
+            artifact_valid=False,
+        )
+    )
+    # RALPH-TEST-REASON: tri-state wait contract returns 0 when at least one agent is eligible
+    assert mixed_ledger.earliest_wait_ms(PHASE_RESOLUTION, candidates) == 0
 
 
 def test_an_agents_activity_event_cannot_kill_its_own_tool_surface(

@@ -221,6 +221,13 @@ def resolve_conflicted_rebase(
         effective_reason = (
             exhaustion_reason or "rebase resolution incomplete; progress retained for next agent"
         )
+        if record is not None:
+            from ralph.pipeline.auto_integrate_record import write_record
+
+            write_record(
+                root,
+                record.model_copy(update={"last_failure_cause": effective_cause}),
+            )
         return RebaseRunResult(
             rebase_outcome=RebaseConflicts(files=[]),
             merge_attempted=False,

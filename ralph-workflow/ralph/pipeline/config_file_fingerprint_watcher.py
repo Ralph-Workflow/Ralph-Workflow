@@ -65,6 +65,11 @@ class ConfigFileFingerprintWatcher:
         attempted.add(fp)
         return fp
 
+    @property
+    def tracked_paths(self) -> tuple[Path, ...]:
+        """Return the paths currently tracked by this watcher."""
+        return tuple(self._last_fingerprints.keys())
+
     def get_last_fingerprint(self, path: Path | str | None = None) -> str | None:
         """Return the last recorded or attempted fingerprint for the given path."""
         resolved = self._resolve_path(path)

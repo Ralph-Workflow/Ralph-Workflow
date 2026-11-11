@@ -4174,6 +4174,17 @@ def handle_pending_retry(
             _save_recovered_rebase_checkpoint(state, ctx)
             ctx.latest_state[:] = [state]
             return state
+        if bad_path is None:
+            for tracked in watcher.tracked_paths:
+                if watcher.should_retry(tracked):
+                    logger.info(
+                        "configuration failure self-recovery: {} repaired; retrying paused rebase",
+                        tracked,
+                    )
+                    state = state.copy_with(rebase=active_rebase).clear_waiting()
+                    _save_recovered_rebase_checkpoint(state, ctx)
+                    ctx.latest_state[:] = [state]
+                    return state
     else:
         bumped_conflicts = (
             max(rebase.consecutive_conflicts, (recovered.consecutive_conflicts if recovered else 0))

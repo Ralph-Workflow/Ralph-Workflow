@@ -1497,7 +1497,7 @@ class RecoveryController:
             return 0
         tracker_wait = self._unavailability_tracker.earliest_unavailable_wait_ms(phase, agents)
         ledger_wait = self._ledger.earliest_wait_ms(phase, agents)
-        waits = [w for w in (tracker_wait, ledger_wait) if w > 0]
+        waits = [w for w in (tracker_wait, ledger_wait) if w is not None and w > 0]
         return min(waits) if waits else 0
 
     def all_exhausted(self, phase: str, agents: Sequence[str]) -> bool:

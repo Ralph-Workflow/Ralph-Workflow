@@ -257,14 +257,13 @@ _SAFE_SYSTEM_PREFIXES: tuple[str, ...] = (
     "/lib/",
     "/lib64/",
     "/etc/",
-    sys.prefix,
-    sys.base_prefix,
-    str(Path(sys.prefix).parent),
-    _REPO_DIR_STR,
-    str(_REAL_HOME / ".local"),
-    str(_REAL_HOME / ".cache"),
-    str(Path.home() / ".local"),
-    str(Path.home() / ".cache"),
+    f"{sys.prefix}/",
+    f"{sys.base_prefix}/",
+    f"{_REPO_DIR_STR}/",
+    f"{_REAL_HOME}/.local/",
+    f"{_REAL_HOME}/.cache/",
+    f"{Path.home()}/.local/",
+    f"{Path.home()}/.cache/",
 )
 
 
@@ -276,23 +275,22 @@ def _is_safe_pre_canonical_path(s_str: str, is_synthetic: bool) -> bool:
 
 def _is_protected_canonical_path(p: Path, is_synthetic: bool) -> bool:
     """Determine if resolved canonical path falls within guarded boundaries."""
-    if p.is_relative_to(_REPO_DIR):
+    p_str = str(p)
+    if p_str == _REPO_DIR_STR or p_str.startswith(f"{_REPO_DIR_STR}/"):
         return False
     if is_synthetic:
-        return any(p.is_relative_to(gdir) for gdir in _get_guarded_config_dirs_cached())
-    if any(p.is_relative_to(cdir) for cdir in _get_real_config_dirs()):
+        cached_dirs = _get_guarded_config_dirs_cached()
+        return any(p_str == str(g) or p_str.startswith(f"{g!s}/") for g in cached_dirs)
+    config_dirs = _get_real_config_dirs()
+    if any(p_str == str(d) or p_str.startswith(f"{d!s}/") for d in config_dirs):
         return True
-    try:
-        rel = p.relative_to(REAL_HOME)
-        return bool(
-            rel.parts
-            and (
-                rel.parts[0].startswith("ralph-workflow")
-                or rel.parts[0].startswith(".ralph-workflow")
-            )
-        )
-    except ValueError:
-        return False
+    real_home_str = str(REAL_HOME)
+    real_home_prefix = f"{real_home_str}/"
+    if p_str.startswith(real_home_prefix):
+        rel = p_str[len(real_home_prefix) :]
+        part0 = rel.split("/", 1)[0]
+        return part0.startswith(("ralph-workflow", ".ralph-workflow"))
+    return False
 
 
 def _extract_guarded_path(event: str, args: tuple[object, ...]) -> Path | None:
@@ -301,16 +299,23 @@ def _extract_guarded_path(event: str, args: tuple[object, ...]) -> Path | None:
     s_str = _parse_raw_path_string(args[0]) if args else None
     if s_str is None:
         return None
-    is_synthetic = bool(os.environ.get("RALPH_TEST_GUARDED_CONFIG_DIRS"))
-    target_str = s_str if s_str.startswith("/") else f"{Path.cwd()}/{s_str}"
+    if not s_str.startswith("/"):
+        if ".." not in s_str:
+            return None
+        target_str = f"{_REPO_DIR_STR}/{s_str}"
+    else:
+        target_str = s_str
+
+    is_synthetic = "RALPH_TEST_GUARDED_CONFIG_DIRS" in os.environ
     if _is_safe_pre_canonical_path(target_str, is_synthetic):
         return None
 
     try:
-        p = Path(target_str).resolve()
+        real_str = os.path.realpath(target_str)
     except Exception:
         return None
 
+    p = Path(real_str)
     return p if _is_protected_canonical_path(p, is_synthetic) else None
 
 

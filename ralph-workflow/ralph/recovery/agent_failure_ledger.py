@@ -270,11 +270,16 @@ class AgentFailureLedger:
         """Return True when the agent is eligible to run."""
         return isinstance(self.status(phase, agent), Eligible)
 
-    def earliest_wait_ms(self, phase: str, agents: list[str]) -> int:
+    def earliest_wait_ms(self, phase: str, agents: Sequence[str]) -> int | None:
         """Return milliseconds until the earliest cooling-down agent becomes eligible.
 
-        Returns 0 if any agent is currently eligible or if no agents are cooling down.
+        Returns 0 if any agent is currently eligible or if ``agents`` is empty.
+        Returns a positive integer of milliseconds if at least one agent is
+        cooling down and no agent is currently eligible.
+        Returns None if ``agents`` is non-empty and every agent is spent/demoted.
         """
+        if not agents:
+            return 0
         with self._lock:
             now_ms = int(self._clock.monotonic() * 1000)
             remaining_times: list[int] = []
@@ -283,9 +288,11 @@ class AgentFailureLedger:
                 if isinstance(st, Eligible):
                     return 0
                 if isinstance(st, Cooldown):
-                    remaining = max(0, st.until_ms - now_ms)
+                    remaining = max(1, st.until_ms - now_ms)
                     remaining_times.append(remaining)
-            return min(remaining_times) if remaining_times else 0
+            if remaining_times:
+                return min(remaining_times)
+            return None
 
     def all_exhausted(self, phase: str, agents: Sequence[str]) -> bool:
         """Return True if every agent in ``agents`` is demoted/spent.
