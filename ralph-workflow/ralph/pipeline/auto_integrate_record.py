@@ -174,6 +174,7 @@ class IntegrationRecord(RalphBaseModel):
     reintegrate_pending: bool = False
     initiating_feature_sha: str | None = None
     last_failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
+    resolution_gate_key: tuple[str | None, tuple[str, ...], str | None] | None = None
 
     @property
     def is_integrated(self) -> bool:
@@ -203,6 +204,13 @@ class IntegrationRecord(RalphBaseModel):
         if not isinstance(transition, Transition) or transition not in Transition.ALL:
             raise ValueError(f"Invalid transition: {transition!r}")
         return transition.apply(self, **fields)
+
+    def with_resolution_gate_key(
+        self,
+        gate_key: tuple[str | None, tuple[str, ...], str | None] | None,
+    ) -> IntegrationRecord:
+        """Return a copy of this record with ``resolution_gate_key`` updated."""
+        return self.model_copy(update={"resolution_gate_key": gate_key})
 
 
 # ---------------------------------------------------------------------------
@@ -723,7 +731,6 @@ def parse_record_payload(data_raw: dict[str, object]) -> IntegrationRecord | Non
     if data_raw.get("diagnostic_intervention_required") is True:
         # Legacy human-hand-off flag: load-and-clear into the ladder.
         data_raw = _clear_legacy_ownership_and_intervention(data_raw)
-    migrated = _migrate_payload_evidence(data_raw)
     migrated = _migrate_payload_evidence(data_raw)
     if migrated is None:
         return None

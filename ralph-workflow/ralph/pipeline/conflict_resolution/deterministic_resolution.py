@@ -23,14 +23,19 @@ from loguru import logger
 
 from ralph.git.merge import conflict_stage_entries
 from ralph.git.subprocess_runner import run_git
+from ralph.pipeline.conflict_resolution.sight import escalate_on_sight
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
 
     from ralph.pipeline.conflict_resolution.rebase_loop import RebaseStop
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
 
-__all__ = ["try_deterministic_resolution"]
+__all__ = [
+    "escalate_gitlink_on_sight",
+    "try_deterministic_resolution",
+]
 
 #: git's index stages for the two sides of a conflict: stage 2 is
 #: "ours" (the commit being replayed onto) and stage 3 is "theirs" (the
@@ -38,6 +43,60 @@ __all__ = ["try_deterministic_resolution"]
 #: :func:`_resolve_mode_only` to tell which side actually changed.
 _CONFLICT_STAGE_OURS = 2
 _CONFLICT_STAGE_THEIRS = 3
+
+
+def escalate_gitlink_on_sight(
+    paths: tuple[str, ...],
+    session: ResolutionSession | None = None,
+) -> str:
+    """Escalate diverged or unresolvable gitlink paths on sight."""
+    return escalate_on_sight(paths, session=session)
+
+
+def _ensure_submodule_objects(
+    root: Path,
+    path: str,
+    shas: tuple[str, ...],
+) -> bool:
+    """Ensure the submodule is initialized and required commit objects exist.
+
+    If any commit object in ``shas`` is missing, attempts ``submodule update --init``
+    and/or ``git fetch``.
+    Returns True if all ``shas`` exist in the submodule.
+    """
+    submodule = root / path
+    missing = [
+        sha
+        for sha in shas
+        if run_git(
+            ("-C", str(submodule), "cat-file", "-e", sha),
+            cwd=root,
+            label="git-gitlink-object",
+        ).returncode
+        != 0
+    ]
+    if not missing:
+        return True
+
+    run_git(
+        ("-c", "protocol.file.allow=always", "submodule", "update", "--init", "--", path),
+        cwd=root,
+        label="git-submodule-init",
+    )
+    run_git(
+        ("-C", str(submodule), "fetch"),
+        cwd=root,
+        label="git-submodule-fetch",
+    )
+    return not any(
+        run_git(
+            ("-C", str(submodule), "cat-file", "-e", sha),
+            cwd=root,
+            label="git-gitlink-object",
+        ).returncode
+        != 0
+        for sha in missing
+    )
 
 
 def try_deterministic_resolution(root: Path, stop: RebaseStop) -> bool:
@@ -84,29 +143,14 @@ def _resolve_gitlinks(
 ) -> bool:
     """Pick the descendant for every locally-verifiable gitlink conflict."""
     chosen: list[tuple[str, str]] = []
+    unresolvable: list[str] = []
     for path, stage in zip(paths, stages, strict=True):
         ours = stage[_CONFLICT_STAGE_OURS][1]
         theirs = stage[_CONFLICT_STAGE_THEIRS][1]
         submodule = root / path
-        if (
-            run_git(
-                ("-C", str(submodule), "rev-parse", "--git-dir"),
-                cwd=root,
-                label="git-gitlink-dir",
-            ).returncode
-            != 0
-        ):
-            return False
-        if any(
-            run_git(
-                ("-C", str(submodule), "cat-file", "-e", sha),
-                cwd=root,
-                label="git-gitlink-object",
-            ).returncode
-            != 0
-            for sha in (ours, theirs)
-        ):
-            return False
+        if not _ensure_submodule_objects(root, path, (ours, theirs)):
+            unresolvable.append(path)
+            continue
         ours_before_theirs = run_git(
             ("-C", str(submodule), "merge-base", "--is-ancestor", ours, theirs),
             cwd=root,
@@ -122,7 +166,17 @@ def _resolve_gitlinks(
         elif theirs_before_ours == 0:
             chosen.append((path, ours))
         else:
-            return False
+            unresolvable.append(path)
+
+    if unresolvable:
+        msg = escalate_gitlink_on_sight(tuple(unresolvable))
+        logger.warning(
+            "conflict_resolution: gitlink conflict on {} cannot be resolved deterministically: {}",
+            ", ".join(unresolvable),
+            msg,
+        )
+        return False
+
     return _stage_deterministic_entries(
         root,
         (("160000", sha, path) for path, sha in chosen),
@@ -166,7 +220,25 @@ def _stage_deterministic_entries(
     resolver. Issuing one command prevents a later failure from partially
     resolving a stop.
     """
+    entries_list = list(entries)
     args: list[str] = ["update-index"]
-    for mode, blob, path in entries:
+    for mode, blob, path in entries_list:
         args.extend(("--cacheinfo", f"{mode},{blob},{path}"))
-    return run_git(tuple(args), cwd=root, label=label).returncode == 0
+    rc = run_git(tuple(args), cwd=root, label=label).returncode
+    if rc != 0:
+        return False
+
+    gitlinks = [(mode, blob, path) for mode, blob, path in entries_list if mode == "160000"]
+    if gitlinks:
+        for mode, blob, path in gitlinks:
+            run_git(
+                ("update-index", "--force-remove", path),
+                cwd=root,
+                label=f"{label}-clear",
+            )
+            run_git(
+                ("update-index", "--add", "--cacheinfo", f"{mode},{blob},{path}"),
+                cwd=root,
+                label=f"{label}-readd",
+            )
+    return True

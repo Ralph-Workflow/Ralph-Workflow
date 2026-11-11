@@ -64,6 +64,11 @@ Loads and validates `ralph-workflow.toml`, `pipeline.toml`, `artifacts.toml`,
 and `mcp.toml`. Exits non-zero if any file fails to parse, fails the loader
 precedence rules, or fails schema validation.
 
+Unlike runtime execution—which safely falls back to built-in defaults with
+deduplicated warnings for optional configuration files—`ralph --check-config`
+strictly reports an aggregated summary of every broken, unreadable, or schema-invalid
+configuration file across all scopes without falling back.
+
 Use this when:
 
 - You just edited a config file and want to know it parses

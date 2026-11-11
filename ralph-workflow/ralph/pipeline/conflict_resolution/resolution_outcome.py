@@ -24,3 +24,4 @@ class ResolutionOutcome:
     last_activity_at: float | None
     unresolved_paths: tuple[str, ...]
     failure_cause: ResolutionFailureCause = ResolutionFailureCause.NONE
+    exhaustion_message: str | None = None

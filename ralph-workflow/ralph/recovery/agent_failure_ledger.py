@@ -287,6 +287,29 @@ class AgentFailureLedger:
                     remaining_times.append(remaining)
             return min(remaining_times) if remaining_times else 0
 
+    def all_exhausted(self, phase: str, agents: Sequence[str]) -> bool:
+        """Return True if every agent in ``agents`` is demoted/spent.
+
+        Returns False if ``agents`` is empty, or if any agent is currently
+        eligible or cooling down.
+        """
+        if not agents:
+            return False
+        with self._lock:
+            now_ms = int(self._clock.monotonic() * 1000)
+            for agent in agents:
+                st = self._status_locked(phase, agent, now_ms)
+                if not isinstance(st, Spent):
+                    return False
+            return True
+
+    def failure_reason(self, phase: str, agent: str) -> str | None:
+        """Return the failure or demotion reason if not eligible, else None."""
+        st = self.status(phase, agent)
+        if isinstance(st, (Cooldown, Spent)):
+            return st.reason
+        return None
+
     def record(self, fact: AttemptFact) -> AttemptOutcome:
         """Record the observed facts of an attempt and return the outcome."""
         with self._lock:

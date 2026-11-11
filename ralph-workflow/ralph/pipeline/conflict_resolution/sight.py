@@ -8,14 +8,69 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.pipeline.conflict_resolution.session import ResolutionSession
+
 from ralph.git.merge import (
     conflict_stage_entries,
     paths_with_conflict_markers,
     stage_paths,
 )
+from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
+
+__all__ = [
+    "ConflictSight",
+    "classify_stage_map",
+    "classify_unmerged_conflicts",
+    "declared_decision_paths",
+    "escalate_on_sight",
+    "gitlink_escalation_message",
+    "mechanical_paths",
+    "out_of_reach_paths",
+    "stage_mechanical_conflicts",
+]
 
 _GITLINK_MODE = "160000"
 _TREE_MODE_PREFIX = "040000"
+
+
+def gitlink_escalation_message(paths: tuple[str, ...]) -> str:
+    """Format the escalation message naming unresolved gitlink paths and the operator command."""
+    command = operator_command_for_paths(paths)
+    joined = ", ".join(paths)
+    if command:
+        return f"OUT_OF_REACH: gitlink conflict on {joined} needs operator action: {command}"
+    return f"OUT_OF_REACH: gitlink conflict on {joined}"
+
+
+def escalate_on_sight(
+    paths: tuple[str, ...],
+    *,
+    session: ResolutionSession | None = None,
+) -> str:
+    """Escalate unresolvable paths on sight without spending or consulting the resolver chain."""
+    message = gitlink_escalation_message(paths)
+    target_session = session
+    if target_session is None:
+        try:
+            from ralph.pipeline.conflict_resolution.rebase_loop import (
+                active_rebase_resolution_session,
+            )
+
+            target_session = active_rebase_resolution_session()
+        except ImportError:
+            target_session = None
+
+    if target_session is not None:
+        from ralph.git.resolution_failure_cause import ResolutionFailureCause
+        from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+            ResolutionTerminationReason,
+        )
+
+        target_session.terminal_reason = ResolutionTerminationReason.OUT_OF_REACH
+        target_session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
+        target_session.unresolved_paths = paths
+        target_session.exhaustion_reason = message
+    return message
 
 
 class ConflictSight(StrEnum):

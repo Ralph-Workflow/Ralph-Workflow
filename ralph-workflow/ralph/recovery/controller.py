@@ -1481,6 +1481,22 @@ class RecoveryController:
         waits = [w for w in (tracker_wait, ledger_wait) if w > 0]
         return min(waits) if waits else 0
 
+    def all_exhausted(self, phase: str, agents: Sequence[str]) -> bool:
+        """Return True if every agent in ``agents`` is demoted or spent."""
+        if not agents:
+            return False
+        if any(self._is_agent_available(phase, agent) for agent in agents):
+            return False
+        if self.earliest_available_wait_ms(phase, list(agents)) > 0:
+            return False
+        spent_set = self._spent_agents.get(phase, set())
+        for agent in agents:
+            if agent in spent_set:
+                continue
+            if not isinstance(self._ledger.status(phase, agent), Spent):
+                return False
+        return True
+
     def _earliest_unavailable_wait_ms(
         self,
         phase: str,

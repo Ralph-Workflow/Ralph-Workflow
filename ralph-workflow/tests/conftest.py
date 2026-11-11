@@ -125,12 +125,14 @@ def _isolate_test_environment_and_globals(
     with _isolate_explore_recovery_globals():
         _apply_fake_claude_cli_mcp_probe(monkeypatch)
         _apply_isolate_process_home(request, monkeypatch, tmp_path_factory)
+        _set_current_test_node(request.node.nodeid)
         _apply_isolate_pipeline_thread_locals()
         _apply_clear_host_contention_signals()
         _apply_reset_default_process_manager()
         try:
             yield
         finally:
+            _set_current_test_node(None)
             _apply_reset_default_process_manager()
             _apply_clear_host_contention_signals()
             _reset_rich_style_color_caches()

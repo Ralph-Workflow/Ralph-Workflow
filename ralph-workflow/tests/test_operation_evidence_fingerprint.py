@@ -371,6 +371,7 @@ def test_fingerprint_schema_immunity_and_defaulted_fields() -> None:
         "merge_commit_tree": "m_tree",
         "reintegrate_pending": True,
         "initiating_feature_sha": "init_sha",
+        "resolution_gate_key": "gate:stop1:primary:sha",
     }
 
     # Verify that each field in model_fields (except the closed trio)

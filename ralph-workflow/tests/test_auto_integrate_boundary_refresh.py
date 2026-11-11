@@ -422,6 +422,7 @@ def test_a_forced_refresh_that_clears_the_divergence_records_nothing(
     assert second is None, "a refreshed pointer showing no divergence is quiet"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_the_forced_refresh_arms_the_throttle_window(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

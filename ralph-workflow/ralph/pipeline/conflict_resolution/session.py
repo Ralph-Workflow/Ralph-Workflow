@@ -96,6 +96,7 @@ class ResolutionSession:
     recovery_state: object | None = None
     last_retry_delay_ms: int = 0
     exhaustion_reason: str | None = None
+    operator_action_message: str | None = None
     skip_same_agent_retries: bool = False
     last_attempt_evidence: str | None = None
     last_attempt_failure: BaseException | str | None = None
@@ -151,6 +152,7 @@ def begin_resolution_stop(
     session.last_activity_at = None
     session.last_duration_seconds = None
     session.exhaustion_reason = None
+    session.operator_action_message = None
     session.charge_conflict_budget = True
 
     if not is_strategy_rotation:

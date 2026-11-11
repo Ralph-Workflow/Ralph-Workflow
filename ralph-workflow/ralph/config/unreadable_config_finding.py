@@ -2,8 +2,9 @@
 
 The config-scan seam inspects every configuration, policy, and MCP layer
 for a file that is unreadable or malformed, reports each one as a typed
-finding, and never fails fast: the run continues on the built-in defaults
-while the operator sees exactly which file needs fixing.
+finding, and never fails fast: the run continues on built-in defaults for
+optional files or fails loudly for strict files while the operator sees
+exactly which file needs fixing.
 """
 
 from __future__ import annotations
@@ -31,6 +32,15 @@ from ralph.project_policy.markers import PORTFOLIO_PATH
 
 if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
+
+
+def _is_strict_config_file(path: Path, kind: str) -> bool:
+    """Return whether this configuration file is strict and must fail loudly."""
+    return kind in ("config", "ralph-workflow") or path.name in (
+        _GLOBAL_CONFIG_FILENAME,
+        _LOCAL_CONFIG_FILENAME,
+        "ralph-workflow.toml",
+    )
 
 
 @dataclass(frozen=True)
@@ -106,20 +116,32 @@ def collect_unreadable_config_files(
         error = _inspect_config_file_readability(path, kind)
         if error is not None:
             error_detail = _format_error_detail(error)
+            is_strict = _is_strict_config_file(path, kind)
+            warn_kind = "ralph-workflow" if is_strict else kind
+            if is_strict:
+                behaviour = (
+                    "strict configuration behaviour in effect "
+                    "(this file has no built-in default fallback)"
+                )
+                fix_hint = f"To continue: fix {path} then run ralph --check-config"
+            else:
+                behaviour = "using built-in default"
+                fix_hint = "Fix: run `ralph --check-config`."
+
             warned = emit_config_failure_warning(
                 path,
-                kind=kind,
+                kind=warn_kind,
                 error_detail=error_detail,
-                behaviour="using built-in default",
-                fix_hint="Fix: run `ralph --check-config`.",
+                behaviour=behaviour,
+                fix_hint=fix_hint,
                 exc=error,
             )
             if warned and display is not None and hasattr(display, "emit_warning"):
                 display.emit_warning(
-                    f"Failed to load {kind} configuration from {path}: {error_detail}; "
-                    f"using built-in default. Fix: run `ralph --check-config`."
+                    f"Failed to load {warn_kind} configuration from {path}: {error_detail}; "
+                    f"{behaviour}. {fix_hint}"
                 )
-            findings.append(UnreadableConfigFinding(path=path, kind=kind, error=error))
+            findings.append(UnreadableConfigFinding(path=path, kind=warn_kind, error=error))
 
     return findings
 
@@ -225,7 +247,7 @@ def _validate_config_file_schema(
             from ralph.project_policy.portfolio import load_portfolio_toml
 
             load_portfolio_toml(path, strict_optional_files=True)
-        elif kind == "config":
+        elif kind in ("config", "ralph-workflow"):
             from ralph.config.loader import _convert_legacy_config, _drop_cli_only_fields
             from ralph.config.models import UnifiedConfig
 

@@ -9,11 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 from loguru import logger
 
-from ralph.config import (
-    describe_config_failure,
-    emit_config_failure_warning,
-    reset_fallback_warning_registry,
-)
+from ralph.config import reset_fallback_warning_registry
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.auto_integrate_agent import build_agent_rebase_stop_resolver
 from ralph.pipeline.conflict_resolution import RebaseStop, RebaseStopResolver
@@ -212,13 +208,10 @@ def test_changed_broken_config_warns_again(tmp_path: Path) -> None:
 def test_startup_load_reports_failure_through_shared_recorder(tmp_path: Path) -> None:
     """The startup load of a broken config warns once through the shared recorder.
 
-    The startup load itself raises :class:`WorkspaceContextError`; the
-    operator-facing WARN is the shared, ``(file, content)``-deduplicated
-    recorder's job, so the same broken file cannot produce one warning per
-    reload. The recorder is driven here directly because the raise site
-    (``ralph/workspace/context.py``) is owned by another lane; once that
-    lane calls the same recorder, this test still holds -- the second
-    report of the same (file, content) pair is deduplicated.
+    The startup load itself exercises the real loader via :func:`workspace_context`,
+    which raises :class:`WorkspaceContextError` and emits an operator-facing WARN
+    through the shared, ``(file, content)``-deduplicated recorder. A repeated
+    startup load of the same broken file raises again but deduplicates the warning.
     """
     broken_toml = _write_broken_config(tmp_path, content="invalid_toml = [unclosed")
 
@@ -234,36 +227,13 @@ def test_startup_load_reports_failure_through_shared_recorder(tmp_path: Path) ->
         startup_error = excinfo.value
         assert startup_error.file == broken_toml
 
-        # Report the failure through the shared recorder. Whether the raise
-        # site already reported it (once the pending wiring lands) or not,
-        # the same (file, content) pair must end up as ONE warning.
-        _emitted = emit_config_failure_warning(
-            startup_error.file,
-            kind="ralph-workflow",
-            error_detail=describe_config_failure(startup_error),
-            behaviour=(
-                "strict configuration behaviour in effect "
-                "(this file has no built-in default fallback)"
-            ),
-            fix_hint=f"To continue: fix {startup_error.file} then run ralph --check-config",
-            exc=startup_error,
-        )
-
-        # The same (file, content) pair reported again is deduplicated.
-        assert (
-            emit_config_failure_warning(
-                startup_error.file,
-                kind="ralph-workflow",
-                error_detail=describe_config_failure(startup_error),
-                behaviour=(
-                    "strict configuration behaviour in effect "
-                    "(this file has no built-in default fallback)"
-                ),
-                fix_hint=(f"To continue: fix {startup_error.file} then run ralph --check-config"),
-                exc=startup_error,
-            )
-            is False
-        )
+        # RALPH-TEST-REASON: replaced whitebox emit_config_failure_warning calls with black-box workspace_context testing
+        # Re-running startup validation against the unchanged broken file triggers the same exception while deduplicating the warning.
+        with (
+            pytest.raises(WorkspaceContextError),
+            workspace_context(tmp_path),
+        ):
+            pass
     finally:
         logger.remove(sink_id)
 

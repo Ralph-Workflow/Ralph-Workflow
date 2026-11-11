@@ -563,7 +563,7 @@ def test_a_round_that_invokes_nobody_is_never_reported_as_a_failed_attempt(
         line.startswith(ResolutionTerminationReason.ATTEMPT_FAILED.value) for line in lines
     )
     assert any(
-        line.startswith(ResolutionTerminationReason.TOOL_SURFACE_DEAD.value) for line in lines
+        line.startswith(ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value) for line in lines
     )
 
 

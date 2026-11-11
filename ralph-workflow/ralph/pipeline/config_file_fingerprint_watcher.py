@@ -136,4 +136,37 @@ class ConfigFileFingerprintWatcher:
                 self.record_failure(self._default_path)
 
 
-__all__ = ["ConfigFileFingerprintWatcher"]
+def resolve_config_path_for_workspace(
+    root: Path,
+    config_path: Path | str | None = None,
+) -> Path:
+    """Return the configuration file path for a workspace root.
+
+    Checks ``config_path`` if given, then ``root / '.agent' / 'ralph-workflow.toml'``,
+    and falls back to ``root / 'ralph-workflow.toml'``.
+    """
+    if config_path is not None:
+        return Path(config_path).resolve()
+    for candidate in (
+        root / ".agent" / "ralph-workflow.toml",
+        root / "ralph-workflow.toml",
+    ):
+        if candidate.is_file():
+            return candidate.resolve()
+    return (root / ".agent" / "ralph-workflow.toml").resolve()
+
+
+def compute_config_fingerprint_for_workspace(
+    root: Path,
+    config_path: Path | str | None = None,
+) -> str | None:
+    """Compute the config file SHA-256 fingerprint for a workspace."""
+    resolved = resolve_config_path_for_workspace(root, config_path)
+    return compute_config_file_fingerprint(resolved)
+
+
+__all__ = [
+    "ConfigFileFingerprintWatcher",
+    "compute_config_fingerprint_for_workspace",
+    "resolve_config_path_for_workspace",
+]

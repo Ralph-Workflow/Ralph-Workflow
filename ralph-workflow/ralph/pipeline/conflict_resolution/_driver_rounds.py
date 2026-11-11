@@ -58,7 +58,7 @@ from ralph.pipeline.integration_actions import _DEFAULT_CLOCK, current_clock
 from ralph.recovery.conflict_attempt_outcome import ConflictAttemptOutcome
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
     from ralph.display.parallel_display import ParallelDisplay
@@ -111,6 +111,7 @@ def _evaluate_round_attempt(
     attempt_started: float,
     clock: Callable[[], float],
     decision_paths: tuple[str, ...],
+    candidates: Sequence[str] = (),
 ) -> ResolutionAction:
     succeeded = attempt.succeeded
     agent_ran = attempt.invoked and attempt.agent_ran
@@ -118,7 +119,9 @@ def _evaluate_round_attempt(
     resolved_now = (succeeded or proved_by_worktree) and not session.unresolved_paths
     action = select_resolution_action(session, round_index, round_cap, resolved=resolved_now)
     round_reason = (
-        None if resolved_now else _round_termination_reason(session, invoked=attempt.invoked)
+        None
+        if resolved_now
+        else _round_termination_reason(session, invoked=attempt.invoked, candidates=candidates)
     )
     session.terminal_reason = round_reason
     outcome = ResolutionOutcome(

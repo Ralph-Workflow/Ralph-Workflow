@@ -58,6 +58,9 @@ from ralph.pipeline._pending_merge_commit import (
 )
 from ralph.pipeline._retained_resolution_scope import retained_merge_paths
 from ralph.pipeline.auto_integrate_record import read_record
+from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
+    ResolutionTerminationReason,
+)
 from ralph.pipeline.conflict_resolution.attempt_fault import (
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
@@ -146,7 +149,7 @@ def _resolve_and_commit(
     return _resolve_and_commit_with_reason(root, target, resolver).outcome == "success"
 
 
-def _resolve_and_commit_with_reason(
+def resolve_and_commit_with_reason(
     root: Path,
     target: str,
     resolver: ConflictResolver,
@@ -192,13 +195,13 @@ def _resolve_and_commit_with_reason(
             f"resolver raised: {resolver_exc}; partial resolution retained",
             failure_cause=ResolutionFailureCause.AGENT_FAILURE,
         )
-    reason: str | None = (
-        str(result.reason)
-        if isinstance(result, ResolutionOutcome) and result.reason is not None
-        else None
-    )
+    reason: str | None = None
+    if isinstance(result, ResolutionOutcome):
+        reason = result.exhaustion_message or (
+            str(result.reason) if result.reason is not None else None
+        )
     if not _resolution_succeeded(result):
-        return _handle_unsuccessful_resolution(result, reason)
+        return _handle_unsuccessful_resolution(result, reason, conflicted=tuple(conflicted))
     return (
         _stage_verify_and_commit(root, conflicted, target)
         if conflicted
@@ -210,9 +213,28 @@ def _resolve_and_commit_with_reason(
     )
 
 
-def _handle_unsuccessful_resolution(
-    result: ResolutionOutcome | bool, reason: str | None
+def handle_unsuccessful_resolution(
+    result: ResolutionOutcome | bool,
+    reason: str | None,
+    conflicted: tuple[str, ...] = (),
 ) -> MergeResult:
+    """Map an unsuccessful conflict resolution attempt onto a typed MergeResult.
+
+    Translates resolver outcomes and failure reasons into the appropriate
+    MergeResult outcome and failure cause: resolver-not-spent terminations
+    (such as tool dead or unavailable) map to RESOLUTION_AGENT_FAILURE with
+    AGENT_FAILURE; candidate exhaustion maps to UNRESOLVED_CONFLICT with an
+    actionable operator command naming conflicted paths; other failures
+    preserve retained progress for supervised continuation.
+
+    Args:
+        result: Outcome object from the resolver, or boolean indicating success.
+        reason: Optional descriptive reason string for the failure.
+        conflicted: Tuple of unmerged file paths from the conflict.
+
+    Returns:
+        The mapped :class:`MergeResult` with status and failure cause.
+    """
     if (
         isinstance(result, ResolutionOutcome)
         and result.reason in RESOLVER_NOT_SPENT_TERMINATION_REASONS
@@ -222,11 +244,46 @@ def _handle_unsuccessful_resolution(
             RESOLUTION_AGENT_FAILURE,
             failure_cause=ResolutionFailureCause.AGENT_FAILURE,
         )
+    if (
+        isinstance(result, ResolutionOutcome)
+        and result.reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    ) or (
+        isinstance(reason, str) and ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value in reason
+    ):
+        from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
+
+        paths = (
+            tuple(result.unresolved_paths)
+            if (isinstance(result, ResolutionOutcome) and result.unresolved_paths)
+            else conflicted
+        )
+        cmd = operator_command_for_paths(paths)
+        paths_str = ", ".join(paths)
+        exhaustion_msg: str | None = (
+            result.exhaustion_message if isinstance(result, ResolutionOutcome) else None
+        )
+        if not exhaustion_msg or "needs operator action:" not in exhaustion_msg:
+            if reason and "needs operator action:" in reason:
+                exhaustion_msg = reason
+            else:
+                exhaustion_msg = (
+                    f"all resolver agents are spent/unavailable; "
+                    f"conflict on {paths_str} needs operator action: {cmd}"
+                )
+        return MergeResult(
+            outcome=MERGE_COMMIT_PENDING,
+            reason=exhaustion_msg,
+            failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
+        )
     return MergeResult(
         outcome=MERGE_COMMIT_PENDING,
         reason=reason or "conflict resolution incomplete; progress retained",
         failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT,
     )
+
+
+_handle_unsuccessful_resolution = handle_unsuccessful_resolution
+_resolve_and_commit_with_reason = resolve_and_commit_with_reason
 
 
 def _clear_ort_residue(root: Path, conflicted: tuple[str, ...]) -> None:

@@ -133,7 +133,7 @@ Fallback warnings are deduplicated per file content fingerprint (SHA-256) so run
 
 Authoritative files never fall back to defaults and fail immediately upon syntax or schema errors:
 
-- **`ralph-workflow.toml`**: The main configuration file across all scopes (global `~/.config/ralph-workflow.toml`, project-local `.agent/ralph-workflow.toml`, and worktree-propagated copies) remains strict. Any malformed TOML syntax or schema violation raises `ConfigTomlError` with structured What/Why/Fix diagnostics.
+- **`ralph-workflow.toml`**: The main configuration file across all scopes (global `~/.config/ralph-workflow.toml`, project-local `.agent/ralph-workflow.toml`, and worktree-propagated copies) remains strict. Any malformed TOML syntax or schema violation raises `ConfigTomlError` with structured What/Why/Fix diagnostics. Strict configuration behaviour remains in effect: this file has no built-in default fallback.
 - **Shipped bundled package data**: Default configuration templates shipped inside the package (`ralph/policy/defaults/mcp.toml`, bundled `artifacts.toml`, bundled `pipeline.toml`, and bundled `ralph-workflow.toml`) are internal code and distribution assets, not user configuration. Corruption in shipped package data indicates a packaging defect and fails loudly.
 - **Third-party tool configurations**: External configuration files such as `~/.codex/config.toml` belong to third-party tools rather than Ralph Workflow. Ralph Workflow does not silently replace corrupted third-party configurations with defaults; it fails loudly (`CodexConfigError`) to avoid executing with unintended providers or credentials.
 

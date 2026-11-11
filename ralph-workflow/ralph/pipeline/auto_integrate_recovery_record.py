@@ -28,7 +28,11 @@ from ralph.pipeline._git_operation_authority import (
     is_in_active_resolution_state,
 )
 from ralph.pipeline._integration_action import RebaseOutcomeKind
-from ralph.pipeline._integration_continuation import continue_retained_resolution
+from ralph.pipeline._integration_continuation import (
+    compute_continuation_retry_gate_key,
+    continue_retained_resolution,
+    reset_continuation_gate_state,
+)
 from ralph.pipeline._owned_landing_reintegration import (
     reintegrate_owned_landing as _reintegrate_owned_landing,
 )
@@ -68,6 +72,7 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts.file_backend import FileBackend
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
+    from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
 
@@ -78,6 +83,10 @@ __all__ = [
     "_recover_pending_merge",
     "_recover_unresolved_integrating",
     "_refresh_before_verdict",
+    "compute_continuation_retry_gate_key",
+    "continue_retained_resolution",
+    "recover_pending_merge",
+    "reset_continuation_gate_state",
 ]
 
 
@@ -601,6 +610,13 @@ def _recover_pending_merge(
     config: UnifiedConfig | None,
     conflict_resolver: ConflictResolver | None = None,
     rebase_stop_resolver: RebaseStopResolver | None = None,
+    *,
+    recovery_controller: RecoveryController | None = None,
+    phase: str = "rebase_conflict_resolution",
+    chain_agents: list[str] | tuple[str, ...] | None = None,
+    config_path: Path | None = None,
+    force_retry: bool = False,
+    stop_identity: str | None = None,
 ) -> RebaseState:
     preflight = _recover_pending_merge_preflight(
         root, record, config, conflict_resolver, rebase_stop_resolver
@@ -623,6 +639,12 @@ def _recover_pending_merge(
             config,
             conflict_resolver,
             rebase_stop_resolver,
+            recovery_controller=recovery_controller,
+            phase=phase,
+            chain_agents=chain_agents,
+            config_path=config_path,
+            force_retry=force_retry,
+            stop_identity=stop_identity,
         )
     elif kind is GitOperationKind.AWAITING_CONTINUE:
         resumed = resume_pending_rebase(root, record)
@@ -643,6 +665,12 @@ def _recover_pending_merge(
             config,
             conflict_resolver,
             rebase_stop_resolver,
+            recovery_controller=recovery_controller,
+            phase=phase,
+            chain_agents=chain_agents,
+            config_path=config_path,
+            force_retry=force_retry,
+            stop_identity=stop_identity,
         )
     if isinstance(resumed, str):
         return _resumed_failure_outcome(record, resumed)
@@ -663,9 +691,13 @@ def _recover_pending_merge(
     )
 
 
+recover_pending_merge = _recover_pending_merge
+
+
 def _resumed_failure_outcome(record: IntegrationRecord, reason: str) -> RebaseState:
     """Map a refused continuation onto the typed retained or conflict state."""
-    logger.critical("CRITICAL: {}", reason)
+    if not reason.startswith("WAITING:"):
+        logger.critical("CRITICAL: {}", reason)
     if is_in_active_resolution_state(record):
         from ralph.git.resolution_failure_cause import ResolutionFailureCause
         from ralph.pipeline.auto_integrate_outcome import record_conflict

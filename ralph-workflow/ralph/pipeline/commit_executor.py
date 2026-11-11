@@ -291,11 +291,12 @@ def set_last_commit_error(error: str | None) -> None:
 
 def _is_git_worktree(repo_root: Path) -> bool:
     """Check if repo_root is inside a valid git working tree."""
+    git_dir = rebase_bookkeeping_dir(repo_root)
+    if git_dir is not None and git_dir.is_dir():
+        return True
     try:
         res = run_git(
-            ("rev-parse", "--is-inside-work-tree"),
-            cwd=repo_root,
-            label="check-git-worktree",
+            ("rev-parse", "--is-inside-work-tree"), cwd=repo_root, label="check-git-worktree"
         )
         return res.returncode == 0 and res.stdout.strip() == "true"
     except Exception:
@@ -334,30 +335,31 @@ def _is_head_detached(repo_root: Path) -> bool:
         if detached_head_no_state(repo_root, git_dir):
             return True
     try:
-        result = run_git(
-            ("symbolic-ref", "--quiet", "HEAD"),
-            cwd=repo_root,
-            label="commit:head-symbolic-ref",
-        )
-        return result.returncode != 0
+        cmd = ("symbolic-ref", "--quiet", "HEAD")
+        return run_git(cmd, cwd=repo_root, label="commit:head-symbolic-ref").returncode != 0
     except Exception:
         return False
 
 
 def _branch_exists(repo_root: Path, branch: str) -> bool:
     """Check if a branch exists locally in refs/heads/."""
-    if not branch or not branch.strip():
+    clean = branch.strip() if branch else ""
+    if not clean:
         return False
-    git_dir = rebase_bookkeeping_dir(repo_root)
-    if git_dir is not None and (git_dir / "refs" / "heads" / branch.strip()).is_file():
-        return True
+    common = common_git_dir(repo_root) or rebase_bookkeeping_dir(repo_root)
+    if common is not None:
+        if (common / "refs" / "heads" / clean).is_file():
+            return True
+        packed = common / "packed-refs"
+        if packed.is_file():
+            try:
+                if f"refs/heads/{clean}\n" in packed.read_text(encoding="utf-8", errors="replace"):
+                    return True
+            except OSError:
+                pass
     try:
-        res = run_git(
-            ("show-ref", "--verify", f"refs/heads/{branch.strip()}"),
-            cwd=repo_root,
-            label="check-branch",
-        )
-        return res.returncode == 0
+        cmd = ("show-ref", "--verify", f"refs/heads/{clean}")
+        return run_git(cmd, cwd=repo_root, label="check-branch").returncode == 0
     except Exception:
         return False
 

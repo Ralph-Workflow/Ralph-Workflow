@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import textwrap
 from pathlib import Path
 
@@ -9,6 +10,13 @@ import pytest
 
 import ralph.config.loader as config_loader
 from ralph.skills import state_store
+from tests._real_config_guard_support import (
+    _STATE,
+    _clear_recorded_read_violations,
+    _extract_read_path,
+    _get_test_read_violations,
+    _read_violations_count,
+)
 from tests.conftest import (
     _ConfigPathSnapshot,
     _diff_config_snapshots,
@@ -377,3 +385,143 @@ def test_per_test_isolation_redirects_import_time_constants() -> None:
     # 4. DEFAULT_STATE_PATH is redirected to the sandboxed path
     assert "autouse-home" in str(state_store.DEFAULT_STATE_PATH)
     assert state_store.DEFAULT_STATE_PATH.name == "ralph-workflow-capabilities.json"
+
+
+def test_autouse_isolation_registers_current_test_node(request: pytest.FixtureRequest) -> None:
+    """The autouse isolation fixture sets _STATE.current_test_node to request.node.nodeid."""
+    assert _STATE.current_test_node == request.node.nodeid
+
+
+def test_read_violations_tracking_helpers(tmp_path: Path) -> None:
+    """_get_test_read_violations filters by node and _read_violations_count tracks total."""
+    start = _read_violations_count()
+    node_a = "test_file.py::test_a"
+    node_b = "test_file.py::test_b"
+    path_1 = tmp_path / "ralph-workflow.toml"
+    path_2 = tmp_path / "ralph-workflow-agents.toml"
+
+    _STATE.recorded_reads.append((node_a, path_1))
+    _STATE.recorded_reads.append((node_b, path_2))
+    _STATE.recorded_reads.append((node_a, path_2))
+
+    assert _read_violations_count() == start + 3
+    assert _get_test_read_violations(start, node_a) == [path_1, path_2]
+    assert _get_test_read_violations(start, node_b) == [path_2]
+    assert _get_test_read_violations(start, "test_file.py::non_existent") == []
+
+    # Clean up test-injected reads so session guard stays clean
+    _clear_recorded_read_violations()
+
+
+def test_real_config_guard_attributes_read_violation_to_node_in_pytester(
+    pytester: pytest.Pytester,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A test that reads a guarded file is explicitly named in the violation message."""
+    guarded_dir = tmp_path / "guarded_config"
+    guarded_dir.mkdir(parents=True)
+    existing_file = guarded_dir / "ralph-workflow.toml"
+    existing_file.write_text("initial = 1\n", encoding="utf-8")
+
+    monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(guarded_dir))
+
+    pytester.makeconftest(
+        textwrap.dedent(
+            """
+            import pytest
+            from tests.conftest import _guard_real_config_files, _set_current_test_node
+
+            @pytest.fixture(autouse=True)
+            def _track_node(request: pytest.FixtureRequest):
+                _set_current_test_node(request.node.nodeid)
+                try:
+                    yield
+                finally:
+                    _set_current_test_node(None)
+            """
+        )
+    )
+    pytester.makepyfile(
+        test_read=textwrap.dedent(
+            f"""
+            from pathlib import Path
+
+            def test_attributed_read():
+                target = Path({str(existing_file)!r})
+                _ = target.read_text(encoding="utf-8")
+            """
+        )
+    )
+
+    result = pytester.runpytest_inprocess("-q")
+    result.assert_outcomes(passed=1, errors=1)
+    output = result.stdout.str()
+    assert (
+        "Test suite touched real user configuration files in violation of isolation rules:"
+        in output
+    )
+    assert "READ:" in output
+    assert "ralph-workflow.toml" in output
+    assert "(by test_read.py::test_attributed_read)" in output
+
+
+def test_extract_read_path_ignores_write_modes_and_non_guarded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """_extract_read_path ignores write-mode opens and paths outside guarded dirs."""
+    guarded_dir = tmp_path / "guarded_config"
+    guarded_dir.mkdir(parents=True)
+    target = guarded_dir / "ralph-workflow.toml"
+    target.write_text("x = 1\n", encoding="utf-8")
+
+    monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(guarded_dir))
+
+    # Read modes are identified as guarded reads
+    assert _extract_read_path((str(target), "r")) == target.resolve()
+    assert _extract_read_path((str(target), "rb")) == target.resolve()
+    assert _extract_read_path((target, "r")) == target.resolve()
+    assert _extract_read_path((os.fsencode(str(target)), "r")) == target.resolve()
+
+    # Write / append / update modes are ignored (handled by snapshot diffing)
+    assert _extract_read_path((str(target), "w")) is None
+    assert _extract_read_path((str(target), "a")) is None
+    assert _extract_read_path((str(target), "x")) is None
+    assert _extract_read_path((str(target), "r+")) is None
+    assert _extract_read_path((str(target), "rb+", os.O_RDWR)) is None
+    assert _extract_read_path((str(target), "rb", os.O_WRONLY)) is None
+
+    # Paths without 'ralph-workflow' in name are ignored
+    other_file = guarded_dir / "other.toml"
+    assert _extract_read_path((str(other_file), "r")) is None
+
+    # Files outside guarded directories are ignored even if named ralph-workflow
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    outside_file = outside_dir / "ralph-workflow.toml"
+    assert _extract_read_path((str(outside_file), "r")) is None
+
+
+def test_extract_read_path_handles_dotfile_and_nested_prefixes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """_extract_read_path catches reads in .ralph-workflow and nested ralph-workflow directories."""
+    guarded_dir = tmp_path / "guarded_config"
+    guarded_dir.mkdir(parents=True)
+
+    # Dotfile directory .ralph-workflow
+    dot_dir = guarded_dir / ".ralph-workflow"
+    dot_dir.mkdir()
+    dot_file = dot_dir / "state.json"
+    dot_file.write_text("{}", encoding="utf-8")
+
+    # Nested directory ralph-workflow
+    sub_dir = guarded_dir / "ralph-workflow"
+    sub_dir.mkdir()
+    nested_file = sub_dir / "config.toml"
+    nested_file.write_text("key = 1\n", encoding="utf-8")
+
+    monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(guarded_dir))
+
+    assert _extract_read_path((str(dot_file), "r")) == dot_file.resolve()
+    assert _extract_read_path((str(nested_file), "r")) == nested_file.resolve()

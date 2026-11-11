@@ -76,6 +76,7 @@ _REASON_TO_FAULT: dict[ResolutionTerminationReason, AttemptFault] = {
     ResolutionTerminationReason.CANDIDATE_UNAVAILABLE: AttemptFault.AGENT_TOOL_DEAD,
     ResolutionTerminationReason.CANDIDATE_EXITED: AttemptFault.AGENT_EXITED,
     ResolutionTerminationReason.ATTEMPT_FAILED: AttemptFault.UNKNOWN,
+    ResolutionTerminationReason.CANDIDATE_EXHAUSTED: AttemptFault.UNKNOWN,
 }
 
 _FAULT_TO_REASON: dict[AttemptFault, ResolutionTerminationReason | None] = {

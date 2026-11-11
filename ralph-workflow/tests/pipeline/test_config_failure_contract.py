@@ -334,3 +334,80 @@ def test_run_loop_logs_carried_reason() -> None:
         assert len(matching) == 1
     finally:
         logger.remove(sink_id)
+
+
+def test_run_loop_self_recovery_on_repaired_config_triggers_single_retry(tmp_path: Path) -> None:
+    """A repaired configuration file causes handle_pending_retry to self-recover and retry once."""
+    from ralph.pipeline.retry_diagnostic import RetryDiagnosticHooks
+
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir(parents=True)
+    cfg_file = agent_dir / "ralph-workflow.toml"
+    cfg_file.write_text("invalid_toml = [broken", encoding="utf-8")
+
+    reason_str = f"fix {cfg_file} then run ralph --check-config"
+    rebase = RebaseState(
+        last_outcome=RebaseOutcomeKind.CONFLICT,
+        last_reason=reason_str,
+        last_failure_cause=ResolutionFailureCause.CONFIG_FAILURE,
+        consecutive_conflicts=1,
+    )
+    state = PipelineState(phase="planning", rebase=rebase)
+
+    mock_ctx = MagicMock()
+    mock_ctx.latest_state = []
+    mock_ctx.sleep = MagicMock()
+    mock_ctx.config_failure_watcher = None
+    mock_ctx.hooks = RetryDiagnosticHooks(recovery_preamble=lambda *_: None)
+    mock_backend = MagicMock()
+
+    records: list[dict[str, Any]] = []
+    sink_id = logger.add(lambda msg: records.append(dict(msg.record)), level="INFO")
+    try:
+        # First pass: broken config file on disk. The watcher is initialized,
+        # records baseline fingerprint, and falls through to sleep without retry.
+        state1 = handle_pending_retry(
+            state,
+            mock_ctx,
+            rebase,
+            detail="first failure",
+            backend=mock_backend,
+        )
+        assert mock_ctx.config_failure_watcher is not None
+        mock_ctx.sleep.assert_called_once_with(5.0)
+        mock_ctx.sleep.reset_mock()
+        assert not any("configuration failure self-recovery:" in r["message"] for r in records)
+
+        # Repair the configuration file on disk.
+        cfg_file.write_text("[general]\nmax_cycles = 10\n", encoding="utf-8")
+
+        # Second pass: repaired file triggers self-recovery retry immediately (no sleep).
+        state2 = handle_pending_retry(
+            state1,
+            mock_ctx,
+            rebase,
+            detail="repaired file retry",
+            backend=mock_backend,
+        )
+        mock_ctx.sleep.assert_not_called()
+        assert state2.wait_reason is None
+        assert state2.rebase == rebase
+        assert any(
+            "configuration failure self-recovery:" in r["message"]
+            and "repaired; retrying paused rebase" in r["message"]
+            for r in records
+        )
+
+        # Third pass: unchanged repaired file must NOT retry again (single retry policy).
+        records.clear()
+        _state3 = handle_pending_retry(
+            state2,
+            mock_ctx,
+            rebase,
+            detail="third pass unchanged",
+            backend=mock_backend,
+        )
+        mock_ctx.sleep.assert_called_once_with(5.0)
+        assert not any("configuration failure self-recovery:" in r["message"] for r in records)
+    finally:
+        logger.remove(sink_id)

@@ -415,6 +415,49 @@ When a rebase pauses on a configuration failure, Ralph Workflow enters a waiting
    - When the operator edits and repairs the file, the file's content hash changes. `should_retry()` detects the distinct fingerprint, marks it as attempted, and allows exactly one paused rebase continuation attempt.
    - If the repair succeeds, rebase continuation proceeds. If the file is still invalid (or introduces a new error), a new distinct fingerprint is recorded, awaiting the next file modification.
 
+### Resolution candidate exhaustion versus tool surface death
+
+When auto-integrate conflict resolution runs through its configured resolver agent chain:
+
+1. **Candidate classification**:
+   - `ResolutionTerminationReason.TOOL_SURFACE_DEAD` is used strictly when an agent candidate was actively launched and its tool surface died, failed, or was terminated.
+   - When no candidate agent is eligible and none has a finite waiting cooldown (all candidates are spent or demoted), the termination reason is `ResolutionTerminationReason.CANDIDATE_EXHAUSTED`.
+   - When an agent is currently on cooldown with a finite wait remaining, `ResolutionTerminationReason.CANDIDATE_UNAVAILABLE` indicates a temporary wait rather than permanent exhaustion.
+2. **Failure ledger and escalation ladder**:
+   - Unlike `TOOL_SURFACE_DEAD` and `CANDIDATE_UNAVAILABLE` (which belong to `RESOLVER_NOT_SPENT_TERMINATION_REASONS`), `CANDIDATE_EXHAUSTED` records exhaustion in the `AgentFailureLedger`. This permits the recovery escalation ladder to progress rather than looping indefinitely.
+   - `RecoveryController` exposes `all_exhausted` and `agents_now_available` to differentiate between chains that have live options remaining and chains that are completely spent.
+3. **Operator hand-off message and commands**:
+   - When candidate agents are exhausted or conflicts are out of reach, the engine constructs an actionable operator message listing each spent agent with its specific failure reason, the conflicted paths, and the exact manual command needed to continue:
+     `all N resolver agents are spent/unavailable (<reasons>); conflict on <paths> needs operator action: git add -- <paths>`
+   - Generated via `operator_command_for_paths(paths)`, the command properly escapes and formats pathnames for direct shell execution.
+   - On the merge seam (`ralph.pipeline.auto_integrate_resolve`), an exhausted resolution returns `MergeResult(outcome=MERGE_COMMIT_PENDING, failure_cause=ResolutionFailureCause.UNRESOLVED_CONFLICT)` with this operator hand-off message, eliminating misleading "conflict resolution incomplete; progress retained" summaries.
+
+### Durable continuation retry gate across processes
+
+Continuation attempts often run in fresh supervisor processes where in-memory state is discarded. To prevent hot retry loops across process invocations:
+
+1. **Durable gate key in `IntegrationRecord`**:
+   - The engine computes a composite retry gate key `(stop_identity, sorted_eligible_agents, config_fingerprint)` and persists it inside `IntegrationRecord` in `.agent/auto_integrate_in_progress.json`.
+   - When a subsequent process starts, `_integration_continuation` re-reads the durable record.
+2. **Gate evaluation**:
+   - If the stop identity, eligible resolver agents, and configuration fingerprints are unchanged, continuation resolution is refused. Exactly one actionable `WAITING` status line is emitted instead of repeated `CRITICAL` log floods and busy process respawns.
+   - Resolution is re-entered only when the gate key changes (such as when an operator repairs a defective configuration file, an agent cooldown expires, or an explicit operator command resets state).
+   - Pre-existing integration records lacking the gate key field deserialize safely and operate in ungated mode for backward compatibility.
+
+### Gitlink conflict resolution and escalation on sight
+
+Submodule gitlink conflicts (`160000` mode in git index) occur when two branches advance a submodule pointer independently:
+
+1. **Deterministic submodule resolution**:
+   - Before falling back to manual escalation or invoking resolver agents, `try_deterministic_resolution` inspects the conflicted submodule gitlink objects.
+   - If the submodule directory is uninitialized or missing, the engine executes `git submodule update --init -- <path>`.
+   - If gitlink commit objects are missing locally, `git -C <path> fetch` is attempted to fetch upstream objects.
+   - If the local and incoming submodule commits have an ancestor/descendant relationship, the descendant commit is automatically staged, resolving the conflict deterministically without agent intervention.
+2. **Immediate escalation on sight**:
+   - If gitlink commits have diverged (neither commit is an ancestor of the other) or objects cannot be fetched, resolving the gitlink is beyond the capability of code-editing agents.
+   - `classify_unmerged_conflicts` classifies the gitlink as `ConflictSight.OUT_OF_REACH`.
+   - The engine immediately escalates on sight with `ResolutionTerminationReason.OUT_OF_REACH` and `ResolutionFailureCause.AGENT_FAILURE`, naming the path and exact operator command (`git add -- <path>`), without spending candidate agent attempts.
+
 ### Real-configuration isolation guard and audit trail
 
 To guarantee that the test suite never mutates or leaks state from real user configuration files in `~/.config` or `$XDG_CONFIG_HOME`:

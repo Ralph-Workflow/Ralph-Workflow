@@ -118,6 +118,8 @@ if TYPE_CHECKING:
     from ralph.pipeline.conflict_resolution.worktree_observer import WorktreeConflictObserver
     from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import PolicyBundle
+    from ralph.recovery.agent_failure_ledger import AgentFailureLedger
+    from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
 
@@ -600,6 +602,7 @@ def _execute_round_loop(
                 attempt_started,
                 clock,
                 decision_paths,
+                candidates=candidates,
             )
             if action in (
                 ResolutionAction.PROCEED_TO_FAST_FORWARD,
@@ -654,32 +657,102 @@ def _record_unconfigured_resolver(
     emit_conflict_phase_line(display, "no agent bound to the rebase-conflict-resolution drain")
 
 
+def _dead_chain_reason(
+    candidates: Sequence[str],
+    controller: RecoveryController | None,
+    ledger: AgentFailureLedger | None,
+    launch_attempted: bool,
+) -> ResolutionTerminationReason:
+    if not candidates:
+        return (
+            ResolutionTerminationReason.TOOL_SURFACE_DEAD
+            if launch_attempted
+            else ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+        )
+    delay = 0
+    all_exhausted = False
+    if controller is not None:
+        delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
+        all_exhausted = controller.all_exhausted(PHASE_RESOLUTION, candidates)
+    elif ledger is not None:
+        delay = ledger.earliest_wait_ms(PHASE_RESOLUTION, list(candidates))
+        all_exhausted = ledger.all_exhausted(PHASE_RESOLUTION, candidates)
+    else:
+        return (
+            ResolutionTerminationReason.TOOL_SURFACE_DEAD
+            if launch_attempted
+            else ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+        )
+
+    if delay > 0:
+        return ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+    if not launch_attempted or all_exhausted:
+        return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    return ResolutionTerminationReason.TOOL_SURFACE_DEAD
+
+
+def _agent_unavailability_reason(
+    agent: str,
+    ledger: AgentFailureLedger | None,
+    controller: RecoveryController | None,
+) -> str:
+    if ledger is not None:
+        reason = ledger.failure_reason(PHASE_RESOLUTION, agent)
+        if reason:
+            return reason
+    if controller is not None:
+        snap = controller.unavailability_store.snapshot()
+        u_reasons = snap.get("unavailability_reasons", {})
+        if isinstance(u_reasons, dict) and agent in u_reasons:
+            return str(u_reasons[agent])
+    return "spent"
+
+
 def _handle_dead_candidate_chain(
     session: ResolutionSession,
     conflicted: tuple[str, ...],
     display: ParallelDisplay | None,
     candidates: Sequence[str] = (),
 ) -> None:
-    from ralph.recovery.controller import RecoveryController
+    from ralph.pipeline.conflict_resolution._operator_command import operator_command_for_paths
 
     controller = session.recovery_controller
-    if session.terminal_reason is None:
-        if isinstance(controller, RecoveryController) and candidates:
-            delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, list(candidates))
-            if delay > 0:
-                session.terminal_reason = ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
-            else:
-                session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
-        else:
-            session.terminal_reason = ResolutionTerminationReason.TOOL_SURFACE_DEAD
+    ledger = session.ledger
+    paths = tuple(session.unresolved_paths or conflicted)
+    session.unresolved_paths = paths
+
+    launch_attempted = session.rounds_spent > 0 or session.last_attempt_saw_activity
+
+    if (
+        session.terminal_reason is None
+        or session.terminal_reason is ResolutionTerminationReason.TOOL_SURFACE_DEAD
+    ):
+        session.terminal_reason = _dead_chain_reason(
+            candidates, controller, ledger, launch_attempted
+        )
+
     if session.last_failure_cause == ResolutionFailureCause.NONE:
         session.last_failure_cause = ResolutionFailureCause.AGENT_FAILURE
-    session.unresolved_paths = session.unresolved_paths or conflicted
+
     if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_UNAVAILABLE:
         emit_conflict_phase_line(
             display,
             "all resolution candidates are unavailable or on cooldown; conflict resolution remains pending",
         )
+    elif session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
+        reasons_list = [
+            f"{agent}: {_agent_unavailability_reason(agent, ledger, controller)}"
+            for agent in candidates
+        ]
+        reasons_str = ", ".join(reasons_list)
+        paths_str = ", ".join(paths)
+        cmd = operator_command_for_paths(paths)
+        msg = (
+            f"all {len(candidates)} resolver agents are spent/unavailable ({reasons_str}); "
+            f"conflict on {paths_str} needs operator action: {cmd}"
+        )
+        session.operator_action_message = msg
+        emit_conflict_phase_line(display, msg)
     else:
         emit_conflict_phase_line(
             display,

@@ -304,7 +304,7 @@ def test_a_watchdog_authored_fault_still_bars_the_surface(
     assert ledger.is_available(PHASE_RESOLUTION, "claude") is True
 
 
-def test_an_unspendable_chain_reports_tool_surface_dead_not_exhaustion(
+def test_an_unspendable_chain_reports_candidate_exhausted(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """The reason must reach the outcome, not only the console line."""
@@ -332,10 +332,13 @@ def test_an_unspendable_chain_reports_tool_surface_dead_not_exhaustion(
         invoke=lambda *_args: True,
         session=session,
     )
+    # RALPH-TEST-REASON: Defect 3 fix correctly reports CANDIDATE_EXHAUSTED instead of mislabeled TOOL_SURFACE_DEAD when candidate chain is unspendable
     assert outcome.succeeded is False
-    assert outcome.reason is ResolutionTerminationReason.TOOL_SURFACE_DEAD
+    assert outcome.reason is ResolutionTerminationReason.CANDIDATE_EXHAUSTED
     assert session.exhaustion_reason is not None
-    assert session.exhaustion_reason.startswith(ResolutionTerminationReason.TOOL_SURFACE_DEAD.value)
+    assert session.exhaustion_reason.startswith(
+        ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value
+    )
 
 
 def test_an_agents_activity_event_cannot_kill_its_own_tool_surface(

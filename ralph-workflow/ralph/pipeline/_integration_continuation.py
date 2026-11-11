@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.git.merge import MERGE_STATE_IN_PROGRESS, MERGE_STATE_NONE, is_ancestor, merge_state
 from ralph.git.rebase.rebase_continuation import rebase_in_progress_at
 from ralph.git.subprocess_runner import run_git
@@ -16,6 +18,9 @@ from ralph.pipeline.auto_integrate_record import (
     read_record,
     write_record,
 )
+from ralph.pipeline.config_file_fingerprint_watcher import (
+    compute_config_fingerprint_for_workspace,
+)
 from ralph.pipeline.rebase_state import StartupRetentionReason
 
 if TYPE_CHECKING:
@@ -25,9 +30,196 @@ if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.rebase_state import RebaseState
+    from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
 _REBASE_RECEIPT_ENTRIES = 2
+_WAITING_STATE: dict[str, tuple[object, ...] | None] = {"last_key": None}
+
+
+def reset_continuation_gate_state() -> None:
+    """Reset the in-memory continuation gate state (for test isolation)."""
+    _WAITING_STATE["last_key"] = None
+
+
+def _emit_waiting_line(msg: str, key: tuple[object, ...] | None = None) -> None:
+    if key is None or key != _WAITING_STATE["last_key"]:
+        _WAITING_STATE["last_key"] = key
+        logger.bind(recovery=True).info("{}", msg)
+
+
+def _current_stop_identity(root: Path, record: IntegrationRecord) -> str | None:
+    """Return the identity of the current stopped commit in rebase or merge."""
+    if record.resolving_merge:
+        try:
+            if merge_state(root) == MERGE_STATE_IN_PROGRESS:
+                sha = _git_value(root, "rev-parse", "--verify", "MERGE_HEAD")
+                if sha:
+                    return sha.strip()
+                return record.pre_target_sha
+        except Exception as exc:
+            logger.debug("Failed to read MERGE_HEAD stop identity: {}", exc)
+    try:
+        if rebase_in_progress_at(root):
+            sha = _git_value(root, "rev-parse", "--verify", "REBASE_HEAD")
+            if sha:
+                return sha.strip()
+            return record.resolving_stop_sha or record.pre_target_sha
+    except Exception as exc:
+        logger.debug("Failed to read REBASE_HEAD stop identity: {}", exc)
+    return record.resolving_stop_sha or record.pre_target_sha or record.pre_feature_sha
+
+
+def compute_continuation_retry_gate_key(
+    root: Path,
+    record: IntegrationRecord,
+    config: UnifiedConfig | None = None,
+    *,
+    recovery_controller: RecoveryController | None = None,
+    phase: str = "rebase_conflict_resolution",
+    chain_agents: list[str] | tuple[str, ...] | None = None,
+    config_path: Path | None = None,
+    stop_identity: str | None = None,
+) -> tuple[str | None, tuple[str, ...], str | None]:
+    """Compute the (stop identity, sorted eligible-agent set, config fingerprint) key."""
+    stop_id = stop_identity if stop_identity is not None else _current_stop_identity(root, record)
+
+    eligible_agents: tuple[str, ...] = ()
+    if recovery_controller is not None:
+        candidates: list[str] = []
+        if chain_agents is not None:
+            candidates = list(chain_agents)
+        else:
+            candidates_set: set[str] = set()
+            chain_tuple = recovery_controller._get_chain_agents(phase)
+            if chain_tuple is not None:
+                candidates_set.update(chain_tuple)
+            snap = recovery_controller.snapshot()
+            timeouts = snap.get("unavailable_timeouts")
+            if isinstance(timeouts, dict):
+                candidates_set.update(str(k) for k in timeouts)
+            attempts = snap.get("backoff_attempts")
+            if isinstance(attempts, dict):
+                candidates_set.update(str(k) for k in attempts)
+            candidates = sorted(candidates_set)
+        available = recovery_controller.agents_now_available(phase, candidates)
+        eligible_agents = tuple(sorted(available))
+
+    cfg_fp = compute_config_fingerprint_for_workspace(root, config_path)
+    return (stop_id, eligible_agents, cfg_fp)
+
+
+def _continue_merge_resolution(
+    root: Path,
+    record: IntegrationRecord,
+    target: str,
+    config: UnifiedConfig | None,
+    conflict_resolver: ConflictResolver | None,
+    *,
+    recovery_controller: RecoveryController | None,
+    phase: str,
+    chain_agents: list[str] | tuple[str, ...] | None,
+    config_path: Path | None,
+    force_retry: bool,
+    stop_identity: str | None,
+) -> str | None:
+    matches = active_operation_matches(root, record)
+    if conflict_resolver is None or not matches:
+        return (
+            "merge resolution retained; continuation resolver required"
+            if matches
+            else "active merge identity differs from retained ownership; operator work preserved"
+        )
+    gate_key = compute_continuation_retry_gate_key(
+        root,
+        record,
+        config,
+        recovery_controller=recovery_controller,
+        phase=phase,
+        chain_agents=chain_agents,
+        config_path=config_path,
+        stop_identity=stop_identity,
+    )
+    if (
+        not force_retry
+        and record.resolution_gate_key is not None
+        and record.resolution_gate_key == gate_key
+    ):
+        _emit_waiting_line(
+            "WAITING: continuation resolution deferred; conflict identity, eligible agents, and configuration unchanged",
+            key=gate_key,
+        )
+        return "WAITING: continuation retry gate active; conflict identity and eligible agents unchanged"
+
+    reset_continuation_gate_state()
+    from ralph.pipeline.auto_integrate_resolve import _resolve_and_commit_with_reason
+
+    result = _resolve_and_commit_with_reason(root, target, conflict_resolver)
+    if result.outcome != "success":
+        latest_record = read_record(root) or record
+        write_record(root, latest_record.with_resolution_gate_key(gate_key))
+        return result.reason or "merge resolution remains pending after continuation"
+    return None
+
+
+def _continue_rebase_resolution(
+    root: Path,
+    record: IntegrationRecord,
+    target: str,
+    config: UnifiedConfig | None,
+    rebase_stop_resolver: RebaseStopResolver | None,
+    *,
+    recovery_controller: RecoveryController | None,
+    phase: str,
+    chain_agents: list[str] | tuple[str, ...] | None,
+    config_path: Path | None,
+    force_retry: bool,
+    stop_identity: str | None,
+) -> str | None:
+    matches = active_operation_matches(root, record)
+    if rebase_stop_resolver is None or not matches:
+        return (
+            "rebase resolution retained; continuation resolver required"
+            if matches
+            else "active rebase identity differs from retained ownership; operator work preserved"
+        )
+    gate_key = compute_continuation_retry_gate_key(
+        root,
+        record,
+        config,
+        recovery_controller=recovery_controller,
+        phase=phase,
+        chain_agents=chain_agents,
+        config_path=config_path,
+        stop_identity=stop_identity,
+    )
+    if (
+        not force_retry
+        and record.resolution_gate_key is not None
+        and record.resolution_gate_key == gate_key
+    ):
+        _emit_waiting_line(
+            "WAITING: continuation resolution deferred; conflict identity, eligible agents, and configuration unchanged",
+            key=gate_key,
+        )
+        return "WAITING: continuation retry gate active; conflict identity and eligible agents unchanged"
+
+    reset_continuation_gate_state()
+    from ralph.pipeline._auto_integrate_rebase_resolve import resolve_rebase_with_config
+
+    resolved, reason, failure_cause = resolve_rebase_with_config(
+        root,
+        target,
+        rebase_stop_resolver,
+        config.conflict_resolution if config is not None else None,
+    )
+    if not resolved:
+        latest_record = read_record(root) or record
+        write_record(root, latest_record.with_resolution_gate_key(gate_key))
+        return reason or (
+            f"rebase resolution remains pending after continuation (cause: {failure_cause.value})"
+        )
+    return None
 
 
 def continue_retained_resolution(
@@ -36,45 +228,50 @@ def continue_retained_resolution(
     config: UnifiedConfig | None,
     conflict_resolver: ConflictResolver | None,
     rebase_stop_resolver: RebaseStopResolver | None,
+    *,
+    recovery_controller: RecoveryController | None = None,
+    phase: str = "rebase_conflict_resolution",
+    chain_agents: list[str] | tuple[str, ...] | None = None,
+    config_path: Path | None = None,
+    force_retry: bool = False,
+    stop_identity: str | None = None,
 ) -> IntegrationRecord | str:
     """Resume the recorded operation and promote only a terminal Git result."""
     target = record.pre_target_sha if record.operation_kind == "target_reconcile" else record.target
     if not target:
         return "retained resolution target unreadable; progress preserved"
     if record.resolving_merge and merge_state(root) == MERGE_STATE_IN_PROGRESS:
-        matches = active_operation_matches(root, record)
-        if conflict_resolver is None or not matches:
-            return (
-                "merge resolution retained; continuation resolver required"
-                if matches
-                else "active merge identity differs from retained ownership; operator work preserved"
-            )
-        from ralph.pipeline.auto_integrate_resolve import _resolve_and_commit_with_reason
-
-        result = _resolve_and_commit_with_reason(root, target, conflict_resolver)
-        if result.outcome != "success":
-            return result.reason or "merge resolution remains pending after continuation"
-    elif record.resolving_rebase and rebase_in_progress_at(root):
-        matches = active_operation_matches(root, record)
-        if rebase_stop_resolver is None or not matches:
-            return (
-                "rebase resolution retained; continuation resolver required"
-                if matches
-                else "active rebase identity differs from retained ownership; operator work preserved"
-            )
-        from ralph.pipeline._auto_integrate_rebase_resolve import resolve_rebase_with_config
-
-        resolved, reason, failure_cause = resolve_rebase_with_config(
+        failure = _continue_merge_resolution(
             root,
+            record,
             target,
-            rebase_stop_resolver,
-            config.conflict_resolution if config is not None else None,
+            config,
+            conflict_resolver,
+            recovery_controller=recovery_controller,
+            phase=phase,
+            chain_agents=chain_agents,
+            config_path=config_path,
+            force_retry=force_retry,
+            stop_identity=stop_identity,
         )
-        if not resolved:
-            return reason or (
-                "rebase resolution remains pending after continuation "
-                f"(cause: {failure_cause.value})"
-            )
+        if failure is not None:
+            return failure
+    elif record.resolving_rebase and rebase_in_progress_at(root):
+        failure = _continue_rebase_resolution(
+            root,
+            record,
+            target,
+            config,
+            rebase_stop_resolver,
+            recovery_controller=recovery_controller,
+            phase=phase,
+            chain_agents=chain_agents,
+            config_path=config_path,
+            force_retry=force_retry,
+            stop_identity=stop_identity,
+        )
+        if failure is not None:
+            return failure
     return _promote_completed_resolution(root, record)
 
 

@@ -20,6 +20,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline.conflict_resolution._resolution_termination_reason import (
     ResolutionTerminationReason,
@@ -28,6 +31,7 @@ from ralph.pipeline.conflict_resolution.attempt_fault import (
     INFRASTRUCTURE_TERMINATION_REASONS,
     RESOLVER_NOT_SPENT_TERMINATION_REASONS,
 )
+from ralph.pipeline.conflict_resolution.graph import PHASE_RESOLUTION
 from ralph.pipeline.conflict_resolution.resolution_outcome import ResolutionOutcome
 
 if TYPE_CHECKING:
@@ -54,6 +58,11 @@ def resolution_outcome(session: ResolutionSession, succeeded: bool) -> Resolutio
             cause = ResolutionFailureCause.AGENT_FAILURE
         elif session.terminal_reason is not None:
             cause = ResolutionFailureCause.UNRESOLVED_CONFLICT
+    ex_msg = (
+        session.operator_action_message
+        if not succeeded and session.operator_action_message
+        else (session.exhaustion_reason if not succeeded else None)
+    )
     return ResolutionOutcome(
         succeeded=succeeded,
         reason=None if succeeded else session.terminal_reason,
@@ -62,6 +71,7 @@ def resolution_outcome(session: ResolutionSession, succeeded: bool) -> Resolutio
         last_activity_at=session.last_activity_at,
         unresolved_paths=session.unresolved_paths,
         failure_cause=cause,
+        exhaustion_message=ex_msg,
     )
 
 
@@ -85,8 +95,43 @@ def is_effectively_empty(path: Path) -> bool:
         return False
 
 
+def _uninvoked_round_reason(
+    session: ResolutionSession,
+    candidates: Sequence[str],
+) -> ResolutionTerminationReason:
+    effective_candidates = list(candidates)
+    if not effective_candidates and session.recovery_state is not None:
+        state = session.recovery_state
+        from ralph.pipeline.state import PipelineState
+
+        if isinstance(state, PipelineState):
+            ch = state.chain_for_phase(PHASE_RESOLUTION)
+            if ch is not None and ch.agents:
+                effective_candidates = list(ch.agents)
+
+    controller = session.recovery_controller
+    if controller is not None and effective_candidates:
+        delay = controller.earliest_available_wait_ms(PHASE_RESOLUTION, effective_candidates)
+        if delay > 0:
+            return ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+        if controller.all_exhausted(PHASE_RESOLUTION, effective_candidates):
+            return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+    ledger = session.ledger
+    if ledger is not None and effective_candidates:
+        delay = ledger.earliest_wait_ms(PHASE_RESOLUTION, effective_candidates)
+        if delay > 0:
+            return ResolutionTerminationReason.CANDIDATE_UNAVAILABLE
+        if ledger.all_exhausted(PHASE_RESOLUTION, effective_candidates):
+            return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+
+    return ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+
+
 def round_termination_reason(
-    session: ResolutionSession, *, invoked: bool
+    session: ResolutionSession,
+    *,
+    invoked: bool,
+    candidates: Sequence[str] = (),
 ) -> ResolutionTerminationReason:
     """Name what ended the round without inventing a verdict nobody gave.
 
@@ -96,10 +141,20 @@ def round_termination_reason(
     three different facts, and all three used to be reported as the
     resolver declining the work.
     """
+    launch_attempted = session.rounds_spent > 0 or session.last_attempt_saw_activity
     if session.terminal_reason is not None:
-        return session.terminal_reason
+        if (
+            session.terminal_reason is ResolutionTerminationReason.TOOL_SURFACE_DEAD
+            and not launch_attempted
+        ):
+            # Dead tool surface is only reported for an observed dead launch.
+            pass
+        else:
+            return session.terminal_reason
+
     if not invoked:
-        return ResolutionTerminationReason.TOOL_SURFACE_DEAD
+        return _uninvoked_round_reason(session, candidates)
+
     # The invocation came back successful and the markers are still
     # there: the resolver worked and did not finish. That is unfinished
     # work, not an answer, and the next round hands it back the paths
