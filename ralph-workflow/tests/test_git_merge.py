@@ -62,6 +62,13 @@ def _base_branch(tmp_git_repo: Path) -> str:
     test host's git version. Tests stay agnostic by reading
     ``HEAD`` symbolically.
     """
+    head_file = tmp_git_repo / ".git" / "HEAD"
+    try:
+        head_content = head_file.read_text(encoding="utf-8").strip()
+        if head_content.startswith("ref: refs/heads/"):
+            return head_content.removeprefix("ref: refs/heads/")
+    except OSError:
+        pass
     out = _run(tmp_git_repo, "symbolic-ref", "--quiet", "HEAD")
     return out.stdout.strip().removeprefix("refs/heads/")
 

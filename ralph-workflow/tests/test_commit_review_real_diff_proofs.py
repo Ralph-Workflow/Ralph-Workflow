@@ -23,7 +23,7 @@ from ralph.phases.commit_review import (
     run_commit_review_stage1_preflight,
 )
 
-pytestmark = pytest.mark.timeout_seconds(20)
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 
 #: A protected top-level source directory and the files it holds.
 _SRC_FILES = ("src/app.py", "src/util.py")

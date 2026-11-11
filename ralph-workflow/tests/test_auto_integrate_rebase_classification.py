@@ -88,6 +88,20 @@ class FakeProcessExecutor(ProcessExecutor):
 
 def _checkout_feature(repo_root: Path) -> str:
     """Check out a feature branch and return the base branch name."""
+    head_file = repo_root / ".git" / "HEAD"
+    try:
+        head_content = head_file.read_text(encoding="utf-8").strip()
+        if head_content.startswith("ref: refs/heads/"):
+            base = head_content.removeprefix("ref: refs/heads/")
+            base_ref = repo_root / ".git" / "refs" / "heads" / base
+            if base_ref.exists():
+                (repo_root / ".git" / "refs" / "heads" / "feature-classify").write_text(
+                    base_ref.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+                head_file.write_text("ref: refs/heads/feature-classify\n", encoding="utf-8")
+                return base
+    except OSError:
+        pass
     with Repo(repo_root) as repo:
         base = repo.active_branch.name
         repo.git.checkout("-b", "feature-classify")

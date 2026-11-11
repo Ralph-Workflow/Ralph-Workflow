@@ -69,14 +69,8 @@ Detail: `docs/agents/verification.md` §'No unrelated-failure exemption'.
 Fabrication is NEVER acceptable anywhere. No file is out of scope for truth.
 Every public-facing claim about adoption, credits, usage, or stats MUST be
 verifiable from a third-party source; bare star / download / install counts MUST
-be paired with a (source, date) pair.
-
-Mandatory protocol for every public-facing markdown edit — run
-`./scripts/fabrication_guard.py --level 1 <file>` BEFORE and AFTER the edit, add
-`--level 2` when the edit introduces a NEW external reference (GitHub repo, npm
-package, external URL), and if any level fails, FIX THE CLAIMS: never weaken the
-guard, never commit, and never use `--no-verify` to bypass it. Bypassing the
-guard is fabrication.
+be paired with a (source, date) pair. Never weaken the guard, never commit, and
+never use `--no-verify` to bypass it. Bypassing the guard is fabrication.
 
 Detail: `docs/agents/fabrication-guard.md`.
 
@@ -148,12 +142,11 @@ Zero tolerance for any type of dead code. This is not negotiable, it is **INFINI
 than it is to leave dead code around. If in doubt, **REMOVE IT**.
 
 <!-- ralph-workflow-policy:begin v1 -->
-Quality policies for testing, type-checking, linting, dependency,
-verification, agent, clean-code, documentation, and security live
-under `docs/ralph-workflow-policy/`. AI agents (Claude, Codex,
-Cursor, opencode, and any other) MUST read and follow those policies
-before changing the project; this file's source-of-truth and
-non-negotiables sections remain authoritative for agent behaviour.
+Quality policies live under `docs/ralph-workflow-policy/`. All agent roles MUST
+load policies in this order: `execution-kernel.md` first, then their role slice,
+then any triggered domain policy before changing the project; this file's
+source-of-truth and non-negotiables sections remain authoritative for agent
+behaviour.
 <!-- ralph-workflow-policy:end -->
 
 ## Verification

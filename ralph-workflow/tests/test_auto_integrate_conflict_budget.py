@@ -239,6 +239,7 @@ def test_configured_resolver_attempt_budget_overrides_compatibility_default(
 ) -> None:
     """The ledger failure limit governs resolver calls."""
     from ralph.agents.timeout_clock import FakeClock
+    from ralph.pipeline.auto_integrate_record import read_record, write_record
     from ralph.recovery.agent_failure_ledger import AgentFailureLedger, AttemptFact
 
     base = _diverged_conflicting_repo(tmp_git_repo)
@@ -254,6 +255,9 @@ def test_configured_resolver_attempt_budget_overrides_compatibility_default(
     candidates = ("resolver",)
     state = RebaseState()
     for _ in range(4):
+        rec = read_record(tmp_git_repo)
+        if rec is not None and rec.resolution_gate_key is not None:
+            write_record(tmp_git_repo, rec.with_resolution_gate_key(None))
         result = auto_integrate_after_commit(
             config,
             WorkspaceScope(tmp_git_repo),

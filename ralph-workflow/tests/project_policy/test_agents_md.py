@@ -7,7 +7,7 @@ test policy.
 from __future__ import annotations
 
 from ralph.language_detector.models import ProjectStack
-from ralph.project_policy import agents_md, markers
+from ralph.project_policy import agents_md, markers, validators
 from ralph.workspace.memory import MemoryWorkspace
 
 
@@ -321,3 +321,38 @@ def test_write_opt_out_second_call_does_not_duplicate_marker() -> None:
     once = ws.read(markers.AGENTS_MD)
     assert agents_md.write_opt_out(ws) == []
     assert ws.read(markers.AGENTS_MD) == once
+
+
+def test_managed_block_routing_satisfies_idempotency_and_readiness() -> None:
+    """The compact explicit routing managed block satisfies readiness and bootstrap/condense idempotency."""
+    ws = MemoryWorkspace()
+    ws.write(markers.CANONICAL_DIR.rstrip("/"), "")
+    routing_content = (
+        f"# AGENTS.md\n\n"
+        f"{markers.AGENTS_BLOCK_BEGIN}\n"
+        f"Quality policies live under `{markers.CANONICAL_DIR}`. All agent roles MUST\n"
+        f"load policies in this order: `execution-kernel.md` first, then their role slice,\n"
+        f"then any triggered domain policy before changing the project; this file's\n"
+        f"source-of-truth and non-negotiables sections remain authoritative for agent\n"
+        f"behaviour.\n"
+        f"{markers.AGENTS_BLOCK_END}\n"
+    )
+    ws.write(markers.AGENTS_MD, routing_content)
+
+    # Readiness validation of AGENTS.md passes with zero findings.
+    findings = [
+        f for f in validators.validate_readiness(ws, ProjectStack()) if f.path == markers.AGENTS_MD
+    ]
+    assert not findings, f"validate AGENTS.md returned unexpected findings: {findings}"
+
+    # Bootstrap is idempotent: AGENTS.md is not modified or duplicated.
+    bootstrap_changed = agents_md.bootstrap(ws)
+    assert markers.AGENTS_MD not in bootstrap_changed
+    assert ws.read(markers.AGENTS_MD) == routing_content
+    assert ws.read(markers.AGENTS_MD).count(markers.AGENTS_BLOCK_BEGIN) == 1
+    assert ws.read(markers.AGENTS_MD).count(markers.AGENTS_BLOCK_END) == 1
+
+    # Condense is a no-op: preserves customized routing block.
+    condense_changed = agents_md.condense_placeholder_block(ws)
+    assert markers.AGENTS_MD not in condense_changed
+    assert ws.read(markers.AGENTS_MD) == routing_content

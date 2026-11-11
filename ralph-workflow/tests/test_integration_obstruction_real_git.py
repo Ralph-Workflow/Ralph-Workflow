@@ -49,6 +49,13 @@ def _run(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _base_branch(tmp_git_repo: Path) -> str:
+    head_file = tmp_git_repo / ".git" / "HEAD"
+    try:
+        head_content = head_file.read_text(encoding="utf-8").strip()
+        if head_content.startswith("ref: refs/heads/"):
+            return head_content.removeprefix("ref: refs/heads/")
+    except OSError:
+        pass
     from git import Repo
 
     return Repo(tmp_git_repo).active_branch.name

@@ -133,8 +133,9 @@ python -m pytest tests/project_policy/test_v6_enforcement.py -q
 
 * 12 required core files (was 11): add `execution-kernel.md`.
 * 10 conditional files (unchanged).
-* Portfolio schema v2: every control needs `detects` and
-  `retirement_trigger`.
+* Portfolio schema v3: every control needs `enforcement`
+  (`deterministic: <id>` or `advisory: <reason>; review: <trigger>`), in
+  addition to `detects` and `retirement_trigger`.
 * `## Guard inventory` table on every applicable starter.
 * Three readiness dimensions on every surface.
 

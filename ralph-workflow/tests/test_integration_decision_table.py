@@ -62,7 +62,6 @@ _ALL_OPERATION_KINDS: tuple[InProgressKind, ...] = tuple(
 
 
 @cache
-@cache
 def _build_observations() -> tuple[Observation, ...]:
     """Materialise every combination of the seven dimensions."""
     return tuple(

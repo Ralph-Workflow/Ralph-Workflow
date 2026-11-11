@@ -423,8 +423,6 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
     _seed_repo(repo)
     assert _run(tmp_path, "clone", "--bare", str(repo), str(bare)).returncode == 0
     assert _run(repo, "remote", "add", _REMOTE, str(bare)).returncode == 0
-    assert _run(repo, "config", "user.email", "test@example.com").returncode == 0
-    assert _run(repo, "config", "user.name", "Test User").returncode == 0
     # Push the seed so the bare has the target branch.
     assert _run(repo, "push", _REMOTE, _TARGET).returncode == 0
     # Initial fetch so the remote tracking ref exists.
@@ -439,9 +437,7 @@ def test_killed_between_landing_and_push_recovers_from_linked_worktree(tmp_path:
     import sys
 
     assert _run(repo, "switch", "-c", "feature").returncode == 0
-    (repo / "feature.txt").write_text("feature work\n", encoding="utf-8")
-    assert _run(repo, "add", "feature.txt").returncode == 0
-    assert _run(repo, "commit", "-m", "feature advance").returncode == 0
+    _commit(repo, "feature.txt", "feature work\n", "feature advance")
 
     landing_script = (
         "import sys, time\n"

@@ -52,6 +52,13 @@ def _run(
 
 
 def _base_branch(repo_root: Path) -> str:
+    head_file = repo_root / ".git" / "HEAD"
+    try:
+        head_content = head_file.read_text(encoding="utf-8").strip()
+        if head_content.startswith("ref: refs/heads/"):
+            return head_content.removeprefix("ref: refs/heads/")
+    except OSError:
+        pass
     from git import Repo
 
     return Repo(repo_root).active_branch.name

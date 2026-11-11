@@ -17,30 +17,63 @@ from ralph.workspace.scope import WorkspaceScope
 pytestmark = [pytest.mark.timeout_seconds(5)]
 
 
+def _fast_branch_name(root: Path) -> str | None:
+    head_file = root / ".git" / "HEAD"
+    try:
+        head_content = head_file.read_text(encoding="utf-8").strip()
+        if head_content.startswith("ref: refs/heads/"):
+            return head_content.removeprefix("ref: refs/heads/")
+    except OSError:
+        pass
+    from git import Repo
+
+    repo = Repo(root)
+    try:
+        return repo.active_branch.name
+    except Exception:
+        return None
+    finally:
+        repo.close()
+
+
+def _fast_rev_parse(root: Path, ref_name: str) -> str | None:
+    try:
+        if ref_name == "HEAD":
+            head_file = root / ".git" / "HEAD"
+            head_content = head_file.read_text(encoding="utf-8").strip()
+            if head_content.startswith("ref: refs/heads/"):
+                target_ref = root / ".git" / head_content.removeprefix("ref: ")
+                if target_ref.is_file():
+                    return target_ref.read_text(encoding="utf-8").strip()
+            elif len(head_content) == 40:
+                return head_content
+        else:
+            ref_file = root / ".git" / "refs" / "heads" / ref_name
+            if ref_file.is_file():
+                return ref_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
+    from git import Repo
+
+    repo = Repo(root)
+    try:
+        return repo.rev_parse(ref_name).hexsha
+    except Exception:
+        return None
+    finally:
+        repo.close()
+
+
 def _git(root: Path, *args: str) -> GitRunResult:
     # RALPH-TEST-REASON: GitPython fast-paths for rev-parse, show, and branch reduce test CPU overhead
     if args == ("branch", "--show-current"):
-        from git import Repo
-
-        repo = Repo(root)
-        try:
-            name = repo.active_branch.name
-            return GitRunResult(stdout=name + "\n", stderr="", returncode=0)
-        except Exception:
-            pass
-        finally:
-            repo.close()
+        name = _fast_branch_name(root)
+        if name is not None:
+            return GitRunResult(args=args, stdout=name + "\n", stderr="", returncode=0)
     if len(args) == 2 and args[0] == "rev-parse" and not args[1].startswith("-"):
-        from git import Repo
-
-        repo = Repo(root)
-        try:
-            sha = repo.rev_parse(args[1]).hexsha
-            return GitRunResult(stdout=sha + "\n", stderr="", returncode=0)
-        except Exception:
-            pass
-        finally:
-            repo.close()
+        sha = _fast_rev_parse(root, args[1])
+        if sha is not None:
+            return GitRunResult(args=args, stdout=sha + "\n", stderr="", returncode=0)
     if len(args) == 2 and args[0] == "show" and ":" in args[1]:
         ref, path = args[1].split(":", 1)
         from git import Repo
@@ -48,7 +81,7 @@ def _git(root: Path, *args: str) -> GitRunResult:
         repo = Repo(root)
         try:
             content = repo.commit(ref).tree[path].data_stream.read().decode("utf-8")
-            return GitRunResult(stdout=content, stderr="", returncode=0)
+            return GitRunResult(args=args, stdout=content, stderr="", returncode=0)
         except Exception:
             pass
         finally:

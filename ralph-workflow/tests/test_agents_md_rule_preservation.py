@@ -126,6 +126,9 @@ _DETAIL_MUST_BE_GONE_FROM_AGENTS_MD: tuple[str, ...] = (
     "ignore_missing_imports",
     "bounded-accumulator-ok",
     "mcp-timeout-ok",
+    "./scripts/fabrication_guard.py --level 1 <file>",
+    "--level 2",
+    "Mandatory protocol",
 )
 
 
@@ -179,3 +182,11 @@ def test_agents_md_points_at_the_owning_documents() -> None:
     text = _read(_AGENTS_MD)
     assert "docs/agents/verification.md" in text
     assert "docs/agents/fabrication-guard.md" in text
+
+
+def test_agents_md_managed_block_contains_routing() -> None:
+    """AGENTS.md managed block provides compact explicit policy routing."""
+    text = _read(_AGENTS_MD)
+    assert "execution-kernel.md" in text
+    assert "role slice" in text
+    assert "load policies in this order" in text
