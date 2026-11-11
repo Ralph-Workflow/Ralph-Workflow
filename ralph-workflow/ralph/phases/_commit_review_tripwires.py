@@ -151,6 +151,7 @@ class _DiffEntryProtocol(Protocol):
     new_mode: str | None
     size: int
     is_binary: bool
+    base_tree_paths: frozenset[str] | None
 
 
 DiffEntryProtocol = _DiffEntryProtocol
@@ -187,6 +188,10 @@ class _DiffEntry:
         size: Size of the file in bytes.
         is_binary: Whether the file is classified as binary.
         content: Optional file text or patch content (for content secret scanning).
+        base_tree_paths: Optional tracked paths of the tree the diff was computed
+            against. A recursive diff reports blob entries only, so a directory
+            removal arrives as one deleted blob path per tracked file: the
+            membership is what proves the directory is gone in its entirety.
     """
 
     path: str
@@ -196,6 +201,7 @@ class _DiffEntry:
     size: int = 0
     is_binary: bool = False
     content: str | None = None
+    base_tree_paths: frozenset[str] | None = None
 
 
 DiffEntry = _DiffEntry
@@ -298,6 +304,69 @@ def _evaluate_mass_deletion(
                 )
             )
 
+    return findings
+
+
+def _normalized_repo_path(raw_path: str) -> str:
+    """Return a repository-relative POSIX path for a diff entry path."""
+    return PurePosixPath(raw_path.replace("\\", "/")).as_posix()
+
+
+def _collect_base_tree_paths(entries: list[object]) -> frozenset[str]:
+    """Return the base-tree membership carried by the diff entries.
+
+    Entries produced by the git layer carry the tracked paths of the tree the
+    diff was computed against. Entries assembled without that membership
+    contribute nothing, so a rule that needs it stays silent instead of
+    guessing.
+    """
+    for entry in entries:
+        paths = _get_entry_attr(entry, "base_tree_paths", None)
+        if isinstance(paths, (set, frozenset, list, tuple)):
+            return frozenset(str(path) for path in paths)
+    return frozenset()
+
+
+def _collect_deleted_paths(entries: list[object]) -> set[str]:
+    """Return the normalized paths the diff deletes."""
+    deleted: set[str] = set()
+    for entry in entries:
+        status = str(_get_entry_attr(entry, "status", ""))
+        if not _is_deleted(status):
+            continue
+        deleted.add(_normalized_repo_path(str(_get_entry_attr(entry, "path", ""))))
+    return deleted
+
+
+def _evaluate_protected_directory_deletions(entries: list[object]) -> list[Finding]:
+    """Fire when a protected top-level directory is deleted in its entirety.
+
+    A recursive ``git diff-tree`` reports BLOB entries only: the removal of a
+    whole directory arrives as one deleted blob path per tracked file and
+    never as a directory entry. The base-tree membership is therefore the
+    only evidence that the directory is gone as a whole. A PARTIAL deletion
+    is not an entirety deletion and stays silent here; it remains subject to
+    the mass-deletion thresholds.
+    """
+    base_paths = _collect_base_tree_paths(entries)
+    if not base_paths:
+        return []
+
+    deleted_paths = _collect_deleted_paths(entries)
+    findings: list[Finding] = []
+    for directory in sorted(DEFAULT_TOP_LEVEL_SOURCE_TEST_DIRS):
+        prefix = f"{directory}/"
+        tracked_under = {path for path in base_paths if path.startswith(prefix)}
+        if not tracked_under:
+            continue
+        if tracked_under <= deleted_paths:
+            findings.append(
+                Finding(
+                    category="protected_deletion",
+                    message=f"Top-level directory deleted in its entirety: {directory}",
+                    path=directory,
+                )
+            )
     return findings
 
 
@@ -439,6 +508,7 @@ def evaluate_tripwires(
     """
     entries = list(diff_entries)
     hard_findings = _evaluate_mass_deletion(entries, tracked_count, thresholds)
+    hard_findings.extend(_evaluate_protected_directory_deletions(entries))
     soft_findings: list[Finding] = []
 
     custom_protected: set[str] = set()

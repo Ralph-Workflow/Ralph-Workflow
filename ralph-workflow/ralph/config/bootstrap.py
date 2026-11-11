@@ -44,8 +44,6 @@ from ralph.config._agent_internal_globs import (
     AGENT_INTERNAL_ROOT_BASENAMES,
     AGENT_INTERNAL_TOP_LEVEL_BASENAMES,
 )
-from ralph.config._bootstrap_result import BootstrapResult
-from ralph.config._bootstrap_writes import _repo_rel_path, _write_agents_with_backup
 from ralph.config._config_filenames import (
     _ADVANCED_LOCAL_POLICY_FILENAMES,
     _GLOBAL_AGENTS_FILENAME,
@@ -64,12 +62,18 @@ from ralph.config.agents_bootstrap import (
     _prepare_config_commit,
     write_agents_with_backup,
 )
+from ralph.config.agents_file_writer import write_agents_toml
 from ralph.config.loader import load_toml
 from ralph.config.unreadable_config_finding import (
     UnreadableConfigFinding,
     collect_unreadable_config_files,
 )
-from ralph.git.operations import _atomic_append_text
+from ralph.git.operations import _atomic_append_text, create_commit, stage_files
+from ralph.git.scoped_auto_commit import (
+    ScopedCommitStatus,
+    classify_target_for_commit,
+    commit_deterministic_writes,
+)
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
 

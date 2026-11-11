@@ -659,9 +659,10 @@ def _stage2_process_artifact(
     if artifact.tree_sha is not None and artifact.tree_sha != seal.tree_sha:
         _consume_commit_review_artifact(ctx)
         return [
-            CommitReviewGateFailed(
-                detail=f"Stale tree SHA: artifact has {artifact.tree_sha!r}, "
-                f"current proposal tree is {seal.tree_sha!r}"
+            CommitReviewLoopback(
+                hint=f"Stale commit review: artifact tree SHA {artifact.tree_sha!r} "
+                f"does not match current sealed proposal tree SHA {seal.tree_sha!r}; "
+                "re-review the current tree."
             )
         ]
 

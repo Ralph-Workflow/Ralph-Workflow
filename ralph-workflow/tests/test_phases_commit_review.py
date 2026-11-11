@@ -2562,14 +2562,15 @@ def test_unverifiable_citations_returns_gate_failed(tmp_git_repo: Path) -> None:
     assert "Reject citations could not be verified" in event.detail
 
 
-def test_stale_tree_sha_mismatch_returns_gate_failed(tmp_git_repo: Path) -> None:
-    """Stage 2 artifact with stale tree_sha emits CommitReviewGateFailed."""
+def test_stale_tree_sha_mismatch_loops_back_for_rereview(tmp_git_repo: Path) -> None:
+    """Stage 2 artifact with stale tree_sha loops back for a fresh review of the sealed tree."""
     workspace = FsWorkspace(tmp_git_repo)
+    stale_sha = "0000000000000000000000000000000000000000"
     _write_commit_review_artifact(
         workspace,
         {
             "verdict": "approve",
-            "tree_sha": "0000000000000000000000000000000000000000",
+            "tree_sha": stale_sha,
             "actions": [],
         },
     )
@@ -2581,8 +2582,14 @@ def test_stale_tree_sha_mismatch_returns_gate_failed(tmp_git_repo: Path) -> None
 
     assert len(result) == 1
     event = result[0]
-    assert isinstance(event, CommitReviewGateFailed)
-    assert "Stale tree SHA" in event.detail
+    assert isinstance(event, CommitReviewLoopback), (
+        "A stale review must be re-reviewed, not failed: got "
+        f"{type(event).__name__}: {event!r}"
+    )
+    assert stale_sha in event.hint
+    assert "does not match current sealed proposal tree SHA" in event.hint
+    # The stale artifact is consumed so the re-review judges the current tree.
+    assert not (tmp_git_repo / ".agent" / "artifacts" / "commit_review.md").exists()
 
 
 def test_safe_actions_application_and_resealing(tmp_git_repo: Path) -> None:

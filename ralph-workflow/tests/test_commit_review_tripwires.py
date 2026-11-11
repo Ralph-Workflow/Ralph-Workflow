@@ -247,6 +247,36 @@ def test_protected_top_level_directory_deletion() -> None:
     assert tree_report.hard[0].category == "protected_deletion"
 
 
+def test_protected_top_level_directory_deleted_in_its_entirety() -> None:
+    """Deleting EVERY tracked path of a protected top-level directory is a hard tripwire.
+
+    A recursive diff reports blob entries only, so the removal of a whole
+    directory arrives as one deleted blob path per tracked file. The
+    base-tree membership carried by the entries is the evidence that the
+    directory is gone in its entirety.
+    """
+    base_paths = frozenset({"src/app.py", "src/util.py", "tests/test_app.py"})
+    diff = [
+        DiffEntry(path="src/app.py", status="D", base_tree_paths=base_paths),
+        DiffEntry(path="src/util.py", status="D", base_tree_paths=base_paths),
+    ]
+    report = evaluate_tripwires(diff, 10, TripwireThresholds())
+    assert report.passed is False
+    findings = [f for f in report.hard if f.category == "protected_deletion"]
+    assert len(findings) == 1
+    assert findings[0].path == "src"
+    assert "in its entirety" in findings[0].message
+
+
+def test_partially_deleted_protected_top_level_directory_is_not_an_entirety_deletion() -> None:
+    """Deleting SOME tracked paths of a protected top-level directory fires no such finding."""
+    base_paths = frozenset({"src/app.py", "src/util.py"})
+    diff = [DiffEntry(path="src/app.py", status="D", base_tree_paths=base_paths)]
+    report = evaluate_tripwires(diff, 10, TripwireThresholds())
+    assert report.is_clean is True
+    assert report.hard == ()
+
+
 def test_custom_protected_paths() -> None:
     """Custom protected paths passed to evaluator trigger hard tripwires."""
     protected_rules = ["config/production.json", "licenses/*"]

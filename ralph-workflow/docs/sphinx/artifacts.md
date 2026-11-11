@@ -113,10 +113,10 @@ tree_sha: 0123456789abcdef0123456789abcdef01234567
 
 ### Sections
 
-- **`## Actions`**: **Required** section (it may be empty) listing pre-commit repository cleanup actions. Every item is `<action> | <value>` — the separator is a space-pipe-space. The colon form (`delete_file: <path>`) is rejected as a hard error, not a warning:
-  - `- delete_file | <path>`: Deletes a transient or untracked file within permitted boundaries.
-  - `- add_to_gitignore | <pattern>`: Appends the pattern to `.gitignore`.
-  - `- add_to_git_exclude | <pattern>`: Appends the pattern to `.git/info/exclude`.
+- **`## Actions`**: **Required** section (it may be empty) listing pre-commit repository cleanup actions. Every item is `- [<stable-id>] <action> | <value>` — the separator between action and value is a space-pipe-space. The colon form (`delete_file: <path>`) and items without a stable ID are rejected as hard errors, not warnings:
+  - `- [ACT-001] delete_file | <path>`: Deletes a transient or untracked file within permitted boundaries.
+  - `- [ACT-002] add_to_gitignore | <pattern>`: Appends the pattern to `.gitignore`.
+  - `- [ACT-003] add_to_git_exclude | <pattern>`: Appends the pattern to `.git/info/exclude`.
   Every `path`/`pattern` value must be printable ASCII (no whitespace, control characters, or non-ASCII characters) and must not start with `#`, which `.gitignore` and `.git/info/exclude` would read as a comment line. `delete_file` targets are additionally filtered by the runtime's delete-safety boundary, which declines protected basenames (`Dockerfile`, `Makefile`, `LICENSE`, `README`), lockfiles, paths whose lowercased form contains `tests/`, `test_`, `_test.`, `docs/`, or `doc/`, absolute paths, and paths that escape the repository root.
 - **`## Reason`**: Mandatory when `verdict: reject`; optional when `verdict: approve`. When rejecting, the reviewer must cite concrete paths or counts present in the proposal diff against `HEAD`. The engine mechanically verifies that every cited path exists in the diff and cited counts match; unverifiable citations fail closed as reviewer malfunctions rather than triggering rollbacks.
 

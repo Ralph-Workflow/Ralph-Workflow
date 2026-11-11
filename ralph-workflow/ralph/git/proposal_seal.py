@@ -227,6 +227,30 @@ def _collect_binary_paths(repo: Repo, base: str, ref: str) -> set[str]:
     return binary_paths
 
 
+def _collect_base_tree_paths(repo: Repo, base: str) -> frozenset[str]:
+    """Return the tracked paths present in the tree the diff is computed against.
+
+    A recursive ``git diff-tree`` reports BLOB entries only, so the removal of
+    a whole directory arrives as one deleted blob path per tracked file and
+    never as a directory entry. The membership of the base tree is therefore
+    the only evidence that separates "the directory is gone in its entirety"
+    from "some files under it are gone".
+
+    ``--full-tree`` is required: without it ``git ls-tree`` limits the listing
+    to the current working directory and reports paths relative to it.
+    """
+    try:
+        raw_obj = route_git_method(
+            repo,
+            "ls_tree",
+            ("-r", "--name-only", "--full-tree", "-z", base),
+        )
+    except Exception:
+        return frozenset()
+    raw = str(raw_obj)
+    return frozenset(path for path in raw.split("\0") if path)
+
+
 def diff_tree(repo_root: Path | str, ref: str, base: str = "HEAD") -> list[DiffEntry]:
     """Compute structural diff entries between base and ref.
 
@@ -237,6 +261,7 @@ def diff_tree(repo_root: Path | str, ref: str, base: str = "HEAD") -> list[DiffE
 
     Returns:
         List of DiffEntry records describing changed paths, modes, sizes, and binary status.
+        Every entry also carries the tracked paths of the base tree.
 
     Raises:
         ProposalSealError: If diff-tree execution fails.
@@ -259,6 +284,7 @@ def diff_tree(repo_root: Path | str, ref: str, base: str = "HEAD") -> list[DiffE
             return []
 
         binary_paths = _collect_binary_paths(repo, base, ref)
+        base_tree_paths = _collect_base_tree_paths(repo, base)
 
         tokens = raw.split("\0")
         entries: list[DiffEntry] = []
@@ -305,6 +331,7 @@ def diff_tree(repo_root: Path | str, ref: str, base: str = "HEAD") -> list[DiffE
                     new_mode=new_mode,
                     size=size,
                     is_binary=is_binary,
+                    base_tree_paths=base_tree_paths,
                 )
             )
 

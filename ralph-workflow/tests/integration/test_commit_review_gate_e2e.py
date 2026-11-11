@@ -26,6 +26,7 @@ from ralph.git.proposal_seal import ProposalPreflightError, preflight, rollback,
 from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.phases.commit_review import (
     CommitReviewApproved,
+    CommitReviewLoopback,
     CommitReviewRejected,
 )
 from ralph.phases.required_artifacts import read_validation_retry_hint, retry_hint_path
@@ -358,6 +359,41 @@ def test_commit_review_gate_counter_exhaustion_routes_to_failure(tmp_path: Path)
 
     # Proposal ref must still exist (preserved for inspection)
     preflight(tmp_path, seal.ref)
+
+
+def test_stale_review_loopback_preserves_work_and_rejection_budget(tmp_path: Path) -> None:
+    """Stale review reroutes to review without rollback or rejection accounting."""
+    policy = _policy()
+    repo = _init_repo(tmp_path)
+    head_sha = repo.head.commit.hexsha
+    pending = tmp_path / "app.py"
+    pending.write_text("print('pending')", encoding="utf-8")
+    seal = seal_pending(tmp_path, run_id="run-stale", iteration="0")
+    artifact_sha = "0" * 40
+    hint = (
+        f"Stale commit review: artifact tree SHA {artifact_sha!r} does not match "
+        f"current sealed proposal tree SHA {seal.tree_sha!r}; re-review the current tree."
+    )
+
+    next_state, _ = reduce(
+        PipelineState(
+            phase="development_commit_review",
+            commit_review_rejections=1,
+        ),
+        CommitReviewLoopback(hint=hint),
+        policy,
+    )
+
+    assert next_state.phase == "development_commit_review"
+    assert next_state.last_error == hint
+    assert artifact_sha in (next_state.last_error or "")
+    assert seal.tree_sha in (next_state.last_error or "")
+    assert next_state.commit_review_rejections == 1
+    assert next_state.rollback_pending is False
+    assert next_state.rollback_ref is None
+    assert next_state.get_loop_iteration("commit_review_iteration") == 1
+    assert repo.head.commit.hexsha == head_sha
+    assert pending.read_text(encoding="utf-8") == "print('pending')"
 
 
 def test_commit_review_resume_handles_pending_rollback(tmp_path: Path) -> None:

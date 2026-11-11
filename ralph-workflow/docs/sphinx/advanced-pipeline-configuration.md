@@ -493,7 +493,7 @@ concludes with a real commit rather than looping indefinitely.
 | `start_source` | `planning_analysis` | Source phase of the transition that starts the timer. |
 | `start_entry` | `development` | Target phase of the start transition (phase whose entry begins the cycle). |
 | `guarded_entry` | `development` | Phase where the deadline is enforced on re-entry. |
-| `end_entry` | `development_final_commit_review` | Phase whose entry clears timing. Routing out of the cycle by any other route clears it too. |
+| `end_entry` | `development_final_commit` | Phase whose entry clears timing. Routing out of the cycle by any other route clears it too. |
 | `finalization_target` | `development_final_commit_review` | Redirect target when the deadline is reached. |
 | `finalization_cycle_outcome` | `completed` | Cycle outcome stamped on a redirect so `post_commit_routes` route the finished cycle normally. |
 
@@ -518,7 +518,7 @@ duration_seconds = 7200
 start_source = "planning_analysis"
 start_entry = "development"
 guarded_entry = "development"
-end_entry = "development_final_commit_review"
+end_entry = "development_final_commit"
 finalization_target = "development_final_commit_review"
 finalization_cycle_outcome = "completed"
 ```
@@ -549,13 +549,15 @@ one limit does not reset, extend, or otherwise change the other timer.
 | `warning_seconds` | `4200` | Finite non-negative warning point, strictly less than `duration_seconds`. |
 | `start_source` / `start_entry` | `planning_analysis` / `development` | Transition that starts the timer. |
 | `guarded_entry` | `development` | Development entry guarded by the hard stop. |
-| `end_entry` / `finalization_target` | `development_final_commit_review` | Entry that ends timing and redirect target. |
+| `end_entry` | `development_commit` | Entry that ends timing after uninterrupted development. |
+| `finalization_target` | `development_commit_review` | Redirect target when the hard stop is reached. |
 
 Validation failures and same-phase retries do not reset or pause this timer.
-The timer ends whenever routing leaves development, including the normal route
-to final-commit review; only a later `planning_analysis` → `development`
-entry starts a fresh timer. Once the configured hard stop is reached, the next
-attempt (including a same-phase retry) follows the existing finalization route.
+The normal `development` → `development_commit_review` route keeps timing active;
+the timer ends when routing enters `development_commit`. Only a later
+`planning_analysis` → `development` entry starts a fresh timer. Once the
+configured hard stop is reached, the next attempt (including a same-phase retry)
+redirects to `development_commit_review`.
 The runtime publishes its warning and deadline as `RALPH_DEV_WARN_EPOCH` and
 `RALPH_DEV_DEADLINE_EPOCH`; these names remain distinct from cycle epochs.
 After `RALPH_DEV_WARN_EPOCH`, MCP requires a deliberate second
@@ -660,7 +662,7 @@ duration_seconds = 3600
 start_source = "planning_analysis"
 start_entry = "development"
 guarded_entry = "development"
-end_entry = "development_final_commit_review"
+end_entry = "development_final_commit"
 finalization_target = "development_final_commit_review"
 ```
 

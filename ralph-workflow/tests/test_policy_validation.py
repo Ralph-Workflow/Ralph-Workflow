@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import functools
 import importlib
+import shutil
 from dataclasses import fields
 from pathlib import Path
 from textwrap import dedent
@@ -45,7 +46,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from ralph.cli.commands.init import STARTER_PROMPT_SENTINEL
+from ralph.git.diff_entry import DiffEntry
 from ralph.mcp.protocol.capability_mapping import drain_class_for_session
+from ralph.phases.commit_review import TripwireThresholds, evaluate_tripwires
 from ralph.phases.required_artifacts import (
     RequiredArtifact,
     resolve_phase_required_artifact,
@@ -3294,3 +3297,109 @@ class TestCommitReviewPolicyValidation:
             phase_style="",
         )
         assert "FCr" in render_status_bar(m2, ctx=ctx).plain
+
+
+# === WU-4: phase-level allowed_directories reaches the Stage-1 out-of-scope tripwire ===
+class TestPhaseAllowedDirectories:
+    """Phase-level allowed_directories parses from TOML and reaches the tripwire."""
+
+    _PHASE_HEADER = '[blocks.development_commit_review.phase]\ndrain = "commit"\n'
+
+    @classmethod
+    def _config_dir_with_allowed_directories(cls, tmp_path: Path, entries: str) -> Path:
+        """Copy the bundled default policy and declare allowed_directories on a phase."""
+        defaults_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
+        config_dir = tmp_path / ".agent"
+        config_dir.mkdir(parents=True)
+        for filename in ("agents.toml", "pipeline.toml", "artifacts.toml"):
+            shutil.copy(defaults_dir / filename, config_dir / filename)
+        pipeline_path = config_dir / "pipeline.toml"
+        source = pipeline_path.read_text()
+        assert cls._PHASE_HEADER in source, "bundled default pipeline.toml phase header changed"
+        pipeline_path.write_text(
+            source.replace(
+                cls._PHASE_HEADER,
+                f"{cls._PHASE_HEADER}allowed_directories = [{entries}]\n",
+            )
+        )
+        return config_dir
+
+    def test_default_policy_leaves_allowed_directories_unset(self) -> None:
+        """The bundled default declares no allowed_directories (the setting is opt-in)."""
+        bundle = _cached_default_bundle()
+
+        assert bundle.pipeline.phases["development_commit_review"].allowed_directories == []
+        assert bundle.pipeline.phases["development_final_commit_review"].allowed_directories == []
+
+    def test_pipeline_toml_parses_phase_allowed_directories(self, tmp_path: Path) -> None:
+        """A phase-level allowed_directories list is parsed from the phase's TOML table."""
+        config_dir = self._config_dir_with_allowed_directories(tmp_path, "'src', 'docs'")
+
+        bundle = load_policy(config_dir)
+
+        phase_def = bundle.pipeline.phases["development_commit_review"]
+        assert phase_def.allowed_directories == ["src", "docs"]
+
+    @pytest.mark.parametrize(
+        "entry",
+        ["", " ", "/absolute/path", "..", "src/../../etc", "src\\windows"],
+    )
+    def test_invalid_allowed_directories_entries_are_rejected(self, entry: str) -> None:
+        """Malformed allowed_directories entries fail phase validation."""
+        with pytest.raises(ValidationError, match="allowed_directories"):
+            PhaseDefinition(
+                drain="commit",
+                role="commit_review",
+                allowed_directories=[entry],
+                transitions=PhaseTransition(on_success="done"),
+            )
+
+    def test_invalid_allowed_directories_entry_fails_the_policy_load(self, tmp_path: Path) -> None:
+        """A malformed allowed_directories entry in pipeline.toml fails the strict load."""
+        config_dir = self._config_dir_with_allowed_directories(tmp_path, "'../outside'")
+
+        with pytest.raises((LoaderPolicyValidationError, ValidationError)) as excinfo:
+            load_policy(config_dir, strict_optional_files=True)
+
+        assert "allowed_directories" in str(excinfo.value)
+
+    def test_allowed_directories_reaches_out_of_scope_tripwire(self, tmp_path: Path) -> None:
+        """A path outside the phase's allowed_directories yields a soft out-of-scope finding."""
+        config_dir = self._config_dir_with_allowed_directories(tmp_path, "'src'")
+        bundle = load_policy(config_dir)
+        phase_def = bundle.pipeline.phases["development_commit_review"]
+
+        outside = evaluate_tripwires(
+            [
+                DiffEntry(
+                    path="scripts/deploy.sh",
+                    status="M",
+                    old_mode="100755",
+                    new_mode="100755",
+                    size=12,
+                    is_binary=False,
+                )
+            ],
+            tracked_count=3,
+            thresholds=TripwireThresholds(),
+            allowed_dirs=phase_def.allowed_directories,
+        )
+        assert [finding.category for finding in outside.soft] == ["out_of_scope"]
+        assert outside.soft[0].path == "scripts/deploy.sh"
+
+        inside = evaluate_tripwires(
+            [
+                DiffEntry(
+                    path="src/app.py",
+                    status="M",
+                    old_mode="100644",
+                    new_mode="100644",
+                    size=12,
+                    is_binary=False,
+                )
+            ],
+            tracked_count=3,
+            thresholds=TripwireThresholds(),
+            allowed_dirs=phase_def.allowed_directories,
+        )
+        assert [finding.category for finding in inside.soft] == []

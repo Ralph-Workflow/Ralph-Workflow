@@ -651,17 +651,19 @@ def test_verifiable_reject_citation_is_a_rejection_not_a_reviewer_malfunction(
     assert "src/app.py" in event.reason
 
 
-def test_stale_tree_sha_in_the_artifact_is_a_gate_failure(tmp_git_repo: Path) -> None:
-    """An artifact that judged a different tree is stale and fails the gate."""
+def test_stale_tree_sha_in_the_artifact_loops_back_for_rereview(tmp_git_repo: Path) -> None:
+    """An artifact that judged a different tree is consumed and re-reviewed."""
     workspace = FsWorkspace(tmp_git_repo)
     _seed_engine_defaults(tmp_git_repo)
+    artifact_sha = "0" * 40
     _write_commit_review_artifact(
         workspace,
         {
             "verdict": "approve",
-            "tree_sha": "0" * 40,
+            "tree_sha": artifact_sha,
         },
     )
+    current_sha = seal_pending(tmp_git_repo, "run", 1).tree_sha
 
     head_before = _head_sha(tmp_git_repo)
     commits_before = _commit_count(tmp_git_repo)
@@ -670,8 +672,11 @@ def test_stale_tree_sha_in_the_artifact_is_a_gate_failure(tmp_git_repo: Path) ->
 
     assert len(result) == 1
     event = result[0]
-    assert isinstance(event, CommitReviewGateFailed)
-    assert "Stale tree SHA" in event.detail
+    assert isinstance(event, CommitReviewLoopback)
+    assert "stale" in event.hint.lower()
+    assert artifact_sha in event.hint
+    assert current_sha in event.hint
+    assert not workspace.exists(COMMIT_REVIEW_ARTIFACT_PATH)
     assert _head_sha(tmp_git_repo) == head_before
     assert _commit_count(tmp_git_repo) == commits_before
 

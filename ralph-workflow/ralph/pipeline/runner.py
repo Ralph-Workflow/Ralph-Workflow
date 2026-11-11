@@ -831,11 +831,14 @@ def _save_checkpoint_or_log(
     *,
     message: str,
     path: Path,
-) -> None:
+) -> bool:
+    """Persist ``state``, logging failure and reporting whether it succeeded."""
     try:
         ckpt.save(state, path)
     except Exception as exc:
         logger.exception(message, phase=state.phase, err=exc)
+        return False
+    return True
 
 
 def _maybe_clear_invoke_agent_entry_drains(
@@ -2165,6 +2168,8 @@ def execute_pending_rollback(
     state: PipelineState,
     workspace_root: Path,
     pipeline_policy: PipelinePolicy,
+    *,
+    checkpoint_path: Path | None = None,
 ) -> PipelineState:
     """Roll the working tree back to the run's restore point.
 
@@ -2182,17 +2187,29 @@ def execute_pending_rollback(
         state: The state asking for the rollback.
         workspace_root: The workspace root the restore runs in.
         pipeline_policy: The active pipeline policy.
+        checkpoint_path: When provided, the rollback-pending state must be
+            persisted here before the destructive restore can begin.
 
     Returns:
         The state with the rollback flags cleared and the rejection context
-        recorded, or the terminal gate-failure state when the restore could
-        not be preflighted.
+        recorded, or the terminal gate-failure state when its crash-safe
+        checkpoint could not be saved or the restore could not be preflighted.
     """
     from ralph.git.proposal_seal import rollback
 
     rollback_ref = state.rollback_ref
     if not isinstance(rollback_ref, str) or not rollback_ref:
         return state
+    if checkpoint_path is not None and not _save_checkpoint_or_log(
+        state,
+        message="Checkpoint save failed before rollback in phase={phase}: {err}",
+        path=checkpoint_path,
+    ):
+        return rollback_gate_failure_state(
+            state,
+            pipeline_policy,
+            "Rollback checkpoint save failed: rollback-pending marker was not persisted",
+        )
     try:
         rollback(workspace_root, rollback_ref, baseline_ref=state.rollback_baseline_ref)
     except Exception as exc:
@@ -2223,15 +2240,11 @@ def _execute_pending_rollback_if_needed(
         and next_state.rollback_ref
     ):
         return next_state
-    _save_checkpoint_or_log(
-        next_state,
-        message="Checkpoint save failed before rollback in phase={phase}: {err}",
-        path=_checkpoint_path(workspace_scope),
-    )
     return execute_pending_rollback(
         next_state,
         workspace_scope.root,
         policy_bundle.pipeline,
+        checkpoint_path=_checkpoint_path(workspace_scope),
     )
 
 

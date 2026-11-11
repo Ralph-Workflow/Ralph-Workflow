@@ -1,8 +1,9 @@
 """PhaseDefinition Pydantic model."""
 
+from pathlib import PurePosixPath
 from typing import Literal, cast
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from ralph.policy.models._artifact_history_policy import ArtifactHistoryPolicy
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
@@ -16,6 +17,26 @@ from ralph.policy.models._phase_transition import PhaseTransition
 from ralph.policy.models._phase_verification_policy import PhaseVerificationPolicy
 from ralph.policy.models._phase_workflow_fallback import PhaseWorkflowFallback
 from ralph.policy.models._types import PhaseRole
+
+
+def _validate_allowed_directory_entry(entry: str) -> str:
+    """Validate one repository-relative allowed-directory prefix.
+
+    The rule mirrors the work-unit ``allowed_directories`` rule so the same
+    setting name means the same thing everywhere: an entry is a non-blank,
+    relative POSIX path that uses ``/`` separators and contains no ``..``
+    segment.
+    """
+    if not entry or not entry.strip():
+        raise ValueError("allowed_directories entries must be non-empty")
+    if "\\" in entry:
+        raise ValueError("allowed_directories entries must use '/' separators")
+    parsed = PurePosixPath(entry)
+    if parsed.is_absolute():
+        raise ValueError("allowed_directories entries must be relative paths")
+    if ".." in parsed.parts:
+        raise ValueError("allowed_directories entries must not contain '..'")
+    return entry
 
 
 class PhaseDefinition(_FrozenPolicyModel):
@@ -140,6 +161,16 @@ class PhaseDefinition(_FrozenPolicyModel):
             "Contrast with artifact_history.clear_on_fresh_entry which clears only the history."
         ),
     )
+    allowed_directories: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Repository-relative directory prefixes this phase's changes are restricted to. "
+            "Empty (the default) means no scope restriction. Each entry must be a "
+            "non-blank relative POSIX path that uses '/' separators and contains no '..' "
+            "segment. When set, the commit-review Stage-1 tripwires report every "
+            "modified or added path outside these prefixes as a soft out-of-scope finding."
+        ),
+    )
     display_style: str | None = Field(
         default=None,
         description=(
@@ -161,6 +192,12 @@ class PhaseDefinition(_FrozenPolicyModel):
             "is taken without consuming an analysis-loop cycle."
         ),
     )
+
+    @field_validator("allowed_directories")
+    @classmethod
+    def _validate_allowed_directories(cls, value: list[str]) -> list[str]:
+        """Reject allowed-directory prefixes that are not repository-relative."""
+        return [_validate_allowed_directory_entry(entry) for entry in value]
 
     @model_validator(mode="before")
     @classmethod

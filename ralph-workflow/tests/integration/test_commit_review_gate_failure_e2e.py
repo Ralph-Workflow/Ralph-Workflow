@@ -40,6 +40,9 @@ _DEFAULTS_DIR = Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defa
 #: The content the rejected iteration left in the tracked file.
 _DEVELOPER_CHANGE = "developer change\n"
 
+#: An untracked file introduced by the rejected iteration.
+_REJECTED_ADDITION = "rejected addition\n"
+
 
 def _bundle() -> PolicyBundle:
     """Return the bundled default policy."""
@@ -50,6 +53,7 @@ def _rejected_state(repo_root: Path, run_id: str) -> PipelineState:
     """Seal the pending state, reject it, and return the rollback-pending state."""
     readme = repo_root / "README.md"
     readme.write_text(_DEVELOPER_CHANGE, encoding="utf-8")
+    (repo_root / "rejected-only.txt").write_text(_REJECTED_ADDITION, encoding="utf-8")
     seal = seal_pending(repo_root, run_id=run_id, iteration="0")
     rejected_state, _ = reduce(
         PipelineState(phase="development_commit_review"),
@@ -59,6 +63,36 @@ def _rejected_state(repo_root: Path, run_id: str) -> PipelineState:
     assert rejected_state.rollback_pending is True
     assert rejected_state.rollback_ref == seal.ref
     return rejected_state
+
+
+def test_checkpoint_failure_refuses_rollback_and_keeps_rejected_work(
+    tmp_git_repo: Path,
+) -> None:
+    """A missing crash-safe rollback marker makes the gate fail closed."""
+    repo_root = Path(tmp_git_repo)
+    rejected_state = _rejected_state(repo_root, run_id="run-checkpoint-failure")
+    checkpoint_path = repo_root / "checkpoint.json"
+    checkpoint_path.mkdir()
+
+    result = execute_pending_rollback(
+        rejected_state,
+        repo_root,
+        _bundle().pipeline,
+        checkpoint_path=checkpoint_path,
+    )
+
+    # No destructive restore ran: both rejected tracked and added work remain.
+    assert (repo_root / "README.md").read_text(encoding="utf-8") == _DEVELOPER_CHANGE
+    assert (repo_root / "rejected-only.txt").read_text(encoding="utf-8") == _REJECTED_ADDITION
+    # The proposal still resolves and remains the recovery path for the work.
+    assert rejected_state.rollback_ref is not None
+    preflight(repo_root, rejected_state.rollback_ref)
+    assert result.rollback_ref == rejected_state.rollback_ref
+    # This is the existing terminal gate-failure route, not rollback or commit.
+    assert result.phase == "failed_terminal"
+    assert result.rollback_pending is False
+    assert "gate failed" in (result.last_error or "")
+    assert "checkpoint" in (result.last_error or "").lower()
 
 
 def _damage_git(repo_root: Path) -> None:

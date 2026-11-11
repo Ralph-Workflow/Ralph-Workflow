@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -20,6 +21,10 @@ from ralph.git.proposal_seal import (
     rollback,
     seal_baseline,
     seal_pending,
+)
+from ralph.phases._commit_review_tripwires import (
+    TripwireThresholds,
+    evaluate_tripwires,
 )
 from ralph.phases.commit_review import CommitReviewRejected
 from ralph.pipeline.reducer import reduce
@@ -146,9 +151,78 @@ def test_diff_tree_reports_all_change_types_and_metadata(tmp_path: Path) -> None
 
     assert "new_bin.png" in by_path
     e_new_bin = by_path["new_bin.png"]
+    assert isinstance(e_new_bin, DiffEntry)
     assert e_new_bin.status == "A"
     assert e_new_bin.is_binary
     assert e_new_bin.size == len(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
+
+
+def _setup_source_and_test_trees(path: Path) -> Repo:
+    """Create a repo whose HEAD tracks a ``src/`` and a ``tests/`` directory."""
+    repo = _setup_repo(path)
+    src_dir = path / "src"
+    src_dir.mkdir()
+    (src_dir / "app.py").write_text("def app():\n    return 1\n", encoding="utf-8")
+    (src_dir / "util.py").write_text("def util():\n    return 2\n", encoding="utf-8")
+    tests_dir = path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_app.py").write_text("def test_app():\n    assert True\n", encoding="utf-8")
+    (tests_dir / "test_util.py").write_text("def test_util():\n    assert True\n", encoding="utf-8")
+    route_git_method(repo, "add", ("src", "tests"))
+    route_git_method(repo, "commit", ("-m", "add source and test trees"))
+    return repo
+
+
+def test_fully_deleted_protected_top_level_directory_is_a_hard_tripwire(tmp_path: Path) -> None:
+    """Deleting EVERY tracked file of a protected top-level directory trips the hard gate.
+
+    ``git diff-tree -r`` reports blob entries only, so the removal of a whole
+    directory arrives as one deleted blob path per tracked file and NEVER as a
+    directory entry. The tripwire therefore compares the base-tree membership
+    carried by the diff entries against the deleted-path set.
+    """
+    _setup_source_and_test_trees(tmp_path)
+    shutil.rmtree(tmp_path / "src")
+
+    seal = seal_pending(tmp_path, "run-dir", 1)
+    entries = diff_tree(tmp_path, seal.ref)
+
+    # The real diff holds the individual deleted blobs, never a "src" entry.
+    assert {entry.path for entry in entries} == {"src/app.py", "src/util.py"}
+    assert all(entry.status == "D" for entry in entries)
+    # Every entry carries the membership of the tree the diff was computed
+    # against, which is what makes the entirety check possible.
+    for entry in entries:
+        assert entry.base_tree_paths is not None
+        assert {"src/app.py", "src/util.py"} <= entry.base_tree_paths
+
+    report = evaluate_tripwires(
+        entries,
+        tracked_count=5,
+        thresholds=TripwireThresholds(max_deleted_files=100, max_deleted_fraction=0.9),
+    )
+    assert report.passed is False
+    assert [(f.category, f.path) for f in report.hard] == [("protected_deletion", "src")]
+    assert "in its entirety" in report.hard[0].message
+
+
+def test_partially_deleted_protected_top_level_directory_is_not_an_entirety_deletion(
+    tmp_path: Path,
+) -> None:
+    """Deleting SOME tracked files of a protected top-level directory is not an entirety deletion."""
+    _setup_source_and_test_trees(tmp_path)
+    (tmp_path / "tests" / "test_util.py").unlink()
+
+    seal = seal_pending(tmp_path, "run-partial", 1)
+    entries = diff_tree(tmp_path, seal.ref)
+
+    report = evaluate_tripwires(
+        entries,
+        tracked_count=5,
+        thresholds=TripwireThresholds(max_deleted_files=100, max_deleted_fraction=0.9),
+    )
+    assert report.is_clean is True
+    assert report.hard == ()
 
 
 def test_rollback_restores_head_and_cleans_added_files_intact_agent_and_ignored(
