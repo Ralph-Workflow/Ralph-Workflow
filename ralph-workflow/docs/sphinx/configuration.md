@@ -510,7 +510,7 @@ The commit review phases (`development_commit_review` and `development_final_com
 #### Loop counters
 
 - **`[loop_counters.commit_review_iteration]`** (default: `3`): Maximum review passes per iteration.
-- **`[loop_counters.commit_review_identity]`** (default: `3`): Maximum identical no-progress review attempts before advancing or escalating.
+- **`[loop_counters.commit_review_identity]`** (default: `3`): Maximum identical no-progress review attempts before the commit review gate fails closed to `failed_terminal`. Reaching the bound means the reviewer made no progress on the same pending tree (a missing or invalid artifact), so the gate treats it as a reviewer malfunction and never approves the pending tree.
 - **`commit_review_rejections`** (default: `2`): The consecutive-rejection count at which the run transitions to `failed_terminal`. Unlike iteration counters, this counter survives loop resets. The run fails once the counter reaches this limit: with the default of `2`, the second consecutive rejection is terminal, without another rollback, and the rejected proposal ref is kept.
 
 #### Deterministic tripwire thresholds
@@ -544,7 +544,7 @@ These four behaviours are part of the contract and are not configurable:
 - **The rollback uses neither `git stash` nor a saved patch.** The rollback is driven by the sealed proposal ref: the proposal diff identifies the files the proposal added, and `git read-tree --reset -u` restores the tracked files to `HEAD` (or the dirty run-start baseline). Nothing is stashed, and no patch file is written.
 - **A rejection after the cycle timebox expires routes to `failed_terminal`, not back to `development`.** Timebox exhaustion and the consecutive-rejection ceiling both take the phase's `on_failure` target (the recovery `failed_route` when `on_failure` is unset) and perform no rollback.
 - **Intentional large deletions get no plan-based bypass.** The mass-deletion tripwires compare the diff against `HEAD` and never consult the plan or the task text, so a deliberate large deletion trips the same hard rejection as an accidental one. Raise `max_deleted_files` and/or `max_deleted_fraction` in `[commit_review]` when a large intentional deletion is expected.
-- **Old phase names are not migrated.** The pre-rename phase names (`development_commit_cleanup`, `development_final_commit_cleanup`) and the removed `commit_cleanup` role, artifact, counter, template, and skill identifiers are gone, and Ralph Workflow performs no checkpoint migration for them. A checkpoint that still names a pre-rename phase is not rewritten: the run cannot route that phase and fails. Start a fresh run after upgrading.
+- **Old phase names are not migrated.** The phase, role, artifact, counter, template, and skill identifiers that commit review replaced are gone, and Ralph Workflow performs no checkpoint migration for them; the retired names are listed in [Concepts → Phase rename and checkpoint compatibility](concepts.md#phase-rename-and-checkpoint-compatibility). A checkpoint that still names a pre-rename phase is not rewritten: the run cannot route that phase and fails. Start a fresh run after upgrading.
 
 ## `artifacts.toml` in plain language
 

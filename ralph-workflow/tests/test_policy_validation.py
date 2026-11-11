@@ -3303,7 +3303,7 @@ class TestCommitReviewPolicyValidation:
 class TestPhaseAllowedDirectories:
     """Phase-level allowed_directories parses from TOML and reaches the tripwire."""
 
-    _PHASE_HEADER = '[blocks.development_commit_review.phase]\ndrain = "commit"\n'
+    PHASE_HEADER = '[blocks.development_commit_review.phase]\ndrain = "commit"\n'
 
     @classmethod
     def _config_dir_with_allowed_directories(cls, tmp_path: Path, entries: str) -> Path:
@@ -3315,11 +3315,11 @@ class TestPhaseAllowedDirectories:
             shutil.copy(defaults_dir / filename, config_dir / filename)
         pipeline_path = config_dir / "pipeline.toml"
         source = pipeline_path.read_text()
-        assert cls._PHASE_HEADER in source, "bundled default pipeline.toml phase header changed"
+        assert cls.PHASE_HEADER in source, "bundled default pipeline.toml phase header changed"
         pipeline_path.write_text(
             source.replace(
-                cls._PHASE_HEADER,
-                f"{cls._PHASE_HEADER}allowed_directories = [{entries}]\n",
+                cls.PHASE_HEADER,
+                f"{cls.PHASE_HEADER}allowed_directories = [{entries}]\n",
             )
         )
         return config_dir

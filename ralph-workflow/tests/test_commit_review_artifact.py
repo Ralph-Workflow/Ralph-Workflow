@@ -447,12 +447,18 @@ def test_citation_verifier_multiple_paths_all_must_match() -> None:
     )
 
 
-def test_citation_verifier_basename_match() -> None:
-    """Candidate citing basename matches full path in diff."""
+def test_citation_verifier_basename_only_citation_is_rejected() -> None:
+    """A bare basename does not verify a nested path in the diff.
+
+    Citations are matched as exact repository-relative paths, so naming
+    ``runner.py`` never cites the changed ``ralph-workflow/ralph/pipeline/
+    runner.py``.  A basename-only citation is unverifiable evidence and must
+    fail closed.
+    """
     diff: list[object] = [
         _FakeDiffEntry(path="ralph-workflow/ralph/pipeline/runner.py", status="M")
     ]
-    assert verify_reject_citations("Issue in `runner.py` detected", diff) is True
+    assert verify_reject_citations("Issue in `runner.py` detected", diff) is False
 
 
 def test_citation_verifier_count_match() -> None:
@@ -487,13 +493,106 @@ def test_citation_verifier_no_citations_rejected() -> None:
     assert verify_reject_citations("I do not like these changes", diff) is False
 
 
-def test_citation_verifier_policy_doc_reference_exempt() -> None:
-    """Policy doc references (AGENTS.md) not in diff do not cause failure when diff path matches."""
+def test_citation_verifier_absent_reference_doc_citation_is_rejected() -> None:
+    """A cited path absent from the diff fails verification.
+
+    Reference documents such as ``AGENTS.md`` are not exempt: every cited
+    path must be present in the proposal diff.  A reason that names a path
+    the diff does not contain is unverifiable evidence and must fail closed.
+    """
     diff: list[object] = [_FakeDiffEntry(path="src/config.py", status="M")]
     assert (
         verify_reject_citations(
             "AGENTS.md policy violated by changes in `src/config.py`",
             diff,
         )
+        is False
+    )
+
+
+def test_citation_verifier_fabricated_reject_citations_fail_closed() -> None:
+    """Every fabricated reject citation fails closed against the real diff.
+
+    The proposal diff holds a single modified, non-binary ``src/main.py``.
+    Each claim below invents evidence the diff does not contain, and each one
+    used to pass verification, which authorized the destructive rollback path
+    on a reviewer malfunction.
+    """
+    diff: list[object] = [_FakeDiffEntry(path="src/main.py", status="M")]
+
+    # A binary count with no binary entry behind it.
+    assert verify_reject_citations("src/main.py and 999 binary files were damaged", diff) is False
+    # A cited path that the diff does not contain.
+    assert verify_reject_citations("src/main.py and README.md were deleted", diff) is False
+    # A path that only ends with a diff path.
+    assert verify_reject_citations("outside/src/main.py was deleted", diff) is False
+    # An added-file count with no added entry behind it.
+    assert verify_reject_citations("src/main.py and 1 added file were damaged", diff) is False
+
+
+def test_citation_verifier_valid_citation_still_verifies() -> None:
+    """A citation that matches the diff exactly still verifies."""
+    diff: list[object] = [_FakeDiffEntry(path="src/main.py", status="M")]
+    assert verify_reject_citations("Accidental modification of src/main.py", diff) is True
+
+
+def test_citation_verifier_counts_are_typed_against_the_diff() -> None:
+    """A count is backed only by entries of the category it names.
+
+    The diff holds two modified entries (``src/main.py`` and the binary
+    ``assets/logo.bin``), one added entry, no deleted entry, and one binary
+    entry.
+    """
+    diff: list[object] = [
+        _FakeDiffEntry(path="src/main.py", status="M"),
+        _FakeDiffEntry(path="src/new.py", status="A"),
+        _FakeDiffEntry(path="assets/logo.bin", status="M", is_binary=True),
+    ]
+
+    assert verify_reject_citations("2 modified files were corrupted", diff) is True
+    assert verify_reject_citations("1 modified file was corrupted", diff) is False
+    assert verify_reject_citations("1 added file was added", diff) is True
+    assert verify_reject_citations("2 added files were added", diff) is False
+    assert verify_reject_citations("1 binary file was corrupted", diff) is True
+    assert verify_reject_citations("2 binary files were corrupted", diff) is False
+    # A count whose category has no entry at all never verifies.
+    assert verify_reject_citations("1 deleted file was removed", diff) is False
+
+
+def test_citation_verifier_one_false_claim_fails_the_whole_reason() -> None:
+    """Every cited path and count of a reason must verify."""
+    diff: list[object] = [
+        _FakeDiffEntry(path="src/a.py", status="D"),
+        _FakeDiffEntry(path="src/b.py", status="D"),
+    ]
+
+    assert (
+        verify_reject_citations(
+            ["- [R1] Deleted src/a.py", "- [R2] Deleted src/b.py"],
+            diff,
+        )
         is True
     )
+    # The path claim is true, the count claim is not: the reason fails.
+    assert (
+        verify_reject_citations(
+            ["- [R1] Deleted src/a.py", "- [R2] 3 deleted files were removed"],
+            diff,
+        )
+        is False
+    )
+
+
+def test_citation_verifier_paths_match_the_exact_repository_relative_path() -> None:
+    """A path matches only its exact normalized repository-relative form."""
+    diff: list[object] = [_FakeDiffEntry(path="src/main.py", status="M")]
+
+    assert verify_reject_citations("Changed `src/main.py`", diff) is True
+    assert verify_reject_citations("Changed `./src/main.py`", diff) is True
+    assert verify_reject_citations("Changed **src/main.py**", diff) is True
+    assert verify_reject_citations('Changed "src/main.py"', diff) is True
+    assert verify_reject_citations("Changed src/main.py:42", diff) is True
+    # Suffix, prefix, and substring matches are not citations of this path.
+    assert verify_reject_citations("Changed src/main.py.bak", diff) is False
+    assert verify_reject_citations("Changed other/src/main.py", diff) is False
+    assert verify_reject_citations("Changed main.py", diff) is False

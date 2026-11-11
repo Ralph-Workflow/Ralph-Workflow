@@ -133,6 +133,20 @@ IO_ALLOWLIST: set[str] = {
     # tmp_path). The write_text calls go to the fixture's temp directory.
     "test_git_rebase_preconditions",
     "test_git_wrapper",
+    # Commit-review gate-failure proof. It writes and reads real files in a
+    # tmp_path repository and drives the real proposal seal, because the
+    # behaviour under test is what happens to a REJECTED proposal when the
+    # proposal ref no longer resolves: a fake filesystem would not carry the
+    # git objects the seal and the preflight read.
+    "test_commit_review_gate_failure_e2e",
+    # Commit-review real-diff proofs. They create a real git repository,
+    # seal the pending state, and read the real `git diff-tree -r` output,
+    # because the behaviours under test (a whole protected directory
+    # deleted, a renamed file left behind by the rollback, a credential
+    # detected by CONTENT) are properties of the REAL diff shape; a mocked
+    # git would reproduce the synthetic shapes the unit tests already use
+    # and would pass vacuously.
+    "test_commit_review_real_diff_proofs",
     # Legacy-restart acceptance test (scenario 8) seeds raw legacy checkpoint
     # + record bytes into the tmp_git_repo fixture dir so the production
     # resume read must parse and migrate them; same tmp_git_repo-writes

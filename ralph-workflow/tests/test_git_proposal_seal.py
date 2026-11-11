@@ -22,11 +22,11 @@ from ralph.git.proposal_seal import (
     seal_baseline,
     seal_pending,
 )
-from ralph.phases._commit_review_tripwires import (
+from ralph.phases.commit_review import (
+    CommitReviewRejected,
     TripwireThresholds,
     evaluate_tripwires,
 )
-from ralph.phases.commit_review import CommitReviewRejected
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.run_loop import resolve_initial_state
 from ralph.pipeline.state import PipelineState

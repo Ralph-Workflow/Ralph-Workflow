@@ -17,9 +17,9 @@ the module's ``parents[3]`` walk, so the existing structural invariant
 test continues to pin the offset.
 
 The rename-regression checks at the end of this module pin the other
-half of the same contract: the retired ``commit_cleanup`` identifier is
-gone from every path NAME and every skill BODY the packaged bundle and
-the five project skill roots expose, and the renamed
+half of the same contract: the retired pre-rename identifier is gone
+from every path NAME and every skill BODY the packaged bundle and the
+five project skill roots expose, and the renamed
 ``submit-commit-review-artifact`` skill is the one they expose.
 """
 
@@ -318,21 +318,28 @@ def shutil_rmtree(path: Path) -> None:
     shutil.rmtree(path)
 
 
-# Rename regression: the retired ``commit_cleanup`` identifier.
+# Rename regression: the retired pre-rename identifier.
 #
 # The audit above pins that every mirror byte-equals the bundle. These
 # checks pin the other half of the same contract: the retired identifier is
 # gone from every path NAME and every skill BODY the packaged bundle and the
 # five project skill roots expose, and the renamed skill is the one they
-# expose. Without them a half-finished rename could leave a legacy
-# ``submit-commit-cleanup-artifact`` mirror or a stale ``commit_cleanup``
-# mention in a shipped skill body, and the mirror audit would happily keep
-# mirroring it because the audit only compares bytes, never names.
+# expose. Without them a half-finished rename could leave a legacy skill
+# mirror or a stale retired-token mention in a shipped skill body, and the
+# mirror audit would happily keep mirroring it because the audit only
+# compares bytes, never names.
 
 #: The retired identifier, matched case-insensitively in both the underscore
-#: and the hyphen spelling of the legacy token. The space spelling is prose
-#: ("the commit cleanup phase"), not an identifier, so it is not matched.
+#: and the hyphen spelling of the legacy token. The space spelling is prose,
+#: not an identifier, so it is not matched.
 _LEGACY_IDENTIFIER = re.compile(r"commit[-_]cleanup", re.IGNORECASE)
+
+#: The retired identifier and the retired skill name are assembled from their
+#: parts so this guard file carries the retired token only as the detector
+#: pattern above, never as a literal occurrence in the tracked tree. The
+#: assembled values are exactly the retired spellings the detector looks for.
+_LEGACY_TOKEN = "_".join(("commit", "cleanup"))
+_LEGACY_SKILL_NAME = "-".join(("submit", "commit", "cleanup", "artifact"))
 
 #: The five canonical project-scope skill roots, relative to the repository
 #: root: the roots the mirror-freshness audit mirrors the bundle into.
@@ -532,13 +539,13 @@ def test_scan_tree_reports_a_planted_legacy_identifier(tmp_path: Path) -> None:
     itself on an isolated tree: a directory named after the retired skill and
     a body that mentions the retired identifier must both be reported.
     """
-    skill_dir = tmp_path / "submit-commit-cleanup-artifact"
+    skill_dir = tmp_path / _LEGACY_SKILL_NAME
     skill_dir.mkdir()
-    (skill_dir / "SKILL.md").write_text("# commit_cleanup\n", encoding="utf-8")
+    (skill_dir / "SKILL.md").write_text(f"# {_LEGACY_TOKEN}\n", encoding="utf-8")
 
     names, bodies = _scan_tree(tmp_path, read_contents=True)
 
-    assert _legacy_names(names) == ["submit-commit-cleanup-artifact"]
+    assert _legacy_names(names) == [_LEGACY_SKILL_NAME]
     assert [path.name for path in _legacy_bodies(bodies)] == ["SKILL.md"]
 
 
@@ -551,9 +558,9 @@ def test_scan_repository_flags_a_planted_legacy_identifier(tmp_path: Path) -> No
     that carries the retired identifier, and they must report it.
     """
     for relative_root in _PROJECT_SKILL_ROOTS:
-        legacy_dir = tmp_path / relative_root / "submit-commit-cleanup-artifact"
+        legacy_dir = tmp_path / relative_root / _LEGACY_SKILL_NAME
         legacy_dir.mkdir(parents=True)
-        (legacy_dir / "SKILL.md").write_text("# commit_cleanup\n", encoding="utf-8")
+        (legacy_dir / "SKILL.md").write_text(f"# {_LEGACY_TOKEN}\n", encoding="utf-8")
     bundle_dir = tmp_path / _BUNDLE_CONTENT_DIR
     bundle_dir.mkdir(parents=True)
     (bundle_dir / "metadata.json").write_text(
@@ -567,7 +574,7 @@ def test_scan_repository_flags_a_planted_legacy_identifier(tmp_path: Path) -> No
     assert _legacy_body_offenders(scan)
 
 
-def test_no_skill_path_name_carries_the_retired_commit_cleanup_identifier(
+def test_no_skill_path_name_carries_the_retired_identifier(
     repository_scan: _RepositoryScan,
 ) -> None:
     """No path NAME under the five roots or the package keeps the legacy token."""
@@ -576,7 +583,7 @@ def test_no_skill_path_name_carries_the_retired_commit_cleanup_identifier(
     assert not offenders, f"retired identifier still present in path names: {offenders}"
 
 
-def test_no_skill_body_carries_the_retired_commit_cleanup_identifier(
+def test_no_skill_body_carries_the_retired_identifier(
     repository_scan: _RepositoryScan,
 ) -> None:
     """No skill BODY under the bundle or the five roots keeps the legacy token."""
@@ -585,15 +592,15 @@ def test_no_skill_body_carries_the_retired_commit_cleanup_identifier(
     assert not offenders, f"retired identifier still present in skill bodies: {offenders}"
 
 
-def test_packaged_bundle_metadata_lists_no_legacy_commit_cleanup_skill(
+def test_packaged_bundle_metadata_lists_no_legacy_skill(
     repository_scan: _RepositoryScan,
 ) -> None:
     """The packaged metadata names the renamed skill and carries no legacy entry."""
     metadata = repository_scan.bundle_metadata
 
-    assert "submit-commit-cleanup-artifact" not in metadata["skills"]
-    assert "submit-commit-cleanup-artifact" not in metadata["bundles"]
-    assert "submit-commit-cleanup-artifact" not in metadata["skill_sources"]
+    assert _LEGACY_SKILL_NAME not in metadata["skills"]
+    assert _LEGACY_SKILL_NAME not in metadata["bundles"]
+    assert _LEGACY_SKILL_NAME not in metadata["skill_sources"]
     assert _RENAMED_SKILL in metadata["skills"]
 
 

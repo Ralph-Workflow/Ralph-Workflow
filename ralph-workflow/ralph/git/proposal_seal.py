@@ -251,6 +251,28 @@ def _collect_base_tree_paths(repo: Repo, base: str) -> frozenset[str]:
     return frozenset(path for path in raw.split("\0") if path)
 
 
+def _read_bounded_blob_content(
+    repo: Repo,
+    blob_sha: str,
+    size: int,
+    is_binary: bool,
+) -> str | None:
+    """Return the text content of a blob, bounded and only for text blobs.
+
+    The staged-secret CONTENT scan needs the blob text; reading every blob
+    would be unbounded work, so only NON-BINARY blobs up to
+    ``_MAX_CONTENT_SCAN_BYTES`` are read. A blob that cannot be read yields
+    ``None`` and the content scan stays silent for it.
+    """
+    if not blob_sha or is_binary or size <= 0 or size > _MAX_CONTENT_SCAN_BYTES:
+        return None
+    try:
+        raw_obj = route_git_method(repo, "cat_file", ("blob", blob_sha))
+    except Exception:
+        return None
+    return str(raw_obj)
+
+
 def diff_tree(repo_root: Path | str, ref: str, base: str = "HEAD") -> list[DiffEntry]:
     """Compute structural diff entries between base and ref.
 
@@ -331,6 +353,7 @@ def diff_tree(repo_root: Path | str, ref: str, base: str = "HEAD") -> list[DiffE
                     new_mode=new_mode,
                     size=size,
                     is_binary=is_binary,
+                    content=_read_bounded_blob_content(repo, new_sha, size, is_binary),
                     base_tree_paths=base_tree_paths,
                 )
             )
@@ -432,7 +455,7 @@ def prune(
 def _remove_proposal_added_files(root_path: Path, diff_entries: list[DiffEntry]) -> None:
     """Remove files added in the proposal relative to the target ref."""
     for entry in diff_entries:
-        if not entry.status.startswith("A"):
+        if entry.status not in _PROPOSAL_ADDED_STATUSES:
             continue
         rel_path = entry.path
         if rel_path.startswith(".agent/") or rel_path == ".agent":

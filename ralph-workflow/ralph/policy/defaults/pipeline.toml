@@ -28,8 +28,9 @@ description = "Development analysis loop iteration counter"
 default_max = 3
 description = "Planning analysis loop iteration counter"
 
-# Raise this only if commit-review (fixing lint/format issues before a commit) needs more than 3 self-correction passes;
-# most agents fix cleanup issues in one or two passes.
+# Raise this only if commit review (the damage gate in front of a commit, which
+# can also edit the pending tree) needs more than 3 self-correction passes;
+# most agents repair the damage the gate found in one or two passes.
 [loop_counters.commit_review_iteration]
 default_max = 3
 description = "Commit review loop iteration counter"

@@ -2583,8 +2583,7 @@ def test_stale_tree_sha_mismatch_loops_back_for_rereview(tmp_git_repo: Path) -> 
     assert len(result) == 1
     event = result[0]
     assert isinstance(event, CommitReviewLoopback), (
-        "A stale review must be re-reviewed, not failed: got "
-        f"{type(event).__name__}: {event!r}"
+        f"A stale review must be re-reviewed, not failed: got {type(event).__name__}: {event!r}"
     )
     assert stale_sha in event.hint
     assert "does not match current sealed proposal tree SHA" in event.hint

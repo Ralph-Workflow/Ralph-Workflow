@@ -3,21 +3,41 @@
 Provides functions to verify that rejection reason citations in a commit_review
 artifact legitimately reference actual modified paths or findings from the
 proposal diff, preventing unjustified rejections or hallucinated citations.
+
+Citation verification is a safety boundary: an unverifiable citation is a
+reviewer malfunction (a gate failure), never a rollback.  The verifier
+therefore fails closed.
+
+* A cited path is verified only when its normalized repository-relative form
+  equals a diff entry path exactly.  A basename, a path suffix, a substring,
+  or a path that is merely absent from the diff never verifies.
+* A cited count is verified only when it is typed and backed by the diff:
+  ``N deleted files`` needs exactly ``N`` deleted entries, ``N binary files``
+  exactly ``N`` binary entries, ``N added files`` exactly ``N`` added
+  entries, and ``N modified files`` exactly ``N`` modified entries.  A count
+  whose category has no matching entry fails, and so does a count whose
+  category cannot be determined.
+* Every cited path and every cited count of a reason must verify, and a
+  reason without a single verified citation fails.
 """
 
 from __future__ import annotations
 
 import re
-from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-from ralph.phases.integrity import DEFAULT_PROMPT_PATH
-
 # Punctuation to strip from token boundaries when extracting path candidates.
 _STRIP_PUNCT: str = ".,;:()[]{}'\"`<>!?"
+
+# Characters that may wrap a cited path (quotes, backticks, markdown emphasis).
+_WRAPPER_CHARS: str = "\"'`*~"
+
+#: The shortest text that can carry a matching wrapper pair.
+_MIN_WRAPPED_TEXT_LENGTH: int = 2
 
 # Common abbreviations and non-path tokens that should not be mistaken for file paths.
 _EXCLUDED_TOKENS: frozenset[str] = frozenset(
@@ -33,19 +53,6 @@ _EXCLUDED_TOKENS: frozenset[str] = frozenset(
         "https:",
         "file:",
         "git:",
-    }
-)
-
-# Reference documents commonly cited in policy/reasons that should not be treated
-# as unverified diff citations when they are not part of the diff.
-_REFERENCE_DOCS: frozenset[str] = frozenset(
-    {
-        "AGENTS.md",
-        DEFAULT_PROMPT_PATH,
-        "README.md",
-        "CONTRIBUTING.md",
-        "CHANGELOG.md",
-        "LICENSE",
     }
 )
 
@@ -105,88 +112,213 @@ _COMMON_EXTENSIONS: frozenset[str] = frozenset(
     }
 )
 
+# Diff categories a count claim may be typed against.  The word is the one a
+# reviewer writes; the category is the diff fact the count must be backed by.
+_COUNT_KIND_BY_WORD: dict[str, str] = {
+    "added": "added",
+    "binary": "binary",
+    "changed": "modified",
+    "deleted": "deleted",
+    "modified": "modified",
+    "new": "added",
+    "removed": "deleted",
+    "untracked": "added",
+}
+
+# The type words accepted in a count claim, in the order they are matched.
+_COUNT_KIND_PATTERN: str = "deleted|removed|modified|changed|added|new|untracked|binary"
+
+# Filler words that may sit between the counted noun and a trailing type
+# word ("2 files were deleted").
+_COUNT_FILLER_PATTERN: str = "were|was|are|is|been|be|have|has|had|got"
+
+# The category used when a count names no category at all ("3 files").
+_TOTAL_COUNT_KIND: str = "total"
+
 _MARKDOWN_LINK_RE: re.Pattern[str] = re.compile(r"\[([^]]*)\]\(([^)]+)\)")
 _INLINE_CODE_RE: re.Pattern[str] = re.compile(r"`([^`]+)`")
 _QUOTED_STR_RE: re.Pattern[str] = re.compile(r"""(?:'([^']+)'|"([^"]+)")""")
-_FILE_COUNT_RE: re.Pattern[str] = re.compile(
-    r"\b(\d+)\s+(?:deleted\s+|modified\s+|added\s+|changed\s+|untracked\s+)?files?\b",
+_COUNT_RE: re.Pattern[str] = re.compile(
+    rf"\b(?P<count>\d+)\s+(?:(?P<kind>{_COUNT_KIND_PATTERN})\s+)?files?"
+    rf"(?:(?:\s+(?:{_COUNT_FILLER_PATTERN})\s+|\s+)"
+    rf"(?P<kind_after>{_COUNT_KIND_PATTERN}))?\b",
     re.IGNORECASE,
 )
 _EXPLICIT_COUNT_RE: re.Pattern[str] = re.compile(r"\bcount:\s*(\d+)\b", re.IGNORECASE)
 _DIGITS_AND_DOTS_RE: re.Pattern[str] = re.compile(r"^\d+(\.\d+)+$")
 _ITEM_ID_PREFIX_RE: re.Pattern[str] = re.compile(r"^\[[A-Za-z0-9_-]+\]\s*")
+_MULTI_SLASH_RE: re.Pattern[str] = re.compile(r"/{2,}")
+_LINE_SUFFIX_RE: re.Pattern[str] = re.compile(r":\d+(?:-\d+)?(?::\d+)?$")
 
 
-@runtime_checkable
-class _DiffEntryLike(Protocol):
-    """Protocol for objects representing a file change in a diff."""
+@dataclass(frozen=True)
+class _DiffSummary:
+    """Normalized diff facts a citation is verified against.
 
-    path: str
+    Attributes:
+        paths: Every repository-relative path in the diff.
+        basenames: The bare file names of those paths.  They are used to
+            recognize a path citation at all; they never verify one.
+        deleted: Paths whose diff entry has deletion status.
+        added: Paths whose diff entry has added status.
+        modified: Paths whose diff entry has modified status.
+        binary: Paths whose diff entry is marked binary.
+    """
+
+    paths: frozenset[str]
+    basenames: frozenset[str]
+    deleted: frozenset[str]
+    added: frozenset[str]
+    modified: frozenset[str]
+    binary: frozenset[str]
+
+    def count_for(self, kind: str) -> int:
+        """Return how many diff entries back a count of the given category."""
+        if kind == "deleted":
+            return len(self.deleted)
+        if kind == "added":
+            return len(self.added)
+        if kind == "modified":
+            return len(self.modified)
+        if kind == "binary":
+            return len(self.binary)
+        return len(self.paths)
 
 
-def _extract_diff_info(
-    diff_entries: Sequence[object],
-) -> tuple[set[str], set[str], set[str], set[str]]:
-    """Extract sets of paths, deleted paths, binary paths, and basenames from diff entries."""
-    diff_paths: set[str] = set()
-    deleted_paths: set[str] = set()
-    binary_paths: set[str] = set()
-    basenames: set[str] = set()
+def _strip_wrappers(text: str) -> str:
+    """Remove surrounding quotes, backticks, and markdown emphasis markers."""
+    previous: str | None = None
+    while previous != text:
+        previous = text
+        text = text.strip()
+        if (
+            len(text) >= _MIN_WRAPPED_TEXT_LENGTH
+            and text[0] == text[-1]
+            and text[0] in _WRAPPER_CHARS
+        ):
+            text = text[1:-1]
+    return text.strip()
+
+
+def _normalize_path(raw: str) -> str:
+    """Normalize a cited or diff path to its repository-relative form.
+
+    Surrounding quotes, backticks, and markdown emphasis are stripped, Windows
+    separators become POSIX separators, a ``:line`` citation suffix is dropped,
+    and a leading ``./`` or ``/`` is removed.  Two paths are the same path
+    only when their normalized forms are equal.
+
+    Args:
+        raw: The raw path text.
+
+    Returns:
+        The normalized repository-relative path, or an empty string when the
+        text does not name a path.
+    """
+    text = _strip_wrappers(raw)
+    if not text:
+        return ""
+    text = text.replace("\\", "/")
+    text = _MULTI_SLASH_RE.sub("/", text)
+    text = _LINE_SUFFIX_RE.sub("", text)
+    while text.startswith("./"):
+        text = text[2:]
+    text = text.lstrip("/")
+    return text.rstrip("/")
+
+
+def _entry_fields(entry: object) -> tuple[str, str, bool]:
+    """Extract ``(path, status, is_binary)`` from a diff entry of any shape.
+
+    Args:
+        entry: A diff entry object, a mapping with the same keys, or a path.
+
+    Returns:
+        The raw path, the raw status, and the binary flag.  Missing or
+        wrongly typed fields fall back to their empty value.
+    """
+    if isinstance(entry, dict):
+        raw_path: object = entry.get("path")
+        raw_status: object = entry.get("status")
+        raw_binary: object = entry.get("is_binary")
+    else:
+        raw_path = getattr(entry, "path", None)
+        raw_status = getattr(entry, "status", None)
+        raw_binary = getattr(entry, "is_binary", None)
+
+    path = raw_path if isinstance(raw_path, str) else ""
+    status = raw_status if isinstance(raw_status, str) else ""
+    is_binary = raw_binary if isinstance(raw_binary, bool) else False
+    return path, status, is_binary
+
+
+def _status_kind(status: str) -> str:
+    """Classify a git diff status into the category a count is typed against."""
+    code = status.strip().upper()
+    if not code:
+        return ""
+    if code.startswith("D"):
+        return "deleted"
+    if code.startswith("A"):
+        return "added"
+    if code.startswith("M"):
+        return "modified"
+    return ""
+
+
+def _extract_diff_info(diff_entries: Sequence[object]) -> _DiffSummary:
+    """Collect the normalized diff facts citations are verified against.
+
+    Args:
+        diff_entries: Sequence of diff entry objects, mappings, or path strings.
+
+    Returns:
+        The normalized summary of the diff.
+    """
+    paths: set[str] = set()
+    deleted: set[str] = set()
+    added: set[str] = set()
+    modified: set[str] = set()
+    binary: set[str] = set()
 
     for entry in diff_entries:
-        raw_path: str | None = None
-        status: str = ""
-        is_binary: bool = False
-
-        if isinstance(entry, str):
-            raw_path = entry
-        elif isinstance(entry, dict):
-            entry_dict: dict[object, object] = entry
-            path_val: object = entry_dict.get("path")
-            if isinstance(path_val, str):
-                raw_path = path_val
-            status_val: object = entry_dict.get("status", "")
-            if isinstance(status_val, str):
-                status = status_val
-            bin_val: object = entry_dict.get("is_binary", False)
-            if isinstance(bin_val, bool):
-                is_binary = bin_val
-        elif isinstance(entry, _DiffEntryLike):
-            raw_path = entry.path
-            status_obj: object = getattr(entry, "status", "")
-            if isinstance(status_obj, str):
-                status = status_obj
-            bin_obj: object = getattr(entry, "is_binary", False)
-            if isinstance(bin_obj, bool):
-                is_binary = bin_obj
-
+        raw_path, status, is_binary = _entry_fields(entry)
         if not raw_path:
             continue
 
-        normalized = PurePosixPath(raw_path.strip().lstrip("./")).as_posix()
-        diff_paths.add(normalized)
-        basenames.add(PurePosixPath(normalized).name)
+        normalized = _normalize_path(raw_path)
+        if not normalized:
+            continue
 
-        if status == "D":
-            deleted_paths.add(normalized)
+        paths.add(normalized)
+        kind = _status_kind(status)
+        if kind == "deleted":
+            deleted.add(normalized)
+        elif kind == "added":
+            added.add(normalized)
+        elif kind == "modified":
+            modified.add(normalized)
         if is_binary:
-            binary_paths.add(normalized)
+            binary.add(normalized)
 
-    return diff_paths, deleted_paths, binary_paths, basenames
+    basenames = {path.rsplit("/", 1)[-1] for path in paths}
+    return _DiffSummary(
+        paths=frozenset(paths),
+        basenames=frozenset(basenames),
+        deleted=frozenset(deleted),
+        added=frozenset(added),
+        modified=frozenset(modified),
+        binary=frozenset(binary),
+    )
 
 
-def _is_path_candidate(token: str, diff_paths: set[str], basenames: set[str]) -> bool:
-    """Determine whether a token looks like a file path candidate."""
-    if (
-        not token
-        or token in _EXCLUDED_TOKENS
-        or token.startswith(("http://", "https://", "mailto:", "file://", "ftp://"))
-        or bool(_DIGITS_AND_DOTS_RE.match(token))
-    ):
+def _is_path_candidate(token: str, summary: _DiffSummary) -> bool:
+    """Determine whether a normalized token should be read as a cited path."""
+    if not token:
         return False
-    if token in diff_paths or token in basenames:
+    if token in summary.paths or token in summary.basenames:
         return True
-    if "/" in token and not any(c in token for c in " \t\r\n"):
+    if "/" in token:
         return True
     lower = token.lower()
     if any(lower.endswith(ext) for ext in _COMMON_EXTENSIONS):
@@ -200,60 +332,69 @@ def _is_path_candidate(token: str, diff_paths: set[str], basenames: set[str]) ->
     )
 
 
-def _matches_diff_path(
-    candidate: str,
-    diff_paths: set[str],
-    basenames: set[str],
-) -> bool:
-    """Check if candidate path matches any entry in the diff."""
-    norm = PurePosixPath(candidate.lstrip("./")).as_posix()
-    if norm in diff_paths or norm in basenames:
-        return True
-    for dp in diff_paths:
-        if dp.endswith(f"/{norm}") or norm.endswith(f"/{dp}"):
-            return True
-        if norm.endswith("/") and dp.startswith(norm):
-            return True
-    return False
+def _candidate_from_token(raw: str, summary: _DiffSummary) -> str | None:
+    """Return the normalized path a token cites, or None when it cites none."""
+    token = raw.strip()
+    if not token or token in _EXCLUDED_TOKENS:
+        return None
+    if token.startswith(("http://", "https://", "mailto:", "file://", "ftp://")):
+        return None
+    if _DIGITS_AND_DOTS_RE.match(token):
+        return None
+
+    normalized = _normalize_path(token)
+    if not normalized or normalized in _EXCLUDED_TOKENS:
+        return None
+    if not _is_path_candidate(normalized, summary):
+        return None
+    return normalized
 
 
-def _extract_candidates_from_text(
-    text: str,
-    diff_paths: set[str],
-    basenames: set[str],
-) -> list[str]:
-    """Extract candidate path strings from a reason line."""
+def _matches_diff_path(candidate: str, summary: _DiffSummary) -> bool:
+    """Check whether a normalized candidate is exactly a diff entry path.
+
+    Only equality verifies a citation: a basename, a path suffix, and a
+    substring all fail.
+    """
+    return candidate in summary.paths
+
+
+def _extract_candidates_from_text(text: str, summary: _DiffSummary) -> list[str]:
+    """Extract cited paths from a reason line.
+
+    Args:
+        text: The reason line.
+        summary: The normalized diff facts.
+
+    Returns:
+        The normalized paths the line cites.
+    """
     candidates: list[str] = []
 
     # 1. Markdown links: [text](target)
     for match in _MARKDOWN_LINK_RE.finditer(text):
-        target_val: object = match.group(2)
-        if isinstance(target_val, str):
-            target = target_val.strip()
-            if target.startswith("file://"):
-                target = target[len("file://") :]
-            target = target.split("#")[0].split("?")[0].strip()
-            if target and not target.startswith(("http://", "https://", "mailto:")):
-                candidates.append(target)
+        target = str(match.group(2)).strip()
+        if target.startswith("file://"):
+            target = target[len("file://") :]
+        target = target.split("#")[0].split("?")[0].strip()
+        candidate = _candidate_from_token(target, summary)
+        if candidate is not None:
+            candidates.append(candidate)
 
     # 2. Backtick code spans: `code`
     for match in _INLINE_CODE_RE.finditer(text):
-        code_val: object = match.group(1)
-        if isinstance(code_val, str):
-            code_token = code_val.strip()
-            if _is_path_candidate(code_token, diff_paths, basenames):
-                candidates.append(code_token)
+        candidate = _candidate_from_token(match.group(1), summary)
+        if candidate is not None:
+            candidates.append(candidate)
 
     # 3. Quoted strings: 'path' or "path"
     for match in _QUOTED_STR_RE.finditer(text):
-        g1_val: object = match.group(1)
-        g2_val: object = match.group(2)
-        quoted_str = (
-            g1_val if isinstance(g1_val, str) else g2_val if isinstance(g2_val, str) else ""
-        )
-        quoted = quoted_str.strip()
-        if _is_path_candidate(quoted, diff_paths, basenames):
-            candidates.append(quoted)
+        g1 = match.group(1)
+        g2 = match.group(2)
+        quoted = g1 if isinstance(g1, str) else g2 if isinstance(g2, str) else ""
+        candidate = _candidate_from_token(quoted, summary)
+        if candidate is not None:
+            candidates.append(candidate)
 
     # 4. Words/tokens in line
     clean_text = _ITEM_ID_PREFIX_RE.sub("", text)
@@ -262,28 +403,28 @@ def _extract_candidates_from_text(
         if clean_word.startswith("file://"):
             clean_word = clean_word[len("file://") :]
         clean_word = clean_word.strip(_STRIP_PUNCT)
-        if _is_path_candidate(clean_word, diff_paths, basenames):
-            candidates.append(clean_word)
+        candidate = _candidate_from_token(clean_word, summary)
+        if candidate is not None:
+            candidates.append(candidate)
 
     return candidates
 
 
 def _verify_path_candidates(
     lines: list[str],
-    diff_paths: set[str],
-    basenames: set[str],
+    summary: _DiffSummary,
 ) -> tuple[set[str], set[str]]:
-    """Partition extracted path candidates into matched and unmatched sets."""
+    """Partition extracted path citations into matched and unmatched sets.
+
+    A cited path that is absent from the diff is never excused: it lands in
+    the unmatched set and fails the whole reason.
+    """
     matched: set[str] = set()
     unmatched: set[str] = set()
 
     for line in lines:
-        candidates = _extract_candidates_from_text(line, diff_paths, basenames)
-        for candidate in candidates:
-            if candidate in _REFERENCE_DOCS and candidate not in diff_paths:
-                continue
-
-            if _matches_diff_path(candidate, diff_paths, basenames):
+        for candidate in _extract_candidates_from_text(line, summary):
+            if _matches_diff_path(candidate, summary):
                 matched.add(candidate)
             else:
                 unmatched.add(candidate)
@@ -291,47 +432,67 @@ def _verify_path_candidates(
     return matched, unmatched
 
 
+def _count_kind(primary: str | None, secondary: str | None) -> str | None:
+    """Resolve the diff category a count claim is typed against.
+
+    Args:
+        primary: The category word written before the noun, if any.
+        secondary: The category word written after the noun, if any.
+
+    Returns:
+        The category name, or None when the claim names two conflicting
+        categories and therefore cannot be verified.
+    """
+    first = _COUNT_KIND_BY_WORD.get((primary or "").lower())
+    second = _COUNT_KIND_BY_WORD.get((secondary or "").lower())
+    if first and second:
+        return first if first == second else None
+    if first:
+        return first
+    if second:
+        return second
+    return _TOTAL_COUNT_KIND
+
+
 def _verify_count_citations(
     lines: list[str],
-    diff_paths: set[str],
-    deleted_paths: set[str],
-    binary_paths: set[str],
-    matched_paths: set[str],
+    summary: _DiffSummary,
 ) -> tuple[set[int], set[int]]:
-    """Partition extracted count citations into matched and unmatched sets."""
+    """Partition extracted count citations into matched and unmatched sets.
+
+    A count is backed only when the diff holds exactly that many entries of
+    the claimed category.  A category with no entry never backs a count, and
+    a count without a determinable category is unverifiable.
+    """
     matched: set[int] = set()
     unmatched: set[int] = set()
-    general_valid_counts = (len(diff_paths), len(deleted_paths), len(matched_paths))
 
     for line in lines:
-        for match in _FILE_COUNT_RE.finditer(line):
-            c1_val: object = match.group(1)
-            p0_val: object = match.group(0)
-            if not isinstance(c1_val, str) or not isinstance(p0_val, str):
+        for match in _COUNT_RE.finditer(line):
+            count_text = match.group("count")
+            if not isinstance(count_text, str):
                 continue
-            count_val = int(c1_val)
-            matched_phrase = p0_val.lower()
-            if "deleted" in matched_phrase:
-                expected = count_val == len(deleted_paths)
-            elif "binary" in matched_phrase:
-                expected = count_val == len(binary_paths)
+            count = int(count_text)
+            kind = _count_kind(match.group("kind"), match.group("kind_after"))
+            if kind is None:
+                unmatched.add(count)
+                continue
+            backing = summary.count_for(kind)
+            if backing > 0 and count == backing:
+                matched.add(count)
             else:
-                expected = count_val in general_valid_counts
-
-            if expected:
-                matched.add(count_val)
-            else:
-                unmatched.add(count_val)
+                unmatched.add(count)
 
         for match in _EXPLICIT_COUNT_RE.finditer(line):
-            c1_val_exp: object = match.group(1)
-            if not isinstance(c1_val_exp, str):
+            count_text = match.group(1)
+            if not isinstance(count_text, str):
                 continue
-            count_val = int(c1_val_exp)
-            if count_val in general_valid_counts:
-                matched.add(count_val)
+            count = int(count_text)
+            backing = summary.count_for(_TOTAL_COUNT_KIND)
+            if backing > 0 and count == backing:
+                matched.add(count)
             else:
-                unmatched.add(count_val)
+                unmatched.add(count)
 
     return matched, unmatched
 
@@ -340,15 +501,18 @@ def verify_reject_citations(
     reason_items: list[str] | str | None,
     diff_entries: Sequence[object],
 ) -> bool:
-    """Verify that citations in a reject reason reference actual paths or findings from the diff.
+    """Verify that citations in a reject reason reference actual diff evidence.
 
-    Checks that all cited paths appear in the proposal diff, that any cited counts
-    match the diff statistics, and that at least one concrete citation (path or count)
-    is present.
+    Every cited path must equal a diff entry path exactly after
+    normalization, and every cited count must be typed and backed by exactly
+    that many diff entries of the claimed category.  One unverifiable claim
+    fails the whole reason, and a reason without a single verified citation
+    fails too.
 
     Args:
         reason_items: List of reason bullet strings, a single reason string, or None.
-        diff_entries: Sequence of DiffEntry objects, dicts with 'path', or path strings.
+        diff_entries: Sequence of diff entry objects, mappings with 'path',
+            or path strings.
 
     Returns:
         True if all citations are verified against the diff and at least one
@@ -364,14 +528,12 @@ def verify_reject_citations(
     if not lines or not diff_entries:
         return False
 
-    diff_paths, deleted_paths, binary_paths, basenames = _extract_diff_info(diff_entries)
-    if not diff_paths:
+    summary = _extract_diff_info(diff_entries)
+    if not summary.paths:
         return False
 
-    matched_paths, unmatched_paths = _verify_path_candidates(lines, diff_paths, basenames)
-    matched_counts, unmatched_counts = _verify_count_citations(
-        lines, diff_paths, deleted_paths, binary_paths, matched_paths
-    )
+    matched_paths, unmatched_paths = _verify_path_candidates(lines, summary)
+    matched_counts, unmatched_counts = _verify_count_citations(lines, summary)
 
     if unmatched_paths or unmatched_counts:
         return False
