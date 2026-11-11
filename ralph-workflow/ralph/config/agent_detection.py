@@ -321,8 +321,71 @@ def autowire_chains_to_detected_agent(
     return sorted(default_agents)
 
 
+#: Trigger label of the ``enable_detected_agents`` write. The same label
+#: names the trigger in the warning that reports a skipped block, so the
+#: operator can attribute the skip to the flow that asked for it.
+_ENABLE_TRIGGER = "ralph --init: enable detected agents"
+
+
+def _agent_block_pattern(name: str) -> re.Pattern[str]:
+    """Return the pattern that matches the commented ``@AGENT-BLOCK`` of *name*."""
+    return re.compile(
+        rf"^# @AGENT-BLOCK-START: {re.escape(name)}\n"
+        rf"(?P<content>.*?)"
+        rf"^# @AGENT-BLOCK-END\n?",
+        re.MULTILINE | re.DOTALL,
+    )
+
+
+def _uncomment_block(content: str) -> str:
+    """Return the block body with its leading comment markers removed."""
+    return "\n".join(
+        line[2:] if line.startswith("# ") else line[1:] if line.startswith("#") else line
+        for line in content.splitlines()
+    )
+
+
+def _configured_agent_names(text: str) -> set[str]:
+    """Return the agent names the configuration in *text* already defines.
+
+    A document that does not parse defines nothing: the caller then reports
+    the parse failure of the candidate document instead of guessing which
+    agent is already configured.
+    """
+    try:
+        parsed = cast("dict[str, object]", tomllib.loads(text))
+    except ValueError:
+        return set()
+    agents = parsed.get("agents")
+    if not isinstance(agents, dict):
+        return set()
+    return {str(name) for name, value in agents.items() if isinstance(value, dict)}
+
+
 def enable_detected_agents(config_path: Path | None = None) -> list[str]:
-    """Activate untouched bundled blocks for installed agents, without changing active ones."""
+    """Activate untouched bundled blocks for installed agents, without changing active ones.
+
+    Every detected agent is activated one block at a time. The block is
+    uncommented, validated on its own, and the WHOLE candidate document --
+    the current file with that one block enabled -- is validated with
+    ``tomllib`` before it is accepted. A block that conflicts with what the
+    file already carries (an ``[agents.<name>]`` table the operator
+    configured, for instance) would make the whole document invalid, so it
+    is skipped with a warning that names the agent and the trigger, while
+    every other block is still applied. The operator's own lines are never
+    rewritten: a skipped block stays commented and the rest of the file is
+    left byte-identical.
+
+    The file is written once, at the end, and only when at least one block
+    was applied.
+
+    Args:
+        config_path: The agents configuration to activate blocks in. Defaults
+            to ``<global config dir>/ralph-workflow-agents.toml``.
+
+    Returns:
+        The names of the agents whose block was activated, in detection order.
+    """
     path = config_path or resolve_global_config_dir() / "ralph-workflow-agents.toml"
     try:
         text = path.read_text(encoding="utf-8")
@@ -337,25 +400,13 @@ def enable_detected_agents(config_path: Path | None = None) -> list[str]:
     enabled: list[str] = []
 
     for name in detect_installed_agents():
-        header = re.compile(rf"^\s*\[agents\.{re.escape(name)}\]\s*$", re.MULTILINE)
-        if header.search(text):
-            continue
-        block = re.compile(
-            rf"^# @AGENT-BLOCK-START: {re.escape(name)}\n"
-            rf"(?P<content>.*?)"
-            rf"^# @AGENT-BLOCK-END\n?",
-            re.MULTILINE | re.DOTALL,
-        )
-        match = block.search(text)
+        match = _agent_block_pattern(name).search(text)
         if match is None:
             continue
         content = cast(
             "str", match.group("content")
         )  # cast-policy: seam: structural boundary (sqlite Row / lazy module attr / protocol conferee)
-        uncommented = "\n".join(
-            line[2:] if line.startswith("# ") else line[1:] if line.startswith("#") else line
-            for line in content.splitlines()
-        )
+        uncommented = _uncomment_block(content)
         try:
             tomllib.loads(uncommented)
         except ValueError as exc:
@@ -363,13 +414,29 @@ def enable_detected_agents(config_path: Path | None = None) -> list[str]:
             logger.warning(msg)
             _std_logger.warning(msg)
             continue
-        text = text[: match.start()] + uncommented + "\n" + text[match.end() :]
+        candidate = text[: match.start()] + uncommented + "\n" + text[match.end() :]
+        try:
+            tomllib.loads(candidate)
+        except ValueError as exc:
+            conflict = (
+                f"[agents.{name}] is already configured"
+                if name in _configured_agent_names(text)
+                else "it conflicts with the existing configuration"
+            )
+            msg = (
+                f"Skipping conflicting agent block for {name}: {conflict} ({exc}). "
+                f"The existing configuration is kept unchanged (trigger: {_ENABLE_TRIGGER})."
+            )
+            logger.warning(msg)
+            _std_logger.warning(msg)
+            continue
+        text = candidate
         enabled.append(name)
 
     if enabled:
         write_agents_toml(
             path,
             text,
-            trigger="ralph --init: enable detected agents",
+            trigger=_ENABLE_TRIGGER,
         )
     return enabled

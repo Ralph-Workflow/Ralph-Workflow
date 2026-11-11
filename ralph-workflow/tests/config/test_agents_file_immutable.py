@@ -263,7 +263,9 @@ def test_pipeline_run_leaves_agents_file_byte_identical(
         counter_overrides={"iteration": 1},
     )
 
-    assert rc in (0, 1)
+    assert rc == 0, "the ordinary pipeline run failed before completing"
+    assert invoker.call_history, "the ordinary pipeline never invoked the stubbed agent"
+    assert invoker.call_history[0] == {"agent": "claude", "phase": "planning"}
     final_bytes = agents_path.read_bytes()
     final_sha256 = hashlib.sha256(final_bytes).hexdigest()
     assert final_bytes == initial_bytes
@@ -272,6 +274,32 @@ def test_pipeline_run_leaves_agents_file_byte_identical(
     assert not (config_home / "ralph-workflow-agents.toml.bak").exists()
     assert not any(
         p.name.startswith(".ralph-workflow-agents.toml.tmp") for p in config_home.iterdir()
+    )
+
+
+def test_diagnose_does_not_create_missing_agents_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A normal command does not create a missing user-global agents file."""
+    config_home = tmp_path / "xdg-config"
+    config_home.mkdir(parents=True, exist_ok=True)
+    home_dir = tmp_path / "home"
+    home_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+    monkeypatch.setenv("HOME", str(home_dir))
+
+    agents_path = config_home / "ralph-workflow-agents.toml"
+    assert not agents_path.exists()
+
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(workspace_dir)
+
+    result = CliRunner().invoke(app, ["--diagnose"])
+
+    assert result.exit_code in (0, 1)
+    assert not agents_path.exists(), (
+        "ordinary commands must use bundled defaults without creating the user-global agents file"
     )
 
 

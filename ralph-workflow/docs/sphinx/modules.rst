@@ -890,6 +890,13 @@ ralph.pipeline.effects.commit_effect
    :members:
    :show-inheritance:
 
+ralph.pipeline.effects.commit_review_reject_effect
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.effects.commit_review_reject_effect
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.effects.empty_commit_effect
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

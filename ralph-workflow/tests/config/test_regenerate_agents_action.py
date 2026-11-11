@@ -24,13 +24,16 @@ from ralph.config.bootstrap import ensure_global_agents_config, regenerate_all
 AGENTS_FILENAME = "ralph-workflow-agents.toml"
 
 
-def test_ensure_global_agents_config_creates_the_file(tmp_path: Path) -> None:
-    """A missing agents config is created and reported as created."""
+def test_ensure_global_agents_config_skips_a_missing_file(tmp_path: Path) -> None:
+    """A normal bootstrap leaves a missing agents config absent."""
+    # RALPH-TEST-REASON: the contract changed -- a normal bootstrap no longer
+    # creates a missing agents config; only the explicit `ralph --init` route
+    # does, so the creation assertions are replaced by the skip assertions.
     result = ensure_global_agents_config(tmp_path)
 
-    assert result.action == "created"
+    assert result.action == "skipped"
     assert result.path == tmp_path / AGENTS_FILENAME
-    assert result.path.is_file()
+    assert not result.path.exists()
     assert result.backup is None
 
 
@@ -54,7 +57,7 @@ def test_ensure_global_agents_config_reports_skipped_for_unchanged_content(
     tmp_path: Path,
 ) -> None:
     """An unchanged agents config is not regenerated and keeps no backup."""
-    created = ensure_global_agents_config(tmp_path)
+    created = ensure_global_agents_config(tmp_path, create_if_missing=True)
     assert created.action == "created"
     content = created.path.read_text(encoding="utf-8")
 
@@ -87,7 +90,7 @@ def test_regenerate_all_reports_skipped_for_unchanged_agents_config(
     """regenerate_all leaves an unchanged agents config untouched."""
     global_dir = tmp_path / "config"
     global_dir.mkdir()
-    created = ensure_global_agents_config(global_dir)
+    created = ensure_global_agents_config(global_dir, create_if_missing=True)
     content = created.path.read_text(encoding="utf-8")
 
     results = regenerate_all(global_dir=global_dir)

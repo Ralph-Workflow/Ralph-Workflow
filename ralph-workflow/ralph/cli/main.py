@@ -286,12 +286,19 @@ def _bootstrap_global_configs(
     *, display_context: DisplayContext, emit_welcome: bool = True
 ) -> None:
     """Create user-global configs, optionally leaving onboarding to the caller."""
+    agents_result = ensure_global_agents_config()
     results = [
         ensure_global_config(),
-        ensure_global_agents_config(),
+        agents_result,
         ensure_global_mcp_config(),
         *ensure_global_policy_configs(),
     ]
+    if emit_welcome and not agents_result.path.exists():
+        display = resolve_active_display(None, display_context)
+        display.emit_warning(
+            f"Agents configuration is missing: {agents_result.path}. "
+            "Run `ralph --init` to create it."
+        )
     registry = None
     if any(r.action in {"created", "regenerated"} for r in results):
         registry = _try_load_registry()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import textwrap
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ import pytest
 import ralph.config.loader as config_loader
 from ralph.skills import state_store
 from tests._real_config_guard_support import (
+    _BUNDLED_AGENTS_TEMPLATE,
     _STATE,
     _clear_recorded_read_violations,
     _extract_read_path,
@@ -580,9 +582,25 @@ def test_bundled_defaults_agents_toml_is_protected_and_valid() -> None:
 
     bundled_dir = default_dir()
     bundled_agents = bundled_dir / "ralph-workflow-agents.toml"
+    assert bundled_agents.resolve() == _BUNDLED_AGENTS_TEMPLATE.resolve()
     assert bundled_agents.exists()
     assert bundled_agents.is_file()
 
-    content = bundled_agents.read_text(encoding="utf-8")
+    initial_bytes = bundled_agents.read_bytes()
+    content = initial_bytes.decode("utf-8")
+    parsed = tomllib.loads(content)
+    assert isinstance(parsed["agents"], dict)
+    assert parsed["agents"]["claude"]["cmd"] == "claude"
     assert "[agents.claude]" in content
     assert "# @AGENT-BLOCK-START: codex" in content
+    assert bundled_agents.read_bytes() == initial_bytes
+
+
+def test_default_guard_snapshot_includes_bundled_agents_template() -> None:
+    """The session guard snapshots the bundled agents template against mutation."""
+    snapshot = _scan_guarded_config_files()
+
+    assert _BUNDLED_AGENTS_TEMPLATE.resolve() in snapshot
+    guarded = snapshot[_BUNDLED_AGENTS_TEMPLATE.resolve()]
+    assert guarded.sha256
+    assert not guarded.is_dir

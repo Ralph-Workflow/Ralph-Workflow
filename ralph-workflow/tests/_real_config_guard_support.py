@@ -16,6 +16,13 @@ _REAL_XDG_CONFIG_HOME: Path = (
     if os.environ.get("XDG_CONFIG_HOME")
     else (_REAL_HOME / ".config").resolve()
 )
+_BUNDLED_AGENTS_TEMPLATE = (
+    Path(__file__).resolve().parents[1]
+    / "ralph"
+    / "policy"
+    / "defaults"
+    / "ralph-workflow-agents.toml"
+)
 
 _WRITE_FLAGS: int = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | getattr(os, "O_APPEND", 0)
 
@@ -104,6 +111,7 @@ def _scan_guarded_config_files(
     prev_scanning = _STATE.scanning
     _STATE.scanning = True
     try:
+        include_bundled_agents_template = guarded_dirs is None
         if guarded_dirs is None:
             guarded_dirs = _resolve_guarded_config_dirs()
         snapshot: dict[Path, _ConfigPathSnapshot] = {}
@@ -158,6 +166,18 @@ def _scan_guarded_config_files(
                             )
                     except OSError:
                         pass
+        if include_bundled_agents_template and _BUNDLED_AGENTS_TEMPLATE.is_file():
+            st = _BUNDLED_AGENTS_TEMPLATE.stat()
+            resolved = _BUNDLED_AGENTS_TEMPLATE.resolve()
+            snapshot[resolved] = _ConfigPathSnapshot(
+                path=resolved,
+                is_dir=False,
+                mtime_ns=st.st_mtime_ns,
+                size=st.st_size,
+                sha256=_compute_file_sha256(_BUNDLED_AGENTS_TEMPLATE),
+                mode=st.st_mode,
+                ctime_ns=st.st_ctime_ns,
+            )
         return snapshot
     finally:
         _STATE.scanning = prev_scanning

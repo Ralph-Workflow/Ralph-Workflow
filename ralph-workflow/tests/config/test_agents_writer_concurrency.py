@@ -193,3 +193,65 @@ def test_concurrent_writers_in_one_directory_use_distinct_temp_names(
         if entry.name not in {first.name, second.name} and not entry.name.endswith(".bak")
     }
     assert leftovers == set(), f"stray files left behind: {sorted(leftovers)}"
+
+
+def test_failed_writer_keeps_a_concurrent_writers_backup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failing writer must never destroy another writer's recovery copy.
+
+    The race is deterministic: writer A publishes its backup and is then
+    held at the target replace, writer B completes a successful write in
+    that window, and only then does A fail. The final file must be B's
+    valid TOML and the backup must still hold the recoverable predecessor
+    bytes -- the failing writer may not delete a backup it does not own.
+    """
+    target = tmp_path / _AGENTS_FILENAME
+    original = '[agents.claude]\nmodel = "operator"\n'
+    target.write_text(original, encoding="utf-8")
+    reached_replace = threading.Event()
+    release_a = threading.Event()
+    real_replace = Path.replace
+
+    def blocking_replace(self: Path, target_path: object, *args: object, **kwargs: object) -> Path:
+        # Only the TARGET replace is held: writer A has already published its
+        # backup by then, which is the state the race needs.
+        if threading.current_thread().name == "writer-a" and str(target_path) == str(target):
+            reached_replace.set()
+            assert release_a.wait(timeout=10), "writer A was never released"
+            raise OSError("simulated replace failure")
+        real_replace(self, target_path, *args, **kwargs)
+        return self
+
+    monkeypatch.setattr(Path, "replace", blocking_replace)
+
+    outcome: dict[str, object] = {}
+
+    def run_writer_a() -> None:
+        try:
+            write_agents_toml(target, '[agents.claude]\nmodel = "writer-a"\n', trigger="writer-a")
+        except OSError as exc:
+            outcome["error"] = exc
+
+    thread = threading.Thread(target=run_writer_a, name="writer-a")
+    thread.start()
+    assert reached_replace.wait(timeout=10), "writer A never reached the target replace"
+
+    write_agents_toml(target, '[agents.claude]\nmodel = "writer-b"\n', trigger="writer-b")
+
+    release_a.set()
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    assert isinstance(outcome.get("error"), OSError)
+
+    # The successful writer owns the file.
+    assert target.read_text(encoding="utf-8") == '[agents.claude]\nmodel = "writer-b"\n'
+    tomllib.loads(target.read_text(encoding="utf-8"))
+
+    # The failed writer left the concurrent writer's recovery copy alone.
+    backup = target.with_name(f"{target.name}.bak")
+    assert backup.read_text(encoding="utf-8") == original
+
+    # No scratch file survives the race.
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == sorted([target.name, backup.name])

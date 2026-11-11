@@ -185,7 +185,7 @@ def init_command(
             )
         global_results: list[BootstrapResult] = [
             ensure_global_config(),
-            ensure_global_agents_config(),
+            ensure_global_agents_config(create_if_missing=True),
             ensure_global_mcp_config(),
             *ensure_global_policy_configs(),
         ]

@@ -11,9 +11,8 @@ The tests pin the operator-visible contract:
 * the bundled agents template exists, parses, and carries every built-in
   agent block;
 * neither main-config template still ships an ``[agents.*]`` block;
-* a MISSING agents file is seeded once from the bundled template, while an
-  EXISTING one is left byte-identical outside ``ralph --init`` /
-  ``ralph --regenerate-config``;
+* a normal bootstrap leaves a MISSING agents file absent, while explicit
+  ``ralph --init`` creation and ``ralph --regenerate-config`` rewrites remain;
 * ``ralph --regenerate-config`` refreshes the file and keeps the operator's
   previous bytes in a ``.bak``;
 * ``load_config`` reads ``[agents.*]`` from it; and
@@ -107,44 +106,21 @@ def test_main_template_opens_on_agent_chains() -> None:
     assert tables[0] == "[agent_chains]", f"first table is {tables[0]!r}"
 
 
-def test_ensure_global_agents_config_creates_the_file(tmp_path: Path) -> None:
-    """First run seeds ~/.config/ralph-workflow-agents.toml.
-
-    The documented contract has two halves, and this test pins the
-    seeding half: an EXISTING agents file is never modified outside
-    ``ralph --init`` / ``ralph --regenerate-config``, but a MISSING file
-    IS seeded once from the bundled template on the first run that finds
-    it absent. The seed must be valid TOML carrying the bundled
-    template's content, and it must leave neither a backup (there was
-    nothing to back up) nor a scratch file behind.
-    """
+def test_ensure_global_agents_config_skips_a_missing_file(tmp_path: Path) -> None:
+    """A normal bootstrap leaves a missing agents file absent."""
+    # RALPH-TEST-REASON: the contract changed -- a normal bootstrap no longer
+    # seeds a MISSING agents file from the bundled template; only the explicit
+    # `ralph --init` route creates it, so the seeding assertions are replaced
+    # by the skip assertions below.
     result = ensure_global_agents_config(tmp_path)
 
     target = tmp_path / AGENTS_FILENAME
-    assert result.action == "created"
-    assert target.is_file()
-    with target.open("rb") as handle:
-        assert "claude" in tomllib.load(handle)["agents"]
-
-    # The seed IS the bundled template, verbatim.
-    assert target.read_text(encoding="utf-8") == _bundled_agents_template().read_text(
-        encoding="utf-8"
-    )
-
-    # The reported result names the seeded file, and there is no backup:
-    # a first seed has nothing to back up.
+    assert result.action == "skipped"
     assert result.path == target
-    assert result.backup is None, (
-        "seeding a MISSING file must not create a backup; there was nothing to back up"
-    )
+    assert result.backup is None
+    assert not target.exists()
     assert not (tmp_path / f"{AGENTS_FILENAME}.bak").exists()
     assert _scratch_files(tmp_path) == []
-
-    # Seeded ONCE: a second run finds the file present and changes nothing.
-    seeded_bytes = target.read_bytes()
-    second = ensure_global_agents_config(tmp_path)
-    assert second.action == "skipped"
-    assert target.read_bytes() == seeded_bytes
 
 
 def test_ensure_global_agents_config_is_idempotent(tmp_path: Path) -> None:
@@ -155,7 +131,9 @@ def test_ensure_global_agents_config_is_idempotent(tmp_path: Path) -> None:
     operator's own content must survive a bootstrap run byte-for-byte,
     with no backup, no scratch file, and no commit side effect.
     """
-    ensure_global_agents_config(tmp_path)
+    # RALPH-TEST-REASON: the seeding call is gone -- a normal bootstrap must
+    # not create the file, so the fixture starts from the operator's own
+    # content instead of a seeded template.
     (tmp_path / AGENTS_FILENAME).write_text('[agents.custom]\ncmd = "mine"\n', encoding="utf-8")
     operator_bytes = (tmp_path / AGENTS_FILENAME).read_bytes()
 

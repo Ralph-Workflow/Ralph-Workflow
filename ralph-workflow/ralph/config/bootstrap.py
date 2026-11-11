@@ -323,9 +323,12 @@ def ensure_global_config(global_dir: Path | None = None, *, force: bool = False)
 
 
 def ensure_global_agents_config(
-    global_dir: Path | None = None, *, force: bool = False
+    global_dir: Path | None = None,
+    *,
+    force: bool = False,
+    create_if_missing: bool = False,
 ) -> BootstrapResult:
-    """Ensure ~/.config/ralph-workflow-agents.toml exists, from the bundled template.
+    """Handle the user-global agents file without implicit first-run creation.
 
     Agent CLI definitions are transport plumbing (binary, flags, output
     parser), so they live apart from the main config, which opens on the
@@ -334,6 +337,7 @@ def ensure_global_agents_config(
     Args:
         global_dir: Override the global config directory. Defaults to resolve_global_config_dir().
         force: When True, overwrite an existing file (backs it up to <name>.bak first).
+        create_if_missing: Create a missing file for the explicit ``ralph --init`` route.
 
     Returns:
         BootstrapResult describing the action taken.
@@ -342,8 +346,13 @@ def ensure_global_agents_config(
         global_dir = resolve_global_config_dir()
     target = global_dir / _GLOBAL_AGENTS_FILENAME
     source = _get_bundled_defaults_dir() / _GLOBAL_AGENTS_FILENAME
+    if not target.exists() and not (force or create_if_missing):
+        return BootstrapResult(target, "skipped", None)
     return write_agents_with_backup(
-        source, target, force, trigger="ralph --regenerate-config" if force else "ralph-workflow"
+        source,
+        target,
+        force,
+        trigger="ralph --regenerate-config" if force else "ralph --init",
     )
 
 

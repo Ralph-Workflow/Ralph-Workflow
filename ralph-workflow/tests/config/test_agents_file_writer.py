@@ -298,21 +298,28 @@ def test_backup_exists_before_the_replace_overwrites_the_target(
     original_content = '[agents.claude]\nmodel = "old"\n'
     target_path.write_text(original_content, encoding="utf-8")
     bak_path = target_path.with_name(f"{target_path.name}.bak")
-    observed: list[bytes | None] = []
+    observed: list[tuple[str, bytes | None]] = []
     real_replace = os.replace
 
     def observing_replace(
         src: str | bytes | os.PathLike[str] | os.PathLike[bytes],
         dst: str | bytes | os.PathLike[str] | os.PathLike[bytes],
     ) -> None:
-        observed.append(bak_path.read_bytes() if bak_path.is_file() else None)
+        observed.append((str(dst), bak_path.read_bytes() if bak_path.is_file() else None))
         real_replace(src, dst)
 
     monkeypatch.setattr(os, "replace", observing_replace)
 
     write_agents_toml(target_path, '[agents.claude]\nmodel = "new"\n', trigger="backup_order")
 
-    assert observed == [original_content.encode("utf-8")]
+    # RALPH-TEST-REASON: the backup publication is an atomic move of its own,
+    # so the recorded moves are keyed by destination and the move onto the
+    # target file must observe the backup already holding the operator's bytes.
+    # The backup is published before the target replace, so the bytes the
+    # operator had are recoverable on disk at the moment the target moves.
+    target_moves = [entry for entry in observed if entry[0] == str(target_path)]
+    assert len(target_moves) == 1
+    assert target_moves[0][1] == original_content.encode("utf-8")
     assert bak_path.read_text(encoding="utf-8") == original_content
     assert target_path.read_text(encoding="utf-8") == '[agents.claude]\nmodel = "new"\n'
 

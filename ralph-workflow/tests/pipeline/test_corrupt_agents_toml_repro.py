@@ -14,15 +14,18 @@ from unittest.mock import MagicMock
 
 import pytest
 from loguru import logger
+from rich.console import Console
 
 from ralph.agents.registry import AgentRegistry
 from ralph.config import reset_fallback_warning_registry
+from ralph.config.enums import Verbosity
 from ralph.config.loader import load_config
 from ralph.display.auto_integrate_message import OperationDisplayState
+from ralph.display.context import make_display_context
 from ralph.git.rebase.rebase import RebaseSuccess
 from ralph.git.resolution_failure_cause import ResolutionFailureCause
 from ralph.pipeline import auto_integrate_rebase_merge as merge_mod
-from ralph.pipeline import resolve_conflicted_rebase
+from ralph.pipeline import resolve_conflicted_rebase, runner
 from ralph.pipeline.auto_integrate_agent import build_agent_rebase_stop_resolver
 from ralph.pipeline.conflict_resolution import (
     RebaseStop,
@@ -30,7 +33,10 @@ from ralph.pipeline.conflict_resolution import (
     bind_active_rebase_resolution_session,
 )
 from ralph.pipeline.conflict_resolution.session import ResolutionSession
+from ralph.pipeline.effects import CommitEffect, Effect, InvokeAgentEffect
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.run_loop import LoopContext, resolve_paused_rebase
+from ralph.pipeline.run_loop import run as pipeline_run
 from ralph.policy.loader import default_dir, load_policy
 from ralph.workspace.scope import WorkspaceScope
 
@@ -457,3 +463,80 @@ def test_corrupt_agents_toml_load_config_diagnose_and_runner_warn_with_recovery_
     assert "line 2" in runner_warn
     assert "column" in runner_warn
     assert "ralph --regenerate-config" in runner_warn
+
+
+def test_corrupt_agents_toml_ordinary_pipeline_run_falls_back_without_crashing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The public ordinary runner survives corrupt agents TOML using defaults."""
+    repo_root = tmp_path / "repo"
+    _seed_workspace(repo_root)
+    agents_file, original_bytes = _setup_corrupt_agents_toml(
+        monkeypatch,
+        tmp_path,
+        content="[agents]\ninvalid toml = = =\n",
+    )
+    scope = WorkspaceScope(repo_root)
+
+    bundle = load_policy(default_dir())
+    phases = dict(bundle.pipeline.phases)
+    for name, phase_def in phases.items():
+        if phase_def.invocation_gate is not None:
+            phases[name] = phase_def.model_copy(update={"invocation_gate": None})
+    bundle = bundle.model_copy(
+        update={"pipeline": bundle.pipeline.model_copy(update={"phases": phases})}
+    )
+
+    invoked: list[tuple[str, str]] = []
+
+    def fake_execute_effect(
+        effect: Effect, _config: object, _scope: WorkspaceScope
+    ) -> PipelineEvent:
+        if isinstance(effect, InvokeAgentEffect):
+            invoked.append((effect.agent_name, effect.phase))
+            return PipelineEvent.AGENT_SUCCESS
+        if isinstance(effect, CommitEffect):
+            return PipelineEvent.COMMIT_SUCCESS
+        raise AssertionError(f"Unexpected effect: {effect}")
+
+    monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(runner, "load_policy_or_die", lambda _p: bundle)
+    monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(runner, "materialize_prompt_for_phase", lambda *a, **kw: "noop")
+    monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
+    monkeypatch.setattr(
+        runner, "phase_event_after_agent_run", lambda **kw: PipelineEvent.AGENT_SUCCESS
+    )
+    monkeypatch.setattr("ralph.pipeline.checkpoint.save", lambda *a, **kw: None)
+    context = make_display_context(
+        console=Console(record=True, force_terminal=False, color_system=None)
+    )
+    monkeypatch.setattr(runner, "make_display_context", lambda **kw: context)
+
+    reset_fallback_warning_registry()
+    warnings: list[str] = []
+    sink_id = logger.add(warnings.append, level="WARNING", format="{message}")
+    try:
+        config = load_config(
+            config_path=repo_root / ".agent" / "ralph-workflow.toml",
+            workspace_scope=scope,
+        )
+        exit_code = pipeline_run(
+            config,
+            verbosity=Verbosity.QUIET,
+            counter_overrides={"iteration": 1},
+        )
+    finally:
+        logger.remove(sink_id)
+
+    assert exit_code == 0
+    assert invoked
+    assert config.agents == {}
+    assert agents_file.read_bytes() == original_bytes
+    warning = "\n".join(warnings)
+    assert str(agents_file) in warning
+    assert "line 2" in warning
+    assert "column" in warning
+    assert "ralph --regenerate-config" in warning
+    assert "using built-in default" in warning
