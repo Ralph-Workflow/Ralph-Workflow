@@ -33,6 +33,20 @@ Two further rules come straight from the dependency policy:
     A new lockfile entry with no artifact hash is flagged: without the
     hash the lockfile cannot pin the bytes that will be installed.
 
+``lockfile resolution``
+    A new direct dependency must resolve in the current lockfile
+    (``uv.lock``). An unpinned direct package, or an absent or malformed
+    current lockfile, fails closed with a missing-lock-entry finding.
+
+DIRECT VS TRANSITIVE DEPENDENCIES
+
+Top-level direct requirements declared in ``pyproject.toml`` require
+a resolvable source, publisher evidence, and lockfile resolution.
+Transitive dependencies resolved into ``uv.lock`` are governed by
+lockfile reproducibility and artifact hash pinning rather than direct
+publisher declarations, matching ``transitive_dependency_policy`` in the
+project dependency policy.
+
 INPUT SEAM
 
 The gate is a pure function over two *content sets* — a mapping of
@@ -637,11 +651,10 @@ def audit_dependency_change(
                     ),
                 )
             )
-        if (
-            baseline_lock is not None
-            and current_lock is not None
-            and requirement.name not in lock_names
-        ):
+        # Every newly added direct dependency must resolve in the current
+        # lockfile. If uv.lock is absent, malformed, or lacks the package,
+        # lock_names will not contain it, failing closed.
+        if requirement.name not in lock_names:
             findings.append(
                 DependencyFinding(
                     file_path=PYPROJECT_MANIFEST,
@@ -676,6 +689,9 @@ def audit_dependency_change(
             ]
         )
 
+    # Check newly added lockfile entries (both direct and transitive).
+    # Per transitive_dependency_policy, transitive packages in uv.lock
+    # are governed by artifact hash pinning, not by direct publisher declarations.
     for key in sorted(set(current_packages) - set(baseline_packages)):
         entry = current_packages[key]
         if not _lock_entry_is_downloaded(entry):

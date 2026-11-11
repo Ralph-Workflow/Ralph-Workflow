@@ -283,6 +283,95 @@ sdist = { url = "https://example.invalid/halfgated.tar.gz", hash = "sha256:ccc" 
     assert CATEGORY_MISSING_HASH not in _categories(audit_dependency_change(_baseline(), current))
 
 
+# --- lockfile missing / malformed / transitive ------------------------------
+
+
+def test_new_package_with_deleted_current_lockfile_fails() -> None:
+    """When a new package is declared but uv.lock is absent, lock check fails."""
+    baseline = _baseline()
+    current = _current(
+        '[project]\nname = "demo"\ndependencies = [\n'
+        '  "typer>=0.12",\n'
+        '  "halfgated-pkg-4c1d>=1.0",  # publisher: Acme Inc\n'
+        "]\n"
+        "\n"
+        "[tool.ralph.dependency-evidence.halfgated-pkg-4c1d]\n"
+        'source = "https://pypi.org/simple"\n',
+        lock=None,
+    )
+    findings = audit_dependency_change(baseline, current)
+    assert CATEGORY_MISSING_LOCK_ENTRY in _categories(findings)
+    finding = next(f for f in findings if f.category == CATEGORY_MISSING_LOCK_ENTRY)
+    assert "halfgated-pkg-4c1d" in finding.detail
+    assert "re-lock" in finding.detail
+
+
+def test_new_package_with_malformed_current_lockfile_fails() -> None:
+    """When a new package is declared but uv.lock is malformed, lock check fails."""
+    baseline = _baseline()
+    current = _current(
+        '[project]\nname = "demo"\ndependencies = [\n'
+        '  "typer>=0.12",\n'
+        '  "halfgated-pkg-4c1d>=1.0",  # publisher: Acme Inc\n'
+        "]\n"
+        "\n"
+        "[tool.ralph.dependency-evidence.halfgated-pkg-4c1d]\n"
+        'source = "https://pypi.org/simple"\n',
+        lock="malformed toml [[[",
+    )
+    findings = audit_dependency_change(baseline, current)
+    assert CATEGORY_MISSING_LOCK_ENTRY in _categories(findings)
+    finding = next(f for f in findings if f.category == CATEGORY_MISSING_LOCK_ENTRY)
+    assert "halfgated-pkg-4c1d" in finding.detail
+
+
+def test_new_package_with_valid_locked_entry_passes() -> None:
+    """When a new package has source, publisher, and valid lock entry, audit is clean."""
+    baseline = _baseline()
+    lock_with_pkg = (
+        _BASE_LOCK
+        + """
+[[package]]
+name = "halfgated-pkg-4c1d"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://example.invalid/halfgated.tar.gz", hash = "sha256:ccc" }
+"""
+    )
+    current = _current(
+        '[project]\nname = "demo"\ndependencies = [\n'
+        '  "typer>=0.12",\n'
+        '  "halfgated-pkg-4c1d>=1.0",  # publisher: Acme Inc\n'
+        "]\n"
+        "\n"
+        "[tool.ralph.dependency-evidence.halfgated-pkg-4c1d]\n"
+        'source = "https://pypi.org/simple"\n',
+        lock=lock_with_pkg,
+    )
+    findings = audit_dependency_change(baseline, current)
+    assert findings == []
+
+
+def test_transitive_dependency_in_lockfile_requires_hash_not_publisher() -> None:
+    """Transitive packages in uv.lock require artifact hashes, not direct publisher evidence."""
+    baseline = _baseline()
+    lock_with_transitive = (
+        _BASE_LOCK
+        + """
+[[package]]
+name = "transitive-lib"
+version = "2.1.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://example.invalid/transitive.whl", hash = "sha256:111" },
+]
+"""
+    )
+    current = _current(_BASE_PYPROJECT, lock=lock_with_transitive)
+    findings = audit_dependency_change(baseline, current)
+    assert findings == []
+
+
 # --- CLI contract -----------------------------------------------------------
 
 
