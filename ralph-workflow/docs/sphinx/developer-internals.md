@@ -443,6 +443,10 @@ Continuation attempts often run in fresh supervisor processes where in-memory st
    - If the stop identity, eligible resolver agents, and configuration fingerprints are unchanged, continuation resolution is refused. Exactly one actionable `WAITING` status line is emitted instead of repeated `CRITICAL` log floods and busy process respawns.
    - Resolution is re-entered only when the gate key changes (such as when conflict identity, eligible agents, or configuration change, or when backoff is reset).
    - Pre-existing integration records lacking the gate key field deserialize safely and operate in ungated mode for backward compatibility.
+3. **Forced operator retry via `ralph --retry`**:
+   - Operators can bypass the durable retry gate at any time using `ralph --retry` (or `ralph --retry-integration`).
+   - The CLI passes `force_retry=True` to `recover_incomplete_integration`, which constructs or forwards launch-capable conflict/rebase resolver callbacks and an active `RecoveryController` from the pipeline context.
+   - Forced retry executes exactly one resolution attempt; if resolution cannot complete, the new gate key is recorded back to disk so subsequent regular runs remain gated.
 
 ### Gitlink conflict resolution and escalation on sight
 

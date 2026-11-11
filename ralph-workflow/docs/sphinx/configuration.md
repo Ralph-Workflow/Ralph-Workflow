@@ -345,6 +345,16 @@ Automatic retries are bounded to execute at most once per distinct file
 fingerprint (SHA-256 hash of file contents), preventing tight retry loops or
 CPU spinning during active editing.
 
+When an integration or paused rebase conflict resolution is retained, subsequent
+process invocations enforce a durable continuation retry gate across processes.
+If conflict identity, eligible resolver agents, and configuration files are
+unchanged, continuation resolution is suppressed to avoid repeated execution
+and critical log flooding. Operators can force immediate re-entry into the
+retained resolution flow at any time by running `ralph --retry` (or
+`ralph --retry-integration`). This bypasses the retry gate for exactly one
+attempt. If the failure stemmed from configuration issues, running
+`ralph --check-config` validates the repaired files before retrying.
+
 Interrupted target reconciliation also retains partial resolver edits in the
 worktree that owns the target branch. Recovery resumes that operation before
 starting feature integration; it does not abort completed resolution work to

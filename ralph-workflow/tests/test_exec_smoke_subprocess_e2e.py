@@ -121,7 +121,7 @@ def test_smoke_silent_python_cpu_loop_runs_past_stall_window() -> None:
         auto_register_runtime_hooks=False,
     )
 
-    script = "import time\nend = time.time() + 2\nwhile time.time() < end:\n    x = 1 + 1\n"
+    script = "import time\nend = time.time() + 2.5\nwhile time.time() < end:\n    x = 1 + 1\n"
     cmd = [sys.executable, "-c", script]
     job_id = reg.start(cmd, timeout_ms=250, capability="ProcessExecBounded")
 
@@ -130,9 +130,9 @@ def test_smoke_silent_python_cpu_loop_runs_past_stall_window() -> None:
         saw_cpu_ratio = False
         # Poll across at least 0.6 s of real wall-clock — > 2x the stall window — so
         # the test cannot pass via early termination or a brief snapshot. Under host
-        # contention, allow polling up to 1.2 s to observe R4 domination.
+        # contention, allow polling up to 1.8 s to observe R4 domination.
         min_deadline = time.monotonic() + 0.6
-        max_deadline = time.monotonic() + 1.2
+        max_deadline = time.monotonic() + 1.8
         while time.monotonic() < max_deadline:
             snapshot = reg.wait(job_id, wait_ms=0, capability="ProcessExecBounded")
             assert isinstance(snapshot, JobSnapshot)

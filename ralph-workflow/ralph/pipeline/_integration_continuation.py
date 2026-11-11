@@ -181,9 +181,9 @@ def _continue_merge_resolution(
         write_record(root, latest_record.with_resolution_gate_key(gate_key))
         return "merge resolution retained; continuation resolver required"
 
-    from ralph.pipeline.auto_integrate_resolve import _resolve_and_commit_with_reason
+    from ralph.pipeline.auto_integrate_resolve import resolve_and_commit_with_reason
 
-    result = _resolve_and_commit_with_reason(root, target, conflict_resolver)
+    result = resolve_and_commit_with_reason(root, target, conflict_resolver)
     if result.outcome != "success":
         latest_record = read_record(root) or record
         write_record(root, latest_record.with_resolution_gate_key(gate_key))

@@ -548,9 +548,16 @@ def _handle_retry_integration(
     except Exception as exc:
         logger.debug("Config load during explicit retry: {}", exc)
 
+    from ralph.pipeline.auto_integrate_recovery import build_recovery_context
+
+    cr, rs, ctrl = build_recovery_context(scope, cfg, display_context=display_context)
+
     outcome = recover_incomplete_integration(
         scope,
         config=cfg,
+        conflict_resolver=cr,
+        rebase_stop_resolver=rs,
+        recovery_controller=ctrl,
         force_retry=True,
     )
     if outcome is not None:

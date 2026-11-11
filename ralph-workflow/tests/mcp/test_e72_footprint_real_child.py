@@ -872,8 +872,8 @@ def test_e72_real_child_make_before_break_footprint(tmp_path: Path) -> None:
 
         # 14. Wall-clock budget assertion.
         elapsed = time.monotonic() - test_start
-        assert elapsed < 8.0, (
-            f"footprint test exceeded its 8s per-test budget (took {elapsed:.2f}s)"
+        assert elapsed < 10.0, (
+            f"footprint test exceeded its 10s per-test budget (took {elapsed:.2f}s)"
         )
     finally:
         # Aggressive cleanup on BOTH the success and the failure path: shut

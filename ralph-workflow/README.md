@@ -74,6 +74,12 @@ keep the older refuse-and-retry behavior. See the
 [configuration reference](docs/sphinx/configuration.md#auto-integration) for
 all six settings.
 
+When merge or rebase conflict resolution retains progress for an operator or
+another agent, rerun `ralph --retry` (or `ralph --retry-integration`) to force
+re-entry into the retained resolution flow. The command bypasses the durable
+continuation retry gate for one attempt without spinning in repeated critical
+alarms.
+
 ### Accidental damage protection: two-stage commit review
 
 Before any code is committed, Ralph Workflow evaluates the pending diff through a two-stage commit review gate. It is a **damage gate, not a code review**: it asks only whether the diff looks like accidental damage. Code quality and plan adherence belong to the analysis phase.

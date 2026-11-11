@@ -147,6 +147,30 @@ All checks passed. Ready for `ralph`.
 If any check is red, fix it before running a real workflow. The diagnostic
 report tells you exactly which check failed and what it expected.
 
+## Retrying retained integrations with `ralph --retry`
+
+When auto-integration rebase or merge conflict resolution is interrupted, fails due to agent errors or configuration issues, or is retained for human intervention, Ralph Workflow persists an `IntegrationRecord` on disk with a continuation retry gate key.
+
+If you re-run `ralph`, the durable continuation retry gate checks whether the conflict identity, eligible resolver agents, and configuration files are identical to the prior attempt. If nothing has changed, Ralph Workflow suppresses re-invoking the resolver and emits a quiet `WAITING` status line rather than spinning or repeating critical alarms.
+
+To force immediate re-entry into the retained conflict resolution workflow, run:
+
+```bash
+ralph --retry
+```
+
+(The alias `ralph --retry-integration` performs the identical action.)
+
+### Safe triggers and operation limits
+
+- **Gate bypass**: `ralph --retry` executes exactly one forced resolution attempt (`force_retry=True`), bypassing the durable gate. If resolution cannot complete, the retry gate key is updated on disk so subsequent non-forced executions remain quietly gated.
+- **Configuration repair**: If the conflict resolution aborted on malformed TOML (`CONFIG_FAILURE`), repair the offending configuration file and run `ralph --check-config` to verify syntax before invoking `ralph --retry`.
+- **Spent-chain escalation**: When all configured resolver agents are spent or cooling down, or when conflicts are out of reach (such as diverged gitlink submodule pointers), the engine escalates to an actionable operator hand-off message naming each spent candidate and the exact git command needed to resolve the conflicted paths manually:
+  ```bash
+  git add -- <conflicted-paths>
+  ```
+  After resolving and staging conflicts manually, run `ralph --retry` to resume the pipeline.
+
 ## Common failure modes and what they mean
 
 | Symptom                                          | Likely cause                                  | Fix                                                                |

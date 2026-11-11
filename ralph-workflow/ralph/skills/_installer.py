@@ -429,7 +429,6 @@ def _materialize_canonical_skill(canonical: Path, skill_name: str) -> bool:
     still proceed with the rest of the install / auto-commit pipeline.
     """
     try:
-        materialize_skills_to_claude_dir(canonical)
         bundled_content = get_skill_content(skill_name)
         bundled_sha = hashlib.sha256(bundled_content.encode("utf-8")).hexdigest()
         skill_dir = canonical / skill_name

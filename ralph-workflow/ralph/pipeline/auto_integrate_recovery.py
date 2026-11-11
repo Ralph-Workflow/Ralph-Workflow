@@ -114,8 +114,10 @@ from ralph.pipeline.rebase_state import RebaseState, StartupRetentionReason
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
+    from ralph.display.context import DisplayContext
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
     from ralph.pipeline.conflict_resolution import RebaseStopResolver
+    from ralph.pipeline.state import PipelineState
     from ralph.recovery.controller import RecoveryController
     from ralph.workspace.scope import WorkspaceScope
 
@@ -243,6 +245,92 @@ def recovery_retained_record(state: RebaseState | None) -> bool:
     retained.
     """
     return state is not None and state.recovery_record_retained
+
+
+def build_recovery_context(
+    workspace_scope: WorkspaceScope,
+    config: UnifiedConfig | None,
+    *,
+    display_context: DisplayContext | None = None,
+    state: PipelineState | None = None,
+) -> tuple[ConflictResolver | None, RebaseStopResolver | None, RecoveryController | None]:
+    """Build launch-capable conflict/rebase resolvers and recovery controller.
+
+    Uses the existing pipeline context (PolicyBundle, AgentRegistry,
+    ParallelDisplay, DefaultPipelineFactory, RecoveryController) to build
+    the production conflict and rebase resolvers for recovery continuation.
+    Returns (conflict_resolver, rebase_stop_resolver, recovery_controller).
+    If building fails, returns (None, None, None).
+    """
+    if config is None:
+        return None, None, None
+    try:
+        from ralph.agents.registry import AgentRegistry
+        from ralph.display.context import make_display_context
+        from ralph.display.parallel_display import resolve_active_display
+        from ralph.pipeline.auto_integrate_agent import (
+            build_agent_conflict_resolver,
+            build_agent_rebase_stop_resolver,
+        )
+        from ralph.pipeline.factory import DefaultPipelineFactory
+        from ralph.pipeline.run_loop import build_recovery_controller
+        from ralph.pipeline.runner import load_policy_bundle_for_run
+
+        display_ctx = display_context or make_display_context()
+        active_display = resolve_active_display(None, display_ctx)
+        pipeline_deps = DefaultPipelineFactory().build(config, display_ctx)
+        policy_bundle = load_policy_bundle_for_run(workspace_scope, config)
+        registry = AgentRegistry.from_config(config)
+
+        if state is None:
+            checkpoint_file = workspace_scope.root / ".agent" / "checkpoint.json"
+            if checkpoint_file.exists():
+                try:
+                    from ralph.pipeline.checkpoint import load as load_checkpoint
+
+                    state = load_checkpoint(checkpoint_file)
+                except Exception:
+                    state = None
+            if state is None:
+                from ralph.pipeline.state import PipelineState
+
+                state = PipelineState.from_policy(policy_bundle.pipeline)
+
+        controller, _ = build_recovery_controller(state, policy_bundle, config)
+        strategy_history = (
+            state.rebase.conflict_strategies_tried
+            if (
+                state is not None
+                and state.rebase is not None
+                and hasattr(state.rebase, "conflict_strategies_tried")
+            )
+            else ()
+        )
+
+        conflict_resolver = build_agent_conflict_resolver(
+            policy_bundle=policy_bundle,
+            registry=registry,
+            display=active_display,
+            config=config,
+            pipeline_deps=pipeline_deps,
+            workspace_scope=workspace_scope,
+            display_context=display_ctx,
+            strategy_history=strategy_history,
+        )
+        rebase_stop_resolver = build_agent_rebase_stop_resolver(
+            policy_bundle=policy_bundle,
+            registry=registry,
+            display=active_display,
+            config=config,
+            pipeline_deps=pipeline_deps,
+            workspace_scope=workspace_scope,
+            display_context=display_ctx,
+            strategy_history=strategy_history,
+        )
+        return conflict_resolver, rebase_stop_resolver, controller
+    except Exception as exc:
+        logger.debug("Failed building recovery context: {}", exc)
+        return None, None, None
 
 
 def recover_incomplete_integration(
@@ -546,6 +634,7 @@ __all__ = [
     "ancestry_state",
     "apply_record_transition",
     "branch_sha",
+    "build_recovery_context",
     "busy_refusal_outcome",
     "legacy_rebase_startup_block",
     "merge_state",

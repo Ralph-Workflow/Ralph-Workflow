@@ -484,6 +484,12 @@ def test_corrupt_agents_toml_ordinary_pipeline_run_falls_back_without_crashing(
     for name, phase_def in phases.items():
         if phase_def.invocation_gate is not None:
             phases[name] = phase_def.model_copy(update={"invocation_gate": None})
+    planning_phase = phases["planning"]
+    phases["planning"] = planning_phase.model_copy(
+        update={
+            "transitions": planning_phase.transitions.model_copy(update={"on_success": "complete"})
+        }
+    )
     bundle = bundle.model_copy(
         update={"pipeline": bundle.pipeline.model_copy(update={"phases": phases})}
     )

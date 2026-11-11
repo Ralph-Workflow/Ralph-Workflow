@@ -83,6 +83,17 @@ def _setup_rebase_state(
     (rebase_dir / "stopped-sha").write_text(f"{stop_sha}\n", encoding="utf-8")
 
 
+def _setup_merge_state(
+    root: Path,
+    feat_sha: str = "0" * 40,
+    target_sha: str = "a" * 40,
+) -> None:
+    git_dir = root / ".git"
+    (git_dir / "HEAD").write_text(f"{feat_sha}\n", encoding="utf-8")
+    (git_dir / "MERGE_HEAD").write_text(f"{target_sha}\n", encoding="utf-8")
+    (git_dir / "refs" / "heads" / "main").write_text(f"{target_sha}\n", encoding="utf-8")
+
+
 def _setup_controller(clock: FakeClock | None = None) -> tuple[RecoveryController, FakeClock]:
     clk = clock or FakeClock()
     opts = RecoveryControllerOptions(clock=clk)

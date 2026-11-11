@@ -15,7 +15,9 @@ from tests._real_config_guard_support import (
     _BUNDLED_AGENTS_TEMPLATE,
     _STATE,
     _clear_recorded_read_violations,
+    _extract_guarded_path,
     _extract_read_path,
+    _extract_write_path,
     _get_test_read_violations,
     _read_violations_count,
 )
@@ -540,8 +542,7 @@ def test_extract_read_path_ignores_write_modes_and_non_guarded(
     assert _extract_read_path((str(target), "rb+", os.O_RDWR)) is None
     assert _extract_read_path((str(target), "rb", os.O_WRONLY)) is None
 
-    # For default real config dirs, files without 'ralph-workflow' in name are ignored
-    # RALPH-TEST-REASON: synthetic roots guard all files; default config roots ignore unprefixed files
+    # Files outside guarded directories are ignored in default mode
     monkeypatch.delenv("RALPH_TEST_GUARDED_CONFIG_DIRS", raising=False)
     assert _extract_read_path((str(tmp_path / "other.toml"), "r")) is None
     monkeypatch.setenv("RALPH_TEST_GUARDED_CONFIG_DIRS", str(guarded_dir))
@@ -671,3 +672,191 @@ def test_real_config_guard_catches_symlink_unprefixed_and_transient_in_pytester(
     assert "other_settings.json" in output
     assert "TRANSIENT MUTATION:" in output
     assert "transient.toml" in output
+
+
+def test_default_production_guard_detects_unprefixed_real_config_access(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Default production guard detects unprefixed files and symlink aliases under real config."""
+    fake_home = tmp_path / "fake_home"
+    fake_config = fake_home / ".config"
+    fake_config.mkdir(parents=True)
+    unprefixed_file = fake_config / "unrelated-app.toml"
+    unprefixed_file.write_text("setting = 1\n", encoding="utf-8")
+
+    nested_dir = fake_config / "nested_app"
+    nested_dir.mkdir()
+    nested_unprefixed = nested_dir / "settings.json"
+    nested_unprefixed.write_text("{}", encoding="utf-8")
+
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    symlink_file = outside_dir / "symlink_to_unprefixed.toml"
+    symlink_file.symlink_to(unprefixed_file)
+
+    symlink_dir = outside_dir / "config_alias"
+    symlink_dir.symlink_to(fake_config)
+    alias_child = symlink_dir / "unrelated-app.toml"
+
+    # Isolate to fake paths and ensure default production decision (no override)
+    monkeypatch.delenv("RALPH_TEST_GUARDED_CONFIG_DIRS", raising=False)
+    monkeypatch.setattr("tests._real_config_guard_support.REAL_HOME", fake_home)
+    monkeypatch.setattr("tests._real_config_guard_support.REAL_XDG_CONFIG_HOME", fake_config)
+
+    # 1. Unprefixed read access under real config is detected
+    assert _extract_read_path((str(unprefixed_file), "r")) == unprefixed_file.resolve()
+    assert _extract_read_path((unprefixed_file, "rb")) == unprefixed_file.resolve()
+    assert _extract_read_path((str(nested_unprefixed), "r")) == nested_unprefixed.resolve()
+
+    # 2. Unprefixed write/mutation access under real config is detected
+    assert _extract_write_path((str(unprefixed_file), "w")) == unprefixed_file.resolve()
+    assert _extract_write_path((str(unprefixed_file), "a")) == unprefixed_file.resolve()
+    assert _extract_write_path((str(unprefixed_file), "r+", os.O_RDWR)) == unprefixed_file.resolve()
+    assert _extract_guarded_path("os.unlink", (str(unprefixed_file),)) == unprefixed_file.resolve()
+    assert _extract_guarded_path("os.remove", (str(unprefixed_file),)) == unprefixed_file.resolve()
+    assert _extract_guarded_path("os.rmdir", (str(nested_dir),)) == nested_dir.resolve()
+    new_dir = fake_config / "new_app"
+    assert _extract_guarded_path("os.mkdir", (str(new_dir),)) == new_dir.resolve()
+    assert (
+        _extract_guarded_path(
+            "os.rename", (str(unprefixed_file), str(fake_config / "renamed.toml"))
+        )
+        == unprefixed_file.resolve()
+    )
+
+    # 3. Symlink access (direct and directory alias) to unprefixed config is detected
+    assert _extract_read_path((str(symlink_file), "r")) == unprefixed_file.resolve()
+    assert _extract_write_path((str(symlink_file), "w")) == unprefixed_file.resolve()
+    assert _extract_read_path((str(alias_child), "r")) == unprefixed_file.resolve()
+    assert _extract_write_path((str(alias_child), "w")) == unprefixed_file.resolve()
+
+
+def test_default_production_guard_preserves_ralph_and_home_policy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Default production guard detects Ralph paths and preserves narrow policy for non-config home."""
+    fake_home = tmp_path / "fake_home"
+    fake_config = fake_home / ".config"
+    fake_config.mkdir(parents=True)
+
+    # Ralph paths under config
+    ralph_config_file = fake_config / "ralph-workflow.toml"
+    ralph_config_file.write_text("k = 1\n", encoding="utf-8")
+    ralph_sub_file = fake_config / "ralph-workflow" / "config.toml"
+    ralph_sub_file.parent.mkdir()
+    ralph_sub_file.write_text("k = 2\n", encoding="utf-8")
+
+    # Ralph paths under home (non-config)
+    home_ralph_file = fake_home / "ralph-workflow.toml"
+    home_ralph_file.write_text("k = 3\n", encoding="utf-8")
+    home_dot_ralph = fake_home / ".ralph-workflow" / "state.json"
+    home_dot_ralph.parent.mkdir()
+    home_dot_ralph.write_text("{}", encoding="utf-8")
+
+    # Non-config home paths (should NOT be guarded)
+    home_unrelated = fake_home / "unrelated.txt"
+    home_unrelated.write_text("hello\n", encoding="utf-8")
+    home_bashrc = fake_home / ".bashrc"
+    home_bashrc.write_text("export FOO=1\n", encoding="utf-8")
+    home_local = fake_home / ".local" / "share" / "data.txt"
+    home_local.parent.mkdir(parents=True)
+    home_local.write_text("data\n", encoding="utf-8")
+
+    # Outside paths (tmp_path outside fake_home)
+    outside_file = tmp_path / "outside" / "other.toml"
+    outside_file.parent.mkdir(parents=True, exist_ok=True)
+    outside_file.write_text("x = 1\n", encoding="utf-8")
+
+    monkeypatch.delenv("RALPH_TEST_GUARDED_CONFIG_DIRS", raising=False)
+    monkeypatch.setattr("tests._real_config_guard_support.REAL_HOME", fake_home)
+    monkeypatch.setattr("tests._real_config_guard_support.REAL_XDG_CONFIG_HOME", fake_config)
+
+    # Ralph paths remain detected in both config and home
+    assert _extract_read_path((str(ralph_config_file), "r")) == ralph_config_file.resolve()
+    assert _extract_read_path((str(ralph_sub_file), "r")) == ralph_sub_file.resolve()
+    assert _extract_read_path((str(home_ralph_file), "r")) == home_ralph_file.resolve()
+    assert _extract_read_path((str(home_dot_ralph), "r")) == home_dot_ralph.resolve()
+
+    # Non-config home paths are preserved as unmonitored by the narrow home policy
+    assert _extract_read_path((str(home_unrelated), "r")) is None
+    assert _extract_write_path((str(home_unrelated), "w")) is None
+    assert _extract_read_path((str(home_bashrc), "r")) is None
+    assert _extract_write_path((str(home_bashrc), "w")) is None
+    assert _extract_read_path((str(home_local), "r")) is None
+    assert _extract_write_path((str(home_local), "w")) is None
+
+    # Outside paths are unmonitored
+    assert _extract_read_path((str(outside_file), "r")) is None
+    assert _extract_write_path((str(outside_file), "w")) is None
+
+
+def test_default_production_session_guard_in_pytester(
+    pytester: pytest.Pytester,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Under default production mode, session guard detects unprefixed and symlink config access."""
+    fake_home = tmp_path / "fake_home"
+    fake_config = fake_home / ".config"
+    fake_config.mkdir(parents=True)
+    unprefixed_file = fake_config / "other_settings.json"
+    unprefixed_file.write_text('{"unrelated": true}\n', encoding="utf-8")
+
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir(parents=True)
+    symlink_file = outside_dir / "symlink_to_other.json"
+    symlink_file.symlink_to(unprefixed_file)
+
+    transient_file = fake_config / "transient_unprefixed.toml"
+    home_bashrc = fake_home / ".bashrc"
+    home_bashrc.write_text("export TEST=1\n", encoding="utf-8")
+
+    monkeypatch.delenv("RALPH_TEST_GUARDED_CONFIG_DIRS", raising=False)
+    monkeypatch.setattr("tests._real_config_guard_support.REAL_HOME", fake_home)
+    monkeypatch.setattr("tests._real_config_guard_support.REAL_XDG_CONFIG_HOME", fake_config)
+
+    pytester.makeconftest(
+        textwrap.dedent(
+            """
+            from tests.conftest import _guard_real_config_files
+            """
+        )
+    )
+    pytester.makepyfile(
+        test_cases=textwrap.dedent(
+            f"""
+            from pathlib import Path
+
+            def test_unprefixed_read_detected():
+                target = Path({str(unprefixed_file)!r})
+                _ = target.read_text(encoding="utf-8")
+
+            def test_symlink_access_detected():
+                link = Path({str(symlink_file)!r})
+                _ = link.read_text(encoding="utf-8")
+
+            def test_transient_mutation_detected():
+                target = Path({str(transient_file)!r})
+                target.write_text("key = 'val'\\n", encoding="utf-8")
+                target.unlink()
+
+            def test_non_config_home_path_permitted():
+                bashrc = Path({str(home_bashrc)!r})
+                _ = bashrc.read_text(encoding="utf-8")
+            """
+        )
+    )
+
+    result = pytester.runpytest_inprocess("-q")
+    result.assert_outcomes(passed=4, errors=1)
+    output = result.stdout.str()
+    assert (
+        "Test suite touched real user configuration files in violation of isolation rules:"
+        in output
+    )
+    assert "READ:" in output
+    assert "other_settings.json" in output
+    assert "TRANSIENT MUTATION:" in output
+    assert "transient_unprefixed.toml" in output
+    # .bashrc is a non-config home path, so it must NOT trigger a violation
+    assert ".bashrc" not in output

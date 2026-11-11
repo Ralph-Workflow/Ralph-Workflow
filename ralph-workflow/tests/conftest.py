@@ -246,7 +246,9 @@ def _fake_agy_models_probe() -> Generator[None, None, None]:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _guard_real_config_files() -> Generator[None, None, None]:
+def _guard_real_config_files(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Generator[None, None, None]:
     """Snapshot real ~/.config and $XDG_CONFIG_HOME and verify no test touched them.
 
     Takes a baseline snapshot of existing `ralph-workflow*` files and directories
@@ -257,27 +259,45 @@ def _guard_real_config_files() -> Generator[None, None, None]:
     _install_config_guard_audit_hook()
     _clear_recorded_read_violations()
     _clear_recorded_write_violations()
-    before = _scan_guarded_config_files()
-    yield
-    after = _scan_guarded_config_files()
-    violations = _diff_config_snapshots(before, after)
-    for node, p in _clear_recorded_read_violations():
-        if node:
-            violations.append(f"READ: {p} (by {node})")
+    guarded_dirs = _resolve_guarded_config_dirs()
+    before = _scan_guarded_config_files(guarded_dirs)
+    session_home = tmp_path_factory.mktemp("session-home")
+    session_config = session_home / ".config"
+    session_config.mkdir(parents=True)
+    orig_home = os.environ.get("HOME")
+    orig_xdg = os.environ.get("XDG_CONFIG_HOME")
+    os.environ["HOME"] = str(session_home)
+    os.environ["XDG_CONFIG_HOME"] = str(session_config)
+    try:
+        yield
+    finally:
+        if orig_home is not None:
+            os.environ["HOME"] = orig_home
         else:
-            violations.append(f"READ: {p}")
-    for node, p in _clear_recorded_write_violations():
-        if node:
-            violations.append(f"TRANSIENT MUTATION: {p} (by {node})")
+            os.environ.pop("HOME", None)
+        if orig_xdg is not None:
+            os.environ["XDG_CONFIG_HOME"] = orig_xdg
         else:
-            violations.append(f"TRANSIENT MUTATION: {p}")
-    if violations:
-        msg = (
-            "Test suite touched real user configuration files in violation of isolation rules:\n"
-            + "\n".join(f"  - {v}" for v in violations)
-            + "\nAll tests must use isolated environments (e.g. tmp_path, isolated HOME/XDG_CONFIG_HOME)."
-        )
-        pytest.fail(msg, pytrace=False)
+            os.environ.pop("XDG_CONFIG_HOME", None)
+        after = _scan_guarded_config_files(guarded_dirs)
+        violations = _diff_config_snapshots(before, after)
+        for node, p in _clear_recorded_read_violations():
+            if node:
+                violations.append(f"READ: {p} (by {node})")
+            else:
+                violations.append(f"READ: {p}")
+        for node, p in _clear_recorded_write_violations():
+            if node:
+                violations.append(f"TRANSIENT MUTATION: {p} (by {node})")
+            else:
+                violations.append(f"TRANSIENT MUTATION: {p}")
+        if violations:
+            msg = (
+                "Test suite touched real user configuration files in violation of isolation rules:\n"
+                + "\n".join(f"  - {v}" for v in violations)
+                + "\nAll tests must use isolated environments (e.g. tmp_path, isolated HOME/XDG_CONFIG_HOME)."
+            )
+            pytest.fail(msg, pytrace=False)
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:
@@ -559,20 +579,37 @@ def _configure_repo_identity(repo: Repo) -> None:
 def _git_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create a reusable template git repository for fast per-test clones."""
     template_root = tmp_path_factory.mktemp("git-template")
-    # Pin the branch: the host's init.defaultBranch must not decide whether the
-    # fixture sits on the "main" the integration tests target.
-    from git import Repo
-
-    repo = Repo.init(template_root, initial_branch="main")
+    fake_home = template_root / "home"
+    fake_config = fake_home / ".config"
+    fake_config.mkdir(parents=True)
+    orig_home = os.environ.get("HOME")
+    orig_xdg = os.environ.get("XDG_CONFIG_HOME")
+    os.environ["HOME"] = str(fake_home)
+    os.environ["XDG_CONFIG_HOME"] = str(fake_config)
     try:
-        _configure_repo_identity(repo)
+        # Pin the branch: the host's init.defaultBranch must not decide whether the
+        # fixture sits on the "main" the integration tests target.
+        from git import Repo
 
-        readme = template_root / "README.md"
-        readme.write_text("test")
-        repo.index.add(["README.md"])
-        repo.index.commit("initial commit")
+        repo = Repo.init(template_root, initial_branch="main")
+        try:
+            _configure_repo_identity(repo)
+
+            readme = template_root / "README.md"
+            readme.write_text("test")
+            repo.index.add(["README.md"])
+            repo.index.commit("initial commit")
+        finally:
+            repo.close()
     finally:
-        repo.close()
+        if orig_home is not None:
+            os.environ["HOME"] = orig_home
+        else:
+            os.environ.pop("HOME", None)
+        if orig_xdg is not None:
+            os.environ["XDG_CONFIG_HOME"] = orig_xdg
+        else:
+            os.environ.pop("XDG_CONFIG_HOME", None)
 
     return template_root
 

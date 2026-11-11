@@ -123,6 +123,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.auto_integrate_conflict_budget import ConflictIdentity
     from ralph.pipeline.auto_integrate_record import IntegrationRecord
     from ralph.pipeline.auto_integrate_resolve import ConflictResolver
+    from ralph.pipeline.conflict_resolution import RebaseStopResolver
     from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.integration_cleanup import PlanningBaseline
     from ralph.pipeline.integration_decision import CleanupLadderRung
@@ -320,7 +321,92 @@ def _recovery_preamble_for(
         return hooks.recovery_preamble
 
     def _default(scope: WorkspaceScope, config: UnifiedConfig | None) -> RebaseState | None:
-        return _run_auto_integrate_recovery_preamble(scope, config, backend=backend)
+        try:
+            ctx_cfg = ctx.config
+        except AttributeError:
+            ctx_cfg = None
+        effective_cfg = config if config is not None else ctx_cfg
+        try:
+            latest_state = ctx.latest_state
+            state = latest_state[0] if latest_state else None
+        except AttributeError:
+            state = None
+        history = (
+            state.rebase.conflict_strategies_tried
+            if (
+                state is not None
+                and state.rebase is not None
+                and hasattr(state.rebase, "conflict_strategies_tried")
+            )
+            else ()
+        )
+        conflict_resolver = None
+        rebase_stop_resolver = None
+        try:
+            policy_bundle = ctx.policy_bundle
+            registry = ctx.registry
+            active_display = ctx.active_display
+            pipeline_deps = ctx.pipeline_deps
+            display_context = ctx.display_context
+        except AttributeError:
+            policy_bundle = None
+            registry = None
+            active_display = None
+            pipeline_deps = None
+            display_context = None
+
+        if (
+            policy_bundle is not None
+            and registry is not None
+            and active_display is not None
+            and effective_cfg is not None
+        ):
+            try:
+                conflict_resolver = build_agent_conflict_resolver(
+                    policy_bundle=policy_bundle,
+                    registry=registry,
+                    display=active_display,
+                    config=effective_cfg,
+                    pipeline_deps=pipeline_deps,
+                    workspace_scope=scope,
+                    display_context=display_context,
+                    strategy_history=history,
+                )
+                rebase_stop_resolver = build_agent_rebase_stop_resolver(
+                    policy_bundle=policy_bundle,
+                    registry=registry,
+                    display=active_display,
+                    config=effective_cfg,
+                    pipeline_deps=pipeline_deps,
+                    workspace_scope=scope,
+                    display_context=display_context,
+                    strategy_history=history,
+                )
+            except Exception as resolver_exc:
+                logger.debug("Recovery preamble resolver construction skipped: {}", resolver_exc)
+
+        try:
+            controller = ctx.controller
+        except AttributeError:
+            controller = None
+
+        try:
+            return _run_auto_integrate_recovery_preamble(
+                scope,
+                effective_cfg,
+                backend=backend,
+                conflict_resolver=conflict_resolver,
+                rebase_stop_resolver=rebase_stop_resolver,
+                recovery_controller=controller,
+            )
+        except TypeError as exc:
+            if "unexpected keyword argument" in str(exc):
+                return _run_auto_integrate_recovery_preamble(
+                    scope,
+                    effective_cfg,
+                    backend=backend,
+                )
+            raise
 
     return _default
 
@@ -924,12 +1010,15 @@ def _sweep_orphaned_git_locks(workspace_scope: WorkspaceScope) -> None:
         logger.warning("startup git-lock sweep failed: {}", sweep_exc)
 
 
-def _run_auto_integrate_recovery_preamble(
+def run_auto_integrate_recovery_preamble(
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig | None = None,
     *,  # keyword-only seam for backend injection
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     force_retry: bool = False,
+    conflict_resolver: ConflictResolver | None = None,
+    rebase_stop_resolver: RebaseStopResolver | None = None,
+    recovery_controller: RecoveryController | None = None,
 ) -> RebaseState | None:
     """Crash-recovery preamble: reconcile any interrupted auto-integrate step.
 
@@ -954,10 +1043,24 @@ def _run_auto_integrate_recovery_preamble(
     try:
         from ralph.pipeline.auto_integrate import recover_incomplete_integration
 
+        if config is not None and conflict_resolver is None and rebase_stop_resolver is None:
+            from ralph.pipeline.auto_integrate_recovery import build_recovery_context
+
+            cr, rs, ctrl = build_recovery_context(workspace_scope, config)
+            if cr is not None:
+                conflict_resolver = cr
+            if rs is not None:
+                rebase_stop_resolver = rs
+            if recovery_controller is None and ctrl is not None:
+                recovery_controller = ctrl
+
         recovered = recover_incomplete_integration(
             workspace_scope,
             config=config,
+            conflict_resolver=conflict_resolver,
+            rebase_stop_resolver=rebase_stop_resolver,
             backend=backend,
+            recovery_controller=recovery_controller,
             force_retry=force_retry,
         )
     except Exception as recover_exc:  # pragma: no cover -- defensive
@@ -966,6 +1069,9 @@ def _run_auto_integrate_recovery_preamble(
     if recovered is not None:
         logger.debug("auto_integrate recovery preamble: {}", recovered.last_outcome)
     return recovered
+
+
+_run_auto_integrate_recovery_preamble = run_auto_integrate_recovery_preamble
 
 
 def _run_startup_integration(

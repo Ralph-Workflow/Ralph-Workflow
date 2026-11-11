@@ -10,12 +10,14 @@ from typing import NamedTuple
 
 # Real home and real XDG config home resolved before any test or fixture
 # monkeypatches HOME or XDG_CONFIG_HOME.
-_REAL_HOME: Path = Path(os.environ.get("HOME") or Path.home()).resolve()
-_REAL_XDG_CONFIG_HOME: Path = (
+REAL_HOME: Path = Path(os.environ.get("HOME") or Path.home()).resolve()
+REAL_XDG_CONFIG_HOME: Path = (
     Path(os.environ["XDG_CONFIG_HOME"]).resolve()
     if os.environ.get("XDG_CONFIG_HOME")
-    else (_REAL_HOME / ".config").resolve()
+    else (REAL_HOME / ".config").resolve()
 )
+_REAL_HOME = REAL_HOME
+_REAL_XDG_CONFIG_HOME = REAL_XDG_CONFIG_HOME
 _BUNDLED_AGENTS_TEMPLATE = (
     Path(__file__).resolve().parents[1]
     / "ralph"
@@ -26,7 +28,8 @@ _BUNDLED_AGENTS_TEMPLATE = (
 _RESOLVED_BUNDLED_AGENTS_TEMPLATE: Path | None = (
     _BUNDLED_AGENTS_TEMPLATE.resolve() if _BUNDLED_AGENTS_TEMPLATE.exists() else None
 )
-_REPO_DIR_STR: str = str(Path(__file__).resolve().parents[1])
+_REPO_DIR: Path = Path(__file__).resolve().parents[1]
+_REPO_DIR_STR: str = str(_REPO_DIR)
 
 _WRITE_FLAGS: int = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | getattr(os, "O_APPEND", 0)
 
@@ -74,19 +77,27 @@ def _compute_file_sha256(path: Path) -> str:
         return ""
 
 
+def _get_real_config_dirs() -> tuple[Path, ...]:
+    """Return real XDG and ~/.config directories."""
+    real_dot_config = REAL_HOME / ".config"
+    if real_dot_config == REAL_XDG_CONFIG_HOME:
+        return (REAL_XDG_CONFIG_HOME,)
+    return (REAL_XDG_CONFIG_HOME, real_dot_config)
+
+
 def _resolve_guarded_config_dirs() -> list[Path]:
     """Resolve real configuration directories to guard against test pollution."""
     override = os.environ.get("RALPH_TEST_GUARDED_CONFIG_DIRS")
     if override:
         return [Path(p).resolve() for p in override.split(os.pathsep) if p]
     dirs: list[Path] = []
-    if _REAL_XDG_CONFIG_HOME not in dirs:
-        dirs.append(_REAL_XDG_CONFIG_HOME)
-    real_dot_config = (_REAL_HOME / ".config").resolve()
+    if REAL_XDG_CONFIG_HOME not in dirs:
+        dirs.append(REAL_XDG_CONFIG_HOME)
+    real_dot_config = (REAL_HOME / ".config").resolve()
     if real_dot_config not in dirs:
         dirs.append(real_dot_config)
-    if _REAL_HOME not in dirs:
-        dirs.append(_REAL_HOME)
+    if REAL_HOME not in dirs:
+        dirs.append(REAL_HOME)
     return dirs
 
 
@@ -239,48 +250,69 @@ def _parse_raw_path_string(arg0: object) -> str | None:
     return None
 
 
+_SAFE_SYSTEM_PREFIXES: tuple[str, ...] = (
+    "/proc/",
+    "/sys/",
+    "/dev/",
+    "/usr/",
+    "/lib/",
+    "/lib64/",
+    "/etc/",
+    sys.prefix,
+    sys.base_prefix,
+    str(Path(sys.prefix).parent),
+    _REPO_DIR_STR,
+    str(_REAL_HOME / ".local"),
+    str(_REAL_HOME / ".cache"),
+    str(Path.home() / ".local"),
+    str(Path.home() / ".cache"),
+)
+
+
+def _is_safe_pre_canonical_path(s_str: str, is_synthetic: bool) -> bool:
+    """Check if raw string path is obviously safe to ignore before canonicalization."""
+    del is_synthetic
+    return bool(s_str.startswith(_SAFE_SYSTEM_PREFIXES))
+
+
+def _is_protected_canonical_path(p: Path, is_synthetic: bool) -> bool:
+    """Determine if resolved canonical path falls within guarded boundaries."""
+    if p.is_relative_to(_REPO_DIR):
+        return False
+    if is_synthetic:
+        return any(p.is_relative_to(gdir) for gdir in _get_guarded_config_dirs_cached())
+    if any(p.is_relative_to(cdir) for cdir in _get_real_config_dirs()):
+        return True
+    try:
+        rel = p.relative_to(REAL_HOME)
+        return bool(
+            rel.parts
+            and (
+                rel.parts[0].startswith("ralph-workflow")
+                or rel.parts[0].startswith(".ralph-workflow")
+            )
+        )
+    except ValueError:
+        return False
+
+
 def _extract_guarded_path(event: str, args: tuple[object, ...]) -> Path | None:
     """Extract and validate target path if event touches a guarded configuration file."""
+    del event
     s_str = _parse_raw_path_string(args[0]) if args else None
-    if s_str is None or s_str.startswith(("/proc/", "/sys/", "/dev/", "/usr/", "/lib/")):
+    if s_str is None:
+        return None
+    is_synthetic = bool(os.environ.get("RALPH_TEST_GUARDED_CONFIG_DIRS"))
+    target_str = s_str if s_str.startswith("/") else f"{Path.cwd()}/{s_str}"
+    if _is_safe_pre_canonical_path(target_str, is_synthetic):
         return None
 
-    is_synthetic = bool(os.environ.get("RALPH_TEST_GUARDED_CONFIG_DIRS"))
-    if not is_synthetic and (
-        (s_str.startswith(_REPO_DIR_STR) and not s_str.endswith("agents.toml"))
-        or s_str.startswith((str(_REAL_HOME / ".local"), str(_REAL_HOME / ".cache")))
-        or ("ralph-workflow" not in s_str and "agents.toml" not in s_str)
-        or (s_str.startswith(("/tmp/", "/var/tmp/")) and not Path(s_str).is_symlink())
-    ):
-        return None
-    target_str = s_str if s_str.startswith("/") else f"{Path.cwd()}/{s_str}"
     try:
         p = Path(target_str).resolve()
     except Exception:
         return None
 
-    dirs = _get_guarded_config_dirs_cached()
-    for gdir in dirs:
-        try:
-            rel = p.relative_to(gdir)
-        except ValueError:
-            continue
-        if (
-            is_synthetic
-            or (
-                rel.parts
-                and (
-                    rel.parts[0].startswith("ralph-workflow")
-                    or rel.parts[0].startswith(".ralph-workflow")
-                )
-            )
-            or (
-                _RESOLVED_BUNDLED_AGENTS_TEMPLATE is not None
-                and p == _RESOLVED_BUNDLED_AGENTS_TEMPLATE
-            )
-        ):
-            return p
-    return None
+    return p if _is_protected_canonical_path(p, is_synthetic) else None
 
 
 def _extract_read_path(args: tuple[object, ...]) -> Path | None:
@@ -331,6 +363,10 @@ def _install_config_guard_audit_hook() -> None:
             p = _extract_guarded_path(event, args)
             if p is not None:
                 _STATE.recorded_writes.append((_STATE.current_test_node, p))
+            if event == "os.rename" and len(args) > 1:
+                p2 = _extract_guarded_path(event, (args[1],))
+                if p2 is not None:
+                    _STATE.recorded_writes.append((_STATE.current_test_node, p2))
 
     sys.addaudithook(_hook)
 
