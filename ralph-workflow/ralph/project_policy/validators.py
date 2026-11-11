@@ -469,15 +469,7 @@ def _validate_existing_policy_file(
             enforcers_pool.update(
                 _collect_known_enforcers(_content_checks._CITATION_PATH_WORKSPACE[0])
             )
-        resolved_enforcers = (
-            frozenset(enforcers_pool)
-            if (
-                known_enforcers is not None
-                or _content_checks._CITATION_PATH_WORKSPACE[0] is not None
-                or file_commands
-            )
-            else None
-        )
+        resolved_enforcers = frozenset(enforcers_pool)
         findings.extend(
             _check_guard_inventory(
                 content,
@@ -768,6 +760,7 @@ def _check_portfolio(
     workspace: Workspace,
     *,
     frozen_version: str | None = None,
+    known_enforcers: frozenset[str] | None = None,
 ) -> list[PolicyFinding]:
     """Require a valid bounded portfolio manifest."""
     path = markers.PORTFOLIO_PATH
@@ -791,7 +784,7 @@ def _check_portfolio(
     unfrozen_current = _is_unfrozen_current_pack(workspace, frozen_version)
 
     if unfrozen_current:
-        expected_version = markers.PORTFOLIO_SCHEMA_VERSION
+        expected_version = markers.portfolio_schema_version_for_version(markers.SCHEMA_VERSION)
     elif frozen_version is not None and frozen_version in markers.VERSION_SPECS:
         allowed = markers.VERSION_SPECS[frozen_version].portfolio_schema_version
         match = re.search(r'schema_version\s*=\s*["\'](v\d+)["\']', content)
@@ -800,13 +793,17 @@ def _check_portfolio(
     elif has_v1_marker:
         expected_version = "v1"
     else:
-        expected_version = markers.PORTFOLIO_SCHEMA_VERSION
+        expected_version = markers.portfolio_schema_version_for_version(frozen_version)
+
+    if known_enforcers is None:
+        known_enforcers = _collect_known_enforcers(workspace)
 
     try:
         parse_portfolio_toml(
             content,
             workspace_exists=workspace.exists,
             expected_schema_version=expected_version,
+            known_enforcers=known_enforcers,
         )
     except PortfolioError as exc:
         return [
@@ -869,7 +866,14 @@ def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[Policy
     findings.extend(_check_agents_md(workspace))
     findings.extend(_check_claude_md(workspace))
     frozen_version = _detect_frozen_version(workspace)
-    findings.extend(_check_portfolio(workspace, frozen_version=frozen_version))
+    known_enforcers = _collect_known_enforcers(workspace)
+    findings.extend(
+        _check_portfolio(
+            workspace,
+            frozen_version=frozen_version,
+            known_enforcers=known_enforcers,
+        )
+    )
     # Manifest selection: a frozen pack is validated against its own
     # version's manifest. An unfrozen pack (or a fresh v5 pack) uses
     # the current CORE_POLICY_FILES.
@@ -878,7 +882,6 @@ def validate_readiness(workspace: Workspace, stack: ProjectStack) -> list[Policy
         if frozen_version is not None
         else markers.CORE_POLICY_FILES
     )
-    known_enforcers = _collect_known_enforcers(workspace)
     for filename in core_manifest:
         findings.extend(
             _check_core_policy_file(

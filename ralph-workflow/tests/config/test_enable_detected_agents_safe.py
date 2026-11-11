@@ -68,7 +68,8 @@ def test_enable_detected_agents_creates_backup_preserving_operator_edits(
     assert 'operator_custom_key = "custom_value"' in new_content
     assert "[agents.codex]" in new_content
     data = tomllib.loads(new_content)
-    agents = data.get("agents", {})
+    assert isinstance(data, dict)
+    agents = data.get("agents")
     assert isinstance(agents, dict)
     assert "codex" in agents
     assert "claude" in agents
@@ -118,7 +119,8 @@ def test_enable_detected_agents_skips_invalid_toml_block_with_warning(
     # Resulting file is valid TOML
     new_content = config_path.read_text(encoding="utf-8")
     data = tomllib.loads(new_content)
-    agents = data.get("agents", {})
+    assert isinstance(data, dict)
+    agents = data.get("agents")
     assert isinstance(agents, dict)
     assert "pi" in agents
     assert "codex" not in agents

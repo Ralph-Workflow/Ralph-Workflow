@@ -580,7 +580,9 @@ def _make_test_workspace(typechecking_body: str) -> MemoryWorkspace:
     workspace.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee AGENTS.md for project policy.\n")
     workspace.write(
         f"{markers.CANONICAL_DIR}policy-portfolio.toml",
-        starters.read_starter("policy-portfolio.toml"),
+        starters.read_starter("policy-portfolio.toml").replace(
+            "PROJECT-FACT-UNRESOLVED", "make test"
+        ),
     )
     workspace.mkdirs(markers.CANONICAL_DIR.rstrip("/"))
     for filename in markers.CORE_POLICY_FILES:

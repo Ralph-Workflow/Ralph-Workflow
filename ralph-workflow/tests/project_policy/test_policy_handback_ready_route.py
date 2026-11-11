@@ -169,10 +169,17 @@ def _seed_complete_policy_in_git_repo(workspace_root: Path) -> None:
     the run reaches READY.
     """
     from ralph.project_policy import markers as pp_markers
+    from ralph.project_policy import starters
     from tests.project_policy.test_validator import _complete_policy_body
 
     workspace = FsWorkspace(workspace_root, allowed_roots=[workspace_root])
     canonical = pp_markers.CANONICAL_DIR.rstrip("/")
+    workspace.write(
+        pp_markers.PORTFOLIO_PATH,
+        starters.read_starter("policy-portfolio.toml").replace(
+            "PROJECT-FACT-UNRESOLVED", "make test"
+        ),
+    )
     for filename in pp_markers.CORE_POLICY_FILES:
         workspace.write(
             f"{canonical}/{filename}",

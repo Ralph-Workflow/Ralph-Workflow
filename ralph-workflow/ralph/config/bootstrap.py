@@ -29,11 +29,13 @@ _DEFAULT_GITIGNORE_PATTERNS).
 
 from __future__ import annotations
 
-import shutil
-from collections.abc import Mapping
-from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+import shutil
 
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from loguru import logger
@@ -44,12 +46,18 @@ from ralph.config._agent_internal_globs import (
     AGENT_INTERNAL_ROOT_BASENAMES,
     AGENT_INTERNAL_TOP_LEVEL_BASENAMES,
 )
+from ralph.config._bootstrap_backup import (
+    _backup_path,
+    _get_bundled_defaults_dir,
+    _global_policy_target_name,
+    _migrate_legacy_global_config,
+    _resolve_global_policy_source,
+)
 from ralph.config._config_filenames import (
     _ADVANCED_LOCAL_POLICY_FILENAMES,
     _GLOBAL_AGENTS_FILENAME,
     _GLOBAL_CONFIG_FILENAME,
     _GLOBAL_MCP_FILENAME,
-    _GLOBAL_POLICY_FILENAME_MAP,
     _LOCAL_CONFIG_FILENAME,
     _LOCAL_CONFIG_SOURCE,
     _LOCAL_MCP_FILENAME,
@@ -63,7 +71,6 @@ from ralph.config.agents_bootstrap import (
     write_agents_with_backup,
 )
 from ralph.config.agents_file_writer import write_agents_toml
-from ralph.config.loader import load_toml
 from ralph.config.unreadable_config_finding import (
     UnreadableConfigFinding,
     collect_unreadable_config_files,
@@ -74,11 +81,6 @@ from ralph.git.scoped_auto_commit import (
     classify_target_for_commit,
     commit_deterministic_writes,
 )
-from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
-from ralph.mcp.artifacts.idempotent_write import write_text_if_changed
-
-if TYPE_CHECKING:
-    from types import ModuleType
 
 __all__ = [
     "BootstrapResult",
@@ -282,24 +284,6 @@ _DEFAULT_GIT_EXCLUDE_PATTERNS: tuple[str, ...] = (
 )
 
 
-def _module_attr_or_none(module: ModuleType, attribute: str) -> object | None:
-    namespace = cast("dict[str, object]", module.__dict__)
-    return namespace.get(attribute)
-
-
-def _get_bundled_defaults_dir() -> Path:
-    """Return the path to the bundled default policy files.
-
-    Computed lazily to avoid circular import: ralph.policy.loader imports
-    ralph.phases which imports ralph.pipeline which imports ralph.config.
-    """
-    policy_module = import_module("ralph.policy")
-    policy_file = _module_attr_or_none(policy_module, "__file__")
-    if not isinstance(policy_file, str):
-        raise RuntimeError("ralph.policy module has no __file__")
-    return Path(policy_file).parent / "defaults"
-
-
 def ensure_global_config(global_dir: Path | None = None, *, force: bool = False) -> BootstrapResult:
     """Ensure ~/.config/ralph-workflow.toml exists, creating it from the bundled template.
 
@@ -318,7 +302,10 @@ def ensure_global_config(global_dir: Path | None = None, *, force: bool = False)
     if result.action == "skipped":
         migrated = _migrate_legacy_global_config(target)
         if migrated is not None:
-            return migrated
+            # The migration helper lives in the backup module and returns that
+            # module's own result type; re-wrap it so callers keep the one
+            # canonical BootstrapResult.
+            return BootstrapResult(migrated.path, migrated.action, migrated.backup)
     return result
 
 
@@ -774,85 +761,6 @@ def regenerate_all(
     return results
 
 
-def _backup_path(target: Path) -> Path:
-    return target.with_suffix(target.suffix + ".bak")
-
-
-def _global_policy_target_name(local_policy_filename: str) -> str:
-    return _GLOBAL_POLICY_FILENAME_MAP.get(local_policy_filename, local_policy_filename)
-
-
-def _resolve_global_policy_source(
-    global_dir: Path, local_policy_filename: str, *, force: bool
-) -> Path:
-    if force:
-        return _get_bundled_defaults_dir() / local_policy_filename
-
-    preferred_global_path = global_dir / _global_policy_target_name(local_policy_filename)
-    if preferred_global_path.exists():
-        return preferred_global_path
-
-    legacy_global_path = global_dir / local_policy_filename
-    if legacy_global_path.exists():
-        return _get_bundled_defaults_dir() / local_policy_filename
-
-    return _get_bundled_defaults_dir() / local_policy_filename
-
-
-def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
-    try:
-        text = target.read_text(encoding="utf-8")
-    except OSError:
-        return None
-
-    try:
-        data = cast("Mapping[str, object]", load_toml(target))
-    except Exception:
-        return None
-    raw_drains_obj: object = data.get("agent_drains")
-    if not isinstance(raw_drains_obj, Mapping):
-        return None
-    raw_drains = cast("Mapping[str, object]", raw_drains_obj)
-
-    drains: dict[str, object] = {
-        key: value for key, value in raw_drains.items() if isinstance(key, str)
-    }
-    missing: list[tuple[str, str]] = []
-    analysis_chain: object = drains.get("analysis")
-    commit_chain: object = drains.get("commit")
-    if isinstance(analysis_chain, str):
-        missing.extend(
-            (drain_name, analysis_chain)
-            for drain_name in ("planning_analysis", "development_analysis")
-            if drain_name not in drains
-        )
-    if isinstance(commit_chain, str) and "development_commit" not in drains:
-        missing.append(("development_commit", commit_chain))
-
-    section_start = text.find("[agent_drains]")
-    if not missing or section_start == -1:
-        return None
-
-    next_section = text.find("\n[", section_start + len("[agent_drains]"))
-    insert_at = len(text) if next_section == -1 else next_section + 1
-    insert_lines = "".join(f'{name} = "{chain}"\n' for name, chain in missing)
-    if insert_at == len(text) and not text.endswith("\n"):
-        insert_lines = "\n" + insert_lines
-
-    backup = _backup_path(target)
-    if backup.exists():
-        backup.unlink()
-    # filesystem-write-ok: migration backup preserves existing user configuration metadata
-    shutil.copy2(str(target), str(backup))
-    write_text_if_changed(
-        DEFAULT_FILE_BACKEND,
-        target,
-        text[:insert_at] + insert_lines + text[insert_at:],
-        encoding="utf-8",
-    )
-    return BootstrapResult(target, "regenerated", backup)
-
-
 def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResult:
     """Copy source to target, optionally backing up an existing target first.
 
@@ -882,17 +790,10 @@ def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResul
         backup = _backup_path(target)
         if backup.exists():
             backup.unlink()
-        # The forced-regeneration backup move is part of the Ralph-authored
-        # config write routed through commit_deterministic_writes below
-        # (wt-12). The audit's helper-following check accepts the write
-        # as routed.
         shutil.move(  # filesystem-write-ok: forced-regeneration backup preserves the prior config bytes before reinstall
             str(target), str(backup)
         )
 
-    # Shipped-template install write, committed by the routing below
-    # (wt-12). The audit's helper-following check accepts the write as
-    # routed.
     shutil.copy2(  # filesystem-write-ok: shipped-template install committed by the scoped config routing below
         str(source), str(target)
     )

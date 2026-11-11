@@ -188,3 +188,17 @@ def test_frozen_v5_pack_malformed_guard_inventory_fails() -> None:
     ws.write(path, corrupted)
     findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
     assert any("testing-policy.md:malformed" in f.requirement_id for f in findings)
+
+
+def test_freeze_outside_modelled_set_fails() -> None:
+    """A pack carrying a freeze marker outside the modelled set (e.g. freeze v3) is rejected."""
+    ws = _build_frozen_v5_pack()
+    path = f"{markers.CANONICAL_DIR}testing-policy.md"
+    content = ws.read(path).replace("freeze v5", "freeze v3")
+    ws.write(path, content)
+    findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
+    assert any(
+        f.requirement_id.startswith(markers.ID_MARKER_MISSING)
+        and "testing-policy.md" in f.requirement_id
+        for f in findings
+    )

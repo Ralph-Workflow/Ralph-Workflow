@@ -171,6 +171,36 @@ disposition = "KEEP"
     )
     assert valid_adv.controls[0].enforcement == "advisory: reason; review: on trigger"
 
+    # Placeholder enforcement
+    with pytest.raises(PortfolioError) as exc_placeholder:
+        parse_portfolio_toml(
+            base_toml + 'enforcement = "deterministic: PROJECT-FACT-UNRESOLVED"\n',
+            known_enforcers=frozenset({"make test"}),
+        )
+    assert "placeholder" in str(exc_placeholder.value).lower()
+
+    # Unknown enforcer id
+    with pytest.raises(PortfolioError) as exc_unknown:
+        parse_portfolio_toml(
+            base_toml + 'enforcement = "deterministic: unknown-id"\n',
+            known_enforcers=frozenset({"make test"}),
+        )
+    assert "unknown" in str(exc_unknown.value).lower()
+
+
+def test_unknown_enforcement_id_in_policy_file_fails_closed() -> None:
+    from ralph.language_detector.models import ProjectStack
+    from ralph.project_policy import validators
+    from tests.project_policy.policy_corpus import seed_complete_corpus
+
+    ws = MemoryWorkspace()
+    seed_complete_corpus(ws)
+    path = f"{markers.CANONICAL_DIR}security-policy.md"
+    body = ws.read(path).replace("deterministic: make test", "deterministic: make undeclared-check")
+    ws.write(path, body)
+    findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))
+    assert any(f.requirement_id == markers.ENFORCEMENT_UNKNOWN_ID_FINDING_ID for f in findings)
+
 
 def test_managed_block_idempotent_rerender() -> None:
     ws = MemoryWorkspace()

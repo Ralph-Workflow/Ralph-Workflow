@@ -234,6 +234,9 @@ def _dirty_boundary_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
     return WorkspaceScope(tmp_path)
 
 
+from functools import lru_cache
+
+@lru_cache(maxsize=1)
 def _config() -> UnifiedConfig:
     payload: dict[str, object] = {
         "general": {

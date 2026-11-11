@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Collection, Mapping
 
 from ralph.config._toml_fallback import (
     _format_error_detail,
@@ -25,6 +25,7 @@ from ralph.config._toml_fallback import (
 )
 from ralph.project_policy.markers import (
     CLAIM_SCOPE_PHRASES,
+    PLACEHOLDER_TOKENS,
     PORTFOLIO_PATH,
     PORTFOLIO_SCHEMA_VERSION,
     supported_portfolio_schema_versions,
@@ -324,11 +325,26 @@ def _parse_lanes(root: Mapping[str, object]) -> tuple[_Lane, ...]:
     return tuple(sorted(lanes, key=_lane_id))
 
 
-def _validate_control_enforcement(control_id: str, enforcement: str) -> None:
+def _validate_control_enforcement(
+    control_id: str,
+    enforcement: str,
+    *,
+    known_enforcers: Collection[str] | None = None,
+) -> None:
+    if known_enforcers is not None:
+        for token in PLACEHOLDER_TOKENS:
+            if token in enforcement:
+                raise _error(
+                    f"control {control_id} enforcement contains placeholder token {token!r}"
+                )
     if enforcement.startswith("deterministic:"):
         enforcer_id = enforcement[len("deterministic:") :].strip()
         if not enforcer_id:
             raise _error(f"control {control_id} enforcement deterministic requires an enforcer id")
+        if known_enforcers is not None and enforcer_id not in known_enforcers:
+            raise _error(
+                f"control {control_id} enforcement references unknown enforcer id {enforcer_id!r}"
+            )
     elif enforcement.startswith("advisory:"):
         if "; review:" not in enforcement:
             raise _error(
@@ -350,6 +366,8 @@ def _parse_control_version_fields(
     control_id: str,
     outcome: str,
     schema_version: str,
+    *,
+    known_enforcers: Collection[str] | None = None,
 ) -> tuple[str, str, str]:
     if schema_version == "v1":
         detects_val = table.get("detects")
@@ -370,7 +388,7 @@ def _parse_control_version_fields(
         return detects, retirement_trigger, enforcement
 
     enforcement = _text(table, "enforcement", f"control {control_id}")
-    _validate_control_enforcement(control_id, enforcement)
+    _validate_control_enforcement(control_id, enforcement, known_enforcers=known_enforcers)
     return detects, retirement_trigger, enforcement
 
 
@@ -387,6 +405,7 @@ def _parse_controls(
     *,
     schema_version: str = PORTFOLIO_SCHEMA_VERSION,
     workspace_exists: Callable[[str], bool] | None = None,
+    known_enforcers: Collection[str] | None = None,
 ) -> dict[str, _Control]:
     controls: dict[str, _Control] = {}
     outcomes: dict[str, str] = {}
@@ -431,7 +450,11 @@ def _parse_controls(
         if not isinstance(cost_basis_raw, str) or cost_basis_raw not in _ALLOWED_COST_BASIS:
             raise _error(f"control {control_id} requires cost_basis = 'measured' or 'estimate'")
         detects, retirement_trigger, enforcement = _parse_control_version_fields(
-            table, control_id, outcome, schema_version
+            table,
+            control_id,
+            outcome,
+            schema_version,
+            known_enforcers=known_enforcers,
         )
         controls[control_id] = _Control(
             id=control_id,
@@ -598,6 +621,7 @@ def _parse_portfolio_toml_strict(
     today: date | None = None,
     workspace_exists: Callable[[str], bool] | None = None,
     expected_schema_version: str | None = None,
+    known_enforcers: Collection[str] | None = None,
 ) -> PolicyPortfolio:
     if len(content.encode("utf-8")) > MAX_PORTFOLIO_BYTES:
         raise _error(f"portfolio exceeds {MAX_PORTFOLIO_BYTES} bytes")
@@ -629,6 +653,7 @@ def _parse_portfolio_toml_strict(
         frozenset(lane.id for lane in lanes),
         schema_version=schema_version,
         workspace_exists=workspace_exists,
+        known_enforcers=known_enforcers,
     )
     profiles = _parse_profiles(root)
     selected_ids, selected_profiles = _selected_control_ids(root, profiles, context)
@@ -670,6 +695,7 @@ def parse_portfolio_toml(
     expected_schema_version: str | None = None,
     path: Path | str | None = None,
     strict_optional_files: bool = True,
+    known_enforcers: Collection[str] | None = None,
 ) -> PolicyPortfolio:
     """Parse, validate, and deterministically compose one portfolio manifest.
 
@@ -689,6 +715,7 @@ def parse_portfolio_toml(
             today=today,
             workspace_exists=workspace_exists,
             expected_schema_version=expected_schema_version,
+            known_enforcers=known_enforcers,
         )
 
     effective_path = Path(path) if path is not None else Path(PORTFOLIO_PATH)
@@ -700,6 +727,7 @@ def parse_portfolio_toml(
             today=today,
             workspace_exists=workspace_exists,
             expected_schema_version=expected_schema_version,
+            known_enforcers=known_enforcers,
         ),
         default_portfolio(),
         kind="portfolio",

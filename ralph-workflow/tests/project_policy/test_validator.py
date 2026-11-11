@@ -91,7 +91,7 @@ def _complete_policy_body(*, filename: str, lang: str | None = None) -> str:
 def test_frozen_older_schema_is_an_explicit_valid_choice() -> None:
     content = "\n".join(
         (
-            "<!-- ralph-policy-schema: freeze v0 -->",
+            "<!-- ralph-policy-schema: freeze v5 -->",
             "<!-- ralph-policy-id: testing-policy.md -->",
         )
     )
@@ -165,7 +165,12 @@ def test_applicability_override_rejects_whitespace_reason_and_trigger() -> None:
 @functools.lru_cache(maxsize=1)
 def _seeded_core_files() -> tuple[tuple[str, str], ...]:
     files: list[tuple[str, str]] = [
-        (markers.PORTFOLIO_PATH, starters.read_starter("policy-portfolio.toml"))
+        (
+            markers.PORTFOLIO_PATH,
+            starters.read_starter("policy-portfolio.toml").replace(
+                "PROJECT-FACT-UNRESOLVED", "make test"
+            ),
+        )
     ]
     for filename in markers.CORE_POLICY_FILES:
         files.append(

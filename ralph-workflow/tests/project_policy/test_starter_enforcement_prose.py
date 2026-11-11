@@ -108,6 +108,10 @@ def test_validator_blocks_readiness_while_banner_remains() -> None:
     _seed_claude_md(ws)
     _seed_all_core_complete(ws, stack)
     starters.seed_starter_into(ws, "policy-portfolio.toml")
+    ws.write(
+        markers.PORTFOLIO_PATH,
+        ws.read(markers.PORTFOLIO_PATH).replace("PROJECT-FACT-UNRESOLVED", "make test"),
+    )
     assert validators.validate_readiness(ws, stack) == []
 
     # Same project with the banner re-inserted into one complete file.

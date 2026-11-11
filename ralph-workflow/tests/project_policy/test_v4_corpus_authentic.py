@@ -222,7 +222,7 @@ def test_fresh_v6_pack_validates_against_v6_manifest() -> None:
         markers.CLAUDE_MD,
         f"{markers.AGENTS_BLOCK_BEGIN}\nSee AGENTS.md.\n{markers.AGENTS_BLOCK_END}\n",
     )
-    shipped_portfolio = starters.read_starter("policy-portfolio.toml")
+    shipped_portfolio = _clean_policy_prose(starters.read_starter("policy-portfolio.toml"))
     ws.write(markers.PORTFOLIO_PATH, shipped_portfolio)
 
     findings = validators.validate_readiness(ws, ProjectStack(primary_language="Python"))

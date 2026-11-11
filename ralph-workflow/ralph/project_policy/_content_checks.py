@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from ralph.project_policy import evidence, markers, starters
@@ -203,15 +203,22 @@ def _check_markers(content: str, path: str, filename: str) -> list[PolicyFinding
     first_line = next((line for line in lines if line.strip()), "")
     frozen_version = _frozen_schema_version(content)
     current_version = int(markers.SCHEMA_VERSION.removeprefix("v"))
-    frozen_schema = frozen_version is not None and (
-        frozen_version < current_version or markers.is_allowed_frozen_version(f"v{frozen_version}")
+    frozen_schema = (
+        frozen_version is not None
+        and frozen_version < current_version
+        and markers.is_allowed_frozen_version(f"v{frozen_version}")
     )
     if first_line != markers.POLICY_SCHEMA_MARKER and not frozen_schema:
+        missing_evidence = (
+            f"unsupported freeze schema v{frozen_version}"
+            if frozen_version is not None
+            else f"missing schema marker {markers.POLICY_SCHEMA_MARKER}"
+        )
         findings.append(
             PolicyFinding(
                 requirement_id=f"{markers.ID_MARKER_MISSING}:schema-{filename}",
                 path=path,
-                missing_evidence=f"missing schema marker {markers.POLICY_SCHEMA_MARKER}",
+                missing_evidence=missing_evidence,
                 required_outcome=(
                     "choose whether to upgrade this policy to the bundled schema "
                     "or freeze its current schema in place, then add the selected "
@@ -232,9 +239,6 @@ def _check_markers(content: str, path: str, filename: str) -> list[PolicyFinding
             )
         )
     return findings
-
-
-_PRE_V5_SCHEMA_VERSION_MAX: Final[int] = 4
 
 
 def _frozen_schema_version(content: str) -> int | None:
