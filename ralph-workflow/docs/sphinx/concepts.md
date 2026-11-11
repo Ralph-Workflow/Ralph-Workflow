@@ -305,7 +305,7 @@ git checkout refs/ralph/proposals/<run>/<iteration> -- .
 
 ### Phase rename and checkpoint compatibility
 
-Commit review replaced the former commit-cleanup phase. The pre-rename phase names (`development_commit_cleanup`, `development_final_commit_cleanup`) and the removed `commit_cleanup` role, artifact, counter, template, and skill identifiers are gone, and Ralph Workflow performs **no checkpoint migration** for them. A checkpoint that still names a pre-rename phase is not rewritten — the run cannot route that phase and fails. Start a fresh run after upgrading.
+Commit review replaced the former cleanup phase. The pre-rename phase names and the removed cleanup role, artifact, counter, template, and skill identifiers are gone, and Ralph Workflow performs **no checkpoint migration** for them. A checkpoint that still names a pre-rename phase is not rewritten — the run cannot route that phase and fails. Start a fresh run after upgrading.
 
 ---
 

@@ -823,7 +823,7 @@ def _cas_publish_or_detect_advance(
     ``expected_head`` the commit was created concurrently (or Ralph
     already advanced the branch) and the result is idempotent
     ``ALREADY_ADVANCED`` rather than an error -- preventing a duplicate
-    commit and a commit/cleanup loop on re-dispatch.
+    commit and a commit/review loop on re-dispatch.
     """
     update_ref = run_git(
         ("update-ref", ref_name, candidate_sha, expected_head),

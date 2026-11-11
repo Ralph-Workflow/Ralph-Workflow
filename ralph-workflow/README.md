@@ -92,7 +92,7 @@ Four operating assumptions are worth knowing before you rely on the gate:
 - The rollback uses **neither `git stash` nor a saved patch** — it restores the tree from the sealed proposal ref.
 - A rejection that arrives after the cycle timebox expires routes to `failed_terminal`, not back to development.
 - An intentional large deletion gets **no plan-based bypass**: raise `max_deleted_files` / `max_deleted_fraction` in the pipeline policy TOML when you expect one.
-- The pre-rename phase names are not migrated. An in-flight run still holding `development_commit_cleanup` or `development_final_commit_cleanup` is unsupported — start a fresh run after upgrading.
+- The pre-rename phase names are not migrated. An in-flight run still holding pre-rename cleanup phases is unsupported — start a fresh run after upgrading.
 
 Per-setting details live in the
 [configuration reference](docs/sphinx/configuration.md#commit-review-configuration).
