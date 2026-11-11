@@ -12,9 +12,9 @@ encoding, permission, or schema validation errors (including schema-invalid
 [web_visit]), emitting deduplicated warnings. Strict mode re-raises errors.
 
 Architectural ruling:
-  MCP configuration preserves independent server configurations by employing
-  section-level fallback (e.g. for [web_visit]) rather than dropping the whole
-  configuration file when a single section has schema validation errors.
+  MCP configuration preserves whole-layer integrity by employing whole-file
+  fallback rather than partial section-level fallback when an optional
+  configuration file has syntax, decoding, or schema validation errors.
 """
 
 from __future__ import annotations

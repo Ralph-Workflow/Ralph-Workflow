@@ -167,22 +167,39 @@ def resolution_exhaustion_reason(
     unresolved_paths: tuple[str, ...],
 ) -> str:
     """Build durable terminal evidence when the resolver cannot finish."""
-    if (
-        session.terminal_reason == ResolutionTerminationReason.OUT_OF_REACH
-        and session.operator_action_message
+    action_msg = (
+        session.operator_action_message
+        if session.operator_action_message
         and "needs operator action:" in session.operator_action_message
-    ):
-        return session.operator_action_message
-    if (
-        session.terminal_reason == ResolutionTerminationReason.OUT_OF_REACH
-        and session.exhaustion_reason
-        and "needs operator action:" in session.exhaustion_reason
-    ):
-        return session.exhaustion_reason
+        else (
+            session.exhaustion_reason
+            if session.exhaustion_reason and "needs operator action:" in session.exhaustion_reason
+            else None
+        )
+    )
+    if action_msg:
+        if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
+            prefix = f"{ResolutionTerminationReason.CANDIDATE_EXHAUSTED.value}: "
+            return action_msg if action_msg.startswith(prefix) else f"{prefix}{action_msg}"
+        return action_msg
     if session.terminal_reason == ResolutionTerminationReason.OUT_OF_REACH and unresolved_paths:
         from ralph.pipeline.conflict_resolution.sight import gitlink_escalation_message
 
         return gitlink_escalation_message(unresolved_paths)
+    if (
+        session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED
+        and unresolved_paths
+    ):
+        from ralph.pipeline.conflict_resolution._operator_command import (
+            operator_command_for_paths,
+        )
+
+        paths = ", ".join(unresolved_paths)
+        cmd = operator_command_for_paths(unresolved_paths)
+        return (
+            f"CANDIDATE_EXHAUSTED: all resolver agents are spent/unavailable; "
+            f"conflict on {paths} needs operator action: {cmd}"
+        )
     reason = (
         session.terminal_reason.value
         if session.terminal_reason is not None

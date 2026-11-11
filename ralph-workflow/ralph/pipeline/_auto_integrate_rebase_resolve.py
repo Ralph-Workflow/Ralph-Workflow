@@ -320,6 +320,20 @@ def resolve_rebase_with_config(
                 from ralph.pipeline.conflict_resolution.sight import gitlink_escalation_message
 
                 carried_reason = gitlink_escalation_message(session.unresolved_paths)
+        elif session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED:
+            carried_reason = session.operator_action_message or session.exhaustion_reason
+            if not carried_reason or "needs operator action:" not in carried_reason:
+                from ralph.pipeline.conflict_resolution._operator_command import (
+                    operator_command_for_paths,
+                )
+
+                paths = tuple(session.unresolved_paths)
+                paths_str = ", ".join(paths)
+                cmd = operator_command_for_paths(paths)
+                carried_reason = (
+                    f"all resolver agents are spent/unavailable; "
+                    f"conflict on {paths_str} needs operator action: {cmd}"
+                )
         elif carried_cause == ResolutionFailureCause.CONFIG_FAILURE:
             carried_reason = session.exhaustion_reason or (
                 session.terminal_reason.value if session.terminal_reason is not None else None
@@ -327,9 +341,29 @@ def resolve_rebase_with_config(
         else:
             carried_reason = None
         return RebaseResolutionResult(False, carried_reason, carried_cause)
+    final_reason = (
+        session.operator_action_message
+        if session.operator_action_message
+        and "needs operator action:" in session.operator_action_message
+        else session.exhaustion_reason
+    )
+    if session.terminal_reason == ResolutionTerminationReason.CANDIDATE_EXHAUSTED and (
+        not final_reason or "needs operator action:" not in final_reason
+    ):
+        from ralph.pipeline.conflict_resolution._operator_command import (
+            operator_command_for_paths,
+        )
+
+        paths = tuple(session.unresolved_paths)
+        paths_str = ", ".join(paths)
+        cmd = operator_command_for_paths(paths)
+        final_reason = (
+            f"all resolver agents are spent/unavailable; "
+            f"conflict on {paths_str} needs operator action: {cmd}"
+        )
     return RebaseResolutionResult(
         False,
-        session.exhaustion_reason,
+        final_reason,
         carried_cause
         if carried_cause != ResolutionFailureCause.NONE
         else ResolutionFailureCause.UNRESOLVED_CONFLICT,

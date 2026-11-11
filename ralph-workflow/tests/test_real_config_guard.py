@@ -880,6 +880,26 @@ def test_default_production_guard_preserves_ralph_and_home_policy(
     assert _extract_write_path((str(outside_file), "w")) is None
 
 
+def test_proc_self_root_alias_detection(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Guarded path detection catches aliases resolving to protected config via /proc/self/root."""
+    fake_home = tmp_path / "fake_home"
+    fake_config = fake_home / ".config"
+    fake_config.mkdir(parents=True)
+    protected_file = fake_config / "ralph-workflow-agents.toml"
+    protected_file.write_text("k = 1\n", encoding="utf-8")
+
+    monkeypatch.delenv("RALPH_TEST_GUARDED_CONFIG_DIRS", raising=False)
+    monkeypatch.setattr("tests._real_config_guard_support.REAL_HOME", fake_home)
+    monkeypatch.setattr("tests._real_config_guard_support.REAL_XDG_CONFIG_HOME", fake_config)
+
+    proc_root = Path("/proc/self/root")
+    if not proc_root.exists():
+        pytest.skip("/proc/self/root is not available on this platform")
+
+    proc_alias = proc_root / str(protected_file).lstrip("/")
+    assert _extract_read_path((str(proc_alias), "r")) == protected_file.resolve()
+
+
 def test_default_production_session_guard_in_pytester(
     pytester: pytest.Pytester,
     tmp_path: Path,

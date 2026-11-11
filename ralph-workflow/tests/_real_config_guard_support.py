@@ -31,6 +31,10 @@ _RESOLVED_BUNDLED_AGENTS_TEMPLATE: Path | None = (
 )
 _REPO_DIR: Path = Path(__file__).resolve().parents[1]
 _REPO_DIR_STR: str = str(_REPO_DIR)
+_ROOT_DIR: Path = _REPO_DIR.parent
+_ROOT_DIR_STR: str = str(_ROOT_DIR)
+_REPO_DIR_PREFIX: str = f"{_REPO_DIR_STR}/"
+_ROOT_DIR_PREFIX: str = f"{_ROOT_DIR_STR}/"
 
 _WRITE_FLAGS: int = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND
 
@@ -281,7 +285,6 @@ def _parse_raw_path_string(arg0: object) -> str | None:
 
 
 _SAFE_SYSTEM_PREFIXES: tuple[str, ...] = (
-    "/proc/",
     "/sys/",
     "/dev/",
     "/usr/",
@@ -290,6 +293,7 @@ _SAFE_SYSTEM_PREFIXES: tuple[str, ...] = (
     "/etc/",
     f"{sys.prefix}/",
     f"{sys.base_prefix}/",
+    f"{_ROOT_DIR_STR}/",
     f"{_REPO_DIR_STR}/",
     f"{_REAL_HOME}/.local/",
     f"{_REAL_HOME}/.cache/",
@@ -300,6 +304,8 @@ _SAFE_SYSTEM_PREFIXES: tuple[str, ...] = (
 
 def _is_safe_pre_canonical_path(s_str: str) -> bool:
     """Check if raw string path is obviously safe to ignore before canonicalization."""
+    if ".." in s_str:
+        return False
     return bool(s_str.startswith(_SAFE_SYSTEM_PREFIXES))
 
 
@@ -403,7 +409,11 @@ def _canonicalize_path(target_str: str) -> str | None:
 
 def _is_protected_canonical_str(canonical: str, env_raw: bytes | None) -> bool:
     """Determine if a canonical path falls within guarded boundaries."""
-    if canonical == _REPO_DIR_STR or canonical.startswith(f"{_REPO_DIR_STR}/"):
+    if (
+        canonical in (_REPO_DIR_STR, _ROOT_DIR_STR)
+        or canonical.startswith(_REPO_DIR_PREFIX)
+        or canonical.startswith(_ROOT_DIR_PREFIX)
+    ):
         return False
     if env_raw is not None:
         return any(
