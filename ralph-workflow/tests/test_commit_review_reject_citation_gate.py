@@ -53,6 +53,8 @@ _FABRICATED_REASONS = (
     "src/app.py, 999 items",
     "src/app.py, 999 paths deleted",
     "src/app.py and 999 modifications",
+    "src/app.py modified; deleted files: 999",
+    "src/app.py modified; nine deleted files",
 )
 
 

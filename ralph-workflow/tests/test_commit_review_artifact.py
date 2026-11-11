@@ -636,6 +636,8 @@ _FABRICATED_COUNT_REASONS = (
     "Deleted src/main.py, 999 items",
     "Deleted src/main.py, 999 paths deleted",
     "Deleted src/main.py and 999 modifications",
+    "Deleted src/main.py; deleted files: 999",
+    "Deleted src/main.py; nine deleted files",
 )
 
 
@@ -700,3 +702,10 @@ def test_citation_verifier_non_count_numbers_are_not_count_claims() -> None:
     assert verify_reject_citations("Changed src/2024/report.py at line 42", diff) is True
     assert verify_reject_citations("Line 42 of src/2024/report.py is broken", diff) is True
     assert verify_reject_citations("Line 42 of the file src/2024/report.py is broken", diff) is True
+
+
+def test_citation_verifier_reversed_count_order_and_spelled_out_fail_closed() -> None:
+    """Reversed count order and spelled-out quantities fail closed when unverifiable."""
+    diff: list[object] = [_FakeDiffEntry(path="src/app.py", status="M")]
+    assert verify_reject_citations("src/app.py modified; deleted files: 999", diff) is False
+    assert verify_reject_citations("src/app.py modified; nine deleted files", diff) is False

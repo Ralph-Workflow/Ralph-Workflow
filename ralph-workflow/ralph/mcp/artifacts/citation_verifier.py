@@ -215,6 +215,73 @@ _COUNT_FILLER_WORDS: frozenset[str] = frozenset(
     }
 )
 
+_SPELLED_NUMBERS: dict[str, int] = {
+    "zero": 0,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+    "thirty": 30,
+    "forty": 40,
+    "fifty": 50,
+    "sixty": 60,
+    "seventy": 70,
+    "eighty": 80,
+    "ninety": 90,
+    "hundred": 100,
+    "thousand": 1000,
+}
+
+_VAGUE_QUANTIFIERS: frozenset[str] = frozenset(
+    {
+        "countless",
+        "few",
+        "many",
+        "multiple",
+        "numerous",
+        "several",
+        "various",
+    }
+)
+
+_COUNT_BACKWARD_FILLER_WORDS: frozenset[str] = frozenset(
+    {
+        "are",
+        "be",
+        "been",
+        "by",
+        "count",
+        "got",
+        "had",
+        "has",
+        "have",
+        "in",
+        "is",
+        "number",
+        "of",
+        "total",
+        "was",
+        "were",
+    }
+)
+
+
 _MARKDOWN_LINK_RE: re.Pattern[str] = re.compile(r"\[([^]]*)\]\(([^)]+)\)")
 _INLINE_CODE_RE: re.Pattern[str] = re.compile(r"`([^`]+)`")
 _QUOTED_STR_RE: re.Pattern[str] = re.compile(r"""(?:'([^']+)'|"([^"]+)")""")
@@ -652,13 +719,121 @@ def _count_category(index: int, tokens: list[str]) -> tuple[bool, str | None]:
     return (True, typed[0])
 
 
+def _parse_number_or_quantifier(token: str) -> tuple[int | None, bool]:
+    """Parse a token into an integer count and whether it is a concrete number.
+
+    Returns:
+        (value, is_concrete):
+        - (int, True) for digits or spelled-out numbers like "999" or "nine".
+        - (-1, False) for vague quantifiers like "several" or "many".
+        - (None, False) if the token is not a number or quantifier.
+    """
+    if _NUMBER_TOKEN_RE.match(token):
+        return (int(token.replace(",", "")), True)
+    if token in _SPELLED_NUMBERS:
+        return (_SPELLED_NUMBERS[token], True)
+    if "-" in token:
+        parts = token.split("-")
+        if all(part in _SPELLED_NUMBERS for part in parts):
+            return (sum(_SPELLED_NUMBERS[part] for part in parts), True)
+    if token in _VAGUE_QUANTIFIERS:
+        return (-1, False)
+    return (None, False)
+
+
+#: Maximum qualifier words to inspect preceding a count noun.
+_MAX_QUALIFIER_STEPS: int = 2
+
+
+def _reversed_noun_qualifiers(pos: int, tokens: list[str]) -> list[str] | None:
+    """Return qualifier categories preceding a reversed count noun.
+
+    Args:
+        pos: The token index of the count noun.
+        tokens: The word tokens of the reason line.
+
+    Returns:
+        List of diff categories, or None if an unknown qualifier is found.
+    """
+    q_pos = pos - 1
+    while q_pos >= 0 and tokens[q_pos] in _COUNT_BACKWARD_FILLER_WORDS:
+        q_pos -= 1
+
+    typed: list[str] = []
+    steps = 0
+    while q_pos >= 0 and steps < _MAX_QUALIFIER_STEPS:
+        q_word = tokens[q_pos]
+        if not _PLAIN_WORD_RE.match(q_word) or q_word in _COUNT_BACKWARD_FILLER_WORDS:
+            break
+        category = _COUNT_KIND_BY_WORD.get(q_word)
+        if category is None:
+            return None
+        typed.append(category)
+        q_pos -= 1
+        steps += 1
+    return typed
+
+
+def _reversed_category_word(pos: int, tokens: list[str]) -> tuple[bool, str | None]:
+    """Resolve diff category from a preceding category word (e.g. 'deleted: 999')."""
+    category = _COUNT_KIND_BY_WORD[tokens[pos]]
+    q_pos = pos - 1
+    while q_pos >= 0 and tokens[q_pos] in _COUNT_BACKWARD_FILLER_WORDS:
+        q_pos -= 1
+    if (
+        q_pos >= 0
+        and tokens[q_pos] in _COUNT_NOUN_CATEGORY
+        and _COUNT_NOUN_CATEGORY[tokens[q_pos]] is None
+    ):
+        return (True, None)
+    return (True, category)
+
+
+def _reversed_count_category(index: int, tokens: list[str]) -> tuple[bool, str | None]:
+    """Return the diff category a preceding noun or category word asserts.
+
+    Handles reversed count order such as "deleted files: 999", "deletions: 999",
+    "paths: 999", "files deleted: 999", "deleted: 999", or "modified files was 999".
+
+    Args:
+        index: The index of the number/quantifier token.
+        tokens: The word tokens of the reason line.
+
+    Returns:
+        Whether a reversed count is asserted, and the category it must be
+        backed by. The category is None when the claim cannot be typed.
+    """
+    pos = index - 1
+    while pos >= 0 and tokens[pos] in _COUNT_BACKWARD_FILLER_WORDS:
+        pos -= 1
+
+    if pos < 0 or not _PLAIN_WORD_RE.match(tokens[pos]):
+        return (False, None)
+
+    word = tokens[pos]
+    if word in _COUNT_NOUN_CATEGORY:
+        quantity = _COUNT_NOUN_CATEGORY[word]
+        if quantity is None:
+            return (True, None)
+
+        typed = _reversed_noun_qualifiers(pos, tokens)
+        if typed is None or len(set(typed)) > 1:
+            return (True, None)
+        return (True, typed[0] if typed else quantity)
+
+    if word in _COUNT_KIND_BY_WORD:
+        return _reversed_category_word(pos, tokens)
+
+    return (False, None)
+
+
 def _count_claims(tokens: list[str]) -> list[tuple[int, str | None]]:
     """Return the count claims one reason line makes.
 
     A claim is a number that asserts a quantity of the diff: it names a
-    counted noun ("999 paths"), optionally typed by a category word ("999
-    deleted files").  A number that names a place in a file instead of a
-    quantity is a reference, not a claim.
+    counted noun ("999 paths", "999 deleted files", "deleted files: 999",
+    "nine deleted files").  A number that names a place in a file instead
+    of a quantity is a reference, not a claim.
 
     Args:
         tokens: The word tokens of the reason line.
@@ -670,14 +845,24 @@ def _count_claims(tokens: list[str]) -> list[tuple[int, str | None]]:
     """
     claims: list[tuple[int, str | None]] = []
     for index, token in enumerate(tokens):
-        if not _NUMBER_TOKEN_RE.match(token):
+        num_val, is_concrete = _parse_number_or_quantifier(token)
+        if num_val is None:
             continue
-        if index > 0 and tokens[index - 1] in _COUNT_REFERENCE_WORDS:
+        if (
+            index > 0
+            and tokens[index - 1] in _COUNT_REFERENCE_WORDS
+            and not (index > 1 and tokens[index - 2] in _COUNT_KIND_BY_WORD)
+        ):
             continue
         claimed, category = _count_category(index, tokens)
         if not claimed:
+            claimed, category = _reversed_count_category(index, tokens)
+        if not claimed:
             continue
-        claims.append((int(token.replace(",", "")), category))
+        if not is_concrete:
+            claims.append((num_val, None))
+        else:
+            claims.append((num_val, category))
     return claims
 
 
