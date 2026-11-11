@@ -21,7 +21,6 @@ import tempfile
 import time
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
-from itertools import zip_longest
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -135,8 +134,8 @@ EXCLUSIVE_SUBPROCESS_E2E_FILES: tuple[str, ...] = (
 #:    registered file's real-Git crossings, so the proof may drive the
 #:    real git binary without an opt-in marker.
 #: 3. **Budget charge** -- a registered file runs in the dedicated
-#:    real-git shard, whose in-shard xdist fan-out absorbs its wall clock
-#:    inside the pinned 60 s combined budget.
+#:    real-git lane, whose own shards absorb its wall clock inside the
+#:    pinned 60 s combined budget.
 #:
 #: A file that is NOT registered and carries a module-level
 #: ``subprocess_e2e`` marker is dropped by discovery and deselected by
@@ -198,9 +197,9 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # contracts (a stale verdict is re-reviewed; the verdict is
     # evaluated against the NEW seal the edit step produces) would rot
     # in the opt-in lane while ``make verify`` stayed green. The
-    # dedicated real-git shard's in-shard xdist fan-out absorbs the
+    # dedicated real-git lane's own shards absorb the
     # file's measured cost (82 tests, ~20 CPU core-seconds serial,
-    # ~5.9 s wall under the shard's 10-worker profile) inside the
+    # ~5.9 s wall under the lane's shard profile) inside the
     # pinned 60 s combined budget.
     "tests/test_phases_commit_review.py",
     # wt-03-commit-review-flow: the commit-review REAL-GIT proof modules.
@@ -213,7 +212,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # and the rock-solid phase contract would rot in the opt-in lane while
     # ``make verify`` stayed green. Registering them keeps both proofs on
     # the default ``make test`` profile, where the dedicated real-git
-    # shard's in-shard xdist fan-out absorbs their measured cost.
+    # lane's own shards absorb their measured cost.
     "tests/test_commit_review_real_diff_proofs.py",
     "tests/integration/test_commit_review_rock_solid.py",
     # wt-03-commit-review-flow: the remaining commit-review modules that
@@ -309,8 +308,8 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # worker (~6 s for opts-key drift, ~2.5 s for kwargs-forwarding)
     # and would tip a single-file shard past the 60 s combined
     # budget even when every other shard finishes inside it. Moving
-    # them to the E2E shard gives its in-shard xdist workers
-    # (``_REQUIRED_E2E_SHARD_XDIST_WORKERS`` capped by the host's cores)
+    # them to the E2E lane gives its own shards
+    # (``_REQUIRED_E2E_SHARD_COUNT`` capped by the host's cores)
     # enough headroom to absorb the scan, and keeps the regression
     # gates on the default ``make test`` profile so the silent-key
     # drop cannot rot. They are marked ``subprocess_e2e`` so the
@@ -371,7 +370,7 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
     # process boundary (the FIFO-blocked open/session tests must reach the
     # fail-closed overrun helpers inside a real child, and the invalid-inherited-FD
     # tests prove the typed McpServerError reaches the parent as a non-zero exit).
-    # Registered on the default profile in the dedicated E2E shard (10 xdist workers)
+    # Registered on the default profile in the dedicated E2E lane (10 shards)
     # so the fail-closed real-child proofs cannot rot silently and fit within the
     # 60s immutable combined test budget.
     "tests/mcp/test_whole_startup_budget_production.py",
@@ -544,49 +543,42 @@ _REQUIRED_E2E_WEIGHT_MULTIPLIER = 1
 _PYTEST_DURATIONS_REPORT: int = 10
 
 
-# Required real-git files use a dedicated shard with ten xdist workers.
-# wt-03-fix-bug originally pinned this at 4 to hold the total concurrent
-# process count at 12 (8 general + 4 E2E) on the then-maintained 12-core
-# host. That host is gone: the suite now runs on a 40-core host where the
-# eight general shards finish in 25-35 s and the real-git shard alone runs
-# 44 s of pytest work for 721 collected tests, so the shard -- not the
-# general shards -- sets the ``make test`` wall clock. Measured at four
-# workers: slowest shard 47.36 s, and because ``make test-verification-smoke``
-# is charged to the same cumulative tracker (``ralph/verify.py``
-# ``_BUDGET_TRACKED_SECONDS``, 13 s wall), ``make test`` + smoke = 60.4 s
-# exceeds the immutable 60 s budget.
+# The required real-git files run as a dedicated lane of plain-pytest shards
+# that start alongside the general shards.
 #
-# wt-01-policy (WU-1) measured the fan-out directly on the maintained
-# 40-core host (single-shard runs of the exact 83-file required-E2E
-# selection, ``getrusage(RUSAGE_CHILDREN)`` around the command):
+# wt-03-fix-bug originally ran them in ONE shard with four xdist workers, to
+# hold the total concurrent process count at 12 (8 general + 4 E2E) on the
+# then-maintained 12-core host. The in-shard fan-out was then raised to ten
+# workers, because the single real-git shard -- not the general shards --
+# set the ``make test`` wall clock: it ran 44 s of pytest work for 721
+# collected tests, and ``make test`` + ``make test-verification-smoke``
+# overflowed the immutable cumulative 60 s budget.
 #
-#   workers | CPU core-s | wall s
-#   --------+------------+-------
-#      12   |   394.66   | 36.26
-#      10   |   337.19   | 34.73
-#       8   |   334.31   | 42.94
+# The fan-out was the wrong tool for that job. Every xdist worker collects
+# the WHOLE shard manifest, so ten workers imported the conftest chain and
+# all 90 real-git modules ten times over: measured on the maintained host,
+# one 10-worker xdist shard cost 423.3 CPU core-seconds while the same 90
+# files spread over ten plain shards cost 388.3 -- ~35 core-seconds of
+# duplicated collection and import that the immutable 700 core-second
+# budget is charged for.
 #
-# Twelve workers were over-provisioned: the extra two workers bought no
-# wall-clock headroom (the shard is bounded by its slowest single test,
-# not by the fan-out) but cost ~57 CPU core-seconds of duplicated
-# per-worker collection, module import, and xdist report coordination --
-# CPU the immutable 700 core-second budget is charged for. Ten workers
-# keep the shard's wall BELOW the eight general shards' wall, so the
-# ``make test`` wall clock is unchanged, while cutting the shard's CPU
-# by ~14.6 %. Eight workers would save only ~3 more core-seconds but
-# push the shard's wall to 42.9 s, past the general shards' tail and
-# past the combined-budget headroom the verification smoke step needs.
-#
-# The cumulative budget itself is untouched. Ten is a CAP: a host with
-# fewer cores gets one worker per core (a 4-core CI runner given twelve
-# workers was oversubscribed three times over), while the 12-core and
-# 40-core hosts keep all ten.
-_REQUIRED_E2E_SHARD_XDIST_WORKERS = "10"
+# Ten plain shards give the same parallelism (each shard runs concurrently
+# with the general shards) with ONE import of every module, and the
+# recalibrated weight table balances them: the ten shards' predicted loads
+# differ by 0.4 %, against a 1.29 spread between the general lane's shards
+# under the old count-based weights.
+_REQUIRED_E2E_SHARD_COUNT = 10
 
 
-def _required_e2e_xdist_workers() -> str:
+def _required_e2e_shard_count() -> int:
+    """Return the number of plain-pytest shards for the required real-git lane.
+
+    The count is a CAP: a host with fewer cores gets one shard per core (a
+    4-core CI runner given ten shards was oversubscribed three times over),
+    while the 12-core and 40-core hosts keep all ten.
+    """
     available_cores = os.cpu_count() or 1
-    return str(min(int(_REQUIRED_E2E_SHARD_XDIST_WORKERS), available_cores))
+    return min(_REQUIRED_E2E_SHARD_COUNT, available_cores)
 
 
 def _exclusive_subprocess_e2e_xdist_workers() -> str:
@@ -607,115 +599,323 @@ def _exclusive_subprocess_e2e_xdist_workers() -> str:
 
 _EXCLUSIVE_SUBPROCESS_E2E_SHARD_XDIST_WORKERS = _exclusive_subprocess_e2e_xdist_workers()
 _PARAMETRIZE_CASES_ARGUMENT_INDEX = 1
+#: Wall-clock seconds one weight unit stands for. The weight table is
+#: calibrated at 17 units per second (``round(measured_seconds * 17)``), so
+#: the count-based estimate is scaled into the SAME units: a file whose
+#: collected-test count is its only estimate is weighted as if each of its
+#: tests took ``_BASE_SECONDS_PER_TEST`` seconds.
+_WEIGHT_SECONDS_PER_UNIT: Final = 1.0 / 17.0
+#: Measured seconds per collected test for a file with no measured override.
+#: The maintained suite's fast modules spend ~5 ms per test; the general
+#: lane's mean measured cost is 0.03 s per test, so this factor keeps the
+#: count-based files on the same time scale as the measured overrides
+#: without letting a fast file outweigh a measured heavy one.
+_BASE_SECONDS_PER_TEST: Final = 0.005
+#: Per-file load weights for the LPT shard partition.
+#:
+#: One weight unit is 1/17 of a second of measured wall clock: the scale the
+#: historical calibration used (``weight = round(measured_seconds * 17)``).
+#: The values are MEASURED per-file durations from the maintained suite's
+#: shard runs, NOT test counts. The count-based estimate mis-places the heavy
+#: real-git, MCP and display modules, which left the eight general shards
+#: with a 1.29 spread between the fastest and the slowest shard and pushed
+#: the slowest shard (75.5 s) past the combined wall budget.
+#:
+#: Calibration rule: a file whose measured duration reaches 0.5 s gets
+#: ``round(measured_seconds * 17)``; a file whose every phase ran below the
+#: 5 ms durations-reporting floor keeps its hand-calibrated weight, because
+#: the reported sum undercounts it. Files outside this table use the
+#: count-based estimate scaled into the same time units by
+#: ``_BASE_SECONDS_PER_TEST``.
+#:
+#: The required real-git files are measured from the plain-shard run of the
+#: dedicated real-git lane, so the same table balances that lane's shards.
 _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES: Mapping[str, int] = {
-    "tests/display/test_generated_scene_catalog.py": 45,
-    "tests/display/test_generated_scene_renderer.py": 40,
-    "tests/display/test_generated_scene_salience.py": 15,
-    "tests/test_brand_naming.py": 78,
-    "tests/test_audit_kwargs_forwarding.py": 50,
-    "tests/test_no_anti_drift_regression.py": 76,
-    "tests/test_audit_opts_key_drift.py": 280,
-    "tests/test_auto_integrate_acceptance_scenarios_e2e.py": 200,
-    "tests/test_auto_integrate_remote_sync_fast_forward_contract.py": 215,
-    "tests/test_auto_rebase_idempotence_e2e.py": 120,
-    "tests/test_integration_obstruction_real_git.py": 180,
-    "tests/mcp/test_bounded_catalog_publish.py": 100,
-    "tests/mcp/test_whole_startup_budget_production.py": 160,
-    "tests/mcp/test_e64_import_guard_execution.py": 220,
-    "tests/mcp/test_respawn_no_discovery.py": 130,
-    "tests/mcp/test_e3x_transport_gap_typed_retry.py": 160,
-    "tests/mcp/test_e46_parent_sigkill_no_orphans.py": 260,
-    "tests/mcp/test_handover_inflight_real_child.py": 50,
-    "tests/mcp/test_root_cause_real_child_bridge.py": 200,
-    "tests/mcp/test_mcp_endpoint_never_refuses.py": 68,
-    "tests/test_exec_smoke_subprocess_e2e.py": 45,
-    "tests/test_exec_job_shutdown_subprocess_e2e.py": 100,
-    "tests/test_auto_integrate_resolution.py": 165,
-    "tests/test_auto_integrate_race.py": 140,
-    "tests/test_auto_integrate_conflict_budget.py": 180,
-    "tests/test_install_wheel.py": 120,
-    "tests/test_integration_diagnostic_proof.py": 300,
-    "tests/test_cli_commands_run_skill_sync.py": 130,
-    "tests/test_auto_integrate_remote_refresh.py": 300,
-    "tests/test_auto_integrate_real_agent_resolution_e2e.py": 100,
-    "tests/test_explore_bench_rss_isolation.py": 350,
-    # Calibrated from --profile-durations per-file wall-clock on shard 15
-    # (weight = round(measured_seconds * 17); band [50, 460] per existing
-    # calibration, ~1022 shard weight / 60 s shard budget). These files sit
-    # on the slowest shard and their heuristic test-count weight
-    # underestimates their wall-clock cost.
-    "tests/test_deterministic_writers_clean_tree.py": 133,
-    "tests/test_audit_artifact_submission_canonical_path.py": 131,
-    "tests/project_policy/test_run_integration.py": 100,
-    "tests/project_policy/test_policy_never_blocks_the_run.py": 130,
-    "tests/project_policy/test_policy_handback_to_pipeline.py": 50,
-    "tests/agents/test_workspace_event_backpressure.py": 56,
-    "tests/test_integration_diagnostic_intervention_cap.py": 160,
-    "tests/pipeline/test_reducer_lock_retry.py": 120,
-    "tests/test_recovery_release_uses_record_store.py": 80,
-    "tests/test_commit_detached_head_recovery.py": 187,
-    "tests/test_branch_relation_matrix.py": 150,
-    "tests/test_conflict_resolution_pipeline.py": 150,
-    "tests/test_conflict_resolution_outcome_judging.py": 100,
-    "tests/test_integration_state_coverage.py": 260,
-    "tests/test_pipeline_runner_pipeline_runner_loop_1.py": 100,
-    "tests/test_subprocess_reader_resume_safe.py": 100,
-    "tests/test_phases_retry_on_stale_session.py": 53,
-    "tests/display/test_operator_display_labels.py": 52,
-    "tests/test_filesystem_scenario_baseline.py": 180,
-    "tests/test_public_workflow_entry_point_matrix.py": 120,
-    "tests/test_mcp_endpoint_functional_sweep.py": 90,
-    "tests/test_auto_integrate_boundary_refresh.py": 180,
-    "tests/test_integration_decision_table.py": 300,
-    "tests/pipeline/test_continuation_retry_gate_blackbox.py": 200,
-    "tests/test_conflict_resolution_gitlink_escalation.py": 340,
-    "tests/mcp/test_mcp_slow_startup_served_from_backlog.py": 180,
-    "tests/test_mcp_supervision_resilience.py": 20,
-    "tests/test_mcp_lifecycle.py": 30,
-    "tests/test_property_c_liveness_contract.py": 60,
-    "tests/project_policy/test_policy_handback_channel_ledger.py": 130,
-    "tests/test_cli_diagnose_path.py": 150,
-    "tests/project_policy/test_skip_inline_policy_prompt.py": 70,
-    "tests/project_policy/test_policy_handback_ready_route.py": 40,
-    "tests/test_auto_integrate_drift_recovery.py": 50,
-    "tests/test_auto_integrate_gates.py": 160,
-    "tests/unit/test_storage_lifecycle.py": 30,
-    "tests/test_cli_run_skill_sync_warnings.py": 45,
-    "tests/test_explore_mcp_timeout.py": 40,
-    "tests/test_timing_safety_transports.py": 30,
-    "tests/test_retained_resolution_handoff.py": 580,
-    "tests/test_commit_executor.py": 500,
-    # wt-03 WU-2: the newly registered commit-review phase gate module.
-    # Calibrated from the default-lane profile (83 tests, 18.61 s measured
-    # serial wall clock, 22.06 CPU core-seconds) with the same
-    # ``round(measured_seconds * 17)`` rule the other real-git entries use.
-    # The weight decides the file's position in the required real-git
-    # shard's manifest order, so its 83 real-git cases start early and
-    # fill the shard's worker slack instead of extending the shard's tail.
-    "tests/test_phases_commit_review.py": 316,
-    "tests/test_liveness_termination.py": 30,
-    "tests/test_mcp_capability_mapping.py": 25,
-    "tests/test_policy_validation.py": 180,
-    "tests/test_integration_diagnostic_resolver_health.py": 15,
-    "tests/project_policy/test_policy_handback_working_tree.py": 200,
-    "tests/test_public_workflow_exhaustion_restart.py": 120,
-    "tests/test_integration_state_space.py": 240,
-    "tests/test_integration_termination_model.py": 60,
-    "tests/test_integration_seam_wiring.py": 50,
-    "tests/test_catchup_ticker_adversity.py": 30,
-    "tests/test_fault_classification_totality.py": 30,
-    "tests/test_stale_intent_startup_replay.py": 120,
-    "tests/test_pending_merge_repair_real_git.py": 170,
-    "tests/pipeline/test_run_time_report_shutdown.py": 60,
-    "tests/recovery/test_single_agent_broken_chain_failfast.py": 60,
-    "tests/recovery/test_broken_agent_advances_chain.py": 50,
-    "tests/test_pty_line_reader_pending_bound.py": 50,
+    "tests/agents/invoke/test_invoke_monitor_wiring.py": 13,
+    "tests/agents/invoke/test_runtime_resolver_endpoint_delivery.py": 11,
+    "tests/agents/test_invoke_timeout_integration.py": 28,
     "tests/agents/test_terminal_state_restored_on_exit.py": 270,
-    "tests/test_auto_integrate_local_fleet_target_e2e.py": 55,
-    # Recalibrated after the rewrite to a REAL git rebase: the file now
-    # drives real git plumbing and measures ~7.8 s of wall clock.
-    # 220 keeps all shards evenly balanced within the 60s verify budget.
+    "tests/agents/test_workspace_event_backpressure.py": 12,
+    "tests/config/test_agents_file_immutable.py": 61,
+    "tests/config/test_agents_normal_run_immutable.py": 13,
+    "tests/config/test_agents_toml_fallback.py": 22,
+    "tests/config/test_check_config_reports_every_unreadable_file.py": 24,
+    "tests/config/test_init_agents_autowire.py": 10,
+    "tests/config/test_regenerate_agents_safe.py": 9,
+    "tests/config/test_retention_max_age_config.py": 14,
+    "tests/display/test_generated_scene_catalog.py": 13,
+    "tests/display/test_generated_scene_renderer.py": 31,
+    "tests/display/test_generated_scene_salience.py": 9,
+    "tests/integration/test_commit_review_baseline_e2e.py": 16,
+    "tests/integration/test_commit_review_gate_e2e.py": 84,
+    "tests/integration/test_commit_review_gate_failure_e2e.py": 16,
+    "tests/integration/test_legacy_restart_acceptance.py": 21,
+    "tests/integration/test_lifecycle_restart_acceptance.py": 71,
+    "tests/integration/test_mcp_exec_result_contract.py": 21,
+    "tests/integration/test_pipeline_commit_review_to_commit_e2e.py": 103,
+    "tests/integration/test_retained_integration_acceptance.py": 92,
+    "tests/integration/test_runner_default_display.py": 24,
+    "tests/integration/test_runner_fanout_wiring.py": 10,
+    "tests/integration/test_single_agent_e2e.py": 23,
+    "tests/integration/test_transcript_end_to_end.py": 57,
+    "tests/integration/test_validate_custom_mcp_e2e.py": 16,
+    "tests/mcp/test_boot_allowance_lifecycle.py": 9,
+    "tests/mcp/test_bounded_catalog_publish.py": 56,
+    "tests/mcp/test_bridge_e1_e2_edge_cases.py": 23,
+    "tests/mcp/test_bridge_make_before_break.py": 79,
+    "tests/mcp/test_cli_child_banner_visible_without_unbuffered_env.py": 29,
+    "tests/mcp/test_codex_config_synthesis.py": 11,
+    "tests/mcp/test_e17_state_continuity.py": 43,
+    "tests/mcp/test_e18_old_session_id_accepted.py": 19,
+    "tests/mcp/test_e3x_transport_gap_typed_retry.py": 234,
+    "tests/mcp/test_e42_two_supervisors_one_replacement.py": 47,
+    "tests/mcp/test_e46_parent_sigkill_no_orphans.py": 62,
+    "tests/mcp/test_e54_bridge_zombie.py": 13,
+    "tests/mcp/test_e64_import_guard_execution.py": 96,
+    "tests/mcp/test_e72_footprint_real_child.py": 63,
+    "tests/mcp/test_handover_inflight_real_child.py": 103,
+    "tests/mcp/test_inherited_fd_invalid_fails_closed.py": 58,
+    "tests/mcp/test_mcp_activity_relay_sequence_anomaly.py": 11,
+    "tests/mcp/test_mcp_endpoint_never_refuses.py": 78,
+    "tests/mcp/test_mcp_slow_startup_served_from_backlog.py": 61,
+    "tests/mcp/test_mcp_stage_attribution_real_child.py": 26,
+    "tests/mcp/test_replacement_shutdown_signals_real_child.py": 89,
+    "tests/mcp/test_respawn_no_discovery.py": 199,
+    "tests/mcp/test_root_cause_real_child_bridge.py": 291,
+    "tests/mcp/test_runtime_blocked_registry_built_surfaces_typed_error.py": 25,
+    "tests/mcp/test_runtime_blocked_workspace_read_surfaces_typed_error.py": 10,
+    "tests/mcp/test_single_acceptor_instrumented.py": 48,
+    "tests/mcp/test_whole_startup_budget_production.py": 120,
     "tests/pipeline/test_auto_integrate_agent_failure.py": 220,
+    "tests/pipeline/test_commit_retry_real_route.py": 18,
+    "tests/pipeline/test_conflict_resolution_ledger.py": 9,
+    "tests/pipeline/test_conflict_resolution_unresolved_typed.py": 9,
+    "tests/pipeline/test_continuation_retained_reason_gate.py": 22,
+    "tests/pipeline/test_continuation_retry_gate.py": 79,
+    "tests/pipeline/test_continuation_retry_gate_blackbox.py": 136,
+    "tests/pipeline/test_corrupt_agents_toml_repro.py": 11,
+    "tests/pipeline/test_development_phase_missing_plan_handoff_status_bar_visible.py": 8,
+    "tests/pipeline/test_planning_commit_recovery.py": 11,
+    "tests/pipeline/test_planning_requires_target_sync.py": 40,
+    "tests/pipeline/test_reducer_lock_retry.py": 21,
+    "tests/pipeline/test_run_loop_resume_prefers_available_agent.py": 29,
+    "tests/pipeline/test_terminal_mcp_error_per_entry_path.py": 21,
+    "tests/project_policy/test_completed_upgrades.py": 11,
+    "tests/project_policy/test_fresh_init_v6.py": 12,
+    "tests/project_policy/test_pipeline_driver.py": 16,
+    "tests/project_policy/test_policy_auto_commit.py": 26,
+    "tests/project_policy/test_policy_handback_channel_ledger.py": 29,
+    "tests/project_policy/test_policy_handback_ready_route.py": 23,
+    "tests/project_policy/test_policy_handback_to_pipeline.py": 20,
+    "tests/project_policy/test_policy_handback_working_tree.py": 92,
+    "tests/project_policy/test_policy_never_blocks_the_run.py": 34,
+    "tests/project_policy/test_preflight.py": 11,
+    "tests/project_policy/test_starter_enforcement_prose.py": 9,
+    "tests/project_policy/test_v4_corpus_authentic.py": 11,
+    "tests/project_policy/test_validator.py": 20,
+    "tests/recovery/test_agent_failure_charge_once.py": 31,
+    "tests/recovery/test_agent_failure_route_facts.py": 18,
+    "tests/recovery/test_agent_failure_scenarios.py": 79,
+    "tests/recovery/test_ledger_migration.py": 34,
+    "tests/recovery/test_no_progress_quiet.py": 9,
+    "tests/recovery/test_run_loop_real_resume_restart.py": 16,
+    "tests/recovery/test_runner_offline_pause_resume.py": 22,
+    "tests/recovery/test_runner_recovery_end_to_end.py": 44,
+    "tests/recovery/test_single_agent_broken_chain_failfast.py": 60,
+    "tests/test_agent_chain.py": 11,
+    "tests/test_agents_invoke.py": 31,
+    "tests/test_analysis_prompt_payload_contract_retry_hint_guard_in_templates.py": 12,
+    "tests/test_audit_opts_key_drift.py": 280,
+    "tests/test_audit_skill_mirror_freshness.py": 24,
+    "tests/test_audit_terminal_escape_containment.py": 29,
+    "tests/test_audit_test_policy.py": 22,
+    "tests/test_authority_audit_scenario_3_4_9_restart_retry.py": 43,
+    "tests/test_auto_integrate_acceptance_scenarios_e2e.py": 210,
+    "tests/test_auto_integrate_boundary_cleanliness.py": 48,
+    "tests/test_auto_integrate_boundary_refresh.py": 177,
+    "tests/test_auto_integrate_catchup_remote_coordination.py": 44,
+    "tests/test_auto_integrate_conflict_budget.py": 180,
+    "tests/test_auto_integrate_drift_recovery.py": 13,
+    "tests/test_auto_integrate_end_to_end.py": 40,
+    "tests/test_auto_integrate_fail_closed_e2e.py": 13,
+    "tests/test_auto_integrate_gates.py": 208,
+    "tests/test_auto_integrate_local_fleet_target_e2e.py": 55,
+    "tests/test_auto_integrate_race.py": 140,
+    "tests/test_auto_integrate_real_agent_resolution_e2e.py": 100,
+    "tests/test_auto_integrate_record_loader_lease.py": 14,
+    "tests/test_auto_integrate_recovery_git_state_reflog.py": 27,
+    "tests/test_auto_integrate_remote_refresh.py": 300,
+    "tests/test_auto_integrate_remote_sync_fast_forward_contract.py": 252,
+    "tests/test_auto_integrate_remote_sync_pull.py": 46,
+    "tests/test_auto_integrate_remote_sync_push.py": 25,
+    "tests/test_auto_integrate_resolution.py": 165,
+    "tests/test_auto_integrate_resolving_rebase_record.py": 13,
+    "tests/test_auto_integrate_retained_recovery_seam.py": 68,
+    "tests/test_auto_integrate_skip_reasons.py": 13,
+    "tests/test_auto_rebase_idempotence_e2e.py": 60,
+    "tests/test_backup_ref_operation_scope.py": 44,
+    "tests/test_bootstrap_auto_seed_gitignore.py": 17,
+    "tests/test_branch_relation_matrix.py": 78,
+    "tests/test_cli_commands_1.py": 33,
+    "tests/test_cli_commands_init.py": 14,
+    "tests/test_cli_commands_run_skill_sync.py": 15,
+    "tests/test_cli_commit_command.py": 9,
+    "tests/test_cli_diagnose_path.py": 46,
+    "tests/test_cli_long_mode_semantics.py": 14,
+    "tests/test_cli_quick_mode_semantics.py": 11,
+    "tests/test_cli_removed_review_flags.py": 9,
+    "tests/test_cli_run_skill_sync_warnings.py": 10,
+    "tests/test_cli_subcommand_early_return_proof.py": 11,
+    "tests/test_commit_detached_head_recovery.py": 217,
+    "tests/test_commit_executor.py": 169,
+    "tests/test_commit_review_diff.py": 31,
+    "tests/test_commit_review_invariants.py": 126,
+    "tests/test_commit_review_reject_citation_gate.py": 36,
+    "tests/test_commit_review_tripwires.py": 44,
+    "tests/test_commit_review_verify_gate.py": 149,
+    "tests/test_completion_invocation_exit_logging.py": 14,
+    "tests/test_config_auto_commit.py": 45,
+    "tests/test_config_bootstrap.py": 61,
+    "tests/test_config_bootstrap_git_isolation.py": 49,
+    "tests/test_conflict_resolution_attempt_attribution.py": 16,
+    "tests/test_conflict_resolution_futile_loop.py": 23,
+    "tests/test_conflict_resolution_gitlink_escalation.py": 210,
+    "tests/test_conflict_resolution_phase_parity.py": 12,
+    "tests/test_conflict_resolution_pipeline.py": 83,
+    "tests/test_conflict_resolution_pipeline_outcome.py": 12,
+    "tests/test_cursor_runtime_auth_preservation.py": 10,
+    "tests/test_deterministic_writers_clean_tree.py": 27,
+    "tests/test_developer_prompt_subagent_guidance.py": 9,
+    "tests/test_display_single_source_formatters.py": 15,
+    "tests/test_exec_job_integration.py": 34,
+    "tests/test_exec_job_shutdown_subprocess_e2e.py": 207,
+    "tests/test_exec_jobs.py": 188,
+    "tests/test_exec_jobs_finish_regressions.py": 54,
+    "tests/test_exec_jobs_lifecycle.py": 12,
+    "tests/test_exec_liveness_scenarios.py": 16,
+    "tests/test_exec_smoke_subprocess_e2e.py": 79,
+    "tests/test_executor_process.py": 12,
+    "tests/test_explore_bench_rss_isolation.py": 42,
+    "tests/test_explore_cold_start_lifecycle.py": 20,
+    "tests/test_explore_concurrency.py": 12,
+    "tests/test_explore_crash_safety.py": 35,
+    "tests/test_explore_fault_matrix.py": 18,
+    "tests/test_explore_fault_matrix_full.py": 11,
+    "tests/test_explore_graph.py": 10,
+    "tests/test_explore_handlers.py": 11,
+    "tests/test_explore_mcp_timeout.py": 13,
+    "tests/test_explore_perf_regression_gate.py": 109,
+    "tests/test_explore_pipeline.py": 33,
+    "tests/test_explore_real_codebase.py": 77,
+    "tests/test_filesystem_scenario_baseline.py": 18,
+    "tests/test_git_proposal_seal.py": 46,
+    "tests/test_git_wrapper.py": 16,
+    "tests/test_harness_run_diagnosis.py": 10,
+    "tests/test_install_wheel.py": 120,
+    "tests/test_integration_clock_and_reasons.py": 11,
+    "tests/test_integration_decision_table.py": 119,
+    "tests/test_integration_diagnostic.py": 21,
+    "tests/test_integration_diagnostic_evidence.py": 29,
+    "tests/test_integration_diagnostic_exhaustion.py": 28,
+    "tests/test_integration_diagnostic_intervention_cap.py": 26,
+    "tests/test_integration_diagnostic_livelock.py": 44,
+    "tests/test_integration_diagnostic_resolver_health.py": 166,
+    "tests/test_integration_diagnostic_worktree_isolation.py": 18,
+    "tests/test_integration_dirt_decisions.py": 12,
+    "tests/test_integration_dirt_shapes.py": 21,
+    "tests/test_integration_fault_catalogue.py": 143,
+    "tests/test_integration_fault_model.py": 74,
+    "tests/test_integration_ladder.py": 10,
+    "tests/test_integration_ladder_last_resort.py": 14,
+    "tests/test_integration_obstruction_real_git.py": 490,
+    "tests/test_integration_seam_wiring.py": 15,
+    "tests/test_integration_state_coverage.py": 128,
+    "tests/test_integration_state_space.py": 69,
+    "tests/test_integration_termination_model.py": 14,
+    "tests/test_internal_skills_mcp_prompts.py": 15,
+    "tests/test_lifecycle_acceptance.py": 22,
+    "tests/test_liveness_pa002_properties.py": 21,
+    "tests/test_liveness_properties.py": 36,
+    "tests/test_liveness_termination.py": 20,
+    "tests/test_mcp_endpoint_functional_sweep.py": 90,
+    "tests/test_mcp_lifecycle.py": 18,
+    "tests/test_mcp_server_exec_result_contract.py": 19,
+    "tests/test_md_artifact_editing.py": 9,
+    "tests/test_multimodal_cli_parity.py": 11,
+    "tests/test_no_anti_drift_recovery_invariants.py": 13,
+    "tests/test_no_anti_drift_regression.py": 79,
+    "tests/test_no_production_intervention_outcome.py": 24,
+    "tests/test_no_superseded_paths_typed_setter_contract.py": 21,
+    "tests/test_operation_evidence.py": 9,
+    "tests/test_parallel_display.py": 14,
+    "tests/test_parallel_display_content_routing.py": 13,
+    "tests/test_pending_merge_commit_recovery.py": 80,
+    "tests/test_pending_merge_repair.py": 12,
+    "tests/test_pending_merge_repair_real_git.py": 147,
+    "tests/test_pending_merge_repair_resolver_health.py": 15,
+    "tests/test_per_test_budget.py": 36,
+    "tests/test_per_worker_logging.py": 9,
+    "tests/test_phases_commit_review.py": 352,
+    "tests/test_phases_retry_on_stale_session.py": 16,
+    "tests/test_pipeline_orchestration_flow.py": 13,
+    "tests/test_pipeline_runner.py": 21,
+    "tests/test_pipeline_runner_determine_effect.py": 10,
+    "tests/test_pipeline_runner_execute_agent_effect_2_a.py": 38,
+    "tests/test_pipeline_runner_execute_commit_effect.py": 98,
+    "tests/test_pipeline_runner_pipeline_runner_loop_1.py": 129,
+    "tests/test_pipeline_runner_timeout.py": 13,
+    "tests/test_pipeline_session_bridge.py": 13,
+    "tests/test_pro_support_contract.py": 9,
+    "tests/test_process_audit.py": 9,
+    "tests/test_process_hardening.py": 27,
+    "tests/test_prompt_endpoint_advertising.py": 29,
+    "tests/test_prompt_materialize_2.py": 30,
+    "tests/test_prompt_materialize_3.py": 27,
+    "tests/test_prompt_materialize_partial_development_result.py": 17,
+    "tests/test_property_a_one_transport_one_behavior.py": 15,
+    "tests/test_pty_line_reader_pending_bound.py": 12,
+    "tests/test_public_workflow_crash_restart_matrix.py": 18,
+    "tests/test_public_workflow_entry_point_matrix.py": 176,
+    "tests/test_raw_overflow_display_writes_stay_jsonl.py": 9,
+    "tests/test_real_config_guard.py": 37,
+    "tests/test_rebase_first_order.py": 15,
+    "tests/test_rebase_state_setters_owner.py": 8,
+    "tests/test_record_verify_run.py": 38,
+    "tests/test_recovery_release_uses_record_store.py": 36,
+    "tests/test_retained_resolution_dispatch.py": 103,
+    "tests/test_retained_resolution_handoff.py": 474,
+    "tests/test_run_loop_pro_integration.py": 11,
+    "tests/test_run_loop_retry_diagnostic.py": 72,
+    "tests/test_run_loop_setters_only.py": 24,
+    "tests/test_runner_auto_integrate_seam.py": 11,
+    "tests/test_runner_decision_delegation.py": 23,
+    "tests/test_runner_mcp_validation.py": 9,
+    "tests/test_runner_output_routing.py": 26,
+    "tests/test_runner_phase_transition_banner.py": 18,
+    "tests/test_runner_quiet_mode.py": 38,
+    "tests/test_scoped_auto_commit.py": 37,
+    "tests/test_skills_auto_commit.py": 34,
+    "tests/test_skills_content.py": 9,
+    "tests/test_skills_install_auto_commit.py": 65,
+    "tests/test_skills_installer_baseline.py": 16,
+    "tests/test_skills_installer_sibling_symlinks.py": 21,
+    "tests/test_skills_installer_update.py": 19,
+    "tests/test_stale_intent_startup_replay.py": 91,
+    "tests/test_timing_safety_transports.py": 28,
+    "tests/test_tool_catalog_cache.py": 9,
+    "tests/test_tool_exec_handle_exec_command.py": 30,
+    "tests/test_tool_exec_process_cleanup.py": 11,
+    "tests/test_tool_exec_run_command.py": 23,
+    "tests/test_tool_git_read_nested_repo.py": 10,
+    "tests/test_tool_git_read_path_validation.py": 44,
+    "tests/test_unreadable_record_entry_points.py": 84,
+    "tests/test_verify.py": 40,
+    "tests/test_verify_budget.py": 71,
+    "tests/test_visual_capture.py": 11,
+    "tests/test_waiting_state_owner.py": 11,
+    "tests/testing/test_audit_sast.py": 95,
+    "tests/unit/display/test_palette.py": 17,
+    "tests/unit/test_storage_lifecycle.py": 14,
 }
 
 
@@ -735,6 +935,8 @@ if _MAX_PYTEST_WORKERS <= 0:
     raise RuntimeError("_MAX_PYTEST_WORKERS must be positive")
 if _MAX_XDIST_WORKERS_PER_SHARD < 0:
     raise RuntimeError("_MAX_XDIST_WORKERS_PER_SHARD must be non-negative")
+if _REQUIRED_E2E_SHARD_COUNT <= 0:
+    raise RuntimeError("_REQUIRED_E2E_SHARD_COUNT must be positive")
 
 
 def validate_exclusive_subprocess_e2e_selection(selected_files: Iterable[str]) -> None:
@@ -1282,7 +1484,27 @@ def _fast_test_count(source: str) -> int:
     return sum(1 for line in source.splitlines() if _TEST_DEF_PATTERN.match(line))
 
 
+def _weight_from_test_count(test_count: int) -> int:
+    """Return the load weight of a file whose only estimate is its test count.
+
+    The LPT partition compares weights, so a weight must stand for a
+    duration. The count-based estimate is therefore scaled into the same
+    time units as the measured override table: one weight unit is
+    ``_WEIGHT_SECONDS_PER_UNIT`` of wall clock and a counted test is
+    assumed to cost ``_BASE_SECONDS_PER_TEST``. Without the scale the
+    counted files outweigh the measured heavy ones, which is what left the
+    general lane's shards 1.29x apart in wall clock.
+    """
+    return max(1, round(test_count * _BASE_SECONDS_PER_TEST / _WEIGHT_SECONDS_PER_UNIT))
+
+
 def _test_file_weight(cwd: Path, relative_path: str) -> int:
+    """Return the LPT load weight of one selected test file.
+
+    A measured override wins outright: its value is already a duration in
+    weight units. Otherwise the file's collected-test count (cached by the
+    discovery pass) is scaled into the same time units.
+    """
     override = _DYNAMIC_TEST_FILE_WEIGHT_OVERRIDES.get(relative_path)
     if override is not None:
         return override
@@ -1291,10 +1513,11 @@ def _test_file_weight(cwd: Path, relative_path: str) -> int:
     # computation. Without this cache, each shard load pays the cost of an
     # additional full read and ``ast.parse`` for every selected file even
     # though ``discover_test_files`` already walked the same files.
-    weight = _estimate_weight_from_cache(relative_path)
-    if weight is None:
+    test_count = _estimate_weight_from_cache(relative_path)
+    if test_count is None:
         source = (cwd / relative_path).read_text(encoding="utf-8")
-        weight = estimate_test_file_weight(source)
+        test_count = estimate_test_file_weight(source)
+    weight = _weight_from_test_count(test_count)
     if relative_path in REQUIRED_AUTO_INTEGRATE_E2E_FILES:
         return weight * _REQUIRED_E2E_WEIGHT_MULTIPLIER
     return weight
@@ -1310,6 +1533,7 @@ def _cache_source(path: str, source: str) -> None:
 
 
 def _estimate_weight_from_cache(path: str) -> int | None:
+    """Return the cached collected-test count for ``path``, if it is known."""
     cached_source = _FILE_SOURCE_CACHE.get(path)
     if cached_source is None:
         return None
@@ -1460,7 +1684,6 @@ def _run_shards(
     wait: Callable[[float], None],
     marker_expression: str = _VERIFICATION_MARK_EXPRESSION,
     xdist_workers: str = "0",
-    required_e2e_shard_xdist_workers: str | None = None,
     successful_returncodes: frozenset[int] = frozenset((0,)),
     empty_selection_returncode: int | None = None,
 ) -> int:
@@ -1478,9 +1701,6 @@ def _run_shards(
                 )
                 _print_shard_outputs(outputs)
                 return TIMEOUT_EXIT_CODE
-            shard_xdist_workers = xdist_workers
-            if required_e2e_shard_xdist_workers is not None and shard_index == len(shards) - 1:
-                shard_xdist_workers = required_e2e_shard_xdist_workers
             manifest_path = basetemp_root / f"shard-{shard_index}.manifest"
             manifest_path.write_text(  # filesystem-write-ok: transient per-run shard scratch
                 "".join(f"{path}\n" for path in shard),
@@ -1488,7 +1708,7 @@ def _run_shards(
             )
             print(
                 f"pytest shard {shard_index}: {len(shard)} files, "
-                f"xdist={shard_xdist_workers}, started at {monotonic() - started_at:.2f}s",
+                f"xdist={xdist_workers}, started at {monotonic() - started_at:.2f}s",
                 flush=True,
             )
             shard_basetemp = basetemp_root / f"shard-{shard_index}"
@@ -1501,7 +1721,7 @@ def _run_shards(
                         manifest_path=manifest_path,
                         basetemp=shard_basetemp,
                         marker_expression=marker_expression,
-                        xdist_workers=shard_xdist_workers,
+                        xdist_workers=xdist_workers,
                     ),
                     cwd=cwd,
                     env=env,
@@ -1593,8 +1813,13 @@ def _select_test_files(
     profile: str | None,
     auto_integrate_e2e_only: bool,
     subprocess_e2e_only: bool,
-) -> tuple[tuple[str, ...], str, tuple[str, ...], str | None]:
-    """Resolve one fail-closed profile into static files and shard settings."""
+) -> tuple[tuple[str, ...], str, tuple[str, ...], int | None]:
+    """Resolve one fail-closed profile into static files and shard settings.
+
+    Returns the selected files, the marker expression, the required
+    real-git files, and the number of shards the real-git lane is split
+    into (``None`` when the lane is empty).
+    """
     if profile is not None and profile not in _FOCUSED_PROFILES:
         raise ValueError(f"unknown test-suite profile: {profile}")
     active_selector_count = sum((auto_integrate_e2e_only, subprocess_e2e_only, profile is not None))
@@ -1645,7 +1870,7 @@ def _select_test_files(
             general_files,
             _SUBPROCESS_E2E_MARK_EXPRESSION,
             exclusive_files,
-            "0",
+            0,
         )
     discovered_files = file_discoverer(cwd)
     validate_required_auto_integrate_selection(discovered_files)
@@ -1655,8 +1880,8 @@ def _select_test_files(
     selected_files = tuple(
         path for path in discovered_files if path not in set(REQUIRED_AUTO_INTEGRATE_E2E_FILES)
     )
-    required_workers = _required_e2e_xdist_workers() if required_files else None
-    return (selected_files, _VERIFICATION_MARK_EXPRESSION, required_files, required_workers)
+    required_shard_count = _required_e2e_shard_count() if required_files else None
+    return (selected_files, _VERIFICATION_MARK_EXPRESSION, required_files, required_shard_count)
 
 
 def run_test_suites(
@@ -1721,7 +1946,7 @@ def run_test_suites(
         selected_files,
         marker_expression,
         required_e2e_shard,
-        required_e2e_shard_xdist_workers,
+        required_e2e_shard_count,
     ) = _select_test_files(
         cwd=cwd,
         file_discoverer=file_discoverer,
@@ -1742,33 +1967,32 @@ def run_test_suites(
         worker_count=int(_pytest_workers()),
         file_weights={path: file_weigher(cwd, path) for path in selected_files},
     )
-    ordered_required_e2e_shard: tuple[str, ...]
-    if (
-        required_e2e_shard
-        and required_e2e_shard_xdist_workers
-        and required_e2e_shard_xdist_workers.isdigit()
-        and int(required_e2e_shard_xdist_workers) > 1
-    ):
-        e2e_buckets = partition_selected_files(
-            required_e2e_shard,
-            worker_count=int(required_e2e_shard_xdist_workers),
-            file_weights={path: file_weigher(cwd, path) for path in required_e2e_shard},
-        )
-        ordered_required_e2e_shard = tuple(
-            item for items in zip_longest(*e2e_buckets) for item in items if item is not None
-        )
-    else:
-        ordered_required_e2e_shard = required_e2e_shard
+    # The required real-git files run as a lane of plain-pytest shards that
+    # start alongside the general shards. The lane is partitioned by the
+    # same measured weights, so its shards carry equal loads; plain shards
+    # keep the lane's module imports single instead of one per xdist
+    # worker.
+    required_e2e_shards: tuple[tuple[str, ...], ...] = ()
+    if required_e2e_shard:
+        if required_e2e_shard_count and required_e2e_shard_count > 1:
+            required_e2e_shards = partition_selected_files(
+                required_e2e_shard,
+                worker_count=required_e2e_shard_count,
+                file_weights={path: file_weigher(cwd, path) for path in required_e2e_shard},
+            )
+        else:
+            required_e2e_shards = (required_e2e_shard,)
 
-    if ordered_required_e2e_shard:
+    if required_e2e_shards:
         validate_exact_file_assignment(
-            (*selected_files, *ordered_required_e2e_shard), (*shards, ordered_required_e2e_shard)
+            (*selected_files, *(path for shard in required_e2e_shards for path in shard)),
+            (*shards, *required_e2e_shards),
         )
     else:
         validate_exact_file_assignment(selected_files, shards)
     print(
-        f"pytest preparation: {len(selected_files) + len(ordered_required_e2e_shard)} files, "
-        f"{len(shards) + bool(ordered_required_e2e_shard)} shards in {monotonic() - started_at:.2f}s",
+        f"pytest preparation: {len(selected_files) + len(required_e2e_shard)} files, "
+        f"{len(shards) + len(required_e2e_shards)} shards in {monotonic() - started_at:.2f}s",
         flush=True,
     )
     temp_directory_prefix: str
@@ -1789,12 +2013,12 @@ def run_test_suites(
         basetemp_path = Path(basetemp_root)
         successful_returncodes = frozenset((0, 5)) if profile is not None else frozenset((0,))
         empty_selection_returncode = 5 if profile is not None else None
-        # The real-git E2E shard runs concurrently with the general
-        # shards using dedicated xdist workers so all shards complete
-        # inside the 60 s combined budget in ralph/verify.py. The exclusive
-        # subprocess_e2e lane continues to sequence after general shards.
-        run_required_concurrently = bool(ordered_required_e2e_shard and not subprocess_e2e_only)
-        all_shards = (*shards, ordered_required_e2e_shard) if run_required_concurrently else shards
+        # The real-git E2E lane runs concurrently with the general shards as
+        # plain-pytest shards, so all shards complete inside the 60 s
+        # combined budget in ralph/verify.py. The exclusive subprocess_e2e
+        # lane continues to sequence after general shards.
+        run_required_concurrently = bool(required_e2e_shards and not subprocess_e2e_only)
+        all_shards = (*shards, *required_e2e_shards) if run_required_concurrently else shards
         general_result = _run_shards(
             all_shards,
             cwd=cwd,
@@ -1807,15 +2031,12 @@ def run_test_suites(
             wait=wait,
             marker_expression=marker_expression,
             xdist_workers=_xdist_workers_per_shard(),
-            required_e2e_shard_xdist_workers=(
-                required_e2e_shard_xdist_workers if run_required_concurrently else None
-            ),
             successful_returncodes=successful_returncodes,
             empty_selection_returncode=empty_selection_returncode,
         )
         if general_result not in successful_returncodes:
             return general_result
-        if not ordered_required_e2e_shard or run_required_concurrently:
+        if not required_e2e_shards or run_required_concurrently:
             return general_result
         # The exclusive subprocess-E2E shard contains eight real-PTY
         # regressions that each spawn a fresh Python child importing the
@@ -1830,7 +2051,7 @@ def run_test_suites(
         else:
             xdist_workers_for_required = _xdist_workers_per_shard()
         return _run_shards(
-            (ordered_required_e2e_shard,),
+            (required_e2e_shards[0],),
             cwd=cwd,
             env=env,
             basetemp_root=basetemp_path,

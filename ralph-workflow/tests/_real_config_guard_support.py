@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import stat
 import sys
 from pathlib import Path
 from typing import NamedTuple
@@ -31,7 +32,31 @@ _RESOLVED_BUNDLED_AGENTS_TEMPLATE: Path | None = (
 _REPO_DIR: Path = Path(__file__).resolve().parents[1]
 _REPO_DIR_STR: str = str(_REPO_DIR)
 
-_WRITE_FLAGS: int = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | getattr(os, "O_APPEND", 0)
+_WRITE_FLAGS: int = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND
+
+_GUARDED_CONFIG_DIRS_ENV = "RALPH_TEST_GUARDED_CONFIG_DIRS"
+_GUARDED_CONFIG_DIRS_ENV_KEY = _GUARDED_CONFIG_DIRS_ENV.encode()
+
+# Upper bound on the memoized parent-directory resolutions. The memo is keyed
+# by directory, so its size tracks the number of distinct directories a test
+# session touches; the bound keeps a long session from growing it without
+# limit.
+_MAX_CACHED_PARENTS = 4096
+
+
+class _GuardedDirs(NamedTuple):
+    """Cached guarded-directory resolution for one override value."""
+
+    env_raw: bytes | None
+    dirs: tuple[Path, ...]
+    dir_strings: tuple[str, ...]
+
+
+class _ParentResolution(NamedTuple):
+    """Memoized canonical form of a directory plus the identity validating it."""
+
+    resolved: str
+    identity: tuple[int, int]
 
 
 class _ConfigPathSnapshot(NamedTuple):
@@ -53,16 +78,33 @@ class _GuardState:
         self.scanning: bool = False
         self.audit_hook_installed: bool = False
         self.current_test_node: str | None = None
-        self.resolved_dirs_cache: tuple[str | None, tuple[Path, ...], tuple[str, ...]] = (
-            None,
-            (),
-            (),
-        )
+        self.guarded_dirs: _GuardedDirs = _GuardedDirs(None, (), ())
+        self.parent_cache: dict[str, _ParentResolution] = {}
         self.recorded_reads: list[tuple[str | None, Path]] = []
         self.recorded_writes: list[tuple[str | None, Path]] = []
 
 
 _STATE = _GuardState()
+
+
+def _env_override_raw() -> bytes | None:
+    """Return the raw override value of the guarded-config env var, if set.
+
+    ``os.environ`` is a live view over a private bytes-keyed mapping. Reading
+    that mapping directly skips the str -> bytes -> str round trip that
+    ``os.environ.get`` performs on every call, which is measurable when the
+    audit hook runs for every ``open()`` of the test suite. The mapping is
+    looked up through the current ``os.environ`` on every call so that a test
+    replacing ``os.environ`` wholesale is honoured, and the public accessor
+    stays the fallback for mappings that do not expose the private one.
+    """
+    environ = os.environ
+    data: dict[bytes, bytes] | None = getattr(environ, "_data", None)
+    if data is None:
+        value = environ.get(_GUARDED_CONFIG_DIRS_ENV)
+        return os.fsencode(value) if value else None
+    raw = data.get(_GUARDED_CONFIG_DIRS_ENV_KEY)
+    return raw if raw else None
 
 
 def _compute_file_sha256(path: Path) -> str:
@@ -77,18 +119,15 @@ def _compute_file_sha256(path: Path) -> str:
         return ""
 
 
-def _get_real_config_dirs() -> tuple[Path, ...]:
-    """Return real XDG and ~/.config directories."""
-    real_dot_config = REAL_HOME / ".config"
-    if real_dot_config == REAL_XDG_CONFIG_HOME:
-        return (REAL_XDG_CONFIG_HOME,)
-    return (REAL_XDG_CONFIG_HOME, real_dot_config)
-
-
 def _resolve_guarded_config_dirs() -> list[Path]:
     """Resolve real configuration directories to guard against test pollution."""
-    override = os.environ.get("RALPH_TEST_GUARDED_CONFIG_DIRS")
-    if override:
+    return _resolve_guarded_config_dirs_from(_env_override_raw())
+
+
+def _resolve_guarded_config_dirs_from(env_raw: bytes | None) -> list[Path]:
+    """Resolve the guarded configuration directories for one override value."""
+    if env_raw:
+        override = os.fsdecode(env_raw)
         return [Path(p).resolve() for p in override.split(os.pathsep) if p]
     dirs: list[Path] = []
     if REAL_XDG_CONFIG_HOME not in dirs:
@@ -101,23 +140,15 @@ def _resolve_guarded_config_dirs() -> list[Path]:
     return dirs
 
 
-def _get_guarded_dirs_and_prefixes() -> tuple[tuple[Path, ...], tuple[str, ...]]:
-    env_val = os.environ.get("RALPH_TEST_GUARDED_CONFIG_DIRS")
-    if _STATE.resolved_dirs_cache[0] == env_val and _STATE.resolved_dirs_cache[1]:
-        return _STATE.resolved_dirs_cache[1], _STATE.resolved_dirs_cache[2]
-    dirs = tuple(_resolve_guarded_config_dirs())
-    prefixes: list[str] = []
-    for d in dirs:
-        resolved_str = str(d.resolve())
-        prefixes.append(f"{resolved_str}/ralph-workflow")
-        prefixes.append(f"{resolved_str}/.ralph-workflow")
-    _STATE.resolved_dirs_cache = (env_val, dirs, tuple(prefixes))
-    return dirs, tuple(prefixes)
-
-
-def _get_guarded_config_dirs_cached() -> tuple[Path, ...]:
-    dirs, _ = _get_guarded_dirs_and_prefixes()
-    return dirs
+def _guarded_dirs(env_raw: bytes | None) -> _GuardedDirs:
+    """Return the cached guarded-directory resolution for one override value."""
+    cached = _STATE.guarded_dirs
+    if cached.env_raw == env_raw and cached.dirs:
+        return cached
+    dirs = tuple(_resolve_guarded_config_dirs_from(env_raw))
+    resolved = _GuardedDirs(env_raw, dirs, tuple(str(d) for d in dirs))
+    _STATE.guarded_dirs = resolved
+    return resolved
 
 
 def _scan_guarded_config_files(
@@ -130,7 +161,7 @@ def _scan_guarded_config_files(
         if guarded_dirs is None:
             guarded_dirs = _resolve_guarded_config_dirs()
         snapshot: dict[Path, _ConfigPathSnapshot] = {}
-        is_synthetic = bool(os.environ.get("RALPH_TEST_GUARDED_CONFIG_DIRS"))
+        is_synthetic = _env_override_raw() is not None
         for base_dir in guarded_dirs:
             if not base_dir.exists():
                 continue
@@ -241,9 +272,9 @@ def _parse_raw_path_string(arg0: object) -> str | None:
             return os.fsdecode(arg0)
         except Exception:
             return None
-    if hasattr(arg0, "__fspath__"):
+    if isinstance(arg0, os.PathLike):
         try:
-            return str(arg0.__fspath__())
+            return os.fsdecode(arg0)
         except Exception:
             return None
     return None
@@ -267,30 +298,129 @@ _SAFE_SYSTEM_PREFIXES: tuple[str, ...] = (
 )
 
 
-def _is_safe_pre_canonical_path(s_str: str, is_synthetic: bool) -> bool:
+def _is_safe_pre_canonical_path(s_str: str) -> bool:
     """Check if raw string path is obviously safe to ignore before canonicalization."""
-    del is_synthetic
     return bool(s_str.startswith(_SAFE_SYSTEM_PREFIXES))
 
 
-def _is_protected_canonical_path(p: Path, is_synthetic: bool) -> bool:
-    """Determine if resolved canonical path falls within guarded boundaries."""
-    p_str = str(p)
-    if p_str == _REPO_DIR_STR or p_str.startswith(f"{_REPO_DIR_STR}/"):
-        return False
-    if is_synthetic:
-        cached_dirs = _get_guarded_config_dirs_cached()
-        return any(p_str == str(g) or p_str.startswith(f"{g!s}/") for g in cached_dirs)
-    config_dirs = _get_real_config_dirs()
-    if any(p_str == str(d) or p_str.startswith(f"{d!s}/") for d in config_dirs):
+def _join_parent(parent: str, name: str) -> str:
+    """Join a directory path and a file name without pathlib overhead."""
+    if parent.endswith("/"):
+        return parent + name
+    return f"{parent}/{name}"
+
+
+def _resolve_parent_directory(parent_str: str) -> str | None:
+    """Return the canonical path of a directory, memoized per directory.
+
+    The canonical form of a directory is cached together with the identity
+    (``st_dev``, ``st_ino``) of the directory the path currently resolves to.
+    Every lookup re-validates that identity with a single ``lstat``, so a
+    directory that is swapped for a symlink -- or replaced -- in the middle of
+    a test is re-resolved instead of being answered from a stale memo. When no
+    identity can be established the caller falls back to a full resolution.
+    """
+    cache = _STATE.parent_cache
+    entry = cache.get(parent_str)
+    try:
+        link_stat = os.lstat(parent_str)
+    except (OSError, ValueError):
+        return None
+    if stat.S_ISLNK(link_stat.st_mode):
+        # The inode of a symlink does not change when the link is re-pointed,
+        # so the link is validated by the identity of the directory it leads to.
+        try:
+            target_stat = Path(parent_str).stat()
+        except (OSError, ValueError):
+            return None
+        identity = (target_stat.st_dev, target_stat.st_ino)
+    else:
+        identity = (link_stat.st_dev, link_stat.st_ino)
+    if entry is not None and entry.identity == identity:
+        return entry.resolved
+    resolved = os.path.realpath(parent_str)
+    if len(cache) >= _MAX_CACHED_PARENTS:
+        cache.clear()
+    cache[parent_str] = _ParentResolution(resolved, identity)
+    return resolved
+
+
+def _resolve_fully(target_str: str) -> str | None:
+    """Resolve a path completely, matching ``Path.resolve()`` semantics."""
+    try:
+        return str(Path(target_str).resolve())
+    except Exception:
+        return None
+
+
+def _split_final_component(target_str: str) -> tuple[str, str] | None:
+    """Split an absolute path into its parent directory and its last component.
+
+    ``None`` is returned when the last component is not a plain name, i.e. when
+    the canonical form of the path cannot be derived from the canonical form of
+    its parent directory.
+    """
+    if target_str.startswith("//"):
+        return None
+    parent_str, separator, final = target_str.rpartition("/")
+    if not separator or not final or final in (".", ".."):
+        return None
+    return (parent_str or "/", final)
+
+
+def _final_component_is_plain(parent_str: str, final: str) -> bool:
+    """Report whether the last component of a path is a plain, non-symlink name."""
+    try:
+        final_stat = os.lstat(_join_parent(parent_str, final))
+    except FileNotFoundError:
+        # The last component does not exist, so it cannot be a symlink.
         return True
-    real_home_str = str(REAL_HOME)
-    real_home_prefix = f"{real_home_str}/"
-    if p_str.startswith(real_home_prefix):
-        rel = p_str[len(real_home_prefix) :]
-        part0 = rel.split("/", 1)[0]
-        return part0.startswith(("ralph-workflow", ".ralph-workflow"))
-    return False
+    except (OSError, ValueError):
+        return False
+    return not stat.S_ISLNK(final_stat.st_mode)
+
+
+def _canonicalize_path(target_str: str) -> str | None:
+    """Return the canonical form of an absolute path.
+
+    The canonical form of a path whose last component is a plain name is the
+    canonical form of its parent directory plus that name. The parent form is
+    memoized (see ``_resolve_parent_directory``) and the last component is
+    checked with a single ``lstat``: only a symlinked last component, or a
+    parent whose identity changed, needs the full resolution.
+    """
+    split = _split_final_component(target_str)
+    if split is None:
+        return _resolve_fully(target_str)
+    parent_str, final = split
+    resolved_parent = _resolve_parent_directory(parent_str)
+    if resolved_parent is None:
+        return _resolve_fully(target_str)
+    if not _final_component_is_plain(parent_str, final):
+        return _resolve_fully(target_str)
+    return _join_parent(resolved_parent, final)
+
+
+def _is_protected_canonical_str(canonical: str, env_raw: bytes | None) -> bool:
+    """Determine if a canonical path falls within guarded boundaries."""
+    if canonical == _REPO_DIR_STR or canonical.startswith(f"{_REPO_DIR_STR}/"):
+        return False
+    if env_raw is not None:
+        return any(
+            canonical == guarded or canonical.startswith(f"{guarded}/")
+            for guarded in _guarded_dirs(env_raw).dir_strings
+        )
+    real_home = str(REAL_HOME)
+    xdg_config_home = str(REAL_XDG_CONFIG_HOME)
+    dot_config = _join_parent(real_home, ".config")
+    if canonical == xdg_config_home or canonical.startswith(f"{xdg_config_home}/"):
+        return True
+    if canonical == dot_config or canonical.startswith(f"{dot_config}/"):
+        return True
+    if not canonical.startswith(f"{real_home}/"):
+        return False
+    first = canonical[len(real_home) + 1 :].split("/", 1)[0]
+    return first.startswith("ralph-workflow") or first.startswith(".ralph-workflow")
 
 
 def _extract_guarded_path(event: str, args: tuple[object, ...]) -> Path | None:
@@ -299,24 +429,17 @@ def _extract_guarded_path(event: str, args: tuple[object, ...]) -> Path | None:
     s_str = _parse_raw_path_string(args[0]) if args else None
     if s_str is None:
         return None
-    if not s_str.startswith("/"):
-        if ".." not in s_str:
-            return None
-        target_str = f"{_REPO_DIR_STR}/{s_str}"
-    else:
-        target_str = s_str
-
-    is_synthetic = "RALPH_TEST_GUARDED_CONFIG_DIRS" in os.environ
-    if _is_safe_pre_canonical_path(target_str, is_synthetic):
+    env_raw = _env_override_raw()
+    target_str = s_str if s_str.startswith("/") else f"{Path.cwd()}/{s_str}"
+    if _is_safe_pre_canonical_path(target_str):
         return None
 
-    try:
-        real_str = os.path.realpath(target_str)
-    except Exception:
+    canonical = _canonicalize_path(target_str)
+    if canonical is None:
         return None
-
-    p = Path(real_str)
-    return p if _is_protected_canonical_path(p, is_synthetic) else None
+    if not _is_protected_canonical_str(canonical, env_raw):
+        return None
+    return Path(canonical)
 
 
 def _extract_read_path(args: tuple[object, ...]) -> Path | None:

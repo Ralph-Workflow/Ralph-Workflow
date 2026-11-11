@@ -447,14 +447,19 @@ def test_real_child_startup_and_catalog_fail_closed_files_are_selected() -> None
     repo_root = Path(__file__).resolve().parent.parent
     for path in target_files:
         assert (repo_root / path).is_file(), f"{path} must exist on disk"
-    _selected, _marker, required_files, workers = test_suites_module._select_test_files(
+    _selected, _marker, required_files, shard_count = test_suites_module._select_test_files(
         cwd=repo_root,
         file_discoverer=lambda _cwd: test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES,
         profile=None,
         auto_integrate_e2e_only=False,
         subprocess_e2e_only=False,
     )
-    assert workers == test_suites_module._REQUIRED_E2E_SHARD_XDIST_WORKERS
+    # The real-git lane is split into ten shards (capped by the host's
+    # cores); the count is pinned here so a drift in the lane's
+    # parallelism is visible in this suite too.
+    # RALPH-TEST-REASON: the lane's parallelism is pinned at ten here too,
+    # capped by the host's core count.
+    assert shard_count == 10
     for path in target_files:
         assert path in required_files
 
@@ -679,32 +684,25 @@ def test_main_regression_rejects_unknown_profile_before_spawning(
         test_suites_module.main(("--profile", "unknown"))
 
 
-def test_default_profile_dedicated_required_e2e_shard_uses_ten_xdist_workers(
+def test_default_profile_splits_required_e2e_lane_into_ten_plain_shards(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The dedicated E2E shard uses ten workers for isolated real-git tests.
+    """The required real-git lane runs as ten plain shards beside the general ones.
 
-    The value was pinned to 4 to hold total concurrent processes at 12
-    (8 general + 4 E2E) on the then-maintained 12-core host. On the current
-    40-core host the eight general shards finish in 25-35 s while the
-    real-git shard alone spends ~44 s of pytest time on 721 collected
-    tests, so it alone sets the ``make test`` wall clock. Charged together
-    with ``make test-verification-smoke`` (13 s) that pair overflowed the
-    immutable cumulative 60 s budget, so the tail shard is over-provisioned
-    against the cores the general shards release.
+    The lane used to run as ONE shard with ten in-shard xdist workers.
+    Every xdist worker collects the whole shard manifest, so the ten
+    workers imported the conftest chain and all 90 real-git modules ten
+    times over: measured on the maintained host, the 10-worker xdist
+    shard cost 423.3 CPU core-seconds while the same 90 files spread
+    over ten plain shards cost 388.3 -- ~35 core-seconds of duplicated
+    collection and import charged against the immutable 700 core-second
+    budget. Ten plain shards give the same parallelism with ONE import
+    of every module, and the recalibrated weight table keeps their
+    predicted loads within 0.4 % of each other.
 
-    wt-01-policy (WU-1) measured the fan-out directly on the maintained
-    40-core host with single-shard runs of the exact 83-file required-E2E
-    selection: twelve workers cost 394.66 CPU core-seconds at 36.26 s
-    wall, ten workers cost 337.19 core-seconds at 34.73 s wall, and eight
-    workers cost 334.31 core-seconds at 42.94 s wall. Twelve workers were
-    over-provisioned: the extra workers bought no wall-clock headroom
-    (the shard is bounded by its slowest single test, not by the fan-out)
-    but cost ~57 CPU core-seconds of duplicated per-worker collection,
-    module import, and xdist report coordination. Ten workers keep the
-    shard's wall below the eight general shards' wall, so the ``make
-    test`` wall clock is unchanged while the shard's CPU drops ~14.6 %.
+    The lane's shards start alongside the general shards, so the whole
+    selection still runs in one concurrent wave.
     """
     # The worker count is capped by the host's cores; pin a 12-core host so
     # the assertion below does not depend on the machine running the test.
@@ -712,12 +710,13 @@ def test_default_profile_dedicated_required_e2e_shard_uses_ten_xdist_workers(
     monkeypatch.setenv("PYTEST_WORKERS", "2")
     reap_spawn_counts: list[int] = []
     spawner = _StubSpawner([])
+    shard_count = 2 + test_suites_module._REQUIRED_E2E_SHARD_COUNT
     processes = [
         _FakeShardProcess(
             [0],
             on_communicate=lambda: reap_spawn_counts.append(len(spawner.calls)),
         )
-        for _index in range(3)
+        for _index in range(shard_count)
     ]
     spawner._processes.extend(processes)
 
@@ -734,16 +733,29 @@ def test_default_profile_dedicated_required_e2e_shard_uses_ten_xdist_workers(
     )
 
     assert exit_code == 0
-    # Concurrent execution: all 3 shards (2 general + 1 required E2E)
-    # are spawned concurrently in one wave, so reap_spawn_counts records
-    # 3 at each reap.
-    assert reap_spawn_counts == [3, 3, 3]
-    dedicated_command = spawner.calls[-1][0]
-    assert dedicated_command[3] == "tests"
-    assert sorted(spawner.manifest_files[-1]) == sorted(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
-    xdist_index = dedicated_command.index("-n")
-    assert dedicated_command[xdist_index + 1] == "10"
-    assert dedicated_command[dedicated_command.index("--dist") + 1] == "loadgroup"
+    # Concurrent execution: every shard (2 general + 10 real-git lane
+    # shards) is spawned concurrently in one wave, so reap_spawn_counts
+    # records the full shard count at each reap.
+    # RALPH-TEST-REASON: every shard is spawned and reaped in one
+    # concurrent wave.
+    assert reap_spawn_counts == [shard_count] * shard_count
+    # RALPH-TEST-REASON: the exact number of spawned shards is pinned.
+    assert len(spawner.calls) == shard_count
+    lane_manifests = spawner.manifest_files[2:]
+    lane_files = tuple(path for manifest in lane_manifests for path in manifest)
+    # Every registered real-git file runs exactly once, in the lane.
+    # RALPH-TEST-REASON: the lane's manifests hold every registered
+    # real-git file exactly once.
+    assert sorted(lane_files) == sorted(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
+    assert len(lane_files) == len(set(lane_files))
+    # The lane's shards are plain pytest: no in-shard xdist fan-out, so no
+    # worker re-imports every module of the lane.
+    for command, _cwd, _env in spawner.calls:
+        # RALPH-TEST-REASON: no lane shard carries an in-shard fan-out, so
+        # no worker re-imports every module of the lane.
+        assert "-n" not in command
+        # RALPH-TEST-REASON: every shard targets the whole tests tree.
+        assert command[3] == "tests"
 
 
 def test_subprocess_e2e_regression_general_failure_prevents_exclusive_pty_spawn(

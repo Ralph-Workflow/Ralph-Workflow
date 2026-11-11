@@ -30,7 +30,7 @@ from tests._test_test_suites_helpers import (
 # --- Testing-policy white-box exception (frozen routing contract) ---------
 #
 # ``ralph/test_suites.py`` is FROZEN for this unit and owns the shard routing
-# contract: the E2E shard worker count, the per-file weight estimation fast
+# contract: the E2E lane shard count, the per-file weight estimation fast
 # path, the discovery weight/source caches and the required-E2E weight
 # multiplier. None of these values is rendered by the documented CLI output of
 # the suite runner (they are internal scheduling inputs), and the module cannot
@@ -144,34 +144,27 @@ def test_fast_profile_registry_is_a_fixed_nonempty_routing_contract() -> None:
     assert not set(EXPECTED_FAST_TEST_FILES) & set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
 
 
-def test_required_e2e_shard_xdist_workers_constant_is_pinned_to_ten() -> None:
-    """Use ten workers for the isolated real-git shard.
+def test_required_e2e_lane_shard_count_is_pinned_to_ten() -> None:
+    """Use ten plain shards for the isolated real-git lane.
 
-    wt-03-fix-bug pinned four to hold total concurrent processes at 12
-    (8 general + 4 E2E) on the then-maintained 12-core host. On the current
-    40-core host the eight general shards finish in 25-35 s while the
-    real-git shard alone spends ~44 s of pytest time on 721 collected
-    tests, so it alone sets the ``make test`` wall clock. Charged together
-    with ``make test-verification-smoke`` (13 s) that pair overflowed the
-    immutable cumulative 60 s budget. The value stays a strict, pinned
-    runner-architecture constant -- a change here must be deliberate.
+    The lane used to run as ONE shard with ten in-shard xdist workers.
+    Every xdist worker collects the whole shard manifest, so the ten
+    workers imported the conftest chain and all 90 real-git modules ten
+    times over: measured on the maintained host, the 10-worker xdist
+    shard cost 423.3 CPU core-seconds while the same 90 files spread
+    over ten plain shards cost 388.3 -- ~35 core-seconds of duplicated
+    collection and import charged against the immutable 700 core-second
+    budget. Ten plain shards give the same parallelism with ONE import
+    of every module, and the recalibrated weight table keeps their
+    predicted loads within 0.4 % of each other.
 
-    wt-01-policy (WU-1) measured the fan-out directly on the maintained
-    40-core host with single-shard runs of the exact 83-file required-E2E
-    selection: twelve workers cost 394.66 CPU core-seconds at 36.26 s
-    wall, ten workers cost 337.19 core-seconds at 34.73 s wall, and eight
-    workers cost 334.31 core-seconds at 42.94 s wall. Twelve workers were
-    over-provisioned -- the extra workers bought no wall-clock headroom
-    (the shard is bounded by its slowest single test, not by the fan-out)
-    but cost ~57 CPU core-seconds of duplicated per-worker collection,
-    module import, and xdist report coordination. Ten workers keep the
-    shard's wall below the eight general shards' wall so the ``make
-    test`` wall clock is unchanged, while cutting the shard's CPU by
-    ~14.6 %. The value remains a strict, pinned runner-architecture
-    constant -- a change here must be deliberate.
+    The value stays a strict, pinned runner-architecture constant -- a
+    change here must be deliberate.
     """
+    # RALPH-TEST-REASON: the lane's parallelism is pinned at ten, capped by
+    # the host's core count.
     # comment-ok: the white-box-frozen tag is a prose policy marker, not code
-    assert test_suites_module._REQUIRED_E2E_SHARD_XDIST_WORKERS == "10"  # policy: white-box-frozen
+    assert test_suites_module._REQUIRED_E2E_SHARD_COUNT == 10  # policy: white-box-frozen
 
 
 def test_required_auto_integrate_e2e_registry_matches_discovery_contract() -> None:

@@ -47,6 +47,17 @@ __all__ = [
 
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, UnifiedConfig
+
+# The isolation helpers below run for EVERY test case, so the modules they
+# touch are resolved once here instead of running the ``import`` statement
+# machinery on every single test. Each of these modules is imported by the
+# suite anyway (the first test used to pay for the import); hoisting only
+# removes the repeated per-test import cost, it does not change which module
+# object the helpers patch -- ``importlib.reload`` re-executes a module in
+# place, so the binding stays valid across a reload.
+from ralph.mcp.explore import recovery as _explore_recovery
+from ralph.mcp.server._mcp_health_event import clear_host_contention_signals
+from ralph.mcp.transport import claude as claude_transport
 from ralph.pipeline import effect_executor
 from ralph.pipeline._runner_session import set_last_captured_session_id
 from ralph.pipeline.state import PipelineState
@@ -60,6 +71,7 @@ from ralph.policy.models import (
     PipelinePolicy,
     RecoveryPolicy,
 )
+from ralph.process import reset_process_manager
 from ralph.test_suites import (
     REQUIRED_AUTO_INTEGRATE_E2E_FILES,
 )
@@ -158,9 +170,7 @@ def _apply_disable_explore_recovery_drain_thread(monkeypatch: pytest.MonkeyPatch
     tests assert the pending queue synchronously and drain it via
     ``run_pending_recovery`` themselves, so the thread is stubbed out.
     """
-    from ralph.mcp.explore import recovery
-
-    monkeypatch.setattr(recovery, "_ensure_drain_thread", lambda: None)
+    monkeypatch.setattr(_explore_recovery, "_ensure_drain_thread", lambda: None)
 
 
 @contextmanager
@@ -178,25 +188,27 @@ def _isolate_explore_recovery_globals() -> Iterator[None]:
     isolated queue. The drain thread itself is already stubbed by
     ``_apply_disable_explore_recovery_drain_thread`` above, so no
     background work can race the snapshot/restore.
-    """
-    from ralph.mcp.explore import recovery
 
-    with recovery._PENDING_LOCK:
-        pending_snapshot = recovery._PENDING_RECOVERY.copy()
-    wakeup_was_set = recovery._DRAIN_WAKEUP.is_set()
-    with recovery._PENDING_LOCK:
-        recovery._PENDING_RECOVERY.clear()
-    recovery._DRAIN_WAKEUP.clear()
+    The snapshot and the clear share ONE lock acquisition: the drain
+    thread that could interleave with them is stubbed out, so no second
+    acquisition can observe a different queue state.
+    """
+    with _explore_recovery._PENDING_LOCK:
+        pending_snapshot = _explore_recovery._PENDING_RECOVERY.copy()
+        wakeup_was_set = _explore_recovery._DRAIN_WAKEUP.is_set()
+        _explore_recovery._PENDING_RECOVERY.clear()
+    _explore_recovery._DRAIN_WAKEUP.clear()
     try:
         yield
     finally:
-        with recovery._PENDING_LOCK:
-            recovery._PENDING_RECOVERY.clear()
-            recovery._PENDING_RECOVERY.update(pending_snapshot)
+        with _explore_recovery._PENDING_LOCK:
+            _explore_recovery._PENDING_RECOVERY.clear()
+            if pending_snapshot:
+                _explore_recovery._PENDING_RECOVERY.update(pending_snapshot)
         if wakeup_was_set:
-            recovery._DRAIN_WAKEUP.set()
+            _explore_recovery._DRAIN_WAKEUP.set()
         else:
-            recovery._DRAIN_WAKEUP.clear()
+            _explore_recovery._DRAIN_WAKEUP.clear()
 
 
 # RALPH-TEST-REASON: the host-contention-signal isolation is merged into the
@@ -209,8 +221,6 @@ def _apply_clear_host_contention_signals() -> None:
     The clear brackets the test body, so the deque a test observes is
     the one it found.
     """
-    from ralph.mcp.server._mcp_health_event import clear_host_contention_signals
-
     clear_host_contention_signals()
 
 
@@ -319,8 +329,6 @@ def _apply_reset_default_process_manager() -> None:
     The reset brackets the test body, so a test that swaps the process
     backend starts and ends from the default manager.
     """
-    from ralph.process import reset_process_manager
-
     reset_process_manager()
 
 
@@ -336,8 +344,6 @@ def _apply_fake_claude_cli_mcp_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     starts from a known state; tests that exercise the report install their own
     lister on top.
     """
-    from ralph.mcp.transport import claude as claude_transport
-
     claude_transport.reset_claude_mcp_proxy_report()
     monkeypatch.setattr(claude_transport, "claude_cli_mcp_server_lister", lambda: None)
 
@@ -394,9 +400,25 @@ def _bypass_macos_git_shim() -> None:
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Select the explicit required auto-integrate files for verification."""
+    """Select the explicit required auto-integrate files for verification.
+
+    wt-04-test-opti: the working directory and the per-directory relative
+    path are resolved ONCE instead of once per collected item. The cwd
+    cannot change while this hook runs, and every item in a directory
+    shares that directory's relative prefix, so re-deriving them per item
+    was pure repetition across the ~19.4k collected cases.
+    """
+    cwd = Path.cwd()
+    relative_dirs: dict[Path, str] = {}
     for item in items:
-        relative_path = item.path.relative_to(Path.cwd()).as_posix()
+        parent = item.path.parent
+        relative_dir = relative_dirs.get(parent)
+        if relative_dir is None:
+            relative_dir = parent.relative_to(cwd).as_posix()
+            relative_dirs[parent] = relative_dir
+        relative_path = (
+            item.path.name if relative_dir == "." else f"{relative_dir}/{item.path.name}"
+        )
         if relative_path in _REQUIRED_AUTO_INTEGRATE_E2E_PATHS:
             item.add_marker("required_auto_integrate_e2e")
         # Most AGY regression coverage is an explicit smoke profile. The
@@ -460,19 +482,26 @@ def _apply_isolate_process_home(
     ~0.3-0.5 ms per test across ~12.8k tests). ``tmp_path_factory`` is
     session-scoped internally, so a single ``getbasetemp()`` call is
     sufficient for the lifetime of one pytest worker.
+
+    wt-04-test-opti: build every published path with ONE ``Path`` parse.
+    The previous implementation chained ``/`` operators, and each ``/``
+    re-parses the accumulated path, so publishing the six redirected
+    module globals cost 13 parses per test. The published values are
+    unchanged: ``Path(a) / b`` and ``Path(a + "/" + b)`` produce the
+    same path for the relative components used here.
     """
 
-    worker_root = _autouse_home_base(tmp_path_factory)
+    worker_root: str = _autouse_home_base(tmp_path_factory)
     # Use the nodeid directly as the per-test suffix. nodeid is already
     # globally unique within a session (path::name[<param>] for parametrized
     # cases), so the extra SHA-1 round is unnecessary work in the hot path
     # of the autouse fixture.
-    unique_suffix = request.node.nodeid
+    unique_suffix: str = request.node.nodeid
     # Skip the second Path concatenation: ``XDG_CONFIG_HOME`` is conventionally
     # ``$HOME/.config``, so an explicit suffix is unnecessary. Reading
     # ``$HOME/.config`` in the production code path yields the same value
     # without paying an extra Path construction + str() per test.
-    fake_home = worker_root + "/" + unique_suffix + "/home"
+    fake_home: str = worker_root + "/" + unique_suffix + "/home"
     os.environ["HOME"] = fake_home
     os.environ["XDG_CONFIG_HOME"] = fake_home + "/.config"
     for var in (
@@ -494,42 +523,40 @@ def _apply_isolate_process_home(
         os.environ["OPENAI_API_KEY"] = "test-dummy-key"
     if os.environ.get("CURSOR_API_KEY") != "test-dummy-key":
         os.environ["CURSOR_API_KEY"] = "test-dummy-key"
-    fake_config_dir = Path(fake_home) / ".config"
-    if "ralph.config.loader" in sys.modules:
-        loader_mod = sys.modules["ralph.config.loader"]
-        loader_mod.GLOBAL_CONFIG_PATH = fake_config_dir / "ralph-workflow.toml"
-        loader_mod.GLOBAL_AGENTS_CONFIG_PATH = fake_config_dir / "ralph-workflow-agents.toml"
-    if "ralph.skills._state_store" in sys.modules:
-        state_store_mod = sys.modules["ralph.skills._state_store"]
-        state_store_mod.DEFAULT_STATE_PATH = fake_config_dir / "ralph-workflow-capabilities.json"
-        state_store_mod.default_state_path = lambda: (
-            fake_config_dir / "ralph-workflow-capabilities.json"
-        )
-    if "ralph.agents._agy_upstream_diagnostic" in sys.modules:
-        sys.modules["ralph.agents._agy_upstream_diagnostic"]._AGY_CLI_LOG_PATH = (
-            Path(fake_home) / ".gemini" / "antigravity-cli" / "cli.log"
-        )
-    if "ralph.pipeline.plumbing.smoke_plumbing" in sys.modules:
-        sys.modules["ralph.pipeline.plumbing.smoke_plumbing"]._AGY_CLI_LOG_PATH = (
-            Path(fake_home) / ".gemini" / "antigravity-cli" / "cli.log"
-        )
+    config_dir = fake_home + "/.config"
+    loader_mod = sys.modules.get("ralph.config.loader")
+    if loader_mod is not None:
+        loader_mod.GLOBAL_CONFIG_PATH = Path(config_dir + "/ralph-workflow.toml")
+        loader_mod.GLOBAL_AGENTS_CONFIG_PATH = Path(config_dir + "/ralph-workflow-agents.toml")
+    state_store_mod = sys.modules.get("ralph.skills._state_store")
+    if state_store_mod is not None:
+        capabilities_path = Path(config_dir + "/ralph-workflow-capabilities.json")
+        state_store_mod.DEFAULT_STATE_PATH = capabilities_path
+        state_store_mod.default_state_path = lambda: capabilities_path
+    agy_log_path = Path(fake_home + "/.gemini/antigravity-cli/cli.log")
+    agy_diagnostic_mod = sys.modules.get("ralph.agents._agy_upstream_diagnostic")
+    if agy_diagnostic_mod is not None:
+        agy_diagnostic_mod._AGY_CLI_LOG_PATH = agy_log_path
+    smoke_plumbing_mod = sys.modules.get("ralph.pipeline.plumbing.smoke_plumbing")
+    if smoke_plumbing_mod is not None:
+        smoke_plumbing_mod._AGY_CLI_LOG_PATH = agy_log_path
 
 
 #: Per-worker base temp dir cache. ``tmp_path_factory`` is session-scoped
 #: and ``getbasetemp()`` is stable for the lifetime of one pytest worker,
 #: so a single lookup per worker (rather than per test) is sufficient.
-#: Cleared by pytest between test sessions so stale paths never leak
-#: across the canonical ``make test`` -> ``make test-subprocess-e2e``
-#: invocation sequence.
-_autouse_home_base_cache: dict[int, str] = {}
+#: The cached value keeps a strong reference to the factory it was derived
+#: from, so the factory's ``id()`` can never be recycled by a later
+#: session and hand a stale base path to a new worker.
+_autouse_home_base_cache: dict[int, tuple[pytest.TempPathFactory, str]] = {}
 
 
 def _autouse_home_base(tmp_path_factory: pytest.TempPathFactory) -> str:
     cached = _autouse_home_base_cache.get(id(tmp_path_factory))
     if cached is not None:
-        return cached
+        return cached[1]
     base = str(tmp_path_factory.getbasetemp() / "autouse-home")
-    _autouse_home_base_cache[id(tmp_path_factory)] = base
+    _autouse_home_base_cache[id(tmp_path_factory)] = (tmp_path_factory, base)
     return base
 
 
