@@ -22,6 +22,7 @@ staleness the throttle was supposed to bound:
 from __future__ import annotations
 
 import importlib
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -233,8 +234,6 @@ def _dirty_boundary_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
     )
     return WorkspaceScope(tmp_path)
 
-
-from functools import lru_cache
 
 @lru_cache(maxsize=1)
 def _config() -> UnifiedConfig:
