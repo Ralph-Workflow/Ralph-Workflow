@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.testing import audit_comments as audit_comments_module
 from ralph.testing.audit_comments import (
     COMMENT_BYPASS_MARKER,
     RULE_CHANGE_NARRATION,
@@ -199,6 +200,21 @@ def test_a_suppression_with_a_reason_is_not_reported_at_all() -> None:
     )
 
     assert _scan(text) == []
+
+
+def test_the_module_docstring_documents_the_suppression_directive_forms() -> None:
+    """The literal directive forms stay documented where no linter reads them.
+
+    A linter reads the text after a comment's last ``#`` as a pragma, so
+    prose that ends that segment with the ``noqa`` token makes the linter
+    report an invalid directive. The module docstring therefore carries the
+    literal forms, and the module's own comments describe the same forms in
+    prose.
+    """
+    docstring = audit_comments_module.__doc__ or ""
+
+    assert "# noqa[:<code>]" in docstring
+    assert "# reason: <text>" in docstring
 
 
 # --- baseline-diff mode ----------------------------------------------------

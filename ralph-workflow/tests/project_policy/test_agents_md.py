@@ -6,6 +6,8 @@ test policy.
 
 from __future__ import annotations
 
+import re
+
 from ralph.language_detector.models import ProjectStack
 from ralph.project_policy import agents_md, markers, validators
 from ralph.workspace.memory import MemoryWorkspace
@@ -13,6 +15,52 @@ from ralph.workspace.memory import MemoryWorkspace
 
 def _empty_stack() -> ProjectStack:
     return ProjectStack()
+
+
+#: The policy-loading directive every current managed block carries. A block
+#: without it is outdated, so a migration has to restore it.
+_V6_LOADING_ORDER = "execution-kernel.md first"
+
+#: The wording an outdated managed block carries in place of the directive.
+_OUTDATED_LOADING_ORDER = "the canonical kernel file first"
+
+#: The readiness clause of a managed block. A migration carries the three
+#: reported values over to the re-rendered block.
+_READINESS_DIMENSIONS_RE = re.compile(
+    r"structure complete=[a-z]+, "
+    r"implementation verified=[a-z]+, "
+    r"outcome evidence reviewed=[a-z]+"
+)
+
+
+def _outdated_placeholder_block() -> str:
+    """Return the bootstrap placeholder as an outdated managed block.
+
+    The block is derived from the public bootstrap output, so the test never
+    reads the private production constant that recognises a Ralph-managed
+    placeholder.
+    """
+    scratch = MemoryWorkspace()
+    agents_md.bootstrap(scratch)
+    return scratch.read(markers.AGENTS_MD).replace(_V6_LOADING_ORDER, _OUTDATED_LOADING_ORDER)
+
+
+def _outdated_ready_block(*, structure: str, implementation: str, outcome: str) -> str:
+    """Return the condensed ready block as an outdated managed block.
+
+    The readiness dimensions are set to the given values so a test can prove
+    that a migration carries them over.
+    """
+    scratch = MemoryWorkspace()
+    agents_md.bootstrap(scratch)
+    agents_md.condense_placeholder_block(scratch)
+    ready = scratch.read(markers.AGENTS_MD).replace(_V6_LOADING_ORDER, _OUTDATED_LOADING_ORDER)
+    return _READINESS_DIMENSIONS_RE.sub(
+        f"structure complete={structure}, "
+        f"implementation verified={implementation}, "
+        f"outcome evidence reviewed={outcome}",
+        ready,
+    )
 
 
 def test_is_opted_out_returns_false_when_agents_md_missing() -> None:
@@ -392,15 +440,7 @@ def test_bootstrap_migrates_outdated_ralph_placeholder_idempotently() -> None:
     ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee `AGENTS.md` for project policy.\n")
     user_header = "# Project Title\n\nCustom user rules above.\n\n"
     user_footer = "\n\nCustom user rules below.\n"
-    outdated_placeholder = (
-        f"{markers.AGENTS_BLOCK_BEGIN}\n"
-        f"This project participates in Ralph Workflow's project-policy-readiness\n"
-        f"preflight. Before ordinary planning or development begins, the canonical\n"
-        f"quality-policy files under {markers.CANONICAL_DIR} must exist...\n"
-        "The remediation agent MUST, in order:\n"
-        f"1. Inspect the project.\n"
-        f"{markers.AGENTS_BLOCK_END}\n"
-    )
+    outdated_placeholder = _outdated_placeholder_block()
     ws.write(markers.AGENTS_MD, user_header + outdated_placeholder + user_footer)
 
     # First bootstrap call migrates the placeholder in place
@@ -422,13 +462,7 @@ def test_bootstrap_migrates_outdated_ralph_ready_block_idempotently() -> None:
     ws = MemoryWorkspace()
     ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee `AGENTS.md` for project policy.\n")
     user_header = "# Project Title\n\n"
-    outdated_ready = (
-        f"{markers.AGENTS_BLOCK_BEGIN}\n"
-        f"This project follows Ralph Workflow quality policies. Before any change, read {markers.CANONICAL_DIR}...\n"
-        "Readiness reports THREE dimensions, not two: "
-        f"structure complete=true, implementation verified=false, outcome evidence reviewed=true.\n"
-        f"{markers.AGENTS_BLOCK_END}\n"
-    )
+    outdated_ready = _outdated_ready_block(structure="true", implementation="false", outcome="true")
     ws.write(markers.AGENTS_MD, user_header + outdated_ready)
 
     changed = agents_md.bootstrap(ws)
@@ -448,19 +482,14 @@ def test_bootstrap_migrates_outdated_ralph_ready_block_idempotently() -> None:
 def test_condense_migrates_outdated_ralph_ready_block_idempotently() -> None:
     """Condense updates an outdated Ralph ready block to include v6 loading order."""
     ws = MemoryWorkspace()
-    outdated_ready = (
-        f"{markers.AGENTS_BLOCK_BEGIN}\n"
-        f"This project follows Ralph Workflow quality policies. Before any change, read {markers.CANONICAL_DIR}...\n"
-        "Readiness reports THREE dimensions, not two: "
-        f"structure complete=true, implementation verified=true, outcome evidence reviewed=true.\n"
-        f"{markers.AGENTS_BLOCK_END}\n"
-    )
+    outdated_ready = _outdated_ready_block(structure="true", implementation="true", outcome="true")
     ws.write(markers.AGENTS_MD, outdated_ready)
 
     changed = agents_md.condense_placeholder_block(ws)
     assert changed == [markers.AGENTS_MD]
     content = ws.read(markers.AGENTS_MD)
     assert "execution-kernel.md first" in content
+    assert "structure complete=true" in content
 
     # Repeated condense is idempotent
     assert agents_md.condense_placeholder_block(ws) == []

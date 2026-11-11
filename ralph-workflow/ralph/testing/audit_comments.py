@@ -315,12 +315,14 @@ CODE_SHAPE_PATTERN = re.compile(
 _SUPPRESSION_CODES = r"[A-Za-z0-9_]+(?:\s*,\s*[A-Za-z0-9_]+)*"
 
 #: A suppression directive the typechecking and linting policies mandate:
-#: a coded type-ignore directive or a ``# noqa[:<code>]`` directive, each
-#: together with the ``# reason: <text>`` suffix those policies require. The
-#: reason is what makes the directive a documented suppression rather than an
-#: unexplained marker, so the suffix is part of the recognised form. The
-#: reason text itself is not constrained: the typechecking and linting
-#: gates own that rule, and this gate only decides what the comment IS.
+#: a coded type-ignore directive or a ``noqa`` directive (the token that
+#: follows the comment's leading hash sign, optionally carrying
+#: ``:<code>``), each together with the ``# reason: <text>`` suffix those
+#: policies require. The reason is what makes the directive a documented
+#: suppression rather than an unexplained marker, so the suffix is part of
+#: the recognised form. The reason text itself is not constrained: the
+#: typechecking and linting gates own that rule, and this gate only decides
+#: what the comment IS.
 SUPPRESSION_DIRECTIVE_RE = re.compile(
     r"(?:\Atype:\s*ignore\[[^\]\s]+\]|\Anoqa(?::\s*" + _SUPPRESSION_CODES + r")?)"
     r"\s*#\s*reason:\s*\S",

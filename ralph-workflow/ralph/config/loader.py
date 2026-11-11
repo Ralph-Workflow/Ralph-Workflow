@@ -109,6 +109,11 @@ def deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str
 def load_toml(path: Path) -> dict[str, object]:
     """Read a TOML file; return empty dict if missing.
 
+    A retired ``can_commit`` assignment under an ``[agents.*]`` table is
+    migrated away IN MEMORY only: the file on disk is never rewritten, no
+    temporary or backup file appears next to it, and the operator sees one
+    deduplicated warning naming the file.
+
     Args:
         path: Path to the TOML file.
 
@@ -137,6 +142,7 @@ def load_toml(path: Path) -> dict[str, object]:
     migrated_source = remove_retired_agent_can_commit_assignments(source)
     if migrated_source != source:
         data = tomllib.loads(migrated_source)
+        _warn_retired_agent_keys(path)
     return data
 
 
@@ -455,9 +461,26 @@ def reset_retired_agent_key_warnings() -> None:
     _WARNED_RETIRED_AGENT_KEYS.clear()
 
 
-def _warn_retired_agent_keys(agents_path: Path) -> None:
-    """Emit a deduplicated warning when retired agent keys are found in an agents file."""
-    resolved = agents_path.resolve()
+def _warn_retired_agent_keys(config_path: Path) -> None:
+    """Emit the ONE deduplicated warning for a retired agent key in *config_path*.
+
+    This is the single warning authority for the retired ``can_commit``
+    assignment under an ``[agents.*]`` table. Both load routes share it:
+    the agents layer (:func:`_load_agents_data`) and the generic
+    explicit-config route (:func:`load_toml`). The registry is keyed by the
+    resolved path, so a file both routes read warns exactly once per
+    process, and a file carrying many retired assignments still warns once
+    instead of once per key or line.
+
+    The warning states that the key was migrated in memory only and that the
+    file on disk was not modified: the explicit operator commands
+    (``ralph --regenerate-config`` / ``ralph --init``) remain the only
+    writers.
+
+    Args:
+        config_path: The configuration file that carries the retired key.
+    """
+    resolved = config_path.resolve()
     if resolved in _WARNED_RETIRED_AGENT_KEYS:
         return
     _WARNED_RETIRED_AGENT_KEYS[resolved] = None
@@ -465,9 +488,10 @@ def _warn_retired_agent_keys(agents_path: Path) -> None:
         oldest = next(iter(_WARNED_RETIRED_AGENT_KEYS))
         del _WARNED_RETIRED_AGENT_KEYS[oldest]
     logger.warning(
-        "Retired `agent_can_commit` key found in {}; "
-        "run `ralph --regenerate-config` or edit the file to remove it.",
-        agents_path,
+        "Retired `agent_can_commit` key found in {}; it was migrated in memory only "
+        "and the file on disk was not modified. "
+        "Run `ralph --regenerate-config` or edit the file to remove it.",
+        config_path,
     )
 
 

@@ -40,6 +40,41 @@ def _assert_untouched(target: Path) -> None:
     assert not (target.parent / ".git").exists()
 
 
+def _stub_project_skill_install(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace the init route's baseline-skill installs with no-ops.
+
+    ``ralph --init`` installs the baseline skill bundle twice: the
+    user-global bundle (``SkillManager.ensure_baseline_capabilities``) and
+    the project-scope bundle (``ralph.cli.commands.init._ensure_baseline_capabilities``
+    -> ``install_project_baseline_skills_with_diff``). The user-global
+    install materialises every canonical skill plus its sibling mirrors and
+    writes the capability-state file; the project-scope install
+    materialises the bundle into the workspace and shells out to git for
+    the pre-write snapshot. Both are a different subject from the
+    agents-file creation this module pins (the bundle installs have their
+    own dedicated tests) and both are charged against the per-test budget,
+    so both are stubbed here - the same way this file stubs the unrelated
+    ``run_pipeline`` and ``diagnose_command`` routes.
+
+    The producer is imported inside
+    ``ralph.cli.commands.init._ensure_baseline_capabilities``, so the
+    replacement is bound on the module that defines it.
+    """
+    monkeypatch.setattr(
+        "ralph.skills.manager.SkillManager.ensure_baseline_capabilities",
+        lambda *_args, **_kwargs: (None, []),
+    )
+    monkeypatch.setattr(
+        "ralph.skills._installer.install_project_baseline_skills_with_diff",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            failures=[],
+            written_paths=[],
+            pre_contents={},
+            intentional_transitions=frozenset(),
+        ),
+    )
+
+
 def test_plain_load_config_leaves_missing_agents_file_absent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -104,24 +139,7 @@ def test_init_command_creates_missing_agents_file(
     """The explicit init route requests the creation; a normal route does not."""
     target = _isolate_config(monkeypatch, tmp_path)
     monkeypatch.setenv("PATH", str(tmp_path / "bin"))
-    # The init route also installs the baseline skills, which materializes
-    # every canonical skill into the user-global skill directory. That work is
-    # unrelated to this contract (the global agents file) and costs more CPU
-    # than the per-test budget allows, so it is stubbed here - the same way
-    # this file stubs the unrelated run_pipeline and diagnose_command routes.
-    monkeypatch.setattr(
-        "ralph.skills.manager.SkillManager.ensure_baseline_capabilities",
-        lambda *_args, **_kwargs: (None, []),
-    )
-    monkeypatch.setattr(
-        "ralph.skills._installer.install_project_baseline_skills_with_diff",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            failures=[],
-            written_paths=[],
-            pre_contents={},
-            intentional_transitions=[],
-        ),
-    )
+    _stub_project_skill_install(monkeypatch)
     assert not target.exists()
 
     result = CliRunner().invoke(app, ["--init"])

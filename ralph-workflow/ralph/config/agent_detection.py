@@ -255,13 +255,44 @@ def detect_installed_agents() -> list[str]:
 _AUTOWIRE_TRIGGER = "ralph --init: autowire agent chains"
 
 
-def _is_agents_config_path(path: Path) -> bool:
-    """Return True if *path* names an agents configuration file."""
+def _agents_config_filename(name: str) -> bool:
+    """Return True if *name* is the filename of an agents configuration file."""
     from ralph.config._config_filenames import _GLOBAL_AGENTS_FILENAME
 
-    return path.name in {_GLOBAL_AGENTS_FILENAME, "agents.toml"} or path.name.endswith(
-        "-agents.toml"
-    )
+    return name in {_GLOBAL_AGENTS_FILENAME, "agents.toml"} or name.endswith("-agents.toml")
+
+
+def _is_agents_config_path(path: Path) -> bool:
+    """Return True if *path* names an agents configuration file.
+
+    The RESOLVED target counts as well as the requested name: a symlink
+    whose target is an agents configuration file IS an agents
+    configuration file, so the write that lands on that target must go
+    through the validated atomic writer instead of the plain text writer
+    that truncates the target in place.
+    """
+    if _agents_config_filename(path.name):
+        return True
+    return _agents_config_filename(path.resolve().name)
+
+
+def _agents_write_target(path: Path) -> Path:
+    """Return the file the agents write must publish for *path*.
+
+    Callers reach this only for a path :func:`_is_agents_config_path`
+    accepted. A requested name that does NOT name an agents file but
+    whose resolved target does is an alias: the write lands on the
+    resolved target, so the ``.bak`` belongs next to the target that is
+    replaced. Every other path keeps its requested location, so an agents
+    file that is itself a symlink still keeps the backup where the
+    operator configured it.
+    """
+    if _agents_config_filename(path.name):
+        return path
+    resolved = path.resolve()
+    if _agents_config_filename(resolved.name):
+        return resolved
+    return path
 
 
 def _agent_chains_from_toml(text: str) -> dict[str, list[str]]:
@@ -317,7 +348,11 @@ def autowire_chains_to_detected_agent(
     )
     new_text = text[: match.start()] + rewritten + text[match.end() :]
     if _is_agents_config_path(main_config_path):
-        write_agents_toml(main_config_path, new_text, trigger=_AUTOWIRE_TRIGGER)
+        write_agents_toml(
+            _agents_write_target(main_config_path),
+            new_text,
+            trigger=_AUTOWIRE_TRIGGER,
+        )
     else:
         # wt-012: route the project-local config write through the shared
         # deterministic auto-commit primitive so a chore commit with the

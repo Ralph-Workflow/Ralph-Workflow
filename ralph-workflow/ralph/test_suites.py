@@ -416,6 +416,16 @@ REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
 #: below predate the audit and run real ``Repo.init`` / ``git.Repo``
 #: crossings in the default ``make test`` profile; each remains a
 #: default-lane file (no ``subprocess_e2e`` marker is added or removed).
+#:
+#: Because the audit honours BOTH registries, a file already named in the
+#: selection registry is sanctioned automatically; naming it here as well
+#: would give one file two roles and break the disjointness invariant
+#: pinned by ``tests/test_test_suites.py``. wt-04 (U5-REPAIR-A) therefore
+#: keeps the two agents-config proofs
+#: (``tests/config/test_agents_file_immutable.py`` and
+#: ``tests/config/test_init_agents_autowire.py``) in the SELECTION
+#: registry only -- their real-Git crossings stay sanctioned through it,
+#: and their proofs stay on the default ``make test`` profile.
 SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/conftest.py",
     "tests/pipeline/test_reducer_lock_retry.py",

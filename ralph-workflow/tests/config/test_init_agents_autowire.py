@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import tomllib
 from pathlib import Path
 
@@ -195,3 +196,128 @@ def test_autowire_agents_filename_variants_route_through_safe_writer(
     assert sorted(result or []) == ["claude"]
     assert bak_path.exists()
     assert bak_path.read_text(encoding="utf-8") == _UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML
+
+
+def test_autowire_symlink_alias_to_agents_target_uses_validated_atomic_writer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A symlink alias of an agents file is rewritten through the validated atomic writer.
+
+    The alias resolves to the agents configuration, so the write that lands on
+    that target must be published by ``write_agents_toml``: the target is
+    replaced (never rewritten in place), the previous bytes stay recoverable
+    next to the target, and the trigger reaches the operator-visible log.
+    """
+    target_path = tmp_path / "ralph-workflow-agents.toml"
+    target_path.write_text(_UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML, encoding="utf-8")
+    alias_path = tmp_path / "custom.toml"
+    alias_path.symlink_to(target_path)
+    resolved_target = target_path.resolve()
+    target_inode_before = resolved_target.stat().st_ino
+
+    monkeypatch.setattr(
+        "ralph.config.agent_detection.shutil.which",
+        _mock_no_binary,
+    )
+
+    publications: list[tuple[Path, Path, bytes | None, bytes | None]] = []
+    real_replace = os.replace
+
+    def observing_replace(
+        src: str | os.PathLike[str],
+        dst: str | os.PathLike[str],
+    ) -> None:
+        source = Path(src)
+        destination = Path(dst)
+        publications.append(
+            (
+                source,
+                destination,
+                destination.read_bytes() if destination.is_file() else None,
+                source.read_bytes() if source.is_file() else None,
+            )
+        )
+        real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", observing_replace)
+
+    with caplog.at_level(logging.INFO):
+        result = autowire_chains_to_detected_agent(alias_path, detected=["codex"])
+
+    assert sorted(result or []) == ["claude"]
+
+    parsed = tomllib.loads(resolved_target.read_text(encoding="utf-8"))
+    assert isinstance(parsed, dict)
+    chains = parsed.get("agent_chains")
+    assert isinstance(chains, dict)
+    assert chains["planning"] == ["codex"]
+    assert chains["development"] == ["codex"]
+    assert chains["analysis"] == ["codex"]
+    assert chains["commit"] == ["codex"]
+
+    assert alias_path.is_symlink()
+    assert alias_path.resolve() == resolved_target
+
+    bak_path = resolved_target.with_name(f"{resolved_target.name}.bak")
+    assert bak_path.exists()
+    assert bak_path.read_text(encoding="utf-8") == _UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML
+
+    target_publications = [entry for entry in publications if entry[1] == resolved_target]
+    assert len(target_publications) == 1
+    source, _destination, before, staged = target_publications[0]
+    assert before == _UNTOUCHED_DEFAULT_CHAINS_AGENTS_TOML.encode("utf-8")
+    assert staged == resolved_target.read_text(encoding="utf-8").encode("utf-8")
+    assert source.parent == resolved_target.parent
+    assert source.name.startswith(f".{resolved_target.name}.tmp.")
+    assert source.name.removeprefix(f".{resolved_target.name}.tmp.") != ""
+    assert resolved_target.stat().st_ino != target_inode_before
+
+    backup_publications = [entry for entry in publications if entry[1] == bak_path]
+    assert len(backup_publications) == 1
+    assert publications.index(backup_publications[0]) < publications.index(target_publications[0])
+
+    assert [entry.name for entry in tmp_path.iterdir() if entry.name.startswith(".")] == []
+
+    assert "ralph --init: autowire agent chains" in caplog.text
+
+
+def test_autowire_symlink_alias_to_main_config_keeps_deterministic_auto_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A symlink alias of a main config still lands the deterministic chore commit."""
+    _init_repo_with_initial_commit(tmp_path)
+    defaults = Path(__file__).resolve().parents[2] / "ralph" / "policy" / "defaults"
+    main_config = tmp_path / "ralph-workflow.toml"
+    main_config.write_text(
+        (defaults / "ralph-workflow.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    alias_path = tmp_path / "custom.toml"
+    alias_path.symlink_to(main_config)
+
+    repo = Repo(tmp_path)
+    try:
+        repo.index.add(["ralph-workflow.toml"])
+        repo.index.commit(
+            "seed main config",
+            author=Actor("Test Author", "test@example.com"),
+            committer=Actor("Test Author", "test@example.com"),
+        )
+    finally:
+        repo.close()
+
+    monkeypatch.setattr(
+        "ralph.config.agent_detection.shutil.which",
+        _mock_no_binary,
+    )
+
+    result = autowire_chains_to_detected_agent(alias_path, detected=["codex"])
+    assert sorted(result or []) == ["claude"]
+
+    subjects = _git_log_subjects(tmp_path)
+    assert subjects[0] == "chore(config): update agent configuration"
+    assert not main_config.with_name(f"{main_config.name}.bak").exists()
+    assert not alias_path.with_name(f"{alias_path.name}.bak").exists()

@@ -243,6 +243,11 @@ EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES: tuple[str, ...] = (
 #: these entries live outside ``EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES``
 #: above). Both the discovery suite and the orchestration suite pin
 #: their own copy so a drift fails in BOTH modules.
+#:
+#: The audit honours BOTH registries, so a file already named in the
+#: selection registry above is sanctioned automatically and must NOT be
+#: repeated here: the two registries are disjoint in ROLE, and both
+#: pinned suites assert that disjointness.
 EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES: tuple[str, ...] = (
     "tests/conftest.py",
     "tests/pipeline/test_reducer_lock_retry.py",

@@ -196,6 +196,14 @@ def test_sanctioned_default_lane_real_git_registry_is_pinned() -> None:
     for the test-policy audit only; it must not double as a pytest-selection
     requirement (``tests/conftest.py`` is not discoverable, and requiring it
     would fail ``make test`` selection unconditionally).
+
+    The two registries are consulted together by the audit's
+    ``_is_registered_real_git_file``, so a file already named in the
+    SELECTION registry is sanctioned automatically. The audit-exception
+    registry therefore holds only the default-lane real-Git files the
+    selection registry does NOT name, and the two must stay disjoint:
+    naming one file in both gives it two roles and makes the sanction and
+    the selection requirement drift apart.
     """
     assert (
         test_suites_module.SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES
@@ -207,6 +215,10 @@ def test_sanctioned_default_lane_real_git_registry_is_pinned() -> None:
     assert not (
         set(test_suites_module.SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES)
         & set(test_suites_module.REQUIRED_AUTO_INTEGRATE_E2E_FILES)
+    )
+    assert not (
+        set(EXPECTED_SANCTIONED_DEFAULT_LANE_REAL_GIT_FILES)
+        & set(EXPECTED_REQUIRED_AUTO_INTEGRATE_E2E_FILES)
     )
 
 
