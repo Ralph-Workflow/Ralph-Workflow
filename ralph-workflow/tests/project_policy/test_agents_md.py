@@ -514,3 +514,50 @@ def test_bootstrap_and_condense_preserve_user_authored_block() -> None:
 
     assert agents_md.condense_placeholder_block(ws) == []
     assert ws.read(markers.AGENTS_MD) == user_block
+
+
+def test_bootstrap_migrates_v1_marker_to_v2_idempotently() -> None:
+    """An existing v1 managed block is migrated to v2, preserving user content outside."""
+    ws = MemoryWorkspace()
+    ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee `AGENTS.md` for project policy.\n")
+    user_header = "# Project Title\n\nCustom user rules above.\n\n"
+    user_footer = "\n\nCustom user rules below.\n"
+    v1_block = (
+        f"{markers.AGENTS_BLOCK_BEGIN_V1}\n"
+        f"This project participates in Ralph Workflow's project-policy-readiness\n"
+        f"preflight. Before ordinary planning or development begins, the canonical\n"
+        f"quality-policy files under {markers.CANONICAL_DIR} must exist...\n"
+        "The remediation agent MUST, in order:\n"
+        "1. Inspect the project.\n"
+        f"{markers.AGENTS_BLOCK_END}\n"
+    )
+    ws.write(markers.AGENTS_MD, user_header + v1_block + user_footer)
+
+    # First pass: migrates v1 to v2
+    changed = agents_md.bootstrap(ws)
+    assert changed == [markers.AGENTS_MD]
+    content = ws.read(markers.AGENTS_MD)
+    assert markers.AGENTS_BLOCK_BEGIN_V1 not in content
+    assert markers.AGENTS_BLOCK_BEGIN in content
+    assert content.startswith(user_header)
+    assert "execution-kernel.md first" in content
+
+    # Second pass: idempotent, zero changes
+    second_changed = agents_md.bootstrap(ws)
+    assert second_changed == []
+    assert ws.read(markers.AGENTS_MD) == content
+
+
+def test_bootstrap_preserves_user_authored_v1_block() -> None:
+    """User-authored custom block with v1 marker is preserved without altering user text."""
+    ws = MemoryWorkspace()
+    ws.write(markers.CLAUDE_MD, "# CLAUDE.md\n\nSee `AGENTS.md` for project policy.\n")
+    user_block = (
+        f"# AGENTS.md\n\n"
+        f"{markers.AGENTS_BLOCK_BEGIN_V1}\n"
+        f"Custom user-written policy instructions under {markers.CANONICAL_DIR}.\n"
+        f"{markers.AGENTS_BLOCK_END}\n"
+    )
+    ws.write(markers.AGENTS_MD, user_block)
+    assert agents_md.bootstrap(ws) == []
+    assert ws.read(markers.AGENTS_MD) == user_block

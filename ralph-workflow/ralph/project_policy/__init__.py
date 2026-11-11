@@ -56,7 +56,10 @@ from ralph.project_policy._prompt_ui import PromptChoice, SelectFn
 from ralph.project_policy._schema_upgrade import maybe_resolve_schema_upgrade
 from ralph.project_policy.models import PolicyFinding, PortfolioError
 from ralph.project_policy.portfolio import PolicyPortfolio, parse_portfolio_toml
-from ralph.project_policy.preflight import run_policy_readiness_preflight
+from ralph.project_policy.preflight import (
+    run_policy_readiness_preflight,
+    seed_project_policy_starters,
+)
 from ralph.project_policy.validators import (
     check_policy_citations,
     get_research_freshness_clock,
@@ -81,6 +84,7 @@ __all__ = [
     "parse_portfolio_toml",
     "remediation",
     "run_policy_readiness_preflight",
+    "seed_project_policy_starters",
     "set_research_freshness_clock",
     "validate_readiness",
     "validators",

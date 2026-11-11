@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.cli.commands import init as init_module
 from ralph.language_detector.models import ProjectStack
 from ralph.project_policy import (
     markers,
@@ -200,6 +201,65 @@ def test_all_bundled_starters_comply_with_v6_schema_and_seven_columns() -> None:
             assert row["enforcement"] == "deterministic: PROJECT-FACT-UNRESOLVED", (
                 f"Bundled starter {name} row {row.get('guard')!r} must use fill model placeholder"
             )
+
+
+def test_fresh_cli_init_seeds_v6_policy_pack(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Invoking the real CLI init_command on a fresh workspace seeds the complete
+    v6 policy pack (starters + portfolio v3 + AGENTS.md managed block) idempotently.
+    """
+    # Isolate global environment and working directory
+    xdg_dir = tmp_path / "xdg"
+    xdg_dir.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
+    monkeypatch.chdir(tmp_path)
+
+    # First CLI init call
+    init_module.init_command(template=None)
+
+    policy_dir = tmp_path / "docs" / "ralph-workflow-policy"
+    assert policy_dir.is_dir(), "docs/ralph-workflow-policy must be created by ralph --init"
+
+    # Check portfolio v3 on disk with enforcement on every control
+    portfolio_file = policy_dir / "policy-portfolio.toml"
+    assert portfolio_file.is_file()
+    portfolio = parse_portfolio_toml(portfolio_file.read_text(encoding="utf-8"))
+    assert portfolio.schema_version == "v3"
+    assert markers.PORTFOLIO_SCHEMA_VERSION == "v3"
+    for ctrl in portfolio.controls:
+        assert ctrl.enforcement is not None, f"Control {ctrl.id} missing enforcement"
+
+    # Check 12 core starters on disk
+    for name in markers.CORE_POLICY_FILES:
+        policy_file = policy_dir / name
+        assert policy_file.is_file(), f"Expected {name} to exist on disk after ralph --init"
+        text = policy_file.read_text(encoding="utf-8")
+        assert text.startswith("<!-- ralph-policy-schema: v6 -->")
+        rows = _parse_guard_inventory_table(text)
+        assert rows, f"Expected guard inventory rows in {name}"
+        for r in rows:
+            assert len(r) == 7, f"Row in {name} must have 7 columns"
+            assert r["enforcement"] == "deterministic: PROJECT-FACT-UNRESOLVED"
+
+    # Check AGENTS.md managed block
+    agents_file = tmp_path / "AGENTS.md"
+    assert agents_file.is_file(), "AGENTS.md must be bootstrapped by ralph --init"
+    agents_text = agents_file.read_text(encoding="utf-8")
+    assert markers.AGENTS_BLOCK_BEGIN in agents_text
+    assert markers.AGENTS_BLOCK_END in agents_text
+    assert "execution-kernel.md first" in agents_text
+
+    # Second CLI init call is idempotent: does not overwrite customized files
+    custom_text = "# Custom Kernel\n\nCustom user changes here.\n"
+    kernel_path = policy_dir / "execution-kernel.md"
+    kernel_path.write_text(custom_text, encoding="utf-8")
+
+    init_module.init_command(template=None)
+
+    # The customized file is kept, never overwritten
+    assert kernel_path.read_text(encoding="utf-8") == custom_text
+    assert agents_file.read_text(encoding="utf-8").count(markers.AGENTS_BLOCK_BEGIN) == 1
 
 
 def test_fresh_real_filesystem_init_seeds_v6_policy_pack(tmp_path: Path) -> None:

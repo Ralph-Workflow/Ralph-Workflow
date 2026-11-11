@@ -50,6 +50,8 @@ from ralph.onboarding import (
     resolve_starter_template,
 )
 from ralph.pipeline._auto_integrate_reclaim import target_worktree_lookup
+from ralph.project_policy.preflight import seed_project_policy_starters
+from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -168,6 +170,9 @@ def init_command(
     if (target / ".git").exists():
         auto_seed_default_git_exclude(target)
     _emit_target_worktree_warning(display, target)
+
+    ws = FsWorkspace(target)
+    seed_project_policy_starters(ws)
 
     if config_path is not None and config_path.exists():
         newly_enabled = enable_detected_agents(config_path)

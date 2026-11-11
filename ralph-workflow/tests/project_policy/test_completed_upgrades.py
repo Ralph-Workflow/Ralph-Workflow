@@ -199,17 +199,32 @@ def _assert_pack_is_fully_v6(ws: MemoryWorkspace) -> None:
     assert findings == [], f"Upgraded pack must validate READY, got: {findings}"
 
 
-def test_v4_pack_full_pipeline_readiness_lifecycle_runs_once() -> None:
-    """Proves v4 upgrade completes through readiness lifecycle and never re-prompts."""
+def test_v4_pack_upgrade_consent_and_post_remediation_invariants_hold_once() -> None:
+    """Proves v4 upgrade consent and structural v6 readiness after remediation.
+
+    Demonstrates:
+    1. An unmodified v4 pack requires remediation before upgrade.
+    2. Interactive consent via maybe_resolve_schema_upgrade confirms upgrade (returns True).
+    3. Preflight produces remediation-required status targeting outdated schema/portfolio.
+    4. Once upgraded to v6 format (simulating the completed remediation agent outcome),
+       all v6 structural invariants hold and readiness validates cleanly.
+    5. A subsequent preflight check never re-prompts (selector is never invoked),
+       proving the upgrade consent flow executes exactly once.
+    """
     ws = _build_unmodified_v4_pack()
     stack = ProjectStack(primary_language="Python")
     emitted: list[str] = []
 
-    # Before upgrade: preflight requires remediation
+    # Before upgrade: preflight requires remediation due to outdated schema/portfolio
     pre_result = preflight.run_policy_readiness_preflight(ws, stack)
     assert pre_result.requires_remediation()
+    assert any(
+        f.requirement_id.startswith(markers.ID_MARKER_MISSING)
+        or f.requirement_id.startswith(markers.ID_PORTFOLIO)
+        for f in pre_result.findings
+    ), f"Expected schema/portfolio findings in v4 preflight; got: {pre_result.findings}"
 
-    # Step 1: Maybe-resolve asks for upgrade choice
+    # Step 1: Maybe-resolve asks for upgrade choice and records user consent
     first_selector = _Selector("upgrade")
     first_resolved = maybe_resolve_schema_upgrade(
         ws,
@@ -220,7 +235,7 @@ def test_v4_pack_full_pipeline_readiness_lifecycle_runs_once() -> None:
     assert first_resolved is True
     assert first_selector.call_count == 1
 
-    # Step 2: Apply upgrade
+    # Step 2: Simulate completed remediation output on disk
     _apply_v6_upgrade(ws)
     _assert_pack_is_fully_v6(ws)
 
@@ -240,17 +255,33 @@ def test_v4_pack_full_pipeline_readiness_lifecycle_runs_once() -> None:
     assert validators.validate_readiness(ws, stack) == []
 
 
-def test_v5_pack_full_pipeline_readiness_lifecycle_runs_once() -> None:
-    """Proves v5 upgrade completes through readiness lifecycle and never re-prompts."""
+def test_v5_pack_upgrade_consent_and_post_remediation_invariants_hold_once() -> None:
+    """Proves v5 upgrade consent and structural v6 readiness after remediation.
+
+    Demonstrates:
+    1. An unmodified v5 pack requires remediation before upgrade (6-column header, portfolio v2).
+    2. Interactive consent via maybe_resolve_schema_upgrade confirms upgrade (returns True).
+    3. Preflight produces remediation-required status targeting v5-to-v6 differences.
+    4. Once upgraded to v6 format (simulating completed remediation outcome),
+       all v6 structural invariants hold and readiness validates cleanly.
+    5. A subsequent preflight check never re-prompts (selector is never invoked),
+       proving the upgrade consent flow executes exactly once.
+    """
     ws = _build_unmodified_v5_pack()
     stack = ProjectStack(primary_language="Python")
     emitted: list[str] = []
 
-    # Before upgrade: preflight requires remediation
+    # Before upgrade: preflight requires remediation due to v5 header/portfolio
     pre_result = preflight.run_policy_readiness_preflight(ws, stack)
     assert pre_result.requires_remediation()
+    assert any(
+        f.requirement_id.startswith(markers.ID_MARKER_MISSING)
+        or f.requirement_id.startswith(markers.ID_INVENTORY)
+        or f.requirement_id.startswith(markers.ID_PORTFOLIO)
+        for f in pre_result.findings
+    ), f"Expected inventory/portfolio findings in v5 preflight; got: {pre_result.findings}"
 
-    # Step 1: Maybe-resolve asks for upgrade choice
+    # Step 1: Maybe-resolve asks for upgrade choice and records user consent
     first_selector = _Selector("upgrade")
     first_resolved = maybe_resolve_schema_upgrade(
         ws,
@@ -261,7 +292,7 @@ def test_v5_pack_full_pipeline_readiness_lifecycle_runs_once() -> None:
     assert first_resolved is True
     assert first_selector.call_count == 1
 
-    # Step 2: Apply upgrade
+    # Step 2: Simulate completed remediation output on disk
     _apply_v6_upgrade(ws)
     _assert_pack_is_fully_v6(ws)
 

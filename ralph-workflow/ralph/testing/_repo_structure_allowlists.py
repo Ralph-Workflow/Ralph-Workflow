@@ -1827,15 +1827,6 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/project_policy/cli_integration.py", 557),
         ("ralph/project_policy/cli_integration.py", 560),
         ("ralph/project_policy/cli_integration.py", 561),
-        ("ralph/project_policy/preflight.py", 188),
-        ("ralph/project_policy/preflight.py", 194),
-        ("ralph/project_policy/preflight.py", 226),
-        ("ralph/project_policy/preflight.py", 229),
-        ("ralph/project_policy/preflight.py", 230),
-        ("ralph/project_policy/preflight.py", 253),
-        ("ralph/project_policy/preflight.py", 257),
-        ("ralph/project_policy/preflight.py", 265),
-        ("ralph/project_policy/preflight.py", 272),
         # wt-15: lazy import of ``_content_checks`` from the validator's
         # research-basis and per-file wrappers publishes the citation
         # ``path:`` workspace seam without creating a

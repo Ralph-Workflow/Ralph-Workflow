@@ -137,10 +137,11 @@ SIGNIFICANT_NONEMPTY_LINE_THRESHOLD: Final[int] = 10
 #
 # In schema v6, the managed block directs agents to load policies in order:
 # execution-kernel.md first, then their role slice, then triggered domains.
-# The marker version remains v1 while recognized Ralph-owned blocks
-# (placeholder or ready) are version-migrated idempotently in place without
-# altering user text.
-AGENTS_BLOCK_BEGIN: Final[str] = "<!-- ralph-workflow-policy:begin v1 -->"
+# The marker version is bumped to v2 reflecting the new loading order prose,
+# and recognized Ralph-owned blocks (placeholder or ready) are version-migrated
+# idempotently in place without altering user text.
+AGENTS_BLOCK_BEGIN_V1: Final[str] = "<!-- ralph-workflow-policy:begin v1 -->"
+AGENTS_BLOCK_BEGIN: Final[str] = "<!-- ralph-workflow-policy:begin v2 -->"
 AGENTS_BLOCK_END: Final[str] = "<!-- ralph-workflow-policy:end -->"
 
 # Canonical policy directory (relative to the workspace root).
@@ -697,6 +698,7 @@ CLAIM_SCOPE_PHRASES: Final[tuple[str, ...]] = (
 
 __all__ = [
     "AGENTS_BLOCK_BEGIN",
+    "AGENTS_BLOCK_BEGIN_V1",
     "AGENTS_BLOCK_END",
     "AGENTS_MD",
     "AGENTS_MD_CITED_PATH_FINDING_ID",

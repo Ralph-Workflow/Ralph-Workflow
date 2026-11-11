@@ -194,7 +194,7 @@ _REVIEW_COMMENT_LOOKAHEAD_LINES: int = 3
 
 
 #: The managed instruction block inside ``AGENTS.md``.
-AGENTS_BLOCK_BEGIN: str = "<!-- ralph-workflow-policy:begin v1 -->"
+AGENTS_BLOCK_BEGIN: str = "<!-- ralph-workflow-policy:begin v2 -->"
 AGENTS_BLOCK_END: str = "<!-- ralph-workflow-policy:end -->"
 
 #: Unambiguous promotion imperatives. Each pattern names a distinct shape
@@ -625,7 +625,9 @@ def _managed_block_lines(text: str) -> list[tuple[int, str]]:
     start = -1
     end = -1
     for index, raw_line in enumerate(lines):
-        if start < 0 and AGENTS_BLOCK_BEGIN in raw_line:
+        if start < 0 and (
+            AGENTS_BLOCK_BEGIN in raw_line or "<!-- ralph-workflow-policy:begin" in raw_line
+        ):
             start = index
             continue
         if start >= 0 and AGENTS_BLOCK_END in raw_line:

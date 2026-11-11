@@ -29,6 +29,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
+from ralph.git.operations import create_commit
+from ralph.git.scoped_auto_commit import (
+    ScopedCommitStatus,
+    capture_pre_write_contents,
+)
+from ralph.language_detector import get_project_stack
 from ralph.project_policy import (
     agents_md,
     cache,
@@ -37,6 +45,7 @@ from ralph.project_policy import (
     starters,
     validators,
 )
+from ralph.project_policy._auto_commit import commit_policy_writes
 from ralph.project_policy.models import PolicyFinding, ReadinessResult, ReadinessStatus
 
 if TYPE_CHECKING:
@@ -111,10 +120,8 @@ def run_policy_readiness_preflight(
     # so the operator can see the FAILED / SKIPPED status.
     candidate_paths = _candidate_policy_paths()
     pre_contents = _capture_pre_write_policy_paths(workspace, candidate_paths)
-    changed_files = agents_md.bootstrap(workspace)
-    seeded_files = _seed_missing_starters(workspace, stack)
-    changed_files.extend(seeded_files)
-    _commit_preflight_writes(workspace, pre_contents, changed_files + seeded_files)
+    changed_files = seed_project_policy_starters(workspace, stack)
+    _commit_preflight_writes(workspace, pre_contents, changed_files)
 
     findings: list[PolicyFinding] = validators.validate_readiness(workspace, stack)
     migrated_sources = _collect_migrated_sources(workspace, findings)
@@ -185,13 +192,10 @@ def _capture_pre_write_policy_paths(
     path; the downstream commit helper will treat that as NOT_REPO and
     return a NOOP without raising.
     """
-    from ralph.git.scoped_auto_commit import (  # noqa: PLC0415 -- lazy import avoids preflight<->scoped_auto_commit cycle
-        capture_pre_write_contents,
-    )
-
     repo_root = _workspace_root(workspace)
     if repo_root is None:
-        return {path: None for path in candidate_paths}  # noqa: C420  # ruff prefers dict.fromkeys; mypy loses the literal type on it
+        empty: dict[str, str | None] = dict.fromkeys(candidate_paths, None)
+        return empty
     return capture_pre_write_contents(repo_root, candidate_paths)
 
 
@@ -223,12 +227,6 @@ def _commit_preflight_writes(
     step). Failures (FAILED / NOT_REPO) are logged at DEBUG so they
     are visible without breaking the run.
     """
-    from ralph.git.operations import (  # noqa: PLC0415 -- lazy import avoids preflight<->operations import cycle
-        create_commit,
-    )
-    from ralph.git.scoped_auto_commit import ScopedCommitStatus  # noqa: PLC0415
-    from ralph.project_policy._auto_commit import commit_policy_writes  # noqa: PLC0415
-
     repo_root = _workspace_root(workspace)
     if repo_root is None:
         return
@@ -250,28 +248,20 @@ def _commit_preflight_writes(
             create_commit_fn=create_commit,
         )
         if result.status is ScopedCommitStatus.CREATED and result.sha:
-            from loguru import logger as _logger  # noqa: PLC0415
-
-            _logger.debug("project-policy preflight auto-commit created: {}", result.sha)
+            logger.debug("project-policy preflight auto-commit created: {}", result.sha)
         elif result.status is ScopedCommitStatus.SKIPPED and result.skipped_paths:
-            from loguru import logger as _logger  # noqa: PLC0415
-
-            _logger.debug(
+            logger.debug(
                 "project-policy preflight auto-commit skipped {} path(s) "
                 "already dirty at HEAD; left for the agent flow",
                 len(result.skipped_paths),
             )
         elif result.status is ScopedCommitStatus.FAILED:
-            from loguru import logger as _logger  # noqa: PLC0415
-
-            _logger.warning(
+            logger.warning(
                 "project-policy preflight auto-commit failed (non-fatal): {}",
                 str(result.error) if result.error is not None else "<no error detail>",
             )
     except Exception as exc:  # pragma: no cover - defensive
-        from loguru import logger as _logger  # noqa: PLC0415
-
-        _logger.warning("project-policy preflight auto-commit failed (non-fatal): {}", exc)
+        logger.warning("project-policy preflight auto-commit failed (non-fatal): {}", exc)
 
 
 def _seed_missing_starters(workspace: Workspace, stack: ProjectStack) -> list[str]:
@@ -331,4 +321,27 @@ def _render_findings_report(findings: list[PolicyFinding]) -> list[str]:
     ]
 
 
-__all__ = ["REMEDIATION_PROMPT_REL_PATH", "run_policy_readiness_preflight"]
+def seed_project_policy_starters(
+    workspace: Workspace,
+    stack: ProjectStack | None = None,
+) -> list[str]:
+    """Seed missing policy starters and bootstrap AGENTS.md without launching remediation.
+
+    Used by `ralph --init` and test scaffolding to populate a fresh v6 policy pack
+    idempotently without invoking the remediation agent loop. Never overwrites
+    existing customized policy files.
+    """
+    if agents_md.is_opted_out(workspace):
+        return []
+    if stack is None:
+        stack = get_project_stack(workspace)
+    changed = agents_md.bootstrap(workspace)
+    seeded = _seed_missing_starters(workspace, stack)
+    return [*changed, *seeded]
+
+
+__all__ = [
+    "REMEDIATION_PROMPT_REL_PATH",
+    "run_policy_readiness_preflight",
+    "seed_project_policy_starters",
+]

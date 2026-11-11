@@ -40,6 +40,8 @@ from ralph.recovery.controller import RecoveryController
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 from ralph.workspace.scope import WorkspaceScope
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 @pytest.fixture(autouse=True)
 def _clean_gate_state() -> None:

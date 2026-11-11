@@ -141,7 +141,7 @@ contract, and how to fix a slow test: `docs/agents/verification.md`
 Zero tolerance for any type of dead code. This is not negotiable, it is **INFINITELY BETTER** to rewrite dead code if we need to later on
 than it is to leave dead code around. If in doubt, **REMOVE IT**.
 
-<!-- ralph-workflow-policy:begin v1 -->
+<!-- ralph-workflow-policy:begin v2 -->
 Quality policies live under `docs/ralph-workflow-policy/`. All agent roles MUST
 load policies in this order: `execution-kernel.md` first, then their role slice,
 then any triggered domain policy before changing the project; this file's
